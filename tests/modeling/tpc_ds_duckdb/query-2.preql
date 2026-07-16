@@ -22,7 +22,7 @@ select
     sum(ss.return_net_loss) as sr_loss,
 ;
 
-left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
+subset join sr_grouped.sr_store_id = ss_grouped.ss_store_id
 select
     'store channel' as u_channel_s,
     ss_grouped.ss_store_id as u_id_s,

@@ -35,32 +35,32 @@ select
 where
     customer.sk in store_buyers.store_cust_id
     and (customer.sk in web_buyers.web_cust_id or customer.sk in catalog_buyers.cat_cust_id)
-    and customer.demographics.sk is not null
+    and customer.current_demographics.sk is not null
 select
-    customer.address.state,
-    customer.demographics.gender,
-    customer.demographics.marital_status,
-    customer.demographics.dependent_count,
+    customer.current_address.state,
+    customer.current_demographics.gender,
+    customer.current_demographics.marital_status,
+    customer.current_demographics.dependent_count,
     count(customer.sk) as cnt1,
-    min(customer.demographics.dependent_count) as min1,
-    max(customer.demographics.dependent_count) as max1,
-    avg(customer.demographics.dependent_count) as avg1,
-    customer.demographics.employed_dependent_count,
+    min(customer.current_demographics.dependent_count) as min1,
+    max(customer.current_demographics.dependent_count) as max1,
+    avg(customer.current_demographics.dependent_count) as avg1,
+    customer.current_demographics.employed_dependent_count,
     count(customer.sk) as cnt2,
-    min(customer.demographics.employed_dependent_count) as min2,
-    max(customer.demographics.employed_dependent_count) as max2,
-    avg(customer.demographics.employed_dependent_count) as avg2,
-    customer.demographics.college_dependent_count,
+    min(customer.current_demographics.employed_dependent_count) as min2,
+    max(customer.current_demographics.employed_dependent_count) as max2,
+    avg(customer.current_demographics.employed_dependent_count) as avg2,
+    customer.current_demographics.college_dependent_count,
     count(customer.sk) as cnt3,
-    min(customer.demographics.college_dependent_count) as min3,
-    max(customer.demographics.college_dependent_count) as max3,
-    avg(customer.demographics.college_dependent_count) as avg3,
+    min(customer.current_demographics.college_dependent_count) as min3,
+    max(customer.current_demographics.college_dependent_count) as max3,
+    avg(customer.current_demographics.college_dependent_count) as avg3,
 order by
-    customer.address.state asc nulls first,
-    customer.demographics.gender asc nulls first,
-    customer.demographics.marital_status asc nulls first,
-    customer.demographics.dependent_count asc nulls first,
-    customer.demographics.employed_dependent_count asc nulls first,
-    customer.demographics.college_dependent_count asc nulls first
+    customer.current_address.state asc nulls first,
+    customer.current_demographics.gender asc nulls first,
+    customer.current_demographics.marital_status asc nulls first,
+    customer.current_demographics.dependent_count asc nulls first,
+    customer.current_demographics.employed_dependent_count asc nulls first,
+    customer.current_demographics.college_dependent_count asc nulls first
 limit 100
 ;

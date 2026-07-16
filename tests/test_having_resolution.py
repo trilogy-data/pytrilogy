@@ -79,7 +79,7 @@ having aggregated.yr = 2002;
 """
     sql = _generate(body)
     assert "INVALID_REFERENCE_BUG" not in sql
-    assert " in (select" in sql.lower()
+    assert "exists (select" in sql.lower()
 
 
 def test_window_partition_order_dim_in_order_by_not_in_select_errors_cleanly():
@@ -110,7 +110,7 @@ having aggregated.yr = 2002;
 """
     sql = _generate(body)
     assert "INVALID_REFERENCE_BUG" not in sql
-    assert " in (select" in sql.lower()
+    assert "exists (select" in sql.lower()
 
 
 def test_window_dim_in_having_succeeds_when_hidden_in_select():
@@ -156,7 +156,7 @@ having aggregated.yr = 2002;
 """
     sql = _generate(body)
     assert "INVALID_REFERENCE_BUG" not in sql
-    assert " in (select" in sql.lower()
+    assert "exists (select" in sql.lower()
 
 
 def test_bare_dim_in_having_succeeds_when_in_select():
@@ -262,7 +262,7 @@ def _run_oracle(body: str) -> tuple[str, list[tuple]]:
 
 def _assert_semijoin(sql: str) -> None:
     assert "INVALID_REFERENCE_BUG" not in sql
-    assert " in (select" in sql.lower()
+    assert "exists (select" in sql.lower()
 
 
 def test_filtered_count_input_dim_in_having_semijoins():

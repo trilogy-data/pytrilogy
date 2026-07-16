@@ -5,7 +5,7 @@ auto returned_orders <- ws.order_number ? ws.is_returned;
 
 where
     ws.ship_date.date between '1999-02-01'::date and '1999-04-02'::date
-    and ws.ship_address.state = 'IL'
+    and ws.pos_ship_address.state = 'IL'
     and ws.web_site.company_name = 'pri'
     and ws.order_number in multi_warehouse_orders
     and ws.order_number not in returned_orders

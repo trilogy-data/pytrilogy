@@ -11,6 +11,7 @@ from trilogy.core.exceptions import (
     UnresolvableQueryException,
 )
 from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
@@ -27,16 +28,46 @@ from trilogy.parser import parse_text
 working_path = Path(__file__).parent
 
 
+def test_all_sales_money_preserves_decimal_type():
+    env = Environment(working_path=working_path)
+    env.parse("import all_sales as sales;")
+
+    money = {
+        "sales_price",
+        "list_price",
+        "wholesale_cost",
+        "ext_sales_price",
+        "ext_wholesale_cost",
+        "ext_list_price",
+        "ext_discount_amount",
+        "coupon_amt",
+        "net_profit",
+        "net_paid",
+        "net_paid_inc_tax",
+        "return_amount",
+        "return_net_loss",
+    }
+
+    assert {
+        getattr(
+            env.concepts[f"sales.{name}"].datatype,
+            "data_type",
+            env.concepts[f"sales.{name}"].datatype,
+        )
+        for name in money
+    } == {DataType.NUMERIC}
+
+
 def test_demo(engine):
     query = """
 import store_sales as store_sales;
 with ranked_states as
 select 
     store_sales.customer.first_name,
-    store_sales.customer.address.state,
+    store_sales.customer.current_address.state,
     rank store_sales.customer.first_name 
-        over store_sales.customer.address.state 
-        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.address.state desc 
+        over store_sales.customer.current_address.state
+        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.current_address.state desc
     -> sales_rank;
 
 select 
@@ -55,7 +86,7 @@ limit 10
 def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """Regression for the q64 stale-CTE-alias BinderException.
 
-    A scoped LEFT join onto a filtering rowset (`catalog_item_agg`) carries the
+    A scoped subset join onto a filtering rowset (`catalog_item_agg`) carries the
     rowset's key forward as a pass-through CTE's own output. When a SECOND
     composite fact join (`ss<->pr`) and the broad dimension-join graph let
     JoinHoist lift the rowset join up to the shared grouped parent, the hoist
@@ -76,13 +107,13 @@ select
   cs.item.id as item_id,
   sum(cs.ext_list_price) as cat_ext_list_price,
   sum(cr.refunded_cash + cr.reversed_charge + cr.store_credit) as cat_refund
-left join cs.order_number = cr.order_number and cs.item.sk = cr.item.sk
+subset join cr.order_number = cs.order_number and cr.item.sk = cs.item.sk
 ;
 
 where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
-  and ss.pos_customer_demographic.marital_status != ss.customer.demographics.marital_status
+  and ss.pos_customer_demographic.marital_status != ss.customer.current_demographics.marital_status
   and ss.date.year in (1999, 2000)
   and pr.return_amount is not null
 select
@@ -90,8 +121,8 @@ select
   ss.store.name as store_name, ss.store.zip as store_zip,
   ss.pos_address.street_number as sale_street_number, ss.pos_address.street_name as sale_street_name,
   ss.pos_address.city as sale_city, ss.pos_address.zip as sale_zip,
-  ss.customer.address.street_number as cust_street_number, ss.customer.address.street_name as cust_street_name,
-  ss.customer.address.city as cust_city, ss.customer.address.zip as cust_zip,
+  ss.customer.current_address.street_number as cust_street_number, ss.customer.current_address.street_name as cust_street_name,
+  ss.customer.current_address.city as cust_city, ss.customer.current_address.zip as cust_zip,
   ss.date.year as sale_year,
   ss.customer.first_sales_date.year as first_sales_year,
   ss.customer.first_shipto_date.year as first_shipto_year,
@@ -99,8 +130,8 @@ select
   sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
   sum(ss.ext_list_price) as list_price_sum,
   sum(ss.coupon_amt) as coupon_amt_sum
-left join ss.ticket_number = pr.ticket_number and ss.item.sk = pr.item.sk
-left join ss.item.id = catalog_item_agg.item_id
+subset join pr.ticket_number = ss.ticket_number and pr.item.sk = ss.item.sk
+subset join catalog_item_agg.item_id = ss.item.id
 order by ss.item.product_name, ss.store.name
 limit 100;
 """
@@ -487,8 +518,9 @@ limit 100;
 """
     sql = engine.generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    # the membership feeders must resolve to real, declared CTEs
-    referenced = set(re.findall(r"in \(select (\w+)\.", sql))
+    # the membership feeders must resolve to real, declared CTEs. Membership
+    # renders as a NULL-matching existence check: `exists (select 1 from <cte> ...)`.
+    referenced = set(re.findall(r"exists \(select 1 from (\w+)\b", sql))
     declared = set(re.findall(r"(\w+) as \(", sql))
     assert referenced, sql
     assert referenced <= declared, f"dangling membership CTEs: {referenced - declared}"
@@ -827,12 +859,14 @@ def _assert_having_membership_subselect_valid(query: str) -> None:
     """A HAVING `x in <set>` must source its existence subselect from a real
     producer CTE present in the WITH list — not a dangling reference. The HAVING
     application routes through `append_existence_check` (mirroring the WHERE
-    path), so the predicate's subselect is wired regardless of node shape."""
+    path), so the predicate's subselect is wired regardless of node shape.
+    Membership renders as a NULL-matching existence check:
+    `exists (select 1 from <cte> ...)`."""
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
     assert "INVALID_REFERENCE_BUG" not in sql, sql
     defined_ctes = set(re.findall(r"\n(\w+) as \(", sql))
-    referenced = re.search(r"in \(select (\w+)\.", sql)
+    referenced = re.search(r"exists \(select 1 from (\w+)\b", sql)
     assert referenced is not None, sql
     assert referenced.group(1) in defined_ctes, sql
 
@@ -933,7 +967,7 @@ def test_rank_over_projected_aggregate_ratio_no_recursion():
 
 def test_unified_model_customer_address_cross_cte_join(engine):
     # Bug (enriched q6): grouping/filtering by a 2-hop
-    # `<role>_customer.address.<prop>` on the unified `all_sales` model. The
+    # `<role>_customer.current_address.<prop>` on the unified `all_sales` model. The
     # customer->address FK key (C_CURRENT_ADDR_SK) is materialized by the grouped
     # parent CTE, but datasource inlining left the raw customer table inlined-but-
     # dangling, so the address join's ON referenced the customer alias from a
@@ -943,9 +977,9 @@ def test_unified_model_customer_address_cross_cte_join(engine):
         query = f"""
 import all_sales as sales;
 where sales.date.year = 2001
-  and sales.{role}.address.id is not null
+  and sales.{role}.current_address.id is not null
 select
-    sales.{role}.address.state as state,
+    sales.{role}.current_address.state as state,
     count(sales.item.id) as n
 limit 100;
 """
@@ -1106,7 +1140,7 @@ where
     ss.date.year = 2001
     and ss.date.month_of_year = 1
     and ss.item.category is not null
-    and ss.customer.address.id is not null
+    and ss.customer.current_address.id is not null
 order by
     ratio desc
 limit 10;

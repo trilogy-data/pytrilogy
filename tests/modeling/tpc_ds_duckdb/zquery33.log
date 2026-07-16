@@ -1,6 +1,6 @@
 query_id = "33"
 generator = "v3"
-gen_length = 4304
+gen_length = 4247
 preql_size = 498
 comp_size = 1670
 generated_sql = """
@@ -18,7 +18,10 @@ GROUP BY
     1),
 questionable as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -26,11 +29,14 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and exists (select 1 from quizzical where quizzical.\"electronics_manuf_ids\" is not distinct from \"sales_item_items\".\"I_MANUFACT_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -38,11 +44,14 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_store_sales_unified\".\"SS_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and exists (select 1 from quizzical where quizzical.\"electronics_manuf_ids\" is not distinct from \"sales_item_items\".\"I_MANUFACT_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -50,7 +59,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and \"sales_item_items\".\"I_MANUFACT_ID\" in (select quizzical.\"electronics_manuf_ids\" from quizzical where quizzical.\"electronics_manuf_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 1998 and \"sales_date_date\".\"D_MOY\" = 5 and exists (select 1 from quizzical where quizzical.\"electronics_manuf_ids\" is not distinct from \"sales_item_items\".\"I_MANUFACT_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 ),
 juicy as (
 SELECT
@@ -73,5 +82,5 @@ GROUP BY
     1
 ORDER BY 
     \"total_sales\" asc nulls first,
-    \"abundant\".\"sales_item_manufacturer_id\" asc nulls first
+    \"juicy\".\"sales_item_manufacturer_id\" asc nulls first
 LIMIT (100)"""

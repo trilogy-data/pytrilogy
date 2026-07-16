@@ -1977,8 +1977,6 @@ def _rowset_boundary_cases(seed: SeedData) -> list[FuzzCase]:
     variants = (
         ("subset", "subset join subordinate.k = anchor.k", "left join"),
         ("union", "union join subordinate.k = anchor.k", "full join"),
-        ("full", "full join subordinate.k = anchor.k", "full join"),
-        ("left", "left join anchor.k = subordinate.k", "left join"),
     )
     for name, trilogy_join, sql_join in variants:
         body = f"""

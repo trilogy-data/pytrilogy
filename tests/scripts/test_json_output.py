@@ -251,7 +251,7 @@ def test_explore_json_imports_render_full_detail(runner, tmp_path):
     concepts = events_of(parse_events(result.output), "concepts")[0]
     # Imported namespaces render in the same grouped-declaration form as the
     # local section — full types, not a name-only leaf list.
-    groups = concepts["imported"]["dem"]["concepts"]
+    groups = concepts["namespaced"]["dem"]["concepts"]
     key_group = next(g for g in groups if "keys" in g)
     assert key_group["keys"] == ["dem.cd_id int;"]
     prop_group = next(g for g in groups if "properties" in g)
@@ -275,7 +275,7 @@ def test_explore_json_hides_underscore_imports(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    dumped = json.dumps(concepts["imported"]["dem"])
+    dumped = json.dumps(concepts["namespaced"]["dem"])
     assert "edu" in dumped
     assert "_raw_edu" not in dumped
 
@@ -301,9 +301,9 @@ def test_explore_json_imported_roles_carry_descriptions(runner, tmp_path):
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    combined = next(k for k in concepts["imported"] if "," in k)
+    combined = next(k for k in concepts["namespaced"] if "," in k)
     assert set(combined.split(", ")) == {"sold_date", "ship_date"}
-    entry = concepts["imported"][combined]
+    entry = concepts["namespaced"][combined]
     assert entry["roles"] == {
         "sold_date": "date the item sold",
         "ship_date": "date the item shipped",
@@ -354,7 +354,7 @@ def test_explore_json_include_builtins_hides_internal_namespace(runner, tmp_path
     concepts = events_of(parse_events(result.output), "concepts")[0]
     # The internal `__preql_internal` model is never surfaced as an import,
     # even when --include-builtins is set.
-    assert "__preql_internal" not in (concepts.get("imported") or {})
+    assert "__preql_internal" not in (concepts.get("namespaced") or {})
 
 
 def test_explore_json_expand_imports_flag_is_noop(runner, tmp_path):

@@ -398,7 +398,10 @@ class DuckDBDialect(BaseDialect):
                 "column": r[ix["column_name"]],
                 "non_null": count - nulls,
                 "nulls": nulls,
-                "distinct": r[ix["approx_unique"]],
+                # HLL-approximate, and named so: it can exceed the row count, which
+                # reads as a bug if the key claims to be exact. Use count_distinct
+                # for a true cardinality.
+                "distinct_approx": r[ix["approx_unique"]],
             }
             mn, mx = r[ix["min"]], r[ix["max"]]
             if mn is not None:

@@ -52,29 +52,17 @@ KINDS = {
 
 # per join type: (join clause template, merge statement template,
 # join-form oracle, merge-form oracle).
-# `left join L = R` anchors L; its merge equivalent is `merge R into ~L`.
-# SUBSET/UNION are the domain-declaration spellings of the same two relations
+# SUBSET/UNION are the two scoped-relation declarations
 # (docs/subset_union_join_design.md): `subset join R = L` declares R ⊆ L (the
-# superset L anchors — row parity with authored LEFT), `union join L = R`
-# declares neither contains the other (never narrows, keeps FULL rows). The
+# superset L anchors, row parity with a preserving LEFT), with merge equivalent
+# `merge R into ~L`; `union join L = R` declares neither contains the other
+# (never narrows, keeps FULL rows), with merge equivalent `merge L into R`. The
 # non-partial merge is the EQUAL declaration: with `narrow_equal_domain_joins`
 # defaulted on it narrows to INNER, and on these deliberately declaration-
 # violating rows that DROPS the side-exclusive rows (lying declaration =
-# author error) — so the merge-form full/union cells rule intersection while
+# author error) — so the merge-form union cell rules intersection while
 # the query-scoped join forms keep the preserving FULL rows.
 TYPES = {
-    "full": (
-        "full join {l} = {r}",
-        "merge {l} into {r};",
-        expected_full,
-        expected_equal,
-    ),
-    "left": (
-        "left join {l} = {r}",
-        "merge {r} into ~{l};",
-        expected_left,
-        expected_left,
-    ),
     "subset": (
         "subset join {r} = {l}",
         "merge {r} into ~{l};",

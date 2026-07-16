@@ -885,9 +885,9 @@ class TestAggregateFunctionTypes:
     """Tests for aggregate function type validation."""
 
     def test_count_accepts_any_type(self):
-        """COUNT accepts any type."""
+        """COUNT accepts any type (a non-constant key; count(<constant>) is rejected)."""
         env, _ = parse_text("""
-            const x <- 'hello';
+            key x string;
             auto y <- count(x);
             select y;
             """)

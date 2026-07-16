@@ -16,14 +16,6 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" = 1
-),
-abundant as (
-SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     avg(CASE WHEN \"ss_store_sales\".\"SS_STORE_SK\" = 1 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END) as \"_virt_agg_avg_7707029941687820_wscope\"
 FROM
@@ -121,10 +113,6 @@ FROM
 WHERE
     coalesce(\"abhorrent\".\"descending_rnk_d\",\"young\".\"ascending_rnk_a\") < 11
 
-GROUP BY
-    1,
-    2,
-    3
 ORDER BY 
     \"rnk\" asc nulls first,
     \"young\".\"ascending_best_performing\" desc nulls first,

@@ -138,6 +138,9 @@ class CLIRuntimeParams:
     # global ``FETCH_LIMIT``. Lowered for agents (sample, not firehose); humans
     # can raise it explicitly with ``--displayed-rows`` or use ``--all-rows``.
     row_limit: int | None = None
+    # Render the derived-value scope block after each result table (`run
+    # --scope`). JSON mode always carries the scopes regardless of this flag.
+    show_scopes: bool = False
 
 
 def merge_runtime_config(

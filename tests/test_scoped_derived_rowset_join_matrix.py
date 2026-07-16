@@ -8,7 +8,7 @@ left-anchor fixes are easy to make brittle here; this flushes regressions.
 
 Cells that currently resolve are also checked for CORRECTNESS (exact rows, correct
 join type) on a fixed dataset. Cells that clean-error are KNOWN build-level
-limitations (e.g. both keys derived, or FULL on a one-sided derived key): the
+limitations (e.g. both keys derived, or union on a one-sided derived key): the
 scoped-merge collapse substitutes one rowset's key into the other's derivation, so
 the collapsed side can't be materialized locally. A clean error is acceptable; a
 recursion/sentinel/wrong-result is not. See
@@ -75,7 +75,21 @@ COMPOSITE_KEYS = {
     "comp_mixed": "agg.period + 53 = fut.period and agg.region = fut.region",
     "comp_deriv": "agg.period + 53 = fut.period and agg.region + 1 = fut.region",
 }
-JOINS = ["left", "full"]
+JOINS = ["subset", "union"]
+
+
+def _swap(expr: str) -> str:
+    """Reverse each `=` group in place (authored `left join a = b` renders as
+    `subset join b = a`); `and` groups keep their order."""
+    parts = []
+    for group in expr.split(" and "):
+        lhs, rhs = group.split(" = ")
+        parts.append(f"{rhs} = {lhs}")
+    return " and ".join(parts)
+
+
+def _join_clause(jt: str, expr: str) -> str:
+    return f"subset join {_swap(expr)}" if jt == "subset" else f"union join {expr}"
 
 
 def _build_sql(base: str, tail: str) -> str:
@@ -92,7 +106,7 @@ def _cases():
         for proj, tmpl in PROJ.items():
             for key, expr in keys.items():
                 for jt in JOINS:
-                    tail = tmpl.format(join=f"{jt} join {expr}")
+                    tail = tmpl.format(join=_join_clause(jt, expr))
                     out.append(pytest.param(base, tail, id=f"{proj}-{key}-{jt}"))
     return out
 
@@ -145,21 +159,21 @@ def _rows(base: str, tail: str):
         # derived on the anchor: fut.period = agg.period + 53
         (
             "agg.period + 53 = fut.period",
-            "left",
+            "subset",
             "LEFT",
             [(1, 150 / 37), (2, None), (54, None)],
         ),
         # derived on the looked-up side: agg.period = fut.period + 53
         (
             "agg.period = fut.period + 53",
-            "left",
+            "subset",
             "LEFT",
             [(1, None), (2, None), (54, 37 / 150)],
         ),
         # multiplicative: fut.period = agg.period * 2
         (
             "agg.period * 2 = fut.period",
-            "left",
+            "subset",
             "LEFT",
             [(1, 150 / 20), (2, None), (54, None)],
         ),
@@ -167,29 +181,30 @@ def _rows(base: str, tail: str):
 )
 def test_scoped_derived_rowset_join_correct(key, jt, exp_join, exp_rows):
     got_join, rows = _rows(
-        BASE1, f"select agg.period, sum(agg.tot) / sum(fut.tot) as r {jt} join {key};"
+        BASE1,
+        f"select agg.period, sum(agg.tot) / sum(fut.tot) as r {_join_clause(jt, key)};",
     )
     assert got_join == exp_join
     assert rows == exp_rows
 
 
-def test_composite_both_plain_left_join_stays_left():
-    """Control: a both-plain composite LEFT key never widens past LEFT. Both
+def test_composite_both_plain_subset_join_stays_left():
+    """Control: a both-plain composite subset key never widens past LEFT. Both
     sides are the SAME unfiltered rollup (structural ≡ per key by
     construction), so the zip is row-identical under INNER — the twin-rollup
     upgrade — and the contract is row-based: exact rows, join no wider than
-    the authored LEFT."""
+    the authored subset."""
     got_join, rows = _rows(
         BASE2,
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
-        "left join agg.period = fut.period and agg.region = fut.region;",
+        "subset join fut.period = agg.period and fut.region = agg.region;",
     )
     assert got_join in ("LEFT", "INNER")
     assert rows == [(1, 1.0), (2, 1.0), (54, 1.0)]
 
 
-def test_composite_mixed_key_left_join_should_not_widen():
-    # A MIXED derived+plain composite LEFT: the relation itself renders
+def test_composite_mixed_key_subset_join_should_not_widen():
+    # A MIXED derived+plain composite subset: the relation itself renders
     # preserving and narrows back to LEFT (the unfiltered agg side proves the
     # subset), so no spurious right-only rows appear. A residual same-grain
     # zip may legitimately render FULL — it is row-identical — so the
@@ -197,7 +212,7 @@ def test_composite_mixed_key_left_join_should_not_widen():
     _, rows = _rows(
         BASE2,
         "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
-        "left join agg.period + 53 = fut.period and agg.region = fut.region;",
+        "subset join fut.period = agg.period + 53 and fut.region = agg.region;",
     )
     assert all(r[0] is not None for r in rows)
     assert rows == [(1, 150 / 37), (2, None), (54, None)]
@@ -239,8 +254,8 @@ select weekly_store.store_id, weekly_store.week_seq, weekly_store.tot ;
 with next_year as
 where weekly_store.year = 2002
 select weekly_store.store_id, weekly_store.week_seq, weekly_store.tot ;
-left join this_year.store_id = next_year.store_id
-  and next_year.week_seq = this_year.week_seq + 52
+subset join next_year.store_id = this_year.store_id
+  and this_year.week_seq + 52 = next_year.week_seq
 select this_year.store_id, this_year.week_seq,
        this_year.tot / next_year.tot as ratio
 order by this_year.store_id, this_year.week_seq;
@@ -275,23 +290,28 @@ select wh.reg * 2 as r, mon.period {join};
 """
 
 
-@pytest.mark.parametrize("jt", ["full", "left", "subset"])
-def test_q66_derived_over_rowset_output_connects(jt: str):
-    tail = Q66.format(join=f"{jt} join wh.jk = mon.jk")
+@pytest.mark.parametrize(
+    "join_clause",
+    [
+        "union join wh.jk = mon.jk",
+        "subset join mon.jk = wh.jk",
+        "subset join wh.jk = mon.jk",
+    ],
+)
+def test_q66_derived_over_rowset_output_connects(join_clause: str):
+    tail = Q66.format(join=join_clause)
     # Resolves (no DisconnectedConceptsException) exactly like the raw-column form.
     _build_sql("", tail)
     _, raw_rows = _rows(
         "",
-        Q66.format(join=f"{jt} join wh.jk = mon.jk").replace(
-            "wh.reg * 2 as r", "wh.reg as r"
-        ),
+        Q66.format(join=join_clause).replace("wh.reg * 2 as r", "wh.reg as r"),
     )
     _, der_rows = _rows("", tail)
     assert der_rows == [(r * 2, p) for (r, p) in raw_rows]
 
 
-def test_q59_shared_canonical_composite_left_join_no_fanout():
-    # KNOWN-BROKEN: shared-canonical composite scoped LEFT join (plain-eq co-key
+def test_q59_shared_canonical_composite_subset_join_no_fanout():
+    # KNOWN-BROKEN: shared-canonical composite scoped subset join (plain-eq co-key
     # whose two sides collapse to ONE canonical via a common parent rowset, + a
     # derived key) drops the equality co-key -- the this_year branch is built
     # without store_id so the inferred join carries only the derived week key ->

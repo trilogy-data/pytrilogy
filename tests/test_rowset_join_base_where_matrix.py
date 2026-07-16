@@ -73,7 +73,7 @@ WHERES = {
     "base": "where year = 2001\n",
     "rowset": "where cur_period.wk < 50\n",
 }
-JOINS = ["union", "subset", "left", "full"]
+JOINS = ["union", "subset"]
 
 
 def _run(tail: str):

@@ -150,8 +150,8 @@ rowset nxt <- select s_week as w2, s_dow as dow2, sum(s_qty) as total2;
 def ratio(x) -> sum(cur.total ? cur.dow = x) by cur.w
   / sum(nxt.total2 ? nxt.dow2 = x) by cur.w;
 select cur.w, @ratio(0) as r
-  left join cur.w + 1 = nxt.w2
-  left join cur.dow = nxt.dow2;
+  subset join nxt.w2 = cur.w + 1
+  subset join nxt.dow2 = cur.dow;
 """
 
 

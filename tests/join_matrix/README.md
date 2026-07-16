@@ -24,6 +24,7 @@ power-scaled values (fan-out changes sums), and an opt-in nullable axis
 | `test_narrowing_matrix.py` | declared-domain narrowing proofs on HONEST data: EQUAL (`merge`) FULL→INNER by default; UNION never narrows; flag-off opt-out |
 | `test_domain_validation.py` | opt-in lying-declaration checks (`trilogy/core/domain_validation.py`) |
 | `test_property_hop_alignment_matrix.py` | authored key on a dimension PROPERTY needing an FK hop per side, with a competing directly-bound shared key (q17/q25): member projected/unprojected × subset/union × join-vs-merge parity; hosts the strict xfail for the unmatched-side NULL-group projection bug |
+| `test_global_aggregate_broadcast_matrix.py` | global (`by *`) aggregate broadcast beside a scoped join (q23): join form (none / subset / union) × aggregate (max / count) × source (anchor / non-anchor rowset output / plain concepts) × position (select / having); plus the loud-not-silent backstop for mis-grained aggregate collapse |
 
 ## Join semantics (phase 2 landed 2026-07-03, docs/subset_union_join_design.md)
 

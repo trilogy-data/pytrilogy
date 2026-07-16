@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from trilogy.core.enums import ConceptSource, Derivation, Granularity
 from trilogy.core.models.author import (
+    AggregateWrapper,
     Concept,
     ConceptRef,
     FilterItem,
@@ -27,6 +28,7 @@ from trilogy.core.models.author import (
     SelectLineage,
     address_with_namespace,
 )
+from trilogy.core.models.build import GROUPING_IDENTITY_FUNCTIONS
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement
 
@@ -202,6 +204,22 @@ def rowset_to_concepts_v2(
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])
             else:
                 x.keys = set()
+        orig_lineage = orig_map[x.address].lineage
+        if (
+            rowset_grain
+            and isinstance(orig_lineage, AggregateWrapper)
+            and orig_lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
+        ):
+            # A grouping() flag is part of the rollup row's identity — it is a
+            # rowset grain component itself (rowset_grain includes it via the
+            # select-grain extension), so it must carry the full row grain like
+            # any other identity column. Leaving it grain-less makes it read as
+            # a scalar and puts an empty-grain metric inside sibling outputs'
+            # grains (build recursion).
+            x.grain = Grain(components=set(rowset_grain))
+            x.keys = set(rowset_grain)
+            x.granularity = Granularity.MULTI_ROW
+            continue
         if not x.grain.components and rowset_grain and x.address not in rowset_grain:
             x.grain = Grain(components=set(rowset_grain))
             x.keys = set(rowset_grain)

@@ -126,6 +126,18 @@ def _format_import(value: str) -> str:
     default=False,
     help="Show every result row, overriding --displayed-rows. Useful for piping.",
 )
+@option(
+    "--scope",
+    "scope",
+    is_flag=True,
+    default=False,
+    help=(
+        "Print a 'Derived value scopes' block after each result: the effective "
+        "input row filters, grouping/partitioning, and post-computation filters of "
+        "every aggregate and window value the statement computes. JSON output "
+        "always includes this data as `derived_value_scopes`."
+    ),
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -139,6 +151,7 @@ def run(
     imports: tuple[str, ...],
     displayed_rows: int,
     all_rows: bool,
+    scope: bool,
     conn_args,
 ):
     """Execute a Trilogy script or query."""
@@ -204,6 +217,7 @@ def run(
         execution_strategy="eager_bfs",
         env=env,
         row_limit=None if all_rows else displayed_rows,
+        show_scopes=scope,
     )
 
     try:

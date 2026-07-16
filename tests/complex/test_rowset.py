@@ -322,7 +322,7 @@ select
 select
     wh_groups.w_sqft * 2 as r,
     all_months.month,
-left join wh_groups.join_key = all_months.join_key
+subset join all_months.join_key = wh_groups.join_key
 where all_months.month is not null
 order by
     all_months.month asc nulls first,

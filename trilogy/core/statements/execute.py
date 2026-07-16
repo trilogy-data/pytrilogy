@@ -18,6 +18,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import EnvironmentConceptDict
 from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.scope_diagnostics import DerivedValueScope
 
 
 @dataclass
@@ -66,6 +67,9 @@ class ProcessedQuery:
     # in-query JOIN source address -> canonical target address, so the output
     # projection can render a collapsed source under the name the user wrote.
     scoped_merge_map: dict[str, str] = field(default_factory=dict)
+    # observational scope diagnostics (docs/SPEC_query_derived_value_scopes.md);
+    # empty when the query has no aggregate/window values or extraction failed.
+    derived_value_scopes: list[DerivedValueScope] = field(default_factory=list)
 
 
 @dataclass

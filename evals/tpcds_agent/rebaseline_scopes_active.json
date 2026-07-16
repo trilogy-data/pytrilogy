@@ -1,0 +1,13 @@
+﻿{
+    "pid":  97288,
+    "log":  "C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpcds_agent\\rebaseline_scopes_20260713-131643.out",
+    "concurrency":  2,
+    "err":  "C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpcds_agent\\rebaseline_scopes_20260713-131643.err",
+    "waiting_for_pid":  32900,
+    "categories":  [
+                       "ingest",
+                       "enriched"
+                   ],
+    "stamp":  "20260713-131643",
+    "scope_diagnostics":  true
+}

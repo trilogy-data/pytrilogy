@@ -965,6 +965,17 @@ def gen_select_merge_node(
                 rollup_at_merge = additive_aggs
                 force_merge_group = True
 
+        # A parent whose own group was deferred past this merge (so a pushed
+        # WHERE could apply after the join) contributes its ungrouped, finer
+        # row grain to the join. Left alone, the merge's grain defaults to that
+        # finer pregrain and the deferred normalization vanishes — an aggregate
+        # with an intermediate input grain (e.g. count(grain(...))) then counts
+        # physical rows. Force the regroup back to the merge's own output grain.
+        merge_grain: BuildGrain | None = None
+        if any(p.group_deferred for p in parents):
+            merge_grain = BuildGrain.from_concepts(normals, environment=environment)
+            force_merge_group = True
+
         candidate = MergeNode(
             output_concepts=list(all_concepts),
             input_concepts=unique(
@@ -981,6 +992,7 @@ def gen_select_merge_node(
             force_join_type=force_join_type,
             force_group=force_merge_group,
             rollup_concepts=rollup_at_merge or None,
+            grain=merge_grain,
         )
 
     if conditions:

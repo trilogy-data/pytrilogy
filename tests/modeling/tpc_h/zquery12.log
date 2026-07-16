@@ -1,18 +1,18 @@
 query_id = "12"
-generator = "v4"
-gen_length = 770
+generator = "v3"
+gen_length = 909
 preql_size = 424
 comp_size = 703
 generated_sql = """
 SELECT
     \"lineitem\".\"l_shipmode\" as \"ship_mode\",
-    sum(CASE WHEN \"order_orders\".\"o_orderpriority\" in ('1-URGENT','2-HIGH') THEN 1 ELSE NULL END) as \"high_line_count\",
-    sum(CASE WHEN \"order_orders\".\"o_orderpriority\" not in ('1-URGENT','2-HIGH') THEN 1 ELSE NULL END) as \"low_line_count\"
+    sum(CASE WHEN (\"order_orders\".\"o_orderpriority\" is not null and \"order_orders\".\"o_orderpriority\" in ('1-URGENT','2-HIGH')) THEN 1 ELSE NULL END) as \"high_line_count\",
+    sum(CASE WHEN (\"order_orders\".\"o_orderpriority\" is null or \"order_orders\".\"o_orderpriority\" not in ('1-URGENT','2-HIGH')) THEN 1 ELSE NULL END) as \"low_line_count\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
 WHERE
-    \"lineitem\".\"l_shipmode\" in ('MAIL','SHIP') and \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\" and \"lineitem\".\"l_shipdate\" < \"lineitem\".\"l_commitdate\" and \"lineitem\".\"l_receiptdate\" >= date '1994-01-01' and \"lineitem\".\"l_receiptdate\" < date '1995-01-01'
+    (\"lineitem\".\"l_shipmode\" is not null and \"lineitem\".\"l_shipmode\" in ('MAIL','SHIP')) and \"lineitem\".\"l_commitdate\" < \"lineitem\".\"l_receiptdate\" and \"lineitem\".\"l_shipdate\" < \"lineitem\".\"l_commitdate\" and \"lineitem\".\"l_receiptdate\" >= date '1994-01-01' and \"lineitem\".\"l_receiptdate\" < date '1995-01-01'
 
 GROUP BY
     1

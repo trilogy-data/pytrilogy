@@ -6,6 +6,7 @@ benchmark-specific paths/filenames come in through ``BenchmarkSpec``.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -41,6 +42,7 @@ def run_agent(
     timeout: int,
     monitor_mode: str,
     toolset: str = "trilogy",
+    scope_diagnostics: bool = True,
 ) -> dict:
     cmd = [
         sys.executable,
@@ -61,6 +63,10 @@ def run_agent(
     proc = subprocess.Popen(
         cmd,
         cwd=workspace,
+        env={
+            **os.environ,
+            "TRILOGY_AGENT_SCOPE_DIAGNOSTICS": "1" if scope_diagnostics else "0",
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

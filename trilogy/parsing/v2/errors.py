@@ -59,7 +59,7 @@ ERROR_CODES: dict[int, str] = {
     ),
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
-        "`inner|left|full join <a> = <b>` takes only key equalities - to join on "
+        "`subset|union join <a> = <b>` takes only key equalities - to join on "
         "multiple keys, chain `= c` (one equivalence group) or separate distinct "
         "groups with `and` (`a = b and c = d`); STACK another `join` clause for a "
         "different join type. Note `and` joins KEY EQUALITIES only, not filters. "
@@ -87,10 +87,17 @@ ERROR_CODES: dict[int, str] = {
     223: (
         "`*` is not a valid argument - Trilogy has no `*` row-marker, so "
         "`count(*)` / `sum(*)` don't parse. To count rows at the query grain, "
-        "count a key field: `count(<key>)` (counts are already distinct) - e.g. "
-        "`count(store_sales.id)`; to count a related dimension's rows, count its "
-        "key (`count(customer.id)`). For any other aggregate, pass the column you "
-        "mean, e.g. `sum(store_sales.ext_sales_price)`."
+        "count a NON-NULL GRAIN KEY: `count(<key>)` (counts are already distinct) "
+        "- e.g. `count(store_sales.id)`; to count a related dimension's rows, "
+        "count its key (`count(customer.id)`). It MUST be a key, and one that is "
+        "not nullable: `count(x)` skips rows where `x` is NULL, so counting a "
+        "nullable property (a name, a date, any optional field) silently "
+        "undercounts. When the grain takes SEVERAL keys, name them with `grain(...)`: "
+        "`count(grain(order_id, item.id))` counts order+item combinations, and "
+        "`count_distinct(grain(first_name, last_name, sale_date))` counts distinct "
+        "combinations - `grain()` is never NULL, so combinations with a missing "
+        "member still count. For any other aggregate, pass the column you mean, e.g. "
+        "`sum(store_sales.ext_sales_price)`."
     ),
     224: (
         "Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is "
@@ -106,6 +113,24 @@ ERROR_CODES: dict[int, str] = {
         "separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). "
         "Both sides must be real fields or expressions - `...` is not a "
         "placeholder."
+    ),
+    226: (
+        "Misplaced `subset|union join`. The key looks fine - the join is in the "
+        "wrong PLACE. A query-scoped join is part of a `select` statement, not a "
+        "standalone statement and not a pre-`where` clause. Put it right after "
+        "the select list (preferred, SQL-like): `where <filters> select <cols> "
+        "subset join a.key = b.key`. The clause order is `where` -> `select` "
+        "<cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also "
+        "sit between `where` and `select`, but never before `where` and never on "
+        "its own. Full reference: `trilogy agent-info syntax example "
+        "query-structure`."
+    ),
+    227: (
+        "Named function `{name}` must be invoked with a leading `@` - write "
+        "`@{name}(...)`. A user-defined (`def`) function is called with `@`; bare "
+        "`{name}(...)` is read as a concept reference, not a call, so it fails at "
+        "the `(`. Built-in functions (`sum(...)`, `count(...)`, `coalesce(...)`) "
+        "need no `@`."
     ),
 }
 
@@ -314,6 +339,91 @@ def detect_join_missing_key(text: str, pos: int) -> int | None:
     if _SELECT_KW_RE.search(text, join.end(), pos):
         return None
     return join.start()
+
+
+_CLAUSE_BOUNDARY_RE = re.compile(
+    r"\b(?:where|select|having|order|group|limit)\b|;", re.IGNORECASE
+)
+_WHERE_KW_RE = re.compile(r"\bwhere\b", re.IGNORECASE)
+
+
+def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
+    """Locate a query-scoped join that sits in an INVALID grammatical position —
+    on its own as a standalone statement, or BEFORE the `where` — rather than
+    after the select list (preferred) or between `where` and `select`. The
+    grammar is `where? join_clause* select ... join_clause*`, so a join before
+    the `where` (or with no `select` at all) fails even when its key is perfectly
+    well-formed; without this it mis-reports as a malformed key (225).
+
+    Returns `(join_start, clause_text)` — the caller confirms `clause_text` is a
+    well-formed join in isolation via its own reparse probe before emitting 226;
+    a malformed key falls through to 225. Returns None when the join is absent or
+    already in a valid position. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    if not joins:
+        return None
+    join = joins[-1]
+    stmt_end = text.find(";", join.end())
+    if stmt_end == -1:
+        stmt_end = len(text)
+    select_after = _SELECT_KW_RE.search(text, join.end(), stmt_end)
+    standalone = _SELECT_KW_RE.search(text, stmt_start, stmt_end) is None
+    before_where = select_after is not None and bool(
+        _WHERE_KW_RE.search(text[join.end() : select_after.start()])
+    )
+    if not (standalone or before_where):
+        return None
+    boundary = _CLAUSE_BOUNDARY_RE.search(text, join.end())
+    clause_end = boundary.start() if boundary else stmt_end
+    return join.start(), text[join.start() : clause_end].strip()
+
+
+# A `def NAME(...)` (or `def table NAME(...)`) declaration — the named-function
+# registry. Both forms are invoked with a leading `@` (`@NAME(...)`); omitting it
+# reads the name as a bare concept reference and fails at the `(`.
+_DEF_NAME_RE = re.compile(r"\bdef\s+(?:table\s+)?([A-Za-z_]\w*)", re.IGNORECASE)
+
+
+def _named_functions(text: str, before: int) -> set[str]:
+    return {m.group(1).lower() for m in _DEF_NAME_RE.finditer(text, 0, before)}
+
+
+def detect_named_function_missing_at(text: str, pos: int) -> int | None:
+    """Locate a user-defined (`def`) function invoked without its required `@`
+    prefix — e.g. `identity(x)` where an earlier `def identity(...)` exists (the
+    valid form is `@identity(x)`). Both backends report the failure at the `(`
+    that follows the bare name, so find that `(`, read the identifier before it,
+    and fire ONLY when the name matches a `def` declared earlier in the source —
+    unknown names and built-ins keep their normal diagnostics. Returns the
+    position of the function name, or None. Shared by both grammar backends;
+    purely textual (no reparse)."""
+    paren = None
+    for i in range(max(0, pos - 1), min(len(text), pos + 2)):
+        if text[i] == "(":
+            paren = i
+            break
+    if paren is None:
+        return None
+    k = paren - 1
+    while k >= 0 and text[k].isspace():
+        k -= 1
+    name_end = k + 1
+    while k >= 0 and (text[k].isalnum() or text[k] == "_"):
+        k -= 1
+    name_start = k + 1
+    name = text[name_start:name_end]
+    if not name:
+        return None
+    # An `@` (skipping spaces) already prefixes the name → well-formed call.
+    p = name_start - 1
+    while p >= 0 and text[p].isspace():
+        p -= 1
+    if p >= 0 and text[p] == "@":
+        return None
+    if name.lower() not in _named_functions(text, name_start):
+        return None
+    return name_start
 
 
 _ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)
@@ -668,6 +778,9 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
         expr = _unaliased_select_expr(text, pos)
         if expr is not None:
             message += f" Here: `{expr} as {suggest_select_alias(expr)}`"
+    elif code == 227:
+        m = _IDENT_RE.match(text, pos)
+        message = message.format(name=m.group(0) if m else "fn")
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
         + message

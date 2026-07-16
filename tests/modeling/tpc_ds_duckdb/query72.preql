@@ -3,30 +3,27 @@ import inventory as inv;
 
 where
     cs.sold_date.year = 1999
-    and inv.date.year = 1999
     and cs.pos_household_demographic.buy_potential = '>10000'
     and cs.pos_customer_demographic.marital_status = 'D'
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
     and inv.date.week_seq = cs.sold_date.week_seq
-left join inv.item.sk = cs.item.sk
+subset join cs.item.sk = inv.item.sk
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,
     cs.sold_date.week_seq as week_seq,
-    sum(
-            case
-                when cs.promotion.sk is null then 1
-                else 0
-            end
-        ) as no_promo,
-    sum(
-            case
-                when cs.promotion.sk is not null then 1
-                else 0
-            end
-        ) as promo,
-    count(cs.order_number) as total_cnt,
+    count(
+        grain(cs.order_number, cs.item.sk, inv.date.sk, inv.warehouse.sk)
+            ? cs.promotion.sk is null
+    ) as no_promo,
+    count(
+        grain(cs.order_number, cs.item.sk, inv.date.sk, inv.warehouse.sk)
+            ? cs.promotion.sk is not null
+    ) as promo,
+    count(
+        grain(cs.order_number, cs.item.sk, inv.date.sk, inv.warehouse.sk)
+    ) as total_cnt,
 order by
     total_cnt desc nulls first,
     item_desc asc nulls first,

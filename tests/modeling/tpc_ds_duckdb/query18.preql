@@ -10,15 +10,15 @@ def rollup_avg(metric) -> avg(metric::numeric(12,2));
 where
     cs.pos_customer_demographic.gender = 'F'
     and cs.pos_customer_demographic.education_status = 'Unknown'
-    and cs.billing_customer.demographics.sk is not null
+    and cs.billing_customer.current_demographics.sk is not null
     and cs.billing_customer.birth_month in (1, 6, 8, 9, 12, 2)
     and cs.date.year = 1998
-    and cs.billing_customer.address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
+    and cs.billing_customer.current_address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 select
     cs.item.id,
-    cs.billing_customer.address.country,
-    cs.billing_customer.address.state,
-    cs.billing_customer.address.county,
+    cs.billing_customer.current_address.country,
+    cs.billing_customer.current_address.state,
+    cs.billing_customer.current_address.county,
     @rollup_avg(cs.quantity) as agg1,
     @rollup_avg(cs.list_price) as agg2,
     @rollup_avg(cs.coupon_amt) as agg3,
@@ -26,14 +26,14 @@ select
     @rollup_avg(cs.net_profit) as agg5,
     @rollup_avg(row_birth_year) as agg6,
     @rollup_avg(row_dep_count) as agg7,
-    --grouping(cs.billing_customer.address.country) as g_country,
-    --grouping(cs.billing_customer.address.state) as g_state,
-    --grouping(cs.billing_customer.address.county) as g_county,
-by rollup (cs.item.id, cs.billing_customer.address.country, cs.billing_customer.address.state, cs.billing_customer.address.county)
+    --grouping(cs.billing_customer.current_address.country) as g_country,
+    --grouping(cs.billing_customer.current_address.state) as g_state,
+    --grouping(cs.billing_customer.current_address.county) as g_county,
+by rollup (cs.item.id, cs.billing_customer.current_address.country, cs.billing_customer.current_address.state, cs.billing_customer.current_address.county)
 order by
-    cs.billing_customer.address.country asc nulls first,
-    cs.billing_customer.address.state asc nulls first,
-    cs.billing_customer.address.county asc nulls first,
+    cs.billing_customer.current_address.country asc nulls first,
+    cs.billing_customer.current_address.state asc nulls first,
+    cs.billing_customer.current_address.county asc nulls first,
     cs.item.id asc nulls first,
     g_country asc nulls first,
     g_state asc nulls first,

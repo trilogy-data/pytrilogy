@@ -170,7 +170,9 @@ select_statement = {
     from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ select_grouping? ~ having? ~ order_by? ~ limit?
 }
 
-// query-scoped join: blends two otherwise-disjoint concepts on a shared key for
+// query-scoped join: SUBSET/UNION are the only spellings (left/full/inner/right/
+// cross still lex but are rejected at hydration with a migration hint).
+// blends two otherwise-disjoint concepts on a shared key for
 // this select only (a query-local merge). LEFT anchors its first key (others
 // partial); FULL coalesces. SUBSET/UNION are the domain-declaration spellings
 // (subset join a = b: a's values ⊆ b's, b anchors; union join: neither side
@@ -663,6 +665,8 @@ fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ (data_type | IDENTIFIER) ~ ")" }
 // =============================================================================
 concat      = { ^"concat" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 concat_ws   = { ^"concat_ws" ~ "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
+// one or more keys
+fgrain      = { ^"grain" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fcoalesce   = { ^"coalesce" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fgreatest   = { ^"greatest" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fleast      = { ^"least" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
@@ -678,7 +682,7 @@ fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 
 _generic_functions = _{
-    fcast | fcase_simple | fcase | concat_ws | concat | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
+    fcast | fcase_simple | fcase | concat_ws | concat | fgrain | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
 }
 
 // =============================================================================

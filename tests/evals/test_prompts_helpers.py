@@ -17,6 +17,9 @@ from common.prompts import (  # noqa: E402
     _render_params_block,
     build_single_query_task,
     candidate_filename,
+    candidate_path,
+    scoring_candidate_path,
+    stage_candidate_for_scoring,
 )
 from common.spec import BenchmarkSpec  # noqa: E402
 
@@ -105,3 +108,30 @@ def test_build_single_query_task_with_params_preserves_question_body():
         },
     )
     assert "Sentinel-phrase for the question body." in task
+
+
+def test_stage_candidate_for_scoring_uses_shared_paths(tmp_path: Path):
+    source_workspace = tmp_path / "worker"
+    scoring_workspace = tmp_path / "scoring"
+    source_workspace.mkdir()
+    scoring_workspace.mkdir()
+    source = candidate_path(source_workspace, _spec(), 8, ".preql")
+    source.write_text("select 1;", encoding="utf-8")
+
+    staged = stage_candidate_for_scoring(
+        source_workspace,
+        scoring_workspace,
+        _spec(),
+        8,
+        ".preql",
+        remove_source=True,
+    )
+
+    expected = scoring_candidate_path(scoring_workspace, 8, ".preql")
+    assert staged == expected
+    assert expected.read_text(encoding="utf-8") == "select 1;"
+    assert not source.exists()
+
+
+def test_stage_candidate_for_scoring_returns_none_when_missing(tmp_path: Path):
+    assert stage_candidate_for_scoring(tmp_path, tmp_path, _spec(), 8, ".preql") is None

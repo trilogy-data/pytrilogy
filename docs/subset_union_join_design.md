@@ -76,9 +76,11 @@ for the relation mechanisms these declarations ride on.
 
 ## Deferred / residuals
 
-- `left join` / `full join` spellings are retained as legacy aliases (mapping
-  below) rather than removed — they are pure domain declarations now, with no
-  row-drop semantics and no deprecation-window provenance registry needed.
+- `left join` / `full join` (and `inner` / `right` / `cross`) spellings are
+  **removed** — they still lex as `JOIN_TYPE` but are rejected at hydration
+  (`select_statement_rules.join_clause`) with a migration hint pointing at the
+  `subset` / `union` equivalents (mapping below). SUBSET/UNION are the only
+  query-scoped join declarations.
 - Row-identical zips between re-aggregated branches may still RENDER FULL when
   their evidence is ambiguous (e.g. a measure in the zip key set); rows are
   correct, the cost is perf. SQL-shape assertions were re-ruled to row

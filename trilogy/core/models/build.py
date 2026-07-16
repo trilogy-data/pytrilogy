@@ -326,6 +326,16 @@ def _concept_is_relevant(
     concept: BuildConcept,
     other_addresses: set[str],
 ) -> bool:
+    # A grouping-set identity under ROLLUP/CUBE/GROUPING SETS is part of the
+    # pass's row identity: NULL-padding makes the visible dims non-unique, and
+    # only the flags disambiguate subtotal/total rows from genuine NULL-key
+    # rows. Unlike ordinary aggregates it is never determined by its by-keys.
+    if (
+        isinstance(concept.lineage, BuildAggregateWrapper)
+        and concept.lineage.function.operator in GROUPING_IDENTITY_FUNCTIONS
+        and concept.lineage.grouping != AggregateGroupingMode.STANDARD
+    ):
+        return True
     if concept.is_aggregate and not (
         isinstance(concept.lineage, BuildAggregateWrapper) and concept.lineage.by
     ):
@@ -1097,10 +1107,11 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
         else:
             new_right = self.right
 
-        return self.__class__(
+        # dc_replace so any subclass fields survive the copy
+        return dc_replace(
+            self,
             left=new_left,
             right=new_right,
-            operator=self.operator,
         )
 
     @cached_property
@@ -1968,6 +1979,10 @@ class BuildSelectLineage:
     grain: BuildGrain = field(default_factory=BuildGrain)
     where_clause: BuildWhereClause | None = field(default=None)
     having_clause: BuildHavingClause | None = field(default=None)
+    # Author-side WHERE retained for diagnostics only (never planning). Scoped-
+    # join key canonicalization rewrites `where_clause` endpoints to their group
+    # representative, so reporting authored row filters needs the original.
+    authored_where_clause: WhereClause | None = field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:
@@ -2291,6 +2306,49 @@ class BuildDatasource:
         return False
 
 
+def union_unhealed_partial_addresses(
+    children: Iterable[BuildDatasource],
+) -> set[str]:
+    """Children's intrinsic (``~``) column-level partials that a covering union
+    does NOT heal.
+
+    A complete union across partial datasources promotes their table-level
+    partiality to full — that is what the union is for. Explicit column-level
+    ``~`` partials are subset-covering even within a child's own complete
+    slice, so they carry over by default. Two cases DO get healed:
+
+      1. The intrinsic concept itself is the union's discriminator. The
+         siblings' ``complete where`` clauses partition that concept; the
+         union covers its universe directly (e.g. enum union over
+         ``~category`` with each branch ``complete where category = 'X'``).
+
+      2. The discriminator is a property/key whose owner is the intrinsic
+         concept — every value of the intrinsic concept has a determined
+         discriminator value, so covering every discriminator value covers
+         every intrinsic value (e.g. ``~order_id`` with branches partitioned
+         on ``complete where order_date <= X`` / ``> X``).
+
+    Intrinsic partials failing both checks survive — e.g. ``~order_id`` on
+    returns tables: ``complete where channel = 'X'`` covers all channels but
+    not all orders, so order_id stays partial through the union.
+    """
+    intrinsic: set[str] = set()
+    discriminators: dict[str, BuildConcept] = {}
+    for child in children:
+        intrinsic |= child.column_level_partial_addresses
+        if child.non_partial_for is not None:
+            for c in child.non_partial_for.concept_arguments:
+                discriminators[c.address] = c
+    if not intrinsic or not discriminators:
+        return intrinsic
+    intrinsic -= set(discriminators)
+    return {
+        addr
+        for addr in intrinsic
+        if not any(d.keys and addr in d.keys for d in discriminators.values())
+    }
+
+
 @dataclass(slots=True)
 class BuildUnionDatasource:
     children: List[BuildDatasource]
@@ -2316,8 +2374,19 @@ class BuildUnionDatasource:
         return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
 
     @property
+    def column_level_partial_addresses(self) -> set[str]:
+        return union_unhealed_partial_addresses(self.children)
+
+    @property
+    def column_level_partial_concepts(self) -> List[BuildConcept]:
+        addrs = self.column_level_partial_addresses
+        if not addrs:
+            return []
+        return [c.concept for c in self.columns if c.concept.address in addrs]
+
+    @property
     def partial_concepts(self) -> List[BuildConcept]:
-        return []
+        return self.column_level_partial_concepts
 
 
 # Anything that can sit in a WHERE / HAVING / join condition. Subclasses of
@@ -4023,6 +4092,7 @@ class Factory:
             ),
             # this uses a different grain factory
             where_clause=where_clause,
+            authored_where_clause=base.where_clause,
         )
 
     @_build_dispatch.register

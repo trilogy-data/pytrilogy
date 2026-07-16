@@ -23,6 +23,7 @@ let rrConc = 2;                 // rerun-all parallelism (UI selector)
 let localErrors = {};           // rejected replay POSTs, keyed suite|run|qid
 let followedForks = new Set();  // rerun-all job ids whose fork we've already jumped to
 let archiveState = {busy:false, msg:'', ok:null};   // "archive this run to history db"
+let loading = null;          // {run} while a user-initiated run swap waits on data.json
 
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
@@ -221,6 +222,7 @@ async function pollReplay(){
     if(!j.running && replayTimer){ clearInterval(replayTimer); replayTimer = null; }
     if(finished || switched){
       lastPayload = null;   // the run's logs + report just changed under us
+      if(switched){ loading = {run: currentRun}; renderLoading(); }
       loadData(true);       // must win over any poll still in flight from mid-replay
     }
   }catch(e){ clearInterval(replayTimer); replayTimer = null; }
@@ -443,7 +445,21 @@ async function archiveRun(){
   renderTally();
 }
 function setFailOnly(v){ failOnly = v; renderSide(); }
+// Swapping runs is a server round-trip: data.json re-collects the run, and the
+// first open of a run transpiles every query to SQL (tens of seconds). Show
+// that instead of leaving the old run frozen on screen.
+function renderLoading(){
+  document.getElementById('tally').innerHTML = '';
+  document.getElementById('runs').innerHTML =
+    `<div class="empty">loading ${esc(loading.run||'run')}…</div>`;
+  if(view==='run'){
+    document.getElementById('main').innerHTML =
+      `<div class="meta loadmsg"><span class="spin"></span>loading ${esc(loading.run||'run')} — `
+      + `parsing agent logs and rendering SQL (first open of a run can take a while)…</div>`;
+  }
+}
 function renderSide(){
+  if(loading){ renderLoading(); return; }
   renderTally();
   const el = document.getElementById('runs');
   const rows = RUNS.map((r,i)=>[r,i]).filter(([r])=>isVisible(r));
@@ -489,8 +505,10 @@ function openRun(suite, run){
   currentSuite = suite; currentRun = run;
   selectedName = null; lastPayload = null; expanded = new Set(); compareOpen = false;
   archiveState = {busy:false, msg:'', ok:null};
+  loading = {run};
   syncPickers();
   markActive();
+  renderLoading();
   loadData(true);
 }
 const fmtTs = ts => ts && ts.length>=8 ? `${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)}` : (ts||'');
@@ -541,6 +559,7 @@ function renderSummary(){
 // Swap in fresh data without losing the user's place: keep the selected run and
 // (for a background poll) its scroll position.
 function applyData(runs, keepScroll){
+  loading = null;
   RUNS = runs;
   if(!RUNS.some(r=>r.name===selectedName)) selectedName = RUNS.length ? RUNS[0].name : null;
   renderSide();
@@ -564,23 +583,35 @@ function dataUrl(){
 // so polls overlap and can resolve out of order. An older snapshot must never
 // overwrite a newer one: a mid-replay snapshot carries the already-truncated
 // agent log but the not-yet-rewritten report.json, i.e. new iters + stale status.
+// A snapshot fetched for a different suite/run than the one now on screen is
+// dropped too — otherwise a stale poll flashes the old run mid-swap.
 let dataInFlight = 0, dataSeq = 0, appliedSeq = 0;
 async function loadData(force){
   if(dataInFlight && !force) return;   // don't stack slow polls
-  const seq = ++dataSeq;
+  const seq = ++dataSeq, url = dataUrl();
   dataInFlight++;
   try{
-    const r = await fetch(dataUrl(), {cache:'no-store'});
+    const r = await fetch(url, {cache:'no-store'});
     if(!r.ok) return;
     const txt = await r.text();
-    if(seq <= appliedSeq) return;   // a newer snapshot already landed
+    if(seq <= appliedSeq || url !== dataUrl()) return;
     appliedSeq = seq;
     if(txt === lastPayload) return;   // unchanged — don't disrupt the view
     lastPayload = txt;
     flashLive();
     applyData(JSON.parse(txt), true);
   }catch(e){ /* opened as a static file or server gone — keep the baked snapshot */
-  }finally{ dataInFlight--; }
+  }finally{
+    dataInFlight--;
+    // The swap this spinner belongs to settled without delivering data
+    // (error / server gone) — stop spinning and say so.
+    if(loading && url === dataUrl() && appliedSeq < seq){
+      loading = null;
+      if(view==='run') document.getElementById('main').innerHTML =
+        `<div class="meta">failed to load ${esc(currentRun||'run')} — is the server still running?</div>`;
+      renderSide();
+    }
+  }
 }
 // ---------- eval + run pickers ----------
 function suiteRuns(key){ const s = SUITES.find(s=>s.key===key); return s ? s.runs : []; }

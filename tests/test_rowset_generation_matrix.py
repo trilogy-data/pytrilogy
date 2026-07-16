@@ -98,7 +98,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "single_enrich_via_explicit_join",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
-        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", 9)],
     ),
     # --- HAVING (post-aggregate filtering inside the rowset body) ---
@@ -137,7 +137,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "having_then_enrich_property",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10)],
     ),
     (
@@ -146,7 +146,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "having_then_enrich_property_preserving",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", None)],
     ),
     (
@@ -190,17 +190,42 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "where item_id in returned.ri\nselect item_id, sum(s_qty) as sq order by item_id;",
         [(1, 15), (2, 10)],
     ),
-    # --- cross-rowset WHERE/JOIN comparison (year-over-year) ---
-    # joins are row-preserving; the intersection is the explicit both-sides
-    # `is not null` idiom (one-sided not-null keeps the other side's
-    # exclusive rows).
+    # --- cross-rowset WHERE/JOIN comparison (year-over-year), BOTH join types ---
+    # LEFT is row-preserving; the intersection is the explicit both-sides
+    # `is not null` idiom (one-sided not-null keeps the other side's exclusive
+    # rows). UNION is coalescing: the two slices meet at one fused key, so a row
+    # present in only one year survives with the other side NULL (item 3 has only
+    # a 2000 row). These two cells are the same shape over `left` vs `union` --
+    # the join-type axis this matrix must exercise, since most bugs at this
+    # boundary are specific to the coalescing (key-collapsing) side.
     (
-        "cross_rowset_yoy_join",
+        "cross_rowset_yoy_left",
         SALES_MODEL
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
-        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nleft join y99.k = y00.k2 order by y99.k;",
+        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nsubset join y00.k2 = y99.k order by y99.k;",
         [(1, 10, 5), (2, 7, 3)],
+    ),
+    (
+        "cross_rowset_yoy_union",
+        SALES_MODEL
+        + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
+        + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
+        + "where y00.s00 is not null select y99.k, y99.s99, y00.s00\nunion join y99.k = y00.k2 order by y99.k;",
+        [(1, 10, 5), (2, 7, 3), (3, None, 9)],
+    ),
+    (
+        # q64 shape: reference the COALESCED union-join key downstream. The join
+        # collapses y99.k onto the fused key and the body only projects the
+        # collapsed side; the collapsed key column must still be projected so the
+        # outer select can source it (regression for the q64 render sentinel /
+        # 23-join timeout). Both slices group by the same key.
+        "coalesced_key_referenced_downstream_union",
+        SALES_MODEL
+        + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
+        + "rowset y00 <- where s_year = 2000 select item_id as k, sum(s_qty) as s00;"
+        + "select y99.k, y99.s99, y00.s00\nunion join y99.k = y00.k order by y99.k;",
+        [(1, 10, 5), (2, 7, 3), (3, None, 9)],
     ),
     (
         # q02 shape: a third rowset scoped-joins two sibling rowsets, then a
@@ -216,7 +241,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
         + "rowset diff <- where y00.s00 is not null select y99.k as k, y99.s99 - y00.s00 as d"
-        + " left join y99.k = y00.k2;"
+        + " subset join y00.k2 = y99.k;"
         + "def only(x) -> sum(diff.d ? diff.k = x);"
         + "select @only(1) as d1, @only(2) as d2;",
         [(5, 4)],
@@ -267,6 +292,25 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "select item_name, rs.sq order by item_name;",
         DisconnectedConceptsException,
     ),
+    (
+        # union join of two DIFFERENT-fact aggregates whose SOLE grouping column
+        # is the join key, keeping just the key + a measure and filtering on the
+        # other side's measure. Formerly emitted a completion-merge condition
+        # referencing a column the grouped CTE never projects (dangling merge
+        # column -> raw DuckDB BinderException); the HAVING-filter side, carrying
+        # the coalescing key member, was wrongly promoted to a row-join source.
+        # Item 4 (returns-only) survives with a NULL sales measure: the coalescing
+        # RIGHT_OUTER must not narrow to INNER via a spurious same-column subset
+        # "proof" over the two independent item populations.
+        "union_join_keyonly_grain",
+        SALES_MODEL
+        + "rowset ci <- select item_id as k, sum(r_qty) as amount;"
+        + "rowset sa <- select item_id as k, sum(s_qty) as sq;"
+        + "rowset filtered <- select sa.k, sa.sq"
+        + " union join sa.k = ci.k having ci.amount is not null;"
+        + "select filtered.k, filtered.sq order by filtered.k;",
+        [(1, 15), (2, 10), (4, None)],
+    ),
 ]
 
 
@@ -274,8 +318,7 @@ def _params():
     return [pytest.param(q, exp, id=cid) for cid, q, exp in _MATRIX]
 
 
-@pytest.mark.parametrize("query,expected", _params())
-def test_rowset_generation_matrix(query: str, expected: object):
+def _assert_matrix_cell(query: str, expected: object) -> None:
     executor: Executor = Dialects.DUCK_DB.default_executor()
 
     if isinstance(expected, type):
@@ -291,3 +334,8 @@ def test_rowset_generation_matrix(query: str, expected: object):
     assert "INVALID_REFERENCE_BUG" not in sql, f"sentinel leaked into SQL:\n{sql}"
     rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
     assert rows == expected
+
+
+@pytest.mark.parametrize("query,expected", _params())
+def test_rowset_generation_matrix(query: str, expected: object):
+    _assert_matrix_cell(query, expected)

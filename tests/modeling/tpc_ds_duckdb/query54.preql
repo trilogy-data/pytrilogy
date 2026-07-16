@@ -22,8 +22,8 @@ rowset my_revenue <- where
     ss.customer.sk in my_customers.my_cust_id
     and ss.date.month_seq >= 1188
     and ss.date.month_seq <= 1190
-    and ss.store.county = ss.customer.address.county
-    and ss.store.state = ss.customer.address.state
+    and ss.store.county = ss.customer.current_address.county
+    and ss.store.state = ss.customer.current_address.state
     and ss.customer.sk is not null
 select
     ss.customer.sk as rev_cust_id,

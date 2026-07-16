@@ -46,6 +46,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.node_generators.presence_probe import (
     member_binding_datasources,
     probe_member_address,
+    retain_presence_probes,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -420,14 +421,30 @@ def _unhide_referenced_body_locals(
     its source map, so the wrapper can't source the rowset output and re-derives
     it from lineage against the already-grouped parent (raw operands gone) →
     INVALID_REFERENCE_BUG. Un-hide any body local that backs a relevant rowset
-    concept so it materializes in the body's grouping CTE."""
+    concept so it materializes in the body's grouping CTE.
+
+    A coalescing scoped join (`union`/`full`/`subset`) in the body collapses the
+    referenced content (`sa.item_sk`) onto ONE canonical output (`ci.item_sk`),
+    leaving the content only as that canonical's *pseudonym*; the canonical is
+    itself hidden when only the collapsed side was projected. Match on pseudonyms
+    too so the body still projects the coalesced key column — otherwise a
+    downstream `rowset.<collapsed key>` reference has no source (q64)."""
     referenced_body_locals = {
         item.lineage.content.address
         for item in advertised
         if isinstance(item.lineage, BuildRowsetItem)
     }
-    if referenced_body_locals & base_node.hidden_concepts:
-        base_node.hidden_concepts = base_node.hidden_concepts - referenced_body_locals
+    to_unhide = {
+        c.address
+        for c in base_node.output_concepts
+        if c.address in base_node.hidden_concepts
+        and (
+            c.address in referenced_body_locals
+            or (set(c.pseudonyms) & referenced_body_locals)
+        )
+    }
+    if to_unhide:
+        base_node.hidden_concepts = base_node.hidden_concepts - to_unhide
         base_node.rebuild_cache()
 
 
@@ -921,6 +938,25 @@ def _enrich_rowset_node(
     optionals and merges them back onto the rowset. Returns the bare rowset node
     when no enrichment is possible/required."""
     remaining = unsatisfied_optionals(local_optional, node)
+    # A subset-join member among this node's OWN outputs reads as unsatisfied
+    # (scoped_partial marks it partial), but it is partial by DECLARATION — the
+    # anchor holds the fuller group axis — not by source: no other node produces
+    # a fuller copy of a rowset-local column. Sourcing one routes to the anchor
+    # rowset, whose enrichment symmetrically requests this member back —
+    # unbounded (q59 store/offset-week join). The member is served here; the
+    # merge above pairs it with the anchor over the group pseudonym.
+    subset_members = environment.domain_graph.subset_sources()
+    if subset_members:
+        own_outputs = {x.address for x in node.output_concepts}
+        remaining = [
+            x
+            for x in remaining
+            if not (
+                x.derivation == Derivation.ROWSET
+                and x.address in subset_members
+                and x.address in own_outputs
+            )
+        ]
     # A scoped-join key-group member is NOT satisfied through its group-mate
     # pseudonym: the merge between this rowset and the enrichment side joins the
     # two physical columns, so the other side must materialize its OWN member.
@@ -1073,10 +1109,14 @@ def _enrich_rowset_node(
         for x in enrich_node.output_concepts
         if x.address not in enrich_node.hidden_concepts
     ]
-
+    # A presence probe the enrichment sourced (a coalescing member's own-side
+    # null marker) is read post-merge by the outer WHERE; dropping it forces
+    # recomputation off the fused coalesced key, never NULL (TPC-DS q35).
     return MergeNode(
         input_concepts=non_hidden + non_hidden_enrich,
-        output_concepts=non_hidden + local_optional,
+        output_concepts=retain_presence_probes(
+            non_hidden + local_optional, non_hidden_enrich
+        ),
         environment=environment,
         depth=depth,
         parents=[

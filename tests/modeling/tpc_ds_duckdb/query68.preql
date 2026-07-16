@@ -19,18 +19,18 @@ select
     sum(store_sales.ext_list_price) as list_price,
 ;
 
-left join bought.store_sales.customer.sk = customer.sk
+subset join customer.sk = bought.store_sales.customer.sk
 select
     customer.last_name,
     customer.first_name,
-    customer.address.city,
+    customer.current_address.city,
     bought.bought_city,
     bought.store_sales.ticket_number,
     bought.extended_price,
     bought.extended_tax,
     bought.list_price,
 having
-    customer.address.city != bought.bought_city
+    customer.current_address.city != bought.bought_city
 order by
     customer.last_name asc nulls first,
     bought.store_sales.ticket_number asc nulls first

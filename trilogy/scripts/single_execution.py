@@ -31,6 +31,7 @@ from trilogy.scripts.display import (
     print_success,
     print_warning,
     show_asset_status_summary,
+    show_derived_value_scopes,
     show_execution_start,
     show_execution_summary,
     show_root_probe_breakdown,
@@ -94,6 +95,8 @@ def execute_single_statement(
             if raw_results
             else None
         )
+        if results is not None and isinstance(query, ProcessedQuery):
+            results.derived_value_scopes = query.derived_value_scopes
         # When the result hit its own LIMIT (a biased prefix) and the dialect
         # supports it, ask the dialect to summarize the FULL un-limited result so
         # the stats block is trustworthy. Best-effort: failures fall back silently.
@@ -138,6 +141,7 @@ def execute_queries_with_progress(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
+    show_scopes: bool = False,
 ) -> tuple[Exception | None, int]:
     """Execute queries with a Rich progress bar. Returns ``(exception, total
     result rows)`` — the row total feeds the JSON summary's ``rows`` field."""
@@ -207,6 +211,8 @@ def execute_queries_with_progress(
                     print_results_table(
                         results, row_limit=row_limit, query_limit=q_limit
                     )
+                    if show_scopes:
+                        show_derived_value_scopes(results)
                     total_rows += len(results.rows)
 
     return exception, total_rows
@@ -216,6 +222,7 @@ def execute_queries_simple(
     exec: Executor,
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
+    show_scopes: bool = False,
 ) -> tuple[Exception | None, int]:
     """Execute queries with simple output. Returns ``(exception, total result
     rows)`` — the row total feeds the JSON summary's ``rows`` field."""
@@ -245,6 +252,8 @@ def execute_queries_simple(
                 print_results_table(
                     results, row_limit=row_limit, query_limit=_statement_limit(query)
                 )
+                if show_scopes:
+                    show_derived_value_scopes(results)
                 total_rows += len(results.rows)
 
     return exception, total_rows
@@ -273,6 +282,7 @@ def execute_run_mode(
     queries: list[PROCESSED_STATEMENT_TYPES],
     row_limit: int | None = None,
     definitions: list[Any] | None = None,
+    show_scopes: bool = False,
 ) -> None:
     """Execute queries in run mode with progress tracking."""
     start = datetime.now()
@@ -295,11 +305,11 @@ def execute_run_mode(
 
     if progress:
         exception, total_rows = execute_queries_with_progress(
-            exec, queries, row_limit=row_limit
+            exec, queries, row_limit=row_limit, show_scopes=show_scopes
         )
     else:
         exception, total_rows = execute_queries_simple(
-            exec, queries, row_limit=row_limit
+            exec, queries, row_limit=row_limit, show_scopes=show_scopes
         )
 
     total_duration = datetime.now() - start

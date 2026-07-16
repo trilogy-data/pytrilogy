@@ -1,5 +1,5 @@
-"""Repro: a HAVING filter on the LEFT-joined (partial) rowset's measure, in a
-cross-model two-rowset LEFT join, renders corrupt SQL — `generate_sql` raises
+"""Repro: a HAVING filter on the subset (partial) rowset's measure, in a
+cross-model two-rowset subset join, renders corrupt SQL — `generate_sql` raises
 `ValueError: Invalid reference string found in query` (an INVALID_REFERENCE_BUG
 sentinel leaks into the rendered SQL).
 
@@ -8,12 +8,12 @@ Minimal trigger (single join key is enough):
     with agg_a as select fa.a_item as it, sum(fa.a_qty) as qa;   -- model fa
     with agg_b as select fb.b_item as it, sum(fb.b_qty) as qb;   -- model fb
     select agg_a.it, agg_a.qa, coalesce(agg_b.qb, 0) as qb
-    left join agg_a.it = agg_b.it
+    subset join agg_b.it = agg_a.it
     having coalesce(agg_b.qb, 0) > 0          -- <-- filtering the partial side here breaks it
 
 Control that DOES work (so the trigger is specifically HAVING-on-the-partial-measure
 under an outer join):
-- the same LEFT join WITHOUT the having clause renders fine.
+- the same subset join WITHOUT the having clause renders fine.
 
 Surfaced on enriched TPC-DS q78 ("keep store rows where combined other-channel
 quantity > 0"): the natural decomposition is per-channel aggregate rowsets,
@@ -74,12 +74,12 @@ def _gen(models: Path, body: str) -> str:
 
 
 def test_outer_rowset_left_join_no_having(models: Path):
-    # Control: LEFT join of two cross-model rowsets renders fine without the filter.
+    # Control: subset join of two cross-model rowsets renders fine without the filter.
     sql = _gen(
         models,
         _HEAD + """
 select agg_a.it, agg_a.qa, coalesce(agg_b.qb, 0) as qb
-left join agg_a.it = agg_b.it
+subset join agg_b.it = agg_a.it
 limit 10;
 """,
     )
@@ -87,14 +87,14 @@ limit 10;
 
 
 def test_outer_rowset_left_join_having_on_partial_measure(models: Path):
-    # Filtering the partial (LEFT) side's coalesce-derived measure in HAVING now
+    # Filtering the partial (subset) side's coalesce-derived measure in HAVING now
     # resolves to the materialized SELECT alias instead of re-deriving the inner
-    # (absent) argument at the outer scope. LEFT-join semantics are preserved.
+    # (absent) argument at the outer scope. subset-join semantics are preserved.
     sql = _gen(
         models,
         _HEAD + """
 select agg_a.it, agg_a.qa, coalesce(agg_b.qb, 0) as qb
-left join agg_a.it = agg_b.it
+subset join agg_b.it = agg_a.it
 having coalesce(agg_b.qb, 0) > 0
 limit 10;
 """,

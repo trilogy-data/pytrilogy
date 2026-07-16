@@ -5,22 +5,22 @@ where
     and cs.return_date.month_of_year = 11
     and (
         (
-            cs.return_customer.demographics.marital_status = 'M'
-            and cs.return_customer.demographics.education_status = 'Unknown'
+            cs.return_customer.current_demographics.marital_status = 'M'
+            and cs.return_customer.current_demographics.education_status = 'Unknown'
         )
         or (
-            cs.return_customer.demographics.marital_status = 'W'
-            and cs.return_customer.demographics.education_status = 'Advanced Degree'
+            cs.return_customer.current_demographics.marital_status = 'W'
+            and cs.return_customer.current_demographics.education_status = 'Advanced Degree'
         )
     )
-    and cs.return_customer.household_demographic.buy_potential like 'Unknown%'
-    and cs.return_customer.address.gmt_offset = -7
+    and cs.return_customer.current_household_demographics.buy_potential like 'Unknown%'
+    and cs.return_customer.current_address.gmt_offset = -7
 select
     cs.return_call_center.id as call_center,
     cs.return_call_center.name as call_center_name,
     cs.return_call_center.manager as manager,
     sum(cs.return_net_loss)
-            by cs.return_call_center.id, cs.return_call_center.name, cs.return_call_center.manager, cs.return_customer.demographics.marital_status, cs.return_customer.demographics.education_status as returns_loss,
+            by cs.return_call_center.id, cs.return_call_center.name, cs.return_call_center.manager, cs.return_customer.current_demographics.marital_status, cs.return_customer.current_demographics.education_status as returns_loss,
 order by
     returns_loss desc nulls first
 ;

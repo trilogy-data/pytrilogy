@@ -9,6 +9,7 @@ canonical query dir, prompt params — come from the suite's ``BenchmarkSpec``.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -184,6 +185,38 @@ def parse_log(path: Path) -> dict:
     return {"meta": meta, "timeline": timeline, "derived": derived}
 
 
+# Parsed-log cache: once SQL renders are cached, re-parsing every JSONL is what
+# makes each poll/swap slow. Keyed by (mtime, size) so a live, still-appending
+# log re-parses; scoped to the last few run dirs because parsed timelines are
+# large. Cached dicts are shared — callers must treat them as read-only.
+_LOG_CACHE: dict[str, tuple[tuple[float, int], dict]] = {}
+_LOG_CACHE_DIRS: list[str] = []  # LRU of run dirs with cached logs
+_LOG_CACHE_MAX_DIRS = 3
+
+
+def _parse_log_cached(path: Path) -> dict:
+    try:
+        st = path.stat()
+    except OSError:
+        return parse_log(path)
+    key, stamp = str(path), (st.st_mtime, st.st_size)
+    cached = _LOG_CACHE.get(key)
+    if cached is None or cached[0] != stamp:
+        _LOG_CACHE[key] = (stamp, parse_log(path))
+    return _LOG_CACHE[key][1]
+
+
+def _touch_log_cache_dir(results_dir: Path) -> None:
+    d = str(results_dir)
+    if d in _LOG_CACHE_DIRS:
+        _LOG_CACHE_DIRS.remove(d)
+    _LOG_CACHE_DIRS.append(d)
+    while len(_LOG_CACHE_DIRS) > _LOG_CACHE_MAX_DIRS:
+        gone = _LOG_CACHE_DIRS.pop(0) + os.sep
+        for k in [k for k in _LOG_CACHE if k.startswith(gone)]:
+            del _LOG_CACHE[k]
+
+
 def _load_eval_report(results_dir: Path) -> dict[int, dict]:
     """run_eval's report.json: merge per-query status + duration, keyed by query id."""
     rp = results_dir / "report.json"
@@ -310,6 +343,7 @@ def _run_category(results_dir: Path) -> str | None:
 
 
 def collect(results_dir: Path, spec: BenchmarkSpec) -> list[dict]:
+    _touch_log_cache_dir(results_dir)
     report = {}
     repeat_qid = None
     rp = results_dir / "repeat_report.json"
@@ -332,7 +366,7 @@ def collect(results_dir: Path, spec: BenchmarkSpec) -> list[dict]:
         reported = report.get(rep, {})
         if not reported and qm:
             reported = eval_report.get(int(qm.group(1)), {})
-        parsed = parse_log(path)
+        parsed = _parse_log_cached(path)
         # Derived per-run metrics fill gaps; authoritative report values win.
         metrics = {**parsed["derived"], **reported}
         qany = _QID_ANY.search(path.name)

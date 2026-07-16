@@ -33,24 +33,24 @@ select
 ;
 
 where
-    customer.address.state in ('KY', 'GA', 'NM')
+    customer.current_address.state in ('KY', 'GA', 'NM')
     and customer.sk in store_buyers.store_cust_id
     and customer.sk not in web_buyers.web_cust_id
     and customer.sk not in catalog_buyers.cat_cust_id
 select
-    customer.demographics.gender,
-    customer.demographics.marital_status,
-    customer.demographics.education_status,
+    customer.current_demographics.gender,
+    customer.current_demographics.marital_status,
+    customer.current_demographics.education_status,
     count(customer.sk) as cnt1,
-    customer.demographics.purchase_estimate,
+    customer.current_demographics.purchase_estimate,
     count(customer.sk) as cnt2,
-    customer.demographics.credit_rating,
+    customer.current_demographics.credit_rating,
     count(customer.sk) as cnt3,
 order by
-    customer.demographics.gender asc,
-    customer.demographics.marital_status asc,
-    customer.demographics.education_status asc,
-    customer.demographics.purchase_estimate asc,
-    customer.demographics.credit_rating asc
+    customer.current_demographics.gender asc,
+    customer.current_demographics.marital_status asc,
+    customer.current_demographics.education_status asc,
+    customer.current_demographics.purchase_estimate asc,
+    customer.current_demographics.credit_rating asc
 limit 100
 ;

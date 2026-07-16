@@ -407,9 +407,9 @@ const zips_pre <- unnest(
         '35576'
     ]
 );
-auto zip_p_count <- count(customer.sk ? customer.preferred_cust_flag = 'Y') by customer.address.zip;
+auto zip_p_count <- count(customer.sk ? customer.preferred_cust_flag = 'Y') by customer.current_address.zip;
 auto zips <- substring(zips_pre::string, 1, 5);
-auto p_cust_zip <- customer.address.zip ? zip_p_count > 10;
+auto p_cust_zip <- customer.current_address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 where
@@ -427,7 +427,7 @@ limit 100
 overwrite default.ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 into ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 from select
     customer.sk,
     customer.preferred_cust_flag,
-    customer.address.zip,
+    customer.current_address.zip,
 ;
 
 overwrite default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 into dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 from select
@@ -436,12 +436,12 @@ overwrite default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f
 
 overwrite default.dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb into dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb from select
     zip_p_count,
-    customer.address.zip,
+    customer.current_address.zip,
 ;
 
 overwrite default.ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 into ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 from select
-    customer.address.zip,
-    customer.address.sk,
+    customer.current_address.zip,
+    customer.current_address.sk,
     zip_p_count,
 ;
 

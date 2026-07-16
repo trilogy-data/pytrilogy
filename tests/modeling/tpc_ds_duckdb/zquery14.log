@@ -1,7 +1,7 @@
 query_id = "14"
 generator = "v3"
-gen_length = 6964
-preql_size = 1610
+gen_length = 7036
+preql_size = 1733
 comp_size = 4229
 generated_sql = """
 
@@ -59,7 +59,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
+    \"sales_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001 and \"sales_item_items\".\"I_BRAND_ID\" is not null and \"sales_item_items\".\"I_CLASS_ID\" is not null and \"sales_item_items\".\"I_CATEGORY_ID\" is not null
 
 GROUP BY
     1,
@@ -113,7 +113,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and (\"sales_item_items\".\"I_BRAND_ID\", \"sales_item_items\".\"I_CLASS_ID\", \"sales_item_items\".\"I_CATEGORY_ID\") in (select yummy.\"cross_tuples_ci_brand_id\", yummy.\"cross_tuples_ci_class_id\", yummy.\"cross_tuples_ci_category_id\" from yummy where yummy.\"cross_tuples_ci_brand_id\" is not null and yummy.\"cross_tuples_ci_class_id\" is not null and yummy.\"cross_tuples_ci_category_id\" is not null)
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and exists (select 1 from yummy where yummy.\"cross_tuples_ci_brand_id\" is not distinct from \"sales_item_items\".\"I_BRAND_ID\" and yummy.\"cross_tuples_ci_class_id\" is not distinct from \"sales_item_items\".\"I_CLASS_ID\" and yummy.\"cross_tuples_ci_category_id\" is not distinct from \"sales_item_items\".\"I_CATEGORY_ID\")
 
 GROUP BY
     1,

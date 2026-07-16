@@ -43,7 +43,7 @@ _EXAMPLES: list[SyntaxExample] = [
 #   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
 #   select  <col>, <agg> as name,  # 2. the projection - grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
-#   <left|full join a = b (=c)?>*  # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
+#   <subset|union join a = b (=c)?>* # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
 #                                  #      select list - the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort
@@ -70,7 +70,7 @@ select                                      # 2. SELECT: grouped automatically b
     students.major,
     count(enroll.id) as enrollments,
     --completed_credits,                    #    a leading `--` HIDES a column from the output
-left join students.id = enroll.student_id  # 3. JOIN: blend students onto enrollments (after the select list)
+subset join enroll.student_id = students.id  # 3. JOIN: blend students onto enrollments (after the select list)
 having completed_credits > 0                # 4. HAVING: condition on an aggregated RESULT
 order by enrollments desc nulls first       # 5. ORDER BY
 limit 100;                                  # 6. LIMIT
@@ -103,8 +103,8 @@ limit 100;
         title="Filtered aggregate - aggregate only the rows matching a condition",
         summary=(
             "`sum(x ? cond)` / `count(x ? cond)` aggregate just the matching rows; "
-            "to COUNT ROWS count the unique grain/row key, not a non-unique sub-key; "
-            "`by <grain>` pins the aggregate's grain"
+            "to COUNT ROWS count the unique grain/row key, or `count(grain(k1, k2))` "
+            "when several keys identify it; `by <grain>` pins the aggregate's grain"
         ),
         body="""\
 # `?` is a local filter - a filter that applies only to the prior expression-
@@ -124,6 +124,14 @@ order by iris.species asc;
 # row key (often named `row_key`), NOT a non-unique sub-key. e.g. counting line
 # items by `count(line_number ? cond)` collapses to the number of distinct line
 # numbers (1..7) and undercounts - use `count(row_key ? cond)`.
+
+# COMPOSITE GRAIN: when SEVERAL keys together identify the thing you are counting,
+# name them with `grain(...)` instead of picking one:
+#   count(grain(sales.order_id, sales.item_id))                 # order+item lines
+#   count_distinct(grain(cust.first_name, cust.last_name, sales.date))
+# `grain(...)` is NEVER NULL, so a combination with a missing member (a customer
+# with no last name) still counts - whereas `count(last_name)` silently drops it.
+# It composes with `?` like any expression: count(grain(a, b) ? cond).
 """,
     ),
     SyntaxExample(
@@ -224,6 +232,16 @@ select
     enroll.student_id,
     enroll.department,
     student_dept_credits_2024,
+;
+
+# HIDDEN GROUP KEY: if the requested output is one row per (student, department)
+# but displays only student_id, keep department in the select with the `--`
+# PREFIX. Otherwise identical displayed student rows are deduplicated and the
+# required per-department row grain is lost.
+where student_dept_credits_2024 > 1.2 * dept_avg_credits_2024
+select
+    enroll.student_id,
+    --enroll.department,
 ;
 
 # For more complex boundaries, compute the full-population benchmark in a separate rowset
@@ -366,13 +384,14 @@ limit 100;
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
 #    stack (e.g. a grand total across channels), wrap it in an outer aggregate:
 #        select sum(by_channel.enrollments) by rollup by_channel.channel as total;
-#  - An arm may carry its OWN query-scoped join (`select ... left join a = b`
+#  - An arm may carry its OWN query-scoped join (`select ... subset join b = a`
 #    after its select list) - localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form - the cleanest way to stack rows from several
 #    sources.
 #  - AGGREGATING across a union/set-op: an arm's `select` dedups to its own output
-#    grain BEFORE stacking, so stacking raw per-row values (a measure, a `1` flag)
+#    grain BEFORE stacking (all selects are select distinct), 
+#    so stacking raw per-row values (a measure, a `1` flag)
 #    and summing/counting OUTSIDE the union silently undercounts whenever two source
 #    rows in one arm project the same tuple (e.g. two same-priced sales in a week).
 #    Pre-aggregate INSIDE each arm (`sum(sales) as v`, `sum(1) as cnt` - as this
@@ -390,9 +409,9 @@ limit 100;
             "`with only_a as except((armA), (armB)) -> (o1, o2)` keeps the distinct "
             "rows of the FIRST arm that appear in NO later arm (SQL EXCEPT); "
             "`intersect(...)` keeps rows present in EVERY arm. PREFERRED over "
-            "multi-column `not in` for 'in A but not B' questions: whole ROWS are "
-            "compared (any column mix), output is deduplicated, and NULL matches "
-            "NULL - rows with missing values are matched, not dropped"
+            "multi-column `not in` for 'in A but not B' questions when you also "
+            "want the distinct combinations themselves: whole ROWS are compared "
+            "(any column mix) and the output is deduplicated"
         ),
         body="""\
 # `except(...)` and `intersect(...)` are relational table-valued functions with the
@@ -400,8 +419,8 @@ limit 100;
 # by COLUMN POSITION to the trailing `-> (...)` output list. They are SQL SET
 # operators, which differ from the union stack in three ways:
 #   - the output is DEDUPLICATED (distinct rows);
-#   - whole rows are compared with NULL-SAFE equality (NULL matches NULL - unlike
-#     `not in`, rows containing missing values participate instead of vanishing);
+#   - whole rows are compared with NULL-SAFE equality (NULL matches NULL - the
+#     same identity semantics as `in` / `not in` membership);
 #   - for `except(...)` ARM ORDER MATTERS: the FIRST arm is the base population and
 #     every later arm is subtracted from it, left to right.
 # Use `except` for "combinations in A that never appear in B (or C)" and
@@ -493,9 +512,11 @@ order by completed_by.dept asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
-# (3) SELF-PAIR across two periods/sets (period-over-period) - the PREFERRED shape
+# (3) SELF-PAIR across two periods/sets (period-over-period) - a useful shape
 # for "this year vs last year": build one rowset per period (each aggregated to
-# the SAME keys), then join them on those keys.
+# the SAME keys), filter to restrict to output to one side or the other
+# in having clause.
+
 rowset y2020 <- where enroll.year = 2020 select enroll.department as dept, count(enroll.id) as cnt;
 rowset y2021 <- where enroll.year = 2021 select enroll.department as dept, count(enroll.id) as cnt;
 
@@ -505,6 +526,7 @@ select
     y2021.cnt as cnt_2021,
     y2021.cnt - y2020.cnt as yoy_diff,
 union join y2020.dept = y2021.dept
+having y2021.cnt is not null
 order by yoy_diff desc nulls first
 limit 100;
 
@@ -529,7 +551,7 @@ limit 100;
 #  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
 #    `@<...>` grain. Under-joining (one key of a multi-key grain) can cause
 #    duplication. Chain `= c` to also pull a base key into the join
-#    group so its properties stay reachable (`full join a.k = b.k = base.k`).
+#    group so its properties stay reachable (`union join a.k = b.k = base.k`).
 #  - Stacked clauses of the SAME type can share one prefix via `and`:
 #    `union join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `union join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
@@ -540,10 +562,11 @@ limit 100;
 #    add explicit conditions - `where <side_a attr> is not null and <side_b
 #    attr> is not null`. A one-sided `is not null` keeps the other side's
 #    exclusive rows.
-#  - `left join a = b` / `full join a = b` are legacy aliases for
-#    `subset join b = a` / `union join a = b` (NOT `right` - swap operands).
-#    A union key-group must be ALL union (can't mix with subset on the SAME
-#    key; `union join a = b = c` chains one union group);
+#  - `left`/`full`/`inner`/`right`/`cross join` are NOT valid query-scoped joins
+#    (they error) - only `subset`/`union`. Map an old `left join a = b` to
+#    `subset join b = a` (swap operands) and `full join a = b` to
+#    `union join a = b`. A union key-group must be ALL union (can't mix with
+#    subset on the SAME key; `union join a = b = c` chains one union group);
 """,
     ),
     SyntaxExample(
@@ -557,6 +580,11 @@ limit 100;
         body="""\
 # `in` / `not in` against another model's key is the semi-join / anti-join
 # idiom - no manual JOIN. Use it instead of `count(...) is null` hacks.
+# Membership is IDENTITY matching and total: NULL matches NULL, the result is
+# never NULL, and `not in` is the EXACT complement of `in` - a NULL in the set
+# does not empty an anti-join (no SQL NOT-IN footgun), and NULL-keyed rows land
+# in exactly one of the two sides. For strict SQL parity, filter NULLs
+# explicitly (`where key is not null and key in other.key`).
 import students as students;
 import enrollments as enroll;
 
@@ -681,11 +709,10 @@ select
          else enroll.department end as department,
     case when grouping(enroll.course) = 1 then 'all courses'
          else enroll.course end as course,
-    sum(enroll.credits) as total_credits,
-    --grouping(enroll.department) + grouping(enroll.course) as _level
+    sum(enroll.credits) as total_credits
 by rollup (enroll.department, enroll.course)
 having total_credits > 0
-order by _level asc, department asc nulls first, course asc nulls first
+order by department asc nulls first, course asc nulls first
 limit 100;
 
 # ---------------------------------------------------------------------------
@@ -693,9 +720,16 @@ limit 100;
 #  - CLAUSE ORDER matches SQL: the `by rollup (…)` grouping clause comes BEFORE
 #    `having` (select list -> by rollup -> having -> order by -> limit). The
 #    HAVING filters EVERY grouping level - subtotal and grand-total rows too.
-#  - SORT BY LEVEL (leaves, then subtotals, then grand total): ORDER BY cannot
-#    compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
-#    as a HIDDEN (`--`) column and sort by its alias - `_level` above.
+#  - SORT: use EXACTLY the sort the question asks for. Rollup rows are ordinary rows
+#    and sort with everything else (their rolled-up dimensions are NULL, hence
+#    `nulls first`/`nulls last` decides where they land). Sorting by LEVEL is OPTIONAL
+#    and only when you actually want leaves/subtotals/totals grouped together: ORDER BY
+#    cannot compute a fresh aggregate, so PROJECT the level (`grouping(a) + grouping(b)`)
+#    as a HIDDEN (`--`) column and sort by its alias:
+#        --grouping(enroll.department) + grouping(enroll.course) as _level
+#        order by _level asc, department asc nulls first
+#    Do NOT add `_level` to a sort the question already specified - a leading sort key
+#    changes WHICH rows survive a `limit`, so it can silently drop the totals.
 #  - COMPOSITE measures just work: `sum(a) - sum(b) as net` rolls up BOTH operands
 #    to the same levels because the `by rollup (…)` clause covers the whole select.
 #    To zero-fill a measure, wrap it: `coalesce(sum(a), 0) as a`.

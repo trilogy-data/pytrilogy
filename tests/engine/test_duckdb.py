@@ -31,14 +31,12 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
 
 @mark.parametrize(
     "agg",
-    ["count(1)", "sum(1)", "count(1) by *"],
+    ["sum(1)"],
 )
 def test_global_literal_aggregate(agg):
-    """A global aggregate over a pure literal with no grain key (`count(1)`,
-    `sum(1)`, `count(1) by *` -- the documented global-scalar idiom) must build
+    """A global sum over a pure literal with no grain key must build
     and execute to a single constant row, not crash with an unguarded IndexError
-    (sourceless QueryDatasource has an empty `datasources` list) nor render an
-    empty-SELECT CTE (`by *` groups over a sourceless constant node)."""
+    (sourceless QueryDatasource has an empty `datasources` list)."""
     engine = Dialects.DUCK_DB.default_executor()
     text = f"""
 key id int;
@@ -51,15 +49,43 @@ select {agg} as c;
     assert results == [(1,)]
 
 
+@mark.parametrize(
+    "expression",
+    [
+        "count(1)",
+        "count(1) by *",
+        "count(1) by id",
+        "count(1 ? id > 0)",
+        "count((1) ? id > 0)",
+        "count(1 + 1)",
+    ],
+)
+def test_count_constant_recommends_grain(expression: str) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    text = f"""
+key id int;
+datasource t (id) grain (id)
+  query '''select 1 as id union all select 2''';
+
+select {expression} as c;
+"""
+    with raises(InvalidSyntaxException, match=r"count\(grain\(key1, key2\)\)"):
+        engine.parse_text(text)
+
+
+@mark.parametrize("declaration", ["const one <- 1;", "parameter one int default 1;"])
+def test_count_named_constant_recommends_grain(declaration: str) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    with raises(InvalidSyntaxException, match=r"does not identify rows"):
+        engine.parse_text(f"{declaration} select count(one) as c;")
+
+
 def test_filtered_constant_aggregate_counts_rows():
-    """`sum(1 ? cond)` / `count(1 ? cond)` must count matching ROWS, not collapse
-    to a single deduped constant. The `1 ? cond` filter's content is grainless,
-    but its CASE mask (`CASE WHEN cond THEN 1`) varies per row of the condition's
-    row-grain args, so the filter concept must carry that (key-descended) grain.
-    Otherwise the mask is treated as a single-row constant and deduped to one row,
-    collapsing the aggregate to 1 (silent wrong result — the q14 denominator).
-    Bare `sum(1)` with no filter is a genuinely grainless constant and stays 1
-    (the documented global-scalar idiom, see test_global_literal_aggregate)."""
+    """`sum(1 ? cond)` must sum matching row flags, not collapse to one.
+
+    COUNT rejects this shape because a constant does not identify row grain;
+    conditional counts use `count(grain(keys) ? cond)` instead.
+    """
     engine = Dialects.DUCK_DB.default_executor()
     engine.parse_text("""
 key id int;
@@ -158,10 +184,11 @@ datasource sales (sale_id, brand, class, amount)
 """
 
 
-def test_inline_aggregate_in_order_by_raises():
-    """An inline aggregate in ORDER BY that isn't a SELECT output is rejected —
-    aggregates can't be computed in the ordering scope. `grouping()` is the
-    motivating case (Bug B3): it must be projected and ordered by alias."""
+def test_inline_grouping_in_order_by_resolves_to_injected_flag():
+    """`order by grouping(col)` on a rollup select resolves against the
+    auto-injected hidden grouping() outputs (the flags every rollup select
+    carries as row identity) instead of demanding a manual projection — the
+    former Bug B3 rejection case, now the documented behavior."""
     engine = Dialects.DUCK_DB.default_executor()
     engine.execute_text(_ROLLUP_GROUPING_MODEL)
     text = """
@@ -171,8 +198,25 @@ by rollup (brand, class)
 having total > overall.overall_avg
 order by grouping(brand) desc, grouping(class) desc, brand nulls first;
 """
-    with raises(Exception, match="ORDER BY contains aggregate"):
-        engine.generate_sql(text)
+    rows = [tuple(r) for r in engine.execute_text(text)[-1].fetchall()]
+    # overall_avg = 40: grand total 160, B subtotal 130, B/Y detail 100 survive,
+    # ordered grand-total -> subtotal -> detail by the grouping flags.
+    assert [(r[0], r[1], float(r[2])) for r in rows] == [
+        (None, None, 160.0),
+        ("B", None, 130.0),
+        ("B", "Y", 100.0),
+    ]
+
+
+def test_inline_non_grouping_aggregate_in_order_by_still_raises():
+    """A non-grouping inline aggregate in ORDER BY that isn't a SELECT output
+    stays rejected — aggregates can't be computed in the ordering scope."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(_ROLLUP_GROUPING_MODEL)
+    with raises(Exception, match="ORDER BY"):
+        engine.generate_sql(
+            "select brand, sum(amount) as total order by count(sale_id) desc;"
+        )
 
 
 def test_projected_grouping_in_rollup_orders_by_alias():
@@ -1076,7 +1120,9 @@ def test_derived_membership_existence(query, expected):
     executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     executor.parse_text(_DERIVED_MEMBERSHIP_MODEL)
     sql = executor.generate_sql(query)[-1]
-    assert "in (select" in sql.lower(), f"membership not rendered as subquery:\n{sql}"
+    assert (
+        "exists (select" in sql.lower()
+    ), f"membership not rendered as subquery:\n{sql}"
     results = executor.execute_text(_DERIVED_MEMBERSHIP_MODEL + query)[-1].fetchall()
     assert [
         tuple(float(v) if isinstance(v, Decimal) else v for v in r) for r in results

@@ -30,10 +30,10 @@ select
     sum(amt_per_row) as prev_amt,
 ;
 
-left join curr.i_brand_id = prev.i_brand_id
-left join curr.i_class_id = prev.i_class_id
-left join curr.i_category_id = prev.i_category_id
-left join curr.i_manufact_id = prev.i_manufact_id
+subset join prev.i_brand_id = curr.i_brand_id
+subset join prev.i_class_id = curr.i_class_id
+subset join prev.i_category_id = curr.i_category_id
+subset join prev.i_manufact_id = curr.i_manufact_id
 select
     2001 as prev_year,
     2002 as year_,

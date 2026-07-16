@@ -32,6 +32,7 @@ from trilogy.core.models.author import (
     NavigationWindowItem,
     NumberingWindowItem,
     Parenthetical,
+    RowsetItem,
     UndefinedConcept,
 )
 from trilogy.core.models.build import BuildConcept, BuildFunction
@@ -1398,6 +1399,17 @@ class FunctionFactory:
             )
         else:
             full_args = []
+        if (
+            operator == FunctionType.COUNT
+            and full_args
+            and self.environment is not None
+            and _is_constant_count_argument(full_args[0], self.environment)
+        ):
+            raise InvalidSyntaxException(
+                "count(<constant>) does not identify rows. Count the row grain "
+                "instead, for example `count(grain(key1, key2))`; for a "
+                "conditional count use `count(grain(key1, key2) ? condition)`."
+            )
         final_output_type: CONCRETE_TYPES
         has_undefined = any(isinstance(x, UndefinedConcept) for x in full_args)
         try:
@@ -1536,6 +1548,7 @@ def argument_to_purpose(arg) -> Purpose:
             | Conditional()
             | Comparison()
             | FilterItem()
+            | RowsetItem()
         ):
             return Purpose.PROPERTY
 
@@ -1565,6 +1578,26 @@ def argument_to_purpose(arg) -> Purpose:
 
         case _:
             raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
+
+
+def _is_constant_count_argument(arg: Any, environment: Environment) -> bool:
+    """Return whether COUNT's argument names no row identity."""
+    if isinstance(arg, FilterItem):
+        return _is_constant_count_argument(arg.content, environment)
+    if isinstance(arg, Parenthetical):
+        return _is_constant_count_argument(arg.content, environment)
+    if isinstance(arg, Function):
+        if arg.operator == FunctionType.UNNEST:
+            return False
+        return bool(arg.arguments) and all(
+            _is_constant_count_argument(child, environment) for child in arg.arguments
+        )
+    if isinstance(arg, ConceptRef):
+        concept = environment.concepts.get(arg.address)
+        return concept is not None and concept.purpose == Purpose.CONSTANT
+    if isinstance(arg, Concept):
+        return arg.purpose == Purpose.CONSTANT
+    return argument_to_purpose(arg) == Purpose.CONSTANT
 
 
 def function_args_to_output_purpose(args, environment: Environment) -> Purpose:

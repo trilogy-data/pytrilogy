@@ -33,11 +33,11 @@ rowset fut <- select s.period, sum(s.amt) as tot;
 CASES = {
     # join_type, key_expression
     "T1_LEFT_derived   [BUG: recurses, should resolve or clean-error]": "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
-    "left join agg.period + 53 = fut.period;",
+    "subset join fut.period = agg.period + 53;",
     "C1_INNER_derived  [ok: spike handles inner]": "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
     "inner join agg.period + 53 = fut.period;",
     "C2_LEFT_equality  [ok: plain-equality key]": "select agg.period, sum(agg.tot) / sum(fut.tot) as r "
-    "left join agg.period = fut.period;",
+    "subset join fut.period = agg.period;",
 }
 
 

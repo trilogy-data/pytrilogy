@@ -114,7 +114,7 @@ def test_presence_union_plain_single(tmp_path: Path):
 def test_presence_full_plain_single(tmp_path: Path):
     rows = _run(
         tmp_path,
-        PRESENCE.format(join="full join store_set.cust = catalog_set.cust"),
+        PRESENCE.format(join="union join store_set.cust = catalog_set.cust"),
     )
     assert rows == [_presence_counts(*SINGLE_KEY)]
 
@@ -134,7 +134,7 @@ def test_presence_full_plain_composite(tmp_path: Path):
     rows = _run(
         tmp_path,
         PRESENCE.format(
-            join="full join store_set.cust = catalog_set.cust"
+            join="union join store_set.cust = catalog_set.cust"
             " and store_set.item = catalog_set.item"
         ),
     )
@@ -157,7 +157,7 @@ def test_presence_full_cast_single(tmp_path: Path):
     rows = _run(
         tmp_path,
         PRESENCE.format(
-            join="full join store_set.cust::string = catalog_set.cust::string"
+            join="union join store_set.cust::string = catalog_set.cust::string"
         ),
     )
     assert rows == [_presence_counts(*SINGLE_KEY)]

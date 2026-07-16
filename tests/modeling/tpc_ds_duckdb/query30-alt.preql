@@ -13,7 +13,7 @@ auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by ws.r
 
 where
     customer_state_returns_2002 > scaled_state_returns_2002
-    and ws.return_customer.address.state = 'GA'
+    and ws.return_customer.current_address.state = 'GA'
     and ws.return_address.state is not null
 select
     --ws.return_customer.sk,

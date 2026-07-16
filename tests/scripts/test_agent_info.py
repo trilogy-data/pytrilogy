@@ -13,9 +13,8 @@ def test_agent_info():
     assert result.exit_code == 0
 
     # Check key sections are present
-    assert "# Trilogy CLI - AI Agent Usage Guide" in result.output
+    assert "# Agent Usage Guide" in result.output
     assert "## Overview" in result.output
-    assert "## Quick Start" in result.output
     assert "## Commands Reference" in result.output
 
     # Check core commands stay documented in the main dump.
@@ -62,7 +61,7 @@ def test_agent_info_report_subcommand():
     assert "--theme {inter|editorial}" in result.output
     assert "playwright install chromium" in result.output
     # The general guide should not leak into the focused reference.
-    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+    assert "# Agent Usage Guide" not in result.output
 
 
 def test_agent_info_datasources_subcommand():
@@ -82,7 +81,7 @@ def test_agent_info_datasources_subcommand():
     assert "Python Script Datasources" in result.output
     assert "enable_python_datasources" in result.output
     # No bleed of unrelated sections.
-    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+    assert "# Agent Usage Guide" not in result.output
 
 
 def test_agent_info_ingest_subcommand():
@@ -99,7 +98,7 @@ def test_agent_info_ingest_subcommand():
     # Distinct example signatures from the moved body.
     assert "trilogy ingest --all" in result.output
     assert "gs://my-bucket/sales.parquet" in result.output
-    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+    assert "# Agent Usage Guide" not in result.output
 
 
 def test_agent_info_config_subcommand():
@@ -121,7 +120,7 @@ def test_agent_info_config_subcommand():
     assert "## Supported Dialects" in result.output
     assert "duckdb" in result.output
     assert "postgres" in result.output
-    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+    assert "# Agent Usage Guide" not in result.output
 
 
 def test_agent_info_serve_subcommand():
@@ -135,7 +134,7 @@ def test_agent_info_serve_subcommand():
     assert "trilogy serve" in result.output
     assert "FastAPI server" in result.output
     assert "trilogy-public-models" in result.output
-    assert "# Trilogy CLI - AI Agent Usage Guide" not in result.output
+    assert "# Agent Usage Guide" not in result.output
 
 
 def test_main_agent_info_does_not_inline_extracted_sections():

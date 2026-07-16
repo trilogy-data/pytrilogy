@@ -78,14 +78,14 @@ def _run(engine: Executor, models: Path, text: str):
 # equal expected (so "both wrong" can't masquerade as parity).
 PARITY_CASES: dict[str, tuple[str, str, list[tuple]]] = {
     # year-over-year on a shared base dim, two INDEPENDENT rowsets. A non-partial
-    # `merge` is a FULL identity join, so the equivalent join form is `full join`
+    # `merge` is a FULL identity join, so the equivalent join form is `union join`
     # (brand 30 exists only in 2002 and is kept with a NULL prior year).
     "yoy_independent_rowsets": (
         """
 import sales as sales;
 rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
 rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
-full join c.brand = p.brand
+union join c.brand = p.brand
 select c.brand, c.c_qty, p.p_qty order by c.brand asc;
 """,
         """
@@ -102,15 +102,15 @@ select c.brand, c.c_qty, p.p_qty order by c.brand asc;
     # domain at the opaque rename boundary, so the anchor is complete by
     # construction and the subset relation narrows to the directional LEFT — the
     # 2002-only brand 30 violates the declared c ⊆ p and drops (ruled semantics
-    # for a lying declaration). "Keep both years" is the `full join` /
+    # for a lying declaration). "Keep both years" is the `union join` /
     # non-partial merge form above (`yoy_independent_rowsets`). Pins that merge~
-    # and `left join` share the declaration machinery and both narrow directionally.
+    # and `subset join` share the declaration machinery and both narrow directionally.
     "partial_merge_left_anchor": (
         """
 import sales as sales;
 rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
 rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
-left join p.brand = c.brand
+subset join c.brand = p.brand
 select p.brand, p.p_qty, c.c_qty order by p.brand asc;
 """,
         """
@@ -131,7 +131,7 @@ import sales as sales;
 rowset c <- where sales.year = 2002 select sales.item.brand as brand, sum(sales.qty) as c_qty;
 rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.qty) as p_qty;
 where p.p_qty is not null
-left join p.brand = c.brand
+subset join c.brand = p.brand
 select p.brand, p.p_qty, c.c_qty order by p.brand asc;
 """,
         """
@@ -152,7 +152,7 @@ select p.brand, p.p_qty, c.c_qty order by p.brand asc;
 import sales as sales;
 property sales.sale_id.imputed_qty int;
 auto doubled <- sales.qty * 2;
-full join doubled = sales.imputed_qty
+union join doubled = sales.imputed_qty
 select sales.sale_id, sales.imputed_qty order by sales.sale_id asc;
 """,
         """
@@ -171,7 +171,7 @@ import sales as sales;
 import customer as customer;
 rowset bought <- where sales.year = 2002 select sales.customer.customer_id, sum(sales.qty) as qty;
 where customer.name is not null
-left join bought.sales.customer.customer_id = customer.customer_id
+subset join customer.customer_id = bought.sales.customer.customer_id
 select customer.name, bought.qty order by customer.name asc;
 """,
         """
@@ -208,12 +208,12 @@ rowset p <- where sales.year = 2001 select sales.item.brand as brand, sum(sales.
 """
 JOIN_PRE = (
     _POS_HEAD
-    + "where p.p_qty is not null\nleft join c.brand = p.brand\n"
+    + "where p.p_qty is not null\nsubset join p.brand = c.brand\n"
     + "select c.brand, c.c_qty, p.p_qty order by c.brand asc;\n"
 )
 JOIN_POST = (
     _POS_HEAD
-    + "select c.brand, c.c_qty, p.p_qty,\nleft join c.brand = p.brand\n"
+    + "select c.brand, c.c_qty, p.p_qty,\nsubset join p.brand = c.brand\n"
     + "where p.p_qty is not null\norder by c.brand asc;\n"
 )
 
@@ -255,7 +255,7 @@ auto da <- o.amt + 1;
 auto db <- c.cost + 1;
 """
 DERIVED_LEFT_JOIN = _DERIVED_HEAD + """
-left join da = db
+subset join db = da
 select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
 """
 
@@ -295,7 +295,7 @@ def test_scoped_left_join_on_nonrowset_derived_key(
 
 
 DERIVED_FULL_JOIN = _DERIVED_HEAD + """
-full join da = db
+union join da = db
 select da, sum(o.oid) as n_orders, sum(c.cid) as n_costs order by da asc;
 """
 
@@ -379,20 +379,20 @@ def multi_engine(tmp_path: Path) -> Executor:
 # 4way {10,20}).
 MULTI_LEFT_CASES: dict[str, tuple[str, str, list[tuple]]] = {
     "2way": (
-        "where b.b_id is not null\nleft join ka = kb",
+        "where b.b_id is not null\nsubset join kb = ka",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb order by ka asc;",
         [(10, 8, 1), (20, 2, 2), (40, 4, 4), (50, 5, 5)],
     ),
     "3way": (
         "where b.b_id is not null and c.c_id is not null\n"
-        "left join ka = kb\nleft join ka = kc",
+        "subset join kb = ka\nsubset join kc = ka",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc order by ka asc;",
         [(10, 8, 1, 1), (20, 2, 2, 2), (50, 5, 5, 5)],
     ),
     "4way": (
         "where b.b_id is not null and c.c_id is not null and d.d_id is not null\n"
-        "left join ka = kb\nleft join ka = kc\nleft join ka = kd",
+        "subset join kb = ka\nsubset join kc = ka\nsubset join kd = ka",
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc, sum(d.d_id) as nd order by ka asc;",
         [(10, 8, 1, 1, 1), (20, 2, 2, 2, 2)],
@@ -418,12 +418,12 @@ def test_chained_equality_join_matches_pairwise(multi_engine: Executor, tmp_path
         "sum(c.c_id) as nc order by ka asc;"
     )
     chained = _run(
-        multi_engine, tmp_path, _MULTI_HEAD + "left join ka = kb = kc\n" + select
+        multi_engine, tmp_path, _MULTI_HEAD + "subset join kc = kb = ka\n" + select
     )
     pairwise = _run(
         multi_engine,
         tmp_path,
-        _MULTI_HEAD + "left join ka = kb\nleft join ka = kc\n" + select,
+        _MULTI_HEAD + "subset join kb = ka\nsubset join kc = ka\n" + select,
     )
     assert chained == pairwise, f"chained != pairwise: {chained} vs {pairwise}"
     assert chained == [
@@ -441,7 +441,7 @@ def test_chained_full_join_all_buckets(multi_engine: Executor, tmp_path: Path):
     rows = _run(
         multi_engine,
         tmp_path,
-        _MULTI_HEAD + "full join ka = kb = kc\n"
+        _MULTI_HEAD + "union join ka = kb = kc\n"
         "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
         "sum(c.c_id) as nc order by ka asc;",
     )
@@ -461,7 +461,7 @@ def test_chained_full_join_all_buckets(multi_engine: Executor, tmp_path: Path):
 @pytest.mark.parametrize(
     "clauses",
     [
-        "left join ka = kb\nfull join ka = kc",
+        "subset join kb = ka\nunion join ka = kc",
     ],
 )
 def test_full_mixed_with_other_type_in_one_group_rejected(

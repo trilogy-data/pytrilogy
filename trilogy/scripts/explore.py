@@ -37,7 +37,7 @@ _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 #   json v2: conformed dimensions collapse into one combined-key entry
 #            (``"date, return_date, …": [schema]``) — the default. Imported
 #            namespaces render in the same full grouped-declaration form
-#            under ``imported`` (each entry pairs its schema with the
+#            under ``namespaced`` (each entry pairs its schema with the
 #            import-line description(s)); they are never collapsed to the
 #            old name-only leaf list.
 #   rich v1: the only rich shape so far (no conformed dedup yet).
@@ -709,7 +709,7 @@ def build_concepts_payload(
 ) -> dict:
     """Build the JSON-serializable concept dump: local namespaces rendered in
     full Trilogy declaration syntax under ``namespaces``; imported namespaces
-    rendered in the same full form under ``imported``, with role-played
+    rendered in the same full form under ``namespaced``, with role-played
     conformed dimensions deduped into one combined-key entry carrying the
     per-role import descriptions. ``None``-valued keys are dropped so the
     payload stays compact whether emitted as a JSON event or embedded in an
@@ -735,7 +735,7 @@ def build_concepts_payload(
         "version": version,
         "count": len(concept_items),
         "namespaces": namespaces or None,
-        "imported": imported or None,
+        "namespaced": imported or None,
     }
     return {k: v for k, v in payload.items() if v is not None}
 
@@ -750,7 +750,7 @@ def _emit_explore_json(
     """Emit the explore results as a stream of pretty-printed JSON events,
     honoring ``--show``. Concepts are grouped by namespace and rendered in
     full Trilogy declaration syntax — local under ``namespaces``, imported
-    under ``imported`` with conformed role-players deduped (``--expand-imports``
+    under ``namespaced`` with conformed role-players deduped (``--expand-imports``
     only affects the rich renderer; JSON is always full detail)."""
     if show in ("all", "groups", "concepts"):
         emit_event(

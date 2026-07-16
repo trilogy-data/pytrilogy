@@ -32,12 +32,11 @@ def _structural_partial_concepts(
 ) -> list[BuildConcept]:
     """Column-level (``~``) partials, which survive a satisfied complete-where.
 
-    BuildUnionDatasource doesn't carry per-child partial info; treat it as having
-    no structural partials of its own — its children's structural partials are
-    handled when those children are scored.
+    For a union these are the children's unhealed intrinsic partials (see
+    ``union_unhealed_partial_addresses``) — a union of subset-covering bindings
+    is still subset-covering, so it must not score as complete against a rival
+    union whose children bind the same keys fully.
     """
-    if isinstance(ds, BuildUnionDatasource):
-        return []
     return ds.column_level_partial_concepts or []
 
 

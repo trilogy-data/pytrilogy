@@ -285,7 +285,9 @@ class CTE:
         self.output_columns = unique(
             self.output_columns + other.output_columns, "address"
         )
-        self.joins = unique(self.joins + other.joins, "unique_id")
+        self.joins = coalesce_duplicate_joins(
+            unique(self.joins + other.joins, "unique_id")
+        )
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
@@ -1844,6 +1846,53 @@ class Join:
                 f" {self.right_name} on {','.join([str(k) for k in pairs])}"
             )
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in pairs])}"
+
+
+def coalesce_duplicate_joins(
+    joins: List[Union["Join", "InstantiatedUnnestJoin"]],
+) -> List[Union["Join", "InstantiatedUnnestJoin"]]:
+    """Coalesce keyed Joins sharing (type, left, right) into one join carrying
+    the union of their key pairs. CTE-level joins have no aliasing, so a second
+    join to the same right CTE re-joins the very same rows — never a self-join —
+    and re-matching on a differing key subset multiplies rows and renders an
+    ambiguous duplicate table reference (q11: two copies of one logical CTE
+    each carried a FULL join to the same parent whose pair sets differed by one
+    redundant column). Both copies are plans for the same logical relation, so
+    the joined rows must satisfy the union of their pairings."""
+    merged: dict[tuple[JoinType, str | None, str], "Join"] = {}
+    out: List[Union["Join", "InstantiatedUnnestJoin"]] = []
+    for join in joins:
+        if (
+            not isinstance(join, Join)
+            or join.condition is not None
+            or not join.joinkey_pairs
+        ):
+            out.append(join)
+            continue
+        key = (
+            join.jointype,
+            join.left_cte.name if join.left_cte else None,
+            join.right_cte.name,
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = join
+            out.append(join)
+            continue
+        assert existing.joinkey_pairs is not None
+        seen = {
+            (p.cte.name, p.left.address, p.right.address)
+            for p in existing.joinkey_pairs
+        }
+        for pair in join.joinkey_pairs:
+            pair_key = (pair.cte.name, pair.left.address, pair.right.address)
+            if pair_key not in seen:
+                existing.joinkey_pairs.append(pair)
+                seen.add(pair_key)
+        for modifier in join.modifiers:
+            if modifier not in existing.modifiers:
+                existing.modifiers.append(modifier)
+    return out
 
 
 def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:

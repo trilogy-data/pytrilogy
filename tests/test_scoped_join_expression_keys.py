@@ -96,7 +96,7 @@ BACKENDS = [ParserBackend.PEST, ParserBackend.LARK]
 def test_bare_reference_key_unchanged(models: Path, backend: ParserBackend) -> None:
     text = (
         "import orders as orders;\nimport customers as customers;\n"
-        "LEFT JOIN orders.ckey = customers.cid SELECT customers.region;"
+        "subset join customers.cid = orders.ckey SELECT customers.region;"
     )
     with _using_backend(backend):
         _, parsed = parse_text(text, root=models)
@@ -112,7 +112,7 @@ def test_expression_keys_become_virtual_concepts(
 ) -> None:
     text = (
         "import orders as orders;\nimport customers as customers;\n"
-        "LEFT JOIN orders.ckey + 1 = customers.cid + 1 SELECT customers.region;"
+        "subset join customers.cid + 1 = orders.ckey + 1 SELECT customers.region;"
     )
     with _using_backend(backend):
         env, parsed = parse_text(text, root=models)
@@ -131,13 +131,13 @@ def test_expression_keys_become_virtual_concepts(
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_arithmetic_expression_join(models: Path, backend: ParserBackend) -> None:
-    # inner intersection expressed as left join + where the optional side is present
+    # inner intersection expressed as subset join + where the optional side is present
     rows = _run(
         models,
         backend,
         "WHERE customers.region is not null\n"
         "SELECT customers.region, sum(orders.amt) -> total\n"
-        "LEFT JOIN orders.ckey + 1 = customers.cid + 1 ORDER BY customers.region asc;",
+        "subset join customers.cid + 1 = orders.ckey + 1 ORDER BY customers.region asc;",
     )
     assert rows == [("east", 40.0), ("west", 20.0)]
 
@@ -152,12 +152,12 @@ def test_arithmetic_join_matches_bare_join(
     )
     suffix = " ORDER BY customers.region asc;"
     bare = _run(
-        models, backend, prefix + "LEFT JOIN orders.ckey = customers.cid" + suffix
+        models, backend, prefix + "subset join customers.cid = orders.ckey" + suffix
     )
     expr = _run(
         models,
         backend,
-        prefix + "LEFT JOIN orders.ckey + 0 = customers.cid + 0" + suffix,
+        prefix + "subset join customers.cid + 0 = orders.ckey + 0" + suffix,
     )
     assert bare == expr == [("east", 40.0), ("west", 20.0)]
 
@@ -166,14 +166,14 @@ def test_arithmetic_join_matches_bare_join(
 def test_aggregate_expression_join(models: Path, backend: ParserBackend) -> None:
     # count of orders per ckey {100: 2, 200: 1}; join that count to customers.rnk
     # {east:1, west:2}: count=2 (ckey 100) -> west, count=1 (ckey 200) -> east.
-    # full join + where the optional side is present reproduces the intersection
-    # (LEFT widens on this re-aggregated derived key; FULL + not-null is faithful).
+    # union join + where the optional side is present reproduces the intersection
+    # (subset widens on this re-aggregated derived key; union + not-null is faithful).
     rows = _run(
         models,
         backend,
         "WHERE customers.region is not null\n"
         "SELECT customers.region, customers.rnk\n"
-        "FULL JOIN count(orders.oid) by orders.ckey = customers.rnk ORDER BY customers.rnk asc;",
+        "union join count(orders.oid) by orders.ckey = customers.rnk ORDER BY customers.rnk asc;",
     )
     assert rows == [("east", 1), ("west", 2)]
 
@@ -189,17 +189,17 @@ def test_window_expression_join(models: Path, backend: ParserBackend) -> None:
         backend,
         "WHERE customers.region is not null\n"
         "SELECT customers.region, orders.amt\n"
-        "FULL JOIN rank orders.oid order by orders.amt desc = customers.rnk ORDER BY orders.amt desc;",
+        "union join rank orders.oid order by orders.amt desc = customers.rnk ORDER BY orders.amt desc;",
     )
     assert rows == [("east", 30.0), ("west", 20.0)]
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_left_join_on_expression_key(models: Path, backend: ParserBackend) -> None:
+def test_subset_join_on_expression_key(models: Path, backend: ParserBackend) -> None:
     rows = _run(
         models,
         backend,
-        "LEFT JOIN orders.ckey + 1 = customers.cid + 1\n"
+        "subset join customers.cid + 1 = orders.ckey + 1\n"
         "SELECT customers.region, sum(orders.amt) -> total ORDER BY customers.region asc;",
     )
     assert rows == [("east", 40.0), ("west", 20.0)]
@@ -215,7 +215,7 @@ def test_three_part_chained_join(models: Path, backend: ParserBackend) -> None:
         "import shipments as shipments;\n"
         "WHERE shipments.scount is not null\n"
         "SELECT customers.region, sum(orders.amt) -> total, shipments.scount\n"
-        "LEFT JOIN orders.ckey = customers.cid = shipments.skey "
+        "subset join shipments.skey = customers.cid = orders.ckey "
         "ORDER BY customers.region asc;",
     )
     assert rows == [("east", 40.0, 5), ("west", 20.0, 7)]
@@ -233,7 +233,7 @@ def test_three_part_chained_expression_join(
         "import shipments as shipments;\n"
         "WHERE shipments.scount is not null\n"
         "SELECT customers.region, sum(orders.amt) -> total, shipments.scount\n"
-        "LEFT JOIN orders.ckey + 1 = customers.cid + 1 = shipments.skey + 1 "
+        "subset join shipments.skey + 1 = customers.cid + 1 = orders.ckey + 1 "
         "ORDER BY customers.region asc;",
     )
     assert rows == [("east", 40.0, 5), ("west", 20.0, 7)]
@@ -246,7 +246,7 @@ def test_three_part_chained_expression_join(
 def test_non_equality_operator_rejected(models: Path, backend: ParserBackend) -> None:
     text = (
         "import orders as orders;\nimport customers as customers;\n"
-        "LEFT JOIN orders.ckey > customers.cid SELECT customers.region;"
+        "subset join orders.ckey > customers.cid SELECT customers.region;"
     )
     with _using_backend(backend):
         with pytest.raises(InvalidSyntaxException, match="join"):
@@ -255,7 +255,7 @@ def test_non_equality_operator_rejected(models: Path, backend: ParserBackend) ->
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_scoped_inner_join_rejected(models: Path, backend: ParserBackend) -> None:
-    # query-scoped `inner join` has been removed; use LEFT/FULL + a filter.
+    # query-scoped `inner join` has been removed; use subset/union + a filter.
     text = (
         "import orders as orders;\nimport customers as customers;\n"
         "INNER JOIN orders.ckey = customers.cid SELECT customers.region;"
@@ -271,7 +271,7 @@ def test_filter_chained_onto_join_points_to_where(
 ) -> None:
     text = (
         "import orders as orders;\nimport customers as customers;\n"
-        "LEFT JOIN orders.ckey = customers.cid and orders.amt > 0 "
+        "subset join customers.cid = orders.ckey and orders.amt > 0 "
         "SELECT customers.region;"
     )
     with _using_backend(backend):

@@ -2,6 +2,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.exceptions import InvalidComparison, ModelValidationError
+from trilogy.core.models.build import BuildUnionDatasource
 from trilogy.core.models.core import EnumType
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -604,6 +605,197 @@ where dim_id is not null
 select concat('e', dim_text) as ent, sum(amt) as total order by ent;
 """)[0].fetchall()
     assert [tuple(r) for r in results] == _EXPECTED_RETURNS
+
+
+# Two rival enum unions over the same partition key: a "sales" family binding the
+# grain keys complete, and a "returns" family binding them column-level partial
+# (~order_id / ~item_id — returns only cover returned lines). The union heals the
+# table-level partial stamp but must NOT heal explicit ~ columns: the returns
+# union stays partial on the keys, so the sales union strictly wins for key-only
+# requests. Before that propagation, both unions tied on partial_count and the
+# winner was decided by lexical datasource-name order ("ret_*" < "sale_*") —
+# unresolvable errors for plain keys, silently wrong tables for aggregates.
+# Mirrors TPC-DS q14 over the consolidated all_sales model. `site_id` is shared
+# by exactly one sales and one returns source so a mixed-family combo would
+# survive the maximal-overlap filter — get_union_sources must reject it.
+PREQL_PARTIAL_KEY_FAMILIES = """
+key chan enum<string>['A', 'B'];
+key order_id int;
+key item_id int;
+
+properties <order_id, chan, item_id> (
+    quantity int?,
+    return_amount float?,
+    site_id int?,
+);
+
+partial datasource {ret_a} (
+    raw(''' 'A' '''): chan,
+    oid: ~order_id,
+    iid: ~item_id,
+    ramt: return_amount,
+)
+grain (order_id, chan, item_id)
+complete where chan = 'A'
+query '''
+select 1 as oid, 10 as iid, 5.0 as ramt
+''';
+
+partial datasource {ret_b} (
+    raw(''' 'B' '''): chan,
+    oid: ~order_id,
+    iid: ~item_id,
+    ramt: return_amount,
+    rsite: ?site_id,
+)
+grain (order_id, chan, item_id)
+complete where chan = 'B'
+query '''
+select 2 as oid, 20 as iid, 6.0 as ramt, 200 as rsite
+''';
+
+partial datasource {sale_a} (
+    raw(''' 'A' '''): chan,
+    oid: order_id,
+    iid: item_id,
+    qty: quantity,
+    ssite: ?site_id,
+)
+grain (order_id, chan, item_id)
+complete where chan = 'A'
+query '''
+select 1 as oid, 10 as iid, 1 as qty, 100 as ssite
+union all
+select 3 as oid, 30 as iid, 2 as qty, 300 as ssite
+''';
+
+partial datasource {sale_b} (
+    raw(''' 'B' '''): chan,
+    oid: order_id,
+    iid: item_id,
+    qty: quantity,
+)
+grain (order_id, chan, item_id)
+complete where chan = 'B'
+query '''
+select 2 as oid, 20 as iid, 3 as qty
+union all
+select 4 as oid, 40 as iid, 4 as qty
+''';
+"""
+
+# returns sort before sales / after sales: the outcome must be identical.
+_NAMES_RETURNS_FIRST = {
+    "ret_a": "ret_a",
+    "ret_b": "ret_b",
+    "sale_a": "sale_a",
+    "sale_b": "sale_b",
+}
+_NAMES_RETURNS_LAST = {
+    "ret_a": "zz_ret_a",
+    "ret_b": "zz_ret_b",
+    "sale_a": "aa_sale_a",
+    "sale_b": "aa_sale_b",
+}
+
+_ALL_ROWS = [("A", 1), ("B", 2), ("A", 3), ("B", 4)]
+
+
+def _partial_key_executor(names: dict[str, str]):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_PARTIAL_KEY_FAMILIES.format(**names))
+    return executor
+
+
+@pytest.mark.parametrize("names", [_NAMES_RETURNS_FIRST, _NAMES_RETURNS_LAST])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select chan, order_id order by order_id asc;", _ALL_ROWS),
+        (
+            "select chan, item_id, order_id order by order_id asc;",
+            [("A", 10, 1), ("B", 20, 2), ("A", 30, 3), ("B", 40, 4)],
+        ),
+        (
+            "select chan, order_id, quantity order by order_id asc;",
+            [("A", 1, 1), ("B", 2, 3), ("A", 3, 2), ("B", 4, 4)],
+        ),
+        ("select count(order_id) as c;", [(4,)]),
+        ("select count(item_id) as c;", [(4,)]),
+        ("select sum(return_amount) as total;", [(11.0,)]),
+        (
+            "select order_id, return_amount order by order_id asc;",
+            [(1, 5.0), (2, 6.0), (3, None), (4, None)],
+        ),
+        (
+            "where return_amount is not null select order_id, return_amount order by order_id asc;",
+            [(1, 5.0), (2, 6.0)],
+        ),
+    ],
+)
+def test_partial_key_union_matrix(names, query, expected):
+    executor = _partial_key_executor(names)
+    results = executor.execute_text(query)[-1].fetchall()
+    assert [tuple(r) for r in results] == expected, query
+
+
+@pytest.mark.parametrize("names", [_NAMES_RETURNS_FIRST, _NAMES_RETURNS_LAST])
+def test_partial_key_union_aggregate_reads_complete_family(names):
+    # count over a grain key must come from the family binding it complete
+    # (sales), never the ~-partial returns family.
+    executor = _partial_key_executor(names)
+    sql = executor.generate_sql("select count(order_id) as c;")[-1]
+    ret_a, ret_b = names["ret_a"], names["ret_b"]
+    assert ret_a not in sql and ret_b not in sql, sql
+
+
+def test_union_partial_concepts_propagate_explicit_partials():
+    executor = _partial_key_executor(_NAMES_RETURNS_FIRST)
+    env = executor.environment.materialize_for_select()
+    ds = {d.name: d for d in env.datasources.values()}
+    returns_union = BuildUnionDatasource(children=[ds["ret_a"], ds["ret_b"]])
+    assert {c.address for c in returns_union.partial_concepts} == {
+        "local.order_id",
+        "local.item_id",
+    }
+    sales_union = BuildUnionDatasource(children=[ds["sale_a"], ds["sale_b"]])
+    assert sales_union.partial_concepts == []
+
+
+def test_union_partial_concepts_discriminator_healed():
+    # The enum discriminator itself (~category, partitioned by complete-where)
+    # IS healed by the union — only non-discriminator ~ columns survive.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL)
+    env = executor.environment.materialize_for_select()
+    ds = {d.name: d for d in env.datasources.values()}
+    union = BuildUnionDatasource(children=[ds["ds_a"], ds["ds_b"]])
+    assert union.partial_concepts == []
+
+
+def test_union_sources_mixed_family_stays_partial():
+    # sale_a and ret_b share site_id, so the mixed combo's overlap signature is
+    # not a subset of either pure family's and it survives as a candidate — it
+    # is the only union providing site_id across both channels (the q05 shape:
+    # a web return's return-site lives on web_sales). What keeps it safe is
+    # partial propagation: it stays partial on the ~ keys its returns child
+    # binds, so it can never outrank the pure sales union for key requests.
+    executor = _partial_key_executor(_NAMES_RETURNS_FIRST)
+    env = executor.environment.materialize_for_select()
+    unions = get_union_sources(
+        list(env.datasources.values()),
+        [env.concepts["chan"], env.concepts["order_id"], env.concepts["site_id"]],
+    )
+    families = {frozenset(ds.name for ds in group): group for group in unions}
+    assert frozenset({"sale_a", "sale_b"}) in families
+    assert frozenset({"ret_a", "ret_b"}) in families
+    mixed = families.get(frozenset({"sale_a", "ret_b"}))
+    assert mixed is not None
+    mixed_union = BuildUnionDatasource(children=mixed)
+    assert {c.address for c in mixed_union.partial_concepts} == {
+        "local.order_id",
+        "local.item_id",
+    }
 
 
 def test_enum_union_arm_spanning_multiple_sources_in_tvf():

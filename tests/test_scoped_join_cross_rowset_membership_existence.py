@@ -79,11 +79,11 @@ def executor() -> Executor:
     "join_clause,expected",
     [
         (
-            "left join cur_sales.ws = ftr_sales.ws",
+            "subset join ftr_sales.ws = cur_sales.ws",
             [(1, 40.0, 40.0), (2, None, None)],
         ),
         (
-            "left join cur_sales.ws = ftr_sales.ws - 53",
+            "subset join ftr_sales.ws - 53 = cur_sales.ws",
             [(1, 40.0, 50.0), (2, None, 40.0)],
         ),
     ],

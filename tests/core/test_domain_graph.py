@@ -269,7 +269,7 @@ datasource a_source (aid: aid, av: av) grain (aid) address a_table;
 datasource b_source (bid: bid, bv: bv) grain (bid) address b_table;
 
 with joined as
-full join aid = bid
+union join aid = bid
 select aid as k, sum(av) as sa, sum(bv) as sb;
 """
 

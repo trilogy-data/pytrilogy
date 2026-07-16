@@ -16,9 +16,11 @@ from trilogy.parsing.v2.errors import (
     detect_group_by,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
+    detect_named_function_missing_at,
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    misplaced_join_candidate,
 )
 from trilogy.parsing.v2.syntax import (
     LARK_NODE_KIND,
@@ -290,6 +292,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     if star_pos is not None:
         return create_syntax_error(223, star_pos, text)
 
+    # 227: a user-defined (`def`) function called without its `@` prefix
+    # (`identity(x)` where an earlier `def identity(...)` exists).
+    named_fn_pos = detect_named_function_missing_at(text, pos)
+    if named_fn_pos is not None:
+        return create_syntax_error(227, named_fn_pos, text)
+
     # 224: SQL-style `SELECT DISTINCT` (Trilogy is implicitly distinct by grain).
     distinct_pos = detect_select_distinct(text, pos)
     if distinct_pos is not None:
@@ -322,6 +330,15 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         return create_syntax_error(220, join_pos, text)
+
+    # 226: a WELL-FORMED query-scoped join in the wrong place (standalone, or
+    # before the `where`). Confirm the key is fine by probing the clause alone;
+    # a malformed key falls through to 225.
+    misplaced = misplaced_join_candidate(text, pos)
+    if misplaced is not None and _pest_parses(
+        f"select 1 as trilogy_join_probe {misplaced[1]};"
+    ):
+        return create_syntax_error(226, misplaced[0], text)
 
     # 225: a query-scoped join with a missing/malformed key expression
     # (`union join ...`, `subset join a.id =`) — pest reports `expected

@@ -55,3 +55,28 @@ def test_detect_helper_skips_when_key_present():
     # a `select` between the join and the failure means the key already parsed
     text = "select a.x union join a.id = b.id select bad;"
     assert detect_join_missing_key(text, len(text) - 1) is None
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize(
+    "query",
+    [
+        # well-formed key, but the join sits BEFORE the `where`
+        "subset join a.id = b.id where a.x select a.x as x;",
+        # well-formed key, but the join is a standalone statement (no select)
+        "subset join a.id = b.id;",
+        "union join a.id = b.id;",
+    ],
+)
+def test_misplaced_join_reports_226(backend, query):
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + query)
+    assert "Syntax [226]" in str(exc.value), str(exc.value)
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+def test_misplaced_226_does_not_steal_valid_trailing_join(backend):
+    # a well-formed join in a VALID position with a downstream error stays put
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + "select a.x + subset join a.id = b.id limit 5;")
+    assert "Syntax [226]" not in str(exc.value), str(exc.value)

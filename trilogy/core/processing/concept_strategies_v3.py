@@ -32,6 +32,7 @@ from trilogy.core.processing.discovery_utility import (
     get_loop_iteration_targets,
     get_upstream_concepts,
     group_if_required_v2,
+    membership_span_note,
     raise_if_filter_disconnected,
 )
 from trilogy.core.processing.discovery_validation import (
@@ -42,6 +43,7 @@ from trilogy.core.processing.discovery_validation import (
 )
 from trilogy.core.processing.node_generators.presence_probe import (
     gen_coalescing_axis_node,
+    retain_presence_probes,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -485,9 +487,15 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in context.stack]} in merge node"
         )
+        # A presence probe a parent materialized on its own side must survive
+        # this merge: the outer WHERE reads it post-merge, and omitting it forces
+        # recomputation off the fused key, never NULL (TPC-DS q35).
+        merged_outputs = retain_presence_probes(
+            non_virtual, [c for node in context.stack for c in node.usable_outputs]
+        )
         output = MergeNode(
-            input_concepts=non_virtual,
-            output_concepts=non_virtual,
+            input_concepts=merged_outputs,
+            output_concepts=merged_outputs,
             environment=context.environment,
             parents=context.stack,
             depth=context.depth,
@@ -759,8 +767,12 @@ def source_query_concepts(
             )
         groups = disconnected_components(environment, required, g)
         if len(groups) > 1:
+            message = format_disconnected_subgraphs_error(groups, environment, g)
+            note = membership_span_note(conditions, groups, environment, g)
+            if note:
+                message = f"{message}\n{note}"
             raise DisconnectedConceptsException(
-                format_disconnected_subgraphs_error(groups, environment, g),
+                message,
                 subgraphs=[[c.address for c in group] for group in groups],
             )
         # A FILTER output hides its `? <cond>` concepts inside its lineage, so the

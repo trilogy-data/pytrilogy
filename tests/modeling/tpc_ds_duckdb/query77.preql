@@ -62,7 +62,7 @@ select
 # select).
 with l0_union as union(
     (where cs_grouped.cs_sales is not null
-     left join cs_grouped.cs_cc_id = cr_grouped.cr_cc_id
+     subset join cr_grouped.cr_cc_id = cs_grouped.cs_cc_id
      select
         'catalog channel' as u_channel,
         cs_grouped.cs_cc_id as u_id,
@@ -73,7 +73,7 @@ with l0_union as union(
     # joins are row-preserving: the explicit `is not null` restricts each arm
     # to its sales side (returns-only stores/pages drop, per the reference).
     (where ss_grouped.ss_sales is not null
-     left join ss_grouped.ss_store_id = sr_grouped.sr_store_id
+     subset join sr_grouped.sr_store_id = ss_grouped.ss_store_id
      select
         'store channel' as u_channel,
         ss_grouped.ss_store_id as u_id,
@@ -82,7 +82,7 @@ with l0_union as union(
         ss_grouped.ss_profit - coalesce(sr_grouped.sr_loss, 0)::numeric(15,2) as u_profit,
     ),
     (where ws_grouped.ws_sales is not null
-     left join ws_grouped.ws_wp_id = wr_grouped.wr_wp_id
+     subset join wr_grouped.wr_wp_id = ws_grouped.ws_wp_id
      select
         'web channel' as u_channel,
         ws_grouped.ws_wp_id as u_id,

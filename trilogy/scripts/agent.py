@@ -70,6 +70,7 @@ def get_agent_instructions(
     include_todo: bool = True,
     include_database: bool = True,
     include_file_read: bool = True,
+    include_scope_diagnostics: bool = True,
 ) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
@@ -88,8 +89,46 @@ Available tools:
       ["database", "describe", "<table>"] — show a table's columns and types."""
     base += """
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
-      under raw/) for every table in the database, in one step.
-    * Run a Trilogy script: ["run", "<path.preql>"].
+      under raw/) for every table in the database, in one step."""
+    if include_scope_diagnostics:
+        base += """
+    * Run a Trilogy script: ["run", "<path.preql>"]. Each result carries
+      `derived_value_scopes`: for every aggregate/window value — including
+      ones inside rowsets consumed via membership or subqueries — the
+      effective `input_row_filters` (conditions removing source rows BEFORE
+      this specific value is computed; `[]` means the UNRESTRICTED population,
+      and each condition is shown in its AUTHORED spelling), `scoped_joins`
+      (the query-scoped join equivalences in effect, e.g.
+      `union join a = b`) and `normalized_input_row_filters` (present ONLY when
+      a scoped join rewrote a WHERE endpoint to its group representative —
+      the effective predicate the planner uses; the authored equality is still
+      the one listed under `input_row_filters`, so a filter that appears to
+      reference a different column is the same restriction applied through a
+      join, NOT a dropped or altered filter), `admitted_by`
+      (row-admission conditions comparing an already-computed value — NOT
+      part of this value's source population), grouping/partitioning,
+      `output_row_filters` (conditions removing completed aggregate/window
+      result rows AFTER computation), and a `role`:
+      `where_gate` = computed to gate WHERE row admission (sees its own
+      population, not the peer WHERE conditions), `selected_output` =
+      computed over the admitted rows, `upstream` = computed inside a
+      consumed rowset/subquery. On count/count-distinct, `argument_grain` is
+      the identity of the counted expression itself — compare it with the
+      row identity the question asks to count; it is NOT the input row
+      grain. Check sibling values independently: an input row filter needed
+      for `avg(x)` may incorrectly remove rows from a sibling `count(...)`.
+      On a rollup, an `output_row_filter` filters each already-computed rollup
+      result row; it does NOT remove failing leaves before parent subtotals are
+      computed. To roll up only surviving leaves, filter a leaf rowset first,
+      then roll up that rowset. ALWAYS check each scope against the question's
+      intent before accepting a result — e.g. if the question
+      benchmarks against year-2000 totals but the `where_gate` entry shows
+      unrestricted input row filters, the benchmark is wrong even though the
+      query ran cleanly."""
+    else:
+        base += """
+    * Run a Trilogy script: ["run", "<path.preql>"]."""
+    base += """
     * ["explore", "<path.preql>"] is the canonical "what concepts can I query
       from this file?" tool. Imported references chain in — exploring the
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
@@ -697,13 +736,20 @@ def agent(
             has_schema_md=(Path.cwd() / "schema.md").exists()
         )
     else:
+        include_scope_diagnostics = os.environ.get(
+            "TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1"
+        ).lower() not in ("0", "false", "no", "off")
         excluded_tool_names: set[str] = set()
         if actual_quiet:
             excluded_tool_names.add(SHOW_MESSAGE_TOOL.name)
         if cfg.disable_todo:
             excluded_tool_names.add(TODO_TOOL.name)
         tools = [t for t in ALL_TOOLS if t.name not in excluded_tool_names]
-        if cfg.allow_database_introspection and cfg.allow_file_read:
+        if (
+            cfg.allow_database_introspection
+            and cfg.allow_file_read
+            and include_scope_diagnostics
+        ):
             if actual_quiet and cfg.disable_todo:
                 system_prompt = QUIET_NO_TODO_SYSTEM_PROMPT
             elif actual_quiet:
@@ -719,6 +765,7 @@ def agent(
                 include_todo=not cfg.disable_todo,
                 include_database=cfg.allow_database_introspection,
                 include_file_read=cfg.allow_file_read,
+                include_scope_diagnostics=include_scope_diagnostics,
             )
 
     log_path: Path | None = None

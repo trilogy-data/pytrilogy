@@ -1,0 +1,9 @@
+﻿{
+    "pid":  142276,
+    "stamp":  "20260713-173444",
+    "output_dir":  "C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpcds_agent\\results\\enriched_scope_v2_full_20260713-173444",
+    "stdout":  "C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpcds_agent\\enriched_scope_v2_full_20260713-173444.out",
+    "stderr":  "C:\\Users\\ethan\\coding_projects\\pytrilogy_two\\evals\\tpcds_agent\\enriched_scope_v2_full_20260713-173444.err",
+    "scope_diagnostics":  true,
+    "started":  "2026-07-13T17:34:44.2980139-04:00"
+}

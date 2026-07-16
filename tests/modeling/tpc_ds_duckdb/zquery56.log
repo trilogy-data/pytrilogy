@@ -1,6 +1,6 @@
 query_id = "56"
 generator = "v3"
-gen_length = 3347
+gen_length = 3364
 preql_size = 429
 comp_size = 1857
 generated_sql = """
@@ -12,7 +12,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"sales_item_items\"
 WHERE
-    \"sales_item_items\".\"I_COLOR\" in ('slate','blanched','burnished')
+    (\"sales_item_items\".\"I_COLOR\" is not null and \"sales_item_items\".\"I_COLOR\" in ('slate','blanched','burnished'))
 
 GROUP BY
     1),
@@ -26,7 +26,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select questionable.\"color_ids\" from questionable where questionable.\"color_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 
 UNION ALL
 SELECT
@@ -38,7 +38,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_store_sales_unified\".\"SS_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select questionable.\"color_ids\" from questionable where questionable.\"color_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 
 UNION ALL
 SELECT
@@ -50,7 +50,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and \"sales_item_items\".\"I_ITEM_ID\" in (select questionable.\"color_ids\" from questionable where questionable.\"color_ids\" is not null) and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
 )
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",

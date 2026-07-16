@@ -7,21 +7,21 @@ Two mechanisms relate scoped-join keys (see ``Factory.__init__`` in build.py):
   (global ``merge``, the FULL canonical-key registry, dependent-grain collapse).
   One logical key renders from one physical column.
 * **identity + pseudonym + coalesce** — used when the correspondence MAY be
-  absent on some rows (LEFT / FULL across distinct physical columns). The output
+  absent on some rows (subset / union across distinct physical columns). The output
   key is a row-by-row ``coalesce`` of both columns, so both must survive.
 
-The chosen mechanism is a function of JOIN TYPE, not key kind: a root-keyed FULL
+The chosen mechanism is a function of JOIN TYPE, not key kind: a root-keyed union
 still needs coalesce, a derived-keyed merge still substitutes. These tests pin
 that for ROOT keys across populations. (Query-scoped ``inner join`` is no longer
-supported — express an intersection as a LEFT/FULL join plus a filter.)
+supported — express an intersection as a subset/union join plus a filter.)
 
 Coverage elsewhere (not duplicated here):
 * derived/BASIC keys, N-way, chained, mixed, disjoint groups — test_join_merge_parity.py
 * rowset keys (distinct + shared base) — test_scoped_join_rowset_outer_blend.py, test_scoped_join.py
 * build-env contracts + FULL registry — test_scoped_join.py
 
-Projecting the *source* side of a FULL scoped join on a ROOT key coalesces
-correctly (FULL binding-keyed sources stay on the identity path, so both members
+Projecting the *source* side of a union scoped join on a ROOT key coalesces
+correctly (union binding-keyed sources stay on the identity path, so both members
 coalesce regardless of which is projected). See
 ``test_full_source_side_projection_coalesces``.
 """
@@ -74,6 +74,12 @@ def _rows(eng: Executor, tmp_path: Path, text: str) -> list[tuple]:
     return [tuple(r) for r in eng.execute_text(text)[-1].fetchall()]
 
 
+def _kid_join(jt: str) -> str:
+    # subset swaps operands (authored `left join a = b` == `subset join b = a`,
+    # `a` preserved); union keeps operand order (== the old `full join a = b`).
+    return "subset join b.kid = a.kid" if jt == "subset" else "union join a.kid = b.kid"
+
+
 # (a_rows, b_rows) per population shape. m_a / m_b are floats.
 POPULATIONS: dict[str, tuple[list[tuple], list[tuple]]] = {
     "partial_overlap": ([(1, 10.0), (2, 20.0)], [(2, 200.0), (3, 300.0)]),
@@ -82,22 +88,23 @@ POPULATIONS: dict[str, tuple[list[tuple], list[tuple]]] = {
     "empty_left": ([], [(2, 200.0), (3, 300.0)]),
 }
 
-# Expected rows of `SELECT b.kid, a.m_a, b.m_b {JT} JOIN a.kid = b.kid`, ordered
-# by the (coalesced) key. LEFT preserves the `a` (left operand) side; FULL is the
+# Expected rows of `SELECT b.kid, a.m_a, b.m_b <join>` where <join> is
+# `subset join b.kid = a.kid` / `union join a.kid = b.kid`, ordered by the
+# (coalesced) key. subset preserves the `a` (authored source) side; union is the
 # union with the canonical key coalescing both sides.
 MATRIX: dict[tuple[str, str], list[tuple]] = {
-    ("partial_overlap", "LEFT"): [(1, 10.0, None), (2, 20.0, 200.0)],
-    ("partial_overlap", "FULL"): [
+    ("partial_overlap", "subset"): [(1, 10.0, None), (2, 20.0, 200.0)],
+    ("partial_overlap", "union"): [
         (1, 10.0, None),
         (2, 20.0, 200.0),
         (3, None, 300.0),
     ],
-    ("disjoint", "LEFT"): [(1, 10.0, None)],
-    ("disjoint", "FULL"): [(1, 10.0, None), (2, None, 200.0)],
-    ("empty_right", "LEFT"): [(1, 10.0, None), (2, 20.0, None)],
-    ("empty_right", "FULL"): [(1, 10.0, None), (2, 20.0, None)],
-    ("empty_left", "LEFT"): [],
-    ("empty_left", "FULL"): [(2, None, 200.0), (3, None, 300.0)],
+    ("disjoint", "subset"): [(1, 10.0, None)],
+    ("disjoint", "union"): [(1, 10.0, None), (2, None, 200.0)],
+    ("empty_right", "subset"): [(1, 10.0, None), (2, 20.0, None)],
+    ("empty_right", "union"): [(1, 10.0, None), (2, 20.0, None)],
+    ("empty_left", "subset"): [],
+    ("empty_left", "union"): [(2, None, 200.0), (3, None, 300.0)],
 }
 
 
@@ -108,29 +115,29 @@ def test_root_key_two_way_matrix(tmp_path: Path, population: str, jt: str):
     _load(eng, "create table a_tbl (k int, m float)", a_rows)
     _load(eng, "create table b_tbl (k int, m float)", b_rows)
     text = (
-        _IMPORTS + f"{jt} JOIN a.kid = b.kid\n"
+        _IMPORTS + f"{_kid_join(jt)}\n"
         "SELECT b.kid, a.m_a, b.m_b ORDER BY b.kid asc;\n"
     )
     assert _rows(eng, tmp_path, text) == MATRIX[(population, jt)]
 
 
 def test_source_side_key_projection_left(tmp_path: Path):
-    # projecting the authored SOURCE side (a.kid) is correct for LEFT (a is the
+    # projecting the authored SOURCE side (a.kid) is correct for subset (a is the
     # preserved operand, so a.kid is present on every row).
     eng = _engine(tmp_path, B_MODEL)
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(2, 200.0), (3, 300.0)])
     text = (
-        _IMPORTS + "LEFT JOIN a.kid = b.kid\n"
+        _IMPORTS + "subset join b.kid = a.kid\n"
         "SELECT a.kid, a.m_a, b.m_b ORDER BY a.kid asc;\n"
     )
     assert _rows(eng, tmp_path, text) == [(1, 10.0, None), (2, 20.0, 200.0)]
 
 
 def test_full_source_side_projection_coalesces(tmp_path: Path):
-    # `FULL JOIN a.kid = b.kid; SELECT a.kid` yields the coalesced key (the
+    # `union join a.kid = b.kid; SELECT a.kid` yields the coalesced key (the
     # b-only row 3 surfaces) — the join asserts a.kid and b.kid are one logical
-    # key. FULL binding-keyed sources stay on the identity path (their binding is
+    # key. union binding-keyed sources stay on the identity path (their binding is
     # NOT substituted to the canonical), so the keypair is distinct (`a.k = b.k`)
     # and the merge node coalesces both members regardless of which is projected.
     eng = _engine(tmp_path, B_MODEL)
@@ -140,7 +147,7 @@ def test_full_source_side_projection_coalesces(tmp_path: Path):
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(2, 200.0), (3, 300.0)])
     text = (
-        _IMPORTS + "FULL JOIN a.kid = b.kid\n"
+        _IMPORTS + "union join a.kid = b.kid\n"
         "SELECT a.kid, a.m_a, b.m_b ORDER BY a.kid asc;\n"
     )
     assert _rows(eng, tmp_path, text) == [
@@ -153,12 +160,12 @@ def test_full_source_side_projection_coalesces(tmp_path: Path):
 @pytest.mark.parametrize(
     "jt,expected",
     [
-        # LEFT preserves the `a` side; the b-only key 3 drops.
-        ("LEFT", [(1, 10.0, None), (2, 20.0, "two")]),
-        # FULL: a-only (1) gets a NULL label, b-only (3) surfaces with its label
+        # subset preserves the `a` side; the b-only key 3 drops.
+        ("subset", [(1, 10.0, None), (2, 20.0, "two")]),
+        # union: a-only (1) gets a NULL label, b-only (3) surfaces with its label
         # AND a NULL measure — the property keyed on the merged key resolves
         # across the joined datasources without re-completing the key.
-        ("FULL", [(1, 10.0, None), (2, 20.0, "two"), (3, None, "three")]),
+        ("union", [(1, 10.0, None), (2, 20.0, "two"), (3, None, "three")]),
     ],
 )
 def test_property_on_merged_key_through_outer(tmp_path: Path, jt: str, expected: list):
@@ -169,7 +176,7 @@ def test_property_on_merged_key_through_outer(tmp_path: Path, jt: str, expected:
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0), (2, 20.0)])
     _load(eng, "create table b_tbl (k int, l varchar)", [(2, "two"), (3, "three")])
     text = (
-        _IMPORTS + f"{jt} JOIN a.kid = b.kid\n"
+        _IMPORTS + f"{_kid_join(jt)}\n"
         "SELECT b.kid, a.m_a, b.label ORDER BY b.kid asc;\n"
     )
     assert _rows(eng, tmp_path, text) == expected
@@ -177,13 +184,13 @@ def test_property_on_merged_key_through_outer(tmp_path: Path, jt: str, expected:
 
 def test_join_keyword_tracks_authored_type(tmp_path: Path):
     # the rendered SQL join keyword tracks the authored join type (no silent
-    # promotion/demotion), and FULL coalesces the (canonical) key.
+    # promotion/demotion), and union coalesces the (canonical) key.
     eng = _engine(tmp_path, B_MODEL)
     _load(eng, "create table a_tbl (k int, m float)", [(1, 10.0)])
     _load(eng, "create table b_tbl (k int, m float)", [(1, 100.0)])
-    base = _IMPORTS + "{jt} JOIN a.kid = b.kid\nSELECT b.kid, a.m_a, b.m_b;\n"
-    left = eng.generate_sql(base.format(jt="LEFT"))[-1]
+    base = _IMPORTS + "{join}\nSELECT b.kid, a.m_a, b.m_b;\n"
+    left = eng.generate_sql(base.format(join=_kid_join("subset")))[-1]
     eng.environment = Environment(working_path=tmp_path)
-    full = eng.generate_sql(base.format(jt="FULL"))[-1]
+    full = eng.generate_sql(base.format(join=_kid_join("union")))[-1]
     assert "LEFT OUTER JOIN" in left
     assert "FULL JOIN" in full.upper() and "coalesce" in full.lower()

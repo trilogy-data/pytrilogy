@@ -40,12 +40,12 @@ HEAD = (
 SELECT = "select ka, sum(a.l_val) as lv, sum(b.r_val) as rv, sum(c.m_val) as cv;"
 
 RELATIONS = {
-    # `left join ka = kb; left join ka = kc` anchors ka; the merge form marks
+    # `subset join kb = ka; subset join kc = ka` anchors ka; the merge form marks
     # each optional side partial against the same anchor.
-    ("left", "join"): "left join ka = kb\nleft join ka = kc",
-    ("left", "merge"): "merge kb into ~ka;\nmerge kc into ~ka;",
-    ("full", "join"): "full join ka = kb = kc",
-    ("full", "merge"): "merge ka into kb;\nmerge kb into kc;",
+    ("subset", "join"): "subset join kb = ka\nsubset join kc = ka",
+    ("subset", "merge"): "merge kb into ~ka;\nmerge kc into ~ka;",
+    ("union", "join"): "union join ka = kb = kc",
+    ("union", "merge"): "merge ka into kb;\nmerge kb into kc;",
 }
 
 
@@ -60,12 +60,12 @@ def _oracle(join_type: str, form: str) -> list[tuple]:
     a = aggregate(LEFT_ROWS, shift)
     b = aggregate(RIGHT_ROWS, shift)
     c = aggregate(MID_ROWS, shift)
-    if join_type == "left":
+    if join_type == "subset":
         keys = set(a)
     elif form == "merge":
         # the merge stack is a chain of EQUAL declarations, narrowed to the
         # three-way intersection by default (lying declaration = author
-        # error); the query-scoped `full join` chain keeps the union.
+        # error); the query-scoped `union join` chain keeps the union.
         keys = set(a) & set(b) & set(c)
     else:
         keys = set(a) | set(b) | set(c)
@@ -73,7 +73,7 @@ def _oracle(join_type: str, form: str) -> list[tuple]:
 
 
 @pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["left", "full"])
+@pytest.mark.parametrize("join_type", ["subset", "union"])
 def test_three_way_derived_key(tmp_path: Path, join_type: str, form: str):
     relation = RELATIONS[(join_type, form)]
     query = HEAD + relation + "\n" + SELECT

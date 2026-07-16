@@ -832,8 +832,20 @@ class PredicatePushdown(OptimizationRule):
         self.debug(
             f"Have {len(candidates)} candidates to try to push down from parent {type(cte.condition)}"
         )
+        # CTEs feeding this consumer's existence subselects. Sibling membership
+        # atoms of one AND-group are mutually redundant inside each other's
+        # feeder sets (the final AND already intersects them), but each push
+        # promotes the other feeder as a dependency — with N HAVING-derived
+        # semijoins that chains feeder k over feeders 1..k-1: O(N^2) SQL and a
+        # combinatorial explosion for the executing engine (q11 25GiB OOM).
+        existence_feeders: set[str] = set()
+        for sources in cte.existence_source_map.values():
+            existence_feeders.update(sources)
         optimized = False
         for candidate in candidates:
+            candidate_has_existence = isinstance(candidate, BuildConceptArgs) and any(
+                arg for group in candidate.existence_arguments for arg in group
+            )
             # Scalarity is *parent-relative*: a candidate like
             # ``manufact_matches > 0`` is non-scalar in the abstract (its concept
             # has aggregate lineage) but becomes scalar inside a parent CTE that
@@ -844,6 +856,12 @@ class PredicatePushdown(OptimizationRule):
             # motivated this) lets ``UpgradeJoinOnGuards`` see a
             # null-rejecting predicate next to the producing outer join.
             for parent_cte in parents:
+                if candidate_has_existence and parent_cte.name in existence_feeders:
+                    self.debug(
+                        f"Not pushing existence predicate {candidate} into "
+                        f"{parent_cte.name}: sibling existence feeder of {cte.name}"
+                    )
+                    continue
                 parent_materialized = _parent_materialized_addrs(parent_cte)
                 if is_scalar_condition(candidate, materialized=parent_materialized):
                     local_pushdown = self._check_parent(

@@ -38,6 +38,6 @@ def test_duckdb_summarize_result_covers_full_result(duckdb_engine):
     # approx_unique is exact at this size
     item_col = next(s for k, s in by.items() if "item" in k)
     store_col = next(s for k, s in by.items() if "store" in k)
-    assert item_col["distinct"] == 2  # jeans, hammer
-    assert store_col["distinct"] == 3  # 1, 2, 3
+    assert item_col["distinct_approx"] == 2  # jeans, hammer
+    assert store_col["distinct_approx"] == 3  # 1, 2, 3
     assert item_col["non_null"] == 4 and item_col["nulls"] == 0

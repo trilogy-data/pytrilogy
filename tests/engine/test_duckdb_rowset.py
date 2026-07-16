@@ -32,7 +32,7 @@ select 9 as line_id, 40 as item_id, 1999 as yr
 
 
 def test_rowset_query_scoped_join_conflicting_filter():
-    # A query-scoped LEFT join to a rowset (with a `having <partial> is not null`
+    # A query-scoped subset join to a rowset (with a `having <partial> is not null`
     # expressing the intersection), where the rowset and the outer
     # query filter the SAME dimension to DIFFERENT values (year 2000 vs 1999).
     # This used to crash the planner with `Have {...} need ...` because the
@@ -50,7 +50,7 @@ rowset yr2000 <-
         count(line_id) as cnt_2000;
 
 where yr = 1999
-left join item_id = yr2000.r_item_id
+subset join yr2000.r_item_id = item_id
 select
     item_id,
     count(line_id) as cnt_1999,
@@ -172,8 +172,8 @@ rowset nxt_sums <-
     where chan = 'WEB' and wk in weeks.nxt
     select wk as nxt_ws, sum(amt) as nxt;
 select cur_sums.src_ws, cur_sums.cur, nxt_sums.nxt
-left join cur_sums.src_ws = weeks.ws
-left join weeks.nxt = nxt_sums.nxt_ws
+subset join weeks.ws = cur_sums.src_ws
+subset join nxt_sums.nxt_ws = weeks.nxt
 order by cur_sums.src_ws asc;
 """)
 
@@ -1066,7 +1066,7 @@ def test_tvf_union_arm_local_join():
     executor.execute_text(_TVF_UNION_JOIN_FIXTURE)
     query = """
 with combined as union(
-    (left join srs.s_store = rrs.r_store
+    (subset join rrs.r_store = srs.s_store
      select srs.s_store -> k, srs.s_amt - coalesce(rrs.r_amt, 0) -> net),
     (select store_id -> k, sale_amt -> net)
 ) -> (k, net);
@@ -1106,14 +1106,14 @@ rowset rrs <- select return_store_id as r_store, sum(return_amt) as r_amt;
 
 
 def test_scoped_left_join_coalesce_keeps_unmatched():
-    # A scoped `left join` where the partial (right) rowset is referenced ONLY
+    # A scoped `subset join` where the partial (right) rowset is referenced ONLY
     # through a non-null wrapper (coalesce). Returns covers store 1 only, so
     # store 2 is unmatched on the left and must survive with coalesce(NULL,0)=0.
     # Previously rendered INNER and dropped store 2.
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_LEFT_JOIN_UNMATCHED_FIXTURE)
     query = """
-left join srs.s_store = rrs.r_store
+subset join rrs.r_store = srs.s_store
 select srs.s_store -> k, srs.s_amt - coalesce(rrs.r_amt, 0) -> net
 order by k asc;
 """
@@ -1224,8 +1224,8 @@ with store_agg as where channel='STORE' select item as item_code, sum(qty) as st
 with catalog_agg as where channel='CATALOG' select item as item_code, sum(qty) as catalog_qty, count(sale_id) as catalog_row_count, count(qty) as catalog_non_null_qty_count;
 with web_agg as where channel='WEB' select item as item_code, sum(qty) as web_qty, count(sale_id) as web_row_count;
 with combined as
-left join store_agg.item_code = catalog_agg.item_code
-left join store_agg.item_code = web_agg.item_code
+subset join catalog_agg.item_code = store_agg.item_code
+subset join web_agg.item_code = store_agg.item_code
 select
     store_agg.item_code, store_agg.store_qty, store_agg.store_row_count, store_agg.store_non_null_qty_count,
     catalog_agg.catalog_qty, catalog_agg.catalog_row_count, catalog_agg.catalog_non_null_qty_count,

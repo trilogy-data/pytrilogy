@@ -81,6 +81,10 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.scope_diagnostics import (
+    DerivedValueScope,
+    extract_derived_value_scopes,
+)
 from trilogy.core.statements.author import (
     ChartLayer,
     ChartStatement,
@@ -806,6 +810,9 @@ def get_query_node(
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
     scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    build_lineage_sink: (
+        list[BuildSelectLineage | BuildMultiSelectLineage] | None
+    ) = None,
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -835,6 +842,8 @@ def get_query_node(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
         statement
     )
+    if build_lineage_sink is not None:
+        build_lineage_sink.append(build_statement)
 
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts,
@@ -983,6 +992,9 @@ def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
+    build_lineage_sink: (
+        list[BuildSelectLineage | BuildMultiSelectLineage] | None
+    ) = None,
 ) -> QueryDatasource:
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
@@ -991,7 +1003,10 @@ def get_query_datasources(
         (j.source_address, j.target_address, j.join_type) for j in join_clauses
     ]
     ds = get_query_node(
-        environment, statement.as_lineage(environment), scoped_joins=scoped_joins
+        environment,
+        statement.as_lineage(environment),
+        scoped_joins=scoped_joins,
+        build_lineage_sink=build_lineage_sink,
     )
 
     final_qds = ds.resolve()
@@ -1298,8 +1313,12 @@ def process_query(
 ) -> ProcessedQuery:
     hooks = hooks or []
 
+    build_lineage_sink: list[BuildSelectLineage | BuildMultiSelectLineage] = []
     root_datasource = get_query_datasources(
-        environment=environment, statement=statement, hooks=hooks
+        environment=environment,
+        statement=statement,
+        hooks=hooks,
+        build_lineage_sink=build_lineage_sink,
     )
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
@@ -1374,6 +1393,15 @@ def process_query(
         domain_graph=domain_graph,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
+    # Observational only — a diagnostics failure must never block the query.
+    derived_value_scopes: list[DerivedValueScope] = []
+    if build_lineage_sink:
+        try:
+            derived_value_scopes = extract_derived_value_scopes(
+                build_lineage_sink[0], environment, join_clauses
+            )
+        except Exception as exc:
+            logger.debug(f"{LOGGER_PREFIX} scope diagnostics extraction failed: {exc}")
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
@@ -1385,4 +1413,5 @@ def process_query(
         locally_derived=statement.locally_derived,
         parameters=_extract_params(environment.concepts, statement.local_concepts),
         scoped_merge_map=scoped_merge_map,
+        derived_value_scopes=derived_value_scopes,
     )

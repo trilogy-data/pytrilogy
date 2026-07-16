@@ -62,7 +62,32 @@ def multi_models(tmp_path: Path) -> Path:
     return tmp_path
 
 
+# `subset join b = a` and `union join a = b` are the two scoped-relation
+# spellings. SUBSET normalizes to the superset-anchored LEFT_OUTER relation and
+# UNION to FULL, so the SelectJoin these produce is identical to the removed
+# `left join a = b` / `full join a = b` spellings (only the authored tag +
+# round-trip render differ).
+_SCOPED_RELATION = {
+    "LEFT": "subset join customers.customer_id = orders.customer_id",
+    "FULL": "union join orders.customer_id = customers.customer_id",
+}
+
+
 def _select(jointype: str) -> str:
+    return f"""
+import orders as orders;
+import customers as customers;
+
+{_SCOPED_RELATION[jointype]}
+SELECT
+    customers.region,
+    sum(orders.order_amount) -> total_amount
+ORDER BY customers.region asc;
+"""
+
+
+def _raw_select(jointype: str) -> str:
+    # a raw `<type> join` clause for the reject tests (bypasses _SCOPED_RELATION).
     return f"""
 import orders as orders;
 import customers as customers;
@@ -75,14 +100,14 @@ ORDER BY customers.region asc;
 """
 
 
-def test_left_join_marks_partial(models: Path):
+def test_subset_join_marks_partial(models: Path):
     _, parsed = parse_text(_select("LEFT"), root=models)
     join = parsed[-1].join_clauses[0]
     assert join.join_type is JoinType.LEFT_OUTER
     assert join.modifiers == [Modifier.PARTIAL]
 
 
-def test_left_join_renders_left_outer(models: Path):
+def test_subset_join_renders_left_outer(models: Path):
     env, parsed = parse_text(_select("LEFT"), root=models)
     sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
     assert "LEFT OUTER JOIN" in sql
@@ -127,7 +152,7 @@ def test_scoped_join_round_trips_through_render(models: Path):
 
     _, parsed = parse_text(_select("LEFT"), root=models)
     rendered = render_query(parsed[-1])
-    assert "left join orders.customer_id = customers.customer_id" in rendered
+    assert "subset join customers.customer_id = orders.customer_id" in rendered
     text = """
 import orders as orders;
 import customers as customers;
@@ -139,10 +164,10 @@ import customers as customers;
     assert join.source_address == "orders.customer_id"
 
 
-@pytest.mark.parametrize("jointype", ["RIGHT", "CROSS"])
+@pytest.mark.parametrize("jointype", ["LEFT", "FULL", "INNER", "RIGHT", "CROSS"])
 def test_unsupported_join_types_rejected(models: Path, jointype: str):
     with pytest.raises(ParseError, match="not supported in query-scoped joins"):
-        parse_text(_select(jointype), root=models)
+        parse_text(_raw_select(jointype), root=models)
 
 
 def test_full_join_key_is_not_partial(models: Path):
@@ -184,7 +209,7 @@ def test_full_join_round_trips_through_render(models: Path):
 
     _, parsed = parse_text(_select("FULL"), root=models)
     rendered = render_query(parsed[-1])
-    assert "full join orders.customer_id = customers.customer_id" in rendered
+    assert "union join orders.customer_id = customers.customer_id" in rendered
     text = "import orders as orders;\nimport customers as customers;\n" + rendered
     _, reparsed = parse_text(text, root=models)
     assert reparsed[-1].join_clauses[0].join_type is JoinType.FULL
@@ -198,7 +223,7 @@ def test_literal_self_join_rejected(models: Path):
 import orders as orders;
 import customers as customers;
 
-LEFT JOIN orders.customer_id = orders.customer_id
+subset join orders.customer_id = orders.customer_id
 SELECT sum(orders.order_amount) -> total;
 """
     with pytest.raises(ParseError, match="itself"):
@@ -234,7 +259,7 @@ def test_chained_composite_key_rejected(two_key_models: Path):
     # (`cat_agg.item = web_agg.cust`) that downstream silently drops, collapsing the
     # FULL join toward a cross product (q78). Reject it at parse time instead.
     text = _TWO_ROWSETS + (
-        "FULL JOIN web_agg.base.item_id = cat_agg.base.item_id"
+        "union join web_agg.base.item_id = cat_agg.base.item_id"
         " = web_agg.base.cust_id = cat_agg.base.cust_id\n"
         "SELECT web_agg.base.item_id, web_agg.total, cat_agg.total;"
     )
@@ -246,7 +271,7 @@ def test_composite_key_via_and_pairs_correctly(two_key_models: Path):
     # The supported composite-key form: `and` splits into two same-concept groups,
     # each pairing cleanly with no cross-concept garbage.
     text = _TWO_ROWSETS + (
-        "FULL JOIN web_agg.base.item_id = cat_agg.base.item_id"
+        "union join web_agg.base.item_id = cat_agg.base.item_id"
         " and web_agg.base.cust_id = cat_agg.base.cust_id\n"
         "SELECT web_agg.base.item_id, web_agg.total, cat_agg.total;"
     )
@@ -265,7 +290,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-LEFT JOIN orders.customer_id = customers.customer_id = shipments.customer_id
+subset join shipments.customer_id = customers.customer_id = orders.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt;
 """
     _, parsed = parse_text(text, root=multi_models)
@@ -362,12 +387,13 @@ def nested_models(tmp_path: Path) -> Path:
 
 def test_join_resolves_nested_namespace_key(nested_models: Path):
     # nested-namespace keys (`catalog.item.item_id`) resolve as fully-addressed
-    # concepts; direction is positional (left = source, right = anchor).
+    # concepts; `subset join subset = superset` maps the superset (right) to the
+    # join source and the subset (left) to the target.
     text = """
 import sales as sales;
 import catalog as catalog;
 
-LEFT JOIN catalog.item.item_id = sales.item.item_id
+subset join sales.item.item_id = catalog.item.item_id
 SELECT sales.item.item_id, sum(sales.amt) -> total;
 """
     _, parsed = parse_text(text, root=nested_models)
@@ -383,7 +409,7 @@ def test_join_key_must_exist(models: Path):
 import orders as orders;
 import customers as customers;
 
-LEFT JOIN orders.nonexistent = customers.customer_id
+subset join customers.customer_id = orders.nonexistent
 SELECT customers.region;
 """
     with pytest.raises(UndefinedConceptException, match="orders.nonexistent"):
@@ -391,19 +417,28 @@ SELECT customers.region;
 
 
 @pytest.mark.parametrize(
-    "tail",
+    "tail,expected",
     [
-        "left join orders.customer_id = customers.customer_id\nand orders.order_amount > 0\nselect customers.region;",
-        "left join orders.customer_id = customers.customer_id\nwhere orders.order_amount > 0\nselect customers.region;",
+        # a filter smuggled onto the join via `and` -> point back to WHERE (220).
+        (
+            "subset join customers.customer_id = orders.customer_id\nand orders.order_amount > 0\nselect customers.region;",
+            "Filter input rows in `where`",
+        ),
+        # a full `where` clause AFTER the join -> the join is misplaced (before
+        # `where`); 226 tells the author to reorder (join after the select list).
+        (
+            "subset join customers.customer_id = orders.customer_id\nwhere orders.order_amount > 0\nselect customers.region;",
+            "Misplaced",
+        ),
     ],
 )
-def test_filter_after_join_gives_helpful_error(models: Path, tail: str):
-    # filters placed after a join clause must point the author back to WHERE,
+def test_filter_after_join_gives_helpful_error(models: Path, tail: str, expected: str):
+    # filters/clauses misplaced around a join must give a helpful reorder hint,
     # not surface the internal "expected JOIN_TYPE" token.
     from trilogy.core.exceptions import InvalidSyntaxException
 
     text = "import orders as orders;\nimport customers as customers;\n" + tail
-    with pytest.raises(InvalidSyntaxException, match="Filter input rows in `where`"):
+    with pytest.raises(InvalidSyntaxException, match=expected):
         parse_text(text, root=models)
 
 
@@ -413,8 +448,8 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-LEFT JOIN orders.customer_id = customers.customer_id
-LEFT JOIN shipments.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id
+subset join customers.customer_id = shipments.customer_id
 SELECT
     customers.region,
     sum(orders.order_amount) -> amt,
@@ -441,7 +476,7 @@ def test_projected_join_source_renders(models: Path):
 import orders as orders;
 import customers as customers;
 
-LEFT JOIN orders.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id
 SELECT
     orders.customer_id,
     sum(orders.order_amount) -> amt;
@@ -459,7 +494,7 @@ def test_projected_join_target_renders(models: Path):
 import orders as orders;
 import customers as customers;
 
-LEFT JOIN orders.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id
 SELECT
     customers.customer_id,
     sum(orders.order_amount) -> amt;
@@ -480,7 +515,7 @@ def test_aggregate_grouped_by_merged_key(models: Path):
 import orders as orders;
 import customers as customers;
 
-LEFT JOIN orders.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id
 SELECT
     customers.customer_id,
     sum(orders.order_amount) -> amt;
@@ -545,8 +580,8 @@ import f1 as f1;
 import f2 as f2;
 import f3 as f3;
 
-left join f1.d.dim_id = f2.d.dim_id
-left join f1.d.dim_id = f3.d.dim_id
+subset join f2.d.dim_id = f1.d.dim_id
+subset join f3.d.dim_id = f1.d.dim_id
 select f1.d.attr as attr, sum(f1.m1) as total;
 """
     env, parsed = parse_text(join_text, root=three_fact_models)
@@ -755,7 +790,7 @@ def test_full_join_key_resolves_from_complete_not_partial_source(
 import customers as customers;
 import orders as orders;
 
-FULL JOIN orders.customer_id = customers.customer_id
+union join orders.customer_id = customers.customer_id
 SELECT customers.customer_id, customers.region, sum(orders.order_amount) -> total
 ORDER BY customers.customer_id asc;
 """
@@ -781,7 +816,7 @@ def test_full_join_exemption_does_not_cover_partial_only_non_key(tmp_path: Path)
 import customers as customers;
 import orders as orders;
 
-FULL JOIN orders.customer_id = customers.customer_id
+union join orders.customer_id = customers.customer_id
 SELECT customers.customer_id, customers.region, orders.vip_flag;
 """
     env, parsed = parse_text(text, root=tmp_path)
@@ -814,8 +849,8 @@ def test_full_join_two_keys_single_join(two_key_engine: Executor, tmp_path: Path
 import left as l;
 import right as r;
 
-FULL JOIN l.k1 = r.k1
-FULL JOIN l.k2 = r.k2
+union join l.k1 = r.k1
+union join l.k2 = r.k2
 SELECT r.k1, r.k2, sum(l.m1) -> sm1, sum(r.m2) -> sm2
 ORDER BY r.k1 asc, r.k2 asc;
 """
@@ -841,8 +876,8 @@ def test_full_join_two_keys_coarser_output_grain(
 import left as l;
 import right as r;
 
-FULL JOIN l.k1 = r.k1
-FULL JOIN l.k2 = r.k2
+union join l.k1 = r.k1
+union join l.k2 = r.k2
 SELECT r.k1, sum(l.m1) -> sm1, sum(r.m2) -> sm2
 ORDER BY r.k1 asc;
 """
@@ -870,8 +905,8 @@ import a as a;
 import b as b;
 import c as c;
 
-FULL JOIN a.kid = b.kid
-FULL JOIN c.kid = b.kid
+union join a.kid = b.kid
+union join c.kid = b.kid
 SELECT b.kid, sum(a.m_a) -> sa, sum(b.m_b) -> sb, sum(c.m_c) -> sc
 ORDER BY b.kid asc;
 """
@@ -973,8 +1008,8 @@ select sales.brand as brand, sales.cls as cls, sum(sales.amt) as amt_01;
 rowset y02 <- where sales.year = 2002
 select sales.brand as brand, sales.cls as cls, sum(sales.amt) as amt_02;
 
-FULL JOIN y01.brand = y02.brand
-FULL JOIN y01.cls = y02.cls
+union join y01.brand = y02.brand
+union join y01.cls = y02.cls
 SELECT y02.brand, y02.cls, y01.amt_01, y02.amt_02
 ORDER BY y02.brand asc;
 """
@@ -1053,7 +1088,7 @@ def test_two_fact_full_join_with_dim_attr_keeps_all_customers(
 import store as store;
 import web as web;
 
-FULL JOIN store.customer.customer_id = web.customer.customer_id
+union join store.customer.customer_id = web.customer.customer_id
 SELECT
     store.customer.customer_id,
     store.customer.name,
@@ -1081,7 +1116,7 @@ def test_two_fact_full_join_key_only_is_union_of_facts(
 import store as store;
 import web as web;
 
-FULL JOIN store.customer.customer_id = web.customer.customer_id
+union join store.customer.customer_id = web.customer.customer_id
 SELECT
     store.customer.customer_id,
     sum(store.store_amt) -> s_total,
@@ -1113,7 +1148,7 @@ import web as web;
 
 rowset web_rs <- select web.customer.customer_id as wc, sum(web.web_amt) as web_total;
 
-FULL JOIN web_rs.wc = customer.customer_id
+union join web_rs.wc = customer.customer_id
 SELECT customer.customer_id, customer.name, web_rs.web_total
 ORDER BY customer.customer_id asc;
 """
@@ -1156,14 +1191,32 @@ def _parse_with_backend(text: str, root: Path, backend):
         clear_parse_cache()
 
 
-@pytest.mark.parametrize("jointype", ["LEFT", "FULL"])
-def test_and_sugar_matches_stacked_clauses(multi_models: Path, jointype: str):
+@pytest.mark.parametrize(
+    "sugar_join,stacked_join",
+    [
+        (
+            "subset join customers.customer_id = orders.customer_id"
+            " and customers.customer_id = shipments.customer_id",
+            "subset join customers.customer_id = orders.customer_id\n"
+            "subset join customers.customer_id = shipments.customer_id",
+        ),
+        (
+            "union join orders.customer_id = customers.customer_id"
+            " and shipments.customer_id = customers.customer_id",
+            "union join orders.customer_id = customers.customer_id\n"
+            "union join shipments.customer_id = customers.customer_id",
+        ),
+    ],
+)
+def test_and_sugar_matches_stacked_clauses(
+    multi_models: Path, sugar_join: str, stacked_join: str
+):
     sugar = f"""
 import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-{jointype} JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+{sugar_join}
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
 """
     stacked = f"""
@@ -1171,8 +1224,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-{jointype} JOIN orders.customer_id = customers.customer_id
-{jointype} JOIN shipments.customer_id = customers.customer_id
+{stacked_join}
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
 """
     _, sugar_parsed = parse_text(sugar, root=multi_models)
@@ -1183,12 +1235,12 @@ SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_cou
 
 def test_and_sugar_two_groups_matches_stacked(two_key_engine: Executor, tmp_path: Path):
     # `a = b and c = d` is two distinct one-pair groups, identical to two stacked
-    # FULL JOIN clauses (which collapse to one composite-key FULL JOIN either way).
+    # union join clauses (which collapse to one composite-key FULL JOIN either way).
     sugar = """
 import left as l;
 import right as r;
 
-FULL JOIN l.k1 = r.k1 and l.k2 = r.k2
+union join l.k1 = r.k1 and l.k2 = r.k2
 SELECT r.k1, r.k2, sum(l.m1) -> sm1, sum(r.m2) -> sm2
 ORDER BY r.k1 asc, r.k2 asc;
 """
@@ -1196,8 +1248,8 @@ ORDER BY r.k1 asc, r.k2 asc;
 import left as l;
 import right as r;
 
-FULL JOIN l.k1 = r.k1
-FULL JOIN l.k2 = r.k2
+union join l.k1 = r.k1
+union join l.k2 = r.k2
 SELECT r.k1, r.k2, sum(l.m1) -> sm1, sum(r.m2) -> sm2
 ORDER BY r.k1 asc, r.k2 asc;
 """
@@ -1221,12 +1273,12 @@ def test_and_sugar_combines_with_chained_group(tmp_path: Path):
         )
     imports = "".join(f"import {nm} as {nm};\n" for nm in ["a", "b", "c", "p", "q"])
     sugar = (
-        imports + "LEFT JOIN a.a_id = b.b_id = c.c_id and p.p_id = q.q_id\n"
+        imports + "subset join c.c_id = b.b_id = a.a_id and q.q_id = p.p_id\n"
         "SELECT a.a_id, sum(a.m_a) -> sm;"
     )
     stacked = (
-        imports + "LEFT JOIN a.a_id = b.b_id = c.c_id\n"
-        "LEFT JOIN p.p_id = q.q_id\n"
+        imports + "subset join c.c_id = b.b_id = a.a_id\n"
+        "subset join q.q_id = p.p_id\n"
         "SELECT a.a_id, sum(a.m_a) -> sm;"
     )
     _, sugar_parsed = parse_text(sugar, root=tmp_path)
@@ -1243,7 +1295,7 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
 """
     _, lark_parsed = _parse_with_backend(text, multi_models, ParserBackend.LARK)
@@ -1259,14 +1311,14 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt;
 """
     _, parsed = parse_text(text, root=multi_models)
     rendered = render_query(parsed[-1])
-    # canonical form is split: one `left join` line per group, no `and`.
-    assert "left join orders.customer_id = customers.customer_id" in rendered
-    assert "left join shipments.customer_id = customers.customer_id" in rendered
+    # canonical form is split: one `subset join` line per group, no `and`.
+    assert "subset join customers.customer_id = orders.customer_id" in rendered
+    assert "subset join customers.customer_id = shipments.customer_id" in rendered
     assert " and " not in rendered.split("select")[0]
     reimport = (
         "import orders as orders;\nimport customers as customers;\n"
@@ -1291,14 +1343,14 @@ import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id
+subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships
 ORDER BY customers.region asc;
 """
     stacked = sugar.replace(
-        "LEFT JOIN orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id",
-        "LEFT JOIN orders.customer_id = customers.customer_id\n"
-        "LEFT JOIN shipments.customer_id = customers.customer_id",
+        "subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id",
+        "subset join customers.customer_id = orders.customer_id\n"
+        "subset join customers.customer_id = shipments.customer_id",
     )
     assert _exec_rows(eng, multi_models, sugar) == _exec_rows(
         eng, multi_models, stacked
@@ -1320,9 +1372,8 @@ select 4 e, cast(null as int) m, 'dan' n
 """
 
 
-@pytest.mark.parametrize("join_kw", ["full", "union"])
-def test_same_table_union_relation_rejected(tmp_path: Path, join_kw: str):
-    """Both endpoints of a FULL/UNION relation bound ONLY in one table: the
+def test_same_table_union_relation_rejected(tmp_path: Path):
+    """Both endpoints of a UNION relation bound ONLY in one table: the
     unified key coalesces across the two endpoints' populations, which a single
     scan cannot represent — the plan silently rendered one endpoint's own
     column as the unified axis. Fail clean, pointing at the double-import idiom
@@ -1333,22 +1384,16 @@ def test_same_table_union_relation_rejected(tmp_path: Path, join_kw: str):
     env.parse(_EMP)
     eng = Dialects.DUCK_DB.default_executor(environment=env)
     with pytest.raises(InvalidSyntaxException, match=r"bound\s+only in the same"):
-        eng.generate_sql(f"{join_kw} join eid = mid select name, mid;")
+        eng.generate_sql("union join eid = mid select name, mid;")
 
 
-@pytest.mark.parametrize(
-    "query",
-    [
-        "left join eid = mid select name, mid;",
-        "subset join mid = eid select name, mid;",
-    ],
-)
-def test_same_table_subset_relation_unified_axis(query: str):
-    """A LEFT/SUBSET relation between two keys of ONE table resolves: the
+def test_same_table_subset_relation_unified_axis():
+    """A SUBSET relation between two keys of ONE table resolves: the
     anchor's own column IS the unified axis, exactly the two-table semantics
     (the folded `mid` renders the eid axis). Previously masked by the
     datasource-level partial smear: the folded endpoint's PARTIAL binding hid
     the complete binding of the same address."""
+    query = "subset join mid = eid select name, mid;"
     env = Environment()
     env.parse(_EMP)
     eng = Dialects.DUCK_DB.default_executor(environment=env)
@@ -1366,7 +1411,7 @@ datasource managers (m: mid) grain (mid)
 query '''select 3 m union all select 4 m''';
 """)
     eng = Dialects.DUCK_DB.default_executor(environment=env)
-    sql = eng.generate_sql("left join eid = mid select name, mid;")[-1]
+    sql = eng.generate_sql("subset join mid = eid select name, mid;")[-1]
     assert "INVALID_REFERENCE_BUG" not in sql
 
 
@@ -1382,7 +1427,7 @@ def test_same_table_double_import_self_relation(tmp_path: Path):
 import emp as e1;
 import emp as e2;
 
-left join e2.eid = e1.mid
+subset join e1.mid = e2.eid
 select e1.name, e2.name -> manager_name;
 """)[-1]
     rows = {tuple(r) for r in eng.execute_raw_sql(sql).fetchall()}

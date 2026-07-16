@@ -24,10 +24,10 @@ def test_merged_key_row_level_read(tmp_path: Path):
 
 
 def test_bare_coalescing_axis_projection(tmp_path: Path):
-    # A full-join axis is the union of member domains; no single scan may
+    # A union-join axis is the union of member domains; no single scan may
     # satisfy the bare projection (left {1,2,3} ∪ right {1,2,4}).
     write_models(tmp_path)
-    rows = run_cell(tmp_path, IMPORTS + "select l_key full join r_key = l_key;")
+    rows = run_cell(tmp_path, IMPORTS + "select l_key union join r_key = l_key;")
     assert rows == [(1,), (2,), (3,), (4,)]
 
 

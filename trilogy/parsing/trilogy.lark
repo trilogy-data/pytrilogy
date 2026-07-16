@@ -130,10 +130,11 @@
     select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  select_grouping?  having? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
-    // for this select only (a query-local merge). LEFT anchors its first key
-    // (others partial); FULL coalesces. SUBSET/UNION are the domain-declaration
+    // for this select only (a query-local merge). SUBSET and UNION are the only
     // spellings (subset join a = b: a's values ⊆ b's, b anchors; union join:
-    // neither side contains the other) — normalized at hydration.
+    // neither side contains the other) — normalized at hydration. left/full/
+    // inner/right/cross still lex as JOIN_TYPE but are rejected at hydration
+    // with a migration hint (see select_statement_rules.join_clause).
     // `a = b = c` chains all keys into ONE equivalence group with this join type.
     // `a = b and c = d` is sugar for two separate join clauses of this type (two
     // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.
@@ -473,6 +474,8 @@
     fcast: _fcast_primary | _fcast_alt
     concat: ("concat"i "(" (expr ",")* expr ")")
     concat_ws: ("concat_ws"i "(" expr "," (expr ",")* expr ")")
+    // one or more keys
+    fgrain: "grain"i "(" expr ("," expr)* ")"
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fgreatest: "greatest"i "(" (expr ",")* expr ")"
     fleast: "least"i "(" (expr ",")* expr ")"
@@ -489,7 +492,7 @@
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
 
-    _generic_functions: fcast | concat_ws | concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast | concat_ws | concat  | fgrain | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/

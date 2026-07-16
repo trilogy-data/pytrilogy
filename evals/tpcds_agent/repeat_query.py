@@ -61,6 +61,13 @@ def _build_argparser() -> argparse.ArgumentParser:
         help="force tool_choice=required every turn (no plain-text reasoning). "
         "Default is tool_choice: auto; pass this to A/B the old forced-tool behavior.",
     )
+    p.add_argument(
+        "--scope-diagnostics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="expose derived-value scopes to the agent; pass "
+        "--no-scope-diagnostics for a clean baseline",
+    )
     p.add_argument("--output-dir", type=Path, default=None)
     p.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env.secrets")
     return p
@@ -159,8 +166,12 @@ def main() -> int:
         with pool_lock:
             worker = pool.pop()
         try:
-            produced = worker / f"query{qid:02d}{category.candidate_ext}"
+            produced = prompts.candidate_path(worker, SPEC, qid, category.candidate_ext)
+            score_input = prompts.scoring_candidate_path(
+                worker, qid, category.candidate_ext
+            )
             produced.unlink(missing_ok=True)  # never score a prior repeat's file
+            score_input.unlink(missing_ok=True)
             log_path = out / f"agent_log.q{qid:02d}.r{rep:02d}.jsonl"
             result = agent_runner.run_agent(
                 worker,
@@ -171,6 +182,7 @@ def main() -> int:
                 args.timeout,
                 "quiet",
                 toolset=category.harness,
+                scope_diagnostics=args.scope_diagnostics,
             )
             metrics = scoring.parse_agent_log(log_path)
             if result.get("exit_code", 0) != 0 and result.get("output"):
@@ -178,6 +190,9 @@ def main() -> int:
                     result["output"], encoding="utf-8"
                 )
             wrote = produced.exists()
+            prompts.stage_candidate_for_scoring(
+                worker, worker, SPEC, qid, category.candidate_ext
+            )
             with score_lock:
                 try:
                     score = scoring.score_query(
@@ -239,6 +254,7 @@ def main() -> int:
             "scale_factor": args.scale_factor,
             "max_iterations": args.max_iterations,
             "mode": category.key,
+            "scope_diagnostics": args.scope_diagnostics,
             "trilogy_version": _trilogy_version(),
         },
         "summary": summary,
