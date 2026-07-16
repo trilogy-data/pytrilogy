@@ -94,15 +94,24 @@ def test_grain_composes_with_filter():
     assert scalar(executor, query) == 4
 
 
-def test_grain_requires_two_keys():
-    env = Environment()
-    env.parse(DDL)
-    executor = Dialects.DUCK_DB.default_executor(environment=env)
-    try:
-        executor.generate_sql("select count(grain(fname)) as c;")
-    except Exception:
-        return
-    raise AssertionError("single-argument grain() should not parse")
+def test_grain_single_key_is_total():
+    """A one-key grain runs the same total+injective pipeline as a multi-key one:
+    count(grain(fname)) counts every row including the NULL fname (7), while
+    count(fname) skips it (6). count_distinct(grain(fname)) is the 5 distinct
+    fname values, with NULL its own group."""
+    executor = make_executor()
+    assert scalar(executor, "select count(fname) as c;") == 6
+    assert scalar(executor, "select count(grain(fname)) as c;") == 7
+    assert scalar(executor, "select count_distinct(grain(fname)) as c;") == 5
+
+
+def test_grain_single_key_dedupes_to_the_key():
+    """count(grain(store_id)) dedupes to the distinct store_id population (2), and
+    the key survives into a GROUP BY exactly as the multi-key form does."""
+    executor = make_executor()
+    assert scalar(executor, "select count(grain(store_id)) as c;") == 2
+    sql = executor.generate_sql("select count(grain(store_id)) as c;")[-1]
+    assert "group by" in sql.lower() and "store_id" in sql
 
 
 # --- grain() over imported-dimension keys (q23 shape) ---

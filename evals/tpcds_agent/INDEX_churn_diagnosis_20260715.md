@@ -30,12 +30,12 @@ classify A=framework / B=affordance / C=question / D=agent-idiom). 11 queries pr
    Re-confirms known-open `project_float32_union_placeholder_drift_no_double_type`. (Even here the eval
    impact is partly the scoring carve-out below — some drift "FAILs" are scoring, not correctness.)
 
-**Retracted:** q54 was initially filed as a 2nd framework bug (grainless scalar → per-row CASE). On review
-it is **not a bug** — `concept ? predicate` is a per-row filter at the concept's grain, not a scalar, and
-`auto` faithfully inlines it, so comparing a concept to a filtered version of itself is honestly `x>=x+1`.
-Correct idiom: aggregate (`max/min`) to collapse to a scalar. See the corrected
-`bug_q54_grainless_scalar_filter_bound.md`. Residual open design question: a separate-import grainless
-scalar constant won't broadcast without a join (loud disconnect, workaround exists).
+**q54 is NOT a framework bug** (I twice mis-filed it; corrected). Two correct-behavior pitfalls drove its
+churn: (a) bare `concept ? predicate` is a per-row filter (`CASE..ELSE NULL`), not a scalar, so a bound over
+the same concept expands to `x>=x+1` → 0 rows; (b) bare `max(...)` is **responsive-grain** — in
+`select key, … where …max…` it resolves as `max BY key`, which correctly disconnects from an unrelated table.
+The broadcast idiom is `max(expr) by *` (persistently grainless — resolves + cross-joins everywhere, verified),
+or aggregate off a connected role. Real issue = agent idiom (D/B). See `bug_q54_grainless_scalar_filter_bound.md`.
 
 ## Eval-harness bugs (high leverage — affect the metric itself)
 

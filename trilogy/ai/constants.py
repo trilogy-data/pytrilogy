@@ -35,37 +35,48 @@ subset|union join <a> = <b> [= <c>] blends concepts or expressions (from any sou
 - `subset join a = b` declares a's values are contained in b's (a ⊆ b). b is authoritative for the key; a's rows all find a partner.
 - `union join a = b` declares neither domain contains the other; the key is the coalesce of both sides and unmatched rows from both sides are kept.
 
-Rendering is always row-preserving: no join ever silently drops a row. The optimizer narrows to directional/INNER joins only when provably row-identical (an unfiltered authoritative side). Row restriction is ALWAYS an explicit predicate: to get an intersection (customers who have orders, items in both years), add explicit conditions — `where <optional side attr> is not null` on each side you require. A one-sided `is not null` keeps the other side's exclusive rows.
-
-There is no 'inner' join. Is explicit conditions (is not null, etc) to restrict results.
-
-Place it right after the select list (the SQL-like spot).
-
 A union key-group must be entirely union (no mixing with subset on the same key; union join a = b = c chains one group); subset joins mix freely.
 
-Chain = c to pull additional concepts into a join. Joins can be on expressions: a computed/offset key (`union join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
+Chain = c to pull additional concepts into a join. 
+Joins can be on expressions: a computed/offset key (`union join a.id + 53 = b.id`), an aggregate, or a window; only `=` equality is supported.
 
 Joins do NOT drop nulls. NULL is not a value: nullability never affects the declared domain relation, and NULL keys match null-safely. To filter out nulls, explicitly use not-null conditions.
+
+Joins are always effectively full - no join EVER implicitly drops a row. (there is NO inner)
+
+Always use an explicit filtering predicate to get an intersection 
+(customers who have orders, items in both years), add explicit conditions 
+`where <optional side attr> is not null` on the attribute that should be filtered.
+
+Full example: trilogy agent-info syntax example scoped-join.
 
 Join on the full grain. When blending two FACT models, write one join clause per key in their shared grain.
 trilogy explore prints each fact's grain as @<k1, k2> (e.g. @<order_number, item.id>); a composite grain needs BOTH union join a.order_number = b.order_number AND union join a.item.id = b.item.id.
 Matching only one key of a multi-key grain may cause duplication.
 
-Joins do *not restrict results*; they only enable traversal across models with those keys. To filter, explicit add a condition on the element to restrict to. 
+Place joins right after the select list (the SQL-like spot).
 
-To restrict returned values, explicitly add conditions. union join x=y does not restrict the result to where x=y unless that condition is defined in the where clause.
+merge (model-level join)
 
-Full example: trilogy agent-info syntax example scoped-join.
+merge <a> into <b>; is the persistent equivalent of a join (whole query/file). 
+Prefer a scoped join; use merge only when the connection is universal. 
+`merge a into ~b;` declares a SUBSET domain (a ⊆ b, like subset join a = b); 
+plain `merge a into b;` declares exact equivalence, and should be used only when the two 
+domains contain the exact same values.
 
-merge (model-level)
-
-merge <a> into <b> is the persistent equivalent of a join (whole query/file). Prefer a scoped join; use merge only when the connection is universal. merge a into ~b declares a SUBSET domain (a ⊆ b, like subset join a = b); plain merge a into b declares EQUAL domains — the strongest claim, letting the planner treat either side as authoritative and narrow joins to INNER. A lying declaration (data outside the declared domain) is an author error: the narrowed join drops the violating rows. One merge per shared concept.
+merges are standalone statements.
 
 union (row stacking)
 
 union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result. Arms match by column position (same count/order/types as outputs) and may contain full trilogy select statements (with their own filters + local joins). Usable in a rowset — with combined as union(...) -> (...) with outputs using standard rowset namespaceing <rowset_name>.<path>.
 
-Each arm is an ordinary select and DEDUPLICATES to its own output grain BEFORE stacking (cross-arm duplicates still stack). Stacking raw measure rows and aggregating OUTSIDE the union silently undersums whenever two source rows in one arm project the same tuple (two same-priced sales in one week). Either aggregate INSIDE each arm (preferred: `sum(x) as v` per the arm's dims) or pull each arm's grain key through as an extra output column so every fact row stays distinct; downstream selects can simply ignore the key column.
+Each arm is an ordinary select and DEDUPLICATES to its own output grain BEFORE stacking
+(cross-arm duplicates still stack).
+Stacking raw measure rows and aggregating OUTSIDE the union silently undersums 
+whenever two source rows in one arm project the same tuple (two same-priced sales in one week). 
+Either aggregate INSIDE each arm (preferred: `sum(x) as v` per the arm's dims) 
+or pull each arm's grain key through as an extra output column so every fact row stays distinct; 
+downstream selects can simply ignore the key column.
 
 Full example: trilogy agent-info syntax example union-stack-channels.
 
@@ -118,13 +129,13 @@ Full annotated example: `trilogy agent-info syntax example query-structure`.
    To weight a related dimension property once per fact row before aggregating it, first project it to the fact grain with `group`: `auto row_birth_year <- group(enroll.student.birth_year) by enroll.student_id, enroll.course_id; auto avg_birth_year <- avg(row_birth_year);`. Directly averaging the dimension property can retain its native entity grain instead of fact-row weighting.
 - **Output rows are deduplicated to the select grain.** To preserve legitimate duplicate rows, such as one output row per matching fact when the projected columns repeat, include the fact's grain keys in the select, hidden with the PREFIX `--` if they shouldn't appear in the output.
 - **Never write `distinct`.** `count(<key>)` is already distinct because keys are unique; use `count_distinct(<property>)` to count distinct values of a non-key property.
-- **Count a COMPOSITE grain with `grain(...)`.** When the thing you are counting is identified by several keys together, name them: `count(grain(order_id, item.id))` counts order+item combinations; `count_distinct(grain(first_name, last_name, sale_date))` counts distinct combinations. `grain(...)` is NEVER NULL, so a combination with a missing member still counts - unlike `count(<nullable property>)`, which skips those rows and silently undercounts. Never pick one column of a multi-key grain and count it: a coarser key counts its own distinct values, and a nullable one drops rows.
+- **Count a COMPOSITE grain with `grain(...)`.** When the thing you are counting is identified by several keys together, name them: `count(grain(order_id, item.id))` counts order+item combinations; `grain(...)` is NEVER NULL, so a combination with a missing member still counts. Never pick one column of a multi-key grain and count it: a coarser key counts its own distinct values, and a nullable one drops rows.
 - **One-column expression subqueries are supported.** Use `(select ...)` only where a scalar value or membership set is expected, and project exactly one column. This does not add SQL-style `FROM (SELECT ...)` table subqueries. For ordinary related-entity filters, prefer the direct dot-path:
   - Wrong: `where enrollments.student_id in (select student_id where student.state = 'TN')`
   - Right: `where enrollments.student.state = 'TN'`
 - **-- is a HIDDEN field not a comment; it still changes query structure. Use # for comments
-- **`count(1)` is invalid because a constant does not identify rows.** Count a concept with the intended identity, or use `count(grain(key1, key2))`; for conditional counts use `count(grain(key1, key2) ? condition)`. `sum(1)` remains available when a numeric row flag is explicitly intended.
-- **Counting fact rows without a single unique row key: use `count(grain(<the fact's keys>))`** - e.g. `count(grain(fact.order_id, fact.item_id))`. (The older two-stage workaround - materialize a flag at the complete fact grain with `auto line_flag <- sum(case when fact.qualifies then 1 else 0 end) by fact.order_id, fact.item_id;` then `sum(line_flag)` - still works, but `grain()` says it directly.) Writing `sum(1)` only at the outer report grain does not preserve repeated fact lines.
+- **`count(1)` is invalid because a constant does not identify rows; it is tautalogically always 1. You can use sum(1) by <grain> to get an explicit number over a rowset value.**
+- **Counting fact rows without a single unique row key: use `count(grain(<the fact's keys>))`** - e.g. `count(grain(fact.order_id, fact.item_id))`.
 
 ### Fields and aliases
 - Always use the full path (`enroll.student.id`) for a field; namespacing matters.
@@ -141,7 +152,8 @@ HAVING # filters data AFTER it has been aggregated or windowed
 ```
 INLINE filter x ? cond <- filters the immediate prior expression (e.g. sum(x ? x > 0) is sum (x where x is more than 0)).
 
-Note that aggregates/windows in WHERE do not filter the inputs to each other. You must use inline filters if you want a where clause aggregate/window to be filtered.
+Note that aggregates/windows in WHERE do not filter the inputs to each other. 
+You must use inline filters if you want a where clause aggregate/window to be filtered.
 
 where student.state = 'TN' #  filters ALL Data to the state
 select 
@@ -169,7 +181,7 @@ where substring(school.zip, 1, 2) in substring(big_zip, 1, 2)
 Membership semantics (`in` / `not in`, scalar and tuple alike) are IDENTITY matching, not SQL three-valued logic:
 - NULL matches NULL: a NULL key is in a set that contains a NULL, and `x in (1, null)` is true for NULL x.
 - Total: membership is always TRUE or FALSE (never NULL), so it is safe as a projected boolean flag.
-- `not in` is the EXACT complement of `in` — every row lands in exactly one side. There is no SQL NOT-IN footgun (a NULL in the set does not empty the result), and NULL-keyed rows are never silently dropped from either side.
+- `not in` is the EXACT complement of `in` — every row lands in exactly one side. A null in the set does NOT result in an empty result and NULL-keyed rows are never silently dropped from either side.
 - To reproduce strict SQL behavior, exclude NULLs explicitly: `where x is not null and x in some.set`.
 
  A fact model contains the full set of dimensional members (all students appear in `fact.students`), so:
@@ -196,7 +208,7 @@ Membership semantics (`in` / `not in`, scalar and tuple alike) are IDENTITY matc
         avg(enroll.grade_points::numeric(12,2)) as agg2
     by rollup (enroll.department, enroll.year);
     ```
-  - A composite measure works the same — both operands roll up together because the clause covers the whole select: `sum(a) - sum(b) as net by rollup (d1, d2)`.
+  - A composite measure works the same - both operands roll up together because the clause covers the whole select: `sum(a) - sum(b) as net by rollup (d1, d2)`.
   - `grouping(<field>)` returns 1 when the field has been rolled up at that row, 0 otherwise — use it (or a sum like `grouping(a) + grouping(b)`) to compute the hierarchy level. It needs a `by rollup`/`cube`/`grouping sets` clause on the select. Detecting rollup rows by output NULL only works when the source has no real NULLs in those columns; when in doubt, prefer `grouping()`.
 
 ## Window functions

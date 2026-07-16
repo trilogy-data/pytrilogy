@@ -5,33 +5,15 @@ import click
 from trilogy.ai.prompts import get_trilogy_prompt
 from trilogy.ai.syntax_examples import example_index, render_example
 
-AGENT_INFO_OUTPUT = r"""# Trilogy CLI - AI Agent Usage Guide
+AGENT_INFO_OUTPUT = r"""# Agent Usage Guide
 
 ## Overview
 
-Trilogy is a data access and transform language with streamlined
+Trilogy is a data access and transform language with
 SQL-like syntax. This CLI enables workspace management, script execution, testing,
 and data ingestion.
 
-Trilogy operates on an abstract semantic model, not tables. Joins are implicit
-via namespaced concepts; explicit joins are used to merge concepts when 
-deviating from the standard model only.
-
-## Quick Start
-
-```bash
-# Initialize a new workspace
-trilogy init [path]
-
-# Run a script
-trilogy run script.preql dialect [connection_args...]
-
-# Run unit tests (mocked datasources)
-trilogy unit script.preql
-
-# Run integration tests (real connections)
-trilogy integration script.preql dialect [connection_args...]
-```
+Trilogy operates on an abstract semantic model, not tables. 
 
 ## Commands Reference
 
@@ -86,12 +68,10 @@ structured information.
 
 **Trilogy auto-resolves joins.** 
 An explore call
-will show all imported join models that are accessible as well;
-joins across those models are automatic and should not be included
-in queries.
+will show all imported join models that are accessible as well; joins
+are not required to access those concepts.
 
-Prefer explore over reading the raw model file (`trilogy file read`); richer and
-more compact output.
+Prefer explore over reading the raw model file (`trilogy file read`); 
 
 **Arguments:**
 - `path` (required): Path to a `.preql` file.
@@ -118,7 +98,7 @@ trilogy explore raw/my_fact.preql --regex 'date\.(year|week_seq)'
 trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose property
 ```
 
-**Reading the JSON output — shared (conformed) dimensions.** A fact often plays the same
+**Reading the JSON output: shared (conformed) dimensions.** A fact often plays the same
 dimension in several roles (a date used as `date`, `return_date`, `ship_customer.first_sales_date`,
 ...). These role namespaces share one identical schema, so the JSON lists them **together in a
 single key, comma-separated, with the schema shown once**:
@@ -150,8 +130,8 @@ Run unit tests with mocked datasources (no connection needed):
 
 ### trilogy integration <input> [dialect] [conn_args...]
 
-Validate that every datasource is configured and connectable - executes
-against live DB, but does not run script: 
+Validate that every datasource is correctly configured by sampling
+real db data.
 `trilogy integration <file|dir> <dialect> <conn>`. Same
 `--param`/`-p`/`--config` options as `unit`.
 
@@ -173,7 +153,7 @@ trilogy fmt messy_script.preql
 
 ### trilogy render
 
-Render a markdown report (prose + embedded ```trilogy blocks) to PNG/HTML.
+Render a report to PNG/HTML.
 Run `trilogy agent-info report` for the command flags and the report format
 reference. Use this when a user asks you to produce a report or readout
 as a file.
@@ -183,9 +163,7 @@ as a file.
 ### trilogy ingest
 
 Bootstrap a Trilogy model from existing warehouse tables, files, or cloud
-objects. Run `trilogy agent-info ingest` for the full command reference
-(args, options, and warehouse/file/cloud examples). Use this when a user
-asks you to reverse-engineer a model from data that already exists.
+objects. 
 
 ---
 
@@ -225,7 +203,7 @@ trilogy file list . --recursive --long
 
 ### trilogy database <subcommand> [options]
 
-Direct database object inspection. Use primarily in bootstrapping
+Direct database object inspection. Use in bootstrapping
 and ingest. When working with a pre-curated model consume
 that directly. 
 
@@ -248,10 +226,9 @@ trilogy database describe my_fact
 
 ## Authoring Datasources
 
-When you need to author or edit a model, isntead of just
-using it, call `trilogy agent-info datasources` for 
-the full reference covering root, file-based (Parquet / CSV / Python+Arrow), 
-and partial/complete forms.
+When you need to author or edit a model
+call `trilogy agent-info datasources` for 
+the full reference.
 
 ---
 
@@ -259,7 +236,6 @@ and partial/complete forms.
 
 Trilogy defaults are stored in this file. Run `trilogy agent-info config` 
 for the full schema and API-key conventions. before making edits.
-
 
 ## File Types
 
@@ -278,8 +254,7 @@ for the full schema and API-key conventions. before making edits.
 ## Output Format
 
 Commands emit human formatting (rich if installed, plain text otherwise) by default.
-Use the --format flag to control; agentic access will default to --format json
-which will be JSON event objects.
+Use the --format flag to control; agentic access will default to --format json.
 . Pass `--format rich` for explicit human formatting.
 
 ## Debug Mode
@@ -292,23 +267,19 @@ trilogy --debug run query.preql duckdb
 ## Extended References (on demand)
 
 Reference sections live behind `trilogy agent-info <topic>` subcommands. 
-Call for more info if the tool is relevant to the current task.
+Call for more info.
 
 - `trilogy agent-info report` — `trilogy render` command flags AND the
-  markdown report format (```trilogy blocks, `chart` statements, `:::row`
-  side-by-side layout). For when producing a `.md` deliverable.
-- `trilogy agent-info datasources` — all datasource authoring forms: root,
-  file-based (Parquet / CSV / Python+Arrow), and partial/complete for
-  unioning partitioned subsets. For when you must declare a NEW datasource.
-- `trilogy agent-info ingest` — `trilogy ingest` full reference (warehouse
-  tables, CSV / Parquet, cloud URLs, `--fks`, `--all`, ...). For bootstrapping
-  a model from scratch.
+  markdown report format. Use to produce a rendered report or readout as a file.
+- `trilogy agent-info datasources` — all datasource authoring forms.
+  For authoring or editing datasource.
+- `trilogy agent-info ingest` — `trilogy ingest` full reference.
+  For bootstrapping a model from scratch.
 - `trilogy agent-info config` — `trilogy.toml` schema (`[engine]`, `[setup]`,
-  `[agent]`) and the env-var-only API-key convention. Only needed when
+  `[agent]`) and en-vars Only needed when
   editing the workspace config.
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
-  from trilogy-public-models) and `trilogy serve` (FastAPI server exposing
-  model directories). For distribution/hosting, not query authoring.
+  from trilogy-public-models) and `trilogy serve` (interactive debugging UI). 
 """
 
 

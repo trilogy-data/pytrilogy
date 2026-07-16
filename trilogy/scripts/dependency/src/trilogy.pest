@@ -665,8 +665,8 @@ fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ (data_type | IDENTIFIER) ~ ")" }
 // =============================================================================
 concat      = { ^"concat" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 concat_ws   = { ^"concat_ws" ~ "(" ~ expr ~ "," ~ expr ~ ("," ~ expr)* ~ ")" }
-// two or more keys: a one-key grain is just the key itself
-fgrain      = { ^"grain" ~ "(" ~ expr ~ ("," ~ expr)+ ~ ")" }
+// one or more keys
+fgrain      = { ^"grain" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fcoalesce   = { ^"coalesce" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fgreatest   = { ^"greatest" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
 fleast      = { ^"least" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }

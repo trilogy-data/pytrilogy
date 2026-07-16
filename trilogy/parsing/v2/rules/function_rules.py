@@ -207,11 +207,12 @@ def fgrain(
     of the standard rule that an aggregate's population is the distinct grain of its
     arguments - no planner support is needed. Every argument is referenced in the
     emitted SQL, which is what keeps the tuple columns from being pruned out of the
-    GROUP BY that does the deduping.
+    GROUP BY that does the deduping. A single key is accepted and runs the same
+    pipeline, so ``count(grain(x))`` counts null-bearing rows uniformly.
     """
     args = hydrated_children(node, hydrate)
-    if len(args) < 2:
-        raise fail(node, "grain() needs at least two keys - grain(a, b).")
+    if not args:
+        raise fail(node, "grain() needs at least one key - grain(a).")
     factory = context.function_factory
     parts: list[Any] = [GRAIN_SEPARATOR]
     for arg in args:

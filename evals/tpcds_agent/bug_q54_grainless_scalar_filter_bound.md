@@ -33,13 +33,18 @@ Verified on HEAD: renders the bound as a joined aggregate ref (`"agg"."dec_ms" +
 returns rows. `min(...)` works the same way. (The canonical `query54.preql` sidesteps it entirely by
 hardcoding 1188/1190.)
 
-## Residual (separate, pre-existing, NOT this bug)
-A global aggregate scalar computed from a **separate** `import raw.date as d`
-(`max(d.month_seq ? …)`) used in store_sales' WHERE → `DisconnectedConceptsException … missing a join or
-merge?`. Whether a genuinely grainless scalar constant should broadcast without a join is an open design
-question tracked in `project_crossrowset_inner_join_grainless_scalar` — but it is loud (not silent) and has a
-working alternative (aggregate off the fact's own dimension role, as above). The "missing a join or merge"
-hint is still arguably unhelpful for a scalar constant.
+## The other pitfall (also not a bug): bare `max(...)` is responsive-grain
+A global aggregate scalar from a **separate** `import raw.date as d` (`max(d.month_seq ? …)`) used in
+store_sales' WHERE → `DisconnectedConceptsException`. This is **correct**: `max(...)` with no explicit `by`
+is *responsive-grain* — in `select ss.item.id, … where … max(...)` it resolves as `max BY ss.item.id`, which
+is genuinely multi-row and has no join path to the standalone `date` table. (Inspecting the concept in
+isolation shows abstract/SINGLE_ROW, but that is only because there is no surrounding grain — do not conclude
+"grainless" from an isolated inspection.)
+
+**Working idioms for a broadcast scalar bound:**
+- `max(d.month_seq ? …) by *` — persistently grainless; verified to resolve and cross-join in every position
+  (WHERE bound, `select key, dec_ms`, inline in WHERE).
+- `max(ss.date.month_seq ? …)` off the fact's **own connected** date role — works because it connects.
 
 ## Guidance takeaways (the real fixes)
 1. Document clearly that `concept ? predicate` is a **per-row filter at the concept's grain**, not a scalar;

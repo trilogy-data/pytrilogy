@@ -474,8 +474,8 @@
     fcast: _fcast_primary | _fcast_alt
     concat: ("concat"i "(" (expr ",")* expr ")")
     concat_ws: ("concat_ws"i "(" expr "," (expr ",")* expr ")")
-    // two or more keys: a one-key grain is just the key itself
-    fgrain: "grain"i "(" expr ("," expr)+ ")"
+    // one or more keys
+    fgrain: "grain"i "(" expr ("," expr)* ")"
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fgreatest: "greatest"i "(" (expr ",")* expr ")"
     fleast: "least"i "(" (expr ",")* expr ")"
