@@ -135,7 +135,7 @@ def _format_import(value: str) -> str:
         "Print a 'Derived value scopes' block after each result: the effective "
         "input row filters, grouping/partitioning, and post-computation filters of "
         "every aggregate and window value the statement computes. JSON output "
-        "always includes this data as `derived_value_scopes`."
+        "always includes this data as `agg_rowset_rows_used`."
     ),
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)

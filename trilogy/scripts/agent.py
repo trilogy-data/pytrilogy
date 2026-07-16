@@ -93,7 +93,8 @@ Available tools:
     if include_scope_diagnostics:
         base += """
     * Run a Trilogy script: ["run", "<path.preql>"]. Each result carries
-      `derived_value_scopes`: for every aggregate/window value — including
+      `agg_rowset_rows_used` before the result rows: for every aggregate/window
+      value — including
       ones inside rowsets consumed via membership or subqueries — the
       effective `input_row_filters` (conditions removing source rows BEFORE
       this specific value is computed; `[]` means the UNRESTRICTED population,

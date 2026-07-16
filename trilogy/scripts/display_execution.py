@@ -388,6 +388,16 @@ def _emit_results_json(
     emit_event(
         "result",
         columns=list(results.columns),
+        # Factual per-computation scope report (input row filters vs output
+        # filters, grouping/partitioning). Put it before the potentially large
+        # row payload so agents see the population before interpreting results.
+        agg_rowset_rows_used=(
+            [s.to_dict() for s in results.derived_value_scopes]
+            if results.derived_value_scopes
+            and os.environ.get("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1").lower()
+            not in ("0", "false", "no", "off")
+            else None
+        ),
         rows=shown,
         row_count=total,
         displayed=len(head) + len(tail),
@@ -398,17 +408,6 @@ def _emit_results_json(
         full_row_count=results.full_row_count,
         limit_bounded=limit_bounded,
         fetch_ceiling_hit=hit_fetch_ceiling or None,
-        # factual per-computation scope report (input row filters vs output
-        # filters, grouping/partitioning) — compare against the business
-        # question before trusting a value that merely ran cleanly. Omitted
-        # entirely when the statement computes no aggregate/window values.
-        derived_value_scopes=(
-            [s.to_dict() for s in results.derived_value_scopes]
-            if results.derived_value_scopes
-            and os.environ.get("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1").lower()
-            not in ("0", "false", "no", "off")
-            else None
-        ),
     )
 
 

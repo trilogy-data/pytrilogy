@@ -108,8 +108,9 @@ entry limit rather than disappearing through ordinary text truncation.
 
 ### JSON
 
-JSON mode should add a `derived_value_scopes` field to each query result. An
-empty list is valid. Existing fields and result rows remain unchanged.
+JSON mode should add an `agg_rowset_rows_used` field before the `rows` field of
+each query result. An empty list is valid. Existing fields and result rows
+remain unchanged.
 
 ## Reported values
 

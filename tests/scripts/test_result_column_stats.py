@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 
 import trilogy.scripts.display_core as _core
+from trilogy.core.scope_diagnostics import DerivedValueScope
 from trilogy.scripts.display_execution import _column_stats, _emit_results_json
 from trilogy.scripts.display_models import ResultSet
 
@@ -112,3 +113,24 @@ def test_emit_no_limit_flag_when_result_under_limit(capsys):
     )
     assert "limit_bounded" not in payload  # 30 < 100, not a bounded prefix
     assert "column_stats_note" not in payload
+
+
+def test_emit_places_aggregate_rowset_scope_before_rows(capsys):
+    scope = DerivedValueScope(
+        name="total_sales",
+        kind="aggregate",
+        expression="sum(sales.amount)",
+    )
+    payload = _emit_capture(
+        ResultSet(
+            rows=[(10,)],
+            columns=["total_sales"],
+            derived_value_scopes=[scope],
+        ),
+        cap=10,
+        capsys=capsys,
+    )
+
+    assert "derived_value_scopes" not in payload
+    assert payload["agg_rowset_rows_used"] == [scope.to_dict()]
+    assert list(payload).index("agg_rowset_rows_used") < list(payload).index("rows")
