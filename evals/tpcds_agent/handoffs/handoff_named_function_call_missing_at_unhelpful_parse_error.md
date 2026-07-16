@@ -1,7 +1,15 @@
 # Handoff — missing `@` on a named function call produces an opaque parser error
 
-**Status:** OPEN authored-diagnostic defect. Discovered in the enriched q66
-trajectory while the agent composed monthly pivot helpers.
+**Status:** FIXED 2026-07-16. New `Syntax [227]` diagnostic
+(`detect_named_function_missing_at` in `trilogy/parsing/v2/errors.py`, wired into
+both backends after the 223 star-argument check). Fires only when the bare
+`name(` matches a `def`/`def table` name declared earlier in the source, so
+unknown names and built-ins keep their normal diagnostics. The caret now points
+at the function name, not the `(`. Coverage:
+`tests/complex/test_named_function_missing_at_error.py`.
+
+Discovered in the enriched q66 trajectory while the agent composed monthly pivot
+helpers.
 
 ## Symptom
 

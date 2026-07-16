@@ -1,9 +1,9 @@
-"""A dim bridge (supplying the binding key) combined with two OUTER (LEFT) rowset
+"""A dim bridge (supplying the binding key) combined with two OUTER (subset) rowset
 joins off the same anchor key must render valid SQL — the downstream coalesce must
 reference a column the dim-bridge CTE actually projects, not a hidden binding key.
 
 Surfaced on TPC-DS q11: three aggregate rowsets per year joined to `customer` for
-the binding key, and two LEFT joins to lay the other years' revenue side by side.
+the binding key, and two subset joins to lay the other years' revenue side by side.
 
 `QueryDatasource.get_alias` walks the pseudonym closure and prefers a NON-hidden
 member, so the merged OUTER key renders from the dim-bridge CTE's actually-projected
@@ -72,26 +72,26 @@ rowset sr03 <- where ss.yr = 2000
 where sr01.s_rev > 0
 select c.code as code, c.name,
     sr02.s_rev, sr03.s_rev
-{j1} join sr01.cust_id = c.id
-{j2} join sr01.cust_id = sr02.cust_id
-{j3} join sr01.cust_id = sr03.cust_id
+subset join c.id = sr01.cust_id
+subset join sr02.cust_id = sr01.cust_id
+subset join sr03.cust_id = sr01.cust_id
 order by c.code asc;
 """
 
 
-def _sql(models: Path, j1: str, j2: str, j3: str) -> str:
-    return _executor(models).generate_sql(_QUERY.format(j1=j1, j2=j2, j3=j3))[-1]
+def _sql(models: Path) -> str:
+    return _executor(models).generate_sql(_QUERY)[-1]
 
 
-def _rows(models: Path, j1: str, j2: str, j3: str) -> list[tuple]:
-    res = _executor(models).execute_text(_QUERY.format(j1=j1, j2=j2, j3=j3))[0]
+def _rows(models: Path) -> list[tuple]:
+    res = _executor(models).execute_text(_QUERY)[0]
     return [tuple(r) for r in res.fetchall()]
 
 
-def test_all_left_unaffected(models: Path):
-    sql = _sql(models, "left", "left", "left")
+def test_all_subset_unaffected(models: Path):
+    sql = _sql(models)
     assert "INVALID" not in sql
-    assert _rows(models, "left", "left", "left") == [
+    assert _rows(models) == [
         ("A001", "Alice", 5.0, 3.0),
         ("B002", "Bob", None, 4.0),
     ]

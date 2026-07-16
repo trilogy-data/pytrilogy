@@ -17,6 +17,7 @@ from trilogy.parsing.v2.errors import (
     detect_group_by,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
+    detect_named_function_missing_at,
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
@@ -165,6 +166,12 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     star_pos = detect_star_argument(text, pos)
     if star_pos is not None:
         raise create_syntax_error(223, star_pos, text)
+
+    # 227: a user-defined (`def`) function called without its `@` prefix
+    # (`identity(x)` where an earlier `def identity(...)` exists).
+    named_fn_pos = detect_named_function_missing_at(text, pos)
+    if named_fn_pos is not None:
+        raise create_syntax_error(227, named_fn_pos, text)
 
     # 224: SQL-style `SELECT DISTINCT` (Trilogy is implicitly distinct by grain).
     distinct_pos = detect_select_distinct(text, pos)

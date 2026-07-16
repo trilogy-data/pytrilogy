@@ -125,6 +125,13 @@ ERROR_CODES: dict[int, str] = {
         "its own. Full reference: `trilogy agent-info syntax example "
         "query-structure`."
     ),
+    227: (
+        "Named function `{name}` must be invoked with a leading `@` - write "
+        "`@{name}(...)`. A user-defined (`def`) function is called with `@`; bare "
+        "`{name}(...)` is read as a concept reference, not a call, so it fails at "
+        "the `(`. Built-in functions (`sum(...)`, `count(...)`, `coalesce(...)`) "
+        "need no `@`."
+    ),
 }
 
 
@@ -370,6 +377,53 @@ def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
     boundary = _CLAUSE_BOUNDARY_RE.search(text, join.end())
     clause_end = boundary.start() if boundary else stmt_end
     return join.start(), text[join.start() : clause_end].strip()
+
+
+# A `def NAME(...)` (or `def table NAME(...)`) declaration — the named-function
+# registry. Both forms are invoked with a leading `@` (`@NAME(...)`); omitting it
+# reads the name as a bare concept reference and fails at the `(`.
+_DEF_NAME_RE = re.compile(r"\bdef\s+(?:table\s+)?([A-Za-z_]\w*)", re.IGNORECASE)
+
+
+def _named_functions(text: str, before: int) -> set[str]:
+    return {m.group(1).lower() for m in _DEF_NAME_RE.finditer(text, 0, before)}
+
+
+def detect_named_function_missing_at(text: str, pos: int) -> int | None:
+    """Locate a user-defined (`def`) function invoked without its required `@`
+    prefix — e.g. `identity(x)` where an earlier `def identity(...)` exists (the
+    valid form is `@identity(x)`). Both backends report the failure at the `(`
+    that follows the bare name, so find that `(`, read the identifier before it,
+    and fire ONLY when the name matches a `def` declared earlier in the source —
+    unknown names and built-ins keep their normal diagnostics. Returns the
+    position of the function name, or None. Shared by both grammar backends;
+    purely textual (no reparse)."""
+    paren = None
+    for i in range(max(0, pos - 1), min(len(text), pos + 2)):
+        if text[i] == "(":
+            paren = i
+            break
+    if paren is None:
+        return None
+    k = paren - 1
+    while k >= 0 and text[k].isspace():
+        k -= 1
+    name_end = k + 1
+    while k >= 0 and (text[k].isalnum() or text[k] == "_"):
+        k -= 1
+    name_start = k + 1
+    name = text[name_start:name_end]
+    if not name:
+        return None
+    # An `@` (skipping spaces) already prefixes the name → well-formed call.
+    p = name_start - 1
+    while p >= 0 and text[p].isspace():
+        p -= 1
+    if p >= 0 and text[p] == "@":
+        return None
+    if name.lower() not in _named_functions(text, name_start):
+        return None
+    return name_start
 
 
 _ALIGN_RE = re.compile(r"\balign\b", re.IGNORECASE)
@@ -724,6 +778,9 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
         expr = _unaliased_select_expr(text, pos)
         if expr is not None:
             message += f" Here: `{expr} as {suggest_select_alias(expr)}`"
+    elif code == 227:
+        m = _IDENT_RE.match(text, pos)
+        message = message.format(name=m.group(0) if m else "fn")
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
         + message

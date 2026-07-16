@@ -9,7 +9,7 @@ properties sk (
     hour int, # Hour of day (0-23).
     minute int, # Minute within the hour (0-59).
     --second int, # Second within the minute (0-59).
-    #meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Meal-time bucket; empty string for off-meal hours.
+    meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Meal-time bucket; empty string for off-meal hours.
 );
 
 datasource time (
@@ -19,7 +19,7 @@ datasource time (
     T_HOUR: hour,
     T_MINUTE: minute,
     T_SECOND: second,
-    #T_MEAL_TIME: meal_time,
+    T_MEAL_TIME: meal_time,
 )
 grain (sk)
 address memory.time_dim;
