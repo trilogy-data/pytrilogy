@@ -152,7 +152,7 @@ def test_merge_bridged_models_resolve():
 
 
 def test_scoped_join_bridged_models_resolve():
-    _resolves(_A + _B + "select av, bv left join a_id = b_id;")
+    _resolves(_A + _B + "select av, bv subset join b_id = a_id;")
 
 
 def test_fk_joined_fact_dimension_resolves():

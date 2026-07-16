@@ -172,6 +172,27 @@ def join_group(
     return parts[0::2]
 
 
+# left/full/inner/right/cross scoped joins were removed in favor of the
+# SUBSET/UNION domain declarations (docs/subset_union_join_design.md). They still
+# lex as JOIN_TYPE so we can raise a targeted migration hint here rather than an
+# opaque parse error.
+_JOIN_MIGRATION_HINT = {
+    JoinType.LEFT_OUTER: (
+        "use `subset join b = a` in place of `left join a = b` (swap the operands)"
+    ),
+    JoinType.FULL: "use `union join a = b` in place of `full join a = b`",
+    JoinType.INNER: (
+        "use `subset` or `union` and express an intersection with a filter, e.g. "
+        "`subset join b = a where <b property> is not null`"
+    ),
+    JoinType.RIGHT_OUTER: (
+        "use `subset join a = b` — SUBSET's right (superset) side is the anchor, "
+        "so there is no `right`"
+    ),
+    JoinType.CROSS: "use `subset` or `union` with an explicit key equality",
+}
+
+
 def join_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -179,23 +200,13 @@ def join_clause(
 ) -> list[SelectJoin]:
     args = hydrated_children(node, hydrate)
     join_type = next(a for a in args if isinstance(a, JoinType))
-    if join_type is JoinType.INNER:
+    if join_type not in (JoinType.SUBSET, JoinType.UNION):
+        hint = _JOIN_MIGRATION_HINT.get(join_type, "use `subset` or `union`")
         raise fail(
             node,
-            "`inner` join is not supported in query-scoped joins; use SUBSET,"
-            " UNION, LEFT or FULL and express an intersection with a filter"
-            " condition (e.g. `LEFT JOIN a = b WHERE <b property> is not null`).",
-        )
-    if join_type not in (
-        JoinType.LEFT_OUTER,
-        JoinType.FULL,
-        JoinType.SUBSET,
-        JoinType.UNION,
-    ):
-        raise fail(
-            node,
-            f"`{join_type.value}` join is not supported in query-scoped joins;"
-            " use SUBSET, UNION, LEFT or FULL",
+            f"`{join_type.value}` join is not supported in query-scoped joins; "
+            f"{hint}. Only `subset` and `union` joins are supported "
+            "(docs/subset_union_join_design.md).",
         )
     # Each `join_group` is one `=`-chained equivalence group. Multiple groups
     # arise from the `a = b and c = d` sugar, which is exactly equivalent to two

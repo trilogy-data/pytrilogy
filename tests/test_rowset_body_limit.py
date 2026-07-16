@@ -122,7 +122,7 @@ def test_left_readback_keeps_dim_rows_beyond_limit(models: Path):
 import a as a;
 with rs as select a.aid as k, sum(a.av) as sa order by k desc limit 2;
 select a.aid, a.aw, rs.sa
-left join a.aid = rs.k
+subset join rs.k = a.aid
 order by a.aid;
 """,
     )
@@ -138,13 +138,13 @@ FULL_READBACK = """
 import a as a;
 with rs as select a.aid as k, sum(a.av) as sa order by k desc limit 2;
 select rs.k, a.aw
-full join rs.k = a.aid
+union join rs.k = a.aid
 order by a.aw;
 """
 
 
 def test_full_readback_row_identical_under_narrowing(models: Path):
-    """The scoped full join coalesces the key group, so all four keys appear;
+    """The scoped union join coalesces the key group, so all four keys appear;
     rs (a limited subset of a) has no exclusive rows, so any narrowing must be
     row-identical with the un-narrowed preserving plan."""
     expected = [(1, 1000.0), (2, 2000.0), (3, 3000.0), (4, 4000.0)]

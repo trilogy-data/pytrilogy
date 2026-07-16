@@ -105,10 +105,10 @@ select
 # chained to their base so the address text enriches from them.
 where
     agg_00.cnt_00 <= agg_99.cnt_99
-full join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.sk
-full join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.sk
-full join agg_99.b_addr_99 = ss.pos_address.sk
-full join agg_99.c_addr_99 = ss.customer.current_address.sk
+union join agg_99.item_sk_99 = agg_00.item_sk_00 = ss.item.sk
+union join agg_99.store_sk_99 = agg_00.store_sk_00 = ss.store.sk
+union join agg_99.b_addr_99 = ss.pos_address.sk
+union join agg_99.c_addr_99 = ss.customer.current_address.sk
 select
     --ss.item.sk,
     --ss.store.sk,

@@ -9,7 +9,7 @@ where
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
     and inv.date.week_seq = cs.sold_date.week_seq
-left join inv.item.sk = cs.item.sk
+subset join cs.item.sk = inv.item.sk
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,

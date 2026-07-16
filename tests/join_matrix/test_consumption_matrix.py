@@ -30,11 +30,8 @@ HEAD = (
 SELECT = "select ra.k, ra.tot, rb.tot;"
 
 RELATIONS = {
-    ("full", "join"): "full join ra.k = rb.k\n",
-    ("full", "merge"): "merge ra.k into rb.k;\n",
-    ("left", "join"): "left join ra.k = rb.k\n",
-    ("left", "merge"): "merge rb.k into ~ra.k;\n",
-    # domain-declaration spellings of the same two relations
+    # SUBSET (a ⊆ b, superset-anchored) and UNION (disjoint-capable) are the two
+    # scoped-relation declarations; each is paired with its `merge` equivalent.
     ("subset", "join"): "subset join rb.k = ra.k\n",
     ("subset", "merge"): "merge rb.k into ~ra.k;\n",
     ("union", "join"): "union join ra.k = rb.k\n",
@@ -45,7 +42,7 @@ RELATIONS = {
 def _base(join_type: str, form: str) -> list[tuple]:
     left = aggregate(LEFT_ROWS)
     right = aggregate(RIGHT_ROWS)
-    if join_type in ("left", "subset"):
+    if join_type == "subset":
         return expected_left(left, right)
     # the merge form of full/union is the EQUAL declaration, narrowed to
     # intersection by default (lying declaration = author error); the
@@ -65,7 +62,7 @@ def _query(join_type: str, form: str, where: str) -> str:
 
 
 @pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["left", "full", "subset", "union"])
+@pytest.mark.parametrize("join_type", ["subset", "union"])
 def test_post_join_where_on_optional_measure(tmp_path: Path, join_type: str, form: str):
     # WHERE over the joined relation: NULL measures (unmatched rows) fail the
     # predicate and drop — this must filter the JOINED rows, not pre-filter one
@@ -79,7 +76,7 @@ def test_post_join_where_on_optional_measure(tmp_path: Path, join_type: str, for
 
 
 @pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["left", "full", "subset", "union"])
+@pytest.mark.parametrize("join_type", ["subset", "union"])
 def test_intersection_via_not_null(tmp_path: Path, join_type: str, form: str):
     # the documented replacement for scoped INNER: outer join + `is not null`
     # on a non-key attribute of the optional side

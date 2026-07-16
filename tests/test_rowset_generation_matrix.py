@@ -98,7 +98,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "single_enrich_via_explicit_join",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq;"
-        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", 9)],
     ),
     # --- HAVING (post-aggregate filtering inside the rowset body) ---
@@ -137,7 +137,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "having_then_enrich_property",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null and rs.sq is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10)],
     ),
     (
@@ -146,7 +146,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         "having_then_enrich_property_preserving",
         SALES_MODEL
         + "rowset rs <- select item_id as k, sum(s_qty) as sq having sum(s_qty) > 9;"
-        + "where item_name is not null select item_name, rs.sq,\nleft join rs.k = item_id\norder by item_name;",
+        + "where item_name is not null select item_name, rs.sq,\nsubset join item_id = rs.k\norder by item_name;",
         [("apple", 15), ("banana", 10), ("cherry", None)],
     ),
     (
@@ -203,7 +203,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         SALES_MODEL
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
-        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nleft join y99.k = y00.k2 order by y99.k;",
+        + "where y99.s99 is not null and y00.s00 is not null select y99.k, y99.s99, y00.s00\nsubset join y00.k2 = y99.k order by y99.k;",
         [(1, 10, 5), (2, 7, 3)],
     ),
     (
@@ -241,7 +241,7 @@ _MATRIX: list[tuple[str, str, object]] = [
         + "rowset y99 <- where s_year = 1999 select item_id as k, sum(s_qty) as s99;"
         + "rowset y00 <- where s_year = 2000 select item_id as k2, sum(s_qty) as s00;"
         + "rowset diff <- where y00.s00 is not null select y99.k as k, y99.s99 - y00.s00 as d"
-        + " left join y99.k = y00.k2;"
+        + " subset join y00.k2 = y99.k;"
         + "def only(x) -> sum(diff.d ? diff.k = x);"
         + "select @only(1) as d1, @only(2) as d2;",
         [(5, 4)],

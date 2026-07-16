@@ -109,8 +109,8 @@ select 100 did, 500 wk, 0 dow
 """
 
 _SCOPED_JOIN_QUERY = """
-left join catalog_date_id = date_id
-left join web_date_id = date_id
+subset join date_id = catalog_date_id
+subset join date_id = web_date_id
 select
     week_seq,
     sum(

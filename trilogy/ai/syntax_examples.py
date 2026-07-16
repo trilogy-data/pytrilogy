@@ -43,7 +43,7 @@ _EXAMPLES: list[SyntaxExample] = [
 #   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
 #   select  <col>, <agg> as name,  # 2. the projection - grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
-#   <left|full join a = b (=c)?>*  # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
+#   <subset|union join a = b (=c)?>* # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
 #                                  #      select list - the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort
@@ -70,7 +70,7 @@ select                                      # 2. SELECT: grouped automatically b
     students.major,
     count(enroll.id) as enrollments,
     --completed_credits,                    #    a leading `--` HIDES a column from the output
-left join students.id = enroll.student_id  # 3. JOIN: blend students onto enrollments (after the select list)
+subset join enroll.student_id = students.id  # 3. JOIN: blend students onto enrollments (after the select list)
 having completed_credits > 0                # 4. HAVING: condition on an aggregated RESULT
 order by enrollments desc nulls first       # 5. ORDER BY
 limit 100;                                  # 6. LIMIT
@@ -384,7 +384,7 @@ limit 100;
 #  - Every union output is treated as a KEY (grain component). To RE-AGGREGATE the
 #    stack (e.g. a grand total across channels), wrap it in an outer aggregate:
 #        select sum(by_channel.enrollments) by rollup by_channel.channel as total;
-#  - An arm may carry its OWN query-scoped join (`select ... left join a = b`
+#  - An arm may carry its OWN query-scoped join (`select ... subset join b = a`
 #    after its select list) - localize each source's join to the arm that needs it.
 #  - This is NOT the forbidden SQL `UNION` keyword between two selects; it is the
 #    `union(...)` function form - the cleanest way to stack rows from several
@@ -551,7 +551,7 @@ limit 100;
 #  - JOIN ON THE FULL GRAIN: one `join` clause per key in the two facts' shared
 #    `@<...>` grain. Under-joining (one key of a multi-key grain) can cause
 #    duplication. Chain `= c` to also pull a base key into the join
-#    group so its properties stay reachable (`full join a.k = b.k = base.k`).
+#    group so its properties stay reachable (`union join a.k = b.k = base.k`).
 #  - Stacked clauses of the SAME type can share one prefix via `and`:
 #    `union join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `union join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
@@ -562,10 +562,11 @@ limit 100;
 #    add explicit conditions - `where <side_a attr> is not null and <side_b
 #    attr> is not null`. A one-sided `is not null` keeps the other side's
 #    exclusive rows.
-#  - `left join a = b` / `full join a = b` are legacy aliases for
-#    `subset join b = a` / `union join a = b` (NOT `right` - swap operands).
-#    A union key-group must be ALL union (can't mix with subset on the SAME
-#    key; `union join a = b = c` chains one union group);
+#  - `left`/`full`/`inner`/`right`/`cross join` are NOT valid query-scoped joins
+#    (they error) - only `subset`/`union`. Map an old `left join a = b` to
+#    `subset join b = a` (swap operands) and `full join a = b` to
+#    `union join a = b`. A union key-group must be ALL union (can't mix with
+#    subset on the SAME key; `union join a = b = c` chains one union group);
 """,
     ),
     SyntaxExample(

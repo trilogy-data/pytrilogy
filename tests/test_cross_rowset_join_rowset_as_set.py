@@ -51,7 +51,7 @@ with item_refunds as where kind = 'REFUND' select item as r_item, sum(amt) as r_
 # item 10: 150 > 2*10  -> kept; item 20: 80 > 2*70 -> dropped; item 30: 200 > 2*5 -> kept
 with qual as
   select item_sales.s_item as q_item
-  left join item_sales.s_item = item_refunds.r_item
+  subset join item_refunds.r_item = item_sales.s_item
   where item_sales.s_amt > 2 * coalesce(item_refunds.r_amt, 0);
 """
 

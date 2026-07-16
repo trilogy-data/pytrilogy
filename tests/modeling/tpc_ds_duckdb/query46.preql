@@ -17,7 +17,7 @@ select
     sum(store_sales.net_profit) as profit,
 ;
 
-left join customer.sk = bought.store_sales.customer.sk
+subset join bought.store_sales.customer.sk = customer.sk
 select
     customer.last_name,
     customer.first_name,

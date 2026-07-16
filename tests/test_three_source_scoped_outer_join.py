@@ -9,7 +9,7 @@ shared ``item.id``, and ``customer.id`` is an optional FK. That shared-dimension
 structure is the trigger: simpler models whose keys are plain per-fact properties
 resolve fine, so they do NOT reproduce this bug.
 
-BUG (see evals/tpcds_agent/q78_three_source_outer_join_bug.md): a scoped LEFT join
+BUG (see evals/tpcds_agent/q78_three_source_outer_join_bug.md): a scoped subset join
 from an anchor rowset to one or more others over these shared-dimension keys either
 fails to resolve (DisconnectedConceptsException, unable to source the other
 channels' shared keys) or silently returns NULL anchor identity columns by keying
@@ -89,8 +89,8 @@ TWO_SOURCE = _HEAD + """
 select
     store_agg.item_id, store_agg.cust_id, store_agg.store_qty,
     coalesce(catalog_agg.cat_qty, 0) as other_qty
-left join store_agg.item_id = catalog_agg.item_id
-left join store_agg.cust_id = catalog_agg.cust_id
+subset join catalog_agg.item_id = store_agg.item_id
+subset join catalog_agg.cust_id = store_agg.cust_id
 having coalesce(catalog_agg.cat_qty, 0) > 0
 order by store_agg.item_id asc;
 """
@@ -99,8 +99,8 @@ THREE_SOURCE_CHAINED = _HEAD + """
 select
     store_agg.item_id, store_agg.cust_id, store_agg.store_qty,
     coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) as other_qty
-left join store_agg.item_id = catalog_agg.item_id = web_agg.item_id
-left join store_agg.cust_id = catalog_agg.cust_id = web_agg.cust_id
+subset join web_agg.item_id = catalog_agg.item_id = store_agg.item_id
+subset join web_agg.cust_id = catalog_agg.cust_id = store_agg.cust_id
 having coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) > 0
 order by store_agg.item_id asc;
 """
@@ -109,10 +109,10 @@ THREE_SOURCE_STAR = _HEAD + """
 select
     store_agg.item_id, store_agg.cust_id, store_agg.store_qty,
     coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) as other_qty
-left join store_agg.item_id = catalog_agg.item_id
-left join store_agg.cust_id = catalog_agg.cust_id
-left join store_agg.item_id = web_agg.item_id
-left join store_agg.cust_id = web_agg.cust_id
+subset join catalog_agg.item_id = store_agg.item_id
+subset join catalog_agg.cust_id = store_agg.cust_id
+subset join web_agg.item_id = store_agg.item_id
+subset join web_agg.cust_id = store_agg.cust_id
 having coalesce(catalog_agg.cat_qty, 0) + coalesce(web_agg.web_qty, 0) > 0
 order by store_agg.item_id asc;
 """

@@ -30,7 +30,7 @@ select
 
 where
     ss.store.sk = 1
-left join ascending.rnk_a = descending.rnk_d
+subset join descending.rnk_d = ascending.rnk_a
 select
     ascending.rnk_a as rnk,
     ascending.best_performing,

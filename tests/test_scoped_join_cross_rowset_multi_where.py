@@ -60,13 +60,13 @@ with web_2002 as where channel='WEB' and yr=2002 select cust as cust_id, sum(val
 """
 
 JOINS = """
-left join store_2001.cust_id = store_2002.cust_id
-left join store_2001.cust_id = web_2001.cust_id
-left join store_2001.cust_id = web_2002.cust_id
+subset join store_2002.cust_id = store_2001.cust_id
+subset join web_2001.cust_id = store_2001.cust_id
+subset join web_2002.cust_id = store_2001.cust_id
 """
 
-# left-anchor the store_2001 rowset, then require every optional side to be present
-# (its .rev non-null) -- this is the INNER intersection expressed via LEFT + WHERE.
+# anchor the store_2001 rowset, then require every optional side to be present
+# (its .rev non-null) -- this is the INNER intersection expressed via subset + WHERE.
 GUARD = (
     "store_2002.rev is not null and web_2001.rev is not null "
     "and web_2002.rev is not null and "

@@ -2849,7 +2849,7 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     grain: Grain = dc_field(default_factory=Grain)
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
-    # Query-scoped JOINs declared on this select (`inner|left|full join a = b`).
+    # Query-scoped JOINs declared on this select (`subset|union join a = b`).
     # Carried through to discovery so a select built as a sub-node (e.g. a union
     # arm) applies its own joins — the top-level build reads these off the
     # statement, but a nested arm only sees its lineage.

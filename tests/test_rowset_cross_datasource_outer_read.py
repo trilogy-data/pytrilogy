@@ -71,7 +71,7 @@ import a as a;
 import b as b;
 where b.bv is not null
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb
-left join a.aid = b.bid
+subset join b.bid = a.aid
 limit 10;
 """,
     )
@@ -91,7 +91,7 @@ import b as b;
 with rs as
 where b.bv is not null
 select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb
-left join a.aid = b.bid;
+subset join b.bid = a.aid;
 select rs.extra, rs.sa, rs.sb limit 10;
 """,
     )
@@ -103,7 +103,7 @@ select rs.extra, rs.sa, rs.sb limit 10;
 def test_cross_datasource_rowset_join_resolves_correctly(models: Path):
     # End-to-end: the rowset's internal join must actually filter to matching keys
     # and aggregate from BOTH datasources. aid 1,2 match a bid; aid 3 has no b row
-    # (dropped by `where b.bv is not null` over the LEFT join); bid 4 has no a row
+    # (dropped by `where b.bv is not null` over the subset join); bid 4 has no a row
     # (dropped). The non-key property `aw` anchors each output row so we can assert
     # per-row correctness without reading back the join key.
     eng = Dialects.DUCK_DB.default_executor(
@@ -119,7 +119,7 @@ import b as b;
 with rs as
 where b.bv is not null
 select a.aid as k, a.aw as extra, sum(a.av) as sa, sum(b.bv) as sb
-left join a.aid = b.bid;
+subset join b.bid = a.aid;
 select rs.extra, rs.sa, rs.sb order by rs.extra;
 """).fetchall()
     assert [tuple(r) for r in rows] == [(1000.0, 10.0, 100.0), (2000.0, 20.0, 200.0)]
@@ -134,7 +134,7 @@ import b as b;
 with rs as
 where b.bv is not null
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb
-left join a.aid = b.bid;
+subset join b.bid = a.aid;
 
 select rs.k, rs.sa, rs.sb limit 10;
 """,
@@ -146,7 +146,7 @@ def test_rowset_key_read_back_aligns_with_source(models: Path):
     # `rs`'s key is the INTERSECTION a∩b = {1,2} (a has {1,2,3}, b has {1,2,4});
     # b contributes only its key, so the intersection is expressed as
     # `where a.aid in b.bid`. Joins are row-preserving and the rowset side is
-    # filtered (the membership), so the read-back LEFT join cannot narrow —
+    # filtered (the membership), so the read-back subset join cannot narrow —
     # restricting to rowset rows is the explicit `rs.sa is not null`; with it,
     # only rows 1 and 2 survive — NOT the full a dimension.
     eng = Dialects.DUCK_DB.default_executor(
@@ -166,7 +166,7 @@ select a.aid as k, sum(a.av) as sa;
 
 where a.aw is not null and rs.sa is not null
 select rs.k, a.aw
-left join rs.k = a.aid
+subset join a.aid = rs.k
 order by rs.k;
 """).fetchall()
     assert [tuple(r) for r in rows] == [(1, 1000.0), (2, 2000.0)]
@@ -187,20 +187,24 @@ _READS = {
 }
 
 
-def _outer_join_type(jt: str) -> str:
+def _scoped_join(jt: str, left: str, right: str) -> str:
+    # `left`/`full` query-scoped joins now spell `subset`/`union`; subset swaps operands.
     if jt == "full":
-        return "full"
-    return "left"
+        return f"union join {left} = {right}"
+    return f"subset join {right} = {left}"
 
 
 def _read_query(jt: str, read: str) -> str:
     if read in _READS:
         return _READS[read]
-    outer_jt = _outer_join_type(jt)
     if read == "k_aw":
-        return f"select rs.k, a.aw,\n{outer_jt} join rs.k = a.aid\norder by rs.k;"
+        return (
+            f"select rs.k, a.aw,\n{_scoped_join(jt, 'rs.k', 'a.aid')}\norder by rs.k;"
+        )
     if read == "k_bv":
-        return f"select rs.k, b.bv,\n{outer_jt} join rs.k = b.bid\norder by rs.k;"
+        return (
+            f"select rs.k, b.bv,\n{_scoped_join(jt, 'rs.k', 'b.bid')}\norder by rs.k;"
+        )
     raise ValueError(f"Unknown matrix read {read}")
 
 
@@ -210,7 +214,7 @@ def _matrix_query(jt: str, read: str) -> str:
     else:
         head = (
             "import a as a;\nimport b as b;\n"
-            f"with rs as {jt} join a.aid = b.bid "
+            f"with rs as {_scoped_join(jt, 'a.aid', 'b.bid')} "
             "select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;\n"
         )
     return head + _read_query(jt, read)
@@ -265,7 +269,7 @@ def test_rowset_key_readback_matrix(models: Path, jt: str, read: str, expected: 
 
 
 def test_rowset_key_readback_intersection_k(models: Path):
-    # Read back only the rowset's intersection key. The body LEFT-joins a.aid = b.bid
+    # Read back only the rowset's intersection key. The body subset-joins b.bid = a.aid
     # guarded by `where b.bv is not null`, so the key is filtered to the matching ids
     # {1,2} (aid 3 and bid 4 dropped) -- the same set a scoped inner join produced.
     eng = _matrix_engine(models)
@@ -278,7 +282,7 @@ import b as b;
 with rs as
 where b.bv is not null
 select a.aid as k, a.av as sa, b.bv as sb
-left join a.aid = b.bid;
+subset join b.bid = a.aid;
 select rs.k order by rs.k;
 """).fetchall()]
     assert rows == [(1,), (2,)]
@@ -302,10 +306,10 @@ def test_rowset_key_readback_left_k_aw(models: Path):
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
-with rs as left join a.aid = b.bid
+with rs as subset join b.bid = a.aid
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, a.aw,
-left join rs.k = a.aid
+subset join a.aid = rs.k
 order by rs.k;
 """).fetchall()]
     assert rows == [(1, 1000.0), (2, 2000.0), (3, 3000.0)]
@@ -318,10 +322,10 @@ def test_rowset_key_readback_left_k_bv(models: Path):
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
-with rs as left join a.aid = b.bid
+with rs as subset join b.bid = a.aid
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, b.bv,
-left join rs.k = b.bid
+subset join b.bid = rs.k
 order by rs.k;
 """).fetchall()]
     assert rows == [(1, 100.0), (2, 200.0), (3, None)]
@@ -334,10 +338,10 @@ def test_rowset_key_readback_full_k_aw(models: Path):
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
-with rs as full join a.aid = b.bid
+with rs as union join a.aid = b.bid
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, a.aw,
-full join rs.k = a.aid
+union join rs.k = a.aid
 order by rs.k;
 """).fetchall()]
     assert rows == [(1, 1000.0), (2, 2000.0), (3, 3000.0), (4, None)]
@@ -350,17 +354,17 @@ def test_rowset_key_readback_full_k_bv(models: Path):
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;
-with rs as full join a.aid = b.bid
+with rs as union join a.aid = b.bid
 select a.aid as k, sum(a.av) as sa, sum(b.bv) as sb;
 select rs.k, b.bv,
-full join rs.k = b.bid
+union join rs.k = b.bid
 order by rs.k;
 """).fetchall()]
     assert rows == [(1, 100.0), (2, 200.0), (3, None), (4, 400.0)]
 
 
 # --- Subordinate coalesced-key read-back across the rowset boundary (TPC-DS q64).
-# A coalescing scoped join (`full`/`subset`/`union`) collapses the join-key group
+# A coalescing scoped join (`subset`/`union`) collapses the join-key group
 # (`a.aid = b.bid`) onto ONE canonical body column, leaving the authored side
 # (`a.aid`) only as a pseudonym. When `a.aid` is projected UNALIASED into the
 # rowset and referenced downstream by that authored address (`rs.a.aid`), the body
@@ -370,7 +374,7 @@ order by rs.k;
 # ----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("jt", ["subset", "union", "full", "left"])
+@pytest.mark.parametrize("jt", ["subset", "union"])
 def test_rowset_subordinate_key_readback_no_sentinel(models: Path, jt: str):
     sql = _gen(
         models,
@@ -386,7 +390,7 @@ select rs.a.aid, rs.sa order by rs.a.aid;
     assert sql and "INVALID_REFERENCE_BUG" not in sql
 
 
-@pytest.mark.parametrize("jt", ["subset", "union", "full", "left"])
+@pytest.mark.parametrize("jt", ["subset", "union"])
 def test_rowset_subordinate_key_readback_matches_single_statement(
     models: Path, jt: str
 ):

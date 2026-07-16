@@ -9,7 +9,7 @@ where
     and customer.current_household_demographics.income_band.lower_bound >= 38128
     and customer.current_household_demographics.income_band.upper_bound <= 38128 + 50000
     and ss.is_returned
-left join customer.current_demographics.sk = ss.return_customer_demographic.sk
+subset join ss.return_customer_demographic.sk = customer.current_demographics.sk
 select
     --customer.sk,
     customer.id,

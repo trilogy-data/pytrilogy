@@ -130,10 +130,11 @@
     select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  select_grouping?  having? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
-    // for this select only (a query-local merge). LEFT anchors its first key
-    // (others partial); FULL coalesces. SUBSET/UNION are the domain-declaration
+    // for this select only (a query-local merge). SUBSET and UNION are the only
     // spellings (subset join a = b: a's values ⊆ b's, b anchors; union join:
-    // neither side contains the other) — normalized at hydration.
+    // neither side contains the other) — normalized at hydration. left/full/
+    // inner/right/cross still lex as JOIN_TYPE but are rejected at hydration
+    // with a migration hint (see select_statement_rules.join_clause).
     // `a = b = c` chains all keys into ONE equivalence group with this join type.
     // `a = b and c = d` is sugar for two separate join clauses of this type (two
     // DISTINCT equivalence groups), saving a repeated `JOIN_TYPE join` prefix.

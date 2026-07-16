@@ -20,7 +20,7 @@ _AXIS_RECURSION = (
     "v4 coalescing-axis over derived (cast/concat) members: recursion gap "
     "(coalescing_presence Bug-1 family, see local_scripts/v4_audit.md)"
 )
-_COMPOSITE_FULL = "v4 composite-key FULL cells with a derived key member"
+_COMPOSITE_FULL = "v4 composite-key UNION cells with a derived key member"
 _FILTERED_ANCHOR = "v4 filtered-rowset-anchor directional narrowing not ported"
 _STITCH = "v4 nullable-measure stitch re-sources one side through the other"
 _PREDROP = "v4 predrop chain narrowing: aggregate-consumer cell"
@@ -38,9 +38,9 @@ V4_FAILING: dict[str, str] = {
     "test_coalescing_presence_matrix.py::test_presence_full_cast_single": _AXIS_RECURSION,
     "test_coalescing_presence_matrix.py::test_presence_union_concat_composite": _AXIS_RECURSION,
     "test_coalescing_presence_matrix.py::test_bare_member_projection_unions_domains": _AXIS_RECURSION,
-    "test_composite_matrix.py::test_composite_key_join[plain_derived-full]": _COMPOSITE_FULL,
-    "test_composite_matrix.py::test_composite_key_join[derived_derived-full]": _COMPOSITE_FULL,
-    "test_composite_matrix.py::test_full_derived_key_as_left_operand_direction": _COMPOSITE_FULL,
+    "test_composite_matrix.py::test_composite_key_join[plain_derived-union]": _COMPOSITE_FULL,
+    "test_composite_matrix.py::test_composite_key_join[derived_derived-union]": _COMPOSITE_FULL,
+    "test_composite_matrix.py::test_union_derived_key_as_left_operand_direction": _COMPOSITE_FULL,
     "test_composite_matrix.py::test_mixed_anchor_composite_composes_to_full": _COMPOSITE_FULL,
     "test_filtered_rowset_anchor.py::test_filtered_rowset_anchor_subset_join_narrows": _FILTERED_ANCHOR,
     "test_filtered_rowset_anchor.py::test_unfiltered_rowset_anchor_subset_join_narrows": _FILTERED_ANCHOR,

@@ -1,7 +1,7 @@
 """Tier 2: composite join keys over two re-aggregated rowsets.
 
 Sweeps the composite-key kind (both-plain / plain-equality + derived /
-derived + derived) x join type (LEFT / FULL). This is the TPC-DS q59/q78
+derived + derived) x join type (SUBSET / UNION). This is the TPC-DS q59/q78
 family: the plain co-key must survive alongside the derived key in ONE join —
 dropping it cross-products (q59 fan-out), splitting it into a second join
 level widens LEFT to FULL (comp_mixed leak).
@@ -73,18 +73,19 @@ HEAD_SHIFTED = (
 SELECT = "select ta.s, ta.w, ta.tot, nb.tot order by ta.s asc, ta.w asc;"
 
 # (kind, join_type) -> (head, join key clause). Operand order carries meaning
-# for LEFT: a pair anchors its LEFT operand, so every LEFT pair leads with ta's
-# key (consistent ta anchor; a MIXED-anchor composite legitimately composes to
-# FULL — see test_mixed_anchor_composite_composes_to_full). FULL is symmetric;
-# both operand orders must behave identically — the derived-as-left-operand
-# order is pinned separately in test_full_derived_key_as_left_operand_direction.
+# for SUBSET: `subset join <subset> = <superset>` anchors its RIGHT (superset)
+# operand, so every SUBSET pair trails with ta's key (consistent ta anchor; a
+# MIXED-anchor composite legitimately composes to FULL — see
+# test_mixed_anchor_composite_composes_to_full). UNION is symmetric; both operand
+# orders must behave identically — the derived-as-left-operand order is pinned
+# separately in test_union_derived_key_as_left_operand_direction.
 CLAUSES = {
-    ("both_plain", "left"): (HEAD_SHIFTED, "ta.s = nb.s and ta.w = nb.w"),
-    ("both_plain", "full"): (HEAD_SHIFTED, "ta.s = nb.s and ta.w = nb.w"),
-    ("plain_derived", "left"): (HEAD, "ta.s = nb.s and ta.w + 52 = nb.w"),
-    ("plain_derived", "full"): (HEAD, "ta.s = nb.s and nb.w = ta.w + 52"),
-    ("derived_derived", "left"): (HEAD, "ta.s + 0 = nb.s and ta.w + 52 = nb.w"),
-    ("derived_derived", "full"): (HEAD, "nb.s = ta.s + 0 and nb.w = ta.w + 52"),
+    ("both_plain", "subset"): (HEAD_SHIFTED, "nb.s = ta.s and nb.w = ta.w"),
+    ("both_plain", "union"): (HEAD_SHIFTED, "ta.s = nb.s and ta.w = nb.w"),
+    ("plain_derived", "subset"): (HEAD, "nb.s = ta.s and nb.w = ta.w + 52"),
+    ("plain_derived", "union"): (HEAD, "ta.s = nb.s and nb.w = ta.w + 52"),
+    ("derived_derived", "subset"): (HEAD, "nb.s = ta.s + 0 and nb.w = ta.w + 52"),
+    ("derived_derived", "union"): (HEAD, "nb.s = ta.s + 0 and nb.w = ta.w + 52"),
 }
 
 
@@ -115,19 +116,19 @@ def _expected_full(kind: str) -> list[tuple]:
 @pytest.mark.parametrize(
     "kind,join_type",
     [
-        pytest.param("both_plain", "left"),
-        pytest.param("both_plain", "full"),
-        pytest.param("plain_derived", "left"),
-        pytest.param("plain_derived", "full"),
-        pytest.param("derived_derived", "left"),
-        pytest.param("derived_derived", "full"),
+        pytest.param("both_plain", "subset"),
+        pytest.param("both_plain", "union"),
+        pytest.param("plain_derived", "subset"),
+        pytest.param("plain_derived", "union"),
+        pytest.param("derived_derived", "subset"),
+        pytest.param("derived_derived", "union"),
     ],
 )
 def test_composite_key_join(tmp_path: Path, kind: str, join_type: str):
     head, clause = CLAUSES[(kind, join_type)]
     query = head + f"{join_type} join {clause}\n" + SELECT
     rows = run_cell(write_models(tmp_path), query)
-    want = _expected_left() if join_type == "left" else _expected_full(kind)
+    want = _expected_left() if join_type == "subset" else _expected_full(kind)
     assert rows == want, f"{kind}/{join_type}:\n{query}\ngot {rows}\nwant {want}"
     # any dropped co-key fans stores across each other: output keys must be
     # unique regardless of the row values
@@ -135,12 +136,12 @@ def test_composite_key_join(tmp_path: Path, kind: str, join_type: str):
     assert len(keys) == len(set(keys)), f"fan-out: {rows}"
 
 
-def test_full_derived_key_as_left_operand_direction(tmp_path: Path):
-    # FULL is symmetric: the derived expr on the LEFT of `=` (rowset key as the
+def test_union_derived_key_as_left_operand_direction(tmp_path: Path):
+    # UNION is symmetric: the derived expr on the LEFT of `=` (rowset key as the
     # group canonical) must behave identically to the derived-on-the-right
     # form. This direction used to fall through to the substitution path and
     # drop the derived key (intra-store fan-out) or disconnect.
-    query = HEAD + "full join ta.s = nb.s and ta.w + 52 = nb.w\n" + SELECT
+    query = HEAD + "union join ta.s = nb.s and ta.w + 52 = nb.w\n" + SELECT
     rows = run_cell(write_models(tmp_path), query)
     keys = [(r[0], r[1]) for r in rows]
     assert len(keys) == len(set(keys)), f"fan-out: {rows}"
@@ -148,10 +149,10 @@ def test_full_derived_key_as_left_operand_direction(tmp_path: Path):
 
 
 def test_mixed_anchor_composite_composes_to_full(tmp_path: Path):
-    # q59's authored form: `left join ta.s = nb.s and nb.w = ta.w + 52` — pair 1
+    # q59's authored form: `subset join nb.s = ta.s and ta.w + 52 = nb.w` — pair 1
     # anchors ta, pair 2 anchors nb. Independent relations compose: preserve ta
     # rows AND preserve nb rows. The nb-only store-4 row survives; no fan-out.
-    query = HEAD + "left join ta.s = nb.s and nb.w = ta.w + 52\n" + SELECT
+    query = HEAD + "subset join nb.s = ta.s and ta.w + 52 = nb.w\n" + SELECT
     rows = run_cell(write_models(tmp_path), query)
     keys = [(r[0], r[1]) for r in rows]
     assert len(keys) == len(set(keys)), f"fan-out: {rows}"

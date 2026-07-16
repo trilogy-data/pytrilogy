@@ -59,7 +59,7 @@ ERROR_CODES: dict[int, str] = {
     ),
     220: (
         "Filter or stray clause after a `join`? A query-scoped join "
-        "`inner|left|full join <a> = <b>` takes only key equalities - to join on "
+        "`subset|union join <a> = <b>` takes only key equalities - to join on "
         "multiple keys, chain `= c` (one equivalence group) or separate distinct "
         "groups with `and` (`a = b and c = d`); STACK another `join` clause for a "
         "different join type. Note `and` joins KEY EQUALITIES only, not filters. "

@@ -11,6 +11,7 @@ from trilogy.core.exceptions import (
     UnresolvableQueryException,
 )
 from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
@@ -25,6 +26,36 @@ from trilogy.core.query_processor import process_query
 from trilogy.parser import parse_text
 
 working_path = Path(__file__).parent
+
+
+def test_all_sales_money_preserves_decimal_type():
+    env = Environment(working_path=working_path)
+    env.parse("import all_sales as sales;")
+
+    money = {
+        "sales_price",
+        "list_price",
+        "wholesale_cost",
+        "ext_sales_price",
+        "ext_wholesale_cost",
+        "ext_list_price",
+        "ext_discount_amount",
+        "coupon_amt",
+        "net_profit",
+        "net_paid",
+        "net_paid_inc_tax",
+        "return_amount",
+        "return_net_loss",
+    }
+
+    assert {
+        getattr(
+            env.concepts[f"sales.{name}"].datatype,
+            "data_type",
+            env.concepts[f"sales.{name}"].datatype,
+        )
+        for name in money
+    } == {DataType.NUMERIC}
 
 
 def test_demo(engine):
@@ -55,7 +86,7 @@ limit 10
 def test_q64_rowset_join_with_second_fact_join_hoist(engine_sf001):
     """Regression for the q64 stale-CTE-alias BinderException.
 
-    A scoped LEFT join onto a filtering rowset (`catalog_item_agg`) carries the
+    A scoped subset join onto a filtering rowset (`catalog_item_agg`) carries the
     rowset's key forward as a pass-through CTE's own output. When a SECOND
     composite fact join (`ss<->pr`) and the broad dimension-join graph let
     JoinHoist lift the rowset join up to the shared grouped parent, the hoist
@@ -76,7 +107,7 @@ select
   cs.item.id as item_id,
   sum(cs.ext_list_price) as cat_ext_list_price,
   sum(cr.refunded_cash + cr.reversed_charge + cr.store_credit) as cat_refund
-left join cs.order_number = cr.order_number and cs.item.sk = cr.item.sk
+subset join cr.order_number = cs.order_number and cr.item.sk = cs.item.sk
 ;
 
 where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
@@ -99,8 +130,8 @@ select
   sum(ss.ext_wholesale_cost) as wholesale_cost_sum,
   sum(ss.ext_list_price) as list_price_sum,
   sum(ss.coupon_amt) as coupon_amt_sum
-left join ss.ticket_number = pr.ticket_number and ss.item.sk = pr.item.sk
-left join ss.item.id = catalog_item_agg.item_id
+subset join pr.ticket_number = ss.ticket_number and pr.item.sk = ss.item.sk
+subset join catalog_item_agg.item_id = ss.item.id
 order by ss.item.product_name, ss.store.name
 limit 100;
 """

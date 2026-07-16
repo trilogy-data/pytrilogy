@@ -184,7 +184,7 @@ def test_nested_rowset_self_join_shorthand(tmp_path):
         "with base as select s.week_seq, sum(s.ext_sales_price) as m;\n"
         "with y1999 as where base.week_seq = 5 select base.week_seq, base.m;\n"
         "with y2000 as where base.week_seq = 6 select base.week_seq, base.m;\n"
-        "LEFT JOIN y1999.week_seq = y2000.week_seq "
+        "subset join y2000.week_seq = y1999.week_seq "
         "SELECT y1999.week_seq, y1999.m, y2000.m;"
     )
 
@@ -205,8 +205,8 @@ def test_self_join_rowset_phantom_join_key_not_ambiguous(tmp_path):
         "sum(s.ext_sales_price) as amt;\n"
         "with joined as "
         "select cur.wk, cur.dw, cur.amt as cur_amt, nxt.amt as nxt_amt "
-        "left join cur.wk = nxt.wk "
-        "left join cur.dw = nxt.dw;\n"
+        "subset join nxt.wk = cur.wk "
+        "subset join nxt.dw = cur.dw;\n"
         "select joined.wk;"
     )
 
@@ -237,8 +237,8 @@ def test_self_join_phantom_join_key_not_ambiguous_inside_def(tmp_path, tail):
         "sum(s.ext_sales_price) as amt;\n"
         "with joined as "
         "select cur.wk, cur.dw, round(cur.amt / nxt.amt, 2) as amt "
-        "left join cur.wk + 53 = nxt.wk "
-        "left join cur.dw = nxt.dw;\n"
+        "subset join nxt.wk = cur.wk + 53 "
+        "subset join nxt.dw = cur.dw;\n"
     )
     env.parse(src + tail)
     assert "joined" in env.concepts.rowset_namespaces
@@ -255,8 +255,8 @@ def test_self_join_join_key_leak_registry_isolates_other_side(tmp_path):
         "sum(s.ext_sales_price) as amt;\n"
         "with joined as "
         "select cur.wk, cur.dw, round(cur.amt / nxt.amt, 2) as amt "
-        "left join cur.wk + 53 = nxt.wk "
-        "left join cur.dw = nxt.dw;\n"
+        "subset join nxt.wk = cur.wk + 53 "
+        "subset join nxt.dw = cur.dw;\n"
     )
     leaks = env.concepts.rowset_join_key_leaks
     assert "joined.nxt.wk" in leaks

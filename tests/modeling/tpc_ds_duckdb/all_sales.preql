@@ -37,21 +37,21 @@ properties return_channel_dim_id (
 # A row can carry sales facts, return facts, or both.
 properties <order_id, channel, item.sk> (
     quantity int?, # Units of the item on this sales line.
-    sales_price float?, # Per-unit "unit price" charged for ONE unit; the whole-line total is ext_sales_price (the "total price").
-    list_price float?, # Per-unit list price before discounts.
-    wholesale_cost float?, # Per-unit wholesale acquisition cost.
-    ext_sales_price float?, # Whole-line "total price" = sales_price x quantity (the extended line amount); the per-unit price is sales_price.
-    ext_wholesale_cost float?, # Line-extended wholesale cost.
-    ext_list_price float?, # Line-extended list price.
-    ext_discount_amount float?, # Extended (line-level) discount amount applied to the line.
-    coupon_amt float?, # Coupon/credit amount applied to the line.
-    net_profit float?, # Net profit reported for the line.
-    net_paid float?, # Net amount paid for the line, excluding tax/shipping.
-    net_paid_inc_tax float?, # Net amount paid including sales tax.
+    sales_price numeric?, # Per-unit "unit price" charged for ONE unit; the whole-line total is ext_sales_price (the "total price").
+    list_price numeric?, # Per-unit list price before discounts.
+    wholesale_cost numeric?, # Per-unit wholesale acquisition cost.
+    ext_sales_price numeric?, # Whole-line "total price" = sales_price x quantity (the extended line amount); the per-unit price is sales_price.
+    ext_wholesale_cost numeric?, # Line-extended wholesale cost.
+    ext_list_price numeric?, # Line-extended list price.
+    ext_discount_amount numeric?, # Extended (line-level) discount amount applied to the line.
+    coupon_amt numeric?, # Coupon/credit amount applied to the line.
+    net_profit numeric?, # Net profit reported for the line.
+    net_paid numeric?, # Net amount paid for the line, excluding tax/shipping.
+    net_paid_inc_tax numeric?, # Net amount paid including sales tax.
     # --- return measures: sourced from the *returns* datasources below, not the sales ones ---
-    return_amount float?, # Amount refunded for the line, if returned.
+    return_amount numeric?, # Amount refunded for the line, if returned.
     return_quantity int?, # Units returned on the line. GOTCHA: NULL even when a return exists (is_returned=true) for some TPC-DS rows. Presence is independent of this measure — don't coalesce to 0 unless asked (the reference keeps the NULL through its derived percentages/averages).
-    return_net_loss float?, # Net financial loss on the return for the line at order time; does not include return net loss.
+    return_net_loss numeric?, # Net financial loss on the return for the line at order time; does not include return net loss.
     is_returned bool?, # Marks a returned line. Sourced only as raw true from the returns datasources, so it is true-or-NULL here (no explicit false): test "not returned" as `is_returned is null`, not `= false`.
     sale_line_item_counter int?, # counter of sales rows (NOT return-only rows). Use is_returned for return presence; `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
 );
