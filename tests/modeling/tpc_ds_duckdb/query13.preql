@@ -1,7 +1,7 @@
 import store_sales as store_sales;
 
 where
-    store_sales.date.year = 2001
+    store_sales.sale_date.year = 2001
     and (
         (
             store_sales.pos_customer_demographic.marital_status = 'M'

@@ -4,10 +4,10 @@ import all_sales as sales;
 # catalog uses sales_price + net_paid_inc_tax (matches the reference query).
 # Store has no warehouse/ship_mode mappings, so the planner uses the
 # 2-channel (web+catalog) union for any aggregate that touches them.
-def web_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'WEB' and sales.date.month_of_year = month)
-    by sales.warehouse.sk, sales.date.year;
-def cat_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'CATALOG' and sales.date.month_of_year = month)
-    by sales.warehouse.sk, sales.date.year;
+def web_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'WEB' and sales.sale_date.month_of_year = month)
+    by sales.warehouse.sk, sales.sale_date.year;
+def cat_month_sum(metric, month) -> sum(metric * sales.quantity ? sales.channel = 'CATALOG' and sales.sale_date.month_of_year = month)
+    by sales.warehouse.sk, sales.sale_date.year;
 def channel_total(ws, cs) -> coalesce(ws, 0) + coalesce(cs, 0);
 def per_sqft(ws, cs) -> coalesce(ws, 0) / sales.warehouse.square_feet + coalesce(cs, 0) / sales.warehouse.square_feet;
 def ws_sales(month) -> @web_month_sum(sales.ext_sales_price, month);
@@ -20,8 +20,8 @@ def month_sales_per_sqft(month) -> @per_sqft(@ws_sales(month), @cs_sales(month))
 
 where
     sales.channel in ('WEB', 'CATALOG')
-    and sales.date.year = 2001
-    and sales.time.time between 30838 and 59638
+    and sales.sale_date.year = 2001
+    and sales.sale_time.time between 30838 and 59638
     and sales.ship_mode.carrier in ('DHL', 'BARIAN')
     and sales.warehouse.sk is not null
 select
@@ -33,7 +33,7 @@ select
     sales.warehouse.state as w_state,
     sales.warehouse.country as w_country,
     'DHL,BARIAN' as ship_carriers,
-    sales.date.year as year_,
+    sales.sale_date.year as year_,
     @month_sales(1) as jan_sales,
     @month_sales(2) as feb_sales,
     @month_sales(3) as mar_sales,

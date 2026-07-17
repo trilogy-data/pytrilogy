@@ -7,8 +7,8 @@ rowset my_customers <- where
     sales.channel in ('CATALOG', 'WEB')
     and sales.item.category = 'Women'
     and sales.item.class = 'maternity'
-    and sales.date.year = 1998
-    and sales.date.month_of_year = 12
+    and sales.sale_date.year = 1998
+    and sales.sale_date.month_of_year = 12
     and sales.billing_customer.sk is not null
 select
     sales.billing_customer.sk as my_cust_id,
@@ -20,8 +20,8 @@ select
 # not a cross-join over every store in that county/state).
 rowset my_revenue <- where
     ss.customer.sk in my_customers.my_cust_id
-    and ss.date.month_seq >= 1188
-    and ss.date.month_seq <= 1190
+    and ss.sale_date.month_seq >= 1188
+    and ss.sale_date.month_seq <= 1190
     and ss.store.county = ss.customer.current_address.county
     and ss.store.state = ss.customer.current_address.state
     and ss.customer.sk is not null

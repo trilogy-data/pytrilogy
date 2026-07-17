@@ -13,7 +13,7 @@ auto cross_channel_count <- count_distinct(sales.channel)
 # part — trilogy tuple membership is identity matching (NULL = NULL), so the
 # set must exclude them explicitly.
 rowset cross_tuples <- where
-    sales.date.year between 1999 and 2001
+    sales.sale_date.year between 1999 and 2001
     and sales.item.brand_id is not null
     and sales.item.class_id is not null
     and sales.item.category_id is not null
@@ -27,7 +27,7 @@ having
 
 # avg_sales: scalar avg(quantity * list_price) over all 3 channels for 1999-2001.
 rowset avg_sales <- where
-    sales.date.year between 1999 and 2001
+    sales.sale_date.year between 1999 and 2001
 select
     avg(sales.quantity * sales.list_price) as average_sales,
 ;
@@ -41,8 +41,8 @@ auto channel_label <- lower(sales.channel);
 # sum(quantity*list_price) > avg_sales. Row-wise tuple membership matches all three
 # key parts together (a per-column `in` would match unrelated cross-pairs).
 rowset l0_filtered <- where
-    sales.date.year = 2001
-    and sales.date.month_of_year = 11
+    sales.sale_date.year = 2001
+    and sales.sale_date.month_of_year = 11
     and (sales.item.brand_id, sales.item.class_id, sales.item.category_id)
         in (cross_tuples.ci_brand_id, cross_tuples.ci_class_id, cross_tuples.ci_category_id)
 select

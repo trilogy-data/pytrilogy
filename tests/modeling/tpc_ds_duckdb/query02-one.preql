@@ -28,8 +28,8 @@ def round_lag(sales) -> round(sales / (lead(sales, 53) over (order by date.week_
 
 where
     date.week_seq in relevent_week_seq
-subset join date.sk = catalog_sales.date.sk
-subset join date.sk = web_sales.date.sk
+subset join date.sk = catalog_sales.sale_date.sk
+subset join date.sk = web_sales.sale_date.sk
 select
     date.week_seq,
     @round_lag(sunday_sales) as sunday_increase,

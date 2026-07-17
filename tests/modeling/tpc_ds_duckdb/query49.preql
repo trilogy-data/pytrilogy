@@ -19,8 +19,8 @@ where
     and sales.net_profit > 1
     and sales.net_paid > 0
     and sales.quantity > 0
-    and sales.date.year = 2001
-    and sales.date.month_of_year = 12
+    and sales.sale_date.year = 2001
+    and sales.sale_date.month_of_year = 12
 select
     channel_label as channel,
     sales.item.sk as item,

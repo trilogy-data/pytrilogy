@@ -6,32 +6,32 @@ import web_sales as ws;
 # and amt are just additional positional outputs (no coalesce/derive needed, as
 # the old FULL-JOIN multiselect required to fold per-arm columns together).
 with q76_results as union(
-    (where ss.store.sk is null and ss.ticket_number is not null and ss.date.sk is not null
+    (where ss.store.sk is null and ss.ticket_number is not null and ss.sale_date.sk is not null
      select
         'store' as channel,
         'ss_store_sk' as col_name,
-        ss.date.year as d_year,
-        ss.date.quarter as d_qoy,
+        ss.sale_date.year as d_year,
+        ss.sale_date.quarter as d_qoy,
         ss.item.category as i_category,
         count(grain(ss.ticket_number, ss.item.sk)) as sales_cnt,
         sum(ss.ext_sales_price) as sales_amt,
     ),
-    (where ws.ship_customer.sk is null and ws.order_number is not null and ws.date.sk is not null
+    (where ws.ship_customer.sk is null and ws.order_number is not null and ws.sale_date.sk is not null
      select
         'web' as channel,
         'ws_ship_customer_sk' as col_name,
-        ws.date.year as d_year,
-        ws.date.quarter as d_qoy,
+        ws.sale_date.year as d_year,
+        ws.sale_date.quarter as d_qoy,
         ws.item.category as i_category,
         count(grain(ws.order_number, ws.item.sk)) as sales_cnt,
         sum(ws.ext_sales_price) as sales_amt,
     ),
-    (where cs.pos_ship_address.sk is null and cs.order_number is not null and cs.date.sk is not null
+    (where cs.pos_ship_address.sk is null and cs.order_number is not null and cs.sale_date.sk is not null
      select
         'catalog' as channel,
         'cs_ship_addr_sk' as col_name,
-        cs.date.year as d_year,
-        cs.date.quarter as d_qoy,
+        cs.sale_date.year as d_year,
+        cs.sale_date.quarter as d_qoy,
         cs.item.category as i_category,
         count(grain(cs.order_number, cs.item.sk)) as sales_cnt,
         sum(cs.ext_sales_price) as sales_amt,

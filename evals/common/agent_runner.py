@@ -6,6 +6,7 @@ benchmark-specific paths/filenames come in through ``BenchmarkSpec``.
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import shutil
@@ -17,6 +18,39 @@ from pathlib import Path
 
 from . import monitor
 from .spec import BenchmarkSpec
+
+
+def add_scope_flags(parser: argparse.ArgumentParser) -> None:
+    """Register the shared agent scope-surfacing flags on an eval argparser.
+
+    Defaults mirror the CLI: the full scope block is off, distilled warnings on.
+    """
+    parser.add_argument(
+        "--scope-diagnostics",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="expose the full derived-value scope block (agg_window_rows_used) "
+        "to the agent; off by default",
+    )
+    parser.add_argument(
+        "--scope-warnings",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="expose distilled scope warnings to the agent; pass "
+        "--no-scope-warnings for a clean baseline",
+    )
+
+
+def add_force_tool_choice_flag(parser: argparse.ArgumentParser) -> None:
+    """Register the shared --force-tool-choice A/B flag on an eval argparser."""
+    parser.add_argument(
+        "--force-tool-choice",
+        action="store_true",
+        help="force tool_choice=required every turn (no plain-text reasoning). "
+        "Default is tool_choice: auto, which lets the model deliberate before "
+        "acting; pass this to A/B the old forced-tool behavior.",
+    )
+
 
 HEARTBEAT_INTERVAL = 30.0
 POLL_INTERVAL = 0.3
@@ -42,7 +76,8 @@ def run_agent(
     timeout: int,
     monitor_mode: str,
     toolset: str = "trilogy",
-    scope_diagnostics: bool = True,
+    scope_diagnostics: bool = False,
+    scope_warnings: bool = True,
 ) -> dict:
     cmd = [
         sys.executable,
@@ -66,6 +101,7 @@ def run_agent(
         env={
             **os.environ,
             "TRILOGY_AGENT_SCOPE_DIAGNOSTICS": "1" if scope_diagnostics else "0",
+            "TRILOGY_AGENT_SCOPE_WARNINGS": "1" if scope_warnings else "0",
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

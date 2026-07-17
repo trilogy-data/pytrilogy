@@ -1,15 +1,15 @@
 import all_sales as sales;
 
 where
-    sales.date.year = 1999
-    and sales.date.month_of_year = 11
+    sales.sale_date.year = 1999
+    and sales.sale_date.month_of_year = 11
     and sales.item.manager_id = 1
-    and (sales.time.meal_time = 'breakfast' or sales.time.meal_time = 'dinner')
+    and (sales.sale_time.meal_time = 'breakfast' or sales.sale_time.meal_time = 'dinner')
 select
     sales.item.brand_id as brand_id,
     sales.item.brand_name as brand,
-    sales.time.hour as t_hour,
-    sales.time.minute as t_minute,
+    sales.sale_time.hour as t_hour,
+    sales.sale_time.minute as t_minute,
     sum(sales.ext_sales_price) as ext_price,
 order by
     ext_price desc nulls first,

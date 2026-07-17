@@ -1,6 +1,6 @@
 import store_sales as store_sales;
 
-auto days_to_return <- store_sales.return_date.sk - store_sales.date.sk;
+auto days_to_return <- store_sales.return_date.sk - store_sales.sale_date.sk;
 
 def bucket_count(low, high) -> sum(
     count(store_sales.item.sk ? days_to_return > low and days_to_return <= high)

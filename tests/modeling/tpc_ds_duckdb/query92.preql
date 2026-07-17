@@ -2,11 +2,11 @@ import web_sales as ws;
 
 const start_date <- '2000-01-27'::date;
 const end_date <- '2000-04-26'::date;
-auto avg_item_disc <- 1.3 * avg(ws.ext_discount_amount ? ws.date.date between start_date and end_date) by ws.item.sk;
+auto avg_item_disc <- 1.3 * avg(ws.ext_discount_amount ? ws.sale_date.date between start_date and end_date) by ws.item.sk;
 
 where
     ws.item.manufacturer_id = 350
-    and ws.date.date between start_date and end_date
+    and ws.sale_date.date between start_date and end_date
     and ws.ext_discount_amount > avg_item_disc
 select
     sum(ws.ext_discount_amount) as excess_discount_amount,

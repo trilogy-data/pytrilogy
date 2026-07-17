@@ -22,7 +22,7 @@ rowset cr_totals <- select
 ;
 
 where
-    cs.date.date between period_start and period_end
+    cs.sale_date.date between period_start and period_end
 select
     'catalog channel' as u_channel_c,
     cs.call_center.sk as u_id_c,

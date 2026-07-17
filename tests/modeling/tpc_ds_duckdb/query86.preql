@@ -14,7 +14,7 @@ auto rank_within_parent <- rank(web_sales.item.category, web_sales.item.class)
     over (partition by lochierarchy, partition_cat order by total_sum desc);
 
 where
-    web_sales.date.month_seq between 1200 and 1211
+    web_sales.sale_date.month_seq between 1200 and 1211
 select
     total_sum,
     web_sales.item.category as i_category,

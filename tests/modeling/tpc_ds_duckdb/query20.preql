@@ -2,7 +2,7 @@ import catalog_sales as cs;
 
 where
     cs.item.category in ('Sports', 'Books', 'Home')
-    and cs.sold_date.date between '1999-02-22'::date and '1999-03-24'::date
+    and cs.sale_date.date between '1999-02-22'::date and '1999-03-24'::date
 select
     cs.item.id,
     cs.item.desc,

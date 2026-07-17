@@ -7,7 +7,7 @@ const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
 rowset ss_grouped <- where
-    ss.date.date between period_start and period_end
+    ss.sale_date.date between period_start and period_end
 select
     ss.store.sk as ss_store_id,
     sum(ss.ext_sales_price) as ss_sales,

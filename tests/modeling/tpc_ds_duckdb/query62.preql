@@ -1,5 +1,5 @@
 import web_sales as ws;
-property days_to_ship <- ws.ship_date.sk - ws.date.sk;
+property days_to_ship <- ws.ship_date.sk - ws.sale_date.sk;
 WHERE
     ws.ship_date.month_seq between 1200 and  1211 and ws.warehouse.sk is not null and ws.ship_mode.sk is not null and ws.web_site.sk is not null
 SELECT

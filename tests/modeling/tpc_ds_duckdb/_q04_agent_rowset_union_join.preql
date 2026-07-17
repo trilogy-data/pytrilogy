@@ -11,14 +11,14 @@ merge store.customer.sk into catalog.billing_customer.sk;
 merge store.customer.sk into web.billing_customer.sk;
 
 with s01 as
-where store.date.year = 2001
+where store.sale_date.year = 2001
 select
     store.customer.id as cid,
     sum(store.profit) as val
 ;
 
 with s02 as
-where store.date.year = 2002
+where store.sale_date.year = 2002
 select
     store.customer.id as cid,
     store.customer.first_name as fn,
@@ -28,28 +28,28 @@ select
 ;
 
 with c01 as
-where catalog.sold_date.year = 2001
+where catalog.sale_date.year = 2001
 select
     catalog.billing_customer.id as cid,
     sum(catalog.profit) as val
 ;
 
 with c02 as
-where catalog.sold_date.year = 2002
+where catalog.sale_date.year = 2002
 select
     catalog.billing_customer.id as cid,
     sum(catalog.profit) as val
 ;
 
 with w01 as
-where web.date.year = 2001
+where web.sale_date.year = 2001
 select
     web.billing_customer.id as cid,
     sum(web.profit) as val
 ;
 
 with w02 as
-where web.date.year = 2002
+where web.sale_date.year = 2002
 select
     web.billing_customer.id as cid,
     sum(web.profit) as val

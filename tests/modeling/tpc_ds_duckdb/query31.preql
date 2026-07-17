@@ -1,7 +1,7 @@
 import all_sales as sales;
 
-def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.channel = channel and sales.date.quarter = qtr)
-    by sales.pos_bill_address.county, sales.date.year;
+def channel_qtr(channel, qtr) -> sum(sales.ext_sales_price ? sales.channel = channel and sales.sale_date.quarter = qtr)
+    by sales.pos_bill_address.county, sales.sale_date.year;
 
 auto ss_q1 <- @channel_qtr('STORE', 1);
 auto ss_q2 <- @channel_qtr('STORE', 2);
@@ -15,12 +15,12 @@ auto web_q1_q2_increase <- ws_q2 / ws_q1;
 auto web_q2_q3_increase <- ws_q3 / ws_q2;
 
 where
-    sales.date.year = 2000
+    sales.sale_date.year = 2000
     and sales.channel in ('STORE', 'WEB')
-    and sales.date.quarter in (1, 2, 3)
+    and sales.sale_date.quarter in (1, 2, 3)
 select
     sales.pos_bill_address.county,
-    sales.date.year,
+    sales.sale_date.year,
     web_q1_q2_increase,
     store_q1_q2_increase,
     web_q2_q3_increase,

@@ -3,11 +3,11 @@ import catalog_sales;
 const start_date <- '2000-01-27'::date;
 const end_date <- '2000-04-26'::date;
 
-auto avg_item_disc <- 1.3 * avg(discount_amount ? sold_date.date between start_date and end_date) by item.sk;
+auto avg_item_disc <- 1.3 * avg(discount_amount ? sale_date.date between start_date and end_date) by item.sk;
 
 where
     item.manufacturer_id = 48
-    and sold_date.date between start_date and end_date
+    and sale_date.date between start_date and end_date
     and discount_amount > avg_item_disc
 select
     sum(discount_amount) as total_discount,

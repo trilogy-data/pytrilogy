@@ -6,19 +6,19 @@ const end_date <- '2000-04-10'::date;
 
 where
     catalog_sales.item.current_price between 0.99 and 1.49
-    and catalog_sales.sold_date.date between start_date and end_date
+    and catalog_sales.sale_date.date between start_date and end_date
 select
     catalog_sales.warehouse.state,
     catalog_sales.item.id,
     sum(
             case
-                when catalog_sales.sold_date.date < cutoff then catalog_sales.sales_price - coalesce(catalog_sales.refunded_cash, 0.0)
+                when catalog_sales.sale_date.date < cutoff then catalog_sales.sales_price - coalesce(catalog_sales.refunded_cash, 0.0)
                 else 0.0
             end
         ) as sales_before,
     sum(
             case
-                when catalog_sales.sold_date.date >= cutoff then catalog_sales.sales_price - coalesce(catalog_sales.refunded_cash, 0.0)
+                when catalog_sales.sale_date.date >= cutoff then catalog_sales.sales_price - coalesce(catalog_sales.refunded_cash, 0.0)
                 else 0.0
             end
         ) as sales_after,

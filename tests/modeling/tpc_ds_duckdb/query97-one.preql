@@ -8,8 +8,8 @@ import item as item;
 # || so a NULL customer sk yields a NULL key (concat() skips NULLs and would
 # mint a '-item' key, counting customerless rows as real overlap members)
 auto customer_item <- customer.sk::string || '-' || item.sk::string;
-auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
-auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
+auto catalog_sales <- customer_item ? catalog_sales.sale_date.month_seq between 1200 and 1200 + 11;
+auto store_sales <- customer_item ? store_sales.sale_date.month_seq between 1200 and 1200 + 11;
 
 subset join store_sales.customer.sk = customer.sk
 subset join store_sales.item.sk = item.sk

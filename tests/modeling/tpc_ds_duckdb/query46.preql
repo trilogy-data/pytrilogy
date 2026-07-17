@@ -6,8 +6,8 @@ rowset bought <- where
         store_sales.pos_household_demographic.dependent_count = 4
         or store_sales.pos_household_demographic.vehicle_count = 3
     )
-    and store_sales.date.day_of_week in (6, 0)
-    and store_sales.date.year in (1999, 2000, 2001)
+    and store_sales.sale_date.day_of_week in (6, 0)
+    and store_sales.sale_date.year in (1999, 2000, 2001)
     and store_sales.store.city in ('Fairview', 'Midway')
 select
     store_sales.customer.sk,

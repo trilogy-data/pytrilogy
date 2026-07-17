@@ -5,30 +5,30 @@ import web_sales as web_sales;
 from except(
     (
         where
-            store_sales.date.month_seq between 1200 and 1211
+            store_sales.sale_date.month_seq between 1200 and 1211
             and store_sales.customer.sk is not null
         select
             store_sales.customer.last_name,
             store_sales.customer.first_name,
-            store_sales.date.date
+            store_sales.sale_date.date
     ),
     (
         where
-            catalog_sales.sold_date.month_seq between 1200 and 1211
+            catalog_sales.sale_date.month_seq between 1200 and 1211
             and catalog_sales.billing_customer.sk is not null
         select
             catalog_sales.billing_customer.last_name,
             catalog_sales.billing_customer.first_name,
-            catalog_sales.sold_date.date
+            catalog_sales.sale_date.date
     ),
     (
         where
-            web_sales.date.month_seq between 1200 and 1211
+            web_sales.sale_date.month_seq between 1200 and 1211
             and web_sales.billing_customer.sk is not null
         select
             web_sales.billing_customer.last_name,
             web_sales.billing_customer.first_name,
-            web_sales.date.date
+            web_sales.sale_date.date
     )
 ) -> (last_name, first_name, sale_date)
 select

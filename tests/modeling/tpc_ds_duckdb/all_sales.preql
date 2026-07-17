@@ -6,9 +6,9 @@
 # (`store_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
 
 import item as item;
-import date as date;
+import date as sale_date;
 import date as return_date;
-import time as time;
+import time as sale_time;
 import customer as billing_customer;
 import customer as ship_customer;
 import customer as purchasing_customer;
@@ -60,8 +60,8 @@ partial datasource web_sales_unified (
     raw(''' 'WEB' '''): channel,
     WS_ORDER_NUMBER: order_id,
     WS_ITEM_SK: item.sk,
-    WS_SOLD_DATE_SK: ?date.sk,
-    WS_SOLD_TIME_SK: ?time.sk,
+    WS_SOLD_DATE_SK: ?sale_date.sk,
+    WS_SOLD_TIME_SK: ?sale_time.sk,
     WS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     WS_BILL_CUSTOMER_SK: ?purchasing_customer.sk,
     WS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
@@ -94,8 +94,8 @@ partial datasource catalog_sales_unified (
     raw(''' 'CATALOG' '''): channel,
     CS_ORDER_NUMBER: order_id,
     CS_ITEM_SK: item.sk,
-    CS_SOLD_DATE_SK: ?date.sk,
-    CS_SOLD_TIME_SK: ?time.sk,
+    CS_SOLD_DATE_SK: ?sale_date.sk,
+    CS_SOLD_TIME_SK: ?sale_time.sk,
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     CS_SHIP_CUSTOMER_SK: ?purchasing_customer.sk,
@@ -127,8 +127,8 @@ partial datasource store_sales_unified (
     raw(''' 'STORE' '''): channel,
     SS_TICKET_NUMBER: order_id,
     SS_ITEM_SK: item.sk,
-    SS_SOLD_DATE_SK: ?date.sk,
-    SS_SOLD_TIME_SK: ?time.sk,
+    SS_SOLD_DATE_SK: ?sale_date.sk,
+    SS_SOLD_TIME_SK: ?sale_time.sk,
     SS_CUSTOMER_SK: ?billing_customer.sk,
     SS_CUSTOMER_SK: ?ship_customer.sk,
     SS_CUSTOMER_SK: ?purchasing_customer.sk,

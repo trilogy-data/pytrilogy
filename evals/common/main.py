@@ -173,13 +173,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="alias for --categories ingest,enriched (the legacy base-vs-enriched "
         "comparison).",
     )
-    parser.add_argument(
-        "--force-tool-choice",
-        action="store_true",
-        help="force tool_choice=required every turn (no plain-text reasoning). "
-        "Default is tool_choice: auto, which lets the model deliberate before "
-        "acting; pass this to A/B the old forced-tool behavior.",
-    )
+    agent_runner.add_force_tool_choice_flag(parser)
     parser.add_argument(
         "--enable-todo",
         action="store_true",
@@ -187,13 +181,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "todo OFF (fewer tools/less context for short single-query tasks; no "
         "effect on the SQL toolset, which has no todo). Pass this to A/B it.",
     )
-    parser.add_argument(
-        "--scope-diagnostics",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="expose derived-value scope diagnostics to Trilogy agents; pass "
-        "--no-scope-diagnostics for a clean baseline",
-    )
+    agent_runner.add_scope_flags(parser)
     return parser
 
 
@@ -680,6 +668,7 @@ def run(spec: BenchmarkSpec) -> int:
                 monitor_mode,
                 toolset=category.harness,
                 scope_diagnostics=args.scope_diagnostics,
+                scope_warnings=args.scope_warnings,
             )
             result["id"] = qid
             # Persist the subprocess stdout/stderr on a non-zero exit — it holds

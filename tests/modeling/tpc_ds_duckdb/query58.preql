@@ -14,7 +14,7 @@ auto cs_dev <- cs_item_rev / avg_rev * 100;
 auto ws_dev <- ws_item_rev / avg_rev * 100;
 
 where
-    sales.date.week_seq in target_week_seq
+    sales.sale_date.week_seq in target_week_seq
 select
     sales.item.id as item_id,
     ss_item_rev,

@@ -1,10 +1,10 @@
 import store_sales as store_sales;
 
-auto sum_sales <- sum(store_sales.sales_price) by store_sales.item.manager_id, store_sales.date.month_of_year;
+auto sum_sales <- sum(store_sales.sales_price) by store_sales.item.manager_id, store_sales.sale_date.month_of_year;
 auto avg_monthly_sales <- avg(sum_sales) by store_sales.item.manager_id;
 
 where
-    store_sales.date.month_seq in (1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211)
+    store_sales.sale_date.month_seq in (1200, 1201, 1202, 1203, 1204, 1205, 1206, 1207, 1208, 1209, 1210, 1211)
     and store_sales.store.sk is not null
     and (
         (

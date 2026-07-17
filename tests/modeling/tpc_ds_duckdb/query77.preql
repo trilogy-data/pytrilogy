@@ -6,7 +6,7 @@ const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
 rowset cs_grouped <- where
-    cs.date.date between period_start and period_end
+    cs.sale_date.date between period_start and period_end
     and cs.call_center.sk is not null
 select
     cs.call_center.sk as cs_cc_id,
@@ -23,7 +23,7 @@ select
 ;
 
 rowset ss_grouped <- where
-    ss.date.date between period_start and period_end
+    ss.sale_date.date between period_start and period_end
     and ss.store.sk is not null
 select
     ss.store.sk as ss_store_id,
@@ -40,7 +40,7 @@ select
 ;
 
 rowset ws_grouped <- where
-    ws.date.date between period_start and period_end
+    ws.sale_date.date between period_start and period_end
     and ws.web_page.sk is not null
 select
     ws.web_page.sk as ws_wp_id,
