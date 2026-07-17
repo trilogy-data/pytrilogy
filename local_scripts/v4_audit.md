@@ -1,39 +1,96 @@
-# v4 compatibility audit (last refreshed 2026-07-16, session 7)
+# v4 compatibility audit (last refreshed 2026-07-16, session 8)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-16 session 7)
+## Current state (after 2026-07-16 session 8)
 
-**Full v4 sweep (session 7): 42 failed / 5584 passed**, 14 xpassed, 82 errors
-(clickhouse-environmental, ignore). Log: `local_scripts/v4_sweep_0716_s7b.log`.
-Diffed against the session-6 43-set: −1 net, ZERO new/regressions. Fixed exactly:
-`test_materialized_where_form_matches_filter_form`
-(test_materialized_aggregate_bridge_join.py) — the WHERE-form dual-scope bridge.
-**materialized_aggregate_bridge is now fully CLEARED (×0).** Session-6 baseline
-was 43/5583 (`v4_sweep_0715_s6.log`).
+**Full v4 sweep (session 8): 32 failed / 5594 passed**, 16 xpassed, 20 skipped,
+51 xfailed. Log: `local_scripts/v4_sweep_0716_s8.log`. Diffed against the
+session-7 42-set: **−10 net, ZERO new/regressions.** Session-8 fixed the
+**offset_join family (×4, CLEARED)** plus 6 collateral: q83 `order_by_measure`
+(duckdb_rowset residual 3→2), **cross_rowset_join_rowset_as_set ×2 CLEARED**,
+generation_matrix `cross_rowset_yoy_join` (2→1), membership_existence `plain_key`
+(2→1), and q64-transitive (TPC-DS 6→5). Session-7 baseline was 42/5584
+(`v4_sweep_0716_s7b.log`).
 
-Session-7 fix (single v4-only change, source_planning.py):
-1. **Bridge scan emits a datasource-materialized aggregate matched by canonical
-   address** (+1) — see session-7 entry.
+Session-8 fix (two v4-only changes, offset/derived-key subset join with a
+post-merge WHERE — see session-8 entry):
+1. **Cross-rowset constraint-edge guard generalized** (concept_graph.py) — breaks
+   a bidirectional group-graph constraint cycle.
+2. **Rowset boundary deferral for cross-rowset FINAL merges**
+   (condition_placement.py) — routes a WHERE over a null-extendable rowset
+   boundary to FINAL.
 
-**Open families by sweep count (42):** offset_join ×4, TPC-DS ×6 (q14,
-q64-transitive, q81, q29-feeder, or_membership, q64-correlated),
-filter_bare_aggregate_content_grain ×3, duckdb_rowset residual ×3
-(order_by_measure q83 + composite stddev/variance keys-3 ×2), rollup_scoped ×2
-(three_key_executes, two_key_partial_builds), generation_matrix ×2,
-multi_partial_anchor ×2, expression_keys ×2, membership_existence ×2,
-pushdown_partitioned ×2, cross_rowset_join_rowset_as_set ×2, subquery ×2, +
-singles (rowset_body_limit, scoped_derived exp_rows1, collapse_basic_into_group,
+**Open families by sweep count (32):** TPC-DS ×5 (q14, q81, q29-feeder,
+or_membership, q64-correlated), filter_bare_aggregate_content_grain ×3,
+duckdb_rowset residual ×2 (composite stddev/variance keys-3), rollup_scoped ×2
+(three_key_executes, two_key_partial_builds), multi_partial_anchor ×2,
+expression_keys ×2, pushdown_partitioned ×2, subquery ×2, + singles
+(rowset_body_limit, scoped_derived exp_rows1, collapse_basic_into_group,
 union_bare_aggregate, setops, orderby_derived_expr, constant_def_macro,
-membership_having, where_select_dual_scope, cograin
-having_bare_max_matches_where, twin_keeps_scalar_refs).
+membership_having, generation_matrix single_rowset_islanded, membership_existence
+expression_key, where_select_dual_scope twin_keeps_scalar_refs, cograin
+having_bare_max_matches_where).
 
-**NEXT candidate:** offset_join ×4 (`test_rowset_offset_join_contract.py`,
-2 tests × PEST/LARK) is the largest single-file cluster. Alternatively
-filter_bare_aggregate_content_grain ×3 or duckdb_rowset residual ×3.
+**NEXT candidate:** filter_bare_aggregate_content_grain ×3
+(`test_filter_bare_aggregate_content_grain.py`) is the largest single-file
+cluster. Alternatively duckdb_rowset residual ×2 or one of the ×2 families
+(pushdown_partitioned, subquery, multi_partial_anchor, expression_keys).
+
+## ✅ 2026-07-16 (session 8) — offset/derived-key subset join with a post-merge WHERE (+10)
+
+Two v4-only changes (concept_graph.py + condition_placement.py). Sweep 42→32,
+ZERO regressions; offset_join family CLEARED (×4) + 6 collateral (see Current
+state); mypy/ruff/black clean; join_matrix 297/0 (+7 xfail); TPC-DS q72 intact
+(the placement-change signal); nothing to prune from `v4_known_failing.py` (all
+plain failures).
+
+Shape: two rowsets `a`/`b` filter the SAME `orders` table on different statuses,
+joined at the outer select on a DERIVED key (`subset join b.oid + 1 = a.oid`),
+with a post-merge `where a.amt is not null and b.amt is not null` (the both-sides
+null-test idiom that narrows a preserving LEFT to the intersection). v4 aborted
+the strategy build with a group-graph constraint CYCLE; after breaking the cycle
+it pushed `b.amt is not null` into b's pre-join CTE (filters nothing — b's own
+rows are non-null), then the LEFT completion re-admitted the unmatched row
+null-extended (`(7,70,None,None)` leaked; v3 renders an INNER join with both
+filters at the outer WHERE).
+
+Two root causes:
+
+1. **Cross-rowset constraint edge 2-cycles two rowset groups**
+   (`build_concept_graph`, both the main constraint pass and the no-successor
+   backfill). The WHERE conjoins outputs of BOTH rowsets, so each condition node
+   (`[@condition]a.amt` in group a, `[@condition]b.amt` in group b) got a
+   CONSTRAINT edge to the OTHER rowset's d0 outputs (a→b and b→a) → bidirectional
+   group-graph constraint edge → `_topological_order` finds a cycle and abandons
+   the build. The existing guard skipped this only for presence probes; the
+   principle is general — a rowset-scoped condition value lives inside ITS own
+   boundary and its test lands at FINAL, never inside a SIBLING rowset's
+   independent scan (a different rowset never consumes it as input). Fix: dropped
+   the `is_presence_probe(src)` requirement from both guards — skip whenever
+   `src.rowset_name != dst.rowset_name and dst.derivation == ROWSET`.
+
+2. **A WHERE over a null-extendable rowset boundary must defer to FINAL**
+   (`plan_condition_placements`, new `_rowset_boundary_deferred`). The derived-key
+   subset join's endpoint is an EXPRESSION (`b.oid + 1`), so it registers NO
+   domain-graph STATEMENT edge and NO `scoped_join_key_groups` axis — the offset
+   relation is applied via the rowset-pair materialize path (session-1 derived
+   relation members), invisible to `_group_in_active_relation`. So b's boundary
+   was never flagged as a preserved side and `b.amt is not null` got hosted
+   locally (pre-merge). Fix: when ≥2 ROWSET boundaries flow STRAIGHT to FINAL,
+   that merge is a cross-rowset completion join that can null-extend a side; fold
+   those boundaries into `active_relation_hosts` so the existing FINAL-routing
+   branch fires. FINAL placement is ALWAYS correct — a no-op when the merge is
+   INNER, required when preserving. Verified: v4 SQL now matches v3 (INNER join,
+   both null-tests at the outer WHERE, one offset-only ON clause).
+
+Bonus collateral all shared ONE of these two causes (cross-rowset WHERE over
+independent-rowset boundaries): q83 order_by_measure (nested cross-rowset join),
+cross_rowset_join_rowset_as_set ×2, generation_matrix cross_rowset_yoy_join,
+membership_existence plain_key.
 
 ## ✅ 2026-07-16 (session 7) — bridge scan emits a datasource-materialized aggregate matched by canonical address (+1)
 

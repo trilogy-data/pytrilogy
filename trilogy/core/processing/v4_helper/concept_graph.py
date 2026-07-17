@@ -1250,17 +1250,20 @@ def build_concept_graph(
                     and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
                 ):
                     continue
-                # A rowset-member presence probe is computed inside ITS member's
-                # boundary and its null test only applies above the completion
-                # merge (FINAL). Constraining it onto ANOTHER rowset's boundary
-                # would force that independent scope to consume a value it
-                # cannot see, polluting its output contract (the b-side
-                # boundary "output" the a-side's probe and lost its own
-                # handles).
+                # A rowset-scoped condition value is computed inside ITS own
+                # rowset's boundary and its test only applies above the
+                # completion merge (FINAL). Constraining it onto ANOTHER
+                # rowset's boundary would force that independent scope to consume
+                # a value it cannot see, polluting its output contract (the
+                # b-side boundary "output" the a-side's value and lost its own
+                # handles). Two forms: a rowset-member presence probe, and a
+                # plain rowset handle used in a post-merge filter (`where a.amt
+                # is not null and b.amt is not null` over two independent rowsets
+                # — each null test lands at FINAL, never inside the sibling's
+                # scan; a mutual constraint would 2-cycle the two rowset groups).
                 if (
                     attrs[src].rowset_name
                     and attrs[src].rowset_name != attrs[dst].rowset_name
-                    and is_presence_probe(attrs[src].address)
                     and attrs[dst].derivation == Derivation.ROWSET
                 ):
                     continue
@@ -1328,13 +1331,12 @@ def build_concept_graph(
                 and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
             ):
                 continue
-            # Same cross-boundary probe guard as the main constraint pass: a
-            # rowset-member probe's null test lands at FINAL, never inside a
-            # sibling rowset's independent scope.
+            # Same cross-rowset guard as the main constraint pass: a
+            # rowset-scoped value's test lands at FINAL, never inside a sibling
+            # rowset's independent scope.
             if (
                 attrs[src].rowset_name
                 and attrs[src].rowset_name != attrs[dst].rowset_name
-                and is_presence_probe(attrs[src].address)
                 and attrs[dst].derivation == Derivation.ROWSET
             ):
                 continue

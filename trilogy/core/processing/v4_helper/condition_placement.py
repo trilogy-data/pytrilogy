@@ -558,6 +558,26 @@ def plan_condition_placements(
             for other_gid, other_relatable in group_relatable.items()
         )
 
+    # Rowset boundaries whose rows flow STRAIGHT to the FINAL merge. When two or
+    # more such boundaries merge there, that merge is a cross-rowset completion
+    # join that can null-extend a side — the offset/derived-key subset join
+    # (`subset join b.oid + 1 = a.oid`) is the motivating case: its endpoint is a
+    # derived expression, so it registers no scoped-join axis and
+    # `_group_in_active_relation` cannot see it. A WHERE over such a boundary's
+    # output is a post-merge predicate the same way (hosting `b.amt is not null`
+    # inside b's boundary filters nothing pre-join, then the LEFT completion
+    # re-admits the row null-extended). Route it to FINAL — always correct, a
+    # no-op when the merge is INNER.
+    rowset_final_groups = {
+        gid
+        for gid, b in buckets.items()
+        if b.derivation == Derivation.ROWSET
+        and set(group_graph.successors(gid)) == {FINAL_NODE_ID}
+    }
+
+    def _rowset_boundary_deferred(gid: str) -> bool:
+        return len(rowset_final_groups) > 1 and gid in rowset_final_groups
+
     placements: list[ConditionPlacement] = []
     for clause in conditions:
         for atom in decompose_condition(clause.conditional):
@@ -582,7 +602,9 @@ def plan_condition_placements(
             # null` at the final select) — filtering one boundary by its own
             # key both no-ops locally and perturbs the anchor-LEFT join shape.
             active_relation_hosts = {
-                gid for gid in candidates if _group_in_active_relation(gid)
+                gid
+                for gid in candidates
+                if _group_in_active_relation(gid) or _rowset_boundary_deferred(gid)
             }
             # A flagged NON-rowset host (a FINAL contributor that is one side
             # of an active preserving relation — the aligns read-back's
