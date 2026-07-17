@@ -1,79 +1,99 @@
-# v4 compatibility audit (last refreshed 2026-07-16, session 9)
+# v4 compatibility audit (last refreshed 2026-07-17, session 9)
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
 
-## Current state (after 2026-07-16 session 9)
+## Current state (after 2026-07-17 session 9)
 
-**Full v4 sweep (session 9): 63 failed / 5653 passed**, 22 xpassed, 20 skipped,
+**Full v4 sweep (session 9): 44 failed / 5672 passed**, 22 xpassed, 20 skipped,
 53 xfailed, 82 errors (26 are clickhouse-server env, not real). Log:
-`local_scripts/v4_sweep_0716_s9.log`. Session-9 cleared
-**filter_bare_aggregate_content_grain ×3 (family CLEARED)** with ZERO regressions
-(diffed against a fresh HEAD baseline `local_scripts/v4_sweep_0716_baseline.log`:
-66→63, only the 3 targets moved).
+`local_scripts/v4_sweep_0717_fix.log`. Session-9 cleared
+**filter_bare_aggregate_content_grain ×3 AND `test_grain_function` ×17** (both the
+SAME root cause) plus TPC-DS **q72 (+1)**, with **ZERO regressions** on both
+planners. Diffed against a fresh HEAD baseline `local_scripts/v4_sweep_0716_baseline.log`
+(66) → 44 (**−22**). Full v3 sweep also ZERO regressions
+(`local_scripts/v3_sweep_0717_fix.log`, 3 fails = pre-existing fuzzer ×2 + a
+`left outer` parse error).
 
 **IMPORTANT — the s8-documented "32" was stale.** Merged PRs on this branch
-(#601 "Scope Feedback", #600) added new failing v4 test targets that the s8 sweep
-never saw — chiefly `tests/engine/test_grain_function.py` (17 fails, the `grain()`
-builtin under dimension filters). The honest HEAD baseline is 66, not 32; s9 is
-63. Prior session deltas (−3, −10, …) were all real against their own baselines;
-only the absolute total drifted because the test corpus grew.
+(#601 "Scope Feedback", #600) grew the corpus with new failing v4 targets the s8
+sweep never saw (chiefly `test_grain_function` ×17). The honest HEAD baseline was
+66, not 32; session-9's fix took it to 44. Prior session deltas were all real
+against their own baselines; only the absolute total drifted as the corpus grew.
+Always run a FRESH stashed-HEAD baseline sweep — never diff a prior session's log.
 
-Session-9 fix (one shared-but-v3-safe change in `build.py`, `_build_filter_where`):
-a filter whose content is a **derived (BASIC) scalar** (`sp <- substring(descr,1,2)`)
-co-grains its bare aggregate to the **content itself** (`{sp}`), not to
-`content.grain` (its finer key lineage `{s_item}`). Over-partitioning by the key
-computed the count per `s_item` (3/2/1, none > 4) instead of per prefix (`AA`=5)
-→ empty result. ROOT keys/properties keep `content.grain.components` (unchanged;
-a key's grain is itself). v3 already grouped by the prefix via HAVING co-graining,
-so v3 is untouched (verified green).
+Session-9 fix (one ~4-line change in `build.py`, `_build_filter_where`): a filter's
+bare aggregate co-grains to the content's **own value grain** (`{content.address}`
+— the grain of `SELECT <content>`), NOT `content.grain` (the finer FD/definitional
+grain a property or derived scalar descends to). Aggregate/window content keeps its
+declared grain (that already IS its grouping identity). See the session-9 entry for
+the full derivation; the `grain()` builtin under dimension filters was the same bug.
 
-**Open families by sweep count (63, honest HEAD):** `test_grain_function` ×17
-(NEW, #601 — `grain()` under dimension filters), TPC-DS ×6 + non-benchmark ×2 +
-q29-feeder (q14, q70, q72, q10, q29, …), enum_unions ×4 (NEW partial_key_union
-cells), disconnected_e2e ×2 (NEW message tests, #601), fuzzer ×2 (NEW), + the
-prior ×2 families (multi_partial_anchor, expression_keys, pushdown_partitioned,
-subquery, duckdb_rowset, rollup_scoped) + singles (rowset_body_limit,
-scoped_derived exp_rows1, collapse_basic_into_group, union_bare_aggregate, setops,
-orderby_derived_expr, constant_in_cross_datasource_merge, membership_having,
-generation_matrix, membership_existence, where_select_dual_scope
-twin_keeps_scalar_refs, cograin having_bare_max, rollup_multi_window,
-parse_engine_v2 corpus_parity, existence_feeder_pushdown).
+**Open families by sweep count (44 / 42 unique):** TPC-DS ×5 (q14, q70, q10, q29,
+q81) + non-benchmark ×2 + q29-feeder, enum_unions ×4 (partial_key_union cells,
+#601), disconnected_e2e ×2 (message tests, #601), fuzzer ×2 (pre-existing, corpus
+stability — likely env/seed, NOT a planner gap), + the ×2 families
+(multi_partial_anchor, expression_keys, pushdown_partitioned, duckdb_subquery,
+duckdb_rowset, duckdb_rollup_scoped_join) + singles (where_select_dual_scope
+twin_keeps_scalar_refs, where_scalar_aggregate_degenerate_cograin, scoped_join
+dim_bridge / cross_rowset_membership_existence, scoped_derived_rowset exp_rows1,
+rowset_generation_matrix, rowset_cross_datasource (left-outer parse),
+rowset_body_limit, rollup_multi_window, membership_having, collapse_basic_into_group,
+existence_feeder_pushdown, union_bare_aggregate, setops, orderby_derived_expr,
+constant_in_cross_datasource_merge).
 
-**NEXT candidate:** `tests/engine/test_grain_function.py` ×17 — by far the
-largest single-file cluster and a coherent new feature surface (the `grain()`
-function normalizing/deduping under dimension filters before counting). Verify it
-predates any local commit (added by PR #601) and is a genuine v4 gap, then work it
-as one family. Alternatively re-triage whether the enum_unions/disconnected_e2e/
-fuzzer additions are real v4 gaps or need tracking in `v4_known_failing.py`.
+**NEXT candidate:** TPC-DS cluster (q14/q70/q10/q29/q81 + non-benchmark ×2 +
+q29-feeder = 8, the largest coherent group) OR enum_unions ×4 (single-file
+partial_key_union). First re-triage the ×2 families and singles against
+`v4_known_failing.py` — several may be prunable/xfail-trackable rather than open
+work. fuzzer ×2 and rowset_cross_datasource are pre-existing/parse-level, not
+grain work.
 
-## ✅ 2026-07-16 (session 9) — bare-aggregate filter co-grains to a derived content, not its key (+3)
+## ✅ 2026-07-17 (session 9) — filter's bare aggregate co-grains to the content VALUE, not its FD grain (+22)
 
-Single change in `models/build.py` (`_build_filter_where`), shared but v3-safe.
-filter_bare_aggregate_content_grain 3→0 (family CLEARED); ZERO regressions
-(fresh HEAD baseline sweep 66→63, only the 3 targets moved); join_matrix
-263/0 (+9 xfail, +6 xpass); mypy/ruff/black clean; not in `v4_known_failing.py`.
+Single ~4-line change in `models/build.py` (`_build_filter_where`), shared but
+verified regression-free on BOTH planners (full v3 + v4 sweeps). Cleared
+filter_bare_aggregate_content_grain ×3 AND **`test_grain_function` ×17** (same
+root cause) + TPC-DS q72 (+1) + a flaky parse-parity test. v4 66→44 (−22, ZERO
+new); v3 ZERO regressions; ruff/mypy(309)/black clean; not in `v4_known_failing.py`.
 
 Shape: `auto sp <- substring(s_descr,1,2); auto fp <- sp ? (count_distinct(...) > 4)`.
 The bare aggregate in the filter must group by the FILTERED CONTENT `sp` (the
 prefix) — `AA` spans items 1,2 → 5 distinct pairs > 4 ✓. v4 grouped it by
-`s_item` (3/2/1 distinct, none > 4) → empty result; the membership-RHS and
-by-content-parity cells failed the same way.
+`s_item` (3/2/1, none > 4) → empty. The `grain()` builtin under dimension filters
+(`test_grain_function`, #601) is the SAME construct and failed identically.
 
 Root cause: `_build_filter_where` set the filter's `aggregate_grain` to
-`content.grain.components`. For a derived scalar `sp`, `sp.grain` descends to its
-KEY lineage `{s_item}` (sp is FD by s_item), so the count over-partitioned by
-s_item. But the filter narrows sp's OWN distinct values — `select sp` alone
-groups by `sp`, grain `{sp}`. Fix: when `content.derivation == BASIC`, use
-`Grain({content.address})` (the content itself); ROOT keys/properties keep
-`content.grain.components` (a key's grain is already itself — no change, so the
-q23 frequent-prefix regression this helper originally fixed still holds). v3 was
-already correct (it re-grains the filter aggregate to the select/HAVING grain at
-discovery time regardless of the built virt-agg grain), so the shared change
-leaves v3 green — confirmed on the file and a broad v3 filter/aggregate/rowset
-subset (only pre-existing `left outer`-parse and stale failures remained).
+`content.grain.components`. That is the WRONG grain — `content.grain` is the
+concept's **definitional/FD grain**, which for a property or derived scalar
+descends to its KEY lineage (`sp`/`name` → `{s_item}`), over-partitioning the
+count. The correct grain is the **content's own value grain** = the grain of
+`SELECT <content>`, which for any scalar is the content itself (`select sp` /
+`select name` GROUP BY the value, deduping to `{sp}` / `{name}`). Fix: use
+`Grain({content.address})` for scalar content; keep `content.grain.components`
+only for AGGREGATE/WINDOW content (whose declared grain — its `by` keys — already
+IS its grouping identity). This is the filter analog of build.py:~4038, where a
+SELECT's WHERE co-grains bare aggregates to `base.grain` (the select grain).
+
+Diagnostic that settled it (staged, per the reviewer's plan): the BUILD phase and
+the resolved select grain (`{fp}`) are **byte-identical** across v3/v4 — the
+built `_virt_agg` count carries grain `{s_item}` under both. So the divergence is
+pure discovery: **v3 re-grains** the count up to the select/content grain at the
+HAVING fold; **v4 trusts** the built grain. Baking the correct value-grain at
+build fixes v4 (which trusts it) and is provably safe for v3 — it makes v3's bare
+filter render IDENTICALLY (modulo the virtual concept's hash) to the explicit
+`by sp` form, which is exactly what `test_bare_matches_explicit_by_content`
+requires. (The pre-fix v3 "clean single-query fold" was v3 rendering the finer,
+wrong `{s_item}` grain and rescuing the answer via HAVING — different SQL from the
+explicit form; the fix converges them.) A v4-only re-grain port was considered and
+rejected as unnecessary once the build value-grain proved v3-safe.
+
+Why the earlier first cut (`derivation == BASIC` only) was wrong: it left the
+property-content form (`name ? (count>4)`) still grouping by `{s_item}` → empty;
+gating on `content.address` for all non-aggregate/window content is the general
+rule and is what unlocked the 17 `grain_function` cells.
 
 ## ✅ 2026-07-16 (session 8) — offset/derived-key subset join with a post-merge WHERE (+10)
 
