@@ -1,4 +1,80 @@
-# v4 compatibility audit (last refreshed 2026-07-17, session 9)
+# v4 compatibility audit (last refreshed 2026-07-17, session 10)
+
+## Current state (after 2026-07-17 session 10)
+
+**Full v4 sweep (session 10): 40 failed / 5676 passed**, 22 xpassed, 20 skipped,
+53 xfailed, 82 errors (26 clickhouse-server env). Log:
+`local_scripts/v4_sweep_0717_enum.log`. Session-10 cleared **enum_unions
+partial_key_union ×4** (the #601 cells) with **ZERO regressions** (diffed against
+`local_scripts/v4_sweep_0717_fix.log` = 44 → 40, −4, exactly the 4 enum cells, no
+new failures). Also sped up `test_extra_filter` (gcat) from 157s → ~20s (v4) by
+shrinking an arbitrary date_spine span (see below) and fixed a collateral gcat
+regression the first (too-broad) cut introduced. ruff/mypy(309)/black clean.
+
+Session-10 fix (one gated param in the SHARED `node_merge_node.py`
+`determine_induced_minimal_nodes` + its v4 caller in `source_planning.py`
+`_resolve_bridge_graph`): the Steiner bridge search now penalizes an edge that
+sources a concept from a **UNION** datasource that only PARTIALLY covers it, so a
+non-partial union wins the tie. Restricted to unions and gated `penalize_partial`
+(v4-only) — an individual datasource's `~` binding stays a normal bridge (its
+FULL-join completion is load-bearing; the unrestricted cut broke gcat
+`test_join_discovery_two`). See the session-10 entry for the derivation.
+
+**NEXT candidate (unchanged from s9):** TPC-DS cluster (q14/q70/q10/q29/q81 +
+non-benchmark ×2 + q29-feeder = 8) OR re-triage the ×2 families/singles against
+`v4_known_failing.py`. fuzzer ×2 and rowset_cross_datasource (left-outer parse)
+are pre-existing/parse-level, not grain work.
+
+## ✅ 2026-07-17 (session 10) — bridge search prefers a non-partial UNION source (+4) & gcat test speedup
+
+Two changes, both regression-checked (full v4 sweep 44→40 −4 zero-new; full v3
+sweep clean; ruff/mypy/black clean):
+
+1. **Enum partial_key_union ×4** (`tests/engine/test_enum_unions.py`). Shape:
+   `select chan, order_id` where `chan` is an enum discriminator bound via `raw`
+   in every arm of two union families (sales — non-partial on order_id; returns —
+   `~order_id` partial), and order_id is complete only via sales. The group graph
+   is CORRECT (one ROOT group `{chan, order_id}`); the split is pure Stage-3
+   source planning. v4 rendered order_id from the sales union but `chan` from the
+   RETURNS union (only orders 1,2) FULL-JOINed on order_id → chan NULL for the
+   sales-only orders 3,4. Root cause: `determine_induced_minimal_nodes` (the
+   Steiner bridge search) picked the returns union via a **partial** order_id
+   edge, but the final edge re-add (node_merge_node ~line 231) DROPS partial edges
+   when `not accept_partial` — so returns ended up connected only through `chan`,
+   and order_id got completed separately by `_complete_partial_requested`
+   (re-joining sales), nulling the co-resident `chan`. The search committed to a
+   source through an edge the final tree then discards. Fix: penalize (weight 100)
+   an edge from a UNION datasource to a concept it only partially covers, gated
+   `penalize_partial=True` (v4 only, `not accept_partial` only) so a non-partial
+   union covering the same set wins the tie. This also cleared the
+   `where return_amount is not null` cells (same mis-sourcing dropped the filter).
+
+   **Hard-won gate — UNION only.** The first cut penalized ALL partial ds edges
+   (individual datasources too). That broke gcat `test_join_discovery_two`: there
+   `vehicle.name/variant` are `~` bindings on the launch fact, and the FULL join
+   to `lv_info` that completes them null-extends orgs-without-launches — a
+   load-bearing bridge. Penalizing it re-routed the vehicle keys to the non-partial
+   `lv_info` directly and lost the org↔vehicle-through-launches topology. A union
+   inherits partiality from its arms' `~`/`?` bindings and completing it re-joins a
+   whole sibling family (the enum bug); an individual `~` binding is a normal
+   dimension bridge. Restricting to `BuildUnionDatasource` nodes separates them.
+   The too-broad cut ALSO stalled the sweep — it was a genuine `|satcat|`-scale
+   soft cross join in the mis-planned gcat query, which is what first looked like a
+   "runaway."
+
+2. **`test_extra_filter` (gcat) 157s → ~20s.** The test's `date_spine(...,
+   -60000 days, ...)` (≈164 yr, back to 1862) is arbitrary — satellite data starts
+   ~1957. The decom side unnests that spine PER satcat row (`questionable` CTE =
+   `|satcat| × span` soft cross join; the launch side generates it standalone), so
+   a wide span is quadratic for zero added coverage. Shrank both spines to
+   `-6000` days (16 yr — a conservative margin against ever going empty) and
+   updated the SQL-literal assertion. The filter/merge/cumulative/FULL-align
+   mechanics — the test's actual value — are untouched; results stay non-empty.
+   This is a pre-existing SHARED (v3+v4 byte-identical) planner asymmetry: the
+   decom-side spine could be generated standalone like the launch side. Left the
+   planner alone (deep, shared, risky); the span shrink is the value-preserving
+   speedup.
+
 
 Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of

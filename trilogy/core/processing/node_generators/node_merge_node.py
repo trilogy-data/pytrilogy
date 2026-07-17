@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildFunction,
+    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -152,11 +153,30 @@ def determine_induced_minimal_nodes(
     filter_downstream: bool,
     accept_partial: bool = False,
     synonyms: dict[str, str] = {},
+    penalize_partial: bool = False,
 ) -> nx.DiGraph | None:
     # to_undirected already returns a fresh graph with independent rust core
     # and attrs; the extra .copy() is double work.
     H: nx.Graph = nx.to_undirected(G)
     nodelist_set = set(nodelist)
+
+    # When the search must land a non-partial source (v4, `not accept_partial`),
+    # penalize an edge that would source a concept from a UNION datasource that
+    # only PARTIALLY covers it. A union inherits partiality from its arms' `~`/`?`
+    # bindings; completing a union-partial re-joins a whole sibling family, which
+    # null-extends the co-resident columns the wrong arm never had (an enum
+    # discriminator sourced from the returns family instead of sales). When
+    # another union covers the same set non-partially, bias toward it. Restricted
+    # to unions: an individual datasource's `~` binding is a normal bridge whose
+    # completion (a FULL join to the dimension) is load-bearing and must stand.
+    partial_by_ds: dict[str, set[str]] = {}
+    if penalize_partial and not accept_partial:
+        for ds_node, ds in G.datasources.items():
+            if not isinstance(ds, BuildUnionDatasource):
+                continue
+            partial = {c.address for c in ds.partial_concepts}
+            if partial:
+                partial_by_ds[ds_node] = partial
 
     # Add weights to edges based on target node's derivation type. The
     # default weight is 1 (used by _weight_triples when `weight` key is
@@ -169,6 +189,7 @@ def determine_induced_minimal_nodes(
     for edge in G.edges():
         target = edge[1]
         target_lookup = g_concepts.get(target)
+        weight: int | None = None
         if (
             target_lookup is not None
             and target_lookup.derivation == Derivation.BASIC
@@ -177,14 +198,24 @@ def determine_induced_minimal_nodes(
                 and target_lookup.lineage.operator == FunctionType.ATTR_ACCESS
             )
         ):
+            weight = 50
+        if partial_by_ds:
+            ds_node = edge[0] if edge[0] in partial_by_ds else target
+            concept_node = target if ds_node == edge[0] else edge[0]
+            if (
+                ds_node in partial_by_ds
+                and extract_address(concept_node) in partial_by_ds[ds_node]
+            ):
+                weight = 100
+        if weight is not None:
             # H is undirected so the edge key is (min, max) order.
             left, right = edge[0], target
             key = (left, right) if left <= right else (right, left)
             attrs = H_edge_attrs.get(key)
             if attrs is None:
-                H_edge_attrs[key] = {"weight": 50}
+                H_edge_attrs[key] = {"weight": weight}
             else:
-                attrs["weight"] = 50
+                attrs["weight"] = weight
 
     nodes_to_remove = []
     derivations_to_remove = (

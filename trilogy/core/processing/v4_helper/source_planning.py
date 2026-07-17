@@ -400,6 +400,7 @@ def _resolve_bridge_graph(
                 accept_partial=attempt.accepts_partial,
                 environment=request.environment,
                 synonyms=synonyms,
+                penalize_partial=True,
             )
         except nx.exception.NetworkXNoPath:
             break

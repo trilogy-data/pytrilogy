@@ -1063,14 +1063,17 @@ def test_extra_filter(gcat_env: Executor):
     DebuggingHook(level=INFO)
 
     base = gcat_env
+    # spine span kept small on purpose: the decom side unnests the spine per
+    # satcat row (a |satcat| x span soft cross join), so a wide range is quadratic
+    # for no added coverage — the filter/merge/cumulative mechanics are the point.
     queries = base.parse_text("""import satcat;
 
 
 auto launches <- count(jcat ? base_category = 'P') by launch_date;
 auto decoms <- count(jcat ? decom_date is not null and base_category = 'P'  ) by decom_date;
 
-key launch_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
-key decom_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
+key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+key decom_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
 
 
 merge launch_date into ~launch_spine;
@@ -1092,7 +1095,7 @@ align date:launch_spine,decom_spine;
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) > 0, sql
-    assert "date_add(current_date(), -60000 * INTERVAL 1 day)," in sql[0], sql[0]
+    assert "date_add(current_date(), -6000 * INTERVAL 1 day)," in sql[0], sql[0]
 
 
 def test_extra_filter_two(gcat_env: Executor):
