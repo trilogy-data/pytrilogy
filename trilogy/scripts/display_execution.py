@@ -342,6 +342,14 @@ _LIMIT_BOUNDED_STATS_NOTE = (
 )
 
 
+def _scope_warnings(scopes: list) -> "list[dict] | None":
+    """Actionable scope warnings for the JSON result event; None when clean so
+    the field is omitted rather than serialized as an empty list."""
+    from trilogy.core.scope_diagnostics import derived_value_warnings
+
+    return derived_value_warnings(scopes) or None
+
+
 def _emit_results_json(
     results: ResultSet, cap: int, query_limit: int | None = None
 ) -> None:
@@ -389,12 +397,23 @@ def _emit_results_json(
         "result",
         columns=list(results.columns),
         # Factual per-computation scope report (input row filters vs output
-        # filters, grouping/partitioning). Put it before the potentially large
-        # row payload so agents see the population before interpreting results.
-        agg_rowset_rows_used=(
+        # filters, grouping/partitioning). Off by default; the distilled
+        # `warnings` list below is the on-by-default successor. Put it before the
+        # potentially large row payload so agents see it before the results.
+        agg_window_rows_used=(
             [s.to_dict() for s in results.derived_value_scopes]
             if results.derived_value_scopes
-            and os.environ.get("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1").lower()
+            and os.environ.get("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "0").lower()
+            not in ("0", "false", "no", "off")
+            else None
+        ),
+        # Distilled, actionable warnings over the same scope records: misapplied
+        # filters/grains (window-in-SELECT wanting a HAVING; a WHERE aggregate
+        # that inherited the SELECT grain). On by default for agent runs.
+        warnings=(
+            _scope_warnings(results.derived_value_scopes)
+            if results.derived_value_scopes
+            and os.environ.get("TRILOGY_AGENT_SCOPE_WARNINGS", "1").lower()
             not in ("0", "false", "no", "off")
             else None
         ),

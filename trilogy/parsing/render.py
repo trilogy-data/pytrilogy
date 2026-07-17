@@ -1093,12 +1093,11 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "WhereClause"):
-        base = self._render_boolean(arg.conditional)
-        # Strip outer parens only when we still have a single-line result —
-        # multi-line breaks already unwrap the outer Parenthetical layer.
-        if "\n" not in base and base.startswith("(") and base.endswith(")"):
-            return base[1:-1]
-        return base
+        # `_render_boolean` already unwraps a redundant outer Parenthetical
+        # structurally. A remaining leading `(` / trailing `)` belongs to the
+        # expression itself — a row-tuple `(a, b) in ...` or `(a+b) = (c+d)` —
+        # so string-stripping them would corrupt the render.
+        return self._render_boolean(arg.conditional)
 
     @to_string.register
     def _(self, arg: "Conditional"):
@@ -1297,6 +1296,10 @@ class Renderer:
             return " || ".join(args)
         if arg.operator == FunctionType.PARENTHETICAL:
             return f"({args[0]})"
+        if arg.operator == FunctionType.ROW_TUPLE:
+            # Composite-membership row constructor: render as the `(a, b)` tuple
+            # the grammar accepts, not the internal `row_tuple(...)` function name.
+            return f"({', '.join(args)})"
         if arg.operator == FunctionType.GROUP:
             arg_string = ", ".join(args[1:])
             if len(args) == 1:

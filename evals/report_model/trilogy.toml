@@ -1,0 +1,7 @@
+# Points the model at the longitudinal eval archive (sqlite). Run reports from
+# this dir, e.g. `trilogy render report.md --to html` or `trilogy run eval_runs.preql`.
+[engine]
+dialect = "sqlite"
+
+[engine.config]
+path = "../eval_history.db"

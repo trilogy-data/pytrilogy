@@ -9,6 +9,7 @@ from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
+    derived_value_warnings,
     render_derived_value_scopes,
 )
 from trilogy.core.statements.execute import ProcessedQuery
@@ -556,3 +557,63 @@ def test_generated_sql_unchanged_by_diagnostics():
     sql = exec.generate_sql(body)
     assert sql
     assert "wscope" not in "\n".join(sql)
+
+
+def _warning_kinds(body: str) -> list[str]:
+    return [w["kind"] for w in derived_value_warnings(_scopes(body))]
+
+
+def test_warns_window_in_select_with_where():
+    warnings = derived_value_warnings(_scopes("""
+select
+    state,
+    year,
+    sum(amount) as total_amount,
+    rank total_amount over state order by total_amount desc as amount_rank
+where year = 2002;
+"""))
+    match = [w for w in warnings if w["kind"] == "window_filter_needs_having"]
+    assert len(match) == 1
+    assert match[0]["name"] == "amount_rank"
+    assert "HAVING" in match[0]["message"]
+
+
+def test_no_window_warning_without_where():
+    assert "window_filter_needs_having" not in _warning_kinds("""
+select
+    state,
+    sum(amount) as total_amount,
+    rank total_amount over state order by total_amount desc as amount_rank;
+""")
+
+
+def test_warns_where_aggregate_inherited_select_grain():
+    warnings = derived_value_warnings(_scopes("""
+select
+    state,
+    count(sale_id) as sale_count
+where count(sale_id) > 10 and year = 2001;
+"""))
+    match = [w for w in warnings if w["kind"] == "where_aggregate_inherited_grain"]
+    assert len(match) == 1
+    assert match[0]["expression"] == "count(sale_id)"
+    assert match[0]["group_by"] == ["state"]
+    assert "by *" in match[0]["message"]
+
+
+def test_no_grain_warning_for_explicit_by_in_where():
+    assert "where_aggregate_inherited_grain" not in _warning_kinds("""
+select
+    state,
+    count(sale_id) by state as sale_count
+where count(sale_id) by state > 10;
+""")
+
+
+def test_no_grain_warning_for_global_aggregate_in_where():
+    assert "where_aggregate_inherited_grain" not in _warning_kinds("""
+select
+    state,
+    sum(amount) as total_amount
+where sum(amount) by * > 10;
+""")

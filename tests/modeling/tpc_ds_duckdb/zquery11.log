@@ -1,6 +1,6 @@
 query_id = "11"
 generator = "v3"
-gen_length = 5640
+gen_length = 5674
 preql_size = 1837
 comp_size = 3006
 generated_sql = """
@@ -68,10 +68,10 @@ GROUP BY
 HAVING
     sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 and ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END ) > ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
-	ELSE 0.0
+	ELSE cast(0.0 as numeric)
 	END )
 ),
 abundant as (

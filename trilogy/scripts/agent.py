@@ -71,6 +71,7 @@ def get_agent_instructions(
     include_database: bool = True,
     include_file_read: bool = True,
     include_scope_diagnostics: bool = True,
+    include_scope_warnings: bool = True,
 ) -> str:
     base = """You are the Trilogy CLI agent. You operate by calling tools.
 
@@ -129,6 +130,16 @@ Available tools:
     else:
         base += """
     * Run a Trilogy script: ["run", "<path.preql>"]."""
+    if include_scope_warnings:
+        base += """
+      A result may carry a `warnings` list flagging likely filter/grain
+      mistakes to double-check against the question's intent:
+      `window_filter_needs_having` — a window value is in the SELECT while a
+      WHERE clause filters its inputs; WHERE runs BEFORE the window computes, so
+      to filter on the window result (e.g. a rank cutoff) use a HAVING instead;
+      `where_aggregate_inherited_grain` — a WHERE-clause aggregate pinned no
+      grain and so inherited the SELECT grain rather than a single global value;
+      pin it with `by *` if you meant a global comparison."""
     base += """
     * ["explore", "<path.preql>"] is the canonical "what concepts can I query
       from this file?" tool. Imported references chain in — exploring the
@@ -738,7 +749,10 @@ def agent(
         )
     else:
         include_scope_diagnostics = os.environ.get(
-            "TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1"
+            "TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "0"
+        ).lower() not in ("0", "false", "no", "off")
+        include_scope_warnings = os.environ.get(
+            "TRILOGY_AGENT_SCOPE_WARNINGS", "1"
         ).lower() not in ("0", "false", "no", "off")
         excluded_tool_names: set[str] = set()
         if actual_quiet:
@@ -767,6 +781,7 @@ def agent(
                 include_database=cfg.allow_database_introspection,
                 include_file_read=cfg.allow_file_read,
                 include_scope_diagnostics=include_scope_diagnostics,
+                include_scope_warnings=include_scope_warnings,
             )
 
     log_path: Path | None = None

@@ -83,7 +83,15 @@ def scalar_subquery(
     with context.semantic_state.rowset_alias_scope(name):
         select = hydrate(select_node)
     finalize_select_tree(select, context)
-    if not isinstance(select, SelectStatement) or len(select.output_components) != 1:
+    if not isinstance(select, SelectStatement):
+        raise fail(node, "subquery requires a `(select ...)` body")
+    # A single-column projection is required in scalar contexts; a multi-column
+    # projection is only admissible as the RHS of a tuple `in`/`not in`, where
+    # it lowers to a row-wise membership set (see subselect_comparison).
+    if (
+        len(select.output_components) != 1
+        and not context.semantic_state.in_membership_subquery
+    ):
         raise fail(
             node,
             "a `(select ...)` subquery used as a scalar value or membership set "
@@ -101,7 +109,12 @@ def scalar_subquery(
     if result.alias_updates:
         context.semantic_state.stage_rowset_aliases(result.alias_updates)
     context.environment.add_rowset(name, select.as_lineage(context.environment))
-    return SubqueryItem(content=result.concepts[0].reference, select=select, name=name)
+    return SubqueryItem(
+        content=result.concepts[0].reference,
+        select=select,
+        name=name,
+        contents=[c.reference for c in result.concepts],
+    )
 
 
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {

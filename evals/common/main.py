@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, db, prompts, scoring
+from . import agent_runner, analyze_run, archive, db, prompts, scoring
 from .categories import CATEGORIES, FUNNEL_ORDER, get_category
 from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
@@ -894,6 +894,18 @@ def run(spec: BenchmarkSpec) -> int:
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(spec, report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+
+    # Only base full runs feed the longitudinal trends. Targeted `--query-ids`
+    # reruns (prompt tuning, splice) would inflate pass rates toward 100% as
+    # fixed queries accumulate, so they never publish.
+    if args.query_ids:
+        print("  archive skipped: targeted rerun (--query-ids) is not published")
+    else:
+        try:
+            n = archive.publish_run(run_dir, spec.short_name)
+            print(f"  archived {n} question rows -> {archive.default_db_path().name}")
+        except Exception as exc:
+            print(f"  archive skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     try:
         _, events = analyze_run.load_run_spliced(run_dir)

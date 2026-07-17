@@ -86,9 +86,16 @@ def _run_segment(executor: Any, segment: Segment) -> List[RenderedElement]:
     return rendered
 
 
-def run_document(segments: List[Segment], working_path: Path) -> List[RenderedElement]:
-    """Run every trilogy block against one shared executor so declarations persist."""
-    executor = Dialects.DUCK_DB.default_executor(working_path=working_path)
+def run_document(
+    segments: List[Segment], working_path: Path, executor: Any | None = None
+) -> List[RenderedElement]:
+    """Run every trilogy block against one shared executor so declarations persist.
+
+    Defaults to an in-memory DuckDB executor; callers may pass a pre-built
+    executor (e.g. one wired to the dialect in a trilogy.toml) to run the report
+    against a configured warehouse instead."""
+    if executor is None:
+        executor = Dialects.DUCK_DB.default_executor(working_path=working_path)
     if not executor.connected:
         executor.connect()
     elements: List[RenderedElement] = []

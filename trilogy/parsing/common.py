@@ -531,6 +531,33 @@ def rewrite_composite_membership(left: Any, right: Any, operator: ComparisonOper
     return row_tuple_function(list(left.val)), row_tuple_function(list(right.val))
 
 
+def resolve_subquery_membership(left: Any, right: Any) -> Tuple[Any, Any]:
+    """Reconcile a `(select ...)` subquery RHS with the membership left side.
+
+    A single-output subquery is a scalar membership set (`x in (select rs.x)`).
+    A multi-output subquery is a row-tuple set, admissible only against a left
+    tuple of the same arity — the left is lowered to ROW_TUPLE so membership
+    stays row-wise, the same build shape as authored `(a, b) in (rs.a, rs.b)`."""
+    right_arity = len(right.contents)
+    if isinstance(left, TupleWrapper):
+        left_arity = len(left.val)
+        if left_arity != right_arity:
+            raise InvalidSyntaxException(
+                f"Tuple membership arity mismatch: left side has {left_arity} "
+                f"field{'s' if left_arity != 1 else ''} but the subquery selects "
+                f"{right_arity} field{'s' if right_arity != 1 else ''}."
+            )
+        return row_tuple_function(list(left.val)), right
+    if right_arity != 1:
+        raise InvalidSyntaxException(
+            "a scalar value cannot be tested for membership against a "
+            f"`(select ...)` subquery that projects {right_arity} columns; wrap "
+            f"the left side in a {right_arity}-field tuple, or project a single "
+            "column from the subquery."
+        )
+    return left, right
+
+
 def constant_to_concept(
     parent: (
         ListWrapper | TupleWrapper | MapWrapper | int | float | str | date | datetime

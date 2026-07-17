@@ -115,6 +115,24 @@ class SemanticState:
     # created (and resolved) under a hidden per-rowset name. A stack (not a
     # single value) because a rowset's MERGE body spans multiple SELECTs.
     _rowset_name_stack: list[str] = field(default_factory=list)
+    # Depth counter marking hydration of the RHS of a membership (`in`/`not in`)
+    # comparison. A multi-output `(select ...)` subquery is only meaningful there
+    # (as a row-tuple set); everywhere else it must project a single column.
+    _membership_rhs_depth: int = 0
+
+    @contextmanager
+    def membership_subquery_scope(self) -> Iterator[None]:
+        """Mark hydration as the RHS of an `in`/`not in`, where a multi-output
+        `(select ...)` subquery is admissible as a row-tuple membership set."""
+        self._membership_rhs_depth += 1
+        try:
+            yield
+        finally:
+            self._membership_rhs_depth -= 1
+
+    @property
+    def in_membership_subquery(self) -> bool:
+        return self._membership_rhs_depth > 0
 
     @contextmanager
     def rowset_alias_scope(self, rowset_name: str) -> Iterator[None]:

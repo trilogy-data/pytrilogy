@@ -7,6 +7,7 @@ from trilogy.parsing.v2.rules_context import (
     NodeHydrator,
     RuleContext,
     core_meta,
+    fail,
     hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
@@ -44,20 +45,34 @@ def subselect_comparison(
     hydrate: HydrateFunction,
 ) -> Any:
     from trilogy.core.enums import FunctionType
+    from trilogy.core.exceptions import InvalidSyntaxException
     from trilogy.core.models.author import (
         AggregateWrapper,
         Concept,
         FilterItem,
         Function,
         Parenthetical,
+        SubqueryItem,
         SubselectComparison,
         WindowItem,
     )
     from trilogy.core.models.core import ListWrapper, TupleWrapper
-    from trilogy.parsing.common import rewrite_composite_membership
+    from trilogy.parsing.common import (
+        resolve_subquery_membership,
+        rewrite_composite_membership,
+    )
     from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 
-    args = hydrated_children(node, hydrate)
+    # The final child is the RHS set/value; a multi-output `(select ...)` there
+    # is a row-tuple membership set (admissible only in this position).
+    children = list(node.children)
+    args = []
+    for idx, child in enumerate(children):
+        if idx == len(children) - 1:
+            with context.semantic_state.membership_subquery_scope():
+                args.append(hydrate(child))
+        else:
+            args.append(hydrate(child))
     left = args[0]
     operator = args[1]
     right = args[2]
@@ -74,6 +89,12 @@ def subselect_comparison(
         ),
     ):
         right = right.content
+    if isinstance(right, SubqueryItem):
+        try:
+            left, right = resolve_subquery_membership(left, right)
+        except InvalidSyntaxException as e:
+            raise fail(node, str(e)) from e
+        return SubselectComparison(left=left, right=right, operator=operator)
     left, right = rewrite_composite_membership(left, right, operator)
     # a ROW_TUPLE operand is a composite-membership row constructor, not a
     # function to be lifted into its own concept

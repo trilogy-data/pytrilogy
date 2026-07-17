@@ -1,0 +1,91 @@
+# Semantic model over evals/eval_history.db — the longitudinal archive the
+# cleanup script writes before it reclaims raw logs (see evals/common/archive.py).
+# Two tables: `questions` (one row per run/variant/question/rep outcome) and
+# `tool_use` (per-tool call counts for the same grain, minus rep detail).
+
+key id int; # questions.id surrogate (autoincrement PK)
+
+properties id (
+    run_name string,          # the run directory name; experiment runs are prefixed repeat_/scope_
+    suite string,             # benchmark suite — only 'tpcds' is archived today
+    variant string,           # enriched | ingest | sql_bare | sql_schema (the generation path under test)
+    question int,             # tpc-ds query number (1-99)
+    rep int,                  # repetition index within a run (0 for single-shot full runs)
+    status string,            # pass | fail | crashed | exhausted | error | timeout | missing
+    passed int,               # 1 when status='pass', else 0 — clean numeric flag for rates
+    total_tokens int?,
+    prompt_tokens int?,
+    completion_tokens int?,
+    total_turns int?,         # agent iterations
+    final_query_size int?,    # generated SQL length in chars
+    tool_errors int?,
+    ref_rows int?,            # reference result row count
+    cand_rows int?,           # candidate (generated) result row count
+    duration_seconds float?,
+    detail string?,           # free-text failure detail
+    model string,
+    provider string,
+    scale_factor float?,
+    run_timestamp string?,    # YYYYMMDD-HHMMSS launch stamp; null on repeat_report runs
+    archived_at string,       # when the cleanup script folded this run into the db
+);
+
+# The launch day (YYYYMMDD) sliced off the timestamp — a stable time axis for trends.
+property id.run_day <- substring(run_timestamp, 1, 8);
+# Experiment runs (single-question repeats, scope A/B sweeps) are noise for suite-level
+# trends; flag them so reports can restrict to canonical full-suite runs.
+property id.is_experiment <- run_name like 'repeat%' or run_name like 'scope%';
+
+root datasource questions (
+    id,
+    run_name,
+    suite,
+    variant,
+    question,
+    rep,
+    status,
+    passed,
+    total_tokens,
+    prompt_tokens,
+    completion_tokens,
+    total_turns,
+    final_query_size,
+    tool_errors,
+    ref_rows,
+    cand_rows,
+    duration_seconds,
+    detail,
+    model,
+    provider,
+    scale_factor,
+    run_timestamp,
+    archived_at,
+)
+grain (id)
+address questions;
+
+# --- tool_use: per (run, variant, question, rep, tool) call tally --------------
+key tool_use_id int;
+
+properties tool_use_id (
+    tu_run_name string,
+    tu_suite string,
+    tu_variant string,
+    tu_question int,
+    tu_rep int,
+    tool string,   # tool name; trilogy subcommands appear as 'trilogy:<sub>'
+    calls int,     # number of invocations of that tool in that question run
+);
+
+root datasource tool_use (
+    tool_use_id: id,
+    tu_run_name: run_name,
+    tu_suite: suite,
+    tu_variant: variant,
+    tu_question: question,
+    tu_rep: rep,
+    tool,
+    calls,
+)
+grain (tool_use_id)
+address tool_use;

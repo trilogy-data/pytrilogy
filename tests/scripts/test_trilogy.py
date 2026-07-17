@@ -683,7 +683,8 @@ def test_multi_column_subquery_reported_as_syntax_error():
             assert result.exit_code == 1
             output = " ".join(strip_ansi(result.output).split())
             assert "Syntax error" in output, output
-            assert "exactly one column" in output, output
+            # scalar left vs a 2-column subquery → arity-specific rejection
+            assert "projects 2 columns" in output, output
             assert "(line 1, column" in output, output
             assert "Unexpected error" not in output, output
 

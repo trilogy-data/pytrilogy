@@ -263,3 +263,34 @@ property id.b string;
 datasource d (id: id, A: a, B: b) grain (id) address memory.t;
 """)
     env2.parse(rendered + "\nselect mset.chan;")
+
+
+_PAREN_HEAD = """
+key id int;
+property id.a int;
+property id.b int;
+datasource nums (id: id, a: a, b: b) grain (id) address memory.t;
+with pairs as select a, b;
+"""
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        # a WHERE condition that both starts with `(` and ends with `)` but is
+        # NOT a redundant wrapper — the outer parens must survive the render
+        "(a, b) in (pairs.a, pairs.b)",
+        "(a, b) in (select pairs.a, pairs.b)",
+        "(a, b) not in (pairs.a, pairs.b)",
+        "(a + b) = (a + 1)",
+    ],
+)
+def test_paren_leading_where_round_trips(predicate):
+    env = Environment()
+    _, queries = env.parse(_PAREN_HEAD + f"select id where {predicate};")
+    rendered = Renderer().to_string(queries[-1])
+    # the internal ROW_TUPLE function name never leaks; the tuple renders as `(a, b)`
+    assert "row_tuple" not in rendered
+    env2 = Environment()
+    _, queries2 = env2.parse(_PAREN_HEAD + rendered)
+    assert Renderer().to_string(queries2[-1]) == rendered

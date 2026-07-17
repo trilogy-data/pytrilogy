@@ -11,7 +11,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, db, prompts, scoring
+from . import agent_runner, archive, db, prompts, scoring
 from .main import (
     DEFAULT_MODEL,
     OPENROUTER_ROUTING,
@@ -146,6 +146,12 @@ def run(spec: BenchmarkSpec) -> int:
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(spec, report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+
+    try:
+        n = archive.publish_run(run_dir, spec.short_name)
+        print(f"  archived {n} question rows -> {archive.default_db_path().name}")
+    except Exception as exc:
+        print(f"  archive skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     print(f"[4/4] Done. Artifacts in {run_dir}\n")
     print(markdown)
