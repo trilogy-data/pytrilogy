@@ -19,7 +19,7 @@ import store_sales as sr;
 import catalog_sales as cs;
 
 with cs_agg as
-where cs.sold_date.year in (1999, 2000, 2001)
+where cs.sale_date.year in (1999, 2000, 2001)
 select
   cs.billing_customer.id as cid,
   cs.item.id as iid,
@@ -36,8 +36,8 @@ select
   sr.return_quantity as sr_qty
 ;
 
-where ss.date.year = 1999
-  and ss.date.month_of_year = 9
+where ss.sale_date.year = 1999
+  and ss.sale_date.month_of_year = 9
   and (ss.customer.id, ss.item.id) in (cs_agg.cid, cs_agg.iid)
   and (ss.ticket_number, ss.item.sk, ss.customer.id)
       in (sr_data.ticket_number, sr_data.item_sk, sr_data.cid)

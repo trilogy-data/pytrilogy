@@ -19,13 +19,13 @@ QUERY = """import store_sales as ss;
 import catalog_sales as cs;
 
 where
-  ss.date.year = 2001
-  and ss.date.month_of_year = 4
+  ss.sale_date.year = 2001
+  and ss.sale_date.month_of_year = 4
   and ss.is_returned
   and ss.return_date.year = 2001
   and ss.return_date.month_of_year between 4 and 10
-  and cs.sold_date.year = 2001
-  and cs.sold_date.month_of_year between 4 and 10
+  and cs.sale_date.year = 2001
+  and cs.sale_date.month_of_year between 4 and 10
 select
   ss.item.id as item_code,
   ss.item.desc as item_desc,

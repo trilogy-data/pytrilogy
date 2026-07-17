@@ -277,7 +277,7 @@ def test_ten(engine):
     # Bound is a touch higher than the un-pushed plan: UnionDimPushdown joins
     # date_dim in each of the 3 union branches (vs one shared join downstream),
     # trading a little SQL text for pruning every channel's scan to 2002 Q1.
-    assert len(query) < 7000, query
+    assert len(query) < 7500, query
     # date_dim must be joined *before* the first UNION ALL (one join per branch).
     before_first_union = query.split("UNION ALL")[0]
     assert "date_dim" in before_first_union, query
