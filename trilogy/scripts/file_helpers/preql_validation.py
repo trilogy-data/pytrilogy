@@ -54,20 +54,6 @@ def validate_preql_syntax(content: str) -> str | None:
     return None
 
 
-def _size_hint(content: str) -> str:
-    """Render a length + tail snippet so the agent can spot truncation.
-
-    The tail is the last 60 chars (newlines collapsed) — when an LLM cut its
-    own output mid-write the file usually ends in a half-finished token like
-    ``auto orders_per_customer``, and seeing the tail is the most direct
-    signal that the body is incomplete.
-    """
-    char_count = len(content)
-    byte_count = len(content.encode("utf-8"))
-    tail = content[-60:].replace("\n", "\\n")
-    return f"received {char_count} chars / {byte_count} bytes; tail: …{tail!r}"
-
-
 def validate_preql_content(path: str, content: str) -> str | None:
     """Return a refusal message for invalid .preql content, or None to allow.
 
@@ -99,6 +85,5 @@ def validate_preql_content(path: str, content: str) -> str | None:
             f"refused to write '{path}': not syntactically valid Trilogy.\n"
             f"\nParse error:\n{syntax_error}\n"
             f"{hint}"
-            f"\nWrite stats: {_size_hint(content)}."
         )
     return None
