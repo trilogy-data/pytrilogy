@@ -108,8 +108,9 @@ def test_heterogeneous_value_list_rejected_by_type_validation(backend):
 # --- membership comparison shapes ---------------------------------------------
 
 
-@pytest.mark.parametrize("op_text,op", [("in", ComparisonOperator.IN),
-                                        ("not in", ComparisonOperator.NOT_IN)])
+@pytest.mark.parametrize(
+    "op_text,op", [("in", ComparisonOperator.IN), ("not in", ComparisonOperator.NOT_IN)]
+)
 @pytest.mark.parametrize(
     "predicate,left_check,right_check",
     [
