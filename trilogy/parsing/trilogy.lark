@@ -347,13 +347,9 @@
     
     having: "HAVING"i conditional
 
-    !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
-
     COMPARISON_OPERATOR: /(\s+is\s+not\s|\s+is\s|\s+in\s|\s+not\s+in\s|=|>=|<=|!=|>|<)/i
-    
-    between_comparison: "between"i expr "and"i expr
 
-    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | _array_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | scalar_subquery | parenthetical )
+    between_comparison: "between"i expr "and"i expr
 
     expr_tuple: ("("  expr ("," expr)+ ","?  ")") | ("("  expr "," ")")
 

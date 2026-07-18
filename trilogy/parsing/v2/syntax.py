@@ -69,7 +69,6 @@ class SyntaxNodeKind(str, Enum):
     ORDER_LIST = "order_list"
     ORDERING = "ordering"
     LIMIT = "limit"
-    SUBSELECT_COMPARISON = "subselect_comparison"
     EXPR_TUPLE = "expr_tuple"
     FROM_CLAUSE = "from_clause"
     # Phase 2: aggregates
@@ -411,7 +410,6 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "order_list": SyntaxNodeKind.ORDER_LIST,
     "ordering": SyntaxNodeKind.ORDERING,
     "limit": SyntaxNodeKind.LIMIT,
-    "subselect_comparison": SyntaxNodeKind.SUBSELECT_COMPARISON,
     "expr_tuple": SyntaxNodeKind.EXPR_TUPLE,
     "from_clause": SyntaxNodeKind.FROM_CLAUSE,
     # Phase 2: aggregates
