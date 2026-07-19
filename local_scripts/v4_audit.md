@@ -1,29 +1,107 @@
-# v4 compatibility audit (last refreshed 2026-07-17, session 10)
+# v4 compatibility audit (last refreshed 2026-07-17, session 11)
 
-## Current state (after 2026-07-17 session 10)
+## Current state (after 2026-07-17 session 11)
 
-**Full v4 sweep (session 10): 40 failed / 5676 passed**, 22 xpassed, 20 skipped,
-53 xfailed, 82 errors (26 clickhouse-server env). Log:
-`local_scripts/v4_sweep_0717_enum.log`. Session-10 cleared **enum_unions
-partial_key_union ×4** (the #601 cells) with **ZERO regressions** (diffed against
-`local_scripts/v4_sweep_0717_fix.log` = 44 → 40, −4, exactly the 4 enum cells, no
-new failures). Also sped up `test_extra_filter` (gcat) from 157s → ~20s (v4) by
-shrinking an arbitrary date_spine span (see below) and fixed a collateral gcat
-regression the first (too-broad) cut introduced. ruff/mypy(309)/black clean.
+**Full v4 sweep (session 11): 38 failed / 5678 passed** (baseline this session was
+40 — `local_scripts/v4_sweep_0717_s11_baseline.log`; post-fix
+`local_scripts/v4_sweep_0717_s11_post.log`). 82 errors are all clickhouse-server
+env (not real). Session-11 cleared **disconnected_e2e ×2 message tests**
+(`test_message_includes_failing_statement_line`,
+`test_message_suggests_connected_nested_equivalent`) with ZERO regressions
+(v4 core/processing 419/0, v3 disconnected 25/0). ruff/mypy/black clean.
 
-Session-10 fix (one gated param in the SHARED `node_merge_node.py`
-`determine_induced_minimal_nodes` + its v4 caller in `source_planning.py`
-`_resolve_bridge_graph`): the Steiner bridge search now penalizes an edge that
-sources a concept from a **UNION** datasource that only PARTIALLY covers it, so a
-non-partial union wins the tie. Restricted to unions and gated `penalize_partial`
-(v4-only) — an individual datasource's `~` binding stays a normal bridge (its
-FULL-join completion is load-bearing; the unrestricted cut broke gcat
-`test_join_discovery_two`). See the session-10 entry for the derivation.
+Session-11 fix (one line, v4-only, `discovery_utility.py`
+`raise_if_disconnected_for`): the #601 "Scope Feedback" merge REVERTED session-4's
+enrichment — the v4 pre-discovery gate called
+`format_disconnected_subgraphs_error(subgraphs)` with none of its
+`environment`/`g`/`island_rowsets`/`line_number` args, so v4 emitted the bare
+"missing a join or merge" form instead of the "(statement at line N)" locator and
+the "did you mean `all_sales.date.year`" separate-import suggestion. Restored the
+four-arg forward. v3 raises via its own post-discovery path
+(concept_strategies_v3 / discovery_utility:1105), so it was untouched. It only
+changes exception message TEXT — no plan/row can change.
 
-**NEXT candidate (unchanged from s9):** TPC-DS cluster (q14/q70/q10/q29/q81 +
-non-benchmark ×2 + q29-feeder = 8) OR re-triage the ×2 families/singles against
-`v4_known_failing.py`. fuzzer ×2 and rowset_cross_datasource (left-outer parse)
-are pre-existing/parse-level, not grain work.
+**The 38 remaining (grouped).** TPC-DS ×8 (q14/q70/q10/q29/q81 + q29-feeder +
+non-benchmark q64_correlated_filter + or_membership_with_projected_aggregate),
+fuzzer ×2 (pre-existing corpus stability, likely env/seed — NOT a planner gap),
+duckdb_subquery ×2 (PEST+LARK, one logical bug — see NEXT), plus the ×2 families
+(multi_partial_anchor, expression_keys, pushdown_partitioned, duckdb_rowset
+variance/stddev keys-3, rollup_scoped_join) and singles (twin_keeps_scalar_refs,
+where_scalar_aggregate_degenerate_cograin `having_bare_max`, scoped_join
+dim_bridge `all_subset_unaffected` / cross_rowset_membership_existence
+`expression_key`, scoped_derived_rowset exp_rows1, rowset_generation_matrix
+islanded, rowset_cross_datasource null_property, rowset_body_limit,
+rollup_multi_window cube_two_windows, membership_having dimension_key,
+existence_feeder_pushdown, collapse_basic_into_group funnel, union_bare_aggregate
+set_semantics, setops except_and_union, orderby_derived_expr,
+constant_in_cross_datasource_merge).
+
+**NEXT candidate — duckdb_subquery scalar-in-WHERE crash (well-diagnosed, 3
+layers, needs full v3+v4 sweeps).** `select id where val > (select max(val)/2 ->
+half)` crashes v4 with `INVALID_REFERENCE_BUG_AGG_GRAIN_MISMATCH<global (by *)
+aggregate ... rendered in CTE quizzical at keyed grain Grain<local.id>>`. v3
+renders it correctly (quizzical=id,val scan → highfalutin=`max(val)/2` global →
+cross join ON 1=1 → WHERE val>half). Root cause is the global-aggregate scalar
+`half = max(val)/2` being treated as id-grained/id-renderable in THREE places
+(all trip on "a scalar wrapping a GLOBAL aggregate is grain-collapsed, not
+row-grained"):
+  1. **Build grain inference** (`author.py` `get_select_grain_and_keys`, BASIC
+     branch ~line 1305): `_aggregate_by_grain_refs` returns `has_by_aggregate=False`
+     for a GLOBAL (no-`by`) aggregate, so the else-branch uses
+     `_row_grain_concept_refs` (NOT aggregate-aware — unlike `_non_aggregate_row_refs`)
+     and descends INTO `max(val)` to `val`→`id`, graining `half` to `{id}`. Author
+     grain is correctly `Abstract`; build overrides it. FIX TRIED (reverted, was
+     correct but insufficient alone): thread a `has_aggregate` flag out of
+     `_aggregate_by_grain_refs` and route to the `_non_aggregate_row_refs` path when
+     ANY aggregate is present (global or `by`). Made both planners' grain `Abstract`
+     but did NOT change the v4 plan → not enough on its own.
+  2. **source_planning renderability** (`_datasource_renders_derived`,
+     source_planning.py): offers datasource `t` as a direct renderer for `half`
+     because it descends `concept.sources` to the ROOT leaf `val` and ignores the
+     AGGREGATE source (`_virt_agg_max`, `build_is_aggregate=True`, visible in
+     `concept.sources`). FIX TRIED (reverted, insufficient): `return False` when
+     `any(s.build_is_aggregate for s in concept.sources)`. Did NOT remove the raw
+     `t` scan because the actual match is via the plain `address in bridge_addresses`
+     path in `_local_concept_nodes_for_datasource`, not `renders_derived_key`.
+  3. **Strategy assembly / group topology**: the d1 rowset group
+     (`grp:rowset:d1:∅:rowset:_subquery_*`, sole member `half`, grain Abstract) is
+     BOTH consumed by root via a CONSTRAINT edge (root hosts `val > half`, consumes
+     `half`) AND has a spurious MERGE→FINAL edge (`_add_final_node`/`_append_final_sink`
+     gives every bucket a FINAL edge; nothing prunes it for a pure condition-feeder
+     d1 group). The rowset group's built node ends up a MergeNode of the boundary +
+     a raw `t` scan claiming `__subquery_*_half, id, val`, joined on the aggregate
+     column → the crash. The correct plan: root cross-joins the grainless `half`
+     producer and applies `val > half`; the rowset group is NOT a direct FINAL
+     contributor. Likely the load-bearing layer; investigate `_local_concept_nodes_
+     for_datasource` (why a raw scan is offered the grainless bridge address) and/or
+     pruning the d1-condition-feeder's FINAL edge in `build_group_graph`.
+Diagnostic harness saved approach: reuse `discovery_v4.py`'s `_materialize_for_query`
++ `_find_select` + `search_concepts` on an inline MODEL string to dump groups,
+group_attrs (members/output_concepts/input_contracts), edges (kinds), and the
+strategy tree; set `PYTHONIOENCODING=utf-8` (gids contain `∅`).
+
+**Other NEXT options:** TPC-DS cluster (largest coherent group, but mostly
+size-ceiling verbosity not correctness) OR the fanout singles
+(collapse_basic_into_group funnel over-counts, membership_having cross-joins) OR
+re-triage the ×2 families/singles against `v4_known_failing.py`.
+
+## ✅ 2026-07-17 (session 11) — disconnected-error enrichment re-forwarded (+2)
+
+One-line v4-only fix in `discovery_utility.py` `raise_if_disconnected_for`: forward
+`environment, g, island_rowsets, line_number` into
+`format_disconnected_subgraphs_error` (they were being dropped — the exact
+session-4 fix, reverted by the #601 "Scope Feedback" merge). Restores the
+"(statement at line N)" locator and the separate-import "did you mean
+`all_sales.date.year`" suggestion under v4. Cleared disconnected_e2e ×2
+(`test_message_includes_failing_statement_line`,
+`test_message_suggests_connected_nested_equivalent`). v4 40→38, ZERO regressions
+(v4 core/processing 419/0, v3 disconnected suites 25/0); ruff/mypy/black clean.
+The change only alters exception message text — it cannot affect any query plan or
+row result. `raise_if_disconnected_for` is v4-only (callers in
+concept_strategies_v4 / query_processor); v3 raises via its own post-discovery
+site so it was never touched. LESSON: a merge from another branch can silently
+revert a prior session's fix — re-check a "known fixed" area's code, not just its
+memory entry, when it reappears in a sweep.
 
 ## ✅ 2026-07-17 (session 10) — bridge search prefers a non-partial UNION source (+4) & gcat test speedup
 
@@ -80,52 +158,6 @@ Current handoff for v4 discovery parity work. Older session logs (pre-rebase,
 2026-06-24 → 2026-07-02) were pruned 2026-07-14; they live in git history of
 this file and in the project memory. Standing lessons from that era are kept
 below.
-
-## Current state (after 2026-07-17 session 9)
-
-**Full v4 sweep (session 9): 44 failed / 5672 passed**, 22 xpassed, 20 skipped,
-53 xfailed, 82 errors (26 are clickhouse-server env, not real). Log:
-`local_scripts/v4_sweep_0717_fix.log`. Session-9 cleared
-**filter_bare_aggregate_content_grain ×3 AND `test_grain_function` ×17** (both the
-SAME root cause) plus TPC-DS **q72 (+1)**, with **ZERO regressions** on both
-planners. Diffed against a fresh HEAD baseline `local_scripts/v4_sweep_0716_baseline.log`
-(66) → 44 (**−22**). Full v3 sweep also ZERO regressions
-(`local_scripts/v3_sweep_0717_fix.log`, 3 fails = pre-existing fuzzer ×2 + a
-`left outer` parse error).
-
-**IMPORTANT — the s8-documented "32" was stale.** Merged PRs on this branch
-(#601 "Scope Feedback", #600) grew the corpus with new failing v4 targets the s8
-sweep never saw (chiefly `test_grain_function` ×17). The honest HEAD baseline was
-66, not 32; session-9's fix took it to 44. Prior session deltas were all real
-against their own baselines; only the absolute total drifted as the corpus grew.
-Always run a FRESH stashed-HEAD baseline sweep — never diff a prior session's log.
-
-Session-9 fix (one ~4-line change in `build.py`, `_build_filter_where`): a filter's
-bare aggregate co-grains to the content's **own value grain** (`{content.address}`
-— the grain of `SELECT <content>`), NOT `content.grain` (the finer FD/definitional
-grain a property or derived scalar descends to). Aggregate/window content keeps its
-declared grain (that already IS its grouping identity). See the session-9 entry for
-the full derivation; the `grain()` builtin under dimension filters was the same bug.
-
-**Open families by sweep count (44 / 42 unique):** TPC-DS ×5 (q14, q70, q10, q29,
-q81) + non-benchmark ×2 + q29-feeder, enum_unions ×4 (partial_key_union cells,
-#601), disconnected_e2e ×2 (message tests, #601), fuzzer ×2 (pre-existing, corpus
-stability — likely env/seed, NOT a planner gap), + the ×2 families
-(multi_partial_anchor, expression_keys, pushdown_partitioned, duckdb_subquery,
-duckdb_rowset, duckdb_rollup_scoped_join) + singles (where_select_dual_scope
-twin_keeps_scalar_refs, where_scalar_aggregate_degenerate_cograin, scoped_join
-dim_bridge / cross_rowset_membership_existence, scoped_derived_rowset exp_rows1,
-rowset_generation_matrix, rowset_cross_datasource (left-outer parse),
-rowset_body_limit, rollup_multi_window, membership_having, collapse_basic_into_group,
-existence_feeder_pushdown, union_bare_aggregate, setops, orderby_derived_expr,
-constant_in_cross_datasource_merge).
-
-**NEXT candidate:** TPC-DS cluster (q14/q70/q10/q29/q81 + non-benchmark ×2 +
-q29-feeder = 8, the largest coherent group) OR enum_unions ×4 (single-file
-partial_key_union). First re-triage the ×2 families and singles against
-`v4_known_failing.py` — several may be prunable/xfail-trackable rather than open
-work. fuzzer ×2 and rowset_cross_datasource are pre-existing/parse-level, not
-grain work.
 
 ## ✅ 2026-07-17 (session 9) — filter's bare aggregate co-grains to the content VALUE, not its FD grain (+22)
 

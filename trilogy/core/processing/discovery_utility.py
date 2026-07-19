@@ -874,7 +874,9 @@ def raise_if_disconnected_for(
         )
     ]
     if len(subgraphs) > 1:
-        message = format_disconnected_subgraphs_error(subgraphs)
+        message = format_disconnected_subgraphs_error(
+            subgraphs, environment, g, island_rowsets, line_number
+        )
         note = membership_span_note(
             conditions, subgraphs, environment, g, island_rowsets
         )
