@@ -8,8 +8,8 @@ or ss.promotion.channel_tv = 'Y'
 );
 
 where
-    ss.date.year = 1998
-    and ss.date.month_of_year = 11
+    ss.sale_date.year = 1998
+    and ss.sale_date.month_of_year = 11
     and ss.item.category = 'Jewelry'
     and ss.customer.current_address.gmt_offset = -5
     and ss.store.gmt_offset = -5

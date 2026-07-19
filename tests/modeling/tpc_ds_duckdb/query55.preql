@@ -2,8 +2,8 @@ import store_sales as store_sales;
 
 where
     store_sales.item.manager_id = 28
-    and store_sales.date.year = 1999
-    and store_sales.date.month_of_year = 11
+    and store_sales.sale_date.year = 1999
+    and store_sales.sale_date.month_of_year = 11
 select
     store_sales.item.brand_id,
     store_sales.item.brand_name,

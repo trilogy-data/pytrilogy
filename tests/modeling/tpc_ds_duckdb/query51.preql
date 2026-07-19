@@ -5,8 +5,8 @@ import all_sales as sales;
 # daily total. The (item, date) grain naturally spans every (item, date) tuple
 # where EITHER web or store had a sale, giving us the FULL JOIN union without
 # explicit merge.
-auto web_daily <- sum(sales.sales_price ? sales.channel = 'WEB') by sales.item.sk, sales.date.date;
-auto store_daily <- sum(sales.sales_price ? sales.channel = 'STORE') by sales.item.sk, sales.date.date;
+auto web_daily <- sum(sales.sales_price ? sales.channel = 'WEB') by sales.item.sk, sales.sale_date.date;
+auto store_daily <- sum(sales.sales_price ? sales.channel = 'STORE') by sales.item.sk, sales.sale_date.date;
 
 # Per-channel row-presence flag. The reference's per-channel CTE has a row
 # whenever a sale exists on this (item, date), even if sales_price is NULL —
@@ -17,20 +17,20 @@ auto web_has_row <- max(
         else 0
     end
 )
-    by sales.item.sk, sales.date.date;
+    by sales.item.sk, sales.sale_date.date;
 auto store_has_row <- max(
     case
         when sales.channel = 'STORE' then 1
         else 0
     end
 )
-    by sales.item.sk, sales.date.date;
+    by sales.item.sk, sales.sale_date.date;
 
 # Cumulative sum per channel. SQL SUM() ignores NULLs, so on (item, date) rows
 # where this channel had no sale, the cumulative is the same as the prior day's
 # cumulative (forward-fill behavior matches the reference's outer max(cume_sales)).
-auto web_cume <- sum(web_daily) over (partition by sales.item.sk order by sales.date.date asc);
-auto store_cume <- sum(store_daily) over (partition by sales.item.sk order by sales.date.date asc);
+auto web_cume <- sum(web_daily) over (partition by sales.item.sk order by sales.sale_date.date asc);
+auto store_cume <- sum(store_daily) over (partition by sales.item.sk order by sales.sale_date.date asc);
 
 # Reference's `web_sales` column is NULL on (item, date) rows where web had no
 # sale row at all — distinct from `web_cumulative` (which forward-fills).
@@ -44,12 +44,12 @@ auto store_sales_visible <- case
 end;
 
 where
-    sales.date.month_seq between 1200 and 1211
+    sales.sale_date.month_seq between 1200 and 1211
     and sales.item.sk is not null
     and sales.channel in ('WEB', 'STORE')
 select
     sales.item.sk as item_sk,
-    sales.date.date as d_date,
+    sales.sale_date.date as d_date,
     web_sales_visible as web_sales,
     store_sales_visible as store_sales,
     web_cume as web_cumulative,

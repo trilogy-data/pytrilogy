@@ -411,8 +411,8 @@ auto p_cust_zip <- customer.current_address.zip ? zip_p_count > 10;
 auto final_zips <- substring(zips ? zips in substring(p_cust_zip, 1, 5), 1, 2);
 
 where
-    store_sales.date.quarter = 2
-    and store_sales.date.year = 1998
+    store_sales.sale_date.quarter = 2
+    and store_sales.sale_date.year = 1998
     and substring(store_sales.store.zip, 1, 2) in final_zips
 select
     store_sales.store.name,

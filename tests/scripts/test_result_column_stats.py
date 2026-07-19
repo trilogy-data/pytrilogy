@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 
 import trilogy.scripts.display_core as _core
+from trilogy.core.scope_diagnostics import DerivedValueScope
 from trilogy.scripts.display_execution import _column_stats, _emit_results_json
 from trilogy.scripts.display_models import ResultSet
 
@@ -112,3 +113,62 @@ def test_emit_no_limit_flag_when_result_under_limit(capsys):
     )
     assert "limit_bounded" not in payload  # 30 < 100, not a bounded prefix
     assert "column_stats_note" not in payload
+
+
+def _scope_result(scope):
+    return ResultSet(
+        rows=[(10,)], columns=["total_sales"], derived_value_scopes=[scope]
+    )
+
+
+def test_scope_diagnostics_off_by_default(capsys):
+    scope = DerivedValueScope(
+        name="total_sales", kind="aggregate", expression="sum(sales.amount)"
+    )
+    payload = _emit_capture(_scope_result(scope), cap=10, capsys=capsys)
+    assert "agg_window_rows_used" not in payload
+    assert "agg_rowset_rows_used" not in payload
+
+
+def test_scope_diagnostics_emitted_before_rows_when_enabled(capsys, monkeypatch):
+    monkeypatch.setenv("TRILOGY_AGENT_SCOPE_DIAGNOSTICS", "1")
+    scope = DerivedValueScope(
+        name="total_sales", kind="aggregate", expression="sum(sales.amount)"
+    )
+    payload = _emit_capture(_scope_result(scope), cap=10, capsys=capsys)
+    assert payload["agg_window_rows_used"] == [scope.to_dict()]
+    assert list(payload).index("agg_window_rows_used") < list(payload).index("rows")
+
+
+def test_scope_warnings_emitted_before_rows_by_default(capsys):
+    scope = DerivedValueScope(
+        name="rnk",
+        kind="window",
+        expression="rank(t)",
+        role="selected_output",
+        input_row_filters=["year = 2002"],
+    )
+    payload = _emit_capture(_scope_result(scope), cap=10, capsys=capsys)
+    assert payload["warnings"][0]["kind"] == "window_filter_needs_having"
+    assert list(payload).index("warnings") < list(payload).index("rows")
+
+
+def test_scope_warnings_absent_when_clean(capsys):
+    scope = DerivedValueScope(
+        name="total_sales", kind="aggregate", expression="sum(sales.amount)"
+    )
+    payload = _emit_capture(_scope_result(scope), cap=10, capsys=capsys)
+    assert "warnings" not in payload
+
+
+def test_scope_warnings_disabled_by_env(capsys, monkeypatch):
+    monkeypatch.setenv("TRILOGY_AGENT_SCOPE_WARNINGS", "0")
+    scope = DerivedValueScope(
+        name="rnk",
+        kind="window",
+        expression="rank(t)",
+        role="selected_output",
+        input_row_filters=["year = 2002"],
+    )
+    payload = _emit_capture(_scope_result(scope), cap=10, capsys=capsys)
+    assert "warnings" not in payload

@@ -2,7 +2,7 @@ import store_sales as store_sales;
 
 where
     store_sales.item.category in ('Sports', 'Books', 'Home')
-    and store_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
+    and store_sales.sale_date.date between '1999-02-22'::date and '1999-03-24'::date
 select
     --store_sales.item.sk,
     store_sales.item.id,

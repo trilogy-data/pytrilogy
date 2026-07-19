@@ -108,8 +108,18 @@ entry limit rather than disappearing through ordinary text truncation.
 
 ### JSON
 
-JSON mode should add a `derived_value_scopes` field to each query result. An
-empty list is valid. Existing fields and result rows remain unchanged.
+JSON mode adds an `agg_window_rows_used` field before the `rows` field of each
+query result, carrying the full scope report. It is off by default and emitted
+only when `TRILOGY_AGENT_SCOPE_DIAGNOSTICS` is truthy. An empty list is valid.
+Existing fields and result rows remain unchanged.
+
+A distilled `warnings` field is emitted before `rows` by default (disable with
+`TRILOGY_AGENT_SCOPE_WARNINGS=0`). It lists actionable scope hazards derived
+from the same records — a window value selected while a `where` filters its
+inputs (`window_filter_needs_having`), and a `where`-clause aggregate that
+pinned no grain and so inherited the select grain
+(`where_aggregate_inherited_grain`). The field is omitted when there is nothing
+to warn about.
 
 ## Reported values
 

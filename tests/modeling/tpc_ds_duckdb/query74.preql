@@ -3,15 +3,15 @@ import all_sales as sales;
 const first_year <- 2001;
 const second_year <- 2002;
 
-def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.channel = channel and sales.date.year = year) by sales.billing_customer.sk;
+def channel_year_total(channel, year) -> sum(sales.net_paid ? sales.channel = channel and sales.sale_date.year = year) by sales.billing_customer.sk;
 
-auto store_first_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = first_year)
+auto store_first_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.sale_date.year = first_year)
     by sales.billing_customer.sk;
-auto web_first_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = first_year)
+auto web_first_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.sale_date.year = first_year)
     by sales.billing_customer.sk;
-auto store_second_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.date.year = second_year)
+auto store_second_year <- sum(sales.net_paid ? sales.channel = 'STORE' and sales.sale_date.year = second_year)
     by sales.billing_customer.sk;
-auto web_second_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.date.year = second_year)
+auto web_second_year <- sum(sales.net_paid ? sales.channel = 'WEB' and sales.sale_date.year = second_year)
     by sales.billing_customer.sk;
 
 where

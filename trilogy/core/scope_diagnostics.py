@@ -147,6 +147,10 @@ class DerivedValueScope:
     order_by: list[ScopeOrder] = field(default_factory=list)
     output_row_filters: list[str] = field(default_factory=list)
     input_values: list[str] = field(default_factory=list)
+    # Aggregate only: the author pinned no grain, so this value took the
+    # enclosing select's grain. Drives the "inherited select grain" warning;
+    # internal — never serialized into `to_dict`.
+    grain_inherited: bool = False
 
     def to_dict(self) -> dict:
         """JSON form. `input_row_filters`/`output_row_filters` are schema-stable
@@ -569,6 +573,7 @@ class _Extractor:
                 group_by=self._group_of(concept, wrapper),
                 output_row_filters=_dedup(list(ctx.output_row_filters)),
                 input_values=_dedup(input_values),
+                grain_inherited=wrapper.grain_inherited if wrapper else False,
             ),
         )
         for arg in function.concept_arguments:
@@ -1025,3 +1030,61 @@ def render_derived_value_scopes(scopes: list[DerivedValueScope]) -> str:
             lines.append(f"  output row filters: {'; '.join(scope.output_row_filters)}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def derived_value_warnings(scopes: list[DerivedValueScope]) -> list[dict]:
+    """Actionable warnings distilled from the factual scope records: computation
+    shapes that usually mean a filter or grain was misapplied. Observational
+    only — each entry names the value, its computed form, and the fix.
+
+    Two patterns are flagged:
+
+    - a window value in the SELECT with a WHERE clause filtering its inputs —
+      WHERE removes rows BEFORE the window computes, so filtering the window
+      result needs a HAVING;
+    - an aggregate in the WHERE that pinned no grain and so inherited the
+      SELECT grain instead of computing a single global value."""
+    out: list[dict] = []
+    for scope in scopes:
+        if (
+            scope.kind == "window"
+            and scope.role == "selected_output"
+            and scope.input_row_filters
+        ):
+            out.append(
+                {
+                    "kind": "window_filter_needs_having",
+                    "name": scope.name,
+                    "expression": scope.expression,
+                    "input_row_filters": scope.input_row_filters,
+                    "message": (
+                        f"WHERE ({'; '.join(scope.input_row_filters)}) removes rows "
+                        f"BEFORE the window '{scope.expression}' is computed, so it "
+                        "cannot filter on the window result. To keep only rows by "
+                        "the post-window value (e.g. a rank cutoff), filter it in a "
+                        "HAVING clause instead."
+                    ),
+                }
+            )
+        if (
+            scope.kind == "aggregate"
+            and scope.role == "where_gate"
+            and scope.grain_inherited
+            and scope.group_by != ["*"]
+        ):
+            grain = ", ".join(scope.group_by)
+            out.append(
+                {
+                    "kind": "where_aggregate_inherited_grain",
+                    "name": scope.name,
+                    "expression": scope.expression,
+                    "group_by": scope.group_by,
+                    "message": (
+                        f"Aggregate '{scope.expression}' in the WHERE clause pinned "
+                        f"no grain, so it inherited the SELECT grain (group_by: "
+                        f"{grain}) rather than computing a single global value. If "
+                        "you meant a global comparison, pin it with `by *`."
+                    ),
+                }
+            )
+    return out

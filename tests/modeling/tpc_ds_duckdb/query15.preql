@@ -1,8 +1,8 @@
 import catalog_sales as catalog_sales;
 
 where
-    catalog_sales.date.quarter = 2
-    and catalog_sales.date.year = 2001
+    catalog_sales.sale_date.quarter = 2
+    and catalog_sales.sale_date.year = 2001
     and (
         catalog_sales.billing_customer.current_address.state in ('CA', 'WA', 'GA')
         or catalog_sales.sales_price > 500

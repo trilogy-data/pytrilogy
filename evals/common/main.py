@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, db, prompts, scoring
+from . import agent_runner, analyze_run, archive, db, prompts, scoring
 from .categories import CATEGORIES, FUNNEL_ORDER, get_category
 from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
@@ -173,13 +173,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="alias for --categories ingest,enriched (the legacy base-vs-enriched "
         "comparison).",
     )
-    parser.add_argument(
-        "--force-tool-choice",
-        action="store_true",
-        help="force tool_choice=required every turn (no plain-text reasoning). "
-        "Default is tool_choice: auto, which lets the model deliberate before "
-        "acting; pass this to A/B the old forced-tool behavior.",
-    )
+    agent_runner.add_force_tool_choice_flag(parser)
     parser.add_argument(
         "--enable-todo",
         action="store_true",
@@ -187,13 +181,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "todo OFF (fewer tools/less context for short single-query tasks; no "
         "effect on the SQL toolset, which has no todo). Pass this to A/B it.",
     )
-    parser.add_argument(
-        "--scope-diagnostics",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="expose derived-value scope diagnostics to Trilogy agents; pass "
-        "--no-scope-diagnostics for a clean baseline",
-    )
+    agent_runner.add_scope_flags(parser)
     return parser
 
 
@@ -680,6 +668,7 @@ def run(spec: BenchmarkSpec) -> int:
                 monitor_mode,
                 toolset=category.harness,
                 scope_diagnostics=args.scope_diagnostics,
+                scope_warnings=args.scope_warnings,
             )
             result["id"] = qid
             # Persist the subprocess stdout/stderr on a non-zero exit — it holds
@@ -894,6 +883,18 @@ def run(spec: BenchmarkSpec) -> int:
     (run_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     markdown = render_markdown(spec, report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+
+    # Only base full runs feed the longitudinal trends. Targeted `--query-ids`
+    # reruns (prompt tuning, splice) would inflate pass rates toward 100% as
+    # fixed queries accumulate, so they never publish.
+    if args.query_ids:
+        print("  archive skipped: targeted rerun (--query-ids) is not published")
+    else:
+        try:
+            n = archive.publish_run(run_dir, spec.short_name)
+            print(f"  archived {n} question rows -> {archive.default_db_path().name}")
+        except Exception as exc:
+            print(f"  archive skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     try:
         _, events = analyze_run.load_run_spliced(run_dir)

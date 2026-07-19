@@ -116,6 +116,27 @@ def _display_address(address: str) -> str:
     return address
 
 
+def _is_private_address(address: str) -> bool:
+    """A concept is private — hidden from ordinary exploration — when the leaf
+    an agent would reference (the last segment of its display address) begins
+    with a single underscore. The ``__``/``local._env_`` builtin markers are
+    governed by the separate ``--include-builtins`` gate and are exempt so that
+    flag keeps working independently."""
+    if address.startswith("__") or address.startswith("local._env_"):
+        return False
+    return _display_address(address).rpartition(".")[2].startswith("_")
+
+
+def filter_hidden(
+    items: list[tuple[str, Concept]],
+) -> list[tuple[str, Concept]]:
+    """Drop concepts whose display leaf marks them private (``_`` prefix). The
+    single chokepoint for private-concept visibility, applied before any
+    renderer, ``--regex`` filter, or namespace dedup runs — so a private local
+    concept is no more discoverable than a private imported one."""
+    return [(a, c) for a, c in items if not _is_private_address(a)]
+
+
 def _concept_description(concept: Concept) -> str:
     """Pull a one-line description off ``concept.metadata`` if set. Whitespace
     is collapsed so multi-line authoring comments still display cleanly in
@@ -337,11 +358,12 @@ def _emit_imported_summary(
         # tokens. Agent reaches a concept by writing `<ns>.<leaf>`; that
         # reconstruction is mechanical from the header + the bare leaf.
         prefix = f"{ns}."
+        # Private ``_``-leaves are already stripped upstream by ``filter_hidden``
+        # (unless --include-hidden), so no visibility filter is needed here.
         leaves = sorted(
             leaf
             for addr in by_ns[ns]
             for leaf in [addr[len(prefix) :] if addr.startswith(prefix) else addr]
-            if not leaf.startswith("_")  # hide internal/intermediate concepts
         )
         if not leaves:
             continue
@@ -635,7 +657,13 @@ def _dedup_conformed(
         if len(members) < 2 or gkey[0] == "\0":
             continue
         canon = _pick_canonical(members, Path(gkey[0]))
-        others = sorted(m for m in members if m != canon)
+        # Sort the non-canonical roles shallowest-first (fewest ``.``), then
+        # alphabetically — so bare conformed roles (``return_date``,
+        # ``sold_date``) lead the key before the deeper nested dimensions
+        # (``billing_customer.first_sales_date``).
+        others = sorted(
+            (m for m in members if m != canon), key=lambda m: (m.count("."), m)
+        )
         combined_of[canon] = _ROLE_DELIM.join([canon, *others])
         absorbed.update(others)
 
@@ -664,18 +692,12 @@ def _imported_payload(
     hid key semantics (surrogate ``sk`` vs business ``id``), enum value sets,
     and role notes — the exact facts an agent mis-guesses most expensively.
 
-    Internal namespaces (``__``) and ``_``-prefixed leaves stay hidden,
-    matching the collapse this replaced."""
-    visible: list[tuple[str, Concept]] = []
-    for addr, c in imported_items:
-        if c.namespace.startswith("__"):  # internal model — never expose
-            continue
-        disp = _display_address(addr)
-        prefix = f"{c.namespace}."
-        leaf = disp[len(prefix) :] if disp.startswith(prefix) else disp
-        if leaf.startswith("_"):  # internal/intermediate concept — hide
-            continue
-        visible.append((addr, c))
+    Internal ``__`` namespaces stay hidden here; ``_``-prefixed private leaves
+    are already stripped upstream by ``filter_hidden`` (unless
+    --include-hidden)."""
+    visible = [
+        (addr, c) for addr, c in imported_items if not c.namespace.startswith("__")
+    ]
     if not visible:
         return {}
     grouped = _grouped_decls(env, visible)
@@ -706,6 +728,7 @@ def build_concepts_payload(
     import_descriptions: dict[str, str] | None = None,
     expand_roles: bool = False,
     version: int | None = None,
+    include_hidden: bool = False,
 ) -> dict:
     """Build the JSON-serializable concept dump: local namespaces rendered in
     full Trilogy declaration syntax under ``namespaces``; imported namespaces
@@ -721,6 +744,11 @@ def build_concepts_payload(
     the full per-role dump regardless of version."""
     if version is None:
         version = render_version(RENDER_TYPE_JSON)
+    # Private-concept chokepoint for every payload consumer (CLI JSON, AI
+    # prompt, tests). --include-hidden is the sole opt-out; the CLI having
+    # already filtered is a harmless no-op here.
+    if not include_hidden:
+        concept_items = filter_hidden(concept_items)
     local_items = [(a, c) for a, c in concept_items if c.namespace == DEFAULT_NAMESPACE]
     imported_items = [
         (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
@@ -746,6 +774,7 @@ def _emit_explore_json(
     show: str,
     import_descriptions: dict[str, str],
     expand_roles: bool,
+    include_hidden: bool,
 ) -> None:
     """Emit the explore results as a stream of pretty-printed JSON events,
     honoring ``--show``. Concepts are grouped by namespace and rendered in
@@ -757,7 +786,11 @@ def _emit_explore_json(
             "concepts",
             discriminator="type",
             **build_concepts_payload(
-                env, concept_items, import_descriptions, expand_roles
+                env,
+                concept_items,
+                import_descriptions,
+                expand_roles,
+                include_hidden=include_hidden,
             ),
         )
     if show in ("all", "datasources"):
@@ -895,6 +928,11 @@ def explore(
             for k, v in concept_items
             if not k.startswith("__") and not k.startswith("local._env_")
         ]
+    # Visibility gate BEFORE purpose/regex so a private concept can't be
+    # resurfaced by an ordinary regex filter. --include-hidden is the single
+    # opt-in that restores them for model authoring/debugging.
+    if not include_hidden:
+        concept_items = filter_hidden(concept_items)
     if purpose:
         allowed = {p.lower() for p in purpose}
         concept_items = [(k, v) for k, v in concept_items if v.purpose.value in allowed]
@@ -924,7 +962,9 @@ def explore(
     expand = expand_imports or bool(regex_patterns)
 
     if is_json_mode():
-        _emit_explore_json(env, concept_items, show, import_descriptions, expand_roles)
+        _emit_explore_json(
+            env, concept_items, show, import_descriptions, expand_roles, include_hidden
+        )
         return
 
     if show in ("all", "groups"):

@@ -7,7 +7,7 @@ const period_start <- '2000-08-23'::date;
 const period_end <- '2000-09-22'::date;
 
 rowset ws_grouped <- where
-    ws.date.date between period_start and period_end
+    ws.sale_date.date between period_start and period_end
 select
     ws.web_page.sk as ws_wp_id,
     sum(ws.ext_sales_price) as ws_sales,

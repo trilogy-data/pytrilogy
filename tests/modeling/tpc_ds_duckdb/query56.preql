@@ -4,8 +4,8 @@ auto color_ids <- sales.item.id ? sales.item.color in ('slate', 'blanched', 'bur
 
 where
     sales.item.id in color_ids
-    and sales.date.year = 2001
-    and sales.date.month_of_year = 2
+    and sales.sale_date.year = 2001
+    and sales.sale_date.month_of_year = 2
     and sales.pos_bill_address.gmt_offset = -5
 select
     sales.item.id,

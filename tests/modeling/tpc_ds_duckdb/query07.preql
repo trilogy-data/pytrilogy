@@ -8,7 +8,7 @@ where
     and store_sales.pos_customer_demographic.marital_status = 'S'
     and store_sales.pos_customer_demographic.education_status = 'College'
     and (store_sales.promotion.channel_email = 'N' or store_sales.promotion.channel_event = 'N')
-    and store_sales.date.year = 2000
+    and store_sales.sale_date.year = 2000
 select
     store_sales.item.id,
     avg(store_sales.quantity) as avg_quantity,

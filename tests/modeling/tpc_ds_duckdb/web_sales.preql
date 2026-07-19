@@ -11,10 +11,10 @@
 import std.money;
 
 import item as item;
-import date as date;
+import date as sale_date;
 import date as ship_date;
 import date as return_date;
-import time as time;
+import time as sale_time;
 import time as return_time;
 import customer as billing_customer; # the bill-to customer's latest/current records
 import customer as ship_customer; # the ship-to customer's latest/current records
@@ -69,15 +69,15 @@ properties <order_number, item.sk> (
 
 auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
 auto line_item_count <- sum(row_counter); # Number of web-sale line items (= count(line_item)); kept for queries that reference it.
-auto days_to_ship <- date_diff(date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
+auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
 
 auto is_returned <- _returned_order_number is not null; # True when a return row exists for this line, else False. Computed post-join from a real (NULL-padded) web_returns column, so "not returned" works as `= false` / `is not true` / `is null`.
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
 
 datasource web_sales (
     raw('''1'''): row_counter,
-    WS_SOLD_DATE_SK: ?date.sk, # FK to the date the order was sold.
-    WS_SOLD_TIME_SK: ?time.sk, # FK to the time-of-day the order was placed.
+    WS_SOLD_DATE_SK: ?sale_date.sk, # FK to the date the order was sold.
+    WS_SOLD_TIME_SK: ?sale_time.sk, # FK to the time-of-day the order was placed.
     WS_SHIP_DATE_SK: ?ship_date.sk, # FK to the date the order shipped.
     WS_BILL_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer billed for the order.
     WS_SHIP_CUSTOMER_SK: ?ship_customer.sk, # FK to the customer the order was shipped to.

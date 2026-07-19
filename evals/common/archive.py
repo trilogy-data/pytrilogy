@@ -171,6 +171,12 @@ def read_run(run_dir: Path) -> tuple[str | None, list[dict]]:
     repeat = run_dir / "repeat_report.json"
     if full.exists():
         report = json.loads(full.read_text(encoding="utf-8"))
+        # Curated reports inflate trends toward 100% and aren't honest single-run
+        # baselines, so they're not archivable: `spliced_from` grafts passes from
+        # a prior run (a --query-ids rerun); a non-empty `replays` list means
+        # individual queries were re-run offline as bugs got fixed.
+        if "spliced_from" in report or report.get("replays"):
+            return None, []
         variant = report.get("meta", {}).get("category") or report.get("meta", {}).get(
             "mode"
         )
@@ -182,6 +188,19 @@ def read_run(run_dir: Path) -> tuple[str | None, list[dict]]:
         )
         return variant, _summaries_repeat(report)
     return None, []
+
+
+def publish_run(run_dir: Path, suite: str, db_path: Path | None = None) -> int:
+    """Archive one finished run into the db without touching its raw logs.
+
+    The finish-of-run hook (and the manual ingest CLI); the cleanup sweep uses
+    ``archive_run`` directly since it already holds the connection open. Opens
+    and closes its own connection so callers don't manage db state. Idempotent."""
+    conn = connect(db_path)
+    try:
+        return archive_run(conn, run_dir, suite)
+    finally:
+        conn.close()
 
 
 def archive_run(conn: sqlite3.Connection, run_dir: Path, suite: str) -> int:

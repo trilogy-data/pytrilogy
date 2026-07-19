@@ -1,7 +1,7 @@
 import web_sales as ws;
 
 where
-    ws.date.year = 2000
+    ws.sale_date.year = 2000
     and (
         (
             ws.return_refund_customer_demographic.marital_status = 'M'

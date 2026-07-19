@@ -4,10 +4,10 @@
 
 import std.money;
 
-key sk int; # Surrogate key (one row per SCD version of an item; SEVERAL ids share one id).
+key sk int; # Unique key - use to filter unless specified otherwise
 
 properties sk (
-    id string, # The item's business "item code" (i_item_id, 16-char). The typical per-item identifier: use this for per-item results, not the surrogate sk. Not unique - this table is an SCD.
+    id string, # Not unique. The item's business "item code" (i_item_id, 16-char). The typical per-item identifier: use this for per-item results, not the surrogate sk. Not unique - this table is an SCD.
     product_name string?, # Marketing product name shown to customers. 
     brand_id int?, # Numeric brand identifier (composite of category + class + brand digits).
     brand_name string?, # Brand display name.

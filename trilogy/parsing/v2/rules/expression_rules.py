@@ -305,15 +305,33 @@ def comparison(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    values = hydrated_children(node, hydrate)
-    if len(values) == 1:
-        return values[0]
-    left = values[0]
-    operator = values[1]
-    right = values[2]
-    if operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-        from trilogy.parsing.common import rewrite_composite_membership
+    children = list(node.children)
+    if len(children) == 1:
+        return hydrate(children[0])
+    left = hydrate(children[0])
+    operator = hydrate(children[1])
+    membership = operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN)
+    if membership:
+        # A multi-output `(select ...)` on the RHS is a row-tuple membership set;
+        # admit it here (scalar_subquery rejects it in every other position).
+        with context.semantic_state.membership_subquery_scope():
+            right = hydrate(children[2])
+    else:
+        right = hydrate(children[2])
+    if membership:
+        from trilogy.core.exceptions import InvalidSyntaxException
+        from trilogy.core.models.author import SubqueryItem
+        from trilogy.parsing.common import (
+            resolve_subquery_membership,
+            rewrite_composite_membership,
+        )
 
+        if isinstance(right, SubqueryItem):
+            try:
+                left, right = resolve_subquery_membership(left, right)
+            except InvalidSyntaxException as e:
+                raise fail(node, str(e)) from e
+            return SubselectComparison(left=left, right=right, operator=operator)
         _validate_enum_membership(left, right, operator, context)
         left, right = rewrite_composite_membership(left, right, operator)
         return SubselectComparison(left=left, right=right, operator=operator)

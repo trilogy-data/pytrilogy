@@ -440,6 +440,110 @@ def test_render_version_override_restores(conformed_preql: Path):
     assert render_version("json") == 2
 
 
+@pytest.fixture
+def private_concept_preql(tmp_path: Path) -> Path:
+    """A model with a private ``_``-prefixed implementation field and a public
+    derived concept whose lineage references it — the shape from the q16
+    catalog_sales exposure."""
+    path = tmp_path / "priv.preql"
+    path.write_text(
+        dedent("""
+            key id int;
+            property <id>._raw_flag int?;
+            auto public_flag <- _raw_flag is not null;
+            """).strip() + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_explore_hides_private_local_concept(runner, private_concept_preql: Path):
+    result = runner.invoke(cli, ["explore", str(private_concept_preql)])
+    assert result.exit_code == 0, result.output
+    assert "_raw_flag :" not in result.output
+    assert "public_flag" in result.output
+
+
+def test_explore_regex_does_not_bypass_private(runner, private_concept_preql: Path):
+    result = runner.invoke(
+        cli, ["explore", str(private_concept_preql), "--regex", "_raw_flag"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "_raw_flag :" not in result.output
+
+
+def test_explore_include_hidden_restores_private(runner, private_concept_preql: Path):
+    result = runner.invoke(
+        cli, ["explore", str(private_concept_preql), "--include-hidden"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "_raw_flag :" in result.output
+    assert "public_flag" in result.output
+
+
+def test_explore_json_hides_private_local_concept(private_concept_preql: Path):
+    from trilogy.scripts.explore import _load_environment, filter_hidden
+
+    env = _load_environment(private_concept_preql)
+    items = filter_hidden(
+        [
+            (k, v)
+            for k, v in env.concepts.items()
+            if not k.startswith("__") and not k.startswith("local._env_")
+        ]
+    )
+    addresses = {k for k, _ in items}
+    assert "local._raw_flag" not in addresses
+    assert "local.public_flag" in addresses
+    # The public concept stays listed even though its lineage still references
+    # the private field — rendering the declaration may show the expression;
+    # it does not make the private concept a discoverable API surface.
+    payload = _concepts_payload(env)
+    dumped = json_module.dumps(payload)
+    assert "public_flag" in dumped
+    assert '"_raw_flag int?;"' not in dumped
+
+
+def test_explore_hides_private_when_imported_under_alias(runner, tmp_path: Path):
+    (tmp_path / "priv.preql").write_text(
+        dedent("""
+            key id int;
+            property <id>._raw_flag int?;
+            auto public_flag <- _raw_flag is not null;
+            """).strip() + "\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "parent.preql"
+    parent.write_text("import priv as priv;\nkey pid int;\n", encoding="utf-8")
+    result = runner.invoke(cli, ["explore", str(parent), "--expand-imports"])
+    assert result.exit_code == 0, result.output
+    assert "_raw_flag" not in result.output
+    assert "public_flag" in result.output
+
+
+@pytest.mark.parametrize("show", ["concepts", "groups", "all"])
+def test_explore_private_hidden_across_show_modes(
+    runner, private_concept_preql: Path, show: str
+):
+    result = runner.invoke(cli, ["explore", str(private_concept_preql), "--show", show])
+    assert result.exit_code == 0, result.output
+    assert "_raw_flag" not in result.output
+    assert "public_flag" in result.output
+
+
+def test_explore_catalog_sales_hides_returned_order_number(runner):
+    """Fixture-level regression on the exact q16 model: default exploration
+    lists the public ``is_returned`` but never the private
+    ``_returned_order_number`` implementation field."""
+    model = Path("tests/modeling/tpc_ds_duckdb/catalog_sales.preql")
+    if not model.exists():
+        pytest.skip("catalog_sales fixture not present")
+    result = runner.invoke(cli, ["explore", str(model)])
+    assert result.exit_code == 0, result.output
+    assert "is_returned" in result.output
+    assert "_returned_order_number :" not in result.output
+
+
 def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):
     leaf = tmp_path / "leaf.preql"
     leaf.write_text("key x int;", encoding="utf-8")

@@ -6,7 +6,7 @@ select statements become tables and chart statements become charts. The
 """
 
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 from trilogy.rendering.theme import DEFAULT_THEME, Theme, get_theme
 from trilogy.report.backends import get_backend
@@ -19,8 +19,12 @@ def render_report(
     output_format: str = "png",
     output_path: Union[str, Path, None] = None,
     theme: Union[str, Theme] = DEFAULT_THEME,
+    executor: Any | None = None,
 ) -> Path:
-    """Render a markdown report file to the requested format, returning the output path."""
+    """Render a markdown report file to the requested format, returning the output path.
+
+    ``executor`` overrides the default in-memory DuckDB engine so a report can
+    run against a configured warehouse (see the CLI's trilogy.toml handling)."""
     source = Path(source)
     resolved_theme = get_theme(theme) if isinstance(theme, str) else theme
     backend = get_backend(output_format)
@@ -30,7 +34,7 @@ def render_report(
         else source.with_suffix("." + backend.extension)
     )
     segments = parse_markdown(source.read_text(encoding="utf-8"))
-    elements = run_document(segments, working_path=source.parent)
+    elements = run_document(segments, working_path=source.parent, executor=executor)
     backend.render(elements, target, resolved_theme)
     return target
 

@@ -88,3 +88,123 @@ def test_scalar_subquery_round_trips(backend):
     engine2 = _engine()
     reparsed = engine2.execute_text(rendered)[-1].fetchall()
     assert reparsed == [(60,)]
+
+
+# A rowset of (val, cat) pairs for rows val>=20 -> {(20, 1), (30, 2)}.
+_TUPLE_SETUP = "with rs as select id, val, cat where val >= 20;"
+
+
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        # 2-col tuple membership: rows whose (val, cat) is in {(20,1),(30,2)}
+        ("(val, cat) in (select rs.val, rs.cat)", [(2,), (3,)]),
+        # NOT IN is the exact complement
+        ("(val, cat) not in (select rs.val, rs.cat)", [(1,)]),
+        # 3-col tuple membership (the q14 shape)
+        ("(id, val, cat) in (select rs.id, rs.val, rs.cat)", [(2,), (3,)]),
+        # correlation: matching against swapped columns (cat, val) matches nothing
+        ("(val, cat) in (select rs.cat, rs.val)", []),
+        # aliased/computed outputs bind positionally
+        ("(val + 1, cat) in (select rs.val + 1, rs.cat)", [(2,), (3,)]),
+    ],
+)
+def test_tuple_subquery_membership(backend, predicate, expected):
+    q = _TUPLE_SETUP + f"select id where {predicate} order by id asc;"
+    assert _engine().execute_text(q)[-1].fetchall() == expected
+
+
+@pytest.mark.parametrize("operator", ["in", "not in"])
+def test_tuple_membership_inline_matches_named(backend, operator):
+    # inline `(select ...)` lowers to the same shape as the named-rowset form
+    inline = _TUPLE_SETUP + (
+        f"select id where (val, cat) {operator} (select rs.val, rs.cat) order by id asc;"
+    )
+    named = _TUPLE_SETUP + (
+        f"select id where (val, cat) {operator} (rs.val, rs.cat) order by id asc;"
+    )
+    assert (
+        _engine().execute_text(inline)[-1].fetchall()
+        == _engine().execute_text(named)[-1].fetchall()
+    )
+
+
+def test_tuple_subquery_null_identity(backend):
+    # a null component matches a null component (membership is identity, total),
+    # identical to the equivalent named-rowset tuple membership
+    model = """
+key nid int;
+property nid.x int;
+property nid.y int;
+datasource nt (nid: nid, x: x, y: y) grain (nid)
+  query '''
+    select 1 as nid, 1 as x, 2 as y
+    union all select 2, 3, cast(null as int)
+  ''';
+with nrs as select nid, x, y;
+"""
+
+    def run(pred):
+        eng = Dialects.DUCK_DB.default_executor()
+        q = model + f"select nid where (x, y) in ({pred}) order by nid asc;"
+        return eng.execute_text(q)[-1].fetchall()
+
+    assert run("select nrs.x, nrs.y") == run("nrs.x, nrs.y") == [(1,), (2,)]
+
+
+@pytest.mark.parametrize(
+    "predicate,message",
+    [
+        # scalar left vs multi-column subquery
+        ("val in (select rs.val, rs.cat)", "projects 2 columns"),
+        # tuple arity too large / too small for the subquery projection
+        (
+            "(val, cat) in (select rs.val)",
+            "left side has 2 fields but the subquery selects 1",
+        ),
+        (
+            "(val, cat) in (select rs.id, rs.val, rs.cat)",
+            "left side has 2 fields but the subquery selects 3",
+        ),
+    ],
+)
+def test_tuple_membership_arity_rejected(backend, predicate, message):
+    q = _TUPLE_SETUP + f"select id where {predicate};"
+    with pytest.raises(HydrationError, match=message) as excinfo:
+        _engine().generate_sql(q)
+    meta = excinfo.value.diagnostic.meta
+    assert meta is not None and meta.line is not None
+
+
+@pytest.mark.parametrize("kind", ["inline", "named"])
+def test_tuple_membership_grainless_output(backend, kind):
+    # membership as a bare (grain-less) SELECT-output scalar: the constant-LHS
+    # probe has no row source but the existence set must still be wired
+    # (the handoff's minimal fixture shape). True for (1,2), False for (1,4).
+    rhs = (
+        "(select pairs.val, pairs.cat)"
+        if kind == "inline"
+        else "(pairs.val, pairs.cat)"
+    )
+    q = (
+        "with pairs as select val, cat where val = 20;"
+        f"select (20, 1) in {rhs} as present, (20, 2) in {rhs} as cross_pair_absent;"
+    )
+    assert _engine().execute_text(q)[-1].fetchall() == [(True, False)]
+
+
+def test_tuple_subquery_round_trips(backend):
+    q = _TUPLE_SETUP + (
+        "select id where (val, cat) in (select rs.val, rs.cat) order by id asc;"
+    )
+    engine = _engine()
+    _, parsed = engine.environment.parse(q)
+    rendered = Renderer(environment=engine.environment).to_string(parsed[-1])
+    assert "_subquery_" not in rendered
+    # the tuple LHS renders as `(val, cat)`, not the internal `row_tuple(...)`,
+    # and the RHS reproduces the inline `(select ...)` form
+    assert "row_tuple" not in rendered
+    flat = rendered.replace(" ", "").replace("\n", "").lower()
+    assert "(val,cat)in(select" in flat
+    engine2 = _engine()
+    assert engine2.execute_text(_TUPLE_SETUP + rendered)[-1].fetchall() == [(2,), (3,)]

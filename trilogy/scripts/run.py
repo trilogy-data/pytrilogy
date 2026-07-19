@@ -134,8 +134,10 @@ def _format_import(value: str) -> str:
     help=(
         "Print a 'Derived value scopes' block after each result: the effective "
         "input row filters, grouping/partitioning, and post-computation filters of "
-        "every aggregate and window value the statement computes. JSON output "
-        "always includes this data as `derived_value_scopes`."
+        "every aggregate and window value the statement computes. In JSON mode "
+        "this full block is emitted as `agg_window_rows_used` only when "
+        "TRILOGY_AGENT_SCOPE_DIAGNOSTICS is set; the distilled `warnings` list is "
+        "on by default (disable with TRILOGY_AGENT_SCOPE_WARNINGS=0)."
     ),
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)

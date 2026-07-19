@@ -17,7 +17,7 @@ auto rank_within_parent <- rank(ss.item.category, ss.item.class)
     over (partition by lochierarchy, partition_cat order by gross_margin asc);
 
 where
-    ss.date.year = 2001 and ss.store.state = 'TN'
+    ss.sale_date.year = 2001 and ss.store.state = 'TN'
 select
     gross_margin,
     ss.item.category as i_category,

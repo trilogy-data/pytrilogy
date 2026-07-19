@@ -464,8 +464,8 @@ import web_sales as web_sales;
         sum(store_sales.net_profit
         ) ->store_net_profit
     where 
-            store_sales.date.quarter = 2
-            and store_sales.date.year = 1998
+            store_sales.sale_date.quarter = 2
+            and store_sales.sale_date.year = 1998
             and substring(store_sales.store.zip, 1, 2) in final_zips
     order by
         store_sales.store.name asc

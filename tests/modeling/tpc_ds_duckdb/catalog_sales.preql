@@ -11,11 +11,10 @@
 import std.money;
 
 import item as item;
-import date as date;
 import date as ship_date;
-import date as sold_date;
+import date as sale_date;
 import date as return_date;
-import time as time;
+import time as sale_time;
 import time as return_time;
 import customer as ship_customer; # the ship-to customer's latest/current records
 import customer as billing_customer; # the bill-to customer's latest/current records
@@ -43,7 +42,7 @@ import address as return_refund_address; # the address the refund was issued to
 import reason as return_reason;
 
 key order_number int; # Catalog order number identifying a single catalog sales transaction.
-auto days_to_ship <- date_diff(sold_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
+auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
 
 
 # metrics
@@ -82,9 +81,8 @@ auto is_returned <- _returned_order_number is not null; # True if this line was 
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
-    CS_SOLD_DATE_SK: ?date.sk,
-    CS_SOLD_DATE_SK: ?sold_date.sk, 
-    CS_SOLD_TIME_SK: ?time.sk,
+    CS_SOLD_DATE_SK: ?sale_date.sk,
+    CS_SOLD_TIME_SK: ?sale_time.sk,
     CS_SHIP_DATE_SK: ?ship_date.sk, 
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     CS_SHIP_ADDR_SK: ?pos_ship_address.sk,

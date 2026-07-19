@@ -1,44 +1,44 @@
 import store_sales as store_sales;
 
 auto sum_sales <- sum(store_sales.sales_price)
-    by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.year, store_sales.date.month_of_year;
+    by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.sale_date.year, store_sales.sale_date.month_of_year;
 auto avg_monthly_sales <- avg(sum_sales)
-    by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.date.year;
+    by store_sales.item.category, store_sales.item.brand_name, store_sales.store.name, store_sales.store.company_name, store_sales.sale_date.year;
 auto psum <- lag(sum_sales, 1)
     over (partition by store_sales.item.category,
             store_sales.item.brand_name,
             store_sales.store.name,
             store_sales.store.company_name
-        order by store_sales.date.year asc, store_sales.date.month_of_year asc);
+        order by store_sales.sale_date.year asc, store_sales.sale_date.month_of_year asc);
 auto nsum <- lead(sum_sales, 1)
     over (partition by store_sales.item.category,
             store_sales.item.brand_name,
             store_sales.store.name,
             store_sales.store.company_name
-        order by store_sales.date.year asc, store_sales.date.month_of_year asc);
+        order by store_sales.sale_date.year asc, store_sales.sale_date.month_of_year asc);
 auto sum_minus_avg <- sum_sales - avg_monthly_sales;
 
 where
     store_sales.store.sk is not null
     and (
-        store_sales.date.year = 1999
-        or (store_sales.date.year = 1998 and store_sales.date.month_of_year = 12)
-        or (store_sales.date.year = 2000 and store_sales.date.month_of_year = 1)
+        store_sales.sale_date.year = 1999
+        or (store_sales.sale_date.year = 1998 and store_sales.sale_date.month_of_year = 12)
+        or (store_sales.sale_date.year = 2000 and store_sales.sale_date.month_of_year = 1)
     )
 select
     store_sales.item.category,
     store_sales.item.brand_name,
     store_sales.store.name,
     store_sales.store.company_name,
-    store_sales.date.year,
-    store_sales.date.month_of_year,
+    store_sales.sale_date.year,
+    store_sales.sale_date.month_of_year,
     avg_monthly_sales,
     sum_sales,
     psum,
     nsum,
     --sum_minus_avg,
 having
-    store_sales.date.year = 1999
+    store_sales.sale_date.year = 1999
     and avg_monthly_sales > 0
     and case
             when avg_monthly_sales > 0 then abs(sum_sales - avg_monthly_sales) / avg_monthly_sales
@@ -51,8 +51,8 @@ order by
     store_sales.item.brand_name asc,
     store_sales.store.name asc,
     store_sales.store.company_name asc,
-    store_sales.date.year asc,
-    store_sales.date.month_of_year asc,
+    store_sales.sale_date.year asc,
+    store_sales.sale_date.month_of_year asc,
     avg_monthly_sales asc,
     sum_sales asc,
     psum asc,

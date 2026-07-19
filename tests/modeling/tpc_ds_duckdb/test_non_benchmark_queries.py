@@ -114,7 +114,7 @@ where catalog_item_agg.cat_ext_list_price > 2 * catalog_item_agg.cat_refund
   and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
   and ss.item.current_price between 65 and 74
   and ss.pos_customer_demographic.marital_status != ss.customer.current_demographics.marital_status
-  and ss.date.year in (1999, 2000)
+  and ss.sale_date.year in (1999, 2000)
   and pr.return_amount is not null
 select
   ss.item.product_name, ss.item.id as item_id,
@@ -123,7 +123,7 @@ select
   ss.pos_address.city as sale_city, ss.pos_address.zip as sale_zip,
   ss.customer.current_address.street_number as cust_street_number, ss.customer.current_address.street_name as cust_street_name,
   ss.customer.current_address.city as cust_city, ss.customer.current_address.zip as cust_zip,
-  ss.date.year as sale_year,
+  ss.sale_date.year as sale_year,
   ss.customer.first_sales_date.year as first_sales_year,
   ss.customer.first_shipto_date.year as first_shipto_year,
   count(ss.line_item) as line_count,
@@ -172,8 +172,8 @@ select ss.item.id, count(ss.line_item) as cnt;
 @pytest.mark.parametrize(
     "filter_clause",
     [
-        "having r.wk in (r.wk ? sales.date.year = 2001)",
-        "auto rel <- r.wk ? sales.date.year = 2001;\nselect r.wk, r.amt having r.wk in rel",
+        "having r.wk in (r.wk ? sales.sale_date.year = 2001)",
+        "auto rel <- r.wk ? sales.sale_date.year = 2001;\nselect r.wk, r.amt having r.wk in rel",
     ],
     ids=["inline", "named_auto"],
 )
@@ -181,17 +181,17 @@ def test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error(
     engine, filter_clause
 ):
     """Filtering a rowset output (`r.wk`) by a concept not among the rowset's
-    outputs (`sales.date.year`, aggregated away) is just a disconnected grouping:
+    outputs (`sales.sale_date.year`, aggregated away) is just a disconnected grouping:
     the rowset is materialized at grain `(wk, dow)`, so the filtered value and the
     condition concept live in different reference-graph components. This used to
     dead-end on the opaque hashed `_virt_filter_wk_<hash>` concept (a 40-turn
     churn); the filter's hidden condition concept is now surfaced so the standard
-    disconnected-subgraphs error fires — naming `r.wk` and `sales.date.year`,
+    disconnected-subgraphs error fires — naming `r.wk` and `sales.sale_date.year`,
     pointing at a join/merge, plus a rowset-specific remedy hint."""
     base = """
 import all_sales as sales;
 rowset r <- where sales.channel in ('WEB','CATALOG')
-select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+select sales.sale_date.week_seq as wk, sales.sale_date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
 """
     select = (
         filter_clause
@@ -201,7 +201,7 @@ select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_s
     with pytest.raises(DisconnectedConceptsException) as exc:
         engine.generate_sql(base + select + ";")
     message = str(exc.value)
-    assert "sales.date.year" in message
+    assert "sales.sale_date.year" in message
     assert "r.wk" in message
     assert "join or merge" in message
     assert "rowset `r`" in message
@@ -216,7 +216,7 @@ def test_q02_filter_rowset_output_by_in_grain_concept_still_resolves(engine):
     query = """
 import all_sales as sales;
 rowset r <- where sales.channel in ('WEB','CATALOG')
-select sales.date.week_seq as wk, sales.date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
+select sales.sale_date.week_seq as wk, sales.sale_date.day_of_week as dow, sum(sales.ext_sales_price) as amt;
 select r.wk, r.amt having r.wk in (r.wk ? r.dow = 0);
 """
     assert engine.generate_sql(query)
@@ -297,7 +297,7 @@ auto wpr <- CASE
     WHEN g_state >= 1 THEN 1
     ELSE rank(ss.store.state) over (partition by ss.store.state order by sum(ss.net_profit) desc)
 END;
-where ss.date.year = 2000
+where ss.sale_date.year = 2000
 select ss.store.state as s_state, sum(ss.net_profit) as total_sum, wpr
 order by total_sum desc limit 5;
 """
@@ -326,7 +326,7 @@ auto wpr <- CASE
     ELSE rank(ss.store.state)
         over (partition by grouping(ss.store.state) order by sum(ss.net_profit) by ss.store.state desc)
 END;
-where ss.date.year = 2000
+where ss.sale_date.year = 2000
 select ss.store.state as s_state, sum(ss.net_profit) as total_sum, wpr
 order by total_sum desc limit 5;
 """
@@ -350,7 +350,7 @@ import store_sales as ss;
 auto part <- case when grouping(ss.item.category) = 1 then '~GT~'
              else ss.item.category end;
 auto rnk <- rank(ss.item.class) over (partition by part order by sum(ss.quantity) desc);
-where ss.date.year = 2000
+where ss.sale_date.year = 2000
 select ss.item.category, ss.item.class, sum(ss.quantity) as q, rnk as r
 by rollup (ss.item.category, ss.item.class)
 order by r asc limit 15;
@@ -409,15 +409,15 @@ import web_sales as web_sales;
     dialect = Dialects.DUCK_DB.default_executor(environment=env)
     test_queries = """
 select
-    store_sales.date.year,
+    store_sales.sale_date.year,
     count(store_sales.ticket_number) as store_order_count;
 
 select
-    web_sales.date.year,
+    web_sales.sale_date.year,
     count(web_sales.order_number) as web_order_count;
 
 select
-    catalog_sales.date.year,
+    catalog_sales.sale_date.year,
     count(catalog_sales.order_number) as catalog_order_count;
 
 
@@ -504,8 +504,8 @@ def test_or_membership_with_projected_aggregate(engine):
     query = """
 import all_sales as s;
 
-auto cat_qual <- s.billing_customer.id ? s.channel = 'CATALOG' and s.date.year = 1998;
-auto web_qual <- s.billing_customer.id ? s.channel = 'WEB'     and s.date.year = 1998;
+auto cat_qual <- s.billing_customer.id ? s.channel = 'CATALOG' and s.sale_date.year = 1998;
+auto web_qual <- s.billing_customer.id ? s.channel = 'WEB'     and s.sale_date.year = 1998;
 auto cust_total <- sum(s.ext_sales_price ? s.channel = 'STORE') by s.billing_customer.id;
 
 where s.billing_customer.id in cat_qual
@@ -542,18 +542,18 @@ import web_sales as web_sales;
 
 
     SELECT
-    store_sales.date.year,
+    store_sales.sale_date.year,
     count(store_sales.ticket_number) as store_order_count
 HAVING
     store_order_count>0
 MERGE
 SELECT
-    web_sales.date.year,
+    web_sales.sale_date.year,
     count(web_sales.order_number) as web_order_count
 HAVING
     web_order_count>0 
 ALIGN 
-    report_date: store_sales.date.year, web_sales.date.year
+    report_date: store_sales.sale_date.year, web_sales.sale_date.year
 ORDER BY
     report_date asc;"""
 
@@ -565,12 +565,12 @@ import store_sales as store_sales;
 import web_sales as web_sales;
 import date as date; 
 
-MERGE store_sales.date.* into ~date.*;
-MERGE web_sales.date.* into ~date.*;
+MERGE store_sales.sale_date.* into ~date.*;
+MERGE web_sales.sale_date.* into ~date.*;
 
 datasource filtered_cache (
-    store_sales_date_month_of_year: ~store_sales.date.month_of_year,
-    store_sales_date_year: ~store_sales.date.year,
+    store_sales_date_month_of_year: ~store_sales.sale_date.month_of_year,
+    store_sales_date_year: ~store_sales.sale_date.year,
     store_sales_ext_sales_price: ~store_sales.ext_sales_price,
     store_sales_item_brand_id: ~store_sales.item.brand_id,
     store_sales_item_brand_name: ~store_sales.item.brand_name,
@@ -578,7 +578,7 @@ datasource filtered_cache (
     store_sales_item_manufacturer_id: ~store_sales.item.manufacturer_id,
     store_sales_ticket_number: ~store_sales.ticket_number
 )
-complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+complete where store_sales.sale_date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
 address filtered_cache;
 
 
@@ -607,17 +607,17 @@ import store_sales as store_sales;
 import web_sales as web_sales;
 
 SELECT
-    store_sales.date.year,
+    store_sales.sale_date.year,
     count_distinct(store_sales.ticket_number) as store_order_count
 having
     store_order_count > 1000
 MERGE
 SELECT
-    web_sales.date.year,
+    web_sales.sale_date.year,
     count_distinct(web_sales.order_number) as web_order_count
 
 ALIGN 
-    report_date: store_sales.date.year, web_sales.date.year
+    report_date: store_sales.sale_date.year, web_sales.sale_date.year
 ORDER BY
     report_date asc;"""
 
@@ -653,9 +653,9 @@ SELECT
     sum(store_sales.return_net_loss) AS store_returns_loss ,
     sum(catalog_sales.net_profit) AS catalog_sales_profit
 WHERE 
-    store_sales.is_returned and store_sales.date.year=2001 and store_sales.date.month_of_year=4
+    store_sales.is_returned and store_sales.sale_date.year=2001 and store_sales.sale_date.month_of_year=4
     and store_sales.return_date.year=2001 and store_sales.return_date.month_of_year between 4 and 10
-    and catalog_sales.date.year=2001 and catalog_sales.date.month_of_year between 4 and 10
+    and catalog_sales.sale_date.year=2001 and catalog_sales.sale_date.month_of_year between 4 and 10
     and store_sales.return_customer.id = store_sales.customer.id
 ORDER BY 
     store_sales.item.product_name asc,
@@ -677,7 +677,7 @@ LIMIT 100;"""
 def test_constant_extra(engine):
     query = """import store_sales as store_sales;
 
-where store_sales.date.year = 2001
+where store_sales.sale_date.year = 2001
 select 
     count(store_sales.customer.id)->ccount, 
     1 as test,
@@ -697,7 +697,7 @@ def test_merge_grain_discovery():
 
     target_concepts = [
         build_environment.concepts["store_sales.ticket_number"],
-        build_environment.concepts["store_sales.date.year"],
+        build_environment.concepts["store_sales.sale_date.year"],
         build_environment.concepts["store_sales.item.sk"],
     ]
     node = search_concepts(
@@ -728,13 +728,13 @@ def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
     import all_sales as sales;
 
     def weekday_sum(weekday) -> sum(
-        sales.ext_sales_price ? sales.date.day_of_week = weekday
-    ) by sales.date.week_seq;
+        sales.ext_sales_price ? sales.sale_date.day_of_week = weekday
+    ) by sales.sale_date.week_seq;
 
     SELECT
-        sales.date.week_seq,
+        sales.sale_date.week_seq,
         @weekday_sum(0) / @weekday_sum(1) as sun_over_mon
-    ORDER BY sales.date.week_seq asc
+    ORDER BY sales.sale_date.week_seq asc
     LIMIT 5;
     """
 
@@ -749,7 +749,9 @@ def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
         if isinstance(c.lineage, BuildAggregateWrapper)
     ]
     assert len(aggregate_outputs) == 2
-    assert [c.address for c in grouped_cte.group_concepts] == ["sales.date.week_seq"]
+    assert [c.address for c in grouped_cte.group_concepts] == [
+        "sales.sale_date.week_seq"
+    ]
 
 
 def test_def_body_can_call_another_custom_function():
@@ -759,15 +761,15 @@ def test_def_body_can_call_another_custom_function():
     import all_sales as sales;
 
     def weekday_sum(weekday) -> sum(
-        sales.ext_sales_price ? sales.date.day_of_week = weekday
-    ) by sales.date.week_seq;
+        sales.ext_sales_price ? sales.sale_date.day_of_week = weekday
+    ) by sales.sale_date.week_seq;
 
     def doubled_weekday_sum(weekday) -> @weekday_sum(weekday) * 2;
 
     SELECT
-        sales.date.week_seq,
+        sales.sale_date.week_seq,
         @doubled_weekday_sum(0) as sun_doubled
-    ORDER BY sales.date.week_seq asc
+    ORDER BY sales.sale_date.week_seq asc
     LIMIT 5;
     """
 
@@ -782,8 +784,8 @@ def test_two_merge_aggregate_compacts_inline_window_query():
     import web_sales as web_sales;
     import date as date;
 
-    merge catalog_sales.date.* into ~date.*;
-    merge web_sales.date.* into ~date.*;
+    merge catalog_sales.sale_date.* into ~date.*;
+    merge web_sales.sale_date.* into ~date.*;
 
     auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
 
@@ -877,13 +879,13 @@ def test_membership_in_having_over_window_renders_valid_subselect():
     _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
-auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+auto ws_2001 <- all_sales.sale_date.week_seq ? all_sales.sale_date.year = 2001;
 
 with weekly_dow as
 where all_sales.channel in ('WEB', 'CATALOG')
 select
-    all_sales.date.week_seq as ws,
-    sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0) as sun
+    all_sales.sale_date.week_seq as ws,
+    sum(all_sales.ext_sales_price ? all_sales.sale_date.day_of_week = 0) as sun
 ;
 
 select
@@ -905,10 +907,10 @@ def test_membership_in_having_auto_concept_renders_valid_subselect():
     _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
-auto ws_2001 <- all_sales.date.week_seq ? all_sales.date.year = 2001;
+auto ws_2001 <- all_sales.sale_date.week_seq ? all_sales.sale_date.year = 2001;
 
 select
-    all_sales.date.week_seq as ws,
+    all_sales.sale_date.week_seq as ws,
     --ws in ws_2001 as in_2001,
     sum(all_sales.ext_sales_price) as sun
 having ws in ws_2001
@@ -925,15 +927,15 @@ def test_membership_in_having_no_projected_flag_renders_valid_subselect():
     _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
-rowset ws_2001 <- select all_sales.date.week_seq
-    where all_sales.channel != 'STORE' and all_sales.date.year = 2001;
-auto wk_sun <- sum(all_sales.ext_sales_price ? all_sales.date.day_of_week = 0);
+rowset ws_2001 <- select all_sales.sale_date.week_seq
+    where all_sales.channel != 'STORE' and all_sales.sale_date.year = 2001;
+auto wk_sun <- sum(all_sales.ext_sales_price ? all_sales.sale_date.day_of_week = 0);
 
 select
-    all_sales.date.week_seq as ws,
+    all_sales.sale_date.week_seq as ws,
     wk_sun as sun,
-    lead(wk_sun, 53) over (order by all_sales.date.week_seq) as next_sun
-having ws in ws_2001.all_sales.date.week_seq
+    lead(wk_sun, 53) over (order by all_sales.sale_date.week_seq) as next_sun
+having ws in ws_2001.all_sales.sale_date.week_seq
 ;
 """)
 
@@ -976,7 +978,7 @@ def test_unified_model_customer_address_cross_cte_join(engine):
     for role in ("purchasing_customer", "billing_customer"):
         query = f"""
 import all_sales as sales;
-where sales.date.year = 2001
+where sales.sale_date.year = 2001
   and sales.{role}.current_address.id is not null
 select
     sales.{role}.current_address.state as state,
@@ -1002,7 +1004,7 @@ def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
     # condition applied once above, over the joined rows.
     query = """
     import all_sales as sales;
-    auto f1 <- sales.date.date between '2000-08-23'::date and '2000-09-22'::date;
+    auto f1 <- sales.sale_date.date between '2000-08-23'::date and '2000-09-22'::date;
     auto f2 <- sales.return_date.date between '2000-08-23'::date and '2000-09-22'::date;
     auto m <- coalesce(sales.net_profit ? f1, 0) - coalesce(sales.return_net_loss ? f2, 0);
     where sales.channel_dim_id is not null and (f1 or f2)
@@ -1038,15 +1040,15 @@ import all_sales as s;
 with daily_sales as
 where s.channel in ('WEB', 'CATALOG')
 select
-    s.date.week_seq as week_seq,
-    s.date.day_of_week as dow,
-    s.date.year as year,
+    s.sale_date.week_seq as week_seq,
+    s.sale_date.day_of_week as dow,
+    s.sale_date.year as year,
     sum(s.ext_sales_price) as day_sales
 ;
 
 with weeks_2001 as
-where s.channel in ('WEB', 'CATALOG') and s.date.year = 2001
-select s.date.week_seq as week_seq
+where s.channel in ('WEB', 'CATALOG') and s.sale_date.year = 2001
+select s.sale_date.week_seq as week_seq
 ;
 
 with pivoted as
@@ -1082,7 +1084,7 @@ def test_property_via_partial_fk_does_not_broadcast(engine_sf001):
 import all_sales as s;
 
 with combined as union(
-  (where s.date.date between '2000-08-23'::date and '2000-09-06'::date
+  (where s.sale_date.date between '2000-08-23'::date and '2000-09-06'::date
     and s.channel_dim_id is not null
    select
      case when s.channel = 'CATALOG' then 'catalog channel' else 'other' end as ch,
@@ -1137,8 +1139,8 @@ select
     cat_avg_price,
     ss.item.current_price / cat_avg_price as ratio
 where
-    ss.date.year = 2001
-    and ss.date.month_of_year = 1
+    ss.sale_date.year = 2001
+    and ss.sale_date.month_of_year = 1
     and ss.item.category is not null
     and ss.customer.current_address.id is not null
 order by

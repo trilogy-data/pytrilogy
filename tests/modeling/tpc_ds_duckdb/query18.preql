@@ -12,7 +12,7 @@ where
     and cs.pos_customer_demographic.education_status = 'Unknown'
     and cs.billing_customer.current_demographics.sk is not null
     and cs.billing_customer.birth_month in (1, 6, 8, 9, 12, 2)
-    and cs.date.year = 1998
+    and cs.sale_date.year = 1998
     and cs.billing_customer.current_address.state in ('MS', 'IN', 'ND', 'OK', 'NM', 'VA')
 select
     cs.item.id,

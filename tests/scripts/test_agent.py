@@ -1346,7 +1346,11 @@ def test_quiet_flag_drops_show_message_tool(monkeypatch):
     result = CliRunner().invoke(cli, ["agent", "--quiet", "do thing"])
     assert result.exit_code == 0, result.output
     assert "show_message" not in captured["tool_names"]
-    assert captured["system_prompt"] == agent_mod.QUIET_SYSTEM_PROMPT
+    # Scope diagnostics default off, so the default prompt is built dynamically
+    # (warnings on) rather than the diagnostics-on pre-baked constant.
+    assert captured["system_prompt"] == agent_mod.get_agent_instructions(
+        include_show=False, include_scope_diagnostics=False
+    )
 
 
 def test_interactive_followup_runs_then_exits(monkeypatch):
@@ -1488,7 +1492,9 @@ def test_disable_todo_drops_todo_tool_and_switches_prompt(monkeypatch, tmp_path)
     result = CliRunner().invoke(cli, ["agent", "do thing"])
     assert result.exit_code == 0, result.output
     assert "todo" not in captured["tool_names"]
-    assert captured["system_prompt"] == agent_mod.NO_TODO_SYSTEM_PROMPT
+    assert captured["system_prompt"] == agent_mod.get_agent_instructions(
+        include_todo=False, include_scope_diagnostics=False
+    )
 
 
 def test_quiet_and_disable_todo_uses_combined_prompt(monkeypatch, tmp_path):
@@ -1509,7 +1515,9 @@ def test_quiet_and_disable_todo_uses_combined_prompt(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_mod, "_run_turn", fake_run_turn)
     result = CliRunner().invoke(cli, ["agent", "do thing"])
     assert result.exit_code == 0, result.output
-    assert captured["system_prompt"] == agent_mod.QUIET_NO_TODO_SYSTEM_PROMPT
+    assert captured["system_prompt"] == agent_mod.get_agent_instructions(
+        include_show=False, include_todo=False, include_scope_diagnostics=False
+    )
 
 
 def test_disable_db_introspection_drops_database_bullet(monkeypatch, tmp_path):
@@ -1535,7 +1543,10 @@ def test_disable_db_introspection_drops_database_bullet(monkeypatch, tmp_path):
     # The database introspection bullet is dropped from the instructions.
     assert "list the tables in the configured database" not in captured["system_prompt"]
     assert captured["system_prompt"] == agent_mod.get_agent_instructions(
-        include_show=True, include_todo=True, include_database=False
+        include_show=True,
+        include_todo=True,
+        include_database=False,
+        include_scope_diagnostics=False,
     )
 
 

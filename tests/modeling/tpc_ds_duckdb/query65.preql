@@ -4,7 +4,7 @@ auto item_revenue <- sum(store_sales.sales_price) by store_sales.store.sk, store
 auto store_avg_revenue <- avg(item_revenue) by store_sales.store.sk;
 
 where
-    store_sales.date.month_seq between 1176 and 1187 and store_sales.store.sk is not null
+    store_sales.sale_date.month_seq between 1176 and 1187 and store_sales.store.sk is not null
 select
     store_sales.store.name,
     store_sales.item.desc,

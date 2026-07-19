@@ -25,7 +25,7 @@ with sa as
 select
     ss.item.sk as item_sk,
     ss.store.sk as store_sk,
-    ss.date.year as yr,
+    ss.sale_date.year as yr,
     count(ss.line_item) as n;
 
 with filtered as

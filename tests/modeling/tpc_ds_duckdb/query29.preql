@@ -4,11 +4,11 @@ import catalog_sales as catalog_sales;
 # query has weird distinct
 # forcedupe through a rowset
 rowset correlated <- where
-    store_sales.date.month_of_year = 9
-    and store_sales.date.year = 1999
+    store_sales.sale_date.month_of_year = 9
+    and store_sales.sale_date.year = 1999
     and store_sales.return_date.month_of_year between 9 and 12
     and store_sales.return_date.year = 1999
-    and catalog_sales.date.year in (1999, 2000, 2001)
+    and catalog_sales.sale_date.year in (1999, 2000, 2001)
     and catalog_sales.quantity > 0
     and store_sales.is_returned
     and store_sales.customer.sk = store_sales.return_customer.sk

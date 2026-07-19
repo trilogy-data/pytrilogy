@@ -1,7 +1,7 @@
 import web_sales as web_sales;
 
 where
-    web_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
+    web_sales.sale_date.date between '1999-02-22'::date and '1999-03-24'::date
     and web_sales.item.category in ('Sports', 'Books', 'Home')
 select
     web_sales.item.id,

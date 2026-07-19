@@ -1,12 +1,12 @@
 import web_sales as ws;
 
-auto amc <- sum(ws.row_counter ? ws.time.hour between 8 and 9);
-auto pmc <- sum(ws.row_counter ? ws.time.hour between 19 and 20);
+auto amc <- sum(ws.row_counter ? ws.sale_time.hour between 8 and 9);
+auto pmc <- sum(ws.row_counter ? ws.sale_time.hour between 19 and 20);
 
 where
     ws.pos_ship_household_demographic.dependent_count = 6
     and ws.web_page.char_count between 5000 and 5200
-    and ws.time.hour in (8, 9, 19, 20)
+    and ws.sale_time.hour in (8, 9, 19, 20)
 select
     case
             when pmc = 0 then null

@@ -1,14 +1,14 @@
 import all_sales as sales;
 
-auto relevent_week_seq <- sales.date.week_seq ? sales.date.year in (2001, 2002);
+auto relevent_week_seq <- sales.sale_date.week_seq ? sales.sale_date.year in (2001, 2002);
 
-def weekday_sum(weekday) -> sum(sales.ext_sales_price ? sales.date.day_of_week = weekday) by sales.date.week_seq;
-def round_lag(amt) -> round(amt / (lead(amt, 53) over (order by sales.date.week_seq asc)), 2);
+def weekday_sum(weekday) -> sum(sales.ext_sales_price ? sales.sale_date.day_of_week = weekday) by sales.sale_date.week_seq;
+def round_lag(amt) -> round(amt / (lead(amt, 53) over (order by sales.sale_date.week_seq asc)), 2);
 
 where
-    sales.channel in ('WEB', 'CATALOG') and sales.date.week_seq in relevent_week_seq
+    sales.channel in ('WEB', 'CATALOG') and sales.sale_date.week_seq in relevent_week_seq
 select
-    sales.date.week_seq,
+    sales.sale_date.week_seq,
     @round_lag(@weekday_sum(0)) as sunday_increase,
     @round_lag(@weekday_sum(1)) as monday_increase,
     @round_lag(@weekday_sum(2)) as tuesday_increase,
@@ -20,6 +20,6 @@ having
     sunday_increase is not null
 
 order by
-    sales.date.week_seq asc nulls first
+    sales.sale_date.week_seq asc nulls first
 limit 100
 ;

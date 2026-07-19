@@ -3,16 +3,16 @@ import store_sales as store_sales;
 def bucket_count(h, min_low, min_high) -> sum(
     count(
         store_sales.item.sk
-            ? store_sales.time.hour = h
-and store_sales.time.minute >= min_low
-and store_sales.time.minute < min_high
+            ? store_sales.sale_time.hour = h
+and store_sales.sale_time.minute >= min_low
+and store_sales.sale_time.minute < min_high
     )
         by store_sales.ticket_number
 );
 
 where
     store_sales.store.name = 'ese'
-    and store_sales.time.hour in (8, 9, 10, 11, 12)
+    and store_sales.sale_time.hour in (8, 9, 10, 11, 12)
     and (
         (
             store_sales.pos_household_demographic.dependent_count = 4

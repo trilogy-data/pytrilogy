@@ -184,6 +184,17 @@ def gen_basic_node(
                 f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
             )
             return None
+    elif existence_concepts:
+        # A constant-LHS membership (`(1, 2) in (rs.a, rs.b)`) has no row
+        # parents, but its existence set below still has to be sourced and
+        # wired — otherwise it renders against an unsourced set. Base it on a
+        # constant node that carries the existence source through resolve.
+        parent_node = ConstantNode(
+            input_concepts=[],
+            output_concepts=[],
+            environment=environment,
+            depth=depth,
+        )
     else:
         return ConstantNode(
             input_concepts=[],

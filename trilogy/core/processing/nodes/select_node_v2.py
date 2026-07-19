@@ -156,7 +156,7 @@ class SelectNode(StrategyNode):
         datasource = BuildDatasource(
             name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
-        return QueryDatasource(
+        resolution = QueryDatasource(
             input_concepts=[],
             output_concepts=unique(self.all_concepts, "address"),
             source_map={concept.address: set() for concept in self.all_concepts},
@@ -171,6 +171,20 @@ class SelectNode(StrategyNode):
             ordering=self.ordering,
             base_datasource=datasource,
         )
+        # A constant-LHS membership (`(1, 2) in (rs.a, rs.b)`) has no row source
+        # but still checks its set via an existence subquery; carry the existence
+        # parents' source map through so the membership renders (grain-less form).
+        if self.parents and self.existence_concepts:
+            parent_sources: List[QueryDatasource | BuildDatasource] = [
+                p.resolve() for p in self.parents
+            ]
+            resolution.datasources += sorted(
+                parent_sources, key=lambda ds: ds.identifier
+            )
+            resolution.existence_source_map.update(
+                resolve_existence_map(parent_sources, self.existence_concepts)
+            )
+        return resolution
 
     def _resolve(self) -> QueryDatasource:
         # if we have parent nodes, we do not need to go to a datasource

@@ -1,15 +1,15 @@
 import store_sales as ss;
 
 where
-    ss.date.month_seq between 1200 and 1211 and ss.store.sk is not null
+    ss.sale_date.month_seq between 1200 and 1211 and ss.store.sk is not null
 select
     ss.item.category,
     ss.item.class,
     ss.item.brand_name,
     ss.item.product_name,
-    ss.date.year,
-    ss.date.quarter,
-    ss.date.month_of_year,
+    ss.sale_date.year,
+    ss.sale_date.quarter,
+    ss.sale_date.month_of_year,
     ss.store.id,
     sum(coalesce(ss.sales_price * ss.quantity, 0)) as sumsales,
     rank() over (partition by ss.item.category order by sumsales desc) as rk,
@@ -21,9 +21,9 @@ order by
     ss.item.class asc nulls first,
     ss.item.brand_name asc nulls first,
     ss.item.product_name asc nulls first,
-    ss.date.year asc nulls first,
-    ss.date.quarter asc nulls first,
-    ss.date.month_of_year asc nulls first,
+    ss.sale_date.year asc nulls first,
+    ss.sale_date.quarter asc nulls first,
+    ss.sale_date.month_of_year asc nulls first,
     ss.store.id asc nulls first,
     sumsales asc nulls first,
     rk asc nulls first

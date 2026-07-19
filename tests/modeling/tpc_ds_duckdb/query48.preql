@@ -1,7 +1,7 @@
 import store_sales as store_sales;
 
 where
-    store_sales.date.year = 2000
+    store_sales.sale_date.year = 2000
     and store_sales.store.sk is not null
     and (
         (

@@ -15,8 +15,8 @@ end;
 auto profit_minus_loss <- sales.net_profit - coalesce(sales.return_net_loss, 0);
 
 where
-    sales.date.date >= '2000-08-23'::date
-    and sales.date.date <= '2000-09-22'::date
+    sales.sale_date.date >= '2000-08-23'::date
+    and sales.sale_date.date <= '2000-09-22'::date
     and sales.item.current_price > 50
     and sales.promotion.channel_tv = 'N'
     and sales.channel_dim_text_id is not null

@@ -1,17 +1,18 @@
-# Trilogy failure analysis — 20260713-173600
+# Trilogy failure analysis — 20260717-173332
 
-- Run `20260713-173600_ingest` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 1829 | failed: 220 (12%)
+- Run `20260717-173332_ingest` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 1576 | failed: 193 (12%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 167 | 76% |
-| `syntax-parse` | 48 | 22% |
-| `cli-misuse` | 3 | 1% |
-| `undefined-concept` | 1 | 0% |
-| `type-error` | 1 | 0% |
+| `other` | 139 | 72% |
+| `syntax-parse` | 42 | 22% |
+| `join-resolution` | 6 | 3% |
+| `cli-misuse` | 4 | 2% |
+| `undefined-concept` | 1 | 1% |
+| `syntax-missing-alias` | 1 | 1% |
 
 ## Detail
 
@@ -22,40 +23,55 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database describe store_returns`
+- `trilogy run answer_1858999935.preql`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  Syntax error in answer_1858999935.preql: ORDER BY references 'weekly_sales.combined.dow', which is not in the SELECT projection (line 15). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --weekly_sales.combined.dow order by weekly_sales.combined.dow asc`.
   ```
-- `trilogy file read answer_1858999935.preql`
+- `trilogy run answer_1858999935.preql`
+
+  ```text
+  Syntax error in answer_1858999935.preql: ORDER BY references 'weekly_sales.combined.dow', which is not in the SELECT projection (line 24). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --weekly_sales.combined.dow order by weekly_sales.combined.dow asc`.
+  ```
+- `trilogy run answer_3805575480.preql`
+
+  ```text
+  Resolution error in answer_3805575480.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {item.manufact_id, brand_id, brand_name}; {total_ext_sales_price, year, store_sales.date_dim.moy}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 3864 (char 3863). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run answer_3863442186.preql`
+
+  ```text
+  Syntax error in answer_3863442186.preql: Undefined concept: sv01.customer_id. Suggestions: ['s.customer.customer_id', 'cs.bill_customer.customer_id', 'cs.ship_customer.customer_id', 'ws.bill_customer.customer_id', 'ws.ship_customer.customer_id', 'store_vals.s.customer.customer_id']
+  ```
+- `trilogy run answer_3863442186.preql`
+
+  ```text
+  Syntax error in answer_3863442186.preql: Undefined concept: sv02.store_val. Suggestions: ['store_vals.store_val']
+  ```
+- `trilogy run --import raw.catalog_sales:cs --import raw.store_sales:s --import raw.web_sales:ws select s.customer.customer_id, s.customer.first_name, s.custom…_2002 > 0 and c_2002 > 0 and w_2002 > 0 and c_2002/c_2001 > s_2002/s_2001 and c_2002/c_2001 > w_2002/w_2001 order by s.customer.customer_id limit 10;`
+
+  ```text
+  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_id, c_2001, c_2002}; {s_2001, s_2002, s.customer.customer_id, s.customer.first_name, s.customer.last_name, s.customer.preferred_cust_flag}; {w_2001, w_2002, ws.bill_customer.customer_id}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read answer_3863442186.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy file read raw/customer.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_returns.preql`
+- `trilogy run --import raw.item:i with qual_items as select i.item_sk as sk, i.category as cat, avg(i.current_price) by i.category as cat_avg where i.category is not null and i.current_price > 1.2 * (avg(i.current_price) by i.category);`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3705756794.preql`
-
-  ```text
-  Syntax error in answer_3705756794.preql: Undefined concept: local.sales_agg. Suggestions: ['sales_agg.entity_id', 'sales_agg.net_profit', 'sales_agg.total_sales']
-  ```
-- `trilogy run answer_883027685.preql`
-
-  ```text
-  Resolution error in answer_883027685.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 6). The requested concepts split into 2 disconnected subgraphs: {cat_avg_price}; {line_item_count, state, store_sales.date_dim.moy, store_sales.date_dim.year, store_sales.item.category, store_sales.item.current_price}. Are you missing a join or merge statement to relate them?
+  Syntax error in stdin: Nothing was executed: parsed 2 definition statement(s) (1 import, 1 rowset) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
   ```
 - `trilogy file read answer_883027685.preql`
 
@@ -67,83 +83,27 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
 - `trilogy run answer_689898357.preql`
 
   ```text
-  Syntax error in answer_689898357.preql: Comparison `store_sales.promotion.channel_email = 'N'` matches every value of nullable enum field 'store_sales.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'store_sales.promotion.channel_email is not null'.
+  Syntax error in answer_689898357.preql: Comparison `ss.promotion.channel_email = 'N'` matches every value of nullable enum field 'ss.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'ss.promotion.channel_email is not null'.
   ```
-- `trilogy run answer_3697706765.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy run answer_3263796749.preql`
 
   ```text
-  Syntax error in answer_3697706765.preql: 3 undefined concept references; fix all before re-running:
-    - local.z (line 23, in SELECT)
-    - local.z (line 24, col 11, in WHERE)
-    - local.z (line 25, col 11, in WHERE)
+  Syntax error in answer_3263796749.preql: Undefined concept: item.item_sk. Suggestions: ['store_sales.item.item_sk', 'store_sales.promotion.item.item_sk']
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run answer_219203908.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/customer.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_4199102535.preql`
-
-  ```text
-  Syntax error in answer_4199102535.preql: Undefined concept: ss.sold_date.year. Suggestions: ['ss.date_dim.year', 'ss.store.date_dim.year', 'ss.promotion.end_date.year', 'ws.sold_date.year', 'cs.sold_date.year', 'ws.ship_date.year']
-  ```
-- `trilogy run answer_3697440276.preql`
-
-  ```text
-  Syntax error in answer_3697440276.preql: 3 undefined concept references; fix all before re-running:
-    - first_name (line 69, col 5, in ORDER BY); did you mean: store.customer.first_name, web.bill_customer.first_name, web.ship_customer.first_name, web.web_page.customer.first_name?
-    - last_name (line 70, col 5, in ORDER BY); did you mean: store.customer.last_name, web.bill_customer.last_name, web.ship_customer.last_name, web.web_page.customer.last_name?
-    - preferred_cust_flag (line 71, col 5, in ORDER BY); did you mean: store.customer.preferred_cust_flag, web.bill_customer.preferred_cust_flag, web.ship_customer.preferred_cust_flag, web.web_page.customer.preferred_cust_flag?
-  ```
-- `trilogy run answer_3697440276.preql`
-
-  ```text
-  Resolution error in answer_3697440276.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 51). The requested concepts split into 2 disconnected subgraphs: {combined.c_sk, combined.s01, combined.s02, combined.w01, combined.w02}; {_result_customer_code, store.customer.customer_sk, store.customer.first_name, store.customer.last_name, store.customer.preferred_cust_flag, store.date_dim.year}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.store_sales:ss select count(ss.item.item_sk) where (ss.item.brand_id, ss.item.class_id) in ((1001001, 1), (1002001, 2));`
-
-  ```text
-  Syntax error in stdin: Cannot compare composite-membership elements ref:ss.item.brand_id (BIGINT) and (1001001, 1) (ArrayType<INTEGER>) of different types in SubselectComparison(left=row_tuple(ref:ss.item.brand_id,ref:ss.item.class_id), right=row_tuple((1001001, 1),(1002001, 2)), operator=<ComparisonOperator.IN: 'in'>)
-  ```
-- `trilogy run --import raw.store_sales:ss select count(ss.item.item_sk) where (ss.item.brand_id::bigint, ss.item.class_id::bigint) in ((1001001::bigint, 1::bigint), (1002001::bigint, 2::bigint));`
-
-  ```text
-  Syntax error in stdin: Cannot compare composite-membership elements cast(ref:ss.item.brand_id,BIGINT) (BIGINT) and (cast(1001001,BIGINT), cast(1,BIGINT)) (ArrayType<BIGINT>) of different types in SubselectComparison(left=row_tuple(cast(ref:ss.item.brand_id,BIGINT),cast(ref:ss.item.class_id,BIGINT)), right=row_tuple((cast(1001001,BIGINT), cast(1,BIGINT)),(cast(1002001,BIGINT), cast(2,BIGINT))), operator=<ComparisonOperator.IN: 'in'>)
-  ```
-- `trilogy run test_union_in.preql`
-
-  ```text
-  Syntax error in test_union_in.preql: union(...) requires at least two relational arms.
-  ```
-- `trilogy file read answer_219203908.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Syntax error in answer_219203908.preql: `by rollup (…)` cannot re-aggregate the bare measure reference `leaf_groups.total_sales`. Alias it with an explicit aggregate (e.g. `sum(leaf_groups.total_sales) as total_sales_total`).
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy file read raw/catalog_returns.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -151,891 +111,191 @@
 - `trilogy run answer_2524943990.preql`
 
   ```text
-  Syntax error in answer_2524943990.preql: Comparison `cs.call_center.county = 'Williamson County'` matches every value of enum field 'cs.call_center.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  Syntax error in answer_2524943990.preql: Comparison `catalog_sales.call_center.county = 'Williamson County'` matches every value of enum field 'catalog_sales.call_center.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  ```
+- `trilogy file read raw/item.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_765177085.preql`
-
-  ```text
-  Resolution error in answer_765177085.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 8). The requested concepts split into 2 disconnected subgraphs: {_sales_with_returns_sr_qty, sr.customer.customer_sk, sr.date_dim.year, sr.item.item_sk, sr.ticket_number}; {_sales_with_returns_ss_qty, ss.customer.customer_sk, ss.date_dim.year, ss.item.item_desc, ss.item.item_id, ss.item.item_sk, ss.store.state, ss.ticket_number}. Are you missing a join or merge statement to relate them?
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_1835050598.preql duckdb`
-
-  ```text
-  Syntax error in answer_1835050598.preql: Undefined concept: bill_customer.birth_year. Suggestions: ['cs.bill_customer.birth_year', 'cs.ship_customer.birth_year', 'cs.bill_customer.birth_day']
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 18 column 47 (char 1293). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3825713089.preql`
-
-  ```text
-  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 6). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.moy, cs.sold_date.year, catalog_sale_net_profit}; {item_code, item_desc, store_code, store_name, store_sale_net_profit, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk}; {store_return_net_loss, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year, sr.item.item_sk}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_3825713089.preql`
-
-  ```text
-  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.moy, cs.sold_date.year, catalog_sale_net_profit}; {item_code, item_desc, store_code, store_name, store_sale_net_profit, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk, ss.ticket_number}; {store_return_net_loss, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year, sr.item.item_sk, sr.ticket_number}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read answer_3825713089.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_4254732537.preql duckdb`
+- `trilogy run answer_4254732537.preql`
 
   ```text
   Syntax error in answer_4254732537.preql: Comparison `cs.promotion.channel_email = 'N'` matches every value of nullable enum field 'cs.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'cs.promotion.channel_email is not null'.
   ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 52 column 11 (char 4801). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy file read raw/web_returns.preql`
+- `trilogy file read answer_4080205480.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run answer_1798498862.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_4207382245.preql`
-
-  ```text
-  Syntax error in answer_4207382245.preql: Undefined concept: st.county. Suggestions: ['ss.store.county', 'ws.web_site.county', 'store_totals.county', 'web_totals.county', 'ws.bill_addr.county', 'ws.ship_addr.county']
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.store_sales:store_sales select ticket_number limit 5;`
-
-  ```text
-  Syntax error in stdin: Undefined concept: local.ticket_number (line 2, col 8, in SELECT). Suggestions: ['store_sales.ticket_number']
-  ```
-- `trilogy run answer_3530408544.preql`
-
-  ```text
-  Syntax error in answer_3530408544.preql: Comparison `store_sales.store.county = 'Williamson County'` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.customer:c select c.customer_sk where ss.customer.customer_sk in c.customer_sk and ss.date_dim.year = 2002 and ss.date_dim.qoy in (1,2,3) limit 5;`
-
-  ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {c.customer_sk}; {ss.customer.customer_sk, ss.date_dim.qoy, ss.date_dim.year}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3770074305.preql`
-
-  ```text
-  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 9). The requested concepts split into 2 disconnected subgraphs: {inv.date_dim.date, inv.quantity_on_hand}; {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}. Are you missing a join or merge statement to relate them?
+  Resolution error in answer_1798498862.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 9). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.year, total_catalog_sales_qty}; {item_code, item_description, store_code, store_name, total_store_sales_qty, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk}; {total_store_return_qty, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year}. Are you missing a join or merge statement to relate them?
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 56 column 3 (char 1877). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 108 column 3 (char 3803). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run answer_142117636.preql`
-
-  ```text
-  Syntax error in answer_142117636.preql: 2 undefined concept references; fix all before re-running:
-    - local.jan_cv (line 43, col 5, in WHERE); did you mean: combined.jan_cv?
-    - local.feb_cv (line 44, col 9, in WHERE); did you mean: combined.feb_cv?
-  ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy file read answer_4207382245.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read answer_1663418777.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_1072197500.preql`
-
-  ```text
-  Syntax error in answer_1072197500.preql: ORDER BY references 'store_sales.date_dim.year', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.date_dim.year order by store_sales.date_dim.year asc`.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_374591292.preql`
-
-  ```text
-  Resolution error in answer_374591292.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 47). The requested concepts split into 2 disconnected subgraphs: {best_performers.best_product_name, best_performers.rank_pos}; {worst_performers.rank_pos, worst_performers.worst_product_name}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read answer_374591292.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database describe item`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_968172492.preql`
-
-  ```text
-  Syntax error in answer_968172492.preql: Undefined concept: item.item_id. Suggestions: ['ws.item.item_id', 'ws.promotion.item.item_id', 'ws.item.item_desc', 'ws.item.item_sk']
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_2118989494.preql`
-
-  ```text
-  Resolution error in answer_2118989494.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 31). The requested concepts split into 2 disconnected subgraphs: {_combined_next_month_total, _combined_prior_month_total, monthly_totals.brand, monthly_totals.category, monthly_totals.company_name, monthly_totals.month_of_year, monthly_totals.month_total, monthly_totals.store_name, monthly_totals.year}; {yearly_avg.avg_monthly_sales}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
 - `trilogy file read trilogy.toml`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2940558602.preql`
+- `trilogy file list assets --recursive`
 
   ```text
-  Syntax error in answer_2940558602.preql: Undefined concept: item.sk. Suggestions: ['item.size', 'item.item_sk', 'item', 'sr.reason.sk', 'cr.reason.sk', 'wr.reason.sk']
+  No such path: assets
   ```
-- `trilogy run answer_2940558602.preql`
+- `trilogy run answer_3530408544.preql`
 
   ```text
-  Resolution error in answer_2940558602.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 103). The requested concepts split into 2 disconnected subgraphs: {channel, currency_rank, return_rank, return_ratio}; {item}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_3530408544.preql: Comparison `ss.store.county = 'Williamson County'` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
   ```
-- `trilogy run answer_2940558602.preql`
+- `trilogy run answer_4140546834.preql`
 
   ```text
-  Syntax error in answer_2940558602.preql: None
-  ```
-- `trilogy --debug run answer_2940558602.preql`
+  Unexpected error in answer_4140546834.preql: (_duckdb.ConversionException) Conversion Error: Casting value "103919104.54" to type DECIMAL(12,4) failed: value is out of range!
 
-  ```text
-  Syntax error in answer_2940558602.preql: None
-  ```
-- `trilogy run answer_2940558602.preql`
-
-  ```text
-  Syntax error in answer_2940558602.preql: None
-  ```
-- `trilogy run answer_2940558602.preql`
-
-  ```text
-  Syntax error in answer_2940558602.preql: None
-  ```
-- `trilogy run answer_2940558602.preql`
-
-  ```text
-  Syntax error in answer_2940558602.preql: None
-  ```
-- `trilogy run answer_2940558602.preql`
-
-  ```text
-  Resolution error in answer_2940558602.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgraphs: {currency_ratio, return_ratio, sr.return_amt, ss.date_dim.moy, ss.date_dim.year, ss.net_paid, ss.net_profit, ss.quantity}; {item}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_2940558602.preql`
-
-  ```text
-  Resolution error in answer_2940558602.preql: (AmbiguousRelationshipResolutionException(...), "Multiple possible concept additions (intermediate join keys) found to resolve ['sr.item.item_sk', 'sr.return_amt', 'sr.return_quantity', 'sr.ticket_number', 'ss.date_dim.moy', 'ss.date_dim.year', 'ss.net_paid', 'ss.net_profit', 'ss.quantity', 'ss.date_dim.date_sk'], have {'sr.item.item_sk'} or {'sr.ticket_number'}. Different paths are is: [{'sr.item.item_sk'}, {'sr.ticket_number'}]")
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.ticket_number, ss.item.item_sk, sr.ticket_number, sr.item.item_sk, ss.store.store_sk, ss.customer.customer_sk, sr.customer.customer_sk, sr.store.store_sk, ss.date_dim.date, sr.date_dim.date limit 5`
-
-  ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {sr.customer.customer_sk, sr.date_dim.date, sr.item.item_sk, sr.store.store_sk, sr.ticket_number}; {ss.customer.customer_sk, ss.date_dim.date, ss.item.item_sk, ss.store.store_sk, ss.ticket_number}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: None
-  ```
-- `trilogy file read answer_3560698360.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: Output column 'store_running_total' renames 'local.store_running_total' back to the name of an existing concept 'store_running_total' (defined at line 25) that 'local.store_running_total' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'store_running_total_out').
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Unexpected error in answer_3560698360.preql: (_duckdb.BinderException) Binder Error: Values list "wakeful" does not have a column named "item_sk"
-
-  LINE 97:     coalesce("wakeful"."item_sk","wakeful"."store_daily_item_sk","young...
-                        ^
+  LINE 41: ...tive"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("cooperative"."_virt_agg_sum_6719372088781090...
+                                                                         ^
   [SQL:
   WITH
-  abundant as (
-  SELECT
-      "ws_sold_date_date_dim"."d_date" as "web_daily_d",
-      "ws_sold_date_date_dim"."d_date" as "ws_d",
-      "ws_web_sales"."ws_item_sk" as "web_daily_item_sk",
-      "ws_web_sales"."ws_item_sk" as "ws_item_sk",
-      sum("ws_web_sales"."ws_sales_price") as "web_daily_day_total"
-  FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "date_dim" as "ws_sold_date_date_dim" on "ws_web_sales"."ws_sold_date_sk" = "ws_sold_date_date_dim"."d_date_sk"
-  WHERE
-      "ws_sold_date_date_dim"."d_year" = 2000 and "ws_web_sales"."ws_item_sk" is not null
-
-  GROUP BY
-      2,
-      4),
-  wakeful as (
-  SELECT
-      "ss_date_dim_date_dim"."d_date" as "ss_d",
-      "ss_date_dim_date_dim"."d_date" as "store_daily_d",
-      "ss_store_sales"."ss_item_sk" as "ss_item_sk",
-      "ss_store_sales"."ss_item_sk" as "store_daily_item_sk",
-      sum("ss_store_sales"."ss_sales_price") as "store_daily_day_total"
-  FROM
-      "store_sales" as "ss_store_sales"
-      INNER JOIN "date_dim" as "ss_date_dim_date_dim" on "ss_store_sales"."ss_sold_date_sk" = "ss_date_dim_date_dim"."d_date_sk"
-  WHERE
-      "ss_date_dim_date_dim"."d_year" = 2000 and "ss_store_sales"."ss_item_sk" is not null
-
-  GROUP BY
-      1,
-      3),
-  juicy as (
-  SELECT
-      "abundant"."web_daily_d" as "web_daily_d",
-      "abundant"."web_daily_day_total" as "web_daily_day_total",
-      "abundant"."web_daily_item_sk" as "web_daily_item_sk",
-      "abundant"."ws_d" as "ws_d",
-      "abundant"."ws_item_sk" as "ws_item_sk"
-  FROM
-      "abundant"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5),
-  vacuous as (
-  SELECT
-      "juicy"."web_daily_day_total" as "web_daily_day_total",
-      "wakeful"."store_daily_day_total" as "store_daily_day_total",
-      coalesce("juicy"."web_daily_d","wakeful"."store_daily_d") as "store_daily_d",
-      coalesce("juicy"."web_daily_d","wakeful"."store_daily_d") as "web_daily_d",
-      coalesce("juicy"."web_daily_item_sk","wakeful"."store_daily_item_sk") as "store_daily_item_sk",
-      coalesce("juicy"."web_daily_item_sk","wakeful"."store_daily_item_sk") as "web_daily_item_sk",
-      coalesce("juicy"."ws_d","wakeful"."ss_d") as "ss_d",
-      coalesce("juicy"."ws_d","wakeful"."ss_d") as "ws_d",
-      coalesce("juicy"."ws_item_sk","wakeful"."ss_item_sk") as "ss_item_sk",
-      coalesce("juicy"."ws_item_sk","wakeful"."ss_item_sk") as "ws_item_sk"
-  FROM
-      "juicy"
-      FULL JOIN "wakeful" on "juicy"."web_daily_d" = "wakeful"."store_daily_d" AND "juicy"."web_daily_item_sk" = "wakeful"."store_daily_item_sk"),
-  abhorrent as (
-  SELECT
-      "vacuous"."ss_d" as "ss_d",
-      "vacuous"."ss_item_sk" as "ss_item_sk",
-      "vacuous"."store_daily_item_sk" as "store_daily_item_sk",
-      sum("vacuous"."store_daily_day_total") over (partition by "vacuous"."ss_item_sk" order by "vacuous"."ss_d" asc ) as "s_rt"
-  FROM
-      "vacuous"),
-  concerned as (
-  SELECT
-      "vacuous"."store_daily_item_sk" as "store_daily_item_sk",
-      "vacuous"."ws_d" as "ws_d",
-      "vacuous"."ws_item_sk" as "ws_item_sk",
-      sum("vacuous"."web_daily_day_total") over (partition by "vacuous"."ws_item_sk" order by "vacuous"."ws_d" asc ) as "w_rt"
-  FROM
-      "vacuous"),
-  young as (
-  SELECT
-      "concerned"."w_rt" as "w_rt",
-      "vacuous"."web_daily_item_sk" as "web_daily_item_sk",
-      coalesce("concerned"."store_daily_item_sk","concerned"."ws_item_sk","vacuous"."store_daily_item_sk","vacuous"."ws_item_sk") as "ws_item_sk",
-      coalesce("concerned"."store_daily_item_sk","vacuous"."ss_item_sk") as "ss_item_sk",
-      coalesce("concerned"."ws_d","vacuous"."ss_d") as "ss_d",
-      coalesce("concerned"."ws_d","vacuous"."web_daily_d","vacuous"."ws_d") as "ws_d"
-  FROM
-      "vacuous"
-      FULL JOIN "concerned" on "vacuous"."store_daily_item_sk" is not distinct from "concerned"."ws_item_sk" AND "vacuous"."web_daily_d" is not distinct from "concerned"."ws_d"),
-  sparkling as (
-  SELECT
-      "young"."ss_item_sk" as "ss_item_sk",
-      "young"."w_rt" as "w_rt",
-      "young"."ws_item_sk" as "ws_item_sk",
-      coalesce("wakeful"."item_sk","wakeful"."store_daily_item_sk","young"."ss_item_sk","young"."web_daily_item_sk") as "store_daily_item_sk",
-      coalesce("wakeful"."ss_d","wakeful"."store_daily_d","young"."ss_d","young"."ws_d") as "store_daily_d",
-      coalesce("wakeful"."ss_d","wakeful"."store_daily_d","young"."ss_d","young"."ws_d") as "ws_d",
-      coalesce("wakeful"."ss_d","young"."ss_d") as "ss_d"
-  FROM
-      "young"
-      FULL JOIN "wakeful" on "young"."web_daily_item_sk" = "wakeful"."store_daily_item_sk" AND "young"."ws_d" = "wakeful"."store_daily_d"),
-  sweltering as (
-  SELECT
-      "abhorrent"."s_rt" as "s_rt",
-      "sparkling"."w_rt" as "w_rt",
-      coalesce("abhorrent"."ss_d","sparkling"."ss_d","sparkling"."store_daily_d") as "ss_d",
-      coalesce("abhorrent"."ss_d","sparkling"."ss_d","sparkling"."store_daily_d") as "store_daily_d",
-      coalesce("abhorrent"."ss_d","sparkling"."ws_d") as "ws_d",
-      coalesce("abhorrent"."ss_item_sk","abhorrent"."store_daily_item_sk","sparkling"."ss_item_sk","sparkling"."store_daily_item_sk") as "ss_item_sk",
-      coalesce("abhorrent"."ss_item_sk","abhorrent"."store_daily_item_sk","sparkling"."ss_item_sk","sparkling"."store_daily_item_sk") as "store_daily_item_sk",
-      coalesce(coalesce("abhorrent"."ss_item_sk","abhorrent"."store_daily_item_sk","sparkling"."ss_item_sk","sparkling"."store_daily_item_sk"),coalesce("abhorrent"."ss_item_sk","sparkling"."ws_item_sk")) as "_virt_func_coalesce_2513681567070847"
-  FROM
-      "sparkling"
-      FULL JOIN "abhorrent" on "sparkling"."store_daily_d" is not distinct from "abhorrent"."ss_d" AND "sparkling"."store_daily_item_sk" is not distinct from "abhorrent"."ss_item_sk"),
-  late as (
-  SELECT
-      "sweltering"."s_rt" as "s_rt",
-      "sweltering"."ss_d" as "ss_d",
-      "sweltering"."store_daily_d" as "store_daily_d",
-      "sweltering"."store_daily_item_sk" as "store_daily_item_sk",
-      "sweltering"."w_rt" as "w_rt",
-      "sweltering"."ws_d" as "ws_d",
-      max("sweltering"."s_rt") over (partition by "sweltering"."_virt_func_coalesce_2513681567070847" order by coalesce("sweltering"."ss_d","sweltering"."ws_d") asc ) as "store_running_max",
-      max("sweltering"."w_rt") over (partition by "sweltering"."_virt_func_coalesce_2513681567070847" order by coalesce("sweltering"."ss_d","sweltering"."ws_d") asc ) as "web_running_max"
-  FROM
-      "sweltering")
-  SELECT
-      coalesce("vacuous"."ss_item_sk","vacuous"."ws_item_sk") as "item_sk",
-      coalesce(coalesce("late"."ss_d","late"."store_daily_d"),"late"."ws_d") as "d",
-      "late"."s_rt" as "store_running_total",
-      "late"."w_rt" as "web_running_total",
-      "late"."store_running_max" as "store_running_max",
-      "late"."web_running_max" as "web_running_max"
-  FROM
-      "vacuous"
-      RIGHT OUTER JOIN "late" on "vacuous"."store_daily_d" is not distinct from "late"."ss_d" AND "vacuous"."store_daily_item_sk" is not distinct from "late"."store_daily_item_sk"
-  WHERE
-      "late"."web_running_max" > "late"."store_running_max"
-
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6
-  ORDER BY
-      "item_sk" asc nulls first,
-      "d" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: None
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: None
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: None
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: None
-  ```
-- `trilogy run test_win3.preql`
-
-  ```text
-  Syntax error in test_win3.preql: None
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Syntax error in answer_3560698360.preql: Output column 'store_running_max' renames 'local.store_running_max' back to the name of an existing concept 'store_running_max' (defined at line 29) that 'local.store_running_max' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'store_running_max_out').
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw/catalog_sales:cs select cs.date_dim.week_seq, cs.date_dim.date, cs.item.item_id, cs.ext_sales_price where cs.date_dim.date = '2000-01-03'::date limit 3;`
-
-  ```text
-  Syntax error in stdin: 3 undefined concept references; fix all before re-running:
-    - cs.date_dim.week_seq (line 2, col 8, in SELECT); did you mean: cs.call_center.date_dim.week_seq, cs.sold_date.week_seq, cs.ship_date.week_seq, cs.promotion.end_date.week_seq, cs.promotion.start_date.week_seq, cs.catalog_page.end_date.week_seq?
-    - cs.date_dim.date (line 2, col 30, in SELECT); did you mean: cs.call_center.date_dim.date, cs.time_dim.time, cs.date_dim.week_seq, cs.ship_date.date, cs.sold_date.date, cs.promotion.end_date.date?
-    - cs.date_dim.date (line 2, col 90, in WHERE); did you mean: cs.call_center.date_dim.date, cs.time_dim.time, cs.date_dim.week_seq, cs.ship_date.date, cs.sold_date.date, cs.promotion.end_date.date?
-  ```
-- `trilogy run --import raw/web_sales:ws select ws.date_dim.week_seq, ws.date_dim.date, ws.item.item_id, ws.ext_sales_price where ws.date_dim.date = '2000-01-03'::date limit 3;`
-
-  ```text
-  Syntax error in stdin: 3 undefined concept references; fix all before re-running:
-    - ws.date_dim.week_seq (line 2, col 8, in SELECT); did you mean: ws.sold_date.week_seq, ws.ship_date.week_seq, ws.sold_date.fy_week_seq, ws.promotion.end_date.week_seq, ws.web_site.open_date.week_seq, ws.web_site.close_date.week_seq?
-    - ws.date_dim.date (line 2, col 30, in SELECT); did you mean: ws.time_dim.time, ws.date_dim.week_seq, ws.time_dim.minute, ws.ship_date.date, ws.sold_date.date, ws.promotion.end_date.date?
-    - ws.date_dim.date (line 2, col 90, in WHERE); did you mean: ws.time_dim.time, ws.date_dim.week_seq, ws.time_dim.minute, ws.ship_date.date, ws.sold_date.date, ws.promotion.end_date.date?
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_1484301313.preql`
-
-  ```text
-  Syntax error in answer_1484301313.preql: Comparison `store_sales.promotion.channel_email = 'Y'` can never match enum field 'store_sales.promotion.channel_email', which contains only these values: 'N'. It is always false and should be removed.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.store_sales:ss --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.store_returns:sr select item.product_name, ss.item.item_sk limit 5;`
-
-  ```text
-  Syntax error in stdin: Undefined concept: item.product_name (line 5, col 8, in SELECT). Suggestions: ['ss.item.product_name', 'cs.item.product_name', 'cr.item.product_name', 'sr.item.product_name', 'ss.promotion.item.product_name', 'cs.promotion.item.product_name']
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 7 definition statement(s) (4 imports, 3 rowsets) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Resolution error in answer_3544057080.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 23). The requested concepts split into 3 disconnected subgraphs: {item_cat_ext_price.total_ext_list_price}; {item_cat_refund.total_refund}; {ss.item.item_sk}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 5 definition statement(s) (3 rowsets, 2 imports) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Syntax error in answer_3544057080.preql: Undefined concept: item.item_sk. Suggestions: ['ss.item.item_sk', 'sr.item.item_sk', 'cs.item.item_sk', 'cr.item.item_sk', 'ss.promotion.item.item_sk', 'cs.promotion.item.item_sk']
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read answer_3036656719.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run answer_2874833976.preql`
-
-  ```text
-  Syntax error in answer_2874833976.preql: Undefined concept: top_states.state_total.state (line 28, col 25, in WHERE). Suggestions: ['top_states.state_total', 'top_states.ss.store.state', 'ss.store.state', 'ss.customer.customer_address.state', 'ss.customer_address.state']
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_1772060640.preql`
-
-  ```text
-  Syntax error in answer_1772060640.preql: Comparison `store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.ticket_number, ss.item.item_sk, ss.store.store_sk, ss.sold_date.date_sk limit 5;`
-
-  ```text
-  Syntax error in stdin: Undefined concept: ss.sold_date.date_sk (line 2, col 62, in SELECT). Suggestions: ['ss.date_dim.date_sk', 'ss.store.date_dim.date_sk', 'ss.promotion.end_date.date_sk', 'ss.customer.first_sales_date.date_sk', 'ss.customer.last_review_date.date_sk', 'ss.promotion.start_date.date_sk']
-  ```
-- `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3210116865.preql`
-
-  ```text
-  Syntax error in answer_3210116865.preql: ORDER BY contains aggregate `grouping(combined.channel)` (line 44), which is not a SELECT output. Aggregates cannot be computed in the ordering scope; add it to SELECT — prefix with `--` to keep it out of the output rows — and order by the alias, e.g. `select ..., --grouping(combined.channel) as g order by g desc`.
-  ```
-- `trilogy run answer_3210116865.preql`
-
-  ```text
-  Syntax error in answer_3210116865.preql: Missing source map entry for sr.store.store_sk with pseudonyms set(), have map: {'ss.date_dim.date_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.time_dim.time_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.item.item_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.customer.customer_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.customer_demographics.demo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.household_demographics.demo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.customer_address.address_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.store.store_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.promotion.promo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ticket_number': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.quantity': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.wholesale_cost': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.list_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.sales_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ext_discount_amt': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ext_sales_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ext_wholesale_cost': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ext_list_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.ext_tax': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.coupon_amt': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.net_paid': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.net_paid_inc_tax': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'ss.net_profit': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>, <Modifier.PARTIAL: 'Partial'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.ticket_number', 'ss.item.item_sk'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.customer.customer_sk', 'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.customer_demographics.demo_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk'})}, 'local._virt_presence_7721818722075568': set()}
-  ```
-- `trilogy run answer_3210116865.preql`
-
-  ```text
-  Syntax error in answer_3210116865.preql: Missing source map entry for sr.store.store_sk with pseudonyms set(), have map: {'ss.date_dim.date_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.time_dim.time_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.item.item_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.customer.customer_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.customer_demographics.demo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.household_demographics.demo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.customer_address.address_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.store.store_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.promotion.promo_sk': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ticket_number': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.quantity': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.wholesale_cost': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.list_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.sales_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ext_discount_amt': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ext_sales_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ext_wholesale_cost': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ext_list_price': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.ext_tax': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.coupon_amt': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.net_paid': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.net_paid_inc_tax': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'ss.net_profit': {BuildDatasource(name='store_sales', columns=[BuildColumnAssignment(alias='ss_sold_date_sk', concept=ss.date_dim.date_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sold_time_sk', concept=ss.time_dim.time_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_item_sk', concept=ss.item.item_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_customer_sk', concept=ss.customer.customer_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_cdemo_sk', concept=ss.customer_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_hdemo_sk', concept=ss.household_demographics.demo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_addr_sk', concept=ss.customer_address.address_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_store_sk', concept=ss.store.store_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.PARTIAL: 'Partial'>, <Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_promo_sk', concept=ss.promotion.promo_sk@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ticket_number', concept=ss.ticket_number@Grain<ss.item.item_sk,ss.ticket_number>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='ss_quantity', concept=ss.quantity@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_wholesale_cost', concept=ss.wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_list_price', concept=ss.list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_sales_price', concept=ss.sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_discount_amt', concept=ss.ext_discount_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_sales_price', concept=ss.ext_sales_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_wholesale_cost', concept=ss.ext_wholesale_cost@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_list_price', concept=ss.ext_list_price@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_ext_tax', concept=ss.ext_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_coupon_amt', concept=ss.coupon_amt@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid', concept=ss.net_paid@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_paid_inc_tax', concept=ss.net_paid_inc_tax@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='ss_net_profit', concept=ss.net_profit@Grain<ss.item.item_sk,ss.ticket_number>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='store_sales', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'ss.item.item_sk', 'ss.ticket_number'}, where_clause=None, _str='Grain<ss.item.item_sk,ss.ticket_number>', _str_no_condition='Grain<ss.item.item_sk,ss.ticket_number>', abstract=False), namespace='ss', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses={'ss.date_dim.date_sk', 'ss.time_dim.time_sk', 'ss.store.store_sk', 'ss.customer_address.address_sk', 'ss.customer.customer_sk', 'ss.customer_demographics.demo_sk'})}, 'local._virt_presence_7721818722075568': set()}
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.net_profit, ss.ext_sales_price, ss.date_dim.date, ss.item.current_price, ss.promotion.channel_tv where ss.d…'2000-08-23'::date and '2000-09-22'::date and ss.item.current_price > 50 and ss.promotion.channel_tv = 'N' and ss.store.store_id is not null limit 5;`
-
-  ```text
-  Syntax error in stdin: Comparison `ss.promotion.channel_tv = 'N'` matches every value of nullable enum field 'ss.promotion.channel_tv', which contains only these values: 'N'. It only excludes nulls; simplify it to 'ss.promotion.channel_tv is not null'.
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Unexpected error in answer_943796012.preql: Missing cs.order_number in {'cs.catalog_page.catalog_page_id': ['vacuous'], 'cs.catalog_page.catalog_page_sk': ['vacuous'], 'cs.item.current_price': ['vacuous'], 'cs.item.item_sk': ['thoughtful', 'vacuous'], 'cs.promotion.channel_tv': ['vacuous'], 'cs.promotion.promo_sk': ['vacuous'], 'cs.sold_date.date': ['vacuous'], 'cs.sold_date.date_sk': ['vacuous'], 'cr.item.item_sk': ['thoughtful', 'vacuous'], 'cr.order_number': ['thoughtful'], 'cr.return_amount': ['thoughtful'], 'local.___tvf_arm_1_outlet': []}, source map dict_keys(['cs.catalog_page.catalog_page_id', 'cs.catalog_page.catalog_page_sk', 'cs.item.current_price', 'cs.item.item_sk', 'cs.promotion.channel_tv', 'cs.promotion.promo_sk', 'cs.sold_date.date', 'cs.sold_date.date_sk', 'cr.item.item_sk', 'cr.order_number', 'cr.return_amount', 'local.___tvf_arm_1_outlet'])
-  ```
-- `trilogy file read answer_943796012.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database describe store_returns`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe catalog_returns`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe web_returns`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read answer_2869182220.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr select count(ws.order_number) union join wr.item.item_sk = ws.item.item_sk union join wr.order_number = ws.order_number where ws.sold_date.year = 2000 and wr.order_number is not null limit 10;`
-
-  ```text
-  Unexpected error in stdin: (_duckdb.BinderException) Binder Error: Ambiguous reference to table "wr_web_returns" (duplicate alias "wr_web_returns", explicitly alias one of the tables using "AS my_alias")
-  [SQL:
-  WITH
-  quizzical as (
-  SELECT
-      coalesce("wr_web_returns"."wr_order_number") as "_virt_presence_3838022047150424"
-  FROM
-      "web_returns" as "wr_web_returns"
-  WHERE
-      coalesce("wr_web_returns"."wr_order_number") is not null
-
-  GROUP BY
-      1,
-      "wr_web_returns"."wr_order_number"),
   thoughtful as (
   SELECT
-      coalesce("wr_web_returns"."wr_order_number","wr_web_returns"."wr_order_number","ws_web_sales"."ws_order_number") as "ws_order_number"
+      "sales_item_item"."i_category" as "sales_item_category",
+      "sales_item_item"."i_class" as "sales_item_class",
+      "sales_store_sales"."ss_ext_sales_price" as "sales_ext_sales_price",
+      "sales_store_sales"."ss_net_profit" as "sales_net_profit"
   FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "web_returns" as "wr_web_returns" on "ws_web_sales"."ws_item_sk" = "wr_web_returns"."wr_item_sk" AND "ws_web_sales"."ws_order_number" = "wr_web_returns"."wr_order_number"
-      INNER JOIN "date_dim" as "ws_sold_date_date_dim" on "ws_web_sales"."ws_sold_date_sk" = "ws_sold_date_date_dim"."d_date_sk"
-      INNER JOIN "web_returns" as "wr_web_returns" on "wr_web_returns"."wr_order_number" = "wr_web_returns"."wr_order_number"
+      "store_sales" as "sales_store_sales"
+      INNER JOIN "item" as "sales_item_item" on "sales_store_sales"."ss_item_sk" = "sales_item_item"."i_item_sk"
+      INNER JOIN "store" as "sales_store_store" on "sales_store_sales"."ss_store_sk" = "sales_store_store"."s_store_sk"
+      INNER JOIN "date_dim" as "sales_date_dim_date_dim" on "sales_store_sales"."ss_sold_date_sk" = "sales_date_dim_date_dim"."d_date_sk"
   WHERE
-      "ws_sold_date_date_dim"."d_year" = 2000
-
-  GROUP BY
-      1)
+      "sales_date_dim_date_dim"."d_year" = 2001 and "sales_store_store"."s_state" = 'TN'
+  ),
+  cooperative as (
   SELECT
-      count("thoughtful"."ws_order_number") as "order_number_count"
+      "thoughtful"."sales_item_category" as "sales_item_category",
+      "thoughtful"."sales_item_class" as "sales_item_class",
+      CASE
+  	WHEN grouping("thoughtful"."sales_item_category") + grouping("thoughtful"."sales_item_class") = 0 THEN "thoughtful"."sales_item_category"
+  	ELSE null
+  	END as "_virt_func_case_8529937465942981",
+      grouping("thoughtful"."sales_item_category") as "_virt_agg_grouping_1670065760616147",
+      grouping("thoughtful"."sales_item_class") as "_virt_agg_grouping_8417677704977793",
+      sum("thoughtful"."sales_ext_sales_price") as "_virt_agg_sum_6719372088781090",
+      sum("thoughtful"."sales_net_profit") as "_virt_agg_sum_2722582045378473"
   FROM
       "thoughtful"
-  LIMIT (10)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  GROUP BY
+      ROLLUP (1, 2)),
+  questionable as (
+  SELECT
+      "cooperative"."_virt_agg_grouping_1670065760616147" as "_virt_agg_grouping_1670065760616147",
+      "cooperative"."_virt_agg_grouping_8417677704977793" as "_virt_agg_grouping_8417677704977793",
+      "cooperative"."_virt_agg_sum_2722582045378473" as "_virt_agg_sum_2722582045378473",
+      "cooperative"."_virt_agg_sum_6719372088781090" as "_virt_agg_sum_6719372088781090",
+      "cooperative"."sales_item_category" as "sales_item_category",
+      "cooperative"."sales_item_class" as "sales_item_class",
+      rank() over (partition by "cooperative"."_virt_func_case_8529937465942981" order by cast("cooperative"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("cooperative"."_virt_agg_sum_6719372088781090",0) as numeric(12,4)) asc ) as "within_subgroup_rank"
+  FROM
+      "cooperative")
+  SELECT
+      cast("questionable"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("questionable"."_virt_agg_sum_6719372088781090",0) as numeric(12,4)) as "gross_margin",
+      "questionable"."sales_item_category" as "sales_item_category",
+      "questionable"."sales_item_class" as "sales_item_class",
+      "questionable"."_virt_agg_grouping_1670065760616147" + "questionable"."_virt_agg_grouping_8417677704977793" as "hierarchy_level",
+      "questionable"."within_subgroup_rank" as "within_subgroup_rank"
+  FROM
+      "questionable"
+  ORDER BY
+      "hierarchy_level" desc nulls first,
+      "questionable"."sales_item_category" asc nulls first,
+      "questionable"."within_subgroup_rank" asc nulls first
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/9h9h)
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr select count(ws.order_number) where ws.sold_date.year = 2000 and wr.item.item_sk = ws.item.item_sk and wr.order_number = ws.order_number limit 10;`
+- `trilogy run answer_3770074305.preql`
 
   ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {wr.item.item_sk, wr.order_number}; {ws.item.item_sk, ws.order_number, ws.sold_date.year}. Are you missing a join or merge statement to relate them?
+  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_716388299314788}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3770074305.preql`
+
+  ```text
+  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 12). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_1579400739239040}. Are you missing a join or merge statement to relate them?
+  Note: the membership predicate(s) `(item.item_sk) in (inv_summary.inventory.item.item_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
+  ```
+- `trilogy run answer_3770074305.preql`
+
+  ```text
+  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_716388299314788}. Are you missing a join or merge statement to relate them?
+  Note: the membership predicate(s) `(item.item_sk) in (inventory.item.item_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/web_returns.preql`
+- `trilogy run answer_142117636.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Resolution error in answer_142117636.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 8). The requested concepts split into 4 disconnected subgraphs: {dd.year, _inventory_stats_month_num}; {_inventory_stats_avg_qoh, _inventory_stats_std_qoh}; {_inventory_stats_it_sk}; {_inventory_stats_wh_sk}. Are you missing a join or merge statement to relate them?
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr select count(ws.order_number) subset join wr.item.item_sk = ws.item.item_sk subset join wr.…_number where ws.sold_date.year = 2000 and wr.order_number is not null and wr.returning_customer.customer_demographics.marital_status = 'M' limit 10;`
+- `trilogy `
 
   ```text
-  Unexpected error in stdin: (_duckdb.BinderException) Binder Error: Ambiguous reference to table "wr_web_returns" (duplicate alias "wr_web_returns", explicitly alias one of the tables using "AS my_alias")
-  [SQL:
-  WITH
-  wakeful as (
-  SELECT
-      coalesce("wr_web_returns"."wr_order_number") as "_virt_presence_3838022047150424"
-  FROM
-      "web_returns" as "wr_web_returns"
-  WHERE
-      coalesce("wr_web_returns"."wr_order_number") is not null
-
-  GROUP BY
-      1,
-      "wr_web_returns"."wr_order_number"),
-  cooperative as (
-  SELECT
-      coalesce("wr_web_returns"."wr_order_number","wr_web_returns"."wr_order_number","ws_web_sales"."ws_order_number") as "ws_order_number"
-  FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "web_returns" as "wr_web_returns" on "ws_web_sales"."ws_item_sk" = "wr_web_returns"."wr_item_sk" AND "ws_web_sales"."ws_order_number" = "wr_web_returns"."wr_order_number"
-      INNER JOIN "date_dim" as "ws_sold_date_date_dim" on "ws_web_sales"."ws_sold_date_sk" = "ws_sold_date_date_dim"."d_date_sk"
-      INNER JOIN "customer" as "wr_returning_customer_customer" on "wr_web_returns"."wr_returning_customer_sk" = "wr_returning_customer_customer"."c_customer_sk"
-      INNER JOIN "customer_demographics" as "wr_returning_customer_customer_demographics_customer_demographics" on "wr_returning_customer_customer"."c_current_cdemo_sk" = "wr_returning_customer_customer_demographics_customer_demographics"."cd_demo_sk"
-      INNER JOIN "web_returns" as "wr_web_returns" on "wr_web_returns"."wr_order_number" = "wr_web_returns"."wr_order_number"
-  WHERE
-      "ws_sold_date_date_dim"."d_year" = 2000 and "wr_returning_customer_customer_demographics_customer_demographics"."cd_marital_status" = 'M'
-
-  GROUP BY
-      1)
-  SELECT
-      count("cooperative"."ws_order_number") as "order_number_count"
-  FROM
-      "cooperative"
-  LIMIT (10)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 1686 (char 1685). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy file read answer_927797426.preql`
+- `trilogy run answer_630074061.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Syntax error in answer_630074061.preql: Undefined concept: cr.order_number. Suggestions: ['cs.order_number']
   ```
-- `trilogy run --import raw.web_sales:ws --import raw.web_returns:wr select count(ws.order_number) subset join wr.item.item_sk = ws.item.item_sk subset join wr.…_number where ws.sold_date.year = 2000 and wr.order_number is not null and wr.returning_customer.customer_demographics.marital_status = 'M' limit 10;`
+- `trilogy run --import raw.item:item select item.product_name where item.manufact_id between 1 and 500 and item.manufact in (select item2.manufact where (item2… or (item2.category = 'Electronics' and item2.color = 'mint' and item2.units = 'Gross' and item2.size = 'N/A')) order by item.product_name limit 100;`
 
   ```text
-  Unexpected error in stdin: (_duckdb.BinderException) Binder Error: Ambiguous reference to table "wr_web_returns" (duplicate alias "wr_web_returns", explicitly alias one of the tables using "AS my_alias")
-  [SQL:
-  WITH
-  wakeful as (
-  SELECT
-      coalesce("wr_web_returns"."wr_order_number") as "_virt_presence_3838022047150424"
-  FROM
-      "web_returns" as "wr_web_returns"
-  WHERE
-      coalesce("wr_web_returns"."wr_order_number") is not null
+  Syntax error in stdin: 5 undefined concept references; fix all before re-running:
+    - item2.manufact (line 2, col 96, in SELECT); did you mean: item2.units, item.manufact, item.manufact_id?
+    - item2.category (line 2, col 118, in WHERE); did you mean: item2.color, item.category, item.category_id?
+    - item2.color (line 2, col 147, in WHERE); did you mean: item2.category, item.color, item.class?
+    - item2.units (line 2, col 171, in WHERE); did you mean: item2.size, item2.manufact, item.units, item.item_sk?
+    - item2.size (line 2, col 194, in WHERE); did you mean: item2.units, item.size, item.item_sk?
+  ```
+- `trilogy run answer_968172492.preql`
 
-  GROUP BY
-      1,
-      "wr_web_returns"."wr_order_number"),
-  cooperative as (
-  SELECT
-      coalesce("wr_web_returns"."wr_order_number","wr_web_returns"."wr_order_number","ws_web_sales"."ws_order_number") as "ws_order_number"
-  FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "web_returns" as "wr_web_returns" on "ws_web_sales"."ws_item_sk" = "wr_web_returns"."wr_item_sk" AND "ws_web_sales"."ws_order_number" = "wr_web_returns"."wr_order_number"
-      INNER JOIN "date_dim" as "ws_sold_date_date_dim" on "ws_web_sales"."ws_sold_date_sk" = "ws_sold_date_date_dim"."d_date_sk"
-      INNER JOIN "customer" as "wr_returning_customer_customer" on "wr_web_returns"."wr_returning_customer_sk" = "wr_returning_customer_customer"."c_customer_sk"
-      INNER JOIN "customer_demographics" as "wr_returning_customer_customer_demographics_customer_demographics" on "wr_returning_customer_customer"."c_current_cdemo_sk" = "wr_returning_customer_customer_demographics_customer_demographics"."cd_demo_sk"
-      INNER JOIN "web_returns" as "wr_web_returns" on "wr_web_returns"."wr_order_number" = "wr_web_returns"."wr_order_number"
-  WHERE
-      "ws_sold_date_date_dim"."d_year" = 2000 and "wr_returning_customer_customer_demographics_customer_demographics"."cd_marital_status" = 'M'
-
-  GROUP BY
-      1)
-  SELECT
-      count("cooperative"."ws_order_number") as "order_number_count"
-  FROM
-      "cooperative"
-  LIMIT (10)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```text
+  Syntax error in answer_968172492.preql: 2 undefined concept references; fix all before re-running:
+    - item.item_id (line 13, col 20, in SELECT); did you mean: ws.item.item_id, ws.promotion.item.item_id, item.item_sk, ws.item.item_desc?
+    - item.item_sk (line 14, col 19, in WHERE); did you mean: ws.item.item_sk, ws.promotion.item.item_sk, item.item_id, ws.item.item_desc?
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -1052,15 +312,27 @@
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy run answer_32504671.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
-  Syntax error in answer_32504671.preql: Comparison `ss.household_demographics.vehicle_count <= 6` matches every value of enum field 'ss.household_demographics.vehicle_count', which contains only these values: -1, 0, 1, 2, 3, 4. It is always true and should be removed.
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_2940558602.preql`
+
+  ```text
+  Syntax error in answer_2940558602.preql: 2 undefined concept references; fix all before re-running:
+    - sr.return_amount (line 17, in SELECT); did you mean: sr.return_amt, sr.return_quantity, sr.return_tax?
+    - sr.return_amount (line 11, col 7, in WHERE); did you mean: sr.return_amt, sr.return_quantity, sr.return_tax?
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -1072,75 +344,160 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr select ss.customer.customer_sk, count(ss.ticket_number) as cnt union join ss.item.item_sk = sr.item.item_sk union join ss.ticket_number = sr.ticket_number where sr.reason.desc = 'reason 28' and sr.ticket_number is not null limit 5;`
-
-  ```text
-  Unexpected error in stdin: (_duckdb.BinderException) Binder Error: Ambiguous reference to table "sr_store_returns" (duplicate alias "sr_store_returns", explicitly alias one of the tables using "AS my_alias")
-  [SQL:
-  WITH
-  highfalutin as (
-  SELECT
-      coalesce("sr_store_returns"."sr_ticket_number") as "_virt_presence_458502113429362"
-  FROM
-      "store_returns" as "sr_store_returns"
-  WHERE
-      coalesce("sr_store_returns"."sr_ticket_number") is not null
-
-  GROUP BY
-      1,
-      "sr_store_returns"."sr_ticket_number"),
-  thoughtful as (
-  SELECT
-      coalesce("sr_store_returns"."sr_ticket_number","sr_store_returns"."sr_ticket_number","ss_store_sales"."ss_ticket_number") as "sr_ticket_number",
-      coalesce("ss_customer_customer"."c_customer_sk","ss_store_sales"."ss_customer_sk") as "ss_customer_customer_sk"
-  FROM
-      "store_sales" as "ss_store_sales"
-      RIGHT OUTER JOIN "store_returns" as "sr_store_returns" on "ss_store_sales"."ss_item_sk" = "sr_store_returns"."sr_item_sk" AND "ss_store_sales"."ss_ticket_number" = "sr_store_returns"."sr_ticket_number"
-      INNER JOIN "reason" as "sr_reason_reason" on "sr_store_returns"."sr_reason_sk" = "sr_reason_reason"."r_reason_sk"
-      INNER JOIN "store_returns" as "sr_store_returns" on "sr_store_returns"."sr_ticket_number" = "sr_store_returns"."sr_ticket_number"
-      LEFT OUTER JOIN "customer" as "ss_customer_customer" on "ss_store_sales"."ss_customer_sk" = "ss_customer_customer"."c_customer_sk"
-  WHERE
-      "sr_reason_reason"."r_reason_desc" = 'reason 28'
-
-  GROUP BY
-      1,
-      2)
-  SELECT
-      "thoughtful"."ss_customer_customer_sk" as "ss_customer_customer_sk",
-      count("thoughtful"."sr_ticket_number") as "cnt"
-  FROM
-      "thoughtful"
-  GROUP BY
-      1
-  LIMIT (5)]
-  (Background on this error at: https://sqlalche.me/e/20/f405)
-  ```
-- `trilogy file read test_debug.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run test_debug25.preql`
+- `trilogy run answer_3560698360.preql`
 
   ```text
-  Syntax error in test_debug25.preql: Composite membership requires both tuples to have the same number of elements; got 2 and 3.
+  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.running_total, store_run.sale_date, web_run.item_sk, web_run.running_total, web_run.sale_date}; still unresolved: {local.store_running_max, local.web_running_max}
   ```
-- `trilogy run answer_3281742578.preql`
+- `trilogy run answer_3560698360.preql`
 
   ```text
-  Syntax error in answer_3281742578.preql: Undefined concept: warehouse.warehouse_sk. Suggestions: ['ws.warehouse.warehouse_sk', 'ws.warehouse.warehouse_id', 'ws.warehouse.warehouse_sq_ft']
+  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.running_total, store_run.sale_date, web_run.item_sk, web_run.running_total, web_run.sale_date}; still unresolved: {local.store_running_max, local.web_running_max}
   ```
-- `trilogy run answer_3281742578.preql`
+- `trilogy run answer_3560698360.preql`
 
   ```text
-  Resolution error in answer_3281742578.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 8). The requested concepts split into 2 disconnected subgraphs: {distinct_wh_count, ws.ship_addr.state, ws.ship_date.date, ws.web_site.company_name}; {return_count}. Are you missing a join or merge statement to relate them?
+  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {store_daily.sale_date, web_daily.daily_total, web_daily.item_sk, web_daily.sale_date}
   ```
-- `trilogy run answer_3281742578.preql`
+- `trilogy run answer_3560698360.preql`
 
   ```text
-  Resolution error in answer_3281742578.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 10). The requested concepts split into 2 disconnected subgraphs: {ret_count}; {wh_count, ws.order_number}. Are you missing a join or merge statement to relate them?
+  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.sale_date, web_run.daily_total}; still unresolved: {local.web_running_total}
+  ```
+- `trilogy run answer_71623752.preql`
+
+  ```text
+  Resolution error in answer_71623752.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 30). The requested concepts split into 2 disconnected subgraphs: {manuf_avg.avg_quarterly_sales, manuf_avg.manuf_id}; {quarterly_totals.manuf_id, quarterly_totals.total_unit_price}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3553309440.preql --param dec_ms=1187`
+
+  ```text
+  Syntax error in answer_3553309440.preql: Unsupported datatype BIGINT for parameter dec_ms. (line 6, column 1)
+  ```
+- `trilogy run --import raw/store_sales:ss select ss.customer.customer_sk, sum(ss.ext_sales_price) as tot, ss.store.county, ss.store.state, ss.customer.customer…sold_date.month_seq=1187) and ss.store.county = ss.customer.customer_address.county and ss.store.state = ss.customer.customer_address.state limit 10;`
+
+  ```text
+  Syntax error in stdin: 4 undefined concept references; fix all before re-running:
+    - cs.bill_customer.customer_sk (line 2, col 259, in SELECT); did you mean: ss.customer.customer_sk, ss.customer.customer_id, ss.customer.customer_address.zip?
+    - cs.item.category (line 2, col 294, in WHERE); did you mean: cs.item.class, ss.item.category, ss.promotion.item.category, ss.item.category_id?
+    - cs.item.class (line 2, col 323, in WHERE); did you mean: cs.item.category, ss.item.class, ss.promotion.item.class, ss.item.class_id, ss.item.color?
+    - cs.sold_date.month_seq (line 2, col 353, in WHERE); did you mean: ss.date_dim.month_seq, ss.store.date_dim.month_seq, ss.promotion.end_date.month_seq, ss.customer.first_sales_date.month_seq, ss.customer.last_review_date.month_seq, ss.promotion.start_date.month_seq?
+  ```
+- `trilogy file read answer_3553309440.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/store_sales:ss --import raw/web_sales:ws select ss.item.item_id, sum(ss.ext_sales_price) as store_tot,…_tot, sum(ws.ext_sales_price) as web_tot where ss.date_dim.week_seq = 5218 and cs.sold_date.week_seq = 5218 and ws.sold_date.week_seq = 5218 limit 5;`
+
+  ```text
+  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 3 disconnected subgraphs: {cs.sold_date.week_seq, cat_tot}; {store_tot, ss.date_dim.week_seq, ss.item.item_id}; {web_tot, ws.sold_date.week_seq}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file write --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Rowsets: per-item totals by channel… catalog_totals.total and 1.1 * catalog_totals.total
+order by store_totals.item_id, store_totals.total nulls first
+limit 100;
+ answer_145690531.preql`
+
+  ```text
+  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
+    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
+  Alternatively use `--escapes` with a single-line `\n`-escaped string.
+  ```
+- `trilogy run answer_1623435181.preql`
+
+  ```text
+  Resolution error in answer_1623435181.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {next_yr.pivoted.fri_total, next_yr.pivoted.mon_total, next_yr.pivoted.sat_total, next_yr.pivoted.sun_total, next_yr.pivoted.thu_total, next_yr.pivoted.tue_total, next_yr.pivoted.wed_total, next_yr.pivoted.weekly_sales.s_code, next_yr.pivoted.weekly_sales.s_name, next_yr.pivoted.weekly_sales.wk_seq, this_yr.pivoted.fri_total, this_yr.pivoted.mon_total, this_yr.pivoted.sat_total, this_yr.pivoted.sun_total, this_yr.pivoted.thu_total, this_yr.pivoted.tue_total, this_yr.pivoted.wed_total, this_yr.pivoted.weekly_sales.s_code, this_yr.pivoted.weekly_sales.s_name, this_yr.pivoted.weekly_sales.wk_seq}
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 42 column 12 (char 1431). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_1484301313.preql`
+
+  ```text
+  Syntax error in answer_1484301313.preql: Comparison `store_sales.promotion.channel_email = 'Y'` can never match enum field 'store_sales.promotion.channel_email', which contains only these values: 'N'. It is always false and should be removed.
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 64 (char 63). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run answer_3544057080.preql`
+
+  ```text
+  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 10 definition statement(s) (5 imports, 3 concepts, 2 rowsets) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
+  ```
+- `trilogy run answer_3544057080.preql`
+
+  ```text
+  Syntax error in answer_3544057080.preql: ORDER BY references 'y2000.sl_00', which is not in the SELECT projection (line 97). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --y2000.sl_00 order by y2000.sl_00 asc`.
+  ```
+- `trilogy run answer_3544057080.preql`
+
+  ```text
+  Resolution error in answer_3544057080.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 25). The requested concepts split into 2 disconnected subgraphs: {cs.item.item_sk, item_total_cs_ext_list_price}; {item_total_cr_refund}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_1256642802.preql`
+
+  ```text
+  Resolution error in answer_1256642802.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 12). The requested concepts split into 3 disconnected subgraphs: {item.brand, item.current_price, item.item_desc, item.wholesale_cost}; {per_item_revenue_1998}; {store.store_name, store.store_sk}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_1256642802.preql`
+
+  ```text
+  Resolution error in answer_1256642802.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 7). The requested concepts split into 4 disconnected subgraphs: {dd.year}; {item.brand, item.current_price, item.item_desc, item.item_sk, item.wholesale_cost}; {_per_item_item_revenue}; {store.store_name, store.store_sk}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_1256642802.preql`
+
+  ```text
+  Resolution error in answer_1256642802.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {per_item.item_revenue, per_item.ss.item.brand, per_item.ss.item.current_price, per_item.ss.item.item_desc, per_item.ss.item.wholesale_cost, per_item.ss.store.store_name, store_avg.store_item_avg}
   ```
 - `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/warehouse.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy database describe time_dim`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -1150,10 +507,430 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2333598260.preql`
+- `trilogy run answer_2874833976.preql`
 
   ```text
-  Syntax error in answer_2333598260.preql: Undefined concept: local.store_sales (line 9, in SELECT). Suggestions: ['store_sales.ext_tax', 'store_sales.quantity', 'store_sales.net_paid']
+  Syntax error in answer_2874833976.preql: Undefined concept: _virt_agg_grouping_4453574046401692.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/inventory.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file write --content import raw.catalog_sales as cs;
+
+where
+  cs.sold_date.year = 1999
+  and cs.ship_customer.household_demographics.buy_potential = …) > 5
+
+select
+  cs.item.item_desc as item_description,
+  cs.sold_date.week_seq as week_sequence,
+  count(*) as cnt
+limit 10;
+ answer_2091535883.preql`
+
+  ```text
+  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
+    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
+  Alternatively use `--escapes` with a single-line `\n`-escaped string.
+  ```
+- `trilogy database describe store`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy run answer_1772060640.preql`
+
+  ```text
+  Syntax error in answer_1772060640.preql: Comparison `ss.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  ```
+- `trilogy run answer_1772060640.preql`
+
+  ```text
+  Syntax error in answer_1772060640.preql: Comparison `ss.store.county = 'Williamson County'` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  ```
+- `trilogy run answer_3840922834.preql`
+
+  ```text
+  Syntax error in answer_3840922834.preql: Undefined concept: local.cust_sk. Suggestions: ['web_by_cust_year.cust_sk', 'store_by_cust_year.cust_sk', 'c.customer_sk']
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 107 column 12 (char 3617). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run answer_3046445280.preql`
+
+  ```text
+  Resolution error in answer_3046445280.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 11). The requested concepts split into 2 disconnected subgraphs: {item.category, _store_ch_brand_id, _store_ch_cat_id, _store_ch_class_id, _store_ch_manu_id}; {_store_ch_net_amt, _store_ch_net_qty, _store_ch_yr}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy database describe store_sales`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy database describe web_sales`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy database describe catalog_sales`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 109 column 12 (char 3759). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_1226264875.preql`
+
+  ```text
+  Syntax error in answer_1226264875.preql: 10 undefined concept references; fix all before re-running:
+    - local.cat_qty (line 74, in SELECT); did you mean: catalog_nr.cat_qty, cat_wc, cat_sp?
+    - local.web_qty (line 74, in SELECT); did you mean: web_nr.web_qty, web_wc, web_sp?
+    - local.cat_qty (line 78, in SELECT); did you mean: catalog_nr.cat_qty, cat_wc, cat_sp?
+    - local.web_qty (line 78, in SELECT); did you mean: web_nr.web_qty, web_wc, web_sp?
+    - local.cat_wc (line 79, in SELECT); did you mean: catalog_nr.cat_wc, cat_sp, cat_qty?
+    - local.web_wc (line 79, in SELECT); did you mean: web_nr.web_wc, web_sp, web_qty?
+    - local.cat_sp (line 80, in SELECT); did you mean: catalog_nr.cat_sp, cat_wc, cat_qty?
+    - local.web_sp (line 80, in SELECT); did you mean: web_nr.web_sp, web_wc, web_qty?
+    - item_sk (line 91, col 5, in ORDER BY); did you mean: ss.item.item_sk, sr.item.item_sk, cs.item.item_sk, cr.item.item_sk, ws.item.item_sk, wr.item.item_sk?
+    - cust_sk (line 92, col 5, in ORDER BY); did you mean: store_nr.cust_sk, web_nr.cust_sk3, cat_sp?
+  ```
+- `trilogy run answer_1226264875.preql`
+
+  ```text
+  Resolution error in answer_1226264875.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {catweb_never.ot_qty, catweb_never.ot_sp, catweb_never.ot_wc, store_never.cust_sk, store_never.item_sk, store_never.st_qty, store_never.st_sp, store_never.st_wc, store_never.yr}
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_2910545909.preql`
+
+  ```text
+  Syntax error in answer_2910545909.preql: Duplicate select output for ss.ticket_number; Line: 3
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Syntax error in answer_943796012.preql: Comparison `s.promotion.channel_tv = 'N'` matches every value of nullable enum field 's.promotion.channel_tv', which contains only these values: 'N'. It only excludes nulls; simplify it to 's.promotion.channel_tv is not null'.
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Syntax error in answer_943796012.preql: `by rollup (…)` requires at least one aggregate (or re-aggregable pre-aggregated measure) in the select to group; found none.
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Syntax error in answer_943796012.preql: 2 undefined concept references; fix all before re-running:
+    - channel (line 55, col 10, in ORDER BY); did you mean: combined.channel?
+    - outlet_id (line 55, col 31, in ORDER BY); did you mean: combined.outlet_id?
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Resolution error in answer_943796012.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {local.___tvf_arm_0_channel, local.___tvf_arm_0_outlet_id}; still unresolved: {local.___tvf_arm_0_total_returns, local.___tvf_arm_0_total_sales, local.___tvf_arm_0_total_scoped_profit}
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
+  ```
+- `trilogy file read raw/store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Syntax error in answer_943796012.preql: Undefined concept: local.oid. Suggestions: ['ss.oid', 'srr.oid', 'css.oid', 'crr.oid', 'wss.oid']
+  ```
+- `trilogy run answer_943796012.preql`
+
+  ```text
+  Syntax error in answer_943796012.preql: Missing source map entry for sr.item.item_sk with pseudonyms set(), have map: {'s.item.item_sk': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.item_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.rec_start_date': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.rec_end_date': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.item_desc': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.current_price': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.wholesale_cost': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.brand_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.brand': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.class_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.class': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.category_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.category': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manufact_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manufact': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.size': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.formulation': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.color': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.units': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.container': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manager_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.product_name': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}}
+  ```
+- `trilogy run answer_426809370.preql`
+
+  ```text
+  Syntax error in answer_426809370.preql: Undefined concept: cr.returning_customer. Suggestions: ['cr.returning_customer.customer_sk', 'cr.returning_customer.customer_id', 'cr.returning_customer.salutation', 'cr.returning_customer.first_name', 'cr.returning_customer.last_name', 'cr.returning_customer.preferred_cust_flag']
+  ```
+- `trilogy file read answer_426809370.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_4111870542.preql`
+
+  ```text
+  Resolution error in answer_4111870542.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {catalog_agg.catalog_qty, store_agg.item_id, store_agg.store_qty, web_agg.web_qty}
+  ```
+- `trilogy file read raw/store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_2852230229.preql`
+
+  ```text
+  Import error in answer_2852230229.preql: Unable to import '.\raw\sold_date.preql': [Errno 2] No such file or directory: '.\\raw\\sold_date.preql'.
+  ```
+- `trilogy run answer_2852230229.preql`
+
+  ```text
+  Syntax error in answer_2852230229.preql: Undefined concept: _virt_agg_grouping_7561668700388452.
+  ```
+- `trilogy run answer_2852230229.preql`
+
+  ```text
+  Resolution error in answer_2852230229.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {item.category, item.class, hierarchy_level}; {total_net_paid, ws.sold_date.year}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_2852230229.preql`
+
+  ```text
+  Syntax error in answer_2852230229.preql: Undefined concept: _virt_agg_grouping_164218295708188.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_32504671.preql`
+
+  ```text
+  Syntax error in answer_32504671.preql: Comparison `store_sales.household_demographics.vehicle_count <= 6` matches every value of enum field 'store_sales.household_demographics.vehicle_count', which contains only these values: -1, 0, 1, 2, 3, 4. It is always true and should be removed.
+  ```
+- `trilogy run answer_32504671.preql`
+
+  ```text
+  Syntax error in answer_32504671.preql: 16 undefined concept references; fix all before re-running:
+    - item.item_sk (line 17, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 17, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 18, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 18, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 19, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 19, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 20, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 20, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 21, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 21, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 22, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 22, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 23, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 23, in SELECT); did you mean: store_sales.ticket_number?
+    - item.item_sk (line 24, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
+    - local.ticket_number (line 24, in SELECT); did you mean: store_sales.ticket_number?
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 40 column 12 (char 1430). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy file read raw/store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read answer_1827331030.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_3281742578.preql`
+
+  ```text
+  Unexpected error in answer_3281742578.preql: Could not render the query: Missing source CTE for wr.order_number. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
+
+  Full SQL with sentinel(s):
+
+  WITH
+  cheerful as (
+  SELECT
+      "ws_web_sales"."ws_order_number" as "ws_order_number",
+      "ws_web_sales"."ws_warehouse_sk" as "ws_warehouse_warehouse_sk"
+  FROM
+      "web_sales" as "ws_web_sales"
+  GROUP BY
+      1,
+      2),
+  quizzical as (
+  SELECT
+      "wr_web_returns"."wr_order_number" as "wr_order_number"
+  FROM
+      "web_returns" as "wr_web_returns"
+  GROUP BY
+      1),
+  thoughtful as (
+  SELECT
+      "cheerful"."ws_order_number" as "ws_order_number",
+      (exists (select 1 from INVALID_REFERENCE_BUG<Missing source CTE for wr.order_number> where INVALID_REFERENCE_BUG<Missing source CTE for wr.order_number>."wr_order_number" is not distinct from "cheerful"."ws_order_number")) as "order_has_return"
+  FROM
+      "cheerful"
+  GROUP BY
+      1,
+      2
+  HAVING
+      count(distinct "cheerful"."ws_warehouse_warehouse_sk") > 1
+  ),
+  cooperative as (
+  SELECT
+      "thoughtful"."ws_order_number" as "ws_order_number"
+  FROM
+      "thoughtful"
+  WHERE
+      coalesce("thoughtful"."order_has_return",False) = False
+
+  GROUP BY
+      1),
+  abundant as (
+  SELECT
+      "cooperative"."ws_order_number" as "candidate_orders_ws_order_number"
+  FROM
+      "cooperative"),
+  juicy as (
+  SELECT
+      "ws_web_sales"."ws_order_number" as "ws_order_number"
+  FROM
+      "web_sales" as "ws_web_sales"
+      INNER JOIN "web_site" as "ws_web_site_web_site" on "ws_web_sales"."ws_web_site_sk" = "ws_web_site_web_site"."web_site_sk"
+      INNER JOIN "date_dim" as "ws_ship_date_date_dim" on "ws_web_sales"."ws_ship_date_sk" = "ws_ship_date_date_dim"."d_date_sk"
+      INNER JOIN "customer_address" as "ws_ship_addr_customer_address" on "ws_web_sales"."ws_ship_addr_sk" = "ws_ship_addr_customer_address"."ca_address_sk"
+  WHERE
+      "ws_web_site_web_site"."web_company_name" = 'pri' and "ws_ship_date_date_dim"."d_date" BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_addr_customer_address"."ca_state" = 'IL' and exists (select 1 from abundant where abundant."candidate_orders_ws_order_number" is not distinct from "ws_web_sales"."ws_order_number")
+
+  GROUP BY
+      1),
+  sparkling as (
+  SELECT
+      "ws_web_sales"."ws_ext_ship_cost" as "ws_ext_ship_cost",
+      "ws_web_sales"."ws_net_profit" as "ws_net_profit"
+  FROM
+      "web_sales" as "ws_web_sales"
+      INNER JOIN "web_site" as "ws_web_site_web_site" on "ws_web_sales"."ws_web_site_sk" = "ws_web_site_web_site"."web_site_sk"
+      INNER JOIN "date_dim" as "ws_ship_date_date_dim" on "ws_web_sales"."ws_ship_date_sk" = "ws_ship_date_date_dim"."d_date_sk"
+      INNER JOIN "customer_address" as "ws_ship_addr_customer_address" on "ws_web_sales"."ws_ship_addr_sk" = "ws_ship_addr_customer_address"."ca_address_sk"
+  WHERE
+      exists (select 1 from abundant where abundant."candidate_orders_ws_order_number" is not distinct from "ws_web_sales"."ws_order_number") and "ws_ship_date_date_dim"."d_date" BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_addr_customer_address"."ca_state" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri'
+
+  GROUP BY
+      1,
+      2,
+      "ws_web_sales"."ws_item_sk",
+      "ws_web_sales"."ws_order_number"),
+  young as (
+  SELECT
+      count(md5(CONCAT_WS('', coalesce(cast("juicy"."ws_order_number" as string),'
+  ')))) as "order_count"
+  FROM
+      "juicy"),
+  abhorrent as (
+  SELECT
+      sum("sparkling"."ws_ext_ship_cost") as "total_ext_ship_cost",
+      sum("sparkling"."ws_net_profit") as "total_net_profit"
+  FROM
+      "sparkling")
+  SELECT
+      coalesce("young"."order_count",0) as "order_count",
+      "abhorrent"."total_ext_ship_cost" as "total_ext_ship_cost",
+      "abhorrent"."total_net_profit" as "total_net_profit"
+  FROM
+      "young"
+      FULL JOIN "abhorrent" on 1=1
+  ORDER BY
+      coalesce("young"."order_count",0) asc
+  LIMIT (100)
+  ```
+- `trilogy run answer_569612608.preql`
+
+  ```text
+  Syntax error in answer_569612608.preql: Undefined concept: web_returns.order_number. Suggestions: ['ws.order_number', 'eligible_orders.ws.order_number']
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -1163,10 +940,56 @@
 
 ### `syntax-parse`
 
-- `trilogy file write answer_3863442186.preql --content import raw.store_sales as store_sales;
-import raw.catalog_sales as catalog_sales;
-import raw.web_sales a…ils.customer_id asc, customer_details.first_name asc, customer_details.last_name asc, customer_details.preferred_cust_flag asc nulls first
-limit 100;`
+- `trilogy file write answer_1858999935.preql --content import raw.catalog_sales as catalog;
+import raw.web_sales as web;
+
+with combined as union(
+    (select c…) as sales)
+) -> (ws, dow, sales)
+
+select combined.ws, combined.dow, sum(combined.sales) as total_sales
+order by combined.ws, combined.dow
+limit 20;
+`
+
+  ```text
+  refused to write 'answer_1858999935.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Location:
+  ...s sales) ) -> (ws, dow, sales) ???  select combined.ws, combined...
+
+  Write stats: received 433 chars / 433 bytes; tail: …'as total_sales\\norder by combined.ws, combined.dow\\nlimit 20;\\n'.
+  ```
+- `trilogy file write answer_1858999935.preql --content import raw.catalog_sales as catalog;
+import raw.web_sales as web;
+import raw.date_dim as d;
+
+# Combined … 0, 53) over (partition by weekly_sales.dow order by weekly_sales.ws), 2) as ratio_sun
+where weekly_sales.ws in ws_2001.ws
+order by weekly_sales.ws;
+`
+
+  ```text
+  refused to write 'answer_1858999935.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...n 2001 with ws_2001 as select ??? distinct d.week_seq as ws wher...
+
+  Write stats: received 974 chars / 974 bytes; tail: …'ere weekly_sales.ws in ws_2001.ws\\norder by weekly_sales.ws;\\n'.
+  ```
+- `trilogy file write answer_3863442186.preql -e -c import raw.store_sales as s;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Compute annual c…store_annual.first_name asc nulls first,
+    store_annual.last_name asc nulls first,
+    store_annual.preferred_cust_flag asc nulls first
+limit 100
+;`
 
   ```text
   refused to write 'answer_3863442186.preql': not syntactically valid Trilogy.
@@ -1174,599 +997,414 @@ limit 100;`
   Parse error:
   Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
   Location:
-  ...tore_pivot.customer_sk select ??? distinct store_sales.customer....
+  ...in (2001, 2002) ;  select     ??? distinct store_annual.customer...
 
-  Write stats: received 3224 chars / 3224 bytes; tail: …'tomer_details.preferred_cust_flag asc nulls first\\nlimit 100;'.
+  Write stats: received 2080 chars / 2080 bytes; tail: …'store_annual.preferred_cust_flag asc nulls first\\nlimit 100\\n;'.
   ```
-- `trilogy file write answer_3705756794.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
-
-with ws_entity as
-where ws.sold_date.date bet….net_loss) as net_loss
-by *
-;
-
-select
-    coalesce(ws_entity.site_id, 'none') as site_id
-union join ws_entity.site_id = wr_entity.net_loss
-limit 10;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 20:1
-     |
-  20 | by *
-     | ^---
-     |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-   sum(wr.net_loss) as net_loss ??? by * ;  select     coalesce(ws...
-
-  Write stats: received 700 chars / 700 bytes; tail: …'union join ws_entity.site_id = wr_entity.net_loss\\nlimit 10;\\n'.
-  ```
-- `trilogy file write answer_3705756794.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…t
-    combined.ch,
-    combined.eid,
-    combined.sales,
-    combined.ret,
-    combined.net
-order by combined.ch, combined.eid nulls first
-limit 10;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:6
-    |
-  9 |     (import raw.store_sales as ss;
-    |      ^---
-    |
-    = expected select_statement
-  Location:
-       # Store channel arm     ( ??? import raw.store_sales as ss;
-
-  Write stats: received 1457 chars / 1457 bytes; tail: …'et\\norder by combined.ch, combined.eid nulls first\\nlimit 10;\\n'.
-  ```
-- `trilogy file write answer_3705756794.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…f.ch,
-    store_perf.eid,
-    store_perf.sales,
-    store_perf.ret,
-    store_perf.net
-order by store_perf.ch, store_perf.eid nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:1
-    |
-  9 | with ss_agg as
-    | ^---
-    |
-    = expected select_statement, tvf_union_invocation, tvf_except_invocation, or tvf_intersect_invocation
-  Location:
-  ...per entity with store_perf as ??? with ss_agg as where ss.date_d...
-
-  Write stats: received 1118 chars / 1118 bytes; tail: …'der by store_perf.ch, store_perf.eid nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write answer_3705756794.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…s ch,
-    web_perf.eid as eid,
-    web_perf.sales as sales,
-    web_perf.ret as ret,
-    web_perf.net as net
-order by ch, eid nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 96:1
-     |
-  96 | union all select
-     | ^---
-     |
-     = expected join_clause, metadata, limit, order_by, where, having, or select_grouping
-  Location:
-  ...et,     store_perf.net as net ??? union all select     catalog_p...
-
-  Write stats: received 2853 chars / 2853 bytes; tail: …'web_perf.net as net\\norder by ch, eid nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write answer_3705756794.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…, ret, net);
-
-select combined.ch, combined.eid, combined.sales, combined.ret, combined.net
-order by combined.ch, combined.eid nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [102]: Using a SQL-style CTE (`(with ... as ...)`) inside a query? Trilogy supports inline `(select ...)` subqueries (single aliased column), but not parenthesized `with` CTEs. Define a named `rowset <name> <- ...;` (or `with <name> as ...;`) as a top-level statement above the query and reference its output, or - to filter on a related dimension - use its dot-path directly (e.g. `where ss.store.state = 'TN'`).
-  Location:
-  ...nion(     # Store channel     ??? (with ss_a as      where ss.da...
-
-  Write stats: received 2390 chars / 2390 bytes; tail: …'t\\norder by combined.ch, combined.eid nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write answer_3705756794.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…ll select ch, eid, sales, ret, net from catalog_perf
-union all select ch, eid, sales, ret, net from web_perf
-order by ch, eid nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-  ...lect ch, eid, sales, ret, net ??? from store_perf union all sele...
-
-  Write stats: received 2540 chars / 2540 bytes; tail: …', net from web_perf\\norder by ch, eid nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy run --import raw.store_sales:store_sales select store_sales.customer.customer_address.state, count(store_sales.ticket_number) as cnt, store_sales.customer.customer_address.address_sk is not null as has_addr where store_sales.date_dim.year = 2001 and store_sales.date_dim.moy = 1 group by 1,3 limit 5;`
+- `trilogy run --import raw/store_returns:sr select sr.store.store_id as entity_id, sum(sr.return_amt) as total_returns, sum(sr.net_loss) as total_loss where sr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date and sr.store.store_id is not null group by entity_id limit 5`
 
   ```text
   Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-   store_sales.date_dim.moy = 1 ??? group by 1,3 limit 5;
+  ...sr.store.store_id is not null ??? group by entity_id limit 5;
   ```
-- `trilogy file write answer_3263796749.preql --content import raw.store_sales as ss;
+- `trilogy run --import raw.store_sales:s select s.item.category, avg(s.item.current_price) as avg_price where s.item.category is not null group by s.item.category limit 10;`
 
-# Bucket 1: 1-20
-auto cnt_b1 <- sum(case when ss.quantity between 1 and 2…10097 then avg_disc_b4 else avg_net_b4 end as bucket_61_80,
-    case when cnt_b5 > 165306 then avg_disc_b5 else avg_net_b5 end as bucket_81_100
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...e s.item.category is not null ??? group by s.item.category limit...
+  ```
+- `trilogy file write answer_3263796749.preql --content import raw.store_sales as store_sales;
+
+select
+    case
+        when count(grain(item.item_sk, ticket_nu…re_sales.quantity between 81 and 100)
+        else avg(store_sales.net_paid ? store_sales.quantity between 81 and 100)
+    end as bucket_81_100
 by *;`
 
   ```text
   refused to write 'answer_3263796749.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [213]: A `by <grain>` clause must follow an aggregate, but the expression before it has none. If the `by` sits inside an aggregate's parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. To take each distinct value once per grain, wrap it in `group(...)` - e.g. `group(item.current_price) by item.id, item.category`. For a reduction, use an aggregate: `sum(x) by ...`, `avg(x) by ...`, `max(x) by ...`.
+    --> 29:1
+     |
+  29 | by *;
+     | ^---
+     |
+     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
   Location:
-  ...g_net_b5 end as bucket_81_100 ??? by *;
+  ...100)     end as bucket_81_100 ??? by *;
 
-  Write stats: received 1759 chars / 1759 bytes; tail: …' then avg_disc_b5 else avg_net_b5 end as bucket_81_100\\nby *;'.
+  Write stats: received 1583 chars / 1583 bytes; tail: …'.quantity between 81 and 100)\\n    end as bucket_81_100\\nby *;'.
   ```
-- `trilogy file write answer_3263796749.preql --content import raw.store_sales as ss;
+- `trilogy file write answer_4077069387.preql --content import raw.web_sales as ws;
 
-# Bucket 1: 1-20
-auto col_b1 <- case when (sum(case when ss.quantity betw…lect
-    col_b1 as bucket_1_20,
-    col_b2 as bucket_21_40,
-    col_b3 as bucket_41_60,
-    col_b4 as bucket_61_80,
-    col_b5 as bucket_81_100
-by *;`
+# Filter period first
+where ws.sold_date.date between '1999-02-22'::date an…0)) * 100.0 as pct_of_class
+order by
+    ws.item.category,
+    ws.item.class,
+    ws.item.item_id,
+    ws.item.item_desc,
+    pct_of_class
+limit 100;`
 
   ```text
-  refused to write 'answer_3263796749.preql': not syntactically valid Trilogy.
+  refused to write 'answer_4077069387.preql': not syntactically valid Trilogy.
 
   Parse error:
-   --> 4:231
-    |
-  4 | auto col_b1 <- case when (sum(case when ss.quantity between 1 and 20 then 1 else 0 end) by *) > 74129 then avg(ss.ext_discount_amt ? ss.quantity between 1 and 20) by * else avg(ss.net_paid ? ss.quantity between 1 and 20) by * end by *;
-    |                                                                                                                                                                                                                                       ^---
-    |
-    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Syntax [104]: Definition or statement after WHERE/SELECT? Concept definitions (`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and `import` are top-level statements and must appear BEFORE the `where`/`select` block - they cannot sit inside a query. Move this statement above your `where`, and make sure each statement ends with `;`. Example: put `auto x <- sum(sales.amount) by store.id;` above `where ... select ...`.
   Location:
-  ...ty between 1 and 20) by * end ??? by *;  # Bucket 2: 21-40 auto
+  ...otal per item (at item grain) ??? auto item_total <- sum(ws.ext_...
 
-  Write stats: received 1474 chars / 1474 bytes; tail: …'   col_b4 as bucket_61_80,\\n    col_b5 as bucket_81_100\\nby *;'.
+  Write stats: received 840 chars / 840 bytes; tail: …'.item_id,\\n    ws.item.item_desc,\\n    pct_of_class\\nlimit 100;'.
   ```
-- `trilogy file write answer_1297355556.preql --content import raw.store_sales as ss;
-
-where ss.store.date_dim.year = 2001
-select count(ss.ticket_number) as cnt, sum(ss.quantity) as qty
-by *
-limit 5;`
-
-  ```text
-  refused to write 'answer_1297355556.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 5:1
-    |
-  5 | by *
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-   cnt, sum(ss.quantity) as qty ??? by * limit 5;
-
-  Write stats: received 143 chars / 143 bytes; tail: …'ticket_number) as cnt, sum(ss.quantity) as qty\\nby *\\nlimit 5;'.
-  ```
-- `trilogy run --import raw.date_dim:dd select distinct dd.moy where dd.moy = 11 limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ...rt raw.date_dim as dd; select ??? distinct dd.moy where dd.moy =...
-  ```
-- `trilogy file write answer_219203908.preql -e -c import raw.store_sales as ss;
+- `trilogy file write answer_219203908.preql --content import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.web_sales as ws;
 
-# Items that appea…nnel_data.channel nulls first, channel_data.brand_id nulls first, channel_data.class_id nulls first, channel_data.category_id nulls first
-limit 100;
-`
+# Step 1: Find…y leaf_groups.channel nulls first, leaf_groups.brand_id nulls first, leaf_groups.class_id nulls first, leaf_groups.category_id nulls first
+limit 100;`
 
   ```text
   refused to write 'answer_219203908.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 43:30
-     |
-  43 |         count(ss.item.item_sk, ss.ticket_number) as line_count),
-     |                              ^---
-     |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
   Location:
-           count(ss.item.item_sk ??? , ss.ticket_number) as line_co...
+  ...99 and 2001)) by * as avg_val ??? from ss),   (select avg(cs.qua...
 
-  Write stats: received 3769 chars / 3769 bytes; tail: …'ulls first, channel_data.category_id nulls first\\nlimit 100;\\n'.
+  Write stats: received 4069 chars / 4069 bytes; tail: …' nulls first, leaf_groups.category_id nulls first\\nlimit 100;'.
   ```
 - `trilogy file write answer_765177085.preql --content import raw.store_sales as ss;
 import raw.store_returns as sr;
 import raw.catalog_sales as cs;
 
-where 
-   …cs.quantity) as cs_stddev,
-    stddev(cs.quantity) / avg(cs.quantity) as cs_cv
-order by ss.item.item_id, ss.item.item_desc, ss.store.state
-limit 100;`
-
-  ```text
-  refused to write 'answer_765177085.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
-  Location:
-   cs.bill_customer.customer_sk ??? union join ss.item.item_sk = c...
-
-  Write stats: received 1161 chars / 1161 bytes; tail: …'s.item.item_id, ss.item.item_desc, ss.store.state\\nlimit 100;'.
-  ```
-- `trilogy file write answer_765177085.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-
-# First, g…,
-    ss.quantity as ss_qty,
-    sr.return_quantity as sr_qty
-;
-
-sales_with_returns.item_id, sales_with_returns.item_desc, sales_with_returns.state;
+# Items so…s.store_sk = ss.store.store_sk
+order by item_id asc nulls first,
+         item_desc asc nulls first,
+         store_state asc nulls first
+limit 100;
 `
 
   ```text
   refused to write 'answer_765177085.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 24:1
-     |
-  24 | sales_with_returns.item_id, sales_with_returns.item_desc, sales_with_returns.state;
-     | ^---
-     |
-     = expected EOI, block, or show_statement
+   --> 6:1
+    |
+  6 | rowset store_sales_set as
+    | ^---
+    |
+    = expected EOI, block, or show_statement
   Location:
-  ....return_quantity as sr_qty ;  ??? sales_with_returns.item_id, sa...
+  ...# Items sold in store in 2001 ??? rowset store_sales_set as wher...
 
-  Write stats: received 747 chars / 747 bytes; tail: …'id, sales_with_returns.item_desc, sales_with_returns.state;\\n'.
+  Write stats: received 3112 chars / 3112 bytes; tail: …'ulls first,\\n         store_state asc nulls first\\nlimit 100;\\n'.
   ```
-- `trilogy file write answer_2928586490.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy file write answer_2604809012.preql --content import raw.inventory as inv;
 
-# Step 1: Fre…name asc nulls first,
-    combined_sales.first_name asc nulls first,
-    total_sales asc nulls first
-having sum(combined_sales.total) > 0
-limit 100
-;`
+# Filter items by current_price between 0.99 and 1.49
+where inv.item.curre…::numeric) between (2.0/3.0) and (3.0/2.0)
+order by
+    inv.warehouse.warehouse_name asc nulls first,
+    inv.item.item_id asc nulls first
+limit 100;`
 
   ```text
-  refused to write 'answer_2928586490.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2604809012.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Syntax [211]: Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
   Location:
-  ...iples.triple_count > 4 select ??? distinct     frequent_item_tri...
+  ...ntory as inv;  # Filter items ??? by current_price between 0.99
 
-  Write stats: received 3018 chars / 3018 bytes; tail: …'nulls first\\nhaving sum(combined_sales.total) > 0\\nlimit 100\\n;'.
+  Write stats: received 977 chars / 977 bytes; tail: …'nulls first,\\n    inv.item.item_id asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write answer_2928586490.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy file write answer_2604809012.preql --content import raw.inventory as inv;
 
-# Step 1: Fre…mbined.last_name asc nulls first,
-    combined.first_name asc nulls first,
-    total_sales asc nulls first
-having sum(combined.total) > 0
-limit 100
-;`
+# Restrict to items whose current price is between 0.99 and 1.49
+where inv…r_total / before_total::numeric <= 3.0/2.0
+order by
+    inv.warehouse.warehouse_name asc nulls first,
+    inv.item.item_id asc nulls first
+limit 100;`
 
   ```text
-  refused to write 'answer_2928586490.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2604809012.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+   --> 7:1
+    |
+  7 | where inv.date_dim.date >= '2000-02-10'::date and inv.date_dim.date <= '2000-04-10'::date
+    | ^---
+    |
+    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
   Location:
-  ...te_dim.date as sold_date,     ??? count(*) as cnt having count(*...
+  ...ange that covers both windows ??? where inv.date_dim.date >= '20...
 
-  Write stats: received 2893 chars / 2893 bytes; tail: …'s asc nulls first\\nhaving sum(combined.total) > 0\\nlimit 100\\n;'.
+  Write stats: received 889 chars / 889 bytes; tail: …'nulls first,\\n    inv.item.item_id asc nulls first\\nlimit 100;'.
   ```
-- `trilogy file write answer_2928586490.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
+- `trilogy file write answer_4207382245.preql --content import raw.store_sales as store_sales;
+import raw.web_sales as web_sales;
 
-# Step 1: Fre…mbined.last_name asc nulls first,
-    combined.first_name asc nulls first,
-    total_sales asc nulls first
-having sum(combined.total) > 0
-limit 100
-;`
-
-  ```text
-  refused to write 'answer_2928586490.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 94:1
-     |
-  94 | having sum(combined.total) > 0
-     | ^---
-     |
-     = expected limit
-  Location:
-    total_sales asc nulls first ??? having sum(combined.total) > 0...
-
-  Write stats: received 2923 chars / 2923 bytes; tail: …'s asc nulls first\\nhaving sum(combined.total) > 0\\nlimit 100\\n;'.
-  ```
-- `trilogy file write answer_4207382245.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
-
-# Compute store sales totals per county, per …
-    and (county_pivot.web_q3 / county_pivot.web_q2) > (county_pivot.store_q3 / county_pivot.store_q2)
-order by county_pivot.county asc nulls first
-;`
+# Store sales quarterly total…ombined.web_q3 / combined.web_q2 as web_q3_over_q2,
+    combined.store_q3 / combined.store_q2 as store_q3_over_q2
+order by
+    combined.county asc
+;
+`
 
   ```text
   refused to write 'answer_4207382245.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
   Location:
-  ...store_q subset join w = web_q ??? group by county ;  select
+  ...store_q.county = web_q.county ??? subset join store_q.q = web_q....
 
-  Write stats: received 1941 chars / 1941 bytes; tail: …'vot.store_q2)\\norder by county_pivot.county asc nulls first\\n;'.
+  Write stats: received 1924 chars / 1924 bytes; tail: …'e_q2 as store_q3_over_q2\\norder by\\n    combined.county asc\\n;\\n'.
   ```
-- `trilogy run --import raw.item:item select distinct item.manufact limit 100;`
+- `trilogy file write answer_4207382245.preql --content import raw.store_sales as store_sales;
+import raw.web_sales as web_sales;
+
+# Store sales quarterly total…ombined.web_q3 / combined.web_q2 as web_q3_over_q2,
+    combined.store_q3 / combined.store_q2 as store_q3_over_q2
+order by
+    combined.county asc
+;
+`
+
+  ```text
+  refused to write 'answer_4207382245.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Location:
+  ...store_q.county = web_q.county ??? subset join store_q.q = web_q....
+
+  Write stats: received 1924 chars / 1924 bytes; tail: …'e_q2 as store_q3_over_q2\\norder by\\n    combined.county asc\\n;\\n'.
+  ```
+- `trilogy file write answer_142117636.preql --content import raw.inventory as inv;
+import raw.date_dim as dd;
+import raw.warehouse as wh;
+import raw.item as it…sk
+order by jan.wh_sk asc, jan.it_sk asc, jan.month_num asc, jan.avg_qoh asc, jan.cv asc, feb.month_num asc, feb.avg_qoh asc, feb.cv asc
+nulls first;`
+
+  ```text
+  refused to write 'answer_142117636.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 10:1
+     |
+  10 | with inventory_stats as
+     | ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
+  Location:
+  ...dev, coefficient of variation ??? with inventory_stats as select...
+
+  Write stats: received 1544 chars / 1544 bytes; tail: …' feb.month_num asc, feb.avg_qoh asc, feb.cv asc\\nnulls first;'.
+  ```
+- `trilogy run --import raw.item:item select distinct item.category limit 20;`
 
   ```text
   Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
   Location:
-  ...port raw.item as item; select ??? distinct item.manufact limit 1...
+  ...port raw.item as item; select ??? distinct item.category limit 2...
   ```
-- `trilogy run --import raw.item:item select item.manufact, item.manufact_id, item.product_name, count(item.item_sk) as cnt by item.manufact where ((item.catego…et' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A')) having cnt > 1;`
+- `trilogy file write answer_3560698360.preql --content import raw.store_sales as store_sales;
+import raw.web_sales as web_sales;
 
-  ```text
-  Syntax error in stdin:  --> 2:87
-    |
-  2 | select item.manufact, item.manufact_id, item.product_name, count(item.item_sk) as cnt by item.manufact where ((item.category = 'Books' and item.color = 'tan' and item.units = 'Oz' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'purple' and item.units = 'Ton' and item.size = 'N/A') or (item.category = 'Men' and item.color = 'misty' and item.units = 'Box' and item.size = 'medium') or (item.category = 'Books' and item.color = 'medium' and item.units = 'Tsp' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'midnight' and item.units = 'Gram' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'pale' and item.units = 'Pound' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'khaki' and item.units = 'Pallet' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A')) having cnt > 1;
-    |                                                                                       ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...e, count(item.item_sk) as cnt ??? by item.manufact where ((item....
-  ```
-- `trilogy run --import raw.item:item select item.manufact, count(item.item_sk) as cnt by item.manufact where ((item.category = 'Books' and item.color = 'tan' a…et' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A')) having cnt > 1;`
-
-  ```text
-  Syntax error in stdin:  --> 2:50
-    |
-  2 | select item.manufact, count(item.item_sk) as cnt by item.manufact where ((item.category = 'Books' and item.color = 'tan' and item.units = 'Oz' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'purple' and item.units = 'Ton' and item.size = 'N/A') or (item.category = 'Men' and item.color = 'misty' and item.units = 'Box' and item.size = 'medium') or (item.category = 'Books' and item.color = 'medium' and item.units = 'Tsp' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'midnight' and item.units = 'Gram' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'pale' and item.units = 'Pound' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'khaki' and item.units = 'Pallet' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A')) having cnt > 1;
-    |                                                  ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...t, count(item.item_sk) as cnt ??? by item.manufact where ((item....
-  ```
-- `trilogy run --import raw.item:item select item.manufact order by item.manufact where ((item.category = 'Books' and item.color = 'tan' and item.units = 'Oz' a…m.units = 'Pallet' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A'));`
-
-  ```text
-  Syntax error in stdin:  --> 2:45
-    |
-  2 | select item.manufact order by item.manufact where ((item.category = 'Books' and item.color = 'tan' and item.units = 'Oz' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'purple' and item.units = 'Ton' and item.size = 'N/A') or (item.category = 'Men' and item.color = 'misty' and item.units = 'Box' and item.size = 'medium') or (item.category = 'Books' and item.color = 'medium' and item.units = 'Tsp' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'midnight' and item.units = 'Gram' and item.size = 'N/A') or (item.category = 'Books' and item.color = 'pale' and item.units = 'Pound' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'khaki' and item.units = 'Pallet' and item.size = 'N/A') or (item.category = 'Electronics' and item.color = 'mint' and item.units = 'Gross' and item.size = 'N/A'));
-    |                                             ^---
-    |
-    = expected limit, ORDER_DIRECTION_LA, ORDERING_DIRECTION, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...nufact order by item.manufact ??? where ((item.category = 'Books...
-  ```
-- `trilogy run --import raw.store_sales:ss select ss.item.product_name, avg(ss.net_profit) as avg_np where ss.store.store_sk=1 group by ss.item.product_name order by avg_np desc limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ..._np where ss.store.store_sk=1 ??? group by ss.item.product_name
-  ```
-- `trilogy run --import raw.customer_address:ca select ca.zip, length(ca.zip) as len where length(ca.zip) > 5 limit 10;`
-
-  ```text
-  Syntax error in stdin:  --> 2:22
-    |
-  2 | select ca.zip, length(ca.zip) as len where length(ca.zip) > 5 limit 10;
-    |                      ^---
-    |
-    = expected limit, order_by, where, having, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, select_grouping, or JOIN_TYPE
-  Location:
-  ...s as ca; select ca.zip, length ??? (ca.zip) as len where length(c...
-  ```
-- `trilogy file write answer_2940558602.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…nk
+# Per-item, per-day running t…te = web_run.sale_date
 having
-    return_rank <= 10 or currency_rank <= 10
+    web_running_max > store_running_max
 order by
-    channel asc,
-    return_rank asc,
-    currency_rank asc,
-    item asc
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_2940558602.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 65:6
-     |
-  65 |     (import raw.item as item
-     |      ^---
-     |
-     = expected select_statement
-  Location:
-   with combined as union(     ( ??? import raw.item as item      w...
-
-  Write stats: received 3474 chars / 3474 bytes; tail: …'rn_rank asc,\\n    currency_rank asc,\\n    item asc\\nlimit 100;\\n'.
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select count(*) as cnt subset join ss.ticket_number = sr.ticket_number subset join ss.i…item_sk where sr.date_dim.moy = 8 and sr.date_dim.year = 2001 and ss.customer.customer_sk = sr.customer.customer_sk and ss.store.store_sk is not null`
-
-  ```text
-  Syntax error in stdin: Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...w.store_returns as sr; select ??? count(*) as cnt subset join ss...
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select case when date_diff(ss.date_dim.date, sr.date_dim.date, day) <= 30 then '30' whe….date_dim.moy = 8 and sr.date_dim.year = 2001 and ss.customer.customer_sk = sr.customer.customer_sk and ss.store.store_sk is not null group by bucket`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...ss.store.store_sk is not null ??? group by bucket;
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.store.date_dim.week_seq, ss.store.date_dim.year, count(1) as cnt where ss.store.date_dim.week_seq between 5217 and 5220 group by ss.store.date_dim.week_seq, ss.store.date_dim.year order by ss.store.date_dim.week_seq limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...eek_seq between 5217 and 5220 ??? group by ss.store.date_dim.wee...
-  ```
-- `trilogy file write answer_345752060.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-import raw.item…ect
-    all_sales.item_code,
-    sum(all_sales.channel_total) as total
-order by all_sales.item_code asc nulls first, total asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'answer_345752060.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
-  Location:
-  ...string, channel_total numeric) ???  select     all_sales.item_co...
-
-  Write stats: received 1133 chars / 1133 bytes; tail: …'.item_code asc nulls first, total asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write answer_4037365554.preql --content import raw.store_sales as store_sales;
-
-# First: compute per-manager, per-month total of unit price
-# Fi…tal,
-  per_manager_avg.avg_monthly
-order by 
-  per_month.manager_id asc,
-  per_manager_avg.avg_monthly asc,
-  per_month.monthly_total asc
+    item_sk asc nulls first,
+    sale_date asc nulls first
 limit 100
 ;`
 
   ```text
-  refused to write 'answer_4037365554.preql': not syntactically valid Trilogy.
+  refused to write 'answer_3560698360.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 26:1
+    --> 10:118
      |
-  26 | by per_month.manager_id
-     | ^---
+  10 |     sum(sum(store_sales.sales_price)) over (partition by store_sales.item.item_sk order by store_sales.date_dim.date rows between unbounded preceding and current row) as running_total
+     |                                                                                                                      ^---
      |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+     = expected ORDER_DIRECTION_LA, ORDERING_DIRECTION, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...monthly_total) as avg_monthly ??? by per_month.manager_id ;  # T...
+   by store_sales.date_dim.date ??? rows between unbounded precedi...
 
-  Write stats: received 1563 chars / 1563 bytes; tail: …'g.avg_monthly asc,\\n  per_month.monthly_total asc\\nlimit 100\\n;'.
+  Write stats: received 1883 chars / 1883 bytes; tail: …'k asc nulls first,\\n    sale_date asc nulls first\\nlimit 100\\n;'.
   ```
-- `trilogy file write answer_3544057080.preql -c import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw.catalo…m_catalog_ext_list_price > 2 * cat_refund_by_item.total_refund
-    and cat_refund_by_item.total_refund is not null;
+- `trilogy run --import raw/date_dim:date_dim select distinct date_dim.month_seq where date_dim.year = 1998 and date_dim.moy = 12;`
 
-select qualifying_items limit 5;`
+  ```text
+  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ....date_dim as date_dim; select ??? distinct date_dim.month_seq wh...
+  ```
+- `trilogy run --import raw/store_sales:ss --import raw/catalog_sales:cs select ss.customer.customer_sk, sum(ss.ext_sales_price) as tot where ss.date_dim.month_…nd ss.store.state = ss.customer.customer_address.state group by ss.customer.customer_sk having sum(ss.ext_sales_price) > 0 order by tot desc limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...stomer.customer_address.state ??? group by ss.customer.customer_...
+  ```
+- `trilogy run --import raw/store_sales:ss select distinct ss.store.county, ss.store.state limit 10;`
+
+  ```text
+  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...raw.store_sales as ss; select ??? distinct ss.store.county, ss.s...
+  ```
+- `trilogy file write answer_3247656127.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Find item_i…e,
+    sum(combined.total_sale) as total_sale_price
+order by
+    total_sale_price asc nulls first,
+    combined.item_code asc nulls first
+limit 100
+;`
+
+  ```text
+  refused to write 'answer_3247656127.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Location:
+  ...) ) -> (item_code, total_sale) ??? select     combined.item_code...
+
+  Write stats: received 1768 chars / 1768 bytes; tail: …'ls first,\\n    combined.item_code asc nulls first\\nlimit 100\\n;'.
+  ```
+- `trilogy run --import raw/store_sales:store select store.item.item_id, sum(store.ext_sales_price) as tot where store.date_dim.week_seq = 5218 group by store.item.item_id limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...tore.date_dim.week_seq = 5218 ??? group by store.item.item_id li...
+  ```
+- `trilogy file write answer_145690531.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Rowsets: per…als.total between 0.9 * catalog_totals.total and 1.1 * catalog_totals.total
+order by store_totals.item_id, store_totals.total nulls first
+limit 100;
+`
+
+  ```text
+  refused to write 'answer_145690531.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Location:
+  ...total ;  # Join them together ??? subset join store_totals.item_...
+
+  Write stats: received 1854 chars / 1854 bytes; tail: …'e_totals.item_id, store_totals.total nulls first\\nlimit 100;\\n'.
+  ```
+- `trilogy file write answer_3544057080.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import r…as sale_lines,
+    sum(ss.wholesale_cost) as wholesale_cost_sum,
+    sum(ss.list_price) as list_price_sum,
+    sum(ss.coupon_amt) as coupon_amt_sum
+;`
 
   ```text
   refused to write 'answer_3544057080.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 22:5
+    --> 23:1
      |
-  22 |     where item_catalog_ext_list_price > 2 * cat_refund_by_item.total_refund
-     |     ^---
+  23 | subset join sr.item.item_sk = ss.item.item_sk
+     | ^---
      |
-     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
   Location:
-  ...at_refund_by_item.item_sk     ??? where item_catalog_ext_list_pr...
+   sr.ticket_number is not null ??? subset join sr.item.item_sk =
 
-  Write stats: received 912 chars / 912 bytes; tail: …'.total_refund is not null;\\n\\nselect qualifying_items limit 5;'.
+  Write stats: received 3844 chars / 3844 bytes; tail: …'s list_price_sum,\\n    sum(ss.coupon_amt) as coupon_amt_sum\\n;'.
   ```
-- `trilogy run --import raw.web_sales:web select distinct web.sold_date.year order by 1 limit 20;`
+- `trilogy file write answer_2874833976.preql --content import raw.store_sales as ss;
+
+# Top 5 states by store net profit in 2000
+with top_states as
+where ss.da…s.date_dim.year = 2000
+  and ss.store.state is not null
+  and ss.store.state in top_states.state
+order by level desc, ss.store.state, rnk
+limit 100;
+`
 
   ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  refused to write 'answer_2874833976.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 29:1
+     |
+  29 | where ss.date_dim.year = 2000
+     | ^---
+     |
+     = expected limit, order_by, or having
   Location:
-   raw.web_sales as web; select ??? distinct web.sold_date.year or...
+  ...store.state, ss.store.county) ??? where ss.date_dim.year = 2000
+
+  Write stats: received 1001 chars / 1001 bytes; tail: …'s.state\\norder by level desc, ss.store.state, rnk\\nlimit 100;\\n'.
   ```
-- `trilogy run --import raw.store_sales:ss select ss.store.state, sum(ss.net_profit) as total_net_profit where ss.date_dim.year = 2000 and ss.store.store_sk is not null group by ss.store.state order by total_net_profit desc limit 10;`
+- `trilogy run --import raw.store_sales:ss select ss.store.state, sum(ss.net_profit) as state_profit where ss.date_dim.year = 2000 and ss.store.state is not null group by ss.store.state order by state_profit desc limit 5;`
 
   ```text
   Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...ss.store.store_sk is not null ??? group by ss.store.state order
+  ...nd ss.store.state is not null ??? group by ss.store.state order
   ```
 - `trilogy file write answer_42596196.preql --content import raw.catalog_sales as cs;
 import raw.web_sales as ws;
 import raw.store_sales as ss;
 
-with combined a…der by
-    total_ext_sales_price desc nulls first,
-    combined.brand_id nulls first,
-    combined.hour nulls first,
-    combined.minute nulls first;`
+with combined a…order by
+  total_extended_sales_price desc nulls first,
+  combined.brand_id nulls first,
+  combined.hour nulls first,
+  combined.minute nulls first
+;`
+
+  ```text
+  refused to write 'answer_42596196.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 6:4
+    |
+  6 |   (import raw.catalog_sales as cs
+    |    ^---
+    |
+    = expected select_statement
+  Location:
+  ...;  with combined as union(   ( ??? import raw.catalog_sales as cs...
+
+  Write stats: received 1588 chars / 1588 bytes; tail: …'  combined.hour nulls first,\\n  combined.minute nulls first\\n;'.
+  ```
+- `trilogy file write answer_42596196.preql --content import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+import raw.store_sales as ss;
+
+with combined a…order by
+  total_extended_sales_price desc nulls first,
+  combined.brand_id nulls first,
+  combined.hour nulls first,
+  combined.minute nulls first
+;`
 
   ```text
   refused to write 'answer_42596196.preql': not syntactically valid Trilogy.
@@ -1774,20 +1412,88 @@ with combined a…der by
   Parse error:
   Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
   Location:
-   minute bigint, total numeric) ???  select     combined.brand_id...
+   minute bigint, total numeric) ???  select   combined.brand_id,
 
-  Write stats: received 1565 chars / 1565 bytes; tail: …' combined.hour nulls first,\\n    combined.minute nulls first;'.
+  Write stats: received 1492 chars / 1492 bytes; tail: …'  combined.hour nulls first,\\n  combined.minute nulls first\\n;'.
+  ```
+- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
+
+where
+  cs.sold_date.year = 1999
+  and cs.ship_customer.household_demog…, cs.sold_date.date, day) > 5
+
+select
+  cs.item.item_desc as item_description,
+  cs.sold_date.week_seq as week_sequence,
+  count(*) as cnt
+limit 10;
+`
+
+  ```text
+  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a NON-NULL GRAIN KEY: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). It MUST be a key, and one that is not nullable: `count(x)` skips rows where `x` is NULL, so counting a nullable property (a name, a date, any optional field) silently undercounts. When the grain takes SEVERAL keys, name them with `grain(...)`: `count(grain(order_id, item.id))` counts order+item combinations, and `count_distinct(grain(first_name, last_name, sale_date))` counts distinct combinations - `grain()` is never NULL, so combinations with a missing member still count. For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+  Location:
+  ....week_seq as week_sequence,   ??? count(*) as cnt limit 10;
+
+  Write stats: received 385 chars / 385 bytes; tail: …'date.week_seq as week_sequence,\\n  count(*) as cnt\\nlimit 10;\\n'.
+  ```
+- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
+
+select
+  cs.sold_date.year as yr,
+  count(cs.order_number) as cnt
+group by cs.sold_date.year
+order by yr;
+`
+
+  ```text
+  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...count(cs.order_number) as cnt ??? group by cs.sold_date.year ord...
+
+  Write stats: received 139 chars / 139 bytes; tail: …'rder_number) as cnt\\ngroup by cs.sold_date.year\\norder by yr;\\n'.
+  ```
+- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
+
+where 
+  cs.sold_date.year = 1999
+  and cs.ship_customer.household_demographics.buy_potential = '>10000'
+
+select
+  count(cs.order_number) as cnt
+by *;
+`
+
+  ```text
+  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 9:1
+    |
+  9 | by *;
+    | ^---
+    |
+    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...count(cs.order_number) as cnt ??? by *;
+
+  Write stats: received 184 chars / 184 bytes; tail: …"al = '>10000'\\n\\nselect\\n  count(cs.order_number) as cnt\\nby *;\\n".
   ```
 - `trilogy file write answer_3840922834.preql --content import raw.store_sales as ss;
 import raw.web_sales as ws;
+import raw.customer as c;
 
-# Compute totals per customer per channel per…_2001)
+# Rowset 1: store s…_2002 / pivoted.store_2001)
 select
-    cust_info.customer_id,
-    cust_info.first_name,
-    cust_info.last_name
-order by
-    cust_info.customer_id nulls first
+    pivoted.cust_code,
+    pivoted.fname,
+    pivoted.lname
+order by pivoted.cust_code asc nulls first
 limit 100;
 `
 
@@ -1795,283 +1501,315 @@ limit 100;
   refused to write 'answer_3840922834.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Syntax [226]: Misplaced `subset|union join`. The key looks fine - the join is in the wrong PLACE. A query-scoped join is part of a `select` statement, not a standalone statement and not a pre-`where` clause. Put it right after the select list (preferred, SQL-like): `where <filters> select <cols> subset join a.key = b.key`. The clause order is `where` -> `select` <cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also sit between `where` and `select`, but never before `where` and never on its own. Full reference: `trilogy agent-info syntax example query-structure`.
   Location:
-  ...ng together and apply filters ??? union join cust_info.customer_...
+  ...columns with cust_combined as ??? subset join store_by_cust_year...
 
-  Write stats: received 1823 chars / 1823 bytes; tail: …'e\\norder by\\n    cust_info.customer_id nulls first\\nlimit 100;\\n'.
+  Write stats: received 2050 chars / 2050 bytes; tail: …'lname\\norder by pivoted.cust_code asc nulls first\\nlimit 100;\\n'.
   ```
-- `trilogy file write answer_3046445280.preql --content import raw/catalog_sales as cs;
-import raw/catalog_returns as cr;
-import raw/store_sales as ss;
-import r…manufact_id
-where y2001.qty is not null
-  and y2002.qty is not null
-  and y2002.qty / y2001.qty < 0.9
-order by qty_diff asc, amt_diff asc
-limit 100;
-`
+- `trilogy file write answer_747155668.preql --content import raw.store_sales as ss;
+import raw.web_sales as ws;
+import raw.catalog_sales as cs;
+
+with combined …ls first,
+         combined.sale_year nulls first,
+         combined.sale_quarter nulls first,
+         combined.item_category nulls first
+limit 100;`
 
   ```text
-  refused to write 'answer_3046445280.preql': not syntactically valid Trilogy.
+  refused to write 'answer_747155668.preql': not syntactically valid Trilogy.
 
   Parse error:
-   --> 1:8
-    |
-  1 | import raw/catalog_sales as cs;
-    |        ^---
-    |
-    = expected IMPORT_DOT
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
   Location:
-  import ??? raw/catalog_sales as cs; impor...
+  ...total_ext_sales_price numeric) ???  select   combined.channel,
 
-  Write stats: received 4472 chars / 4472 bytes; tail: …'01.qty < 0.9\\norder by qty_diff asc, amt_diff asc\\nlimit 100;\\n'.
+  Write stats: received 2171 chars / 2171 bytes; tail: …'irst,\\n         combined.item_category nulls first\\nlimit 100;'.
   ```
-- `trilogy run --import raw/catalog_sales:cs select cs.sold_date.year, count(*) as cnt where cs.sold_date.year = 2000 limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...cs; select cs.sold_date.year, ??? count(*) as cnt where cs.sold_...
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.net_profit, sr.return_amt, sr.net_loss where ss.date_dim.date between '2000-0…is not null and ss.store.store_id is not null subset join sr.item.item_sk = ss.item.item_sk subset join sr.ticket_number = ss.ticket_number limit 10;`
+- `trilogy file write answer_3210116865.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
+import raw…annel is null then 0 else 1 end,
+    combined.channel asc nulls first,
+    combined.outlet asc nulls first,
+    sum(combined.returns) desc
+limit 100;`
 
   ```text
-  Syntax error in stdin:  --> 3:228
-    |
-  3 | select ss.net_profit, sr.return_amt, sr.net_loss where ss.date_dim.date between '2000-08-23'::date and '2000-09-22'::date and ss.item.current_price > 50 and ss.promotion.channel_tv is not null and ss.store.store_id is not null subset join sr.item.item_sk = ss.item.item_sk subset join sr.ticket_number = ss.ticket_number limit 10;
-    |                                                                                                                                                                                                                                    ^---
-    |
-    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  refused to write 'answer_3210116865.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
   Location:
-  ...ss.store.store_id is not null ??? subset join sr.item.item_sk =
+  ...turns numeric, profit numeric) ???  select     combined.channel
+
+  Write stats: received 4501 chars / 4501 bytes; tail: …'t asc nulls first,\\n    sum(combined.returns) desc\\nlimit 100;'.
   ```
-- `trilogy run --import raw.store_returns:sr --import raw.catalog_returns:cr --import raw.web_returns:wr select sr.item.item_id, sum(sr.return_quantity) as stor…in (5244, 5257, 5264) and cr.date_dim.week_seq in (5244, 5257, 5264) and wr.date_dim.week_seq in (5244, 5257, 5264) group by sr.item.item_id limit 5;`
+- `trilogy run --import raw/store_sales:ss select ss.date_dim.year, ss.item.item_sk, ss.customer.customer_sk, sum(ss.quantity) as qty where ss.date_dim.year = 2000 and ss.customer.customer_sk is not null group by year, item_sk, cust_sk limit 5;`
 
   ```text
   Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...eek_seq in (5244, 5257, 5264) ??? group by sr.item.item_id limit...
+  ...tomer.customer_sk is not null ??? group by year, item_sk, cust_s...
   ```
-- `trilogy file write test_debug9.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
-
-where
-  ws.sold_date.year = 2000
-  and wr.returning… wr.item.item_sk = ws.item.item_sk
-  subset join wr.order_number = ws.order_number
-group by ws.sales_price, ws.net_profit
-order by cnt desc
-limit 20;`
+- `trilogy file write answer_1226264875.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
+import raw.catalog_sales as cs;
+import raw…ast,
+    combined_qty asc nulls first,
+    combined_wc_sum asc nulls first,
+    combined_sp_sum asc nulls first,
+    ratio asc nulls first
+limit 100;`
 
   ```text
-  refused to write 'test_debug9.preql': not syntactically valid Trilogy.
+  refused to write 'answer_1226264875.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...rder_number = ws.order_number ??? group by ws.sales_price, ws.ne...
-
-  Write stats: received 784 chars / 784 bytes; tail: …'by ws.sales_price, ws.net_profit\\norder by cnt desc\\nlimit 20;'.
-  ```
-- `trilogy file write answer_32504671.preql --content import raw.store_sales as ss;
-
-where ss.store.store_name = 'ese'
-  and (
-    (ss.household_demographics.de…nute >= 30) as bucket_1130_1200,
-  count(ss.item.item_sk, ss.ticket_number ? ss.time_dim.hour = 12 and ss.time_dim.minute < 30) as bucket_1200_1230
-;`
-
-  ```text
-  refused to write 'answer_32504671.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 10:24
+    --> 33:1
      |
-  10 |   count(ss.item.item_sk, ss.ticket_number ? ss.time_dim.hour = 8 and ss.time_dim.minute >= 30 and ss.time_dim.hour < 9) as bucket_0830_0900,
-     |                        ^---
-     |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...select   count(ss.item.item_sk ??? , ss.ticket_number ? ss.time_d...
-
-  Write stats: received 1329 chars / 1329 bytes; tail: …'hour = 12 and ss.time_dim.minute < 30) as bucket_1200_1230\\n;'.
-  ```
-- `trilogy file write answer_501431752.preql --content import raw.catalog_returns as cr;
-
-# Catalog returns in the 11th month of year 1998
-# Restrict to returni…status = 'W'
-         and cr.returning_customer.customer_demographics.education_status = 'Advanced Degree')
-    )
-order by
-    total_net_loss desc
-;
-`
-
-  ```text
-  refused to write 'answer_501431752.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 16:1
-     |
-  16 | by
+  33 | union all
      | ^---
      |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+     = expected join_clause, metadata, limit, order_by, where, having, or select_grouping
   Location:
-  ...r.net_loss) as total_net_loss ??? by     cr.call_center.call_cen...
+  ...sum(cs.sales_price) as cat_sp ??? union all where ws.sold_date.y...
 
-  Write stats: received 1433 chars / 1433 bytes; tail: …"'Advanced Degree')\\n    )\\norder by\\n    total_net_loss desc\\n;\\n".
+  Write stats: received 2482 chars / 2482 bytes; tail: …'sp_sum asc nulls first,\\n    ratio asc nulls first\\nlimit 100;'.
+  ```
+- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk, ss.customer.customer_sk, sum(ss.quantity) as qty, sum(ss.wholes…ustomer.customer_sk is not null and (ss.ticket_number, ss.item.item_sk) not in (sr.ticket_number, sr.item.item_sk) group by item_sk, cust_sk limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...cket_number, sr.item.item_sk) ??? group by item_sk, cust_sk limi...
+  ```
+- `trilogy run --import raw/store_returns:sr select sr.item.item_id, sr.return_quantity where sr.item.item_id in (select sr2.item.item_id where sr2.date_dim.week_seq in (5244, 5257, 5264) group by sr2.item.item_id having sum(sr2.return_quantity) is null) and sr.date_dim.week_seq in (5244, 5257, 5264) limit 10;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...eek_seq in (5244, 5257, 5264) ??? group by sr2.item.item_id havi...
+  ```
+- `trilogy file write answer_2869182220.preql --content import raw.store_returns as sr;
+import raw.customer as c;
+
+# Get the set of customer_demographic keys (d…dden grain fields
+    --return_demo_profiles.ticket_number,
+    --return_demo_profiles.item.item_sk
+order by c.customer_id asc nulls first
+limit 100;`
+
+  ```text
+  refused to write 'answer_2869182220.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 19:3
+     |
+  19 | --return_demo_profiles.profile_demo_sk as h_profile,
+     |   ^---
+     |
+     = expected PURPOSE, PROPERTY, UNIQUE, or AUTO
+  Location:
+  ...urn as hidden grain fields  -- ??? return_demo_profiles.profile_d...
+
+  Write stats: received 1457 chars / 1457 bytes; tail: …'em.item_sk\\norder by c.customer_id asc nulls first\\nlimit 100;'.
+  ```
+- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
+import raw.web_returns as wr;
+
+# Filter web sales to year 2000
+where ws.sold_…_refunded_cash,
+    avg(wr.fee) as avg_return_fee
+order by
+    reason_desc_20,
+    avg_sold_qty,
+    avg_refunded_cash,
+    avg_return_fee
+limit 100;`
+
+  ```text
+  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Location:
+  ...rder_number = wr.order_number ??? union join ws.item.item_sk = w...
+
+  Write stats: received 2990 chars / 2990 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
+  ```
+- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
+import raw.web_returns as wr;
+
+# Filter web sales to year 2000
+where ws.sold_…_refunded_cash,
+    avg(wr.fee) as avg_return_fee
+order by
+    reason_desc_20,
+    avg_sold_qty,
+    avg_refunded_cash,
+    avg_return_fee
+limit 100;`
+
+  ```text
+  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Location:
+   grain: item and order_number ??? union join ws.order_number = w...
+
+  Write stats: received 2374 chars / 2374 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
+  ```
+- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
+import raw.web_returns as wr;
+
+# Filter web sales to year 2000
+where ws.sold_…')
+     and ws.net_profit between 50 and 250)
+  )
+order by
+    reason_desc_20,
+    avg_sold_qty,
+    avg_refunded_cash,
+    avg_return_fee
+limit 100;`
+
+  ```text
+  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Location:
+  ...avg(wr.fee) as avg_return_fee ??? union join ws.order_number = w...
+
+  Write stats: received 2209 chars / 2209 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
   ```
 - `trilogy file write answer_3281742578.preql --content import raw.web_sales as ws;
 import raw.web_returns as wr;
 
-# Rowset: orders where at least 2 different w…_number) as order_count,
+# Step 1: Identify candidate orders that have…as order_count,
     sum(ws.ext_ship_cost) as total_ext_ship_cost,
     sum(ws.net_profit) as total_net_profit
-order by order_count
-limit 100;`
+order by
+    order_count asc
+limit 100
+;`
 
   ```text
   refused to write 'answer_3281742578.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [104]: Definition or statement after WHERE/SELECT? Concept definitions (`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and `import` are top-level statements and must appear BEFORE the `where`/`select` block - they cannot sit inside a query. Move this statement above your `where`, and make sure each statement ends with `;`. Example: put `auto x <- sum(sales.amount) by store.id;` above `where ... select ...`.
+    --> 22:11
+     |
+  22 |     exist wr.order_number
+     |           ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
   Location:
-   used with multi_wh_orders as ??? auto wh_count <- count_distinc...
-
-  Write stats: received 1060 chars / 1060 bytes; tail: …'_profit) as total_net_profit\\norder by order_count\\nlimit 100;'.
+  ...urn_orders as where     exist ??? wr.order_number select     wr....
   ```
-- `trilogy file write answer_2333598260.preql --content import raw.store_sales as store_sales;
 
-where
-    store_sales.store.store_name = 'ese'
-    and store_sal…= 30
-    and store_sales.customer.household_demographics.dep_count = 7
-select
-    count(*) as line_item_count
-order by
-    line_item_count
-limit 100;`
+### `join-resolution`
+
+- `trilogy run --import raw.store_sales:s --import raw.item:i with qualifying_items as select i.category as cat, avg(i.current_price) by i.category as cat_avg; …t_price > 1.2 * qualifying_items.cat_avg as is_qualifying where i.category is not null and i.current_price > 1.2 * qualifying_items.cat_avg limit 10;`
 
   ```text
-  refused to write 'answer_2333598260.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a key field: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...hics.dep_count = 7 select     ??? count(*) as line_item_count or...
-
-  Write stats: received 312 chars / 312 bytes; tail: …') as line_item_count\\norder by\\n    line_item_count\\nlimit 100;'.
+  Resolution error in stdin: Could not resolve connections for query with output ['i.item_sk<Purpose.KEY>Derivation.ROOT>', 'i.category<Purpose.PROPERTY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>', 'qualifying_items.cat_avg<Purpose.METRIC>Derivation.ROWSET>', 'local.is_qualifying<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
   ```
-- `trilogy file write answer_2333598260.preql --content import raw.store_sales as store_sales;
-
-with line_items as
-where
-    store_sales.store.store_name = 'ese…_sk
-    --store_sales.coupon_amt
-;
-
-select
-    count(line_items.store_sales.ticket_number) as line_item_count
-order by
-    line_item_count
-limit 100;`
+- `trilogy run --import raw/store_sales:store_sales --import raw/item:item select item.item_sk, count(grain(store_sales.ticket_number, item.item_sk)) as cnt where store_sales.date_dim.year = 2000 and item.item_sk is not null limit 5;`
 
   ```text
-  refused to write 'answer_2333598260.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 12:6
-     |
-  12 |     --store_sales.coupon_amt
-     |      ^---
-     |
-     = expected access_chain
-  Location:
-  ...store_sales.item.item_sk     - ??? -store_sales.coupon_amt ;  sel...
-
-  Write stats: received 467 chars / 467 bytes; tail: …') as line_item_count\\norder by\\n    line_item_count\\nlimit 100;'.
+  Resolution error in stdin: Could not resolve connections for query with output ['item.item_sk<Purpose.KEY>Derivation.ROOT>', 'local.cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
   ```
-- `trilogy file write answer_3562094594.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-
-# Store sales unique (customer, item) pai…nly_store.cust_sk) as store_only_count,
-    count(only_catalog.cust_sk) as catalog_only_count,
-    count(both_sets.cust_sk) as both_count
-limit 100;
-`
+- `trilogy run answer_1256642802.preql`
 
   ```text
-  refused to write 'answer_3562094594.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 20:6
-     |
-  20 |     (store_set.cust_sk, store_set.item_sk),
-     |      ^---
-     |
-     = expected select_statement
-  Location:
-  ...th only_store as except(     ( ??? store_set.cust_sk, store_set.i...
-
-  Write stats: received 1073 chars / 1073 bytes; tail: …'ount,\\n    count(both_sets.cust_sk) as both_count\\nlimit 100;\\n'.
+  Resolution error in answer_1256642802.preql: Could not resolve connections for query with output ['ss.store.store_name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.item_desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue<Purpose.METRIC>Derivation.BASIC>', 'local.item_current_price<Purpose.PROPERTY>Derivation.BASIC>', 'local.item_wholesale_cost<Purpose.PROPERTY>Derivation.BASIC>', 'local.item_brand<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
   ```
-- `trilogy file write answer_3498056762.preql --content import raw.catalog_sales as cs;
-
-auto shipping_lag <- date_diff(cs.sold_date.date, cs.ship_date.date, da…en 1 else 0 end) as bucket_over_120, 0)
-order by
-    wh_name_20 nulls first,
-    ship_mode_type nulls first,
-    cc_name_lower nulls first
-limit 100;`
+- `trilogy run answer_1256642802.preql`
 
   ```text
-  refused to write 'answer_3498056762.preql': not syntactically valid Trilogy.
+  Resolution error in answer_1256642802.preql: Could not resolve connections for query with output ['ss.store.store_name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.item_desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue_1998<Purpose.METRIC>Derivation.AGGREGATE>', 'ss.item.current_price<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.wholesale_cost<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.brand<Purpose.PROPERTY>Derivation.ROOT>'] from current model.
+  ```
+- `trilogy run answer_3046445280.preql`
 
-  Parse error:
-    --> 14:66
-     |
-  14 |     coalesce(sum(case when shipping_lag <= 30 then 1 else 0 end) as bucket_30_or_fewer, 0),
-     |                                                                  ^---
-     |
-     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, aggregate_over, or window_sql_over
-  Location:
-  ..._lag <= 30 then 1 else 0 end) ??? as bucket_30_or_fewer, 0),
+  ```text
+  Resolution error in answer_3046445280.preql: Could not resolve connections for query with output ['local.___tvf_arm_0_yr<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_brand_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_class_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_cat_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_manu_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_net_qty<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_net_amt<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
+  ```
+- `trilogy run answer_2852230229.preql`
 
-  Write stats: received 1042 chars / 1042 bytes; tail: …'e_type nulls first,\\n    cc_name_lower nulls first\\nlimit 100;'.
+  ```text
+  Resolution error in answer_2852230229.preql: Could not resolve connections for query with output ['local.total_net_paid<Purpose.METRIC>Derivation.AGGREGATE>', 'item.category<Purpose.PROPERTY>Derivation.ROOT>', 'item.class<Purpose.PROPERTY>Derivation.ROOT>', 'local.hierarchy_level<Purpose.METRIC>Derivation.BASIC>', 'local.rnk<Purpose.PROPERTY>Derivation.WINDOW>', 'local._virt_agg_grouping_7561668700388452<Purpose.METRIC>Derivation.AGGREGATE>', 'local._virt_agg_grouping_1927481247739235<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
   ```
 
 ### `cli-misuse`
 
-- `trilogy explore raw`
+- `trilogy explore raw/`
 
   ```text
-  Invalid value for 'PATH': File 'raw' is a directory.
+  Invalid value for 'PATH': File 'raw/' is a directory.
+  ```
+- `trilogy file write -e -c import raw.web_sales as ws;
+
+# Filter period first
+where ws.sold_date.date between '1999-02-22'::date and '1999-03-24'::date
+  and w…0)) * 100.0 as pct_of_class
+order by
+    ws.item.category,
+    ws.item.class,
+    ws.item.item_id,
+    ws.item.item_desc,
+    pct_of_class
+limit 100;`
+
+  ```text
+  Missing argument 'PATH'.
   ```
 - `trilogy explore raw/`
 
   ```text
   Invalid value for 'PATH': File 'raw/' is a directory.
   ```
-- `trilogy explore raw/sales.preql`
+- `trilogy explore raw/ --regex sales|store_sales|catalog_sales|web_sales`
 
   ```text
-  Invalid value for 'PATH': File 'raw/sales.preql' does not exist.
+  Invalid value for 'PATH': File 'raw/' is a directory.
   ```
 
 ### `undefined-concept`
 
-- `trilogy explore answer_2874833976.preql`
+- `trilogy explore answer_3863442186.preql`
 
   ```text
-  Failed to parse answer_2874833976.preql: (UndefinedConceptException(...), "Undefined concept: top_states.state_total.state (line 28, col 25, in WHERE). Suggestions: ['top_states.state_total', 'top_states.ss.store.state', 'ss.store.state', 'ss.customer.customer_address.state', 'ss.customer_address.state']")
+  Failed to parse answer_3863442186.preql: (UndefinedConceptException(...), "Undefined concept: sv01.customer_id. Suggestions: ['s.customer.customer_id', 'cs.bill_customer.customer_id', 'cs.ship_customer.customer_id', 'ws.bill_customer.customer_id', 'ws.ship_customer.customer_id', 'store_vals.s.customer.customer_id']")
   ```
 
-### `type-error`
+### `syntax-missing-alias`
 
-- `trilogy run answer_2333598260.preql`
+- `trilogy file write answer_3979964698.preql -c import raw.web_sales as web;
+import raw.catalog_sales as cat;
+
+with combined as union(
+  (
+    select
+      web…sum(combined.monthly_net ? combined.sale_month = 12) as dec_net
+order by
+  combined.wh_name nulls first,
+  combined.sale_year nulls first
+limit 100;
+`
 
   ```text
-  Type error in answer_2333598260.preql: Invalid argument type 'BIGINT' passed into CONCAT_STRICT function in position 1 from concept: store_sales.ticket_number. Valid: 'STRING'.
+  refused to write 'answer_3979964698.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `hidden warehouse sk distinguishes but is not displayed
+    -- 8 visible grouping fields
+    combined.wh_name as hidden_warehouse_sk_distinguishes_but_is`
+  Location:
+  ...hly_net);  select   -- hidden ??? warehouse sk distinguishes but...
+
+  Write stats: received 5000 chars / 5000 bytes; tail: …'me nulls first,\\n  combined.sale_year nulls first\\nlimit 100;\\n'.
   ```

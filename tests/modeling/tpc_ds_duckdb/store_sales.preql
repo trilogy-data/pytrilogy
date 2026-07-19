@@ -11,9 +11,9 @@
 import std.money;
 
 import item as item;
-import date as date;
+import date as sale_date;
 import date as return_date;
-import time as time;
+import time as sale_time;
 import time as return_time;
 import customer as customer; # the customer account tied to the order
 import customer as return_customer; # the customer account tied to the return
@@ -65,8 +65,8 @@ auto is_returned <- _returned_ticket is not null; # True if this ticket line was
 
 datasource store_sales (
     raw('''1'''): row_counter,
-    SS_SOLD_DATE_SK: ?date.sk, # FK to date the sale occurred (optional in source data).
-    SS_SOLD_TIME_SK: ?time.sk, # FK to time-of-day the sale occurred.
+    SS_SOLD_DATE_SK: ?sale_date.sk, # FK to date the sale occurred (optional in source data).
+    SS_SOLD_TIME_SK: ?sale_time.sk, # FK to time-of-day the sale occurred.
     SS_CUSTOMER_SK: ?customer.sk, # FK to the purchasing customer (optional — anonymous sales allowed).
     SS_CDEMO_SK: ?pos_customer_demographic.sk, # FK to the customer's demographic profile at time of sale.
     SS_HDEMO_SK: ?pos_household_demographic.sk, # FK to the customer's household profile at time of sale.

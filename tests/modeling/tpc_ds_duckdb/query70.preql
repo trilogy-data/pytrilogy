@@ -1,11 +1,11 @@
 import store_sales as ss;
 
 # Top-5 states by sum(profit) — same as reference's IN-subquery.
-auto state_total <- sum(ss.net_profit ? ss.date.month_seq between 1200 and 1211) by ss.store.state;
+auto state_total <- sum(ss.net_profit ? ss.sale_date.month_seq between 1200 and 1211) by ss.store.state;
 auto state_rnk <- rank(ss.store.state) over (order by state_total desc);
 
 rowset top_states <- where
-    ss.date.month_seq between 1200 and 1211
+    ss.sale_date.month_seq between 1200 and 1211
 select
     ss.store.state as ts_state,
 having
@@ -28,7 +28,7 @@ auto rank_within_parent <- rank(ss.store.state, ss.store.county)
     over (partition by lochierarchy, partition_state order by total_sum desc);
 
 where
-    ss.date.month_seq between 1200 and 1211
+    ss.sale_date.month_seq between 1200 and 1211
     and ss.store.state in top_states.ts_state
 select
     total_sum,

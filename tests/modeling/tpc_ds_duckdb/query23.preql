@@ -1,11 +1,11 @@
 import all_sales as sales;
 
-# frequent_ss_items: items with at least one (truncated_desc, item.sk, sold_date) combo having > 4 store_sales rows in 2000-2003
+# frequent_ss_items: items with at least one (truncated_desc, item.sk, sale_date) combo having > 4 store_sales rows in 2000-2003
 auto sales.item.desc_truncated <- substring(sales.item.desc, 1, 30);
 auto customer_total_in_window <- sum(sales.quantity * sales.sales_price) by sales.billing_customer.sk;
 
 rowset frequent_items <- where
-    sales.channel = 'STORE' and sales.date.year in (2000, 2001, 2002, 2003)
+    sales.channel = 'STORE' and sales.sale_date.year in (2000, 2001, 2002, 2003)
 select
     sales.item.sk as frequent_item_id,
 having
@@ -19,13 +19,13 @@ auto customer_total_overall <- sum(sales.quantity * sales.sales_price) by sales.
 rowset max_total <- where
     sales.billing_customer.sk is not null
     and sales.channel = 'STORE'
-    and sales.date.year in (2000, 2001, 2002, 2003)
+    and sales.sale_date.year in (2000, 2001, 2002, 2003)
 select
     max(customer_total_in_window) as cmax,
 ;
 
 # best_ss_customer: customers whose lifetime ss_qty*ss_price > 50% of cmax (no date filter)
-auto ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.sk, sales.date.date;
+auto ss_combo_count <- count(sales.order_id) by sales.item.desc_truncated, sales.item.sk, sales.sale_date.date;
 
 rowset best_customers <- where
     sales.billing_customer.sk is not null and sales.channel = 'STORE'
@@ -38,8 +38,8 @@ having
 
 # Final: sum (qty * list_price) by (last, first, channel) for Feb 2000, items in frequent, customers in best
 where
-    sales.date.year = 2000
-    and sales.date.month_of_year = 2
+    sales.sale_date.year = 2000
+    and sales.sale_date.month_of_year = 2
     and sales.item.sk in frequent_items.frequent_item_id
     and sales.billing_customer.sk in best_customers.best_customer_id
 select

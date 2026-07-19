@@ -24,7 +24,7 @@ select
 # the inequality into this row filter (and collapsing ss_rows_* away) blows the
 # sf=1 plan past 3GB / 5+ min, so the extra row-grain rowset stays on purpose.
 def year_row_filter(yr) -> ss.item.sk in cs_ui.cs_ui_item_id
-and ss.date.year = yr
+and ss.sale_date.year = yr
 and ss.is_returned
 and ss.item.color in ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium')
 and ss.item.current_price between 65 and 74
@@ -45,7 +45,7 @@ select
     ss.store.sk,
     ss.pos_address.sk,
     ss.customer.current_address.sk,
-    ss.date.year,
+    ss.sale_date.year,
     ss.customer.first_sales_date.year,
     ss.customer.first_shipto_date.year,
     ss.wholesale_cost,
@@ -61,7 +61,7 @@ select
     ss.ticket_number,
     ss.item.sk,
     ss.store.sk,
-    ss.date.year,
+    ss.sale_date.year,
     ss.wholesale_cost,
     ss.list_price,
     ss.coupon_amt,
@@ -78,7 +78,7 @@ select
     ss_rows_99.ss.store.sk as store_sk_99,
     ss_rows_99.ss.pos_address.sk as b_addr_99,
     ss_rows_99.ss.customer.current_address.sk as c_addr_99,
-    ss_rows_99.ss.date.year as syear_99,
+    ss_rows_99.ss.sale_date.year as syear_99,
     ss_rows_99.ss.customer.first_sales_date.year as fsyear_99,
     ss_rows_99.ss.customer.first_shipto_date.year as s2year_99,
     count(ss_rows_99.ss.ticket_number) as cnt_99,
@@ -92,7 +92,7 @@ rowset agg_00 <- where
 select
     ss_rows_00.ss.item.sk as item_sk_00,
     ss_rows_00.ss.store.sk as store_sk_00,
-    ss_rows_00.ss.date.year as syear_00,
+    ss_rows_00.ss.sale_date.year as syear_00,
     count(ss_rows_00.ss.ticket_number) as cnt_00,
     sum(ss_rows_00.ss.wholesale_cost) as s1_00,
     sum(ss_rows_00.ss.list_price) as s2_00,

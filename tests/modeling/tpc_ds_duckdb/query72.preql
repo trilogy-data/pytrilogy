@@ -2,17 +2,17 @@ import catalog_sales as cs;
 import inventory as inv;
 
 where
-    cs.sold_date.year = 1999
+    cs.sale_date.year = 1999
     and cs.pos_household_demographic.buy_potential = '>10000'
     and cs.pos_customer_demographic.marital_status = 'D'
     and cs.days_to_ship > 5
     and inv.quantity_on_hand < cs.quantity
-    and inv.date.week_seq = cs.sold_date.week_seq
+    and inv.date.week_seq = cs.sale_date.week_seq
 subset join cs.item.sk = inv.item.sk
 select
     cs.item.desc as item_desc,
     inv.warehouse.name as warehouse_name,
-    cs.sold_date.week_seq as week_seq,
+    cs.sale_date.week_seq as week_seq,
     count(
         grain(cs.order_number, cs.item.sk, inv.date.sk, inv.warehouse.sk)
             ? cs.promotion.sk is null

@@ -79,7 +79,8 @@ def build_report(
             "scale_factor": args.scale_factor,
             "num_queries": total,
             "max_iterations": args.max_iterations,
-            "scope_diagnostics": getattr(args, "scope_diagnostics", True),
+            "scope_diagnostics": getattr(args, "scope_diagnostics", False),
+            "scope_warnings": getattr(args, "scope_warnings", True),
             "trilogy_version": _trilogy_version(),
             "openrouter_routing": os.environ.get("OPENROUTER_PROVIDER"),
             "model_source": (

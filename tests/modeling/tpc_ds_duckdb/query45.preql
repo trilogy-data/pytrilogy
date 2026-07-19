@@ -4,8 +4,8 @@ import item as item2;
 auto special_item_ids <- item2.id ? item2.sk in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29);
 
 where
-    web_sales.date.quarter = 2
-    and web_sales.date.year = 2001
+    web_sales.sale_date.quarter = 2
+    and web_sales.sale_date.year = 2001
     and (
         substring(web_sales.billing_customer.current_address.zip, 1, 5) in ('85669', '86197', '88274', '83405', '86475', '85392', '85460', '80348', '81792')
         or web_sales.item.id in special_item_ids

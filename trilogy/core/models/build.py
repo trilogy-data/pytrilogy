@@ -1789,6 +1789,11 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     by: List[BuildConcept] = field(default_factory=list)
     grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     grouping_sets: List[List[BuildConcept]] = field(default_factory=list)
+    # True when the author pinned no grain (`sum(x)` not `sum(x) by ...`), so
+    # `by` was filled from the resolution grain — i.e. the value silently took
+    # the enclosing select's grain. Diagnostic metadata only, excluded from
+    # equality; diagnostics warn on this in WHERE position.
+    grain_inherited: bool = field(default=False, compare=False)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -3369,6 +3374,7 @@ class Factory:
             by=by,
             grouping=grouping,
             grouping_sets=grouping_sets,
+            grain_inherited=base.grain_inherited or not base.by,
         )
 
     @_build_dispatch.register
@@ -3830,9 +3836,16 @@ class Factory:
         )
 
     @_build_dispatch.register
-    def _(self, base: SubqueryItem) -> BuildConcept:
+    def _(self, base: SubqueryItem) -> BuildConcept | BuildFunction:
         # A scalar subquery IS its single rowset output; drop the authoring
         # `select` payload and build the bare concept (grain-less → cross-join).
+        # A multi-output subquery (tuple `in` RHS) lowers to a ROW_TUPLE over all
+        # outputs — the same build shape as authored `(a, b) in (rs.a, rs.b)` —
+        # so composite membership sources every column against one existence CTE.
+        if base.is_row:
+            from trilogy.parsing.common import row_tuple_function
+
+            return self.build(row_tuple_function(list(base.contents)))
         return self.build(base.content)
 
     @_build_dispatch.register

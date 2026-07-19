@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from evals.common.scoring import _round_cell, _sig_round
+from evals.common.scoring import _results_equal, _round_cell, _sig_round
 
 
 def test_sig_round_relative_precision():
@@ -46,3 +46,29 @@ def test_non_numeric_and_bool_untouched():
 def test_non_finite_preserved():
     assert _round_cell(float("nan")) != _round_cell(float("nan"))  # nan != nan
     assert _round_cell(float("inf")) == float("inf")
+
+
+def test_tolerant_comparison_has_no_rounding_bucket_boundary():
+    candidate = [["catalog", 82462.849999999991]]
+    reference = [["catalog", Decimal("82462.85")]]
+    assert _results_equal(candidate, reference)
+
+
+def test_tolerant_comparison_ignores_row_and_column_order():
+    candidate = [[1, "a", 10.000001], [2, "b", 20.000001]]
+    reference = [[20.0, "b", 2], ["a", 10.0, 1]]
+    assert _results_equal(candidate, reference)
+
+
+def test_tolerant_comparison_preserves_multiset_cardinality():
+    candidate = [["a", 1.01], ["a", 1.01]]
+    reference = [["a", 1.01], ["b", 1.01]]
+    assert not _results_equal(candidate, reference)
+
+
+def test_tolerant_comparison_keeps_integer_counts_exact():
+    assert not _results_equal([[45689]], [[45690]])
+
+
+def test_tolerant_comparison_rejects_real_numeric_difference():
+    assert not _results_equal([["store", 163753.94]], [["store", 165000.00]])

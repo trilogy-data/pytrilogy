@@ -23,7 +23,6 @@ def test_validate_preql_content_rejects_invalid_syntax():
     msg = pv.validate_preql_content("q.preql", "this is not valid trilogy !!!")
     assert msg is not None
     assert "not syntactically valid Trilogy" in msg
-    assert "Write stats:" in msg
 
 
 def test_validate_preql_content_allows_valid_syntax():

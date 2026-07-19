@@ -38,15 +38,15 @@ def gen(preql: str) -> str:
 VARIANT = """
 import store_sales as ss;
 
-def day_sales(d) -> sum(ss.sales_price ? ss.date.day_name = d) by ss.store.sk, ss.date.week_seq;
+def day_sales(d) -> sum(ss.sales_price ? ss.sale_date.day_name = d) by ss.store.sk, ss.sale_date.week_seq;
 
 with wss as
-where ss.date.month_seq between 1212 and 1235 and ss.store.sk is not null and ss.date.week_seq is not null
+where ss.sale_date.month_seq between 1212 and 1235 and ss.store.sk is not null and ss.sale_date.week_seq is not null
 SELECT
     ss.store.sk as store_id,
     ss.store.name as store_name,
     ss.store.id as store_text_id,
-    ss.date.week_seq as week_seq,
+    ss.sale_date.week_seq as week_seq,
     @day_sales('Sunday')    as sun_sales,
     @day_sales('Monday')    as mon_sales,
     @day_sales('Tuesday')   as tue_sales,
@@ -54,8 +54,8 @@ SELECT
     @day_sales('Thursday')  as thu_sales,
     @day_sales('Friday')    as fri_sales,
     @day_sales('Saturday')  as sat_sales,
-    max(case when ss.date.month_seq >= 1212 and ss.date.month_seq <= 1223 then 1 else 0 end) as in_year1,
-    max(case when ss.date.month_seq >= 1224 and ss.date.month_seq <= 1235 then 1 else 0 end) as in_year2,
+    max(case when ss.sale_date.month_seq >= 1212 and ss.sale_date.month_seq <= 1223 then 1 else 0 end) as in_year1,
+    max(case when ss.sale_date.month_seq >= 1224 and ss.sale_date.month_seq <= 1235 then 1 else 0 end) as in_year2,
 ;
 
 # Normalized week-within-year so year1's W lines up with year2's W+52

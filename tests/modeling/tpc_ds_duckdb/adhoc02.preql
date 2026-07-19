@@ -1,19 +1,19 @@
 WHERE
-    store_sales.date.sk is not null
+    store_sales.sale_date.sk is not null
 SELECT
-    store_sales.date.year,
+    store_sales.sale_date.year,
     count(store_sales.ticket_number) as store_order_count
 HAVING
     store_order_count>0
 MERGE
 WHERE
-    web_sales.date.sk is not null
+    web_sales.sale_date.sk is not null
 SELECT
-    web_sales.date.year,
+    web_sales.sale_date.year,
     count(web_sales.order_number) as web_order_count
 HAVING
     web_order_count>0
 ALIGN 
-    report_date: store_sales.date.year, web_sales.date.year
+    report_date: store_sales.sale_date.year, web_sales.sale_date.year
 ORDER BY
     report_date asc;

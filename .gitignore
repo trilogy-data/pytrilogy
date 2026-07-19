@@ -35,6 +35,9 @@ AdventureWorksDW2019.bak
 memory.db
 tests/scripts/test.db
 evals/eval_history.db
+# rendered report artifacts (source .md/.preql/.toml are tracked)
+evals/report_model/report.html
+evals/report_model/report.png
 *.wal
 
 tests/modeling/tcp_ds_duckdb/memory/

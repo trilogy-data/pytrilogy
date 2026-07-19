@@ -1274,7 +1274,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 _aggregate_pinnable_grain_refs(grain, environment),
             )
             new_lineage = AggregateWrapper(
-                function=new_lineage, by=aggregate_grain_components
+                function=new_lineage,
+                by=aggregate_grain_components,
+                grain_inherited=True,
             )
             final_grain = grain
             keys = set(grain.components)
@@ -1289,6 +1291,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     by=wrapper_grain_components,
                     grouping=new_lineage.grouping,
                     grouping_sets=new_lineage.grouping_sets,
+                    grain_inherited=True,
                 )
             final_grain = grain
             keys = set(grain.components)
@@ -2458,6 +2461,10 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
     by: List[Any] = dc_field(default_factory=list)
     grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     grouping_sets: List[List[Any]] = dc_field(default_factory=list)
+    # Set when `by` was filled from the enclosing select's grain because the
+    # author pinned none (`sum(x)` not `sum(x) by ...`). Diagnostic metadata
+    # only — excluded from equality so it never changes computation identity.
+    grain_inherited: bool = dc_field(default=False, compare=False)
 
     def __post_init__(self):
         self.by = [_by_item_normalize(item) for item in self.by]
@@ -2504,6 +2511,7 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
                 ]
                 for grouping_set in self.grouping_sets
             ],
+            grain_inherited=self.grain_inherited,
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
@@ -2515,6 +2523,7 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
                 [_by_item_with_namespace(c, namespace) for c in grouping_set]
                 for grouping_set in self.grouping_sets
             ],
+            grain_inherited=self.grain_inherited,
         )
 
 
@@ -2653,9 +2662,12 @@ class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
 class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     """An inline ``(select …)`` subquery.
 
-    Desugared at hydration into an anonymous single-output rowset. Semantically
-    it IS that rowset concept (``content``) — build lowers it to the bare
-    concept, so a grain-less body cross-joins. The ``select`` payload is
+    Desugared at hydration into an anonymous rowset. A single-output subquery
+    IS that rowset concept (``content``) — build lowers it to the bare concept,
+    so a grain-less body cross-joins. A multi-output subquery (only valid as the
+    RHS of a tuple ``in``/``not in``) carries every projected output in
+    ``contents``; build lowers it to a ROW_TUPLE so membership is row-wise, the
+    same shape as authored ``(a, b) in (rs.a, rs.b)``. The ``select`` payload is
     authoring-only: the renderer uses it to reproduce the inline ``(select …)``
     form instead of leaking the synthetic ``_subquery_*`` rowset statement.
     """
@@ -2663,18 +2675,27 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     content: ConceptRef
     select: Any
     name: str = ""
+    contents: List[ConceptRef] = dc_field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
             self.content = ConceptRef(
                 address=self.content.address, datatype=self.content.datatype
             )
+        if not self.contents:
+            self.contents = [self.content]
 
     def __repr__(self):
+        if self.is_row:
+            return f"<Subquery: ({', '.join(str(c) for c in self.contents)})>"
         return f"<Subquery: {str(self.content)}>"
 
     def __str__(self):
         return self.__repr__()
+
+    @property
+    def is_row(self) -> bool:
+        return len(self.contents) > 1
 
     def with_reference_replacement(self, replacements: ReferenceReplacements):
         return SubqueryItem(
@@ -2685,6 +2706,14 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
             ),
             select=self.select,
             name=self.name,
+            contents=[
+                (
+                    c.with_reference_replacement(replacements)
+                    if isinstance(c, ReferenceReplaceable)
+                    else c
+                )
+                for c in self.contents
+            ],
         )
 
     def with_namespace(self, namespace: str) -> "SubqueryItem":
@@ -2696,6 +2725,10 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
             ),
             select=self.select,
             name=self.name,
+            contents=[
+                c.with_namespace(namespace) if isinstance(c, Namespaced) else c
+                for c in self.contents
+            ],
         )
 
     @property
@@ -2708,7 +2741,7 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        return [self.content]
+        return list(self.contents)
 
 
 @dataclass

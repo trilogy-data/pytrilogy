@@ -5,33 +5,33 @@ import all_sales as sales;
 auto store_in_window <- sum(
     case
         when sales.channel = 'STORE'
-        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.sale_date.month_seq between 1200 and 1200 + 11
         and sales.billing_customer.sk is not null then 1
         else 0
     end
 )
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.sale_date.date;
 auto catalog_in_window <- sum(
     case
         when sales.channel = 'CATALOG'
-        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.sale_date.month_seq between 1200 and 1200 + 11
         and sales.billing_customer.sk is not null then 1
         else 0
     end
 )
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.sale_date.date;
 auto web_in_window <- sum(
     case
         when sales.channel = 'WEB'
-        and sales.date.month_seq between 1200 and 1200 + 11
+        and sales.sale_date.month_seq between 1200 and 1200 + 11
         and sales.billing_customer.sk is not null then 1
         else 0
     end
 )
-    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.date.date;
+    by sales.billing_customer.last_name, sales.billing_customer.first_name, sales.sale_date.date;
 
 where
-    sales.date.month_seq between 1200 and 1200 + 11
+    sales.sale_date.month_seq between 1200 and 1200 + 11
 select
     sum(
             case

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import json
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 # Marker the agent's ``truncate_middle`` emits. We detect it in tool_result
 # bodies to count how many responses came back truncated.
@@ -346,6 +347,120 @@ def _multiset(rows: list) -> Counter[str]:
     )
 
 
+COMPARISON_REL_TOL = 10 ** (1 - COMPARISON_SIG_FIGS)
+COMPARISON_ABS_TOL = 1e-9
+
+
+def _comparison_cell(value: object) -> tuple[str, object]:
+    """Split non-numerics from numerics and retain exact-integer provenance."""
+    if isinstance(value, bool):
+        return ("exact", repr(value))
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            return ("exact", repr(value))
+        if value == value.to_integral_value():
+            return ("numeric", (float(value), True))
+        return ("numeric", (float(value), False))
+    if isinstance(value, int):
+        return ("numeric", (float(value), True))
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return ("exact", repr(value))
+        if value.is_integer() and abs(value) < 2**53:
+            return ("numeric", (value, True))
+        return ("numeric", (value, False))
+    return ("exact", repr(value))
+
+
+def _comparison_row(
+    row: list | tuple,
+) -> tuple[tuple[tuple[str, object], ...], tuple[tuple[float, bool], ...]]:
+    cells = [_comparison_cell(value) for value in row]
+    exact = tuple(sorted((cell for cell in cells if cell[0] == "exact"), key=repr))
+    numeric = tuple(
+        sorted(
+            (
+                cast(tuple[float, bool], cell[1])
+                for cell in cells
+                if cell[0] == "numeric"
+            ),
+            key=lambda x: x[0],
+        )
+    )
+    return exact, numeric
+
+
+def _numeric_rows_close(
+    left: tuple[tuple[float, bool], ...], right: tuple[tuple[float, bool], ...]
+) -> bool:
+    if len(left) != len(right):
+        return False
+    for (a, a_is_integer), (b, b_is_integer) in zip(left, right):
+        if a_is_integer and b_is_integer:
+            if a != b:
+                return False
+        elif not math.isclose(
+            a, b, rel_tol=COMPARISON_REL_TOL, abs_tol=COMPARISON_ABS_TOL
+        ):
+            return False
+    return True
+
+
+def _bucket_matches(
+    candidate: list[tuple[tuple[float, bool], ...]],
+    reference: list[tuple[tuple[float, bool], ...]],
+) -> bool:
+    """Maximum-match one exact-value bucket under tolerant numeric equality."""
+    if len(candidate) != len(reference):
+        return False
+    matched_candidate: dict[int, int] = {}
+
+    def assign(reference_idx: int, seen: set[int]) -> bool:
+        for candidate_idx, candidate_row in enumerate(candidate):
+            if candidate_idx in seen or not _numeric_rows_close(
+                candidate_row, reference[reference_idx]
+            ):
+                continue
+            seen.add(candidate_idx)
+            previous = matched_candidate.get(candidate_idx)
+            if previous is None or assign(previous, seen):
+                matched_candidate[candidate_idx] = reference_idx
+                return True
+        return False
+
+    return all(assign(idx, set()) for idx in range(len(reference)))
+
+
+def _results_equal(candidate: list, reference: list) -> bool:
+    """Compare unordered rows/columns with exact integers and tolerant fractions.
+
+    Independent significant-figure rounding is not suitable for equality: two
+    nearly identical values can land on opposite sides of a rounding boundary.
+    Bucket rows by their exact cells, then maximum-match fractional cells with
+    ``isclose`` so multiset cardinality is still enforced.
+    """
+    if len(candidate) != len(reference):
+        return False
+    candidate_buckets: dict[
+        tuple[tuple[str, object], ...], list[tuple[tuple[float, bool], ...]]
+    ] = defaultdict(list)
+    reference_buckets: dict[
+        tuple[tuple[str, object], ...], list[tuple[tuple[float, bool], ...]]
+    ] = defaultdict(list)
+    for row in candidate:
+        exact, numeric = _comparison_row(row)
+        candidate_buckets[exact].append(numeric)
+    for row in reference:
+        exact, numeric = _comparison_row(row)
+        reference_buckets[exact].append(numeric)
+    if candidate_buckets.keys() != reference_buckets.keys():
+        return False
+    return all(
+        _bucket_matches(rows, reference_buckets[exact])
+        for exact, rows in candidate_buckets.items()
+    )
+
+
 def _find_query_file(workspace: Path, idx: int) -> Path | None:
     # `.preql` (Trilogy categories) is checked before `.sql` (no-Trilogy SQL
     # baselines); a given run only produces one of them, so order is moot in
@@ -655,7 +770,7 @@ def _score_one(
             detail=f"reference load failed: {exc}",
         )
 
-    passed = _multiset(candidate) == _multiset(reference)
+    passed = _results_equal(candidate, reference)
     return QueryResult(
         id=idx,
         status="pass" if passed else "fail",
