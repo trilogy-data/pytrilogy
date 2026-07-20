@@ -270,7 +270,7 @@ union join ws.web_site.site_sk is not null;`
 - `trilogy file read answer_525180526.preql`
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Syntax error in answer_3347758002.preql: Undefined concept: raw.item.category. Suggestions: ['ws.item.category', 'ss.item.category', 'cs.item.category', 'ss.promotion.item.category', 'cs.promotion.item.category', 'ws.promotion.item.category']
   ```
 - `trilogy run answer_3530408544.preql`
 
@@ -583,7 +583,7 @@ union join ws.web_site.site_sk is not null;`
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy file read answer_2333598260.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -740,10 +740,10 @@ having
   ```text
   Syntax error in answer_1197120511.preql: Undefined concept: sold_date.date (line 6, col 7, in WHERE). Suggestions: ['ws.sold_date.date', 'ws.ship_date.date', 'ws.promotion.end_date.date', 'ws.web_site.open_date.date', 'ws.web_site.close_date.date', 'ws.promotion.start_date.date']
   ```
-- `trilogy file read raw/store_returns.preql`
+- `trilogy `
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 97 column 12 (char 5383). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy file read raw/web_sales.preql`
 
@@ -1200,7 +1200,7 @@ order by
 limit 100;`
 
   ```text
-  refused to write 'answer_747155668.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2910545909.preql': not syntactically valid Trilogy.
 
   Parse error:
    --> 6:3
@@ -1269,10 +1269,15 @@ order by reason_desc_20,
 limit 100;`
 
   ```text
-  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+   --> 1:8
+    |
+  1 | import raw/all_sales as all_sales;
+    |        ^---
+    |
+    = expected IMPORT_DOT
   Location:
   ...and order number (same grain) ??? subset join wr.item.item_sk =
   ```
@@ -1288,7 +1293,7 @@ order by reason_desc_20,
 limit 100;`
 
   ```text
-  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2928586490.preql': not syntactically valid Trilogy.
 
   Parse error:
   Syntax [226]: Misplaced `subset|union join`. The key looks fine - the join is in the wrong PLACE. A query-scoped join is part of a `select` statement, not a standalone statement and not a pre-`where` clause. Put it right after the select list (preferred, SQL-like): `where <filters> select <cols> subset join a.key = b.key`. The clause order is `where` -> `select` <cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also sit between `where` and `select`, but never before `where` and never on its own. Full reference: `trilogy agent-info syntax example query-structure`.
@@ -1417,10 +1422,10 @@ limit 100;
 
 ### `cli-misuse`
 
-- `trilogy explore raw/`
+- `trilogy explore raw/facts/store_sales.preql`
 
   ```text
-  Invalid value for 'PATH': File 'raw/' is a directory.
+  Invalid value for 'PATH': File 'raw/facts/store_sales.preql' does not exist.
   ```
 - `trilogy files read raw/catalog_sales.preql`
 
