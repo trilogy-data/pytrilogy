@@ -1,47 +1,41 @@
-# v4 compatibility audit (last refreshed 2026-07-19, session 12)
+# v4 compatibility audit (last refreshed 2026-07-19, session 13)
 
-## Current state (after 2026-07-19 session 12)
+## Current state (after 2026-07-19 session 13)
 
-**Full v4 sweep (session 12): 38 failed / 5780 passed**
-(`local_scripts/v4_sweep_0719_s12_post.log`). Same COUNT as s11 but the corpus
-grew +102 tests; the honest delta vs s11's list: **cleared duckdb_subquery
-scalar-in-WHERE ×2 (the s11 NEXT) + TPC-DS q14** (stash-verified: q14 fails
-without the fix); **q10 cleared independently** since s11 (passes at baseline
-too); **+4 new-corpus pre-existing failures** (`test_tuple_membership_grainless_
-output` PEST/LARK × inline/named — stash-verified failing at baseline). ZERO
-regressions (rowset families, join_matrix 263/0, TPC-DS battery 6 = known set,
-q72 intact). ruff/mypy(309)/black clean; classifier exit 0, no escalations.
-82 errors are clickhouse-server env (not real).
+**Full v4 sweep (session 13): 34 real failed / 5783 passed**
+(`local_scripts/v4_sweep_0719_s13.log`; raw count 35 — the +1
+`tests/cli/test_display.py` rich_enabled cell passes in isolation under both
+planners and is detached-run console-redirection noise, not a planner failure).
+Honest delta vs s12: **cleared duckdb_subquery
+`test_tuple_membership_grainless_output` ×4 (the s12 NEXT), ZERO new
+failures.** TPC-DS battery = the pre-existing 6 exactly (q72 intact);
+join_matrix clean in-sweep; classifier exit 0, no escalations;
+ruff/mypy(309)/black clean. 82 errors are clickhouse-server env (not real).
 
-Session-12 fix (one guard, v4-only, `group_graph.py`
-`_rowset_join_key_addresses`): a KEYLESS, GRAINLESS rowset handle (global-
-aggregate scalar body: `(select max(val)/2 -> half)`, named `with rs as select
-max(val)/2 -> half` identical) used to fall back to `{concept.address}` and then
-expand through its `BuildRowsetItem` lineage — putting the aggregate's own VALUE
-into the FINAL merge grain. The row-side contributor was then forced to
-materialize that column; `renders_derived_key`/`_datasource_renders_derived`
-descends through the AGGREGATE to the ROOT leaf `val`, so the raw `t` scan
-claimed it inline at id grain → `AGG_GRAIN_MISMATCH`. Now returns NO join axis;
-the boundary cross-joins ON 1=1 exactly like v3. The audit's layer-1/-2 diagnoses
-were real but NOT load-bearing: the content BASIC's build grain is still `{id}`
-(authored Abstract; `author.py` override unfixed) and `_datasource_renders_derived`
-still descends through aggregates — both became unreachable for this shape once
-the merge grain stopped demanding the value column. Where the crash actually
-lived: the atom `val > half` IS correctly hosted at root (constraint edge from
-the d1 rowset group, same topology as the WORKING `auto mx <- max(val) by *`
-q22-analog); root's gen_root plan_source fails (the handle is unsourceable),
-gen_root's condition fallback re-searches the missing row-arg
-(`_resolve_root_condition_sources` → nested search_concepts for
-`[half, id, val]`), and it was THAT nested search's FINAL contract that invented
-the value-column join axis. Collateral: TPC-DS q14 (composite subset join onto a
-union-reprojected rowset — its residual failure was this same merge-grain
-expansion).
+Session-13 fix (v4-only, `concept_graph.py`): generalized
+`_filter_existence_only` → `_lineage_existence_only`. A concept whose lineage
+ITSELF exposes `existence_arguments` — a `BuildSubselectComparison` authored as
+a SELECT output (`select (20,1) in (pairs.val, pairs.cat) as present`), or one
+propagating through Comparison/Conditional/Parenthetical/Between — now has its
+existence-only args (existence minus row args) dropped from row lineage in
+`_upstream_default` and wired as side-channel EXISTENCE edges by the existing
+filter-nested pass (~line 1155), which now fires for ANY concept with
+existence-only lineage args, not just FILTERs. The strategy side needed NO
+change: `_group_existence_concepts` already had the BASIC-lineage membership
+branch, and once the rowset stopped being a row-lineage parent the probe's
+host renders the v3 EXISTS-subselect shape (v4's plan is even one CTE tighter
+than v3's). Scalar (`2 in (rs.id)`), explicit-select (`2 in (select rs.id)`),
+tuple, derived-flag (`auto flag <- id in (rs.id)` as output AND as WHERE), and
+row-LHS (`id in (rs.id)` joined to the row stream) forms all row-match v3
+(`local_scripts/repro_tuple_grainless.py`, `repro_scalar_grainless.py`,
+scratch flag_where matrix). NOT wired (pre-existing, untouched): membership
+nested under a `BuildFunction` wrapper (e.g. inside CASE) — BuildFunction does
+not propagate `existence_arguments`, so those args still walk as row lineage.
 
-**The 38 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+**The 34 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
 non-benchmark q64_correlated_filter + or_membership_with_projected_aggregate),
 fuzzer ×2 (pre-existing corpus stability, likely env/seed — NOT a planner gap),
-duckdb_subquery `test_tuple_membership_grainless_output` ×4 (one logical bug —
-see NEXT), plus the ×2 families (multi_partial_anchor, expression_keys,
+plus the ×2 families (multi_partial_anchor, expression_keys,
 pushdown_partitioned, duckdb_rowset variance/stddev keys-3, rollup_scoped_join)
 and singles (twin_keeps_scalar_refs, where_scalar_aggregate_degenerate_cograin
 `having_bare_max`, scoped_join dim_bridge `all_subset_unaffected` /
@@ -51,39 +45,43 @@ null_property, rowset_body_limit, rollup_multi_window cube_two_windows,
 membership_having dimension_key, existence_feeder_pushdown,
 collapse_basic_into_group funnel, union_bare_aggregate set_semantics, setops
 except_and_union, orderby_derived_expr, constant_in_cross_datasource_merge).
+Membership-adjacent singles re-checked post-fix and still failing (unchanged
+failure modes): cross_rowset_membership_existence `expression_key`,
+dim_bridge `all_subset_unaffected`, existence_feeder_pushdown,
+membership_having dimension_key.
 
-**NEXT candidate — membership probe as a bare SELECT output (duckdb_subquery
-tuple_membership_grainless_output ×4, diagnosed).** `with pairs as select val,
-cat where val = 20; select (20, 1) in (pairs.val, pairs.cat) as present, ...`
-fails: `composite membership right-hand operands must resolve to a single
-existence source, got [INVALID_REFERENCE_BUG<Missing source CTE for pairs.cat>,
-...]`. The SINGLE-scalar form fails too (`select 2 in (rs.id) as present` →
-Missing source reference) — the whole "membership as OUTPUT" family is unwired
-in v4; only WHERE-condition membership (via condition atoms' existence_arguments
-→ `_attach_existence_sources` / FINAL existence wiring) and filter-nested
-probes (`_filter_existence_only` + EXISTENCE edges in concept_graph) work.
-Diagnosis: the probe concept (`local.present`, derivation BASIC, lineage
-`BuildSubselectComparison` with existence_arguments=[(pairs.val, pairs.cat)])
-gets its args walked as ROW lineage — the concept graph types the rowset→basic
-edge `lineage` (row-stream) and `gen_basic` has no existence handling, so the
-probe's SelectNode references pairs.* as row columns with no join/source. Fix
-shape: in concept_graph, existence-only args of a BuildSubselectComparison
-lineage (existence args minus row args — mirror `_filter_existence_only`) should
-be dropped from row-lineage and wired as EXISTENCE edges (mirror the
-filter-nested pass at concept_graph.py ~1133); then the strategy build must
-attach the existence parent + existence_concepts on the probe's host node (the
-condition-atom path does this in `_attach_existence_sources`; the OUTPUT path
-needs the same for lineage-borne existence args). Repro scripts:
-`local_scripts/repro_tuple_grainless.py`, `repro_scalar_grainless.py`;
-diagnostics dumped at `local_scripts/v4_diagnostics/tuple_grainless_*`.
+**NEXT options:** TPC-DS cluster ×6 OR the fanout singles OR prune-check the
+classifier XPASS entries (sweep showed 22 xpassed — worth a pass to see which
+`v4_known_failing.py` labels are now stable in isolation AND in-suite; the
+s12 list of 7: test_outer_where_pushes_into_global_agg `post_agg_filter`,
+join_resolution forced-join ×2, tpcds q59/q77, test_rowset_derived_twice
+`q64_join_form_plans`, test_where_clause `test_where_scalar`; q64 itself flips
+CRASH/XPASS — leave. Two of those (outer_where global-agg, where_scalar) are
+adjacent to the s12 fix and may now be stable — verify in isolation AND
+in-suite before pruning).
 
-**Other NEXT options:** TPC-DS cluster ×6 OR the fanout singles OR prune-check
-the classifier's 7 XPASS entries (test_outer_where_pushes_into_global_agg
-`post_agg_filter`, join_resolution forced-join ×2, tpcds q59/q77,
-test_rowset_derived_twice `q64_join_form_plans`, test_where_clause
-`test_where_scalar`; q64 itself flips CRASH/XPASS — leave). Two of those
-(outer_where global-agg, where_scalar) are adjacent to the s12 fix and may now
-be stable passes — verify in isolation AND in-suite before pruning.
+## ✅ 2026-07-19 (session 13) — membership as a bare SELECT output wired via lineage existence args (+4)
+
+See Current state above for the full mechanism. One-file v4-only change
+(`concept_graph.py`; only importers are v4_helper/* + v4_node_generators/* +
+concept_strategies_v4 — no v3 sweep needed; unit-test rename in
+`tests/core/processing/test_v4_concept_graph.py`). The audit's predicted fix
+shape was HALF right: concept_graph did need the row-lineage drop + EXISTENCE
+edge, but the predicted strategy-side work ("attach the existence parent on
+the probe's host node") was ALREADY in place from an earlier session
+(`_group_existence_concepts`'s BuildConceptArgs branch) and became reachable
+the moment the graph stopped typing the rowset→probe edge as row lineage.
+LESSON: before building the second half of a two-part fix, check whether an
+existing partial-wiring branch (added for an adjacent shape) already covers it
+— the first half may be the whole fix. Detached-sweep gotcha: PowerShell
+`Start-Process -ArgumentList` with comma-separated args SPLITS on spaces
+inside elements (`-m "not adventureworks_execution"` became `-m not` +
+positional junk → "no tests ran in 0.00s" in 25 bytes); pass ONE single-string
+ArgumentList instead, and health-check the log ~60s after launch. Git-bash
+`kill -0` cannot see PowerShell-spawned PIDs (false "exited") — use
+`tasklist //FI "PID eq N"` in monitors.
+
+<!-- superseded s12 current-state block removed; see the ✅ session-12 entry -->
 
 ## ✅ 2026-07-19 (session 12) — grainless rowset handle contributes no FINAL join axis (+3 real)
 

@@ -12,6 +12,7 @@ from discovery_v4 import (
     search_concepts,
     write_diagnostics,
 )
+
 from trilogy import Environment
 from trilogy.constants import CONFIG
 

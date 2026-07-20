@@ -18,6 +18,7 @@ from discovery_v4 import (  # noqa: E402
     search_concepts,
     write_diagnostics,
 )
+
 from trilogy import Environment  # noqa: E402
 from trilogy.constants import CONFIG  # noqa: E402
 

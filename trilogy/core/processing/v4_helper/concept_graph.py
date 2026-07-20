@@ -155,7 +155,14 @@ def _lineage_args(
 def _upstream_default(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    return _lineage_args(concept, environment)
+    existence_only = _lineage_existence_only(concept)
+    if not existence_only:
+        return _lineage_args(concept, environment)
+    return [
+        c
+        for c in _lineage_args(concept, environment)
+        if c.address not in existence_only
+    ]
 
 
 def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
@@ -346,15 +353,22 @@ def _upstream_aggregate(
     return base
 
 
-def _filter_existence_only(concept: BuildConcept) -> set[str]:
-    """Addresses that appear ONLY as existence args in a filter's where (a
+def _lineage_existence_only(concept: BuildConcept) -> set[str]:
+    """Addresses that appear ONLY as existence args in the concept's lineage (a
     semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
-    side-channel subselect, not the filter's row stream."""
-    if not isinstance(concept.lineage, BuildFilterItem):
+    side-channel subselect, not the concept's row stream. Two shapes: a FILTER's
+    where, and a membership comparison authored as a SELECT output
+    (`(20, 1) in (pairs.val, pairs.cat) as present`) whose lineage IS (or
+    propagates from) the SubselectComparison."""
+    args: BuildConceptArgs
+    if isinstance(concept.lineage, BuildFilterItem):
+        args = concept.lineage.where
+    elif isinstance(concept.lineage, BuildConceptArgs):
+        args = concept.lineage
+    else:
         return set()
-    where = concept.lineage.where
-    existence = {ec.address for grp in (where.existence_arguments or []) for ec in grp}
-    return existence - {r.address for r in where.row_arguments}
+    existence = {ec.address for grp in (args.existence_arguments or []) for ec in grp}
+    return existence - {r.address for r in args.row_arguments}
 
 
 def _upstream_filter(
@@ -366,7 +380,7 @@ def _upstream_filter(
 
     Existence-only args (semijoin RHS) are dropped from the row lineage — they
     get a side-channel `existence` edge instead (see `build_concept_graph`)."""
-    existence_only = _filter_existence_only(concept)
+    existence_only = _lineage_existence_only(concept)
     base = [
         c
         for c in _lineage_args(concept, environment)
@@ -1142,7 +1156,7 @@ def build_concept_graph(
         fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
             continue
-        existence_only = _filter_existence_only(fconcept)
+        existence_only = _lineage_existence_only(fconcept)
         if not existence_only:
             continue
         flabel = attrs[nid].label
