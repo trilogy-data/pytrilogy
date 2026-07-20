@@ -657,9 +657,11 @@ fcase_simple_when = { ^"when" ~ expr ~ ^"then" ~ expr }
 fcase_simple = { ^"case" ~ expr ~ fcase_simple_when+ ~ fcase_else? ~ ^"end" }
 fcase        = { ^"case" ~ fcase_when* ~ fcase_else? ~ ^"end" }
 len          = { ^"len" ~ "(" ~ expr ~ ")" }
-// KW_END keeps identifiers with a `not` prefix (`note`, `notice`) from being
-// read as a negation of their tail.
-fnot         = { ^"not" ~ KW_END ~ expr }
+// The &CONDITION_NOT lookahead keeps identifiers with a `not` prefix (`note`,
+// `notice`) from being read as a negation of their tail. The boundary check
+// must live in an atomic rule: written inline (`^"not" ~ KW_END`), implicit
+// whitespace runs before KW_END and `not value` fails to parse.
+fnot         = { &CONDITION_NOT ~ ^"not" ~ expr }
 fbool        = { ^"bool" ~ "(" ~ expr ~ ")" }
 fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
