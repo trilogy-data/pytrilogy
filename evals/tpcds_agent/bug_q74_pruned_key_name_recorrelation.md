@@ -1,6 +1,16 @@
 # Bug: q74 — pruned unique join key silently re-correlated on non-unique name columns
 
-**Status:** OPEN — confirmed framework bug (silent wrong result, no error)
+**Status:** FIXED 2026-07-19 — `gen_filter_node` output narrowing dropped the row
+parent's grain keys. `filter_node.set_output_concepts([concept] + optional_outputs)`
+(trilogy/core/processing/node_generators/filter_node.py) discarded `wb.w_csk`/`wb.w_yr`
+even though the filter's row parent was at grain `(st.s_csk, st.s_yr)` (pseudonym-linked
+via the subset join), so the node advertised a false coarser grain `(fn, ln, wb_tot)`
+and the downstream stack merge could only join back to the customer identity on the
+surviving non-unique `(fn, ln)`. Fix: `_row_grain_outputs` retains any output carrying
+a component of the row parent's grain (directly or by pseudonym) through the narrowing.
+Regression test: `tests/discovery/test_filter_node_retains_row_grain_keys.py`
+(minimal 3-customer model with a shared `(first_name, last_name)`). Verified the
+ingest-leg `query74.preql` now renders SQL returning exactly the 92 reference rows.
 **Class:** SILENT wrong-result (loud detector: ingest eval fail, enriched pass)
 **Leg:** ingest (auto-ingested model); enriched passes
 **Severity:** high — a join key the *authored* query carried is dropped from an

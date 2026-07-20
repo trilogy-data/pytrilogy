@@ -14,7 +14,7 @@ SELECT
     sum(\"catalog_sales_catalog_sales\".\"CS_QUANTITY\") as \"catalog_sales_quantity\"
 FROM
     \"memory\".\"store_returns\" as \"store_sales_store_returns\"
-    INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"store_sales_store_returns\".\"SR_ITEM_SK\" = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
+    INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" is not distinct from \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"store_sales_store_returns\".\"SR_ITEM_SK\" = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
     INNER JOIN \"memory\".\"store_sales\" as \"store_sales_store_sales\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_store_sales\".\"SS_ITEM_SK\" AND \"store_sales_store_returns\".\"SR_TICKET_NUMBER\" = \"store_sales_store_sales\".\"SS_TICKET_NUMBER\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sale_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_sale_date_date\".\"D_DATE_SK\"

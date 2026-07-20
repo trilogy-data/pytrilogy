@@ -95,7 +95,7 @@ datasource store_returns (
     SR_RETURNED_DATE_SK: return_date.sk, # FK to date the return occurred.
     SR_RETURN_TIME_SK: return_time.sk, # FK to time-of-day the return was processed.
     SR_ITEM_SK: ~item.sk,
-    SR_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item (may differ from purchaser).
+    SR_CUSTOMER_SK: ?return_customer.sk, # FK to the customer returning the item (may differ from purchaser); nullable — some returns record no customer.
     SR_CDEMO_SK: ?return_customer_demographic.sk, # FK to the returning customer's demographic profile at return time.
     SR_HDEMO_SK: ?return_household_demographic.sk, # FK to the returning customer's household profile at return time.
     SR_ADDR_SK: ?return_address.sk, # FK to the returning customer's address at return time.
@@ -109,7 +109,7 @@ datasource store_returns (
     SR_REVERSED_CHARGE: reversed_charge,
     SR_STORE_CREDIT: store_credit,
     SR_TICKET_NUMBER: ~ticket_number,
-    SR_STORE_SK: return_store.sk, # FK to the store the return was processed at.
+    SR_STORE_SK: ?return_store.sk, # FK to the store the return was processed at; nullable — some returns record no store.
     SR_REASON_SK: return_reason.sk, # FK to the return-reason code.
     SR_NET_LOSS: return_net_loss,
     SR_TICKET_NUMBER: _returned_ticket,
