@@ -153,7 +153,15 @@ class ConceptRef(Addressable, Namespaced, DataTyped, ReferenceReplaceable):
 
     @property
     def safe_address(self) -> str:
-        return compute_safe_address(self.namespace, self.name)
+        # A bare address can't distinguish namespace from a dotted property
+        # name (`local.create_time.hour` is namespace `local`, name
+        # `create_time.hour`), so split on the FIRST dot for the default
+        # namespace to match Concept.safe_address; elsewhere the underscore
+        # concatenation is identical regardless of split point.
+        head, _, tail = self.address.partition(".")
+        if head == DEFAULT_NAMESPACE and tail:
+            return compute_safe_address(DEFAULT_NAMESPACE, tail)
+        return self.address.replace(".", "_")
 
     @property
     def output_datatype(self):

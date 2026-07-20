@@ -63,3 +63,30 @@ def test_mock_result():
     assert x["a"] == 1
     r2 = result.fetchmany(10)
     assert len(r2) == 1
+
+
+def test_escape_literal_colons():
+    from trilogy.executor import escape_literal_colons
+
+    assert (
+        escape_literal_colons("select regexp_extract(url, 'http(?:s)?://')")
+        == "select regexp_extract(url, 'http(?\\:s)?\\://')"
+    )
+    # colons outside literals remain bindable params
+    assert escape_literal_colons("select :param from t") == "select :param from t"
+    # doubled-quote escape stays inside the literal
+    assert escape_literal_colons("select 'it''s :x'") == "select 'it''s \\:x'"
+    # backslash-escaped quote (BigQuery-style literal) does not end the string
+    assert escape_literal_colons("select 'a\\':b'") == "select 'a\\'\\:b'"
+
+
+def test_raw_sql_colon_in_string_literal_not_a_param():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.execute_raw_sql("CREATE TABLE urls (url VARCHAR)")
+    exec.execute_raw_sql("INSERT INTO urls VALUES ('https://example.com/x')")
+    exec.parse_text("""key url string;
+datasource urls (url: url) grain (url) address urls;
+auto domain <- regexp_extract(url, 'http(?:s)?://([^/]+)', 1);
+""")
+    rs = exec.execute_query("select domain;")
+    assert rs.fetchall() == [("example.com",)]

@@ -18,6 +18,7 @@ from trilogy.parsing.v2.errors import (
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
+    detect_paren_select_after_from,
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
@@ -177,6 +178,10 @@ def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
     distinct_pos = detect_select_distinct(text, pos)
     if distinct_pos is not None:
         raise create_syntax_error(224, distinct_pos, text)
+
+    paren_pos = detect_paren_select_after_from(text, pos)
+    if paren_pos is not None:
+        raise create_syntax_error(228, paren_pos, text)
 
     sub_pos = detect_subselect(text, pos)
     if sub_pos is not None:

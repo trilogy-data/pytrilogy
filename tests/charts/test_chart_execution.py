@@ -340,3 +340,64 @@ def test_execute_chart_when_altair_unavailable(monkeypatch):
             """))
     chart_results = [r for r in results if isinstance(r, ChartResult)]
     assert chart_results[0].chart is None
+
+
+_DATED_SETUP = """
+key id int;
+property id.create_time datetime;
+property id.score int;
+property id.domain string;
+
+datasource events (
+    id: id,
+    create_time: create_time,
+    score: score,
+    domain: domain
+)
+grain (id)
+query '''
+select 1 as id, cast('2024-01-01 05:00:00' as timestamp) as create_time, 10 as score, 'zzz.com' as domain
+union all select 2, cast('2024-01-01 07:00:00' as timestamp), 30, 'aaa.com'
+union all select 3, cast('2024-01-02 05:00:00' as timestamp), 20, 'mmm.com'
+''';
+"""
+
+
+def test_chart_axis_bound_to_dotted_property_concept():
+    # `create_time.hour` binds by the concept's safe address, which must match
+    # the query's rendered column alias (create_time_hour, not
+    # local_create_time_hour) for Altair to resolve the field.
+    results = list(_executor().execute_text(_DATED_SETUP + """
+            chart
+              layer bar ( x_axis <- create_time.hour, y_axis <- score );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    result = chart_results[0]
+    layer = result.statement.layers[0]
+    assert layer.x_fields == ["create_time_hour"]
+    assert set(result.data[0][0].keys()) == {"create_time_hour", "score"}
+    spec = result.chart.to_dict()
+    assert spec["encoding"]["x"]["field"] == "create_time_hour"
+    assert spec["encoding"]["x"]["type"] == "quantitative"
+
+
+def test_barh_category_axis_preserves_query_order():
+    results = list(_executor().execute_text(_DATED_SETUP + """
+            chart
+              layer barh ( x_axis <- score, y_axis <- domain )
+            from
+            select domain, score
+            order by score desc;
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    result = chart_results[0]
+    assert [row["domain"] for row in result.data[0]] == [
+        "aaa.com",
+        "mmm.com",
+        "zzz.com",
+    ]
+    spec = result.chart.to_dict()
+    # sort: null keeps the query's ORDER BY as the bar order instead of
+    # Vega's alphabetical default; the value axis is left untouched
+    assert spec["encoding"]["y"]["sort"] is None
+    assert "sort" not in spec["encoding"]["x"]

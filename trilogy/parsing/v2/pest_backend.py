@@ -17,6 +17,7 @@ from trilogy.parsing.v2.errors import (
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
+    detect_paren_select_after_from,
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
@@ -302,6 +303,12 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     distinct_pos = detect_select_distinct(text, pos)
     if distinct_pos is not None:
         return create_syntax_error(224, distinct_pos, text)
+
+    # 228: a parenthesized select handed to a chart/copy `from` (wants a bare
+    # select statement).
+    paren_pos = detect_paren_select_after_from(text, pos)
+    if paren_pos is not None:
+        return create_syntax_error(228, paren_pos, text)
 
     # 102: SQL-style subquery `(select ...)` / `(with ...)` open at pos.
     sub_pos = detect_subselect(text, pos)

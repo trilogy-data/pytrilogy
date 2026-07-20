@@ -1234,6 +1234,31 @@ chart layer bar ( x_axis <- region, y_axis <- revenue );
 Full chart-statement syntax (layers, encodings, placements) is in the main
 syntax reference — run `trilogy agent-info`.
 
+## Standalone chart images (`copy into`)
+
+To emit a single, chrome-free chart image per statement — e.g. embeddable
+per-section assets for a blog or doc — use `copy into` with a chart source in
+a `.preql` file run via `trilogy run`. Supported image formats: `png`, `svg`,
+`html` (interactive), `pdf`:
+
+```trilogy
+copy into png 'revenue_by_region.png' from chart
+  layer bar ( x_axis <- region, y_axis <- revenue );
+```
+
+Options go in parentheses after the path: `width`/`height` (chart size in
+pixels) plus `scale` and `ppi` for raster output:
+
+```trilogy
+copy into png 'revenue.png' (width=640, height=360, scale=2) from chart ...;
+```
+
+The `from` clause takes a bare statement — `from chart ...` or
+`from select ...` (no parentheses). `copy into csv|json|parquet ... from
+select ...` exports query data the same way. Prefer `copy into` for
+individual image assets; prefer `trilogy render report.md` when you want one
+combined artifact.
+
 ## Side-by-side layout
 
 By default each block spans the full content width. To place outputs in a row,

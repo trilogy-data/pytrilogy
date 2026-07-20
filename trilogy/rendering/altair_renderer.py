@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Any
 
 from trilogy.core.enums import ChartPlaceKind, ChartType
+from trilogy.core.models.core import DataType, TraitDataType
 from trilogy.core.statements.execute import (
     ProcessedChartLayer,
     ProcessedChartStatement,
@@ -12,6 +13,7 @@ from trilogy.rendering.rich_types import (
     currency_symbol,
     field_datatype,
     format_currency,
+    is_numeric,
 )
 
 try:
@@ -97,7 +99,26 @@ class AltairRenderer(BaseRenderer):
         expr = axis_label_expr(field_datatype(layer, field))
         return alt.Axis(labelExpr=expr) if expr else alt.Undefined
 
-    def _encode(self, layer: ProcessedChartLayer) -> dict[str, Any]:
+    _TEMPORAL_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
+
+    def _field_type(self, layer: ProcessedChartLayer, field: str) -> Any:
+        """Vega-Lite type from the concept's declared datatype, so encoding
+        doesn't depend on pandas dtype inference; Altair's default otherwise."""
+        datatype = field_datatype(layer, field)
+        if datatype is None:
+            return alt.Undefined
+        if is_numeric(datatype):
+            return "quantitative"
+        base = datatype.type if isinstance(datatype, TraitDataType) else datatype
+        if base in self._TEMPORAL_TYPES:
+            return "temporal"
+        if base in (DataType.STRING, DataType.BOOL):
+            return "nominal"
+        return alt.Undefined
+
+    def _encode(
+        self, layer: ProcessedChartLayer, ordered_axis: str | None = None
+    ) -> dict[str, Any]:
         encoding: dict[str, Any] = {}
         if layer.x_fields:
             field = layer.x_fields[0]
@@ -105,6 +126,8 @@ class AltairRenderer(BaseRenderer):
                 field,
                 title=prettify_label(field),
                 axis=self._field_axis(layer, field),
+                type=self._field_type(layer, field),
+                sort=None if ordered_axis == "x" else alt.Undefined,
             )
         if layer.y_fields:
             field = layer.y_fields[0]
@@ -112,6 +135,8 @@ class AltairRenderer(BaseRenderer):
                 field,
                 title=prettify_label(field),
                 axis=self._field_axis(layer, field),
+                type=self._field_type(layer, field),
+                sort=None if ordered_axis == "y" else alt.Undefined,
             )
         if layer.color_field:
             encoding["color"] = alt.Color(
@@ -126,7 +151,14 @@ class AltairRenderer(BaseRenderer):
     def _bar(self, data: Any, layer: ProcessedChartLayer) -> Any:
         # barh maps here too: axes are literal, so binding a quantitative field
         # to x_axis yields horizontal bars without any axis swap.
-        return alt.Chart(data).mark_bar().encode(**self._encode(layer))
+        # sort=None on the category axis keeps the query's ORDER BY as bar
+        # order instead of Vega's alphabetical default.
+        category_axis = "y" if layer.layer_type == ChartType.BARH else "x"
+        return (
+            alt.Chart(data)
+            .mark_bar()
+            .encode(**self._encode(layer, ordered_axis=category_axis))
+        )
 
     def _line(self, data: Any, layer: ProcessedChartLayer) -> Any:
         return alt.Chart(data).mark_line().encode(**self._encode(layer))

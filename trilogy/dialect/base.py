@@ -844,6 +844,11 @@ class BaseDialect:
     HTTP_NOT_FOUND_PATTERN: str | None = None  # Pattern for HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None  # Pattern for column-not-found errors
 
+    def render_string_literal(self, value: str) -> str:
+        # Standard SQL: backslash is a plain character; only the quote needs
+        # escaping. Escape-character dialects (BigQuery, Snowflake) override.
+        return "'" + value.replace("'", "''") + "'"
+
     def render_map_literal(
         self,
         e: "MapWrapper[Any, Any]",
@@ -2242,7 +2247,7 @@ class BaseDialect:
         elif isinstance(e, bool):
             return f"{e}"
         elif isinstance(e, str):
-            return f"'{e}'"
+            return self.render_string_literal(e)
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, TupleWrapper):
