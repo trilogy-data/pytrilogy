@@ -66,18 +66,35 @@ def test_mock_result():
 
 
 def test_escape_literal_colons():
-    from trilogy.executor import escape_literal_colons
+    from trilogy.engine import (
+        LITERAL_COLON_ESCAPE,
+        escape_literal_colons,
+        unescape_literal_colons,
+    )
 
     assert (
         escape_literal_colons("select regexp_extract(url, 'http(?:s)?://')")
-        == "select regexp_extract(url, 'http(?\\:s)?\\://')"
+        == f"select regexp_extract(url, 'http(?{LITERAL_COLON_ESCAPE}s)?{LITERAL_COLON_ESCAPE}//')"
     )
     # colons outside literals remain bindable params
     assert escape_literal_colons("select :param from t") == "select :param from t"
     # doubled-quote escape stays inside the literal
-    assert escape_literal_colons("select 'it''s :x'") == "select 'it''s \\:x'"
+    assert (
+        escape_literal_colons("select 'it''s :x'")
+        == f"select 'it''s {LITERAL_COLON_ESCAPE}x'"
+    )
     # backslash-escaped quote (BigQuery-style literal) does not end the string
-    assert escape_literal_colons("select 'a\\':b'") == "select 'a\\'\\:b'"
+    assert (
+        escape_literal_colons("select 'a\\':b'")
+        == f"select 'a\\'{LITERAL_COLON_ESCAPE}b'"
+    )
+    # unescape is the exact inverse for escaped output
+    for sql in (
+        "select regexp_extract(url, 'http(?:s)?://')",
+        "select 'it''s :x'",
+        "select ':a :b', ':c'",
+    ):
+        assert unescape_literal_colons(escape_literal_colons(sql)) == sql
 
 
 def test_raw_sql_colon_in_string_literal_not_a_param():

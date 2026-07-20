@@ -12,7 +12,12 @@ from datetime import date, datetime
 from typing import Any, Callable, Generator, List, Optional
 
 from trilogy.core.models.environment import Environment
-from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+from trilogy.engine import (
+    EngineConnection,
+    ExecutionEngine,
+    ResultProtocol,
+    unescape_literal_colons,
+)
 
 
 def _strip_modifiers(ch_type: str) -> str:
@@ -104,7 +109,10 @@ def _statement_to_sql(statement: Any, parameters: Any | None) -> str:
     if text_value is None:
         return str(statement)
     if not parameters:
-        return str(text_value)
+        # A TextClause's raw .text still carries the executor's literal-colon
+        # escapes; SQLAlchemy unescapes them at compile time, which this
+        # branch skips.
+        return unescape_literal_colons(str(text_value))
     from sqlalchemy import bindparam
     from sqlalchemy import text as sa_text
 

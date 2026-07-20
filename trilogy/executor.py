@@ -76,7 +76,12 @@ from trilogy.dialect.metadata import (
 )
 from trilogy.dialect.mock import handle_processed_mock_statement
 from trilogy.dialect.results import ChartResult, MockResult
-from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+from trilogy.engine import (
+    EngineConnection,
+    ExecutionEngine,
+    ResultProtocol,
+    escape_literal_colons,
+)
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
@@ -123,38 +128,6 @@ def label_definition_statement(statement: object) -> str:
         if isinstance(statement, cls):
             return label
     return "definition"
-
-
-def escape_literal_colons(sql: str) -> str:
-    """Escape `:` as `\\:` inside single-quoted string literals so SQLAlchemy's
-    text() does not read e.g. the `:s` in `'http(?:s)?'` as a bind parameter.
-    Colons outside literals are left alone and still bind. text() unescapes
-    `\\:` back to `:` before the statement reaches the driver."""
-    out: list[str] = []
-    in_string = False
-    i = 0
-    while i < len(sql):
-        ch = sql[i]
-        if not in_string:
-            if ch == "'":
-                in_string = True
-            out.append(ch)
-        elif ch == "'" and sql[i + 1 : i + 2] == "'":
-            out.append("''")
-            i += 1
-        elif ch == "'":
-            in_string = False
-            out.append(ch)
-        elif ch == "\\" and i + 1 < len(sql):
-            # escape-char dialects (BigQuery/Snowflake) emit \' and \\ pairs
-            out.append(sql[i : i + 2])
-            i += 1
-        elif ch == ":":
-            out.append("\\:")
-        else:
-            out.append(ch)
-        i += 1
-    return "".join(out)
 
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
