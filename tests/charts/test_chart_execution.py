@@ -563,3 +563,37 @@ def test_same_concept_bound_to_multiple_roles():
     assert layer.x_fields == ["category"]
     assert layer.color_field == "category"
     assert len(chart_results[0].data[0]) == 3
+
+
+_YEAR_SETUP = """
+import std.date;
+key yr int::year;
+property yr.value int;
+
+datasource year_data (y: yr, v: value)
+grain (yr)
+query '''
+select 2020 as y, 10 as v
+union all select 2021, 20
+''';
+"""
+
+
+def test_year_trait_axis_formats_as_integer():
+    results = list(_executor().execute_text(_YEAR_SETUP + """
+            chart layer line ( x_axis <- yr, y_axis <- value );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    axis = chart_results[0].chart.to_dict()["encoding"]["x"]["axis"]
+    assert axis["format"] == "d"
+    assert axis["tickMinStep"] == 1
+
+
+def test_year_trait_headline_formats_as_integer():
+    results = list(_executor().execute_text(_YEAR_SETUP + """
+            chart layer headline ( x_axis <- max(yr) as latest );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    number_layer = spec["layer"][0]
+    assert number_layer["encoding"]["text"]["format"] == "d"

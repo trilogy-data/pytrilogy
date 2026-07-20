@@ -15,6 +15,7 @@ from trilogy.rendering.rich_types import (
     field_datatype,
     format_currency,
     is_hex_color,
+    is_integer_date_part,
     is_numeric,
 )
 from trilogy.rendering.theme import DEFAULT_THEME, Theme
@@ -222,9 +223,15 @@ class AltairRenderer(BaseRenderer):
             field_type = self._field_type(layer, field)
             sort: Any = alt.Undefined
             axis_kwargs: dict[str, Any] = {}
-            currency_expr = axis_label_expr(field_datatype(layer, field))
+            datatype = field_datatype(layer, field)
+            currency_expr = axis_label_expr(datatype)
             if currency_expr:
                 axis_kwargs["labelExpr"] = currency_expr
+            elif is_integer_date_part(datatype):
+                # Vega's default quantitative axis shows a year as `2,020.5`;
+                # date parts want bare integer ticks.
+                axis_kwargs["format"] = "d"
+                axis_kwargs["tickMinStep"] = 1
             if channel == category_axis:
                 sort = None if ordered else "ascending"
                 # A bar's category axis is discrete: encode as ordinal so bars
@@ -422,6 +429,8 @@ class AltairRenderer(BaseRenderer):
                 ]
             )
             text_encoding = alt.Text("_headline_value:N")
+        elif is_integer_date_part(field_datatype(layer, field)):
+            text_encoding = alt.Text(f"{field}:Q", format="d")
         else:
             text_encoding = alt.Text(f"{field}:Q", format=",.4~f")
         number = (
