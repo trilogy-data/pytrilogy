@@ -392,14 +392,38 @@ class AltairRenderer(BaseRenderer):
         chart = alt.Chart(data).mark_point().encode(**encoding)
         return self._with_annotation(chart, data, layer, encoding)
 
+    @staticmethod
+    def _stack_order_ranks(data: Any, layer: ProcessedChartLayer) -> dict[Any, int]:
+        """Bottom→top stack rank per color category, largest-(coverage, total)
+        first: series spanning the whole x-domain form a stable base, while
+        transient ones float to the top, where appearing or disappearing only
+        moves the top edge instead of reflowing every band above (which linear
+        interpolation would draw as diagonals crossing neighboring bands)."""
+        x, y = layer.x_fields[0], layer.y_fields[0]
+        agg = data.groupby(layer.color_field).agg(
+            coverage=(x, "nunique"), total=(y, "sum")
+        )
+        ordered = agg.sort_values(
+            ["coverage", "total"], ascending=False, kind="stable"
+        ).index
+        return {category: rank for rank, category in enumerate(ordered)}
+
     def _area(
         self,
         data: Any,
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
+        order: Any = alt.Undefined
+        if layer.color_field and layer.x_fields and layer.y_fields and len(data):
+            ranks = self._stack_order_ranks(data, layer)
+            # null categories get no rank from groupby; stack them on top
+            data = data.assign(
+                _stack_order=data[layer.color_field].map(ranks).fillna(len(ranks))
+            )
+            order = alt.Order("_stack_order:Q", sort="ascending")
         encoding = self._encode(layer, data=data, scales=scales)
-        chart = alt.Chart(data).mark_area().encode(**encoding)
+        chart = alt.Chart(data).mark_area().encode(order=order, **encoding)
         return self._with_annotation(chart, data, layer, encoding)
 
     def _headline(
