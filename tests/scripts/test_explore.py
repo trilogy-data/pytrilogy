@@ -400,6 +400,94 @@ def test_explore_v2_collapses_conformed_roles(conformed_preql: Path):
     combined = [k for k in payload["namespaced"] if "," in k]
     assert combined == ["sold_date, ship_date"] or combined == ["ship_date, sold_date"]
     assert "same_as" not in json_module.dumps(payload)
+    # Same-level aliases with no descriptions carry no roles map — the alias
+    # names alone distinguish them, and the dedup's token savings hold.
+    assert "roles" not in payload["namespaced"][combined[0]]
+
+
+@pytest.fixture
+def dual_binding_preql(tmp_path: Path) -> Path:
+    """One dimension bound twice from a fact: directly, and again through a
+    nested import — the TPC-DS q96 ``household_demographics`` vs
+    ``customer.household_demographics`` shape. The bindings conform (same
+    schema, same source file) but are distinct semantic roles that can
+    resolve to different dimension members for the same fact row."""
+    (tmp_path / "d.preql").write_text(
+        "key id int; # a demographic bucket\nproperty id.dep_count int;\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "c.preql").write_text(
+        "import d as d;\nkey cid int;\n", encoding="utf-8"
+    )
+    fact = tmp_path / "f.preql"
+    fact.write_text("import d as d;\nimport c as c;\nkey fid int;\n", encoding="utf-8")
+    return fact
+
+
+def test_explore_v2_dual_binding_roles_get_structural_provenance(
+    dual_binding_preql: Path,
+):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(dual_binding_preql), version=2)
+    combined = next(k for k in payload["namespaced"] if "," in k)
+    # Full semantic addresses preserved, schema deduplicated to one entry.
+    assert combined.split(", ") == ["d", "c.d"]
+    assert "c.d" not in payload["namespaced"]
+    # Both bindings get a neutral role entry without any hand-authored
+    # description; provenance is address-derived, never a physical claim.
+    entry = payload["namespaced"][combined]
+    assert entry["roles"] == {"d": {"direct": True}, "c.d": {"via": "c"}}
+
+
+def test_explore_v2_dual_binding_description_coexists_with_provenance(
+    tmp_path: Path,
+):
+    from trilogy.scripts.explore import _load_environment
+
+    (tmp_path / "d.preql").write_text(
+        "key id int;\nproperty id.dep_count int;\n", encoding="utf-8"
+    )
+    (tmp_path / "c.preql").write_text(
+        "import d as d;\nkey cid int;\n", encoding="utf-8"
+    )
+    fact = tmp_path / "f.preql"
+    fact.write_text(
+        "import d as d; # demographics recorded on the fact\n"
+        "import c as c;\nkey fid int;\n",
+        encoding="utf-8",
+    )
+    from trilogy.scripts.explore import build_concepts_payload
+
+    env = _load_environment(fact)
+    descriptions = {
+        alias: imp.description
+        for alias, imps in env.imports.items()
+        for imp in imps
+        if imp.description
+    }
+    items = [
+        (k, v)
+        for k, v in env.concepts.items()
+        if not k.startswith("__") and not k.startswith("local._env_")
+    ]
+    payload = build_concepts_payload(
+        env, items, import_descriptions=descriptions, version=2
+    )
+    combined = next(k for k in payload["namespaced"] if "," in k)
+    assert payload["namespaced"][combined]["roles"] == {
+        "d": {"description": "demographics recorded on the fact", "direct": True},
+        "c.d": {"via": "c"},
+    }
+
+
+def test_explore_rich_shows_both_dual_bindings(runner, dual_binding_preql: Path):
+    """Rich renderer parity: it never merges role-played namespaces, so both
+    bindings' full dotted paths stay visible as separate blocks."""
+    result = runner.invoke(cli, ["explore", str(dual_binding_preql)])
+    assert result.exit_code == 0, result.output
+    assert "# d.*" in result.output
+    assert "# c.d.*" in result.output
 
 
 def test_explore_v1_renders_every_role_in_full(conformed_preql: Path):

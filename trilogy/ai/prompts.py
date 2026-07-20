@@ -159,7 +159,7 @@ def concepts_to_fields_prompt(environment: Environment) -> str:
     """Concise JSON concept dump for the environment, sharing the `explore`
     command's grouped formatting: local and imported namespaces in full
     declaration syntax, with role-played conformed dimensions deduped into one
-    combined-key entry carrying the per-role import descriptions. Builtins and
+    combined-key entry carrying per-role descriptions and provenance. Builtins and
     the internal env scaffolding are filtered out, mirroring `explore`'s
     defaults."""
     items = [

@@ -1,8 +1,16 @@
 # Handoff — conformed-role collapsing obscures distinct semantic bindings
 
-**Status:** OPEN automated-ingest / `explore` guidance defect. Discovered from
-the ingest-versus-enriched delta on TPC-DS q96 in run
-`20260717-173332_ingest`.
+**Status:** RESOLVED 2026-07-20. Combined conformed entries now carry a
+`roles` map with structural provenance (`{"direct": true}` /
+`{"via": "customer"}`, plus `description` when authored) whenever the group is
+path-heterogeneous or described; homogeneous alias groups stay bare to keep
+the token savings. The `agent-info` conformed-dimension guidance was rewritten
+around the q96 example to state the names are NOT interchangeable and give the
+direct-vs-via decision rule. Validated: `repeat_query.py --query-id 96
+--repeats 10 --scale-factor 1 --category ingest` → 10/10 pass (all reps chose
+the bare binding, returning 874; run `repeat_q96_20260720-003804_ingest`).
+Originally discovered from the ingest-versus-enriched delta on TPC-DS q96 in
+run `20260717-173332_ingest`.
 
 ## Summary
 
