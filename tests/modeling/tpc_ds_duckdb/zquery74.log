@@ -1,7 +1,7 @@
 query_id = "74"
 generator = "v3"
-gen_length = 4021
-preql_size = 1391
+gen_length = 4091
+preql_size = 1416
 comp_size = 2151
 generated_sql = """
 
@@ -10,8 +10,8 @@ thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
-    \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\"
+    \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 WHERE
@@ -21,8 +21,8 @@ UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
-    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\"
+    \"sales_store_sales_unified\".\"SS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
@@ -32,8 +32,8 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
-    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\"
+    \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
@@ -55,15 +55,15 @@ SELECT
     \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"thoughtful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 GROUP BY
     1
 HAVING
-    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END ) > ( CASE
-	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END )
 ),

@@ -1,24 +1,24 @@
 query_id = "76"
 generator = "v3"
-gen_length = 5778
-preql_size = 1788
+gen_length = 5838
+preql_size = 1833
 comp_size = 1708
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"cs_date_date\".\"D_QOY\" as \"___tvf_arm_2_d_qoy\",
-    \"cs_date_date\".\"D_YEAR\" as \"___tvf_arm_2_d_year\",
     \"cs_item_items\".\"I_CATEGORY\" as \"___tvf_arm_2_i_category\",
+    \"cs_sale_date_date\".\"D_QOY\" as \"___tvf_arm_2_d_qoy\",
+    \"cs_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_2_d_year\",
     :___tvf_arm_2_channel as \"___tvf_arm_2_channel\",
     :___tvf_arm_2_col_name as \"___tvf_arm_2_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"cs_catalog_sales\".\"CS_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_2_sales_cnt\",
     sum(\"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\") as \"___tvf_arm_2_sales_amt\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
 
@@ -28,17 +28,17 @@ GROUP BY
     3),
 yummy as (
 SELECT
-    \"ss_date_date\".\"D_QOY\" as \"___tvf_arm_0_d_qoy\",
-    \"ss_date_date\".\"D_YEAR\" as \"___tvf_arm_0_d_year\",
     \"ss_item_items\".\"I_CATEGORY\" as \"___tvf_arm_0_i_category\",
+    \"ss_sale_date_date\".\"D_QOY\" as \"___tvf_arm_0_d_qoy\",
+    \"ss_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_0_d_year\",
     :___tvf_arm_0_channel as \"___tvf_arm_0_channel\",
     :___tvf_arm_0_col_name as \"___tvf_arm_0_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ss_store_sales\".\"SS_TICKET_NUMBER\" as string),'\u001e'), coalesce(cast(\"ss_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_0_sales_cnt\",
     sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"___tvf_arm_0_sales_amt\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
 
@@ -48,17 +48,17 @@ GROUP BY
     3),
 abhorrent as (
 SELECT
-    \"ws_date_date\".\"D_QOY\" as \"___tvf_arm_1_d_qoy\",
-    \"ws_date_date\".\"D_YEAR\" as \"___tvf_arm_1_d_year\",
     \"ws_item_items\".\"I_CATEGORY\" as \"___tvf_arm_1_i_category\",
+    \"ws_sale_date_date\".\"D_QOY\" as \"___tvf_arm_1_d_qoy\",
+    \"ws_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_1_d_year\",
     :___tvf_arm_1_channel as \"___tvf_arm_1_channel\",
     :___tvf_arm_1_col_name as \"___tvf_arm_1_col_name\",
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ws_web_sales\".\"WS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"ws_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_1_sales_cnt\",
     sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"___tvf_arm_1_sales_amt\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
 

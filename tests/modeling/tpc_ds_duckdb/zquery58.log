@@ -1,7 +1,7 @@
 query_id = "58"
 generator = "v3"
-gen_length = 5060
-preql_size = 1372
+gen_length = 5105
+preql_size = 1377
 comp_size = 2250
 generated_sql = """
 
@@ -24,9 +24,9 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -36,9 +36,9 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -48,9 +48,9 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 ),
 yummy as (
 SELECT

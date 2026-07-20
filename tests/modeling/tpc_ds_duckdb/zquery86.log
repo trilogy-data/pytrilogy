@@ -1,7 +1,7 @@
 query_id = "86"
 generator = "v3"
-gen_length = 2491
-preql_size = 929
+gen_length = 2506
+preql_size = 934
 comp_size = 847
 generated_sql = """
 
@@ -13,10 +13,10 @@ SELECT
     \"web_sales_web_sales\".\"WS_NET_PAID\" as \"web_sales_net_paid\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_sale_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"web_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
+    \"web_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
 thoughtful as (
 SELECT

@@ -1,7 +1,7 @@
 query_id = "27"
 generator = "v3"
-gen_length = 2287
-preql_size = 807
+gen_length = 2302
+preql_size = 812
 comp_size = 1550
 generated_sql = """
 
@@ -16,12 +16,12 @@ SELECT
     \"store_sales_store_store\".\"S_STATE\" as \"store_sales_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"store_sales_pos_customer_demographic_customer_demographics\" on \"store_sales_store_sales\".\"SS_CDEMO_SK\" = \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_date_date\".\"D_YEAR\" = 2002 and \"store_sales_store_store\".\"S_STATE\" = 'TN'
+    \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"store_sales_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and \"store_sales_sale_date_date\".\"D_YEAR\" = 2002 and \"store_sales_store_store\".\"S_STATE\" = 'TN'
 )
 SELECT
     \"cooperative\".\"store_sales_item_id\" as \"store_sales_item_id\",

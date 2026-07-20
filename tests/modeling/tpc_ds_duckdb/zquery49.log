@@ -1,7 +1,7 @@
 query_id = "49"
 generator = "v3"
-gen_length = 5331
-preql_size = 1297
+gen_length = 5391
+preql_size = 1307
 comp_size = 4352
 generated_sql = """
 
@@ -51,9 +51,9 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" > 1 and \"sales_catalog_sales_unified\".\"CS_NET_PAID\" > 0 and \"sales_catalog_sales_unified\".\"CS_QUANTITY\" > 0 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 12
+    \"sales_catalog_sales_unified\".\"CS_NET_PROFIT\" > 1 and \"sales_catalog_sales_unified\".\"CS_NET_PAID\" > 0 and \"sales_catalog_sales_unified\".\"CS_QUANTITY\" > 0 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 12
 
 UNION ALL
 SELECT
@@ -64,9 +64,9 @@ SELECT
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_NET_PROFIT\" > 1 and \"sales_store_sales_unified\".\"SS_NET_PAID\" > 0 and \"sales_store_sales_unified\".\"SS_QUANTITY\" > 0 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 12
+    \"sales_store_sales_unified\".\"SS_NET_PROFIT\" > 1 and \"sales_store_sales_unified\".\"SS_NET_PAID\" > 0 and \"sales_store_sales_unified\".\"SS_QUANTITY\" > 0 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 12
 
 UNION ALL
 SELECT
@@ -77,9 +77,9 @@ SELECT
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_NET_PROFIT\" > 1 and \"sales_web_sales_unified\".\"WS_NET_PAID\" > 0 and \"sales_web_sales_unified\".\"WS_QUANTITY\" > 0 and \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 12
+    \"sales_web_sales_unified\".\"WS_NET_PROFIT\" > 1 and \"sales_web_sales_unified\".\"WS_NET_PAID\" > 0 and \"sales_web_sales_unified\".\"WS_QUANTITY\" > 0 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 12
 ),
 yummy as (
 SELECT

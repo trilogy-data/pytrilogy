@@ -1,7 +1,7 @@
 query_id = "66"
 generator = "v3"
-gen_length = 19981
-preql_size = 3140
+gen_length = 20318
+preql_size = 3175
 comp_size = 7431
 generated_sql = """
 
@@ -9,94 +9,94 @@ WITH
 cheerful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\",
     \"sales_catalog_sales_unified\".\"CS_NET_PAID_INC_TAX\" as \"sales_net_paid_inc_tax\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_SALES_PRICE\" as \"sales_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" as \"sales_warehouse_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_sale_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_sale_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_catalog_sales_unified\".\"CS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
-    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_catalog_sales_unified\".\"CS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN')) and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
+    \"sales_catalog_sales_unified\".\"CS_WAREHOUSE_SK\" is not null and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN'))
 
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_NET_PAID\" as \"sales_net_paid\",
     \"sales_web_sales_unified\".\"WS_NET_PAID_INC_TAX\" as \"sales_net_paid_inc_tax\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
     \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" as \"sales_warehouse_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_sale_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_sale_time_time\".\"T_TIME_SK\"
     INNER JOIN \"memory\".\"ship_mode\" as \"sales_ship_mode_ship_mode\" on \"sales_web_sales_unified\".\"WS_SHIP_MODE_SK\" = \"sales_ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
-    INNER JOIN \"memory\".\"time_dim\" as \"sales_time_time\" on \"sales_web_sales_unified\".\"WS_SOLD_TIME_SK\" = \"sales_time_time\".\"T_TIME_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_date_date\".\"D_YEAR\" = 2001 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN')) and \"sales_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638
+    \"sales_web_sales_unified\".\"WS_WAREHOUSE_SK\" is not null and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_time_time\".\"T_TIME\" BETWEEN 30838 AND 59638 and (\"sales_ship_mode_ship_mode\".\"SM_CARRIER\" is not null and \"sales_ship_mode_ship_mode\".\"SM_CARRIER\" in ('DHL','BARIAN'))
 ),
 abundant as (
 SELECT
     \"cheerful\".\"sales_warehouse_sk\" as \"sales_warehouse_sk\",
-    \"sales_date_date\".\"D_YEAR\" as \"sales_date_year\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1373622753215339\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3517487188463362\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8869438855630560\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3826081045344373\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5861515138410706\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_436719481716807\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_127056791181447\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2547107327720518\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1175506164216454\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3935139715620501\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8731129546961792\",
-    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7981220610593332\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5879192189465693\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8076943584966081\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5506685882472823\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9555132249294065\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_226752663477936\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_596652746655864\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9814898540412223\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7395950426085508\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2341032649052501\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3183402719679095\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5261481769012618\",
-    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_4914434445470278\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_4936452368328141\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_4247317496236214\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_783314101392661\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9472911506013440\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5161623015838029\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8069671170378111\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9293307885292887\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5118567597807941\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1691325618950004\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_981137528493147\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2351022000800286\",
-    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8397525806330029\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5647619919060427\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2174934420031884\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5637730153566430\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_806704558625322\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6349903441321488\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8992295837482231\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1359609170549661\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3720534838311832\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_222341188465372\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6896364958019438\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5764446922019116\",
-    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5677486897553380\"
+    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7142018642411144\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_4360966408137418\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1213912100756362\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6888197801590445\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3085564823658699\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1753581195182998\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6963128875738742\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6716619473795329\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6950170655737496\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7887175761743355\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6703067309926091\",
+    sum(\"cheerful\".\"sales_ext_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2855554506861030\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2050611248159708\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_4491611913559732\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6830801461719161\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7030338772803332\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6493334931387232\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5377790817105272\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9931552634284681\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6236728124390924\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1093144653195898\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6590525799523442\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6918819086073191\",
+    sum(\"cheerful\".\"sales_net_paid\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9587565832826577\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2117003968062568\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_925738508483735\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_383097884398736\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7373810204495696\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_8875141483082410\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2402349840643147\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6829976736389315\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1032704721534931\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_7581634530795259\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_909070000661552\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1971533803669689\",
+    sum(\"cheerful\".\"sales_net_paid_inc_tax\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_236874416419586\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 1 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3670893566858678\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 10 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_9219342284633561\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 11 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1326945542046732\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 12 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_54159118756524\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 2 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5955716641831677\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 3 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6199172682012\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 4 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_1628518420814359\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 5 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_5375593892826731\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 6 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_6772928402424047\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 7 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2362169153090573\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 8 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_3695754413924076\",
+    sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2489549651573387\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2)
@@ -108,43 +108,43 @@ SELECT
     \"sales_warehouse_warehouse\".\"w_state\" as \"w_state\",
     \"sales_warehouse_warehouse\".\"w_country\" as \"w_country\",
     :ship_carriers as \"ship_carriers\",
-    \"abundant\".\"sales_date_year\" as \"year_\",
-    coalesce(\"abundant\".\"_virt_agg_sum_1373622753215339\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5647619919060427\",0) as \"jan_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_5861515138410706\",0) + coalesce(\"abundant\".\"_virt_agg_sum_6349903441321488\",0) as \"feb_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_436719481716807\",0) + coalesce(\"abundant\".\"_virt_agg_sum_8992295837482231\",0) as \"mar_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_127056791181447\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1359609170549661\",0) as \"apr_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_2547107327720518\",0) + coalesce(\"abundant\".\"_virt_agg_sum_3720534838311832\",0) as \"may_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_1175506164216454\",0) + coalesce(\"abundant\".\"_virt_agg_sum_222341188465372\",0) as \"jun_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_3935139715620501\",0) + coalesce(\"abundant\".\"_virt_agg_sum_6896364958019438\",0) as \"jul_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_8731129546961792\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5764446922019116\",0) as \"aug_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_7981220610593332\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5677486897553380\",0) as \"sep_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_3517487188463362\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2174934420031884\",0) as \"oct_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_8869438855630560\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5637730153566430\",0) as \"nov_sales\",
-    coalesce(\"abundant\".\"_virt_agg_sum_3826081045344373\",0) + coalesce(\"abundant\".\"_virt_agg_sum_806704558625322\",0) as \"dec_sales\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_1373622753215339\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5647619919060427\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jan_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_5861515138410706\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_6349903441321488\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"feb_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_436719481716807\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_8992295837482231\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"mar_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_127056791181447\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_1359609170549661\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"apr_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_2547107327720518\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_3720534838311832\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"may_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_1175506164216454\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_222341188465372\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jun_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_3935139715620501\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_6896364958019438\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jul_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_8731129546961792\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5764446922019116\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"aug_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_7981220610593332\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5677486897553380\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"sep_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_3517487188463362\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_2174934420031884\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"oct_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_8869438855630560\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5637730153566430\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"nov_sales_per_sq_foot\",
-    ( coalesce(\"abundant\".\"_virt_agg_sum_3826081045344373\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_806704558625322\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"dec_sales_per_sq_foot\",
-    coalesce(\"abundant\".\"_virt_agg_sum_5879192189465693\",0) + coalesce(\"abundant\".\"_virt_agg_sum_4936452368328141\",0) as \"jan_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_226752663477936\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5161623015838029\",0) as \"feb_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_596652746655864\",0) + coalesce(\"abundant\".\"_virt_agg_sum_8069671170378111\",0) as \"mar_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_9814898540412223\",0) + coalesce(\"abundant\".\"_virt_agg_sum_9293307885292887\",0) as \"apr_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_7395950426085508\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5118567597807941\",0) as \"may_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_2341032649052501\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1691325618950004\",0) as \"jun_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_3183402719679095\",0) + coalesce(\"abundant\".\"_virt_agg_sum_981137528493147\",0) as \"jul_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_5261481769012618\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2351022000800286\",0) as \"aug_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_4914434445470278\",0) + coalesce(\"abundant\".\"_virt_agg_sum_8397525806330029\",0) as \"sep_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_8076943584966081\",0) + coalesce(\"abundant\".\"_virt_agg_sum_4247317496236214\",0) as \"oct_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_5506685882472823\",0) + coalesce(\"abundant\".\"_virt_agg_sum_783314101392661\",0) as \"nov_net\",
-    coalesce(\"abundant\".\"_virt_agg_sum_9555132249294065\",0) + coalesce(\"abundant\".\"_virt_agg_sum_9472911506013440\",0) as \"dec_net\"
+    \"abundant\".\"sales_sale_date_year\" as \"year_\",
+    coalesce(\"abundant\".\"_virt_agg_sum_7142018642411144\",0) + coalesce(\"abundant\".\"_virt_agg_sum_3670893566858678\",0) as \"jan_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_3085564823658699\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5955716641831677\",0) as \"feb_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_1753581195182998\",0) + coalesce(\"abundant\".\"_virt_agg_sum_6199172682012\",0) as \"mar_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6963128875738742\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1628518420814359\",0) as \"apr_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6716619473795329\",0) + coalesce(\"abundant\".\"_virt_agg_sum_5375593892826731\",0) as \"may_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6950170655737496\",0) + coalesce(\"abundant\".\"_virt_agg_sum_6772928402424047\",0) as \"jun_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_7887175761743355\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2362169153090573\",0) as \"jul_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6703067309926091\",0) + coalesce(\"abundant\".\"_virt_agg_sum_3695754413924076\",0) as \"aug_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_2855554506861030\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2489549651573387\",0) as \"sep_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_4360966408137418\",0) + coalesce(\"abundant\".\"_virt_agg_sum_9219342284633561\",0) as \"oct_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_1213912100756362\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1326945542046732\",0) as \"nov_sales\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6888197801590445\",0) + coalesce(\"abundant\".\"_virt_agg_sum_54159118756524\",0) as \"dec_sales\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_7142018642411144\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_3670893566858678\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jan_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_3085564823658699\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5955716641831677\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"feb_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_1753581195182998\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_6199172682012\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"mar_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_6963128875738742\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_1628518420814359\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"apr_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_6716619473795329\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_5375593892826731\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"may_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_6950170655737496\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_6772928402424047\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jun_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_7887175761743355\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_2362169153090573\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"jul_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_6703067309926091\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_3695754413924076\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"aug_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_2855554506861030\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_2489549651573387\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"sep_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_4360966408137418\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_9219342284633561\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"oct_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_1213912100756362\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_1326945542046732\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"nov_sales_per_sq_foot\",
+    ( coalesce(\"abundant\".\"_virt_agg_sum_6888197801590445\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) + ( coalesce(\"abundant\".\"_virt_agg_sum_54159118756524\",0) / \"sales_warehouse_warehouse\".\"w_warehouse_sq_ft\" ) as \"dec_sales_per_sq_foot\",
+    coalesce(\"abundant\".\"_virt_agg_sum_2050611248159708\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2117003968062568\",0) as \"jan_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6493334931387232\",0) + coalesce(\"abundant\".\"_virt_agg_sum_8875141483082410\",0) as \"feb_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_5377790817105272\",0) + coalesce(\"abundant\".\"_virt_agg_sum_2402349840643147\",0) as \"mar_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_9931552634284681\",0) + coalesce(\"abundant\".\"_virt_agg_sum_6829976736389315\",0) as \"apr_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6236728124390924\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1032704721534931\",0) as \"may_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_1093144653195898\",0) + coalesce(\"abundant\".\"_virt_agg_sum_7581634530795259\",0) as \"jun_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6590525799523442\",0) + coalesce(\"abundant\".\"_virt_agg_sum_909070000661552\",0) as \"jul_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6918819086073191\",0) + coalesce(\"abundant\".\"_virt_agg_sum_1971533803669689\",0) as \"aug_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_9587565832826577\",0) + coalesce(\"abundant\".\"_virt_agg_sum_236874416419586\",0) as \"sep_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_4491611913559732\",0) + coalesce(\"abundant\".\"_virt_agg_sum_925738508483735\",0) as \"oct_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_6830801461719161\",0) + coalesce(\"abundant\".\"_virt_agg_sum_383097884398736\",0) as \"nov_net\",
+    coalesce(\"abundant\".\"_virt_agg_sum_7030338772803332\",0) + coalesce(\"abundant\".\"_virt_agg_sum_7373810204495696\",0) as \"dec_net\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"warehouse\" as \"sales_warehouse_warehouse\" on \"abundant\".\"sales_warehouse_sk\" = \"sales_warehouse_warehouse\".\"w_warehouse_sk\"
