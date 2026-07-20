@@ -747,9 +747,12 @@ def safe_get_cte_value(
     if isinstance(cte, CTE):
         key_class = cte.outer_join_key_class(address)
         if len(key_class) > 1:
+            from_scope = cte.from_scope_aliases()
             renders: list[str] = []
             for member in key_class:
                 for source in cte.source_map.get(member.address, []):
+                    if cte.source_key_for(source) not in from_scope:
+                        continue
                     rendered = cte.get_alias(member, source)
                     if isinstance(rendered, str) and rendered.startswith(
                         "INVALID_ALIAS:"
@@ -777,14 +780,22 @@ def safe_get_cte_value(
         rendered = cte.get_alias(c, raw)
         use_map[raw].add(c.address)
         return _format(raw, rendered)
-    if isinstance(raw, list) and len(raw) == 1:
-        rendered = cte.get_alias(c, raw[0])
-        use_map[raw[0]].add(c.address)
-        return _format(raw[0], rendered)
-    for x in raw:
+    sources = list(raw)
+    if isinstance(cte, CTE) and len(sources) > 1:
+        from_scope = cte.from_scope_aliases()
+        in_scope = [s for s in sources if cte.source_key_for(s) in from_scope]
+        # An existence-only parent (e.g. the HAVING semijoin CTE) can leak into
+        # source_map; prefer FROM-scope providers whenever any exist.
+        if in_scope:
+            sources = in_scope
+    if len(sources) == 1:
+        rendered = cte.get_alias(c, sources[0])
+        use_map[sources[0]].add(c.address)
+        return _format(sources[0], rendered)
+    for x in sources:
         use_map[x].add(c.address)
     return coalesce(
-        sorted([_format(x, cte.get_alias(c, x)) for x in raw]),
+        sorted([_format(x, cte.get_alias(c, x)) for x in sources]),
         [],
     )
 

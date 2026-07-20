@@ -38,7 +38,6 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import ArrayType, DataType, MapType, arg_to_datatype
 from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
-from trilogy.parsing.v2.rules.expression_rules import validate_enum_like
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -253,7 +252,6 @@ def like_comparison(
         if node.kind == SyntaxNodeKind.ILIKE
         else ComparisonOperator.LIKE
     )
-    validate_enum_like(args[0], operator, args[1], context)
     return Comparison(left=args[0], right=args[1], operator=operator)
 
 

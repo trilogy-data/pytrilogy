@@ -2618,7 +2618,20 @@ class Factory:
 
         def _rowset_outer_pair(s: str, t: str, jt: JoinType) -> bool:
             if jt is JoinType.LEFT_OUTER:
-                return _is_rowset_keyed(s)
+                # Either side: a rowset ANCHOR (source) cannot be substituted
+                # onto, and a rowset SUBSET side (target) must not be
+                # substituted AWAY — collapsing it onto a ROOT anchor makes
+                # every authored reference (a projection, a null-test) read
+                # the anchor's full population and lets the rowset body (and
+                # its WHERE) prune out of the plan entirely (TPC-DS q35
+                # `subset join <rowset> = <root key>`). A DERIVED anchor
+                # (`nb.w = ta.w + 52`) keeps the substitution path: the
+                # derived-key machinery materializes the expression on its own
+                # side and needs the rowset member collapsed onto the anonymous
+                # canonical to pair the composite legs.
+                return _is_rowset_keyed(s) or (
+                    _is_rowset_keyed(t) and not _is_derived_keyed(s)
+                )
             if jt is JoinType.FULL:
                 return (
                     _is_rowset_keyed(s)
