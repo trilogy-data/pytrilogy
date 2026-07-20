@@ -609,6 +609,11 @@ provider = "anthropic"
 
 # Default model for the chosen provider
 model = "claude-sonnet-4-6"
+
+[report]
+# Default visual theme for `trilogy render` and chart `copy into` output
+# Built-ins: inter (default), inter-dark, editorial, editorial-dark
+theme = "inter"
 ```
 
 ## Sections
@@ -625,6 +630,9 @@ model = "claude-sonnet-4-6"
 - `[agent]` — defaults for `trilogy agent` and AI-assisted features. `provider`
   + `model` are the LLM defaults; `api_key_env` overrides which env var the
   API key is read from (defaults below).
+- `[report]` — rendering defaults. `theme` names the visual theme applied by
+  `trilogy render` and chart `copy into` exports; overridable per invocation
+  with `--theme` / `copy (theme='...')`.
 
 ## API keys
 
@@ -1054,6 +1062,11 @@ provider = "anthropic"
 
 # Default model for the chosen provider
 model = "claude-sonnet-4-6"
+
+[report]
+# Default visual theme for `trilogy render` and chart `copy into` output
+# Built-ins: inter (default), inter-dark, editorial, editorial-dark
+theme = "inter"
 ```
 
 ## Sections
@@ -1070,6 +1083,9 @@ model = "claude-sonnet-4-6"
 - `[agent]` — defaults for `trilogy agent` and AI-assisted features. `provider`
   + `model` are the LLM defaults; `api_key_env` overrides which env var the
   API key is read from (defaults below).
+- `[report]` — rendering defaults. `theme` names the visual theme applied by
+  `trilogy render` and chart `copy into` exports; overridable per invocation
+  with `--theme` / `copy (theme='...')`.
 
 ## API keys
 
@@ -1175,14 +1191,23 @@ hand back a finished report.
 
 **Options:**
 - `--to {png|html}`: Output format (default: `png`).
-- `--theme {inter|editorial}`: Visual theme — font and colors (default: `inter`).
+- `--theme {inter|inter-dark|editorial|editorial-dark}`: Visual theme — font and
+  colors. Defaults to `trilogy.toml` `[report].theme`, else `inter`.
 - `--out PATH`, `-o PATH`: Output path (default: input path with the format's extension).
 
 ```bash
 trilogy render report.md                     # -> report.png (default)
 trilogy render report.md --to html           # -> report.html (interactive charts)
 trilogy render report.md --theme editorial   # font + color theme
+trilogy render report.md --theme inter-dark  # dark variant
 trilogy render report.md -o out/q3.png       # explicit output path
+```
+
+Set a workspace-wide default in `trilogy.toml`:
+
+```toml
+[report]
+theme = "inter-dark"
 ```
 
 Requires the `report` extra (`pip install pytrilogy[report]`); PNG output also
@@ -1247,11 +1272,17 @@ copy into png 'revenue_by_region.png' from chart
 ```
 
 Options go in parentheses after the path: `width`/`height` (chart size in
-pixels) plus `scale` and `ppi` for raster output:
+pixels), `scale` and `ppi` for raster output, `theme` (a quoted theme name),
+and `background` (a CSS color; output is transparent by default so the host
+page owns the surround):
 
 ```trilogy
 copy into png 'revenue.png' (width=640, height=360, scale=2) from chart ...;
+copy into png 'revenue.png' (theme='inter-dark', background='#161514') from chart ...;
 ```
+
+Exports are themed like reports: per-statement `theme=` wins, else
+`trilogy.toml` `[report].theme`, else the `inter` default.
 
 The `from` clause takes a bare statement — `from chart ...` or
 `from select ...` (no parentheses). `copy into csv|json|parquet ... from

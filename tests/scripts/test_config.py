@@ -1462,3 +1462,26 @@ def test_integration_cli_no_warnings_for_clean_config(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert "Unknown trilogy.toml" not in result.output
+
+
+def test_report_theme_config(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[report]\ntheme = "inter-dark"\n')
+    config = load_config_file(toml_path)
+    assert config.report_theme == "inter-dark"
+    assert audit_config_file(toml_path) == []
+
+
+def test_report_theme_defaults_none(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[engine]\ndialect = "duckdb"\n')
+    assert load_config_file(toml_path).report_theme is None
+
+
+def test_audit_warns_unknown_report_key(tmp_path):
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text('[report]\ntheem = "inter"\n')
+    warnings = audit_config_file(toml_path)
+    assert len(warnings) == 1
+    assert "theem" in warnings[0]
+    assert "[report]" in warnings[0]

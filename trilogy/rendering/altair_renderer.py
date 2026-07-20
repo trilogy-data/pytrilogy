@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -72,8 +73,19 @@ class AltairRenderer(BaseRenderer):
                 df[col] = df[col].astype(float)
         return df
 
+    def _coerce_temporals(self, df: Any) -> Any:
+        """DuckDB returns DATE as datetime.date, which pandas keeps as object
+        dtype and Altair can't JSON-serialize; cast to datetime64."""
+        for col in df.columns:
+            if (
+                df[col].dtype == object
+                and df[col].map(lambda v: isinstance(v, date)).any()
+            ):
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+        return df
+
     def _render_layer(self, layer: ProcessedChartLayer, data: list[dict]) -> Any:
-        df = self._coerce_decimals(pd.DataFrame(data))
+        df = self._coerce_temporals(self._coerce_decimals(pd.DataFrame(data)))
         builders = {
             ChartType.BAR: self._bar,
             ChartType.BARH: self._bar,
@@ -94,11 +106,6 @@ class AltairRenderer(BaseRenderer):
         encoding = {datum_key: alt.datum(placement.value)}
         return alt.Chart().mark_rule().encode(**encoding)
 
-    def _field_axis(self, layer: ProcessedChartLayer, field: str) -> Any:
-        """A currency-formatting axis for the field, else Altair's default."""
-        expr = axis_label_expr(field_datatype(layer, field))
-        return alt.Axis(labelExpr=expr) if expr else alt.Undefined
-
     _TEMPORAL_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
 
     def _field_type(self, layer: ProcessedChartLayer, field: str) -> Any:
@@ -116,27 +123,66 @@ class AltairRenderer(BaseRenderer):
             return "nominal"
         return alt.Undefined
 
+    @staticmethod
+    def _time_label_format(values: Any) -> str:
+        """A time-label format matched to the data's granularity, judged by the
+        smallest gap between distinct values."""
+        stamps = pd.to_datetime(pd.Series(values), errors="coerce").dropna()
+        gaps = stamps.drop_duplicates().sort_values().diff().dropna()
+        step = gaps.min() if len(gaps) else pd.Timedelta(days=1)
+        if step < pd.Timedelta(hours=1):
+            return "%H:%M"
+        if step < pd.Timedelta(days=1):
+            return "%b %d %H:%M"
+        if step < pd.Timedelta(days=28):
+            return "%b %d"
+        if step < pd.Timedelta(days=365):
+            return "%b %Y"
+        return "%Y"
+
     def _encode(
-        self, layer: ProcessedChartLayer, ordered_axis: str | None = None
+        self,
+        layer: ProcessedChartLayer,
+        data: Any = None,
+        category_axis: str | None = None,
     ) -> dict[str, Any]:
+        # Bar order follows the query's ORDER BY when it has one; without one,
+        # sort by category value so output stays deterministic.
+        ordered = layer.query is not None and layer.query.order_by is not None
         encoding: dict[str, Any] = {}
-        if layer.x_fields:
-            field = layer.x_fields[0]
-            encoding["x"] = alt.X(
+        for channel, cls, fields in (
+            ("x", alt.X, layer.x_fields),
+            ("y", alt.Y, layer.y_fields),
+        ):
+            if not fields:
+                continue
+            field = fields[0]
+            field_type = self._field_type(layer, field)
+            sort: Any = alt.Undefined
+            axis_kwargs: dict[str, Any] = {}
+            currency_expr = axis_label_expr(field_datatype(layer, field))
+            if currency_expr:
+                axis_kwargs["labelExpr"] = currency_expr
+            if channel == category_axis:
+                sort = None if ordered else "ascending"
+                # A bar's category axis is discrete: encode as ordinal so bars
+                # band to the step at any density. A continuous scale gives
+                # fixed-width slivers (Vega's 5px default) or overlap instead.
+                if field_type == "temporal":
+                    field_type = "ordinal"
+                    if data is not None and field in data:
+                        fmt = self._time_label_format(data[field])
+                        axis_kwargs["labelExpr"] = (
+                            f"timeFormat(toDate(datum.value), '{fmt}')"
+                        )
+                elif field_type == "quantitative":
+                    field_type = "ordinal"
+            encoding[channel] = cls(
                 field,
                 title=prettify_label(field),
-                axis=self._field_axis(layer, field),
-                type=self._field_type(layer, field),
-                sort=None if ordered_axis == "x" else alt.Undefined,
-            )
-        if layer.y_fields:
-            field = layer.y_fields[0]
-            encoding["y"] = alt.Y(
-                field,
-                title=prettify_label(field),
-                axis=self._field_axis(layer, field),
-                type=self._field_type(layer, field),
-                sort=None if ordered_axis == "y" else alt.Undefined,
+                axis=alt.Axis(**axis_kwargs) if axis_kwargs else alt.Undefined,
+                type=field_type,
+                sort=sort,
             )
         if layer.color_field:
             encoding["color"] = alt.Color(
@@ -151,13 +197,11 @@ class AltairRenderer(BaseRenderer):
     def _bar(self, data: Any, layer: ProcessedChartLayer) -> Any:
         # barh maps here too: axes are literal, so binding a quantitative field
         # to x_axis yields horizontal bars without any axis swap.
-        # sort=None on the category axis keeps the query's ORDER BY as bar
-        # order instead of Vega's alphabetical default.
         category_axis = "y" if layer.layer_type == ChartType.BARH else "x"
         return (
             alt.Chart(data)
             .mark_bar()
-            .encode(**self._encode(layer, ordered_axis=category_axis))
+            .encode(**self._encode(layer, data=data, category_axis=category_axis))
         )
 
     def _line(self, data: Any, layer: ProcessedChartLayer) -> Any:

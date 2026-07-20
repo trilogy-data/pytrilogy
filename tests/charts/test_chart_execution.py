@@ -264,17 +264,19 @@ def test_copy_chart_rejects_unknown_option(tmp_path):
 def test_copy_chart_accepts_scale_and_ppi_options(tmp_path):
     from trilogy.executor import _chart_copy_options
 
-    size, save = _chart_copy_options(
-        {"width": 400, "height": 300, "scale": 2, "ppi": 150}
+    size, save, theme, background = _chart_copy_options(
+        {"width": 400, "height": 300, "scale": 2, "ppi": 150, "theme": "inter-dark"}
     )
     assert size == {"width": 400, "height": 300}
     assert save == {"scale_factor": 2, "ppi": 150}
+    assert theme == "inter-dark"
+    assert background is None
 
 
 def test_chart_copy_options_empty():
     from trilogy.executor import _chart_copy_options
 
-    assert _chart_copy_options({}) == ({}, {})
+    assert _chart_copy_options({}) == ({}, {}, None, None)
 
 
 def test_chart_statement_invokes_select_hook():
@@ -378,7 +380,10 @@ def test_chart_axis_bound_to_dotted_property_concept():
     assert set(result.data[0][0].keys()) == {"create_time_hour", "score"}
     spec = result.chart.to_dict()
     assert spec["encoding"]["x"]["field"] == "create_time_hour"
-    assert spec["encoding"]["x"]["type"] == "quantitative"
+    # a bar's category axis is banded (ordinal) so bars fill their step
+    assert spec["encoding"]["x"]["type"] == "ordinal"
+    # without an ORDER BY, categories sort ascending for deterministic output
+    assert spec["encoding"]["x"]["sort"] == "ascending"
 
 
 def test_barh_category_axis_preserves_query_order():
@@ -401,3 +406,41 @@ def test_barh_category_axis_preserves_query_order():
     # Vega's alphabetical default; the value axis is left untouched
     assert spec["encoding"]["y"]["sort"] is None
     assert "sort" not in spec["encoding"]["x"]
+
+
+def test_bar_temporal_category_axis_banded_with_time_labels():
+    results = list(_executor().execute_text(_DATED_SETUP + """
+            chart
+              layer bar ( x_axis <- create_time.date, y_axis <- score );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    enc = spec["encoding"]["x"]
+    assert enc["type"] == "ordinal"
+    assert "timeFormat" in enc["axis"]["labelExpr"]
+    # daily granularity -> month + day labels
+    assert "%b %d" in enc["axis"]["labelExpr"]
+
+
+def test_line_chart_keeps_temporal_axis():
+    results = list(_executor().execute_text(_DATED_SETUP + """
+            chart
+              layer line ( x_axis <- create_time, y_axis <- score );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    assert spec["encoding"]["x"]["type"] == "temporal"
+    assert "sort" not in spec["encoding"]["x"]
+
+
+def test_date_columns_serialize():
+    # DuckDB DATE comes back as datetime.date (object dtype); the renderer
+    # must coerce it so the chart spec is JSON-serializable
+    import json
+
+    results = list(_executor().execute_text(_DATED_SETUP + """
+            chart
+              layer bar ( x_axis <- create_time.date, y_axis <- score );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    json.dumps(chart_results[0].chart.to_dict())

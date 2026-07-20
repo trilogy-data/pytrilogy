@@ -128,6 +128,8 @@ class RuntimeConfig:
     serve_connection: ServeConnectionConfig | None = None
     project_name: str | None = None
     agent: AgentConfig = field(default_factory=AgentConfig)
+    # default visual theme for report rendering and chart copy output
+    report_theme: str | None = None
 
 
 # Schema of known fields. `[engine.config]` is intentionally omitted (validated
@@ -143,6 +145,7 @@ _KNOWN_TOP_LEVEL: set[str] = {
     "serve",
     "project",
     "agent",
+    "report",
 }
 _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "engine": {"dialect", "config", "env_file", "parallelism"},
@@ -153,6 +156,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "serve.connection": {"type", "options"},
     "serve.connection.options": None,
     "project": {"name"},
+    "report": {"theme"},
     "agent": {
         "provider",
         "model",
@@ -284,6 +288,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     project_raw: dict = config_data.get("project", {})
     project_name: str | None = project_raw.get("name")
 
+    report_raw: dict = config_data.get("report", {})
+    report_theme: str | None = report_raw.get("theme")
+
     agent_raw: dict = config_data.get("agent", {})
     agent_provider: Provider | None = None
     if raw_provider := agent_raw.get("provider"):
@@ -331,4 +338,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         serve_connection=serve_connection,
         project_name=project_name,
         agent=agent,
+        report_theme=report_theme,
     )

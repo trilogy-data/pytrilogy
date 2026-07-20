@@ -159,14 +159,17 @@ def escape_literal_colons(sql: str) -> str:
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
 _CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}
-_CHART_COPY_ALLOWED = _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys()
+_CHART_COPY_STYLE_KEYS = {"theme", "background"}
+_CHART_COPY_ALLOWED = (
+    _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys() | _CHART_COPY_STYLE_KEYS
+)
 
 
 def _chart_copy_options(
     options: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], str | None, str | None]:
     if not options:
-        return {}, {}
+        return {}, {}, None, None
     unknown = set(options) - _CHART_COPY_ALLOWED
     if unknown:
         raise ValueError(
@@ -179,7 +182,7 @@ def _chart_copy_options(
         for src, dest in _CHART_COPY_SAVE_KEYS.items()
         if src in options
     }
-    return size_props, save_kwargs
+    return size_props, save_kwargs, options.get("theme"), options.get("background")
 
 
 class Executor(object):
@@ -192,6 +195,7 @@ class Executor(object):
         hooks: List[BaseHook] | None = None,
         config: DialectConfig | None = None,
         staging: StagingConfig | None = None,
+        chart_theme: str | None = None,
     ):
 
         self.dialect: Dialects = dialect
@@ -202,6 +206,9 @@ class Executor(object):
         self.hooks = hooks
         self.config = config
         self.staging = staging or StagingConfig()
+        # default theme for chart copy output (from trilogy.toml [report].theme);
+        # a per-statement copy (theme=...) overrides it
+        self.chart_theme = chart_theme
         self._instance_id = str(uuid.uuid4())
         self.generator = get_dialect_generator(
             self.dialect,
@@ -641,6 +648,8 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedChartCopyStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
+        from trilogy.rendering.chart_theme import theme_chart
+        from trilogy.rendering.theme import DEFAULT_THEME, get_theme
 
         if not ALTAIR_AVAILABLE:
             raise RuntimeError(
@@ -651,7 +660,13 @@ class Executor(object):
         chart = renderer.render(query.chart, layer_data)
         if chart is None:
             raise RuntimeError("Chart renderer returned no chart to save.")
-        size_props, save_kwargs = _chart_copy_options(query.options)
+        size_props, save_kwargs, theme_name, background = _chart_copy_options(
+            query.options
+        )
+        theme = get_theme(theme_name or self.chart_theme or DEFAULT_THEME.name)
+        chart = theme_chart(chart, theme)
+        if background:
+            chart = chart.properties(background=background)
         if size_props:
             chart = chart.properties(**size_props)
         target = self._resolve_copy_target(query.target)
