@@ -52,6 +52,9 @@ def theme_chart(chart: Any, theme: Theme, label_font_size: int = 12) -> Any:
         .configure_mark(color=theme.chart_palette[0])
         .configure_bar(cornerRadiusEnd=4)
         .configure_line(strokeWidth=2.5)
-        .configure_area(opacity=0.15)
+        # translucent fill + a full-opacity boundary line so a SOLO area chart
+        # stays crisp; a bare opacity=0.15 (the old value) read as empty when
+        # no line layer sat on top
+        .configure_area(fillOpacity=0.35, line={"strokeWidth": 2.5})
         .configure_range(category=list(theme.chart_palette))
     )

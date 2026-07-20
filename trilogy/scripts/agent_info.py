@@ -803,8 +803,40 @@ A `chart` statement renders as a chart in place:
 chart layer bar ( x_axis <- region, y_axis <- revenue );
 ```
 
-Full chart-statement syntax (layers, encodings, placements) is in the main
-syntax reference — run `trilogy agent-info`.
+### Chart statement reference
+
+```trilogy
+chart
+  set show_title            -- title from the value-axis label
+  set scale_y: log          -- linear|log|sqrt; applies to continuous value axes
+  layer bar (
+    x_axis <- region,
+    y_axis <- sum(revenue) as total,   -- computed bindings REQUIRE `as <name>`
+    color <- channel,                  -- one series per color, with legend
+    group <- channel,                  -- grouped (side-by-side) bars; no legend
+    annotation <- note                 -- per-mark text label
+  )
+  from select region, channel, sum(revenue) as total, note
+  order by total desc                  -- ORDER BY drives bar order
+  place hline at 1000 as target;       -- reference rule with optional label
+```
+
+- **Chart types**: `bar`, `barh` (horizontal), `line`, `point`, `area`,
+  `headline` (big KPI number; binds `x_axis` only).
+- **Roles**: `x_axis`, `y_axis`, `color`, `size` (point size), `group`
+  (side-by-side bars, or per-series split on line/point/area), `x_trellis` /
+  `y_trellis` (small-multiple columns/rows), `annotation` (text label per
+  mark). `geo` is reserved and not yet implemented.
+- **`from select ...`** per layer is optional; without it the bindings become
+  an implicit select. A bar chart's category order follows the select's
+  `ORDER BY`; without one it sorts ascending.
+- **Settings**: `set hide_legend`, `set show_title`,
+  `set scale_x: linear|log|sqrt`, `set scale_y: ...`.
+- **Placements**: `place hline at <value> [as <label>]` and
+  `place vline at <value> [as <label>]` draw labeled reference rules.
+- **Constraints**: trellis roles cannot combine with multiple layers,
+  placements, or annotations (Vega-Lite forbids facets inside layered
+  charts).
 
 ## Standalone chart images (`copy into`)
 

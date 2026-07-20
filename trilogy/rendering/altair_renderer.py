@@ -47,18 +47,43 @@ class AltairRenderer(BaseRenderer):
     ) -> Any:
         if len(layer_data) != len(statement.layers):
             raise ValueError("Layer data count does not match layer count")
+        trellised = any(
+            layer.x_trellis_field or layer.y_trellis_field for layer in statement.layers
+        )
+        annotated = any(layer.annotation_field for layer in statement.layers)
+        if trellised and (
+            len(statement.layers) > 1 or statement.placements or annotated
+        ):
+            # Vega-Lite forbids facet channels inside layered specs.
+            raise ValueError(
+                "Trellis roles cannot be combined with multiple layers,"
+                " place rules, or annotations."
+            )
         scales = (statement.scale_x, statement.scale_y)
         layer_charts: list[Any] = []
         for layer, data in zip(statement.layers, layer_data):
             layer_charts.append(self._render_layer(layer, data, scales))
         for placement in statement.placements:
-            layer_charts.append(self._render_placement(placement))
+            layer_charts.extend(self._render_placement(placement))
         if not layer_charts:
             return None
         chart = layer_charts[0] if len(layer_charts) == 1 else alt.layer(*layer_charts)
+        if statement.show_title:
+            title = self._statement_title(statement)
+            if title:
+                chart = chart.properties(title=title)
         if statement.hide_legend:
             chart = chart.configure_legend(disable=True)
         return chart
+
+    @staticmethod
+    def _statement_title(statement: ProcessedChartStatement) -> str | None:
+        """A title from the first layer's value-axis field (y, else x)."""
+        for layer in statement.layers:
+            for fields in (layer.y_fields, layer.x_fields):
+                if fields:
+                    return prettify_label(fields[0])
+        return None
 
     def to_spec(
         self,
@@ -111,10 +136,35 @@ class AltairRenderer(BaseRenderer):
             )
         return build(df, layer, scales)
 
-    def _render_placement(self, placement) -> Any:
+    def _render_placement(self, placement) -> list[Any]:
         datum_key = "y" if placement.kind == ChartPlaceKind.HLINE else "x"
         encoding = {datum_key: alt.datum(placement.value)}
-        return alt.Chart().mark_rule().encode(**encoding)
+        charts = [alt.Chart().mark_rule().encode(**encoding)]
+        if placement.label:
+            # pin the label to the rule on its axis; pixel-position the other.
+            # hline: just above the line at the left edge; vline: right of the
+            # line near the top.
+            is_hline = placement.kind == ChartPlaceKind.HLINE
+            other_key = "x" if is_hline else "y"
+            charts.append(
+                alt.Chart()
+                .mark_text(
+                    align="left",
+                    baseline="bottom" if is_hline else "top",
+                    dx=4,
+                    dy=-4 if is_hline else 0,
+                    fontSize=11,
+                    color=self.theme.text_muted,
+                )
+                .encode(
+                    **{
+                        datum_key: alt.datum(placement.value),
+                        other_key: alt.value(4),
+                    },
+                    text=alt.value(placement.label),
+                )
+            )
+        return charts
 
     _TEMPORAL_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
 
@@ -211,7 +261,62 @@ class AltairRenderer(BaseRenderer):
             encoding["size"] = alt.Size(
                 layer.size_field, title=prettify_label(layer.size_field)
             )
+        if layer.group_field:
+            # grouped bars sit side by side within each category band; on
+            # continuous marks the group splits the series without a legend
+            if layer.layer_type in (ChartType.BAR, ChartType.BARH):
+                offset_cls = (
+                    alt.YOffset if layer.layer_type == ChartType.BARH else alt.XOffset
+                )
+                offset_channel = (
+                    "yOffset" if layer.layer_type == ChartType.BARH else "xOffset"
+                )
+                encoding[offset_channel] = offset_cls(
+                    layer.group_field, title=prettify_label(layer.group_field)
+                )
+            else:
+                encoding["detail"] = alt.Detail(layer.group_field)
+        if layer.x_trellis_field:
+            encoding["column"] = alt.Column(
+                layer.x_trellis_field, title=prettify_label(layer.x_trellis_field)
+            )
+        if layer.y_trellis_field:
+            encoding["row"] = alt.Row(
+                layer.y_trellis_field, title=prettify_label(layer.y_trellis_field)
+            )
+        if layer.geo_field:
+            raise NotImplementedError(
+                "The 'geo' chart role is not yet implemented in the Altair" " renderer."
+            )
         return encoding
+
+    def _with_annotation(
+        self,
+        chart: Any,
+        data: Any,
+        layer: ProcessedChartLayer,
+        encoding: dict[str, Any],
+    ) -> Any:
+        """Overlay per-mark text labels bound to the `annotation` role."""
+        if not layer.annotation_field:
+            return chart
+        horizontal = layer.layer_type == ChartType.BARH
+        text = (
+            alt.Chart(data)
+            .mark_text(
+                fontSize=11,
+                color=self.theme.text_secondary,
+                align="left" if horizontal else "center",
+                baseline="middle" if horizontal else "bottom",
+                dx=4 if horizontal else 0,
+                dy=0 if horizontal else -4,
+            )
+            .encode(
+                **{k: v for k, v in encoding.items() if k in ("x", "y")},
+                text=alt.Text(layer.annotation_field),
+            )
+        )
+        return alt.layer(chart, text)
 
     def _bar(
         self,
@@ -222,15 +327,11 @@ class AltairRenderer(BaseRenderer):
         # barh maps here too: axes are literal, so binding a quantitative field
         # to x_axis yields horizontal bars without any axis swap.
         category_axis = "y" if layer.layer_type == ChartType.BARH else "x"
-        return (
-            alt.Chart(data)
-            .mark_bar()
-            .encode(
-                **self._encode(
-                    layer, data=data, category_axis=category_axis, scales=scales
-                )
-            )
+        encoding = self._encode(
+            layer, data=data, category_axis=category_axis, scales=scales
         )
+        chart = alt.Chart(data).mark_bar().encode(**encoding)
+        return self._with_annotation(chart, data, layer, encoding)
 
     def _line(
         self,
@@ -238,7 +339,9 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        return alt.Chart(data).mark_line().encode(**self._encode(layer, scales=scales))
+        encoding = self._encode(layer, scales=scales)
+        chart = alt.Chart(data).mark_line().encode(**encoding)
+        return self._with_annotation(chart, data, layer, encoding)
 
     def _point(
         self,
@@ -246,7 +349,9 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        return alt.Chart(data).mark_point().encode(**self._encode(layer, scales=scales))
+        encoding = self._encode(layer, scales=scales)
+        chart = alt.Chart(data).mark_point().encode(**encoding)
+        return self._with_annotation(chart, data, layer, encoding)
 
     def _area(
         self,
@@ -254,7 +359,9 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        return alt.Chart(data).mark_area().encode(**self._encode(layer, scales=scales))
+        encoding = self._encode(layer, scales=scales)
+        chart = alt.Chart(data).mark_area().encode(**encoding)
+        return self._with_annotation(chart, data, layer, encoding)
 
     def _headline(
         self,

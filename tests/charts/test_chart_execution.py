@@ -468,3 +468,31 @@ def test_scale_setting_applies_in_copy_chart(tmp_path):
             """))
     svg = (tmp_path / "chart.svg").read_text(encoding="utf-8")
     assert len(svg) > 0
+
+
+def test_multi_layer_shared_alias_binding():
+    # layering area + line over the same aliased axis concept must resolve in
+    # every declaration shape (regression: reported as Undefined concept on
+    # the alias)
+    shapes = [
+        """chart
+          layer area ( x_axis <- create_time.hour::int as hr, y_axis <- sum(score) as n )
+          layer line ( x_axis <- hr, y_axis <- n );
+        """,
+        """chart
+          layer area ( x_axis <- hr, y_axis <- n )
+          from select create_time.hour::int as hr, sum(score) as n
+          layer line ( x_axis <- hr, y_axis <- n );
+        """,
+        """chart
+          layer area ( x_axis <- hr, y_axis <- n )
+          from select create_time.hour::int as hr, sum(score) as n
+          layer line ( x_axis <- hr, y_axis <- n )
+          from select create_time.hour::int as hr, sum(score) as n;
+        """,
+    ]
+    for shape in shapes:
+        results = list(_executor().execute_text(_DATED_SETUP + shape))
+        chart_results = [r for r in results if isinstance(r, ChartResult)]
+        assert chart_results[0].chart is not None, shape
+        assert len(chart_results[0].data) == 2, shape

@@ -192,3 +192,20 @@ def test_run_document_pins_executor_chart_theme(tmp_path):
     executor = _executor(chart_theme="inter")
     run_document([], working_path=tmp_path, executor=executor, chart_theme="inter-dark")
     assert executor.chart_theme == "inter-dark"
+
+
+def test_solo_area_is_visible():
+    # a bare opacity=0.15 area (the old theme value) read as empty with no
+    # line layer on top; the theme now pairs a translucent fill with a
+    # full-opacity boundary line
+    results = list(
+        _executor().execute_text(
+            _SETUP + "chart layer area ( x_axis <- category, y_axis <- value );"
+        )
+    )
+    chart = [r for r in results if isinstance(r, ChartResult)][0].chart
+    spec = theme_chart(chart, INTER_THEME).to_dict()
+    assert spec["config"]["area"] == {
+        "fillOpacity": 0.35,
+        "line": {"strokeWidth": 2.5},
+    }

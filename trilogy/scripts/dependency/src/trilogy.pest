@@ -657,7 +657,9 @@ fcase_simple_when = { ^"when" ~ expr ~ ^"then" ~ expr }
 fcase_simple = { ^"case" ~ expr ~ fcase_simple_when+ ~ fcase_else? ~ ^"end" }
 fcase        = { ^"case" ~ fcase_when* ~ fcase_else? ~ ^"end" }
 len          = { ^"len" ~ "(" ~ expr ~ ")" }
-fnot         = { ^"not" ~ expr }
+// KW_END keeps identifiers with a `not` prefix (`note`, `notice`) from being
+// read as a negation of their tail.
+fnot         = { ^"not" ~ KW_END ~ expr }
 fbool        = { ^"bool" ~ "(" ~ expr ~ ")" }
 fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
