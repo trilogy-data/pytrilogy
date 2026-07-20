@@ -1,8 +1,8 @@
 [
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
     "expected": [
       "SHAPE"
     ],
@@ -10,9 +10,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
@@ -42,7 +42,7 @@
   {
     "node": "tests/discovery/test_aggregate_handling.py::test_aggregate_by_grain_with_derived_of_key",
     "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {item_sk, prefix",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 1). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -56,20 +56,20 @@
     "downgrade": false
   },
   {
+    "node": "tests/discovery/test_canonical_collision_merge.py::test_canonical_collision_single_source_both_columns",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/discovery/test_canonical_collision_merge.py::test_canonical_collision_single_source_both_columns",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:",
-    "expected": [],
     "escalation": false,
     "downgrade": false
   },
@@ -90,17 +90,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by",
-    "bucket": "XPASS",
-    "detail": "",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated",
     "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {const}; {top3}.",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 19). The requested concepts split into 2 disconnected subg",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -114,17 +106,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion",
+    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
     "bucket": "CRASH",
-    "detail": "Failed: DID NOT RAISE <class 'trilogy.core.exceptions.UnresolvableQueryException'>",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
+    "node": "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion",
     "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
+    "detail": "Failed: DID NOT RAISE <class 'trilogy.core.exceptions.UnresolvableQueryException'>",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -146,17 +138,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf",
+    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_row_grain",
     "bucket": "ROWS",
-    "detail": "AssertionError: assert [('ep100', De...cimal('7.0'))] == [('ep100', 51... ('zzz', 7.0)]",
+    "detail": "AssertionError: assert [('ep100', De...'11.0')), ...] == [('ep100', 11...ep300', 55.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_row_grain",
+    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf",
     "bucket": "ROWS",
-    "detail": "AssertionError: assert [('ep100', De...'11.0')), ...] == [('ep100', 11...ep300', 55.0)]",
+    "detail": "AssertionError: assert [('ep100', De...cimal('7.0'))] == [('ep100', 51... ('zzz', 7.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -170,14 +162,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
-    "bucket": "ROWS",
-    "detail": "assert 4 == 3",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
@@ -186,17 +170,25 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
-    "bucket": "ROWS",
-    "detail": "AssertionError: (1282, 1223)",
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
     "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join_order",
-    "bucket": "ROWS",
-    "detail": "assert 6 == 5",
+    "bucket": "XPASS",
+    "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/modeling/test_complex.py::test_window_clone",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 6). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -210,9 +202,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/test_complex.py::test_window_clone",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {filtered}; {ord",
+    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
+    "bucket": "ROWS",
+    "detail": "AssertionError: (1285, 1226)",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -250,14 +242,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['ss.item.sk<Purpose.KEY>Derivation.ROOT>', 'ss.store.sk<Purpose.KEY>Derivation.ROOT>', 'ss.pos_",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.DisconnectedConceptsException: WHERE input(s) ['order.date'] cannot be related to the query outputs ['local.order_count', 'order.priority']: no join or merge connects the filte",
@@ -274,17 +258,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query. The requested concepts split into 2 disconnected subgraphs: {a, b, rk}; {sx}",
+    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen",
+    "bucket": "ROWS",
+    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (23512.752857142856,) != (29776809.931428574,)",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen",
-    "bucket": "ROWS",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (23512.752857142856,) != (29776809.931428574,)",
+    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -346,14 +330,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['ss.item.sk<Purpose.KEY>Derivation.ROOT>', 'ss.store.sk<Purpose.KEY>Derivation.ROOT>', 'ss.pos_",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure",
     "bucket": "SHAPE",
     "detail": "assert 'LEFT OUTER JOIN' in '\\nWITH \\nthoughtful as (\\nSELECT\\n    \"fb_fb\".\"it\" as \"_agg_b_it\",\\n    sum(\"fb_fb\".\"q\") as \"_agg_b_qb\"\\nFROM\\n    \"f...g_a_it\" as \"agg_a_it\",\\n    \"yummy\".\"agg_a_qa\" as \"",
@@ -363,8 +339,8 @@
   },
   {
     "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert [('A001', 'Al...cimal('3.0'))] == [('A001', 'Al...', None, 4.0)]",
+    "bucket": "CRASH",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -372,6 +348,14 @@
   {
     "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles",
     "bucket": "CRASH",
+    "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
+    "bucket": "XPASS",
     "detail": "",
     "expected": [],
     "escalation": false,
@@ -400,5 +384,17 @@
     "expected": [],
     "escalation": false,
     "downgrade": false
+  },
+  {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
+    "bucket": "CRASH",
+    "detail": "_duckdb.IOException: IO Error: Failed to delete file \".tmp\\duckdb_temp_storage_DEFAULT-1.tmp\": The process cannot access the file because it is being used by another process.",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false,
+    "varied": [
+      "CRASH",
+      "XPASS"
+    ]
   }
 ]

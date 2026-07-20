@@ -1083,7 +1083,12 @@ def _rowset_join_key_addresses(
     if not key_addresses and concept.grain:
         key_addresses = set(concept.grain.components)
     if not key_addresses:
-        key_addresses = {concept.address}
+        # A keyless, grainless rowset handle (a global-aggregate scalar body:
+        # `(select max(val)/2 -> half)`) has no join axis. Expanding through its
+        # own lineage would put the aggregate VALUE into the merge grain and
+        # force the row side to re-render the aggregate at row grain
+        # (AGG_GRAIN_MISMATCH). v3 cross-joins such a boundary ON 1=1.
+        return set()
     output: set[str] = set()
     for key_address in key_addresses:
         key_concept = mandatory_by_address.get(key_address)

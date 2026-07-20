@@ -1,0 +1,1050 @@
+{
+  "concept_edges": [
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "[@condition]local.half",
+      "target": "local.id"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "[@condition]local.mx",
+      "target": "[@condition]local.half"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "local.id",
+      "target": "[@condition]local.mx"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "local.val",
+      "target": "[@condition]local.mx"
+    }
+  ],
+  "concepts": [
+    {
+      "address": "local.half",
+      "aggregate_input_grain": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "existence_only": false,
+      "grain": [],
+      "granularity": "single_row",
+      "grouping_mode": null,
+      "id": "[@condition]local.half",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "property",
+      "rowset_name": null
+    },
+    {
+      "address": "local.mx",
+      "aggregate_input_grain": [
+        "__preql_internal.all_rows",
+        "local.id"
+      ],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "__preql_internal.all_rows"
+      ],
+      "granularity": "single_row",
+      "grouping_mode": "standard",
+      "id": "[@condition]local.mx",
+      "is_rename": false,
+      "keys": [
+        "__preql_internal.all_rows"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local.id",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "local.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "local.id",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "key",
+      "rowset_name": null
+    },
+    {
+      "address": "local.val",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "root",
+      "existence_only": false,
+      "grain": [
+        "local.id"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "local.val",
+      "is_rename": false,
+      "keys": [
+        "local.id"
+      ],
+      "purpose": "property",
+      "rowset_name": null
+    }
+  ],
+  "group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "target": "grp:[@condition]basic:d1:\u2205:sig:1fc31a"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": "pre_condition",
+      "source": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "target": "grp:root:root:\u2205"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "post_condition",
+      "source": "grp:root:root:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id"
+    }
+  ],
+  "groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.val > local.half"
+      ],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+            "output_addresses": [
+              "local.mx"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "__preql_internal.all_rows"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+            "output_addresses": [
+              "local.half"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root:\u2205",
+            "output_addresses": [
+              "local.id"
+            ],
+            "preserve_keys": [
+              "__preql_internal.all_rows"
+            ],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root_d1:\u2205",
+            "output_addresses": [
+              "local.id",
+              "local.val"
+            ],
+            "preserve_keys": [
+              "__preql_internal.all_rows"
+            ],
+            "projection_grain": []
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "__preql_internal.all_rows"
+        ],
+        "output_addresses": [
+          "local.id"
+        ],
+        "required_grain": [
+          "local.id"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "merge",
+          "phase": "post_condition"
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "merge",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "__preql_internal.all_rows",
+        "local.id"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "__preql_internal.all_rows"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "__preql_internal.all_rows"
+          ],
+          "required_grain": [
+            "__preql_internal.all_rows"
+          ],
+          "required_outputs": [
+            "local.id",
+            "local.val"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.id",
+        "local.val"
+      ],
+      "members": [
+        "local.mx"
+      ],
+      "outputs": [
+        "local.mx"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local.mx"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "preserve_keys": [
+            "__preql_internal.all_rows"
+          ],
+          "required_grain": [
+            "__preql_internal.all_rows"
+          ],
+          "required_outputs": [
+            "local.mx"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.mx"
+      ],
+      "members": [
+        "local.half"
+      ],
+      "outputs": [
+        "local.half"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local.half"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "constraint",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.val > local.half"
+      ],
+      "depth": "root",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root:\u2205",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:root:root:\u2205",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "preserve_keys": [],
+          "required_grain": [],
+          "required_outputs": [
+            "local.half"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.half"
+      ],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [
+        "local.id"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "constraint",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local.id",
+        "local.val"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "post_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "root_d1",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root_d1:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [
+        "local.id",
+        "local.val"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "local.id",
+        "local.val"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    }
+  ],
+  "merged_group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "target": "grp:[@condition]basic:d1:\u2205:sig:1fc31a"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "constraint",
+      "phase": null,
+      "source": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "target": "grp:root:root:\u2205"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:root:root:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:root:root_d1:\u2205",
+      "target": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id"
+    }
+  ],
+  "merged_groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.val > local.half"
+      ],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+            "output_addresses": [
+              "local.mx"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "__preql_internal.all_rows"
+            ]
+          },
+          {
+            "group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+            "output_addresses": [
+              "local.half"
+            ],
+            "preserve_keys": [],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root:\u2205",
+            "output_addresses": [
+              "local.id"
+            ],
+            "preserve_keys": [
+              "__preql_internal.all_rows"
+            ],
+            "projection_grain": []
+          },
+          {
+            "group_id": "grp:root:root_d1:\u2205",
+            "output_addresses": [
+              "local.id",
+              "local.val"
+            ],
+            "preserve_keys": [
+              "__preql_internal.all_rows"
+            ],
+            "projection_grain": []
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "__preql_internal.all_rows"
+        ],
+        "output_addresses": [
+          "local.id"
+        ],
+        "required_grain": [
+          "local.id"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "merge",
+          "phase": null
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "__preql_internal.all_rows",
+        "local.id"
+      ],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "__preql_internal.all_rows"
+      ],
+      "hidden": [],
+      "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:root:root_d1:\u2205",
+          "preserve_keys": [
+            "__preql_internal.all_rows"
+          ],
+          "required_grain": [
+            "__preql_internal.all_rows"
+          ],
+          "required_outputs": [
+            "local.id",
+            "local.val"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.id",
+        "local.val"
+      ],
+      "members": [
+        "local.mx"
+      ],
+      "outputs": [
+        "local.mx"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:root:root_d1:\u2205",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.mx"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d1",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "preserve_keys": [
+            "__preql_internal.all_rows"
+          ],
+          "required_grain": [
+            "__preql_internal.all_rows"
+          ],
+          "required_outputs": [
+            "local.mx"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.mx"
+      ],
+      "members": [
+        "local.half"
+      ],
+      "outputs": [
+        "local.half"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.half"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:root:root:\u2205",
+          "kind": "constraint",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [
+        "local.val > local.half"
+      ],
+      "depth": "root",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root:\u2205",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:root:root:\u2205",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "preserve_keys": [],
+          "required_grain": [],
+          "required_outputs": [
+            "local.half"
+          ]
+        }
+      ],
+      "inputs": [
+        "local.half"
+      ],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [
+        "local.id"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:[@condition]basic:d1:\u2205:sig:1fc31a",
+          "kind": "constraint",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.id",
+        "local.val"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "root_d1",
+      "derivation": "root",
+      "final_contract": null,
+      "grain": [],
+      "hidden": [],
+      "id": "grp:root:root_d1:\u2205",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [
+        "local.id",
+        "local.val"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "local.id",
+        "local.val"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:[@condition]aggregate:d1:__preql_internal.all_rows:input:__preql_internal.all_rows|local.id",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    }
+  ],
+  "strategy_nodes": [
+    {
+      "conditions": null,
+      "datasource": "t",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<local.id>",
+      "hidden": [],
+      "id": "n0",
+      "inputs": [
+        "local.id",
+        "local.val",
+        "local.cat"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local.id"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "local.id"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "t",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<local.id>",
+      "hidden": [],
+      "id": "n1",
+      "inputs": [
+        "local.id",
+        "local.val",
+        "local.cat"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local.id",
+        "local.val"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "local.id",
+        "local.val"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n2",
+      "inputs": [
+        "local.val"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local.mx"
+      ],
+      "parents": [
+        "n1"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local.mx"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n3",
+      "inputs": [
+        "local.mx"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local.half"
+      ],
+      "parents": [
+        "n2"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "local.half"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "t",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<local.id>",
+      "hidden": [],
+      "id": "n4",
+      "inputs": [
+        "local.id",
+        "local.val",
+        "local.cat"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local.id",
+        "local.val"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "local.id",
+        "local.val"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n5",
+      "inputs": [
+        "local.half",
+        "local.id",
+        "local.val"
+      ],
+      "nullable": [
+        "local.half",
+        "local.id",
+        "local.val"
+      ],
+      "outputs": [
+        "local.half",
+        "local.id",
+        "local.val"
+      ],
+      "parents": [
+        "n3",
+        "n4"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "local.half",
+        "local.id",
+        "local.val"
+      ]
+    },
+    {
+      "conditions": "local.val > local.half",
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n6",
+      "inputs": [
+        "local.id",
+        "local.val",
+        "local.half"
+      ],
+      "nullable": [
+        "local.id"
+      ],
+      "outputs": [
+        "local.id"
+      ],
+      "parents": [
+        "n0",
+        "n5"
+      ],
+      "partials": [],
+      "preexisting_conditions": "local.val > local.half",
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "local.id"
+      ]
+    }
+  ]
+}

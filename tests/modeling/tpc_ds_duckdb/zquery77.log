@@ -6,7 +6,20 @@ comp_size = 3255
 generated_sql = """
 
 WITH 
-wary as (
+bewildered as (
+SELECT
+    \"ws_web_sales\".\"WS_WEB_PAGE_SK\" as \"_ws_grouped_ws_wp_id\",
+    sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"_ws_grouped_ws_sales\",
+    sum(\"ws_web_sales\".\"WS_NET_PROFIT\") as \"_ws_grouped_ws_profit\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    cast(\"ws_sale_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end and \"ws_web_sales\".\"WS_WEB_PAGE_SK\" is not null
+
+GROUP BY
+    1),
+resonant as (
 SELECT
     \"ws_web_sales\".\"WS_WEB_PAGE_SK\" as \"_ws_grouped_ws_wp_id\",
     sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"_ws_grouped_ws_sales\",
@@ -86,11 +99,11 @@ FROM
 WHERE
     cast(\"cs_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 ),
-bewildered as (
+ceaseless as (
 SELECT
-    \"wary\".\"ws_return_web_page_sk\" as \"_wr_grouped_wr_wp_id\",
-    sum(\"wary\".\"ws_return_amount\") as \"_wr_grouped_wr_returns\",
-    sum(\"wary\".\"ws_return_net_loss\") as \"_wr_grouped_wr_loss\"
+    \"bewildered\".\"_ws_grouped_ws_profit\" as \"ws_grouped_ws_profit\",
+    \"bewildered\".\"_ws_grouped_ws_sales\" as \"ws_grouped_ws_sales\",
+    \"bewildered\".\"_ws_grouped_ws_wp_id\" as \"ws_grouped_ws_wp_id\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     LEFT OUTER JOIN \"wary\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"wary\".\"ws_item_sk\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"wary\".\"ws_order_number\"
@@ -179,55 +192,31 @@ WHERE
 ),
 courageous as (
 SELECT
-    \"juicy\".\"___tvf_arm_0_u_channel\" as \"_l0_union_u_channel\",
-    \"juicy\".\"___tvf_arm_0_u_id\" as \"_l0_union_u_id\",
-    \"juicy\".\"___tvf_arm_0_u_sales\" as \"_l0_union_u_sales\",
-    \"juicy\".\"___tvf_arm_0_u_returns\" as \"_l0_union_u_returns\",
-    \"juicy\".\"___tvf_arm_0_u_profit\" as \"_l0_union_u_profit\"
+    \"resonant\".\"ws_return_web_page_sk\" as \"_wr_grouped_wr_wp_id\",
+    sum(\"resonant\".\"ws_return_amount\") as \"_wr_grouped_wr_returns\",
+    sum(\"resonant\".\"ws_return_net_loss\") as \"_wr_grouped_wr_loss\"
 FROM
-    \"juicy\"
-UNION ALL
-SELECT
-    \"divergent\".\"___tvf_arm_1_u_channel\" as \"_l0_union_u_channel\",
-    \"divergent\".\"___tvf_arm_1_u_id\" as \"_l0_union_u_id\",
-    \"divergent\".\"___tvf_arm_1_u_sales\" as \"_l0_union_u_sales\",
-    \"divergent\".\"___tvf_arm_1_u_returns\" as \"_l0_union_u_returns\",
-    \"divergent\".\"___tvf_arm_1_u_profit\" as \"_l0_union_u_profit\"
-FROM
-    \"divergent\"
-UNION ALL
-SELECT
-    \"resonant\".\"___tvf_arm_2_u_channel\" as \"_l0_union_u_channel\",
-    \"resonant\".\"___tvf_arm_2_u_id\" as \"_l0_union_u_id\",
-    \"resonant\".\"___tvf_arm_2_u_sales\" as \"_l0_union_u_sales\",
-    \"resonant\".\"___tvf_arm_2_u_returns\" as \"_l0_union_u_returns\",
-    \"resonant\".\"___tvf_arm_2_u_profit\" as \"_l0_union_u_profit\"
-FROM
-    \"resonant\"),
-vast as (
-SELECT
-    \"resonant\".\"_ws_grouped_ws_profit\" as \"ws_grouped_ws_profit\",
-    \"resonant\".\"_ws_grouped_ws_sales\" as \"ws_grouped_ws_sales\",
-    \"resonant\".\"_ws_grouped_ws_wp_id\" as \"ws_grouped_ws_wp_id\"
-FROM
-    \"resonant\"),
-protective as (
-SELECT
-    \"charming\".\"ss_return_store_sk\" as \"_sr_grouped_sr_store_id\",
-    sum(\"charming\".\"ss_return_amount\") as \"_sr_grouped_sr_returns\",
-    sum(\"charming\".\"ss_return_net_loss\") as \"_sr_grouped_sr_loss\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    LEFT OUTER JOIN \"charming\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"charming\".\"ss_item_sk\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"charming\".\"ss_ticket_number\"
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    LEFT OUTER JOIN \"resonant\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"resonant\".\"ws_item_sk\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"resonant\".\"ws_order_number\"
 GROUP BY
     1),
-kaput as (
+waggish as (
 SELECT
-    \"macho\".\"_ss_grouped_ss_profit\" as \"ss_grouped_ss_profit\",
-    \"macho\".\"_ss_grouped_ss_sales\" as \"ss_grouped_ss_sales\",
-    \"macho\".\"_ss_grouped_ss_store_id\" as \"ss_grouped_ss_store_id\"
+    \"protective\".\"_ss_grouped_ss_profit\" as \"ss_grouped_ss_profit\",
+    \"protective\".\"_ss_grouped_ss_sales\" as \"ss_grouped_ss_sales\",
+    \"protective\".\"_ss_grouped_ss_store_id\" as \"ss_grouped_ss_store_id\"
 FROM
-    \"macho\"),
+    \"protective\"),
+friendly as (
+SELECT
+    \"macho\".\"ss_return_store_sk\" as \"_sr_grouped_sr_store_id\",
+    sum(\"macho\".\"ss_return_amount\") as \"_sr_grouped_sr_returns\",
+    sum(\"macho\".\"ss_return_net_loss\") as \"_sr_grouped_sr_loss\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    LEFT OUTER JOIN \"macho\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"macho\".\"ss_item_sk\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"macho\".\"ss_ticket_number\"
+GROUP BY
+    1),
 concerned as (
 SELECT
     \"yummy\".\"_cs_grouped_cs_cc_id\" as \"cs_grouped_cs_cc_id\",
@@ -245,20 +234,20 @@ FROM
     LEFT OUTER JOIN \"wakeful\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"wakeful\".\"cs_item_sk\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"wakeful\".\"cs_order_number\"
 GROUP BY
     1),
-ceaseless as (
+elated as (
 SELECT
-    \"bewildered\".\"_wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
-    \"bewildered\".\"_wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
-    \"bewildered\".\"_wr_grouped_wr_wp_id\" as \"wr_grouped_wr_wp_id\"
+    \"courageous\".\"_wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
+    \"courageous\".\"_wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
+    \"courageous\".\"_wr_grouped_wr_wp_id\" as \"wr_grouped_wr_wp_id\"
 FROM
-    \"bewildered\"),
-waggish as (
+    \"courageous\"),
+busy as (
 SELECT
-    \"protective\".\"_sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
-    \"protective\".\"_sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
-    \"protective\".\"_sr_grouped_sr_store_id\" as \"sr_grouped_sr_store_id\"
+    \"friendly\".\"_sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
+    \"friendly\".\"_sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
+    \"friendly\".\"_sr_grouped_sr_store_id\" as \"sr_grouped_sr_store_id\"
 FROM
-    \"protective\"),
+    \"friendly\"),
 abundant as (
 SELECT
     \"thoughtful\".\"_cr_grouped_cr_cc_id\" as \"cr_grouped_cr_cc_id\",
@@ -268,26 +257,26 @@ FROM
     \"thoughtful\"),
 tearful as (
 SELECT
-    \"ceaseless\".\"wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
-    \"ceaseless\".\"wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
-    \"vast\".\"ws_grouped_ws_profit\" as \"ws_grouped_ws_profit\",
-    \"vast\".\"ws_grouped_ws_sales\" as \"ws_grouped_ws_sales\",
-    coalesce(\"ceaseless\".\"wr_grouped_wr_wp_id\",\"vast\".\"ws_grouped_ws_wp_id\") as \"wr_grouped_wr_wp_id\",
-    coalesce(\"ceaseless\".\"wr_grouped_wr_wp_id\",\"vast\".\"ws_grouped_ws_wp_id\") as \"ws_grouped_ws_wp_id\"
+    \"ceaseless\".\"ws_grouped_ws_profit\" as \"ws_grouped_ws_profit\",
+    \"ceaseless\".\"ws_grouped_ws_sales\" as \"ws_grouped_ws_sales\",
+    \"elated\".\"wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
+    \"elated\".\"wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
+    coalesce(\"ceaseless\".\"ws_grouped_ws_wp_id\",\"elated\".\"wr_grouped_wr_wp_id\") as \"wr_grouped_wr_wp_id\",
+    coalesce(\"ceaseless\".\"ws_grouped_ws_wp_id\",\"elated\".\"wr_grouped_wr_wp_id\") as \"ws_grouped_ws_wp_id\"
 FROM
-    \"vast\"
-    FULL JOIN \"ceaseless\" on \"vast\".\"ws_grouped_ws_wp_id\" = \"ceaseless\".\"wr_grouped_wr_wp_id\"),
+    \"ceaseless\"
+    FULL JOIN \"elated\" on \"ceaseless\".\"ws_grouped_ws_wp_id\" is not distinct from \"elated\".\"wr_grouped_wr_wp_id\"),
 rambunctious as (
 SELECT
-    \"kaput\".\"ss_grouped_ss_profit\" as \"ss_grouped_ss_profit\",
-    \"kaput\".\"ss_grouped_ss_sales\" as \"ss_grouped_ss_sales\",
-    \"waggish\".\"sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
-    \"waggish\".\"sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
-    coalesce(\"kaput\".\"ss_grouped_ss_store_id\",\"waggish\".\"sr_grouped_sr_store_id\") as \"sr_grouped_sr_store_id\",
-    coalesce(\"kaput\".\"ss_grouped_ss_store_id\",\"waggish\".\"sr_grouped_sr_store_id\") as \"ss_grouped_ss_store_id\"
+    \"busy\".\"sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
+    \"busy\".\"sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
+    \"waggish\".\"ss_grouped_ss_profit\" as \"ss_grouped_ss_profit\",
+    \"waggish\".\"ss_grouped_ss_sales\" as \"ss_grouped_ss_sales\",
+    coalesce(\"busy\".\"sr_grouped_sr_store_id\",\"waggish\".\"ss_grouped_ss_store_id\") as \"sr_grouped_sr_store_id\",
+    coalesce(\"busy\".\"sr_grouped_sr_store_id\",\"waggish\".\"ss_grouped_ss_store_id\") as \"ss_grouped_ss_store_id\"
 FROM
-    \"kaput\"
-    FULL JOIN \"waggish\" on \"kaput\".\"ss_grouped_ss_store_id\" = \"waggish\".\"sr_grouped_sr_store_id\"),
+    \"waggish\"
+    FULL JOIN \"busy\" on \"waggish\".\"ss_grouped_ss_store_id\" is not distinct from \"busy\".\"sr_grouped_sr_store_id\"),
 young as (
 SELECT
     \"abundant\".\"cr_grouped_cr_loss\" as \"cr_grouped_cr_loss\",
@@ -298,7 +287,7 @@ SELECT
     coalesce(\"abundant\".\"cr_grouped_cr_cc_id\",\"concerned\".\"cs_grouped_cs_cc_id\") as \"cs_grouped_cs_cc_id\"
 FROM
     \"concerned\"
-    FULL JOIN \"abundant\" on \"concerned\".\"cs_grouped_cs_cc_id\" = \"abundant\".\"cr_grouped_cr_cc_id\"),
+    FULL JOIN \"abundant\" on \"concerned\".\"cs_grouped_cs_cc_id\" is not distinct from \"abundant\".\"cr_grouped_cr_cc_id\"),
 cloudy as (
 SELECT
     \"tearful\".\"ws_grouped_ws_profit\" - cast(coalesce(\"tearful\".\"wr_grouped_wr_loss\",0) as numeric(15,2)) as \"___tvf_arm_2_u_profit\",

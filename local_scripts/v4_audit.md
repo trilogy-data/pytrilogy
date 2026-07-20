@@ -1,89 +1,128 @@
-# v4 compatibility audit (last refreshed 2026-07-17, session 11)
+# v4 compatibility audit (last refreshed 2026-07-19, session 12)
 
-## Current state (after 2026-07-17 session 11)
+## Current state (after 2026-07-19 session 12)
 
-**Full v4 sweep (session 11): 38 failed / 5678 passed** (baseline this session was
-40 — `local_scripts/v4_sweep_0717_s11_baseline.log`; post-fix
-`local_scripts/v4_sweep_0717_s11_post.log`). 82 errors are all clickhouse-server
-env (not real). Session-11 cleared **disconnected_e2e ×2 message tests**
-(`test_message_includes_failing_statement_line`,
-`test_message_suggests_connected_nested_equivalent`) with ZERO regressions
-(v4 core/processing 419/0, v3 disconnected 25/0). ruff/mypy/black clean.
+**Full v4 sweep (session 12): 38 failed / 5780 passed**
+(`local_scripts/v4_sweep_0719_s12_post.log`). Same COUNT as s11 but the corpus
+grew +102 tests; the honest delta vs s11's list: **cleared duckdb_subquery
+scalar-in-WHERE ×2 (the s11 NEXT) + TPC-DS q14** (stash-verified: q14 fails
+without the fix); **q10 cleared independently** since s11 (passes at baseline
+too); **+4 new-corpus pre-existing failures** (`test_tuple_membership_grainless_
+output` PEST/LARK × inline/named — stash-verified failing at baseline). ZERO
+regressions (rowset families, join_matrix 263/0, TPC-DS battery 6 = known set,
+q72 intact). ruff/mypy(309)/black clean; classifier exit 0, no escalations.
+82 errors are clickhouse-server env (not real).
 
-Session-11 fix (one line, v4-only, `discovery_utility.py`
-`raise_if_disconnected_for`): the #601 "Scope Feedback" merge REVERTED session-4's
-enrichment — the v4 pre-discovery gate called
-`format_disconnected_subgraphs_error(subgraphs)` with none of its
-`environment`/`g`/`island_rowsets`/`line_number` args, so v4 emitted the bare
-"missing a join or merge" form instead of the "(statement at line N)" locator and
-the "did you mean `all_sales.date.year`" separate-import suggestion. Restored the
-four-arg forward. v3 raises via its own post-discovery path
-(concept_strategies_v3 / discovery_utility:1105), so it was untouched. It only
-changes exception message TEXT — no plan/row can change.
+Session-12 fix (one guard, v4-only, `group_graph.py`
+`_rowset_join_key_addresses`): a KEYLESS, GRAINLESS rowset handle (global-
+aggregate scalar body: `(select max(val)/2 -> half)`, named `with rs as select
+max(val)/2 -> half` identical) used to fall back to `{concept.address}` and then
+expand through its `BuildRowsetItem` lineage — putting the aggregate's own VALUE
+into the FINAL merge grain. The row-side contributor was then forced to
+materialize that column; `renders_derived_key`/`_datasource_renders_derived`
+descends through the AGGREGATE to the ROOT leaf `val`, so the raw `t` scan
+claimed it inline at id grain → `AGG_GRAIN_MISMATCH`. Now returns NO join axis;
+the boundary cross-joins ON 1=1 exactly like v3. The audit's layer-1/-2 diagnoses
+were real but NOT load-bearing: the content BASIC's build grain is still `{id}`
+(authored Abstract; `author.py` override unfixed) and `_datasource_renders_derived`
+still descends through aggregates — both became unreachable for this shape once
+the merge grain stopped demanding the value column. Where the crash actually
+lived: the atom `val > half` IS correctly hosted at root (constraint edge from
+the d1 rowset group, same topology as the WORKING `auto mx <- max(val) by *`
+q22-analog); root's gen_root plan_source fails (the handle is unsourceable),
+gen_root's condition fallback re-searches the missing row-arg
+(`_resolve_root_condition_sources` → nested search_concepts for
+`[half, id, val]`), and it was THAT nested search's FINAL contract that invented
+the value-column join axis. Collateral: TPC-DS q14 (composite subset join onto a
+union-reprojected rowset — its residual failure was this same merge-grain
+expansion).
 
-**The 38 remaining (grouped).** TPC-DS ×8 (q14/q70/q10/q29/q81 + q29-feeder +
+**The 38 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
 non-benchmark q64_correlated_filter + or_membership_with_projected_aggregate),
 fuzzer ×2 (pre-existing corpus stability, likely env/seed — NOT a planner gap),
-duckdb_subquery ×2 (PEST+LARK, one logical bug — see NEXT), plus the ×2 families
-(multi_partial_anchor, expression_keys, pushdown_partitioned, duckdb_rowset
-variance/stddev keys-3, rollup_scoped_join) and singles (twin_keeps_scalar_refs,
-where_scalar_aggregate_degenerate_cograin `having_bare_max`, scoped_join
-dim_bridge `all_subset_unaffected` / cross_rowset_membership_existence
-`expression_key`, scoped_derived_rowset exp_rows1, rowset_generation_matrix
-islanded, rowset_cross_datasource null_property, rowset_body_limit,
-rollup_multi_window cube_two_windows, membership_having dimension_key,
-existence_feeder_pushdown, collapse_basic_into_group funnel, union_bare_aggregate
-set_semantics, setops except_and_union, orderby_derived_expr,
-constant_in_cross_datasource_merge).
+duckdb_subquery `test_tuple_membership_grainless_output` ×4 (one logical bug —
+see NEXT), plus the ×2 families (multi_partial_anchor, expression_keys,
+pushdown_partitioned, duckdb_rowset variance/stddev keys-3, rollup_scoped_join)
+and singles (twin_keeps_scalar_refs, where_scalar_aggregate_degenerate_cograin
+`having_bare_max`, scoped_join dim_bridge `all_subset_unaffected` /
+cross_rowset_membership_existence `expression_key`, scoped_derived_rowset
+exp_rows1, rowset_generation_matrix islanded, rowset_cross_datasource
+null_property, rowset_body_limit, rollup_multi_window cube_two_windows,
+membership_having dimension_key, existence_feeder_pushdown,
+collapse_basic_into_group funnel, union_bare_aggregate set_semantics, setops
+except_and_union, orderby_derived_expr, constant_in_cross_datasource_merge).
 
-**NEXT candidate — duckdb_subquery scalar-in-WHERE crash (well-diagnosed, 3
-layers, needs full v3+v4 sweeps).** `select id where val > (select max(val)/2 ->
-half)` crashes v4 with `INVALID_REFERENCE_BUG_AGG_GRAIN_MISMATCH<global (by *)
-aggregate ... rendered in CTE quizzical at keyed grain Grain<local.id>>`. v3
-renders it correctly (quizzical=id,val scan → highfalutin=`max(val)/2` global →
-cross join ON 1=1 → WHERE val>half). Root cause is the global-aggregate scalar
-`half = max(val)/2` being treated as id-grained/id-renderable in THREE places
-(all trip on "a scalar wrapping a GLOBAL aggregate is grain-collapsed, not
-row-grained"):
-  1. **Build grain inference** (`author.py` `get_select_grain_and_keys`, BASIC
-     branch ~line 1305): `_aggregate_by_grain_refs` returns `has_by_aggregate=False`
-     for a GLOBAL (no-`by`) aggregate, so the else-branch uses
-     `_row_grain_concept_refs` (NOT aggregate-aware — unlike `_non_aggregate_row_refs`)
-     and descends INTO `max(val)` to `val`→`id`, graining `half` to `{id}`. Author
-     grain is correctly `Abstract`; build overrides it. FIX TRIED (reverted, was
-     correct but insufficient alone): thread a `has_aggregate` flag out of
-     `_aggregate_by_grain_refs` and route to the `_non_aggregate_row_refs` path when
-     ANY aggregate is present (global or `by`). Made both planners' grain `Abstract`
-     but did NOT change the v4 plan → not enough on its own.
-  2. **source_planning renderability** (`_datasource_renders_derived`,
-     source_planning.py): offers datasource `t` as a direct renderer for `half`
-     because it descends `concept.sources` to the ROOT leaf `val` and ignores the
-     AGGREGATE source (`_virt_agg_max`, `build_is_aggregate=True`, visible in
-     `concept.sources`). FIX TRIED (reverted, insufficient): `return False` when
-     `any(s.build_is_aggregate for s in concept.sources)`. Did NOT remove the raw
-     `t` scan because the actual match is via the plain `address in bridge_addresses`
-     path in `_local_concept_nodes_for_datasource`, not `renders_derived_key`.
-  3. **Strategy assembly / group topology**: the d1 rowset group
-     (`grp:rowset:d1:∅:rowset:_subquery_*`, sole member `half`, grain Abstract) is
-     BOTH consumed by root via a CONSTRAINT edge (root hosts `val > half`, consumes
-     `half`) AND has a spurious MERGE→FINAL edge (`_add_final_node`/`_append_final_sink`
-     gives every bucket a FINAL edge; nothing prunes it for a pure condition-feeder
-     d1 group). The rowset group's built node ends up a MergeNode of the boundary +
-     a raw `t` scan claiming `__subquery_*_half, id, val`, joined on the aggregate
-     column → the crash. The correct plan: root cross-joins the grainless `half`
-     producer and applies `val > half`; the rowset group is NOT a direct FINAL
-     contributor. Likely the load-bearing layer; investigate `_local_concept_nodes_
-     for_datasource` (why a raw scan is offered the grainless bridge address) and/or
-     pruning the d1-condition-feeder's FINAL edge in `build_group_graph`.
-Diagnostic harness saved approach: reuse `discovery_v4.py`'s `_materialize_for_query`
-+ `_find_select` + `search_concepts` on an inline MODEL string to dump groups,
-group_attrs (members/output_concepts/input_contracts), edges (kinds), and the
-strategy tree; set `PYTHONIOENCODING=utf-8` (gids contain `∅`).
+**NEXT candidate — membership probe as a bare SELECT output (duckdb_subquery
+tuple_membership_grainless_output ×4, diagnosed).** `with pairs as select val,
+cat where val = 20; select (20, 1) in (pairs.val, pairs.cat) as present, ...`
+fails: `composite membership right-hand operands must resolve to a single
+existence source, got [INVALID_REFERENCE_BUG<Missing source CTE for pairs.cat>,
+...]`. The SINGLE-scalar form fails too (`select 2 in (rs.id) as present` →
+Missing source reference) — the whole "membership as OUTPUT" family is unwired
+in v4; only WHERE-condition membership (via condition atoms' existence_arguments
+→ `_attach_existence_sources` / FINAL existence wiring) and filter-nested
+probes (`_filter_existence_only` + EXISTENCE edges in concept_graph) work.
+Diagnosis: the probe concept (`local.present`, derivation BASIC, lineage
+`BuildSubselectComparison` with existence_arguments=[(pairs.val, pairs.cat)])
+gets its args walked as ROW lineage — the concept graph types the rowset→basic
+edge `lineage` (row-stream) and `gen_basic` has no existence handling, so the
+probe's SelectNode references pairs.* as row columns with no join/source. Fix
+shape: in concept_graph, existence-only args of a BuildSubselectComparison
+lineage (existence args minus row args — mirror `_filter_existence_only`) should
+be dropped from row-lineage and wired as EXISTENCE edges (mirror the
+filter-nested pass at concept_graph.py ~1133); then the strategy build must
+attach the existence parent + existence_concepts on the probe's host node (the
+condition-atom path does this in `_attach_existence_sources`; the OUTPUT path
+needs the same for lineage-borne existence args). Repro scripts:
+`local_scripts/repro_tuple_grainless.py`, `repro_scalar_grainless.py`;
+diagnostics dumped at `local_scripts/v4_diagnostics/tuple_grainless_*`.
 
-**Other NEXT options:** TPC-DS cluster (largest coherent group, but mostly
-size-ceiling verbosity not correctness) OR the fanout singles
-(collapse_basic_into_group funnel over-counts, membership_having cross-joins) OR
-re-triage the ×2 families/singles against `v4_known_failing.py`.
+**Other NEXT options:** TPC-DS cluster ×6 OR the fanout singles OR prune-check
+the classifier's 7 XPASS entries (test_outer_where_pushes_into_global_agg
+`post_agg_filter`, join_resolution forced-join ×2, tpcds q59/q77,
+test_rowset_derived_twice `q64_join_form_plans`, test_where_clause
+`test_where_scalar`; q64 itself flips CRASH/XPASS — leave). Two of those
+(outer_where global-agg, where_scalar) are adjacent to the s12 fix and may now
+be stable passes — verify in isolation AND in-suite before pruning.
+
+## ✅ 2026-07-19 (session 12) — grainless rowset handle contributes no FINAL join axis (+3 real)
+
+One guard in `group_graph.py` `_rowset_join_key_addresses` (v4-only file — only
+importers are v4_helper/* + concept_strategies_v4, so no v3 sweep needed): when a
+mandatory ROWSET concept resolves to NO keys and NO grain components, return the
+empty set instead of falling back to `{concept.address}` + lineage-argument
+expansion. Cleared duckdb_subquery scalar-in-WHERE ×2 (s11's NEXT) + TPC-DS q14
+(stash-verified attributable) and fixed three untested crash variants
+(named-rowset WHERE, rowset-output `select id, rs.half`, bare-agg member
+`where val = rs.mx` — all now byte-match v3's cross-join plan,
+`local_scripts/repro_subq_variants.py`). Sweep 38/5780 (s11: 38/5678 — corpus
++102; real delta −4 known +4 new-corpus pre-existing); zero regressions across
+rowset families / join_matrix / TPC-DS battery (q72 intact); classifier clean.
+
+Investigation path worth remembering: the s11 audit's 3-layer diagnosis had the
+LOAD-BEARING layer wrong. Layers 1 (build grain `{id}` on the content BASIC) and
+2 (`_datasource_renders_derived` descends through AGGREGATE sources) are real
+latent defects but the crash was reachable only through the FINAL-contract merge
+grain: gen_root for the root group fails on the unsourceable handle, falls back
+to `_resolve_root_condition_sources`, and the NESTED search's `_final_merge_grain`
+(mandatory now includes the handle) called `_rowset_join_key_addresses`, which
+invented a join axis out of the aggregate's value column; the row side then had
+to "render" the global aggregate at row grain. Comparing against the WORKING
+q22-analog (`auto mx <- max(val) by *; auto half <- mx/2` — identical group
+topology, correct plan) isolated the divergence to that one helper. LESSON: when
+an audit hands you a multi-layer diagnosis, find a minimal WORKING analog and
+diff the two pipelines before touching any layer — two of the three suggested
+fixes were unnecessary for the bug (and remain as hardening candidates only).
+Also: `plain_auto` (`auto half <- max(val)/2; select id where val > half`)
+returning all rows is NOT a bug — v3 does the same; bare (no-`by`) aggregates
+co-grain to the consuming select's grain by design. The rowset/subquery boundary
+is the documented way to get global scoping.
+
+Session start was a REPO RESCUE: the git index + 215 tracked files (including
+this audit) were zero-filled by an NTFS crash. `rm .git/index && git reset
+--mixed` rebuilt the index; `git restore .` recovered all zeroed tracked files
+(start-of-session status was clean, so nothing real was lost); no untracked
+files were zeroed; fsck clean.
 
 ## ✅ 2026-07-17 (session 11) — disconnected-error enrichment re-forwarded (+2)
 
