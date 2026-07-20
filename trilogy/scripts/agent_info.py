@@ -830,6 +830,11 @@ chart
 - **`from select ...`** per layer is optional; without it the bindings become
   an implicit select. A bar chart's category order follows the select's
   `ORDER BY`; without one it sorts ascending.
+- **Explicit colors**: include a `string::hex` column (trait from
+  `import std.color;`) in the layer's `from select` alongside a `color`
+  binding and each color-field member maps to the hex code on its rows
+  (rows missing a hex fall back to gray). Binding the hex column itself to
+  `color` uses the codes directly.
 - **Settings**: `set hide_legend`, `set show_title`,
   `set scale_x: linear|log|sqrt`, `set scale_y: ...`.
 - **Placements**: `place hline at <value> [as <label>]` and

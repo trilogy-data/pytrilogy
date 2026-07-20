@@ -496,3 +496,70 @@ def test_multi_layer_shared_alias_binding():
         chart_results = [r for r in results if isinstance(r, ChartResult)]
         assert chart_results[0].chart is not None, shape
         assert len(chart_results[0].data) == 2, shape
+
+
+_HEX_SETUP = """
+import std.color;
+key category string;
+property category.value int;
+property category.color_code string::hex;
+
+datasource chart_data (
+    cat: category,
+    val: value,
+    hex: color_code
+)
+grain (category)
+query '''
+select 'B' as cat, 20 as val, '#00FF00' as hex
+union all select 'A', 10, '#FF0000'
+union all select 'C', 30, cast(null as varchar)
+''';
+"""
+
+
+def test_hex_trait_column_drives_color_scale():
+    results = list(_executor().execute_text(_HEX_SETUP + """
+            chart
+              layer bar ( x_axis <- category, y_axis <- value, color <- category )
+              from select category, value, color_code;
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    scale = spec["encoding"]["color"]["scale"]
+    assert scale["domain"] == ["A", "B", "C"]
+    assert scale["range"] == ["#FF0000", "#00FF00", "#999999"]
+
+
+def test_color_without_hex_column_keeps_default_scale():
+    results = list(_executor().execute_text(_HEX_SETUP + """
+            chart
+              layer bar ( x_axis <- category, y_axis <- value, color <- category )
+              from select category, value;
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    assert "scale" not in spec["encoding"]["color"]
+
+
+def test_hex_field_bound_directly_as_color():
+    results = list(_executor().execute_text(_HEX_SETUP + """
+            chart
+              layer point ( x_axis <- category, y_axis <- value, color <- color_code );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    scale = spec["encoding"]["color"]["scale"]
+    assert scale["domain"] == scale["range"] == ["#00FF00", "#FF0000"]
+
+
+def test_same_concept_bound_to_multiple_roles():
+    results = list(_executor().execute_text(_SETUP + """
+            chart
+              layer bar ( x_axis <- category, y_axis <- value, color <- category );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    layer = chart_results[0].statement.layers[0]
+    assert layer.x_fields == ["category"]
+    assert layer.color_field == "category"
+    assert len(chart_results[0].data[0]) == 3

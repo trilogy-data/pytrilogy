@@ -77,6 +77,11 @@ def is_numeric(datatype: Any) -> bool:
     return _base_type(datatype) in _NUMERIC_BASE_TYPES
 
 
+def is_hex_color(datatype: Any) -> bool:
+    """Whether a datatype carries the `hex` trait (a hex color string)."""
+    return "hex" in _traits(datatype)
+
+
 def _format_magnitude(value: Any) -> str:
     """Group digits; show up to two decimals, dropping a trailing `.00`."""
     if value == int(value):

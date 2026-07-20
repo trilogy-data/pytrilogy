@@ -14,6 +14,7 @@ from trilogy.rendering.rich_types import (
     currency_symbol,
     field_datatype,
     format_currency,
+    is_hex_color,
     is_numeric,
 )
 from trilogy.rendering.theme import DEFAULT_THEME, Theme
@@ -255,7 +256,9 @@ class AltairRenderer(BaseRenderer):
             )
         if layer.color_field:
             encoding["color"] = alt.Color(
-                layer.color_field, title=prettify_label(layer.color_field)
+                layer.color_field,
+                title=prettify_label(layer.color_field),
+                scale=self._hex_color_scale(layer, data),
             )
         if layer.size_field:
             encoding["size"] = alt.Size(
@@ -289,6 +292,35 @@ class AltairRenderer(BaseRenderer):
                 "The 'geo' chart role is not yet implemented in the Altair" " renderer."
             )
         return encoding
+
+    _HEX_FALLBACK = "#999999"
+
+    def _hex_color_scale(self, layer: ProcessedChartLayer, data: Any) -> Any:
+        """Explicit category→color mapping when the query outputs a `::hex`
+        column alongside the color field: each color-field member maps to the
+        hex code found on its rows, so authors control series colors from data.
+        """
+        if layer.query is None or data is None or layer.color_field not in data:
+            return alt.Undefined
+        hex_field = next(
+            (
+                c.safe_address
+                for c in layer.query.output_columns
+                if is_hex_color(c.datatype) and c.safe_address in data
+            ),
+            None,
+        )
+        if hex_field is None:
+            return alt.Undefined
+        lookup: dict[Any, str] = {}
+        for category, hex_value in zip(data[layer.color_field], data[hex_field]):
+            if pd.notna(hex_value):
+                lookup.setdefault(category, str(hex_value))
+        domain = sorted(data[layer.color_field].dropna().unique().tolist(), key=str)
+        return alt.Scale(
+            domain=domain,
+            range=[lookup.get(category, self._HEX_FALLBACK) for category in domain],
+        )
 
     def _with_annotation(
         self,
@@ -339,7 +371,7 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        encoding = self._encode(layer, scales=scales)
+        encoding = self._encode(layer, data=data, scales=scales)
         chart = alt.Chart(data).mark_line().encode(**encoding)
         return self._with_annotation(chart, data, layer, encoding)
 
@@ -349,7 +381,7 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        encoding = self._encode(layer, scales=scales)
+        encoding = self._encode(layer, data=data, scales=scales)
         chart = alt.Chart(data).mark_point().encode(**encoding)
         return self._with_annotation(chart, data, layer, encoding)
 
@@ -359,7 +391,7 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> Any:
-        encoding = self._encode(layer, scales=scales)
+        encoding = self._encode(layer, data=data, scales=scales)
         chart = alt.Chart(data).mark_area().encode(**encoding)
         return self._with_annotation(chart, data, layer, encoding)
 
