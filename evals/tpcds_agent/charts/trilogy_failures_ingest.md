@@ -578,10 +578,10 @@ union join ws.web_site.site_sk is not null;`
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
+- `trilogy run answer_3825713089.preql`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 9). The requested concepts split into 3 disconnected subgraphs: {catalog_sales.bill_customer.customer_sk, catalog_sales.item.item_sk, catalog_sales.sold_date.moy, catalog_sales.sold_date.year, catalog_sales_net_profit}; {item_code, item_description, store_code, store_name, store_sales_net_profit, store_sales.customer.customer_sk, store_sales.date_dim.moy, store_sales.date_dim.year, store_sales.item.item_sk, store_sales.ticket_number}; {store_return_net_loss, store_returns.customer.customer_sk, store_returns.date_dim.moy, store_returns.date_dim.year, store_returns.item.item_sk, store_returns.ticket_number}. Are you missing a join or merge statement to relate them?
   ```
 - `trilogy file read answer_2333598260.preql`
 
@@ -1269,7 +1269,7 @@ order by reason_desc_20,
 limit 100;`
 
   ```text
-  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2869182220.preql': not syntactically valid Trilogy.
 
   Parse error:
    --> 1:8
