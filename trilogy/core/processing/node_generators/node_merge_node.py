@@ -102,14 +102,16 @@ def extract_ds_components(
     # if we had no ego graphs, return all concepts
     if not graphs:
         return [[extract_address(node) for node in nodelist]]
-    pseudo_mates: dict[str, set[str]] = {}
-    mate_pairs: list[tuple[str, str]] = [
-        (extract_address(a), extract_address(b)) for a, b in base.pseudonyms
-    ] + list(scoped_pairs or [])
-    for aa, bb in mate_pairs:
+    # AUTHORED merged-key mates only (scoped join / merge declarations). The
+    # base graph's pseudonym edges also link role-aliased imports of one model
+    # (`pos_address` vs `current_address`) — those are distinct roles, and
+    # matching through them cross-pollutes components until unrelated
+    # dimensions fuse into one 1=1-joined subgraph (q64).
+    authored_mates: dict[str, set[str]] = {}
+    for aa, bb in scoped_pairs or []:
         if aa != bb:
-            pseudo_mates.setdefault(aa, set()).add(bb)
-            pseudo_mates.setdefault(bb, set()).add(aa)
+            authored_mates.setdefault(aa, set()).add(bb)
+            authored_mates.setdefault(bb, set()).add(aa)
     for node in nodelist:
         parsed = extract_address(node)
         # A merged key reached through a pseudonym edge (a scoped-join mate on
@@ -119,12 +121,15 @@ def extract_ds_components(
         # materialize ITS member — otherwise its parent is dedup-swallowed (or
         # planned without the key), the equality drops out of the merge join,
         # and the remaining-key join fans out (q05 union arm subset-joining
-        # web_returns→web_sales on the full composite grain). Attach the exact
-        # address where bound directly, the member address where bound as a
-        # pseudonym mate; fall back to a singleton subgraph when no component
-        # binds it at all.
-        candidates = {parsed} | pseudo_mates.get(parsed, set())
+        # web_returns→web_sales on the full composite grain). A target found
+        # in NO component attaches by exact address wherever bound (else it
+        # becomes a singleton subgraph); a target with authored mates also
+        # attaches each mate to the components binding it.
+        mates = authored_mates.get(parsed, set())
         attached = any(parsed in x for x in graphs)
+        if attached and not mates:
+            continue
+        candidates = mates if attached else {parsed} | mates
         for i, ds_node in enumerate(component_ds):
             ds = base.datasources.get(ds_node)
             if ds is None:

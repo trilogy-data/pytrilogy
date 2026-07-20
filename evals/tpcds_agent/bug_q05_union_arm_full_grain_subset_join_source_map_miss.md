@@ -134,7 +134,10 @@ Actual defects fixed (each value-verified against raw-SQL references on the run'
    The steiner tree keeps only the cheapest path to the canonical, so the side reaching it through the
    pseudonym/scoped-join edge never materialized its own column; the equality dropped out of the merge
    join (source-map strand in case B, silent fan-out in case F5). Components now attach each target
-   key's member address wherever a component datasource binds it directly or as a scoped-join mate.
+   key's member address wherever a component datasource binds it directly or as an AUTHORED scoped-join
+   mate. Authored pairs ONLY: matching through the base graph's pseudonym edges also links role-aliased
+   imports of one model (`pos_address` vs `current_address`), which cross-pollutes components until
+   unrelated dimensions fuse into a 1=1-joined subgraph — first cut hung q64 execution that way.
 3. **Join-key render pinned to the FROM base a key provided by a rendered join partner**
    (`dialect/common.py::_render_left_concept`), emitting a column the base CTE doesn't have
    (`Binder Error: ... does not have a column named ws_item`). The stale-reference redirect now skips
