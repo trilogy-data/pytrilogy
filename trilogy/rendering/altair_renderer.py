@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from trilogy.core.enums import ChartPlaceKind, ChartType
+from trilogy.core.enums import ChartPlaceKind, ChartType, ScaleType
 from trilogy.core.models.core import DataType, TraitDataType
 from trilogy.core.statements.execute import (
     ProcessedChartLayer,
@@ -47,9 +47,10 @@ class AltairRenderer(BaseRenderer):
     ) -> Any:
         if len(layer_data) != len(statement.layers):
             raise ValueError("Layer data count does not match layer count")
+        scales = (statement.scale_x, statement.scale_y)
         layer_charts: list[Any] = []
         for layer, data in zip(statement.layers, layer_data):
-            layer_charts.append(self._render_layer(layer, data))
+            layer_charts.append(self._render_layer(layer, data, scales))
         for placement in statement.placements:
             layer_charts.append(self._render_placement(placement))
         if not layer_charts:
@@ -88,7 +89,12 @@ class AltairRenderer(BaseRenderer):
                 df[col] = pd.to_datetime(df[col], errors="coerce")
         return df
 
-    def _render_layer(self, layer: ProcessedChartLayer, data: list[dict]) -> Any:
+    def _render_layer(
+        self,
+        layer: ProcessedChartLayer,
+        data: list[dict],
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
         df = self._coerce_temporals(self._coerce_decimals(pd.DataFrame(data)))
         builders = {
             ChartType.BAR: self._bar,
@@ -103,7 +109,7 @@ class AltairRenderer(BaseRenderer):
             raise NotImplementedError(
                 f"Chart type '{layer.layer_type.value}' not yet implemented"
             )
-        return build(df, layer)
+        return build(df, layer, scales)
 
     def _render_placement(self, placement) -> Any:
         datum_key = "y" if placement.kind == ChartPlaceKind.HLINE else "x"
@@ -149,14 +155,15 @@ class AltairRenderer(BaseRenderer):
         layer: ProcessedChartLayer,
         data: Any = None,
         category_axis: str | None = None,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> dict[str, Any]:
         # Bar order follows the query's ORDER BY when it has one; without one,
         # sort by category value so output stays deterministic.
         ordered = layer.query is not None and layer.query.order_by is not None
         encoding: dict[str, Any] = {}
-        for channel, cls, fields in (
-            ("x", alt.X, layer.x_fields),
-            ("y", alt.Y, layer.y_fields),
+        for channel, cls, fields, scale_type in (
+            ("x", alt.X, layer.x_fields, scales[0]),
+            ("y", alt.Y, layer.y_fields, scales[1]),
         ):
             if not fields:
                 continue
@@ -181,12 +188,20 @@ class AltairRenderer(BaseRenderer):
                         )
                 elif field_type == "quantitative":
                     field_type = "ordinal"
+            # `set scale_x|scale_y:` applies to continuous value axes only —
+            # log/sqrt is meaningless on a banded category axis.
+            scale = (
+                alt.Scale(type=scale_type)
+                if scale_type and field_type == "quantitative"
+                else alt.Undefined
+            )
             encoding[channel] = cls(
                 field,
                 title=prettify_label(field),
                 axis=alt.Axis(**axis_kwargs) if axis_kwargs else alt.Undefined,
                 type=field_type,
                 sort=sort,
+                scale=scale,
             )
         if layer.color_field:
             encoding["color"] = alt.Color(
@@ -198,26 +213,55 @@ class AltairRenderer(BaseRenderer):
             )
         return encoding
 
-    def _bar(self, data: Any, layer: ProcessedChartLayer) -> Any:
+    def _bar(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
         # barh maps here too: axes are literal, so binding a quantitative field
         # to x_axis yields horizontal bars without any axis swap.
         category_axis = "y" if layer.layer_type == ChartType.BARH else "x"
         return (
             alt.Chart(data)
             .mark_bar()
-            .encode(**self._encode(layer, data=data, category_axis=category_axis))
+            .encode(
+                **self._encode(
+                    layer, data=data, category_axis=category_axis, scales=scales
+                )
+            )
         )
 
-    def _line(self, data: Any, layer: ProcessedChartLayer) -> Any:
-        return alt.Chart(data).mark_line().encode(**self._encode(layer))
+    def _line(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        return alt.Chart(data).mark_line().encode(**self._encode(layer, scales=scales))
 
-    def _point(self, data: Any, layer: ProcessedChartLayer) -> Any:
-        return alt.Chart(data).mark_point().encode(**self._encode(layer))
+    def _point(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        return alt.Chart(data).mark_point().encode(**self._encode(layer, scales=scales))
 
-    def _area(self, data: Any, layer: ProcessedChartLayer) -> Any:
-        return alt.Chart(data).mark_area().encode(**self._encode(layer))
+    def _area(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        return alt.Chart(data).mark_area().encode(**self._encode(layer, scales=scales))
 
-    def _headline(self, data: Any, layer: ProcessedChartLayer) -> Any:
+    def _headline(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
         """Render the x_axis value(s) as large numbers under a soft-gray title.
 
         Sized for a single KPI value; the font shrinks if a query returns

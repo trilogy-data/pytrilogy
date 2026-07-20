@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Literal
 
 InfiniteFunctionArgs = -1
 
@@ -589,3 +590,9 @@ class ChartPlaceKind(Enum):
         if isinstance(value, str) and value.lower() != value:
             return ChartPlaceKind(value.lower())
         return super()._missing_(value)
+
+
+# `set scale_x|scale_y:` values; the grammar's SCALE_TYPE terminal enforces
+# this set, so it flows from parse through ProcessedChartStatement to Altair
+# (whose Scale(type=...) accepts these) with no widening.
+ScaleType = Literal["linear", "log", "sqrt"]

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, List, Literal, Mapping, Optional, Union
+from typing import Any, List, Mapping, Optional, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
@@ -15,6 +15,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     PublishAction,
+    ScaleType,
     SetOperator,
     ShowCategory,
     ValidationScope,
@@ -780,8 +781,8 @@ class ChartStatement:
     placements: list[ChartPlacement] = field(default_factory=list)
     hide_legend: bool = False
     show_title: bool = False
-    scale_x: Literal["linear", "log", "sqrt"] | None = None
-    scale_y: Literal["linear", "log", "sqrt"] | None = None
+    scale_x: ScaleType | None = None
+    scale_y: ScaleType | None = None
     meta: Optional[Metadata] = field(default_factory=Metadata)
 
 

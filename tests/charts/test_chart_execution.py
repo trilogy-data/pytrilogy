@@ -444,3 +444,27 @@ def test_date_columns_serialize():
             """))
     chart_results = [r for r in results if isinstance(r, ChartResult)]
     json.dumps(chart_results[0].chart.to_dict())
+
+
+def test_scale_setting_applies_to_value_axis():
+    results = list(_executor().execute_text(_SETUP + """
+            chart
+              set scale_y: log
+              layer bar ( x_axis <- category, y_axis <- value );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    spec = chart_results[0].chart.to_dict()
+    assert spec["encoding"]["y"]["scale"] == {"type": "log"}
+    # log is meaningless on the banded category axis; it stays unscaled
+    assert "scale" not in spec["encoding"]["x"]
+
+
+def test_scale_setting_applies_in_copy_chart(tmp_path):
+    target = (tmp_path / "chart.svg").as_posix()
+    list(_executor().execute_text(_SETUP + f"""
+            copy into svg '{target}' from chart
+              set scale_y: log
+              layer point ( x_axis <- value, y_axis <- value * 2 as scaled );
+            """))
+    svg = (tmp_path / "chart.svg").read_text(encoding="utf-8")
+    assert len(svg) > 0
