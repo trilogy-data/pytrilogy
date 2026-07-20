@@ -167,3 +167,28 @@ def test_style_chart_composes_theme_and_layout():
 
 def test_theme_type_annotation():
     assert isinstance(get_theme("inter"), Theme)
+
+
+def test_headline_text_uses_theme_colors():
+    setup = _SETUP + "chart layer headline ( x_axis <- sum(value) as total );"
+    results = list(_executor(chart_theme="inter-dark").execute_text(setup))
+    chart = [r for r in results if isinstance(r, ChartResult)][0].chart
+    spec = chart.to_dict()
+    colors = {layer["mark"]["color"] for layer in spec["layer"]}
+    assert colors == {
+        INTER_DARK_THEME.text_primary,
+        INTER_DARK_THEME.text_muted,
+    }
+
+    light = list(_executor().execute_text(setup))
+    light_spec = [r for r in light if isinstance(r, ChartResult)][0].chart.to_dict()
+    light_colors = {layer["mark"]["color"] for layer in light_spec["layer"]}
+    assert light_colors == {INTER_THEME.text_primary, INTER_THEME.text_muted}
+
+
+def test_run_document_pins_executor_chart_theme(tmp_path):
+    from trilogy.report.runner import run_document
+
+    executor = _executor(chart_theme="inter")
+    run_document([], working_path=tmp_path, executor=executor, chart_theme="inter-dark")
+    assert executor.chart_theme == "inter-dark"

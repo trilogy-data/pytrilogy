@@ -633,6 +633,11 @@ class Executor(object):
             )
         return layer_data
 
+    def _resolve_chart_theme(self, override: str | None = None):
+        from trilogy.rendering.theme import DEFAULT_THEME, get_theme
+
+        return get_theme(override or self.chart_theme or DEFAULT_THEME.name)
+
     @execute_query.register
     def _(self, query: ProcessedChartStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
@@ -640,7 +645,7 @@ class Executor(object):
         layer_data = self._run_chart_layers(query)
         chart = None
         if ALTAIR_AVAILABLE:
-            renderer = AltairRenderer()
+            renderer = AltairRenderer(theme=self._resolve_chart_theme())
             chart = renderer.render(query, layer_data)
 
         return ChartResult(chart=chart, data=layer_data, statement=query)
@@ -649,21 +654,20 @@ class Executor(object):
     def _(self, query: ProcessedChartCopyStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
         from trilogy.rendering.chart_theme import theme_chart
-        from trilogy.rendering.theme import DEFAULT_THEME, get_theme
 
         if not ALTAIR_AVAILABLE:
             raise RuntimeError(
                 "Copying a chart to a file requires altair. Install with 'pip install altair vl-convert-python'."
             )
-        layer_data = self._run_chart_layers(query.chart)
-        renderer = AltairRenderer()
-        chart = renderer.render(query.chart, layer_data)
-        if chart is None:
-            raise RuntimeError("Chart renderer returned no chart to save.")
         size_props, save_kwargs, theme_name, background = _chart_copy_options(
             query.options
         )
-        theme = get_theme(theme_name or self.chart_theme or DEFAULT_THEME.name)
+        theme = self._resolve_chart_theme(theme_name)
+        layer_data = self._run_chart_layers(query.chart)
+        renderer = AltairRenderer(theme=theme)
+        chart = renderer.render(query.chart, layer_data)
+        if chart is None:
+            raise RuntimeError("Chart renderer returned no chart to save.")
         chart = theme_chart(chart, theme)
         if background:
             chart = chart.properties(background=background)

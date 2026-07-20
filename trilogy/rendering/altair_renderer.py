@@ -16,6 +16,7 @@ from trilogy.rendering.rich_types import (
     format_currency,
     is_numeric,
 )
+from trilogy.rendering.theme import DEFAULT_THEME, Theme
 
 try:
     import altair as alt
@@ -29,12 +30,15 @@ except ImportError:
 
 
 class AltairRenderer(BaseRenderer):
-    def __init__(self):
+    def __init__(self, theme: Theme | None = None):
         if not ALTAIR_AVAILABLE:
             raise ImportError(
                 "Altair is required for chart rendering. "
                 "Install `altair` via pip/uv to use."
             )
+        # Text colors bake into headline marks at build time (Vega config can't
+        # differentiate the two text layers), so the renderer needs the theme.
+        self.theme = theme or DEFAULT_THEME
 
     def render(
         self,
@@ -242,7 +246,7 @@ class AltairRenderer(BaseRenderer):
             .mark_text(
                 fontSize=font_size,
                 fontWeight=700,
-                color="#1f1f1c",
+                color=self.theme.text_primary,
                 baseline="middle",
                 dy=8,
             )
@@ -258,7 +262,7 @@ class AltairRenderer(BaseRenderer):
                 x=0,
                 fontSize=12,
                 fontWeight=600,
-                color="#8a8a83",
+                color=self.theme.text_muted,
                 baseline="middle",
                 dy=-28,
             )
