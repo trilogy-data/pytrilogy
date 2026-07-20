@@ -1,16 +1,50 @@
 # Bug: q74 — pruned unique join key silently re-correlated on non-unique name columns
 
-**Status:** FIXED 2026-07-19 — `gen_filter_node` output narrowing dropped the row
-parent's grain keys. `filter_node.set_output_concepts([concept] + optional_outputs)`
-(trilogy/core/processing/node_generators/filter_node.py) discarded `wb.w_csk`/`wb.w_yr`
-even though the filter's row parent was at grain `(st.s_csk, st.s_yr)` (pseudonym-linked
-via the subset join), so the node advertised a false coarser grain `(fn, ln, wb_tot)`
-and the downstream stack merge could only join back to the customer identity on the
-surviving non-unique `(fn, ln)`. Fix: `_row_grain_outputs` retains any output carrying
-a component of the row parent's grain (directly or by pseudonym) through the narrowing.
-Regression test: `tests/discovery/test_filter_node_retains_row_grain_keys.py`
+**Status:** FIXED 2026-07-19 — rowset sourcing now follows the standard contract
+across SUBSET joins. Root cause chain: rowset group-mate enrichment was
+restricted to COALESCING (union) key groups, so the st rowset declined to source
+the wb-side measures across the authored `subset join` and returned bare; the
+wb-side filter concept was then sourced by a separate loop iteration that (by
+the attempted-exclusion rule) was never offered the already-sourced customer id;
+the loop's completion fuse joined the two siblings on the only surviving overlap
+— non-unique `(first_name, last_name)`. Fix (two pieces):
+1. `_relation_key_group_mates` (node_generators/rowset_node.py): subset-group
+   members the AUTHOR never references (`statement_authored_addresses` — the
+   statement-level set, so the gate cannot flip between loop iterations; a
+   per-request gate did, replanning q44 into a disconnect) are pure
+   correlation keys, so enrichment sources the other side's member + remaining
+   concepts and merges over the declared relation locally — one complete node
+   per sourcing, restoring the loop's single-sourcing contract.
+   Author-referenced members (q44's projected rank alias, q35's
+   OR-of-member-null-tests) keep deferring to the outer loop's presence-probe
+   machinery — enriching would fuse them onto the anchor, never NULL. Blocking
+   a group only stops mates being REQUESTED; value-used members both sides
+   expose anyway (q74's year inside `? yr = 2001`) still pair in join
+   inference by pseudonym.
+2. `_relation_keys_fully_covered` (rowset_node.py): the local merge must carry
+   EVERY authored key group binding the two scopes (raw
+   `scoped_join_key_groups`, since derived subset keys leave no
+   distinct-identity members) — a member on the sourced side must be a
+   requested mate or already carried by the value request; otherwise decline
+   to the outer path. A partial key set under-correlates (composite
+   `subset join p = p and r = r` joined on region alone; mixed derived+plain
+   fanned out on the underived period).
+3. `_prune_subsumed_stack_nodes` (concept_strategies_v3.py): loop completion
+   drops a stack node that a sibling directly extends (the sibling's own
+   parent resolves to the same source and covers its outputs) — fusing the
+   pair re-joined on incidental overlap, resurrecting subset-anchor rows or
+   re-correlating on non-unique columns.
+The earlier fix retaining row-grain keys through filter-node output narrowing
+(`_row_grain_outputs`, commit `more_fixes`) is KEPT alongside the above: the
+sourcing-contract fix covers the provable cases with a single-scan plan, while
+grain retention keeps the fallback fuse sound when
+`_relation_keys_fully_covered` declines and sourcing splits — the one topology
+where this failure class could otherwise resurface. Piece 3 (the prune) is
+plan hygiene / defense in depth; instrumented sweeps show no current test
+depends on it for correctness.
+Regression test: `tests/discovery/test_subset_rowset_enrichment_contract.py`
 (minimal 3-customer model with a shared `(first_name, last_name)`). Verified the
-ingest-leg `query74.preql` now renders SQL returning exactly the 92 reference rows.
+ingest-leg `query74.preql` renders SQL returning exactly the 92 reference rows.
 **Class:** SILENT wrong-result (loud detector: ingest eval fail, enriched pass)
 **Leg:** ingest (auto-ingested model); enriched passes
 **Severity:** high — a join key the *authored* query carried is dropped from an

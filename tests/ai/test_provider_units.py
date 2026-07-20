@@ -529,7 +529,12 @@ def test_anthropic_provider_sets_tool_choice_any_and_parses_tool_use(monkeypatch
                 "input": {"query": "select 2"},
             },
         ],
-        "usage": {"input_tokens": 3, "output_tokens": 4},
+        "usage": {
+            "input_tokens": 3,
+            "output_tokens": 4,
+            "cache_creation_input_tokens": 10,
+            "cache_read_input_tokens": 20,
+        },
     }
     monkeypatch.setattr(
         httpx,
@@ -547,7 +552,10 @@ def test_anthropic_provider_sets_tool_choice_any_and_parses_tool_use(monkeypatch
 
     assert sink["json"]["tool_choice"] == {"type": "any"}
     assert sink["json"]["system"] == "sys"
+    assert sink["json"]["cache_control"] == {"type": "ephemeral"}
     assert result.tool_calls[0].name == "submit_query"
+    assert result.usage.prompt_tokens == 33
+    assert result.usage.total_tokens == 37
 
 
 def test_google_provider_converts_schema_and_parses_function_call(monkeypatch):

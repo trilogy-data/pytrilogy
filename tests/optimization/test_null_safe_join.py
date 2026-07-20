@@ -110,6 +110,43 @@ def test_inner_kept_when_both_sides_nullable():
     assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
 
 
+def test_inner_join_stripped_by_local_condition():
+    """Both producers nullable, but the joining CTE's own WHERE equates the
+    key to another concept — null-rejecting it — so ``=`` is safe (TPC-DS q29:
+    ``ss_customer_sk = sr_customer_sk`` alongside a nullable sr/cs key join)."""
+    root, key = _root_with_join(JoinType.INNER, left_nullable=True, right_nullable=True)
+    root.condition = BuildComparison(
+        left=_build_concept("OTHER"), right=key, operator=ComparisonOperator.EQ
+    )
+    changed, _ = SimplifyNullSafeJoins().optimize(root, {})
+    assert changed
+    join = root.joins[0]
+    assert Modifier.NULLABLE not in join.modifiers
+    assert Modifier.NULLABLE not in join.joinkey_pairs[0].modifiers
+
+
+def test_local_condition_on_unrelated_concept_keeps_null_safe():
+    root, _ = _root_with_join(JoinType.INNER, left_nullable=True, right_nullable=True)
+    root.condition = BuildComparison(
+        left=_build_concept("OTHER"),
+        right=_build_concept("ANOTHER"),
+        operator=ComparisonOperator.EQ,
+    )
+    changed, _ = SimplifyNullSafeJoins().optimize(root, {})
+    assert not changed
+    assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+
+
+def test_full_join_ignores_local_condition_proof():
+    root, key = _root_with_join(JoinType.FULL, left_nullable=True, right_nullable=True)
+    root.condition = BuildComparison(
+        left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
+    )
+    changed, _ = SimplifyNullSafeJoins().optimize(root, {})
+    assert not changed
+    assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+
+
 def test_proven_non_null_via_cte_condition():
     """A nullable column becomes non-null when the CTE's own WHERE rejects NULLs.
 
