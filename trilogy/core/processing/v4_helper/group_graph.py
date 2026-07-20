@@ -546,6 +546,12 @@ def _split_root_dimension_clusters(
             grouping_keys |= set(bucket.grain_components)
     if not grouping_keys:
         return
+    d0_grouping_grains = [
+        bucket.grain_components
+        for bucket in buckets.values()
+        if bucket.derivation in GROUPING_DERIVATIONS
+        and bucket.depth_label == DepthLabel.D0
+    ]
     for gid in list(buckets):
         bucket = buckets[gid]
         if (
@@ -588,6 +594,23 @@ def _split_root_dimension_clusters(
             # (`pre_aggregate_filter_args` gate below): its WHERE must narrow the
             # fact rows feeding the aggregate, not a post-join dim.
             if addr not in output_addresses and addr not in post_aggregate_filter_args:
+                continue
+            # A peeled filter-only arg applies as a FINAL entity-key semijoin.
+            # That is faithful only when the filter drops WHOLE groups of every
+            # output-lineage (d0) grouping bucket — each grain must FD-determine
+            # the column (q30.alt: {return_state, customer.sk} → customer's
+            # address state). A coarser-grain aggregate ({part} ⊬ segment) needs
+            # the filter on its fact input rows; peeling silently drops it from
+            # the d0 row stream (dual-scope: outputs recompute over admitted
+            # rows). d1 population buckets are exempt — the WHERE never narrows
+            # them.
+            if addr not in output_addresses and not all(
+                grain
+                and build_fd_determines(
+                    environment, set(grain), addr, include_empty_grain=False
+                )
+                for grain in d0_grouping_grains
+            ):
                 continue
             # Never peel a member that is itself a grouping key of some aggregate:
             # it is a grouping DIMENSION the query re-aggregates over (q24 regroups
@@ -1281,6 +1304,12 @@ def _consumer_required_input_grain(
     # it as an input grain forces a parent to re-derive the concept (e.g. a
     # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
     grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
+    # Likewise a component COMPUTED by a grouping row parent (a window ordering
+    # by a coarser-grain aggregate carries the aggregate in its grain) is a
+    # column that parent supplies, not a join axis siblings can carry — widening
+    # a raw scan with it is unrenderable. The parent's grain (added below) is
+    # the joinable identity.
+    parent_computed: set[str] = set()
     for pred in group_graph.predecessors(gid):
         if pred == FINAL_NODE_ID or pred not in attrs:
             continue
@@ -1288,9 +1317,10 @@ def _consumer_required_input_grain(
             continue
         if attrs[pred].derivation in GROUPING_DERIVATIONS:
             grain |= set(attrs[pred].grain_components)
+            parent_computed |= set(attrs[pred].primary_members)
         elif attrs[pred].derivation == Derivation.ROWSET:
             grain |= set(attrs[pred].grain_components)
-    return frozenset(grain)
+    return frozenset(grain - parent_computed)
 
 
 # Consumers that JOIN their row parents (vs. stack/expand them). Only these need

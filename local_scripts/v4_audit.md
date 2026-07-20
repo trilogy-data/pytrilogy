@@ -1,21 +1,101 @@
-# v4 compatibility audit (last refreshed 2026-07-19, session 13)
+# v4 compatibility audit (last refreshed 2026-07-20, session 14)
 
-## Current state (after 2026-07-19 session 13)
+## Current state (after 2026-07-20 session 14)
 
-**Full v4 sweep (session 13): 34 real failed / 5783 passed**
-(`local_scripts/v4_sweep_0719_s13.log`; raw count 35 — the +1
-`tests/cli/test_display.py` rich_enabled cell passes in isolation under both
-planners and is detached-run console-redirection noise, not a planner failure).
-Honest delta vs s12: **cleared duckdb_subquery
-`test_tuple_membership_grainless_output` ×4 (the s12 NEXT), ZERO new
-failures.** TPC-DS battery = the pre-existing 6 exactly (q72 intact);
-join_matrix clean in-sweep; classifier exit 0, no escalations;
-ruff/mypy(309)/black clean. 82 errors are clickhouse-server env (not real).
+**Full v4 sweep (session 14): 31 real failed / 5785 passed**
+(`local_scripts/v4_sweep_0720_s14b.log`; raw count 33 — minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise and a
+`tests/modeling/faa/test_llm.py` live-GPT flake where the LLM projected 3
+columns instead of the requested 2 — both pass in isolation). Honest delta vs
+s13: **cleared pushdown_partitioned ×2 + orderby_derived_expr ×1 (−3), ZERO
+new failures** (two full sweeps this session: s14 pre-orderby-fix at 32 real,
+s14b after). TPC-DS battery = the pre-existing 6 exactly (q72 intact), run
+twice; classifier exit 0, no escalations; ruff/mypy(309)/black clean. 82
+errors are clickhouse-server env (not real).
 
-Session-13 fix (v4-only, `concept_graph.py`): generalized
-`_filter_existence_only` → `_lineage_existence_only`. A concept whose lineage
-ITSELF exposes `existence_arguments` — a `BuildSubselectComparison` authored as
-a SELECT output (`select (20,1) in (pairs.val, pairs.cat) as present`), or one
+**The 31 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), fuzzer ×2
+(pre-existing corpus stability, env/seed), ×2 families (multi_partial_anchor,
+scoped_join_expression_keys window ×2 = one bug, duckdb_rowset
+variance/stddev keys-3, rollup_scoped_join) and singles
+(twin_keeps_scalar_refs, having_bare_max, dim_bridge all_subset_unaffected,
+cross_rowset_membership expression_key, scoped_derived_rowset exp_rows1,
+rowset_generation_matrix islanded, rowset_cross_datasource null_property,
+rowset_body_limit, cube_two_windows, membership_having dimension_key,
+existence_feeder_pushdown, collapse_basic funnel, union_bare_aggregate
+set_semantics, setops except_and_union, constant_in_cross_datasource_merge).
+
+**NEXT options (with session-14 diagnoses banked):**
+
+- `test_window_expression_join` ×2 (ONE bug): the scoped-join axis feeder
+  (`union join rank orders.oid order by orders.amt desc = customers.rnk`) is
+  planned standalone with mandatory ≈ {rank virt, oid}; FINAL assembly prunes
+  the root scan carrying `amt`, then the OUTER merge claims `orders.amt` as an
+  output no parent provides (INVALID_REFERENCE). Fix shape: the outer plan
+  must widen the feeder (or keep its root contributor) for consumer-needed
+  columns FD-riding the feeder's grain — the s1 duckdb_rowset "un-hide feeder
+  outputs" lesson, but on the scoped-join axis path. NOTE: the
+  `_materialize_for_query` harness in discovery_v4.py does NOT thread scoped
+  joins (env.scoped_join_key_groups comes back empty) — debug via the real
+  pipeline (monkeypatch search_concepts) instead.
+- `having_bare_max` (test_where_scalar_aggregate_degenerate_cograin): rowset
+  body `select sct.cid having total > 0.5*max_total`; the body's
+  `_virt_filter_cid_*` address survives into the resolved grain that
+  `_group_to_grain_if_required` → `check_if_group_required` diffs against the
+  OUTER build env → UndefinedConceptException. A rowset-boundary scope leak,
+  not a grain bug.
+- TPC-DS cluster ×6, or XPASS prune (24 xpassed in s14b; classifier exit 0 so
+  no label escalations, but a prune pass needs isolation + in-suite green).
+
+## ✅ 2026-07-20 (session 14) — window-over-coarser-aggregate merge keys + filter-only peel gate (+2) & ORDER BY alias-source carry (+1)
+
+Three v4-only fixes; verified by TWO full sweeps (34→32→31 real), TPC-DS
+battery twice (pre-existing 6 exactly), classifier exit 0, ruff/mypy/black
+clean. v3 untouched by construction (group_graph.py is v4-only; the
+query_processor change is inside `_get_query_node_v4`).
+
+1. **`_consumer_required_input_grain` (group_graph.py):** a grain component
+   COMPUTED by a GROUPING row parent (its primary member) is no longer part of
+   the consumer's required input grain / merge join keys. Shape: `rank(entity)
+   over (order by part_avg)` where `part_avg <- avg(amount) by part` — the
+   WINDOW group's grain is `{entity, part_avg}`, so preserve_keys carried
+   `part_avg` and `_widen_merge_join_keys` forced the raw `rows` scan to emit
+   the aggregate → "Missing source map entry" crash. The parent's grain
+   (`part`, added by the pred loop) IS the join axis. Fixed 4 unreported crash
+   variants (any window ordering by a coarser-grain aggregate).
+2. **`_split_root_dimension_clusters` (group_graph.py):** the filter-only peel
+   (post_aggregate_filter_args) now requires every D0 GROUPING bucket's grain
+   to FD-determine the peeled column (group-preserving: the FINAL entity-key
+   semijoin then drops WHOLE groups — the q30.alt contract; d1 population
+   buckets exempt). Previously `where segment='keep' and part_avg > 60`
+   (clause-granular classification: an aggregate ANYWHERE in the clause made
+   ALL its row args "post-aggregate") peeled `segment` to a dim bucket that
+   fed only the aggregate-recompute branch — the row stream and FINAL never
+   saw the filter (silent wrong rows; pre-s14-fix it surfaced as a spurious
+   DisconnectedConceptsException instead). `{part} ⊬ segment` blocks the peel;
+   `segment` stays on the fact bucket and hosts the WHERE like v3.
+3. **ORDER BY alias-source carry (`_get_query_node_v4`, query_processor.py):**
+   a plain ORDER BY arg that is only an alias-source of a projected output
+   (`order by channel` with `lower(channel) as chan` projected) is now carried
+   onto the final node as an INPUT only (never an output), with the parent's
+   FINAL-hidden copy un-hidden. Mechanism (matches v3 byte-for-byte): an
+   input-only concept gets a final-CTE source_map entry WITHOUT joining
+   output_columns → not projected, NOT in GROUP BY, and
+   `_order_expr_needs_group_wrap` MIN-wraps it. HARD-WON dead ends: carrying
+   it as a (hidden) OUTPUT either flips the dedup GroupNode's grain re-check
+   to no-group (dedup silently lost) or, with force_group pinned, lands the
+   column IN the rendered GROUP BY (CTE.group_concepts includes hidden) —
+   both wrong. `resolve_concept_map` skips parent-hidden outputs, hence the
+   parent un-hide. LESSON: when v4 needs a renderer affordance v3 gets "for
+   free", diff the v3 final CTE's `output_columns` vs `source_map` keys —
+   v3's carry was input-only, and that asymmetry IS the mechanism.
+
+## ✅ 2026-07-19 (session 13) — membership as a bare SELECT output wired via lineage existence args (+4)
+
+Generalized `_filter_existence_only` → `_lineage_existence_only`
+(`concept_graph.py`). A concept whose lineage ITSELF exposes
+`existence_arguments` — a `BuildSubselectComparison` authored as a SELECT
+output (`select (20,1) in (pairs.val, pairs.cat) as present`), or one
 propagating through Comparison/Conditional/Parenthetical/Between — now has its
 existence-only args (existence minus row args) dropped from row lineage in
 `_upstream_default` and wired as side-channel EXISTENCE edges by the existing
@@ -32,37 +112,7 @@ scratch flag_where matrix). NOT wired (pre-existing, untouched): membership
 nested under a `BuildFunction` wrapper (e.g. inside CASE) — BuildFunction does
 not propagate `existence_arguments`, so those args still walk as row lineage.
 
-**The 34 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
-non-benchmark q64_correlated_filter + or_membership_with_projected_aggregate),
-fuzzer ×2 (pre-existing corpus stability, likely env/seed — NOT a planner gap),
-plus the ×2 families (multi_partial_anchor, expression_keys,
-pushdown_partitioned, duckdb_rowset variance/stddev keys-3, rollup_scoped_join)
-and singles (twin_keeps_scalar_refs, where_scalar_aggregate_degenerate_cograin
-`having_bare_max`, scoped_join dim_bridge `all_subset_unaffected` /
-cross_rowset_membership_existence `expression_key`, scoped_derived_rowset
-exp_rows1, rowset_generation_matrix islanded, rowset_cross_datasource
-null_property, rowset_body_limit, rollup_multi_window cube_two_windows,
-membership_having dimension_key, existence_feeder_pushdown,
-collapse_basic_into_group funnel, union_bare_aggregate set_semantics, setops
-except_and_union, orderby_derived_expr, constant_in_cross_datasource_merge).
-Membership-adjacent singles re-checked post-fix and still failing (unchanged
-failure modes): cross_rowset_membership_existence `expression_key`,
-dim_bridge `all_subset_unaffected`, existence_feeder_pushdown,
-membership_having dimension_key.
-
-**NEXT options:** TPC-DS cluster ×6 OR the fanout singles OR prune-check the
-classifier XPASS entries (sweep showed 22 xpassed — worth a pass to see which
-`v4_known_failing.py` labels are now stable in isolation AND in-suite; the
-s12 list of 7: test_outer_where_pushes_into_global_agg `post_agg_filter`,
-join_resolution forced-join ×2, tpcds q59/q77, test_rowset_derived_twice
-`q64_join_form_plans`, test_where_clause `test_where_scalar`; q64 itself flips
-CRASH/XPASS — leave. Two of those (outer_where global-agg, where_scalar) are
-adjacent to the s12 fix and may now be stable — verify in isolation AND
-in-suite before pruning).
-
-## ✅ 2026-07-19 (session 13) — membership as a bare SELECT output wired via lineage existence args (+4)
-
-See Current state above for the full mechanism. One-file v4-only change
+One-file v4-only change
 (`concept_graph.py`; only importers are v4_helper/* + v4_node_generators/* +
 concept_strategies_v4 — no v3 sweep needed; unit-test rename in
 `tests/core/processing/test_v4_concept_graph.py`). The audit's predicted fix

@@ -1,8 +1,8 @@
 [
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
     "expected": [
       "SHAPE"
     ],
@@ -10,9 +10,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
@@ -48,20 +48,20 @@
     "downgrade": false
   },
   {
-    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
+    "expected": [],
     "escalation": false,
     "downgrade": false
   },
@@ -162,17 +162,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
+    "bucket": "SHAPE",
+    "detail": "AssertionError:",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/modeling/geography/test_landmark_updates.py::test_exact_match_merge_preserves_subgraph_filters",
-    "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -194,17 +194,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
-    "bucket": "ROWS",
-    "detail": "AssertionError: (1285, 1226)",
+    "node": "tests/modeling/stocks/test_stocks.py::test_import",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['holdings.profitable<Purpose.PROPERTY>Derivation.BASIC>', 'holdings.return<Purpose.PROPERTY>Der",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/modeling/stocks/test_stocks.py::test_import",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['holdings.profitable<Purpose.PROPERTY>Derivation.BASIC>', 'holdings.return<Purpose.PROPERTY>Der",
+    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
+    "bucket": "ROWS",
+    "detail": "AssertionError: (1285, 1226)",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -234,7 +234,7 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
     "bucket": "XPASS",
     "detail": "",
     "expected": [],
@@ -242,9 +242,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: WHERE input(s) ['order.date'] cannot be related to the query outputs ['local.order_count', 'order.priority']: no join or merge connects the filte",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -259,8 +259,8 @@
   },
   {
     "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen",
-    "bucket": "ROWS",
-    "detail": "AssertionError: Row mismatch in row 0 (expected v actual): (23512.752857142856,) != (29776809.931428574,)",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -330,18 +330,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
-    "bucket": "TIMEOUT",
-    "detail": "",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false,
-    "varied": [
-      "TIMEOUT",
-      "XPASS"
-    ]
-  },
-  {
     "node": "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure",
     "bucket": "SHAPE",
     "detail": "assert 'LEFT OUTER JOIN' in '\\nWITH \\nthoughtful as (\\nSELECT\\n    \"fb_fb\".\"it\" as \"_agg_b_it\",\\n    sum(\"fb_fb\".\"q\") as \"_agg_b_qb\"\\nFROM\\n    \"f...g_a_it\" as \"agg_a_it\",\\n    \"yummy\".\"agg_a_qa\" as \"",
@@ -366,17 +354,25 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
-    "bucket": "ROWS",
-    "detail": "AssertionError: [(1, 1, 10, 8)]",
+    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
     "bucket": "XPASS",
     "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
+    "bucket": "ROWS",
+    "detail": "AssertionError: [(1, 1, 10, 8)]",
     "expected": [],
     "escalation": false,
     "downgrade": false

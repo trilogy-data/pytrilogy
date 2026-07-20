@@ -751,6 +751,41 @@ def _get_query_node_v4(
             history,
             conditions=build_statement.where_clause,
         )
+    # A plain ORDER BY arg that is only an alias-source of a projected derived
+    # output (`order by channel` with `lower(channel) as chan` projected) must
+    # be resolvable from the final node's source map: the renderer references
+    # it against the final CTE's source and aggregate-wraps it (`MIN(channel)`)
+    # when the final is grouped. v3's final node carries such columns as
+    # INPUTS incidentally; v4's contract-projected FINAL slices them off.
+    # Carry them as inputs only — never outputs, which would put the column in
+    # the final GROUP BY and change the dedup grain.
+    if build_statement.order_by and ds.parents:
+        output_addrs = {c.address for c in ds.output_concepts}
+        input_addrs = {c.address for c in ds.input_concepts}
+        parent_outputs = {
+            c.address for parent in ds.parents for c in parent.output_concepts
+        }
+        order_by_carry = [
+            c
+            for item in build_statement.order_by.items
+            for c in item.concept_arguments
+            if c.address not in output_addrs
+            and c.address not in input_addrs
+            and c.address in parent_outputs
+        ]
+        if order_by_carry:
+            # The parent must expose the column PLAINLY: `resolve_concept_map`
+            # skips a parent output the parent itself hides, so a FINAL-hidden
+            # carry key never reaches the final node's source map.
+            for parent in ds.parents:
+                parent_hidden = set(parent.hidden_concepts or set())
+                unhide = {
+                    c.address for c in order_by_carry if c.address in parent_hidden
+                }
+                if unhide and {c.address for c in parent.output_concepts} & unhide:
+                    parent.hidden_concepts = parent_hidden - unhide
+                    parent.rebuild_cache()
+            ds.input_concepts.extend(unique(order_by_carry, "address"))
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
     )
