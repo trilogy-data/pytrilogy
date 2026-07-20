@@ -157,8 +157,19 @@ def _render_left_concept(
     # parent guaranteed to render in the FROM, so normal joins stay untouched.)
     if isinstance(consumer, CTE) and consumer.base_alias != consumer.name:
         left_sources = consumer.source_map.get(pair.left.address) or []
+        # A node that itself renders in the consumer's FROM/JOIN chain is
+        # never dangling — its alias is referenceable even when first-wins
+        # source_map resolution credited the key to a sibling (a coalesced
+        # merged key lists only its class sources, not every provider). Only
+        # a genuinely absent node (folded away, not any join's right side)
+        # takes the base pin.
+        renders_in_from = node.name == consumer.base_alias or any(
+            isinstance(j, Join) and j.right_cte.name == node.name
+            for j in consumer.joins
+        )
         if (
-            consumer.base_alias in left_sources
+            not renders_in_from
+            and consumer.base_alias in left_sources
             and consumer.source_key_for(node) not in left_sources
             and node.name not in left_sources
         ):

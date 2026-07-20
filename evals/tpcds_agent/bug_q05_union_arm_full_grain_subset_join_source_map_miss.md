@@ -111,3 +111,39 @@ classes (seed `outer_pairs` from all join `concept_pairs` with distinct left/rig
 the OUTER-only filter), and/or drop the `len(combined) <= 1` guard so a lone-partner source still
 backfills the pseudonym member — so a union arm joining on the full composite grain keeps every
 canonical grain key in the source map.
+
+## RESOLUTION 2026-07-20 — FIXED, but the root cause was NOT the source-map repair
+
+Confirmed REAL, but two of this report's claims were disproven during the fix:
+
+- The suggested merge-node source-map repair was implemented and then **removed**: it silenced the
+  error but unmasked a **wrong-results plan** (returns fanned out ~15-20x — the enrichment side had
+  been grouped to item grain and the join paired `item` only). The strict validator was correctly
+  rejecting a plan that had already lost the key.
+- The "validator over-rejects a correct plan" claim (case B, validation off, 30 rows / 0 sentinels)
+  is wrong: those 30 rows silently carried **zero** for every `ret` value — a *different* bug (cross-arm
+  anonymous-output address collision) had already pruned the returns aggregate out of the plan.
+
+Actual defects fixed (each value-verified against raw-SQL references on the run's `tpcds.duckdb`):
+
+1. **Anonymous select outputs skipped per-rowset mangling** (`parsing/v2/rules/select_statement_rules.py`).
+   Identical unaliased expressions in different union arms (`0::numeric` in each) shared one address,
+   collapsing the align items' positional identity: `find_source` resolved the wrong arm's column and
+   the real aggregate was dead-pruned — silent zeros.
+2. **Subgraph decomposition dropped a side's member of a merged key** (`node_merge_node.py::extract_ds_components`).
+   The steiner tree keeps only the cheapest path to the canonical, so the side reaching it through the
+   pseudonym/scoped-join edge never materialized its own column; the equality dropped out of the merge
+   join (source-map strand in case B, silent fan-out in case F5). Components now attach each target
+   key's member address wherever a component datasource binds it directly or as a scoped-join mate.
+3. **Join-key render pinned to the FROM base a key provided by a rendered join partner**
+   (`dialect/common.py::_render_left_concept`), emitting a column the base CTE doesn't have
+   (`Binder Error: ... does not have a column named ws_item`). The stale-reference redirect now skips
+   nodes that render in the consumer's own FROM/JOIN chain.
+4. **`find_source` had no recovery for scoped-join-canonicalized arm outputs** (`models/build.py`):
+   an arm selecting `wr.order_number` whose CTE emits the canonicalized `ws.order_number` raised
+   `UnionOutputResolutionError`. It now accepts a scoped-join partner / pseudonym twin among the CTE
+   outputs.
+
+Coverage: `tests/test_union_arm_subset_join_full_grain.py` (case B, F3 reversed order, F5
+partner-only-in-join, standalone control — all value-asserted). Cases B/F3/F5 verified row-exact
+against hand-written SQL references over the run's real data.

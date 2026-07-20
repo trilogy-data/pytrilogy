@@ -2050,6 +2050,25 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
+                # A scoped join inside an arm can canonicalize an authored
+                # member onto its join partner's address (`wr.order_number`
+                # emitted as `ws.order_number`), so the arm CTE carries only
+                # the partner column. The pairing is the same merged key by
+                # declaration — accept a scoped-join partner (or pseudonym
+                # twin) among the CTE outputs.
+                joined: set[frozenset[str]] = {
+                    frozenset((s, t))
+                    for select in self.selects
+                    for s, t, _ in select.scoped_joins
+                }
+                for c in x.concepts:
+                    for out in cte.output_columns:
+                        if (
+                            frozenset((c.address, out.address)) in joined
+                            or out.address in c.pseudonyms
+                            or c.address in out.pseudonyms
+                        ):
+                            return out
 
         # Reaching here means this CTE can't source the column directly
         # (typically an outer aggregate grouped it away before a projection

@@ -79,4 +79,25 @@ Secondary: **guidance gap** — `union join` (full-outer intent) is the wrong to
 `is_returned`; `subset join` (or tuple membership) is correct. The engine gives no diagnostic
 steering the author off `union join` here.
 
-Not fixed (read-only investigation).
+## FIXED 2026-07-20
+
+Root cause refined: the item pair does NOT fold to a trivial group — `ss.item.item_sk` /
+`sr.item.item_sk` are distinct conformed-import addresses and form a second ∦ key group
+(canonicalized onto `sr.item.item_sk`; the completion FULL JOIN even renders both equalities
+correctly). The defect was in `gen_presence_probe_node`: the pinned probe scan carried only the
+PROBED group's key (`ticket_number`), grouping store_returns to distinct tickets and re-joining
+on ticket alone — so the user's "missing non-null probe" hunch was close: the probe existed but
+at the wrong (coarsened) grain.
+
+Fix (`trilogy/core/processing/node_generators/presence_probe.py`): the pinned scan, the enrich
+sub-request, and the probe merge outputs now also carry every co-declared statement join-key
+group with a member bound in the probed datasource (`co_declared_group_keys`, backed by new
+`DomainGraph.statement_relation_members`). Global `merge` groups are excluded — ambient
+identity is not a join constraint of the statement. v4 discovery already handled this shape;
+fix is v3-only.
+
+Verified: agent's `query64.preql` unmodified → **2 rows** (exact reference match, was 247);
+union join / subset join / tuple membership now agree exactly (130 rows); the adjacent
+duplicate-alias BinderException layouts all run clean. Regression cells:
+`tests/join_matrix/test_union_join_composite_key_probe.py` (fail pre-fix under v3, pass both
+planners post-fix).

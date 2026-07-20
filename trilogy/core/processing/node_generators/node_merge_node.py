@@ -24,6 +24,7 @@ from trilogy.core.processing.condition_utility import (
     preserved_non_partial_conditions,
 )
 from trilogy.core.processing.node_generators.common import (
+    authored_join_pair_candidates,
     inject_authored_join_key_terminals,
     reinject_common_join_keys_v2,
 )
@@ -77,30 +78,65 @@ def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
 
 
 def extract_ds_components(
-    g: nx.DiGraph, nodelist: list[str], pseudonyms: set[tuple[str, str]]
+    g: nx.DiGraph,
+    nodelist: list[str],
+    base: ReferenceGraph,
+    scoped_pairs: list[tuple[str, str]] | None = None,
 ) -> list[list[str]]:
     graphs = []
+    component_ds: list[str] = []
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g, highlight_nodes=nodelist)
     for node in sorted(g.nodes):
         if not node.startswith("ds~"):
             continue
         local = g.copy()
-        filter_pseudonyms_for_source(local, node, pseudonyms)
+        filter_pseudonyms_for_source(local, node, base.pseudonyms)
         ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=EGO_RADIUS).copy()
         graphs.append(
             sorted(
                 extract_address(x) for x in ds_graph.nodes if str(x).startswith("c~")
             )
         )
+        component_ds.append(node)
     # if we had no ego graphs, return all concepts
     if not graphs:
         return [[extract_address(node) for node in nodelist]]
-    graphs = filter_unique_graphs(graphs)
+    pseudo_mates: dict[str, set[str]] = {}
+    mate_pairs: list[tuple[str, str]] = [
+        (extract_address(a), extract_address(b)) for a, b in base.pseudonyms
+    ] + list(scoped_pairs or [])
+    for aa, bb in mate_pairs:
+        if aa != bb:
+            pseudo_mates.setdefault(aa, set()).add(bb)
+            pseudo_mates.setdefault(bb, set()).add(aa)
     for node in nodelist:
         parsed = extract_address(node)
-        if not any(parsed in x for x in graphs):
+        # A merged key reached through a pseudonym edge (a scoped-join mate on
+        # another source) can miss the components that bind it: the minimal
+        # tree keeps only the cheapest path to the canonical, so a side's own
+        # member never enters its ego graph. Each such side must still
+        # materialize ITS member — otherwise its parent is dedup-swallowed (or
+        # planned without the key), the equality drops out of the merge join,
+        # and the remaining-key join fans out (q05 union arm subset-joining
+        # web_returns→web_sales on the full composite grain). Attach the exact
+        # address where bound directly, the member address where bound as a
+        # pseudonym mate; fall back to a singleton subgraph when no component
+        # binds it at all.
+        candidates = {parsed} | pseudo_mates.get(parsed, set())
+        attached = any(parsed in x for x in graphs)
+        for i, ds_node in enumerate(component_ds):
+            ds = base.datasources.get(ds_node)
+            if ds is None:
+                continue
+            for col in ds.columns:
+                if col.concept.address in candidates:
+                    if col.concept.address not in graphs[i]:
+                        graphs[i] = sorted(set(graphs[i]) | {col.concept.address})
+                    attached = True
+        if not attached:
             graphs.append([parsed])
+    graphs = filter_unique_graphs(graphs)
     return graphs
 
 
@@ -471,7 +507,18 @@ def resolve_weak_components(
     subgraphs: list[list[BuildConcept]] = []
     # components = nx.strongly_connected_components(g)
     node_list = [x for x in g.nodes if x.startswith("c~")]
-    components = extract_ds_components(g, node_list, environment_graph.pseudonyms)
+    authored_pairs = [
+        pair_addrs
+        for pair in authored_join_pair_candidates(environment)
+        for pair_addrs in (
+            (pair.left.address, pair.right.address),
+            (pair.left.address, pair.canonical.address),
+            (pair.right.address, pair.canonical.address),
+        )
+    ]
+    components = extract_ds_components(
+        g, node_list, environment_graph, scoped_pairs=authored_pairs
+    )
     logger.debug(f"Extracted components {components} from {node_list}")
     for component in components:
         # we need to take unique again as different addresses may map to the same concept
