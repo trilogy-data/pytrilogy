@@ -153,3 +153,45 @@ def test_altair_unavailable_raises():
             ar.AltairRenderer()
     finally:
         ar.ALTAIR_AVAILABLE = original
+
+
+def test_altair_stack_order_ranks_coverage_then_total():
+    import pandas as pd
+
+    layer = ProcessedChartLayer(
+        layer_type=ChartType.AREA,
+        x_fields=["x"],
+        y_fields=["y"],
+        color_field="cat",
+    )
+    rows = []
+    for x in range(10):
+        rows.append({"x": x, "y": 5, "cat": "full"})
+        if x < 5:
+            rows.append({"x": x, "y": 12, "cat": "early"})
+        else:
+            rows.append({"x": x, "y": 8, "cat": "late"})
+    ranks = AltairRenderer._stack_order_ranks(pd.DataFrame(rows), layer)
+    # full-span series anchors the bottom despite the smallest total;
+    # coverage ties break by total (early: 60 > late: 40)
+    assert ranks == {"full": 0, "early": 1, "late": 2}
+
+
+def test_altair_stacked_area_emits_order_channel():
+    statement = _statement(ChartType.AREA, ["x"], ["y"], color_field="cat")
+    data = [
+        [
+            {"x": 0, "y": 1, "cat": "a"},
+            {"x": 1, "y": 1, "cat": "a"},
+            {"x": 1, "y": 2, "cat": "b"},
+        ]
+    ]
+    spec = AltairRenderer().render(statement, data).to_dict()
+    assert spec["encoding"]["order"]["field"] == "_stack_order"
+    assert spec["encoding"]["order"]["sort"] == "ascending"
+
+
+def test_altair_single_series_area_has_no_order_channel():
+    statement = _statement(ChartType.AREA, ["x"], ["y"])
+    spec = AltairRenderer().render(statement, _data()).to_dict()
+    assert "order" not in spec["encoding"]

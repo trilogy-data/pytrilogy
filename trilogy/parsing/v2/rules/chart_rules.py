@@ -160,10 +160,16 @@ def chart_layer(
         bindings = hydrate(body_node)
         if not isinstance(bindings, list):
             raise fail(body_node, "Chart layer body failed to hydrate")
-        select_items = [
-            _binding_to_select_item(binding, binding_node, context)
-            for binding, binding_node in zip(bindings, binding_nodes)
-        ]
+        # The same concept may back several roles (x_axis + color); emit it
+        # once. Aliased bindings are left to the duplicate-output check.
+        select_items = []
+        seen_refs: set[str] = set()
+        for binding, binding_node in zip(bindings, binding_nodes):
+            if binding.alias is None and isinstance(binding.expr, ConceptRef):
+                if binding.expr.address in seen_refs:
+                    continue
+                seen_refs.add(binding.expr.address)
+            select_items.append(_binding_to_select_item(binding, binding_node, context))
         select = SelectStatement(
             selection=select_items,
             order_by=hydrate(order_by_node) if order_by_node is not None else None,

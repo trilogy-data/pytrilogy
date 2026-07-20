@@ -76,7 +76,12 @@ from trilogy.dialect.metadata import (
 )
 from trilogy.dialect.mock import handle_processed_mock_statement
 from trilogy.dialect.results import ChartResult, MockResult
-from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+from trilogy.engine import (
+    EngineConnection,
+    ExecutionEngine,
+    ResultProtocol,
+    escape_literal_colons,
+)
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
@@ -127,14 +132,17 @@ def label_definition_statement(statement: object) -> str:
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
 _CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}
-_CHART_COPY_ALLOWED = _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys()
+_CHART_COPY_STYLE_KEYS = {"theme", "background"}
+_CHART_COPY_ALLOWED = (
+    _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys() | _CHART_COPY_STYLE_KEYS
+)
 
 
 def _chart_copy_options(
     options: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], str | None, str | None]:
     if not options:
-        return {}, {}
+        return {}, {}, None, None
     unknown = set(options) - _CHART_COPY_ALLOWED
     if unknown:
         raise ValueError(
@@ -147,7 +155,7 @@ def _chart_copy_options(
         for src, dest in _CHART_COPY_SAVE_KEYS.items()
         if src in options
     }
-    return size_props, save_kwargs
+    return size_props, save_kwargs, options.get("theme"), options.get("background")
 
 
 class Executor(object):
@@ -160,6 +168,7 @@ class Executor(object):
         hooks: List[BaseHook] | None = None,
         config: DialectConfig | None = None,
         staging: StagingConfig | None = None,
+        chart_theme: str | None = None,
     ):
 
         self.dialect: Dialects = dialect
@@ -170,6 +179,9 @@ class Executor(object):
         self.hooks = hooks
         self.config = config
         self.staging = staging or StagingConfig()
+        # default theme for chart copy output (from trilogy.toml [report].theme);
+        # a per-statement copy (theme=...) overrides it
+        self.chart_theme = chart_theme
         self._instance_id = str(uuid.uuid4())
         self.generator = get_dialect_generator(
             self.dialect,
@@ -594,6 +606,11 @@ class Executor(object):
             )
         return layer_data
 
+    def _resolve_chart_theme(self, override: str | None = None):
+        from trilogy.rendering.theme import DEFAULT_THEME, get_theme
+
+        return get_theme(override or self.chart_theme or DEFAULT_THEME.name)
+
     @execute_query.register
     def _(self, query: ProcessedChartStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
@@ -601,7 +618,7 @@ class Executor(object):
         layer_data = self._run_chart_layers(query)
         chart = None
         if ALTAIR_AVAILABLE:
-            renderer = AltairRenderer()
+            renderer = AltairRenderer(theme=self._resolve_chart_theme())
             chart = renderer.render(query, layer_data)
 
         return ChartResult(chart=chart, data=layer_data, statement=query)
@@ -609,17 +626,24 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedChartCopyStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
+        from trilogy.rendering.chart_theme import theme_chart
 
         if not ALTAIR_AVAILABLE:
             raise RuntimeError(
                 "Copying a chart to a file requires altair. Install with 'pip install altair vl-convert-python'."
             )
+        size_props, save_kwargs, theme_name, background = _chart_copy_options(
+            query.options
+        )
+        theme = self._resolve_chart_theme(theme_name)
         layer_data = self._run_chart_layers(query.chart)
-        renderer = AltairRenderer()
+        renderer = AltairRenderer(theme=theme)
         chart = renderer.render(query.chart, layer_data)
         if chart is None:
             raise RuntimeError("Chart renderer returned no chart to save.")
-        size_props, save_kwargs = _chart_copy_options(query.options)
+        chart = theme_chart(chart, theme)
+        if background:
+            chart = chart.properties(background=background)
         if size_props:
             chart = chart.properties(**size_props)
         target = self._resolve_copy_target(query.target)
@@ -935,6 +959,7 @@ class Executor(object):
         if isinstance(command, Path):
             with safe_open(command) as f:
                 command = f.read()
+        command = escape_literal_colons(command)
         q = text(command)
         if variables:
             final_params = variables

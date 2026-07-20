@@ -11,8 +11,17 @@ from collections import namedtuple
 from datetime import date, datetime
 from typing import Any, Callable, Generator, List, Optional
 
+from sqlalchemy import bindparam
+from sqlalchemy import text as sa_text
+from sqlalchemy.sql.elements import TextClause
+
 from trilogy.core.models.environment import Environment
-from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
+from trilogy.engine import (
+    EngineConnection,
+    ExecutionEngine,
+    ResultProtocol,
+    unescape_literal_colons,
+)
 
 
 def _strip_modifiers(ch_type: str) -> str:
@@ -94,21 +103,20 @@ class ChdbResult(ResultProtocol):
             yield row
 
 
-def _statement_to_sql(statement: Any, parameters: Any | None) -> str:
+def _statement_to_sql(statement: str | TextClause, parameters: Any | None) -> str:
     """Resolve a SQLAlchemy TextClause or raw string to a final SQL string.
 
     Parameters are inlined via SQLAlchemy's literal_binds compiler since chdb
     does not support bound parameters in its Python API.
     """
-    text_value = getattr(statement, "text", None)
-    if text_value is None:
+    if not isinstance(statement, TextClause):
         return str(statement)
     if not parameters:
-        return str(text_value)
-    from sqlalchemy import bindparam
-    from sqlalchemy import text as sa_text
-
-    bound = sa_text(text_value)
+        # A TextClause's raw .text still carries the executor's literal-colon
+        # escapes; SQLAlchemy unescapes them at compile time, which this
+        # branch skips.
+        return unescape_literal_colons(statement.text)
+    bound = sa_text(statement.text)
     bound = bound.bindparams(*[bindparam(k, v) for k, v in parameters.items()])
     compiled = bound.compile(compile_kwargs={"literal_binds": True})
     return str(compiled)
@@ -130,7 +138,9 @@ class ChdbConnection(EngineConnection):
             self._session = Session(self._path) if self._path else Session()
         return self._session
 
-    def execute(self, statement: Any, parameters: Any | None = None) -> ResultProtocol:
+    def execute(
+        self, statement: str | TextClause, parameters: Any | None = None
+    ) -> ResultProtocol:
         sql = _statement_to_sql(statement, parameters)
         # Use JSON format so we get both column metadata and row data.
         raw = self._get_session().query(sql, "JSON")

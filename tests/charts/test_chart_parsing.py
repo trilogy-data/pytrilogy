@@ -185,3 +185,13 @@ def test_duplicate_copy_option_raises():
         """,
             env,
         )
+
+
+def test_same_concept_across_roles_dedupes_implicit_select():
+    chart = _parse(_SETUP + """
+    chart
+      layer bar ( x_axis <- x, y_axis <- y, color <- x );
+    """)
+    select = chart.layers[0].select
+    assert select is not None
+    assert len(select.selection) == 2

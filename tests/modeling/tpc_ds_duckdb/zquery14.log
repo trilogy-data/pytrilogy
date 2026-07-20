@@ -1,7 +1,7 @@
 query_id = "14"
 generator = "v3"
-gen_length = 7036
-preql_size = 1733
+gen_length = 7116
+preql_size = 1753
 comp_size = 4229
 generated_sql = """
 
@@ -9,33 +9,33 @@ WITH
 cheerful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
@@ -44,9 +44,9 @@ SELECT
     avg(\"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\") as \"_avg_sales_average_sales\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
+    \"sales_sale_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
 ),
 questionable as (
 SELECT
@@ -56,10 +56,10 @@ SELECT
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001 and \"sales_item_items\".\"I_BRAND_ID\" is not null and \"sales_item_items\".\"I_CLASS_ID\" is not null and \"sales_item_items\".\"I_CATEGORY_ID\" is not null
+    \"sales_sale_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001 and \"sales_item_items\".\"I_BRAND_ID\" is not null and \"sales_item_items\".\"I_CLASS_ID\" is not null and \"sales_item_items\".\"I_CATEGORY_ID\" is not null
 
 GROUP BY
     1,
@@ -110,10 +110,10 @@ SELECT
     LOWER(\"cheerful\".\"sales_channel\")  as \"channel_label\"
 FROM
     \"cheerful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"cheerful\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 11 and exists (select 1 from yummy where yummy.\"cross_tuples_ci_brand_id\" is not distinct from \"sales_item_items\".\"I_BRAND_ID\" and yummy.\"cross_tuples_ci_class_id\" is not distinct from \"sales_item_items\".\"I_CLASS_ID\" and yummy.\"cross_tuples_ci_category_id\" is not distinct from \"sales_item_items\".\"I_CATEGORY_ID\")
+    \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 11 and exists (select 1 from yummy where yummy.\"cross_tuples_ci_brand_id\" is not distinct from \"sales_item_items\".\"I_BRAND_ID\" and yummy.\"cross_tuples_ci_class_id\" is not distinct from \"sales_item_items\".\"I_CLASS_ID\" and yummy.\"cross_tuples_ci_category_id\" is not distinct from \"sales_item_items\".\"I_CATEGORY_ID\")
 
 GROUP BY
     1,

@@ -6,6 +6,7 @@ from trilogy.core.enums import (
     IOType,
     PersistMode,
     PublishAction,
+    ScaleType,
     ValidationScope,
 )
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
@@ -172,8 +173,8 @@ class ProcessedChartStatement:
     placements: List["ChartPlacement"] = field(default_factory=list)
     hide_legend: bool = False
     show_title: bool = False
-    scale_x: Optional[str] = None
-    scale_y: Optional[str] = None
+    scale_x: Optional[ScaleType] = None
+    scale_y: Optional[ScaleType] = None
 
 
 @dataclass

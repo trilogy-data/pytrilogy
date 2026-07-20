@@ -1,7 +1,7 @@
 query_id = "08"
 generator = "v3"
-gen_length = 2925
-preql_size = 7485
+gen_length = 2945
+preql_size = 7495
 comp_size = 19155
 generated_sql = """
 
@@ -68,10 +68,10 @@ SELECT
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QOY\" = 2 and \"store_sales_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from vacuous where vacuous.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
+    \"store_sales_sale_date_date\".\"D_QOY\" = 2 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from vacuous where vacuous.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
 
 GROUP BY
     1,

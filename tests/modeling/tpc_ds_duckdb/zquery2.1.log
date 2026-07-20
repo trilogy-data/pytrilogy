@@ -1,7 +1,7 @@
 query_id = "2.1"
 generator = "v3"
-gen_length = 6294
-preql_size = 1475
+gen_length = 6304
+preql_size = 1485
 comp_size = 2566
 generated_sql = """
 
@@ -10,8 +10,8 @@ cheerful as (
 SELECT
     \"date_date\".\"D_WEEK_SEQ\" as \"relevent_week_seq\"
 FROM
-    \"memory\".\"date_dim\" as \"catalog_sales_date_date\"
-    INNER JOIN \"memory\".\"date_dim\" as \"date_date\" on \"catalog_sales_date_date\".\"D_DATE_SK\" = \"date_date\".\"D_DATE_SK\"
+    \"memory\".\"date_dim\" as \"catalog_sales_sale_date_date\"
+    INNER JOIN \"memory\".\"date_dim\" as \"date_date\" on \"catalog_sales_sale_date_date\".\"D_DATE_SK\" = \"date_date\".\"D_DATE_SK\"
 WHERE
     (\"date_date\".\"D_YEAR\" is not null and \"date_date\".\"D_YEAR\" in (2001,2002))
 

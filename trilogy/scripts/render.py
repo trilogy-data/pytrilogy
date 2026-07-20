@@ -1,6 +1,7 @@
 """Render command for Trilogy CLI."""
 
 from pathlib import Path as PathlibPath
+from typing import TYPE_CHECKING
 
 import click
 from click import Choice, Path, argument, option, pass_context
@@ -11,17 +12,18 @@ from trilogy.rendering.theme import DEFAULT_THEME, THEMES
 from trilogy.report import render_report
 from trilogy.report.backends import available_formats
 
+if TYPE_CHECKING:
+    from trilogy.execution.config import RuntimeConfig
+
 
 def _report_executor(
-    ctx: click.Context, report_dir: PathlibPath, config_path: str | None
+    ctx: click.Context, report_dir: PathlibPath, config: "RuntimeConfig"
 ) -> Executor | None:
-    """Build an executor from a trilogy.toml (explicit --config or one discovered
-    next to the report). Returns None when no engine is configured, letting the
-    report fall back to the default in-memory DuckDB."""
-    from trilogy.scripts.common import create_executor, get_runtime_config
+    """Build an executor from the resolved runtime config. Returns None when no
+    engine is configured, letting the report fall back to the default in-memory
+    DuckDB."""
+    from trilogy.scripts.common import create_executor
 
-    override = PathlibPath(config_path) if config_path else None
-    config = get_runtime_config(report_dir, override)
     if not config.engine_dialect:
         return None
     return create_executor(
@@ -46,8 +48,9 @@ def _report_executor(
 @option(
     "--theme",
     type=Choice(sorted(THEMES)),
-    default=DEFAULT_THEME.name,
-    help="Visual theme (font + colors).",
+    default=None,
+    help="Visual theme (font + colors). Defaults to trilogy.toml "
+    f"[report].theme, else '{DEFAULT_THEME.name}'.",
 )
 @option(
     "--out",
@@ -71,7 +74,7 @@ def render(
     ctx: click.Context,
     input: str,
     output_format: str,
-    theme: str,
+    theme: str | None,
     output: str | None,
     config_path: str | None,
 ) -> None:
@@ -80,15 +83,20 @@ def render(
     Executes embedded ```trilogy code blocks: chart statements become charts
     and select statements become tables.
     """
+    from trilogy.scripts.common import get_runtime_config
     from trilogy.scripts.display import emit_event, is_json_mode, print_error
 
-    executor = _report_executor(ctx, PathlibPath(input).parent, config_path)
+    report_dir = PathlibPath(input).parent
+    config = get_runtime_config(
+        report_dir, PathlibPath(config_path) if config_path else None
+    )
+    executor = _report_executor(ctx, report_dir, config)
     try:
         result = render_report(
             input,
             output_format=output_format,
             output_path=PathlibPath(output) if output else None,
-            theme=theme,
+            theme=theme or config.report_theme or DEFAULT_THEME.name,
             executor=executor,
         )
     except Exception as e:  # surface a clean CLI error

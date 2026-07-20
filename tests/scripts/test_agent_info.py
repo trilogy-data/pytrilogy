@@ -58,7 +58,7 @@ def test_agent_info_report_subcommand():
     # Render command details now live here, not in the main dump.
     assert "trilogy render" in result.output
     assert "--to {png|html}" in result.output
-    assert "--theme {inter|editorial}" in result.output
+    assert "--theme {inter|inter-dark|editorial|editorial-dark}" in result.output
     assert "playwright install chromium" in result.output
     # The general guide should not leak into the focused reference.
     assert "# Agent Usage Guide" not in result.output

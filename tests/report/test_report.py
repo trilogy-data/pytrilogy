@@ -232,7 +232,7 @@ def test_get_backend_unknown():
 def test_theme_constants():
     assert "Inter" in INTER_THEME.font_stack
     assert "Instrument Sans" in EDITORIAL_THEME.font_stack
-    assert set(THEMES) == {"inter", "editorial"}
+    assert set(THEMES) == {"inter", "inter-dark", "editorial", "editorial-dark"}
     assert DEFAULT_THEME is INTER_THEME
     assert get_theme("editorial") is EDITORIAL_THEME
 

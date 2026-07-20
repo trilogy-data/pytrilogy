@@ -1,7 +1,7 @@
 query_id = "23"
 generator = "v3"
-gen_length = 7748
-preql_size = 1570
+gen_length = 7893
+preql_size = 1595
 comp_size = 2441
 generated_sql = """
 
@@ -12,7 +12,7 @@ SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\"
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 WHERE
@@ -20,12 +20,12 @@ WHERE
 ),
 questionable as (
 SELECT
-    \"sales_date_date\".\"D_DATE_SK\" as \"sales_date_sk\",
-    cast(\"sales_date_date\".\"D_DATE\" as date) as \"sales_date_date\"
+    \"sales_sale_date_date\".\"D_DATE_SK\" as \"sales_sale_date_sk\",
+    cast(\"sales_sale_date_date\".\"D_DATE\" as date) as \"sales_sale_date_date\"
 FROM
-    \"memory\".\"date_dim\" as \"sales_date_date\"
+    \"memory\".\"date_dim\" as \"sales_sale_date_date\"
 WHERE
-    (\"sales_date_date\".\"D_YEAR\" is not null and \"sales_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
+    (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
 ),
 macho as (
 SELECT
@@ -40,22 +40,22 @@ SELECT
     sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
     \"young\"
-    INNER JOIN \"questionable\" on \"young\".\"sales_date_sk\" = \"questionable\".\"sales_date_sk\"
+    INNER JOIN \"questionable\" on \"young\".\"sales_sale_date_sk\" = \"questionable\".\"sales_sale_date_sk\"
 WHERE
     \"young\".\"sales_channel\" = 'STORE'
 
 GROUP BY
     \"young\".\"sales_billing_customer_sk\"),
-uneven as (
+abundant as (
 SELECT
-    \"questionable\".\"sales_date_date\" as \"sales_date_date\",
+    \"questionable\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
     \"sales_item_items\".\"I_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\"
 FROM
-    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"questionable\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"questionable\".\"sales_date_sk\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
+    \"memory\".\"item\" as \"sales_item_items\"
+    INNER JOIN \"memory\".\"store_sales\" as \"sales_store_sales_unified\" on \"sales_item_items\".\"I_ITEM_SK\" = \"sales_store_sales_unified\".\"SS_ITEM_SK\"
+    INNER JOIN \"questionable\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"questionable\".\"sales_sale_date_sk\"
 WHERE
      'STORE'  = 'STORE'
 
@@ -69,28 +69,28 @@ SELECT
     max(\"sparkling\".\"customer_total_in_window\") as \"_max_total_cmax\"
 FROM
     \"sparkling\"),
-yummy as (
+uneven as (
 SELECT
-    \"uneven\".\"sales_item_sk\" as \"_frequent_items_frequent_item_id\"
+    \"abundant\".\"sales_item_sk\" as \"_frequent_items_frequent_item_id\"
 FROM
-    \"uneven\"
+    \"abundant\"
 GROUP BY
     1,
-    \"uneven\".\"sales_date_date\",
-    \"uneven\".\"sales_item_desc_truncated\"
+    \"abundant\".\"sales_item_desc_truncated\",
+    \"abundant\".\"sales_sale_date_date\"
 HAVING
-    count(\"uneven\".\"sales_order_id\") > 4
+    count(\"abundant\".\"sales_order_id\") > 4
 ),
 late as (
 SELECT
     \"sweltering\".\"_max_total_cmax\" as \"max_total_cmax\"
 FROM
     \"sweltering\"),
-juicy as (
+yummy as (
 SELECT
-    \"yummy\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
+    \"uneven\".\"_frequent_items_frequent_item_id\" as \"frequent_items_frequent_item_id\"
 FROM
-    \"yummy\"
+    \"uneven\"
 GROUP BY
     1),
 scrawny as (
@@ -118,9 +118,9 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from juicy where juicy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -133,9 +133,9 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from juicy where juicy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -148,9 +148,9 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from juicy where juicy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_date_date\".\"D_YEAR\" = 2000 and \"sales_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 ),
 kaput as (
 SELECT
@@ -162,7 +162,7 @@ FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    exists (select 1 from juicy where juicy.\"frequent_items_frequent_item_id\" is not distinct from \"thoughtful\".\"sales_item_sk\")
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"thoughtful\".\"sales_item_sk\")
 
 GROUP BY
     1,

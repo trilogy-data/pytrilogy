@@ -77,6 +77,32 @@ def is_numeric(datatype: Any) -> bool:
     return _base_type(datatype) in _NUMERIC_BASE_TYPES
 
 
+def is_hex_color(datatype: Any) -> bool:
+    """Whether a datatype carries the `hex` trait (a hex color string)."""
+    return "hex" in _traits(datatype)
+
+
+# std.date integer part types: label as plain integers (2020, not 2,020).
+_INTEGER_DATE_PART_TRAITS = {
+    "year",
+    "decade",
+    "century",
+    "month",
+    "quarter",
+    "week",
+    "day",
+    "hour",
+    "minute",
+    "second",
+    "day_of_week",
+}
+
+
+def is_integer_date_part(datatype: Any) -> bool:
+    """Whether a datatype carries a std.date integer part trait (year, ...)."""
+    return not _INTEGER_DATE_PART_TRAITS.isdisjoint(_traits(datatype))
+
+
 def _format_magnitude(value: Any) -> str:
     """Group digits; show up to two decimals, dropping a trailing `.00`."""
     if value == int(value):

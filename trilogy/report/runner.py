@@ -87,15 +87,22 @@ def _run_segment(executor: Any, segment: Segment) -> List[RenderedElement]:
 
 
 def run_document(
-    segments: List[Segment], working_path: Path, executor: Any | None = None
+    segments: List[Segment],
+    working_path: Path,
+    executor: Any | None = None,
+    chart_theme: str | None = None,
 ) -> List[RenderedElement]:
     """Run every trilogy block against one shared executor so declarations persist.
 
     Defaults to an in-memory DuckDB executor; callers may pass a pre-built
     executor (e.g. one wired to the dialect in a trilogy.toml) to run the report
-    against a configured warehouse instead."""
+    against a configured warehouse instead. ``chart_theme`` pins the executor's
+    chart theme to the report's resolved theme so theme-baked marks (headline
+    text) match the surrounding page."""
     if executor is None:
         executor = Dialects.DUCK_DB.default_executor(working_path=working_path)
+    if chart_theme is not None:
+        executor.chart_theme = chart_theme
     if not executor.connected:
         executor.connect()
     elements: List[RenderedElement] = []

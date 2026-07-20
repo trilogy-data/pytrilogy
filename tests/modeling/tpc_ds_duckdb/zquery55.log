@@ -1,7 +1,7 @@
 query_id = "55"
 generator = "v3"
-gen_length = 835
-preql_size = 367
+gen_length = 855
+preql_size = 377
 comp_size = 346
 generated_sql = """
 SELECT
@@ -10,10 +10,10 @@ SELECT
     sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total_ext_sales\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_item_items\".\"I_MANAGER_ID\" = 28 and \"store_sales_date_date\".\"D_YEAR\" = 1999 and \"store_sales_date_date\".\"D_MOY\" = 11
+    \"store_sales_item_items\".\"I_MANAGER_ID\" = 28 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1999 and \"store_sales_sale_date_date\".\"D_MOY\" = 11
 
 GROUP BY
     1,

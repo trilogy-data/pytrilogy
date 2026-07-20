@@ -4,14 +4,20 @@ A `Theme` covers what is meant to vary aesthetically — the font stack and the
 color palette. `Layout` covers structural decisions (widths, spacing, the type
 scale) that stay fixed so output keeps a disciplined, editorial look.
 
-Themes are exposed here as constants; plumbing them through from the config
-file is a planned follow-up.
+Theme resolution precedence: built-in default → `trilogy.toml [report].theme`
+→ CLI `--theme` → per-statement `copy (theme=...)`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from enum import Enum
 from typing import Dict, Optional, Tuple
+
+
+class Appearance(str, Enum):
+    LIGHT = "light"
+    DARK = "dark"
 
 
 @dataclass(frozen=True)
@@ -37,6 +43,10 @@ class Theme:
     accent_warning: str
     # desaturated, slightly pastel chart palette
     chart_palette: Tuple[str, ...]
+    # drives derived chart chrome (grid/label contrast); themes are not
+    # required to have an opposite-appearance sibling
+    appearance: Appearance = Appearance.LIGHT
+    counterpart: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -126,12 +136,41 @@ INTER_THEME = Theme(
         "#E0917E",
         "#6FB1C4",
     ),
+    counterpart="inter-dark",
+)
+
+# Same hue system on warm dark neutrals; accents brightened a step so they
+# keep contrast against the dark surfaces.
+INTER_DARK_THEME = replace(
+    INTER_THEME,
+    name="inter-dark",
+    appearance=Appearance.DARK,
+    counterpart="inter",
+    text_primary="#ecebe8",
+    text_secondary="#b5b2ab",
+    text_muted="#8f8c84",
+    page_background="#161514",
+    card_background="#1e1d1b",
+    section_tint="#26241f",
+    border="rgba(255,255,255,0.08)",
+    accent_primary="#8B98F0",
+    accent_secondary="#8FD4B6",
+    accent_warning="#EEC36A",
+    chart_palette=(
+        "#8B98F0",
+        "#8FD4B6",
+        "#EEC36A",
+        "#B3A3E3",
+        "#EDA893",
+        "#89C5D8",
+    ),
 )
 
 # Editorial/premium feel: same color system, a more characterful typeface.
 EDITORIAL_THEME = replace(
     INTER_THEME,
     name="editorial",
+    counterpart="editorial-dark",
     font_stack='"Instrument Sans", "Manrope", "Satoshi", system-ui, sans-serif',
     webfont_url=(
         "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700"
@@ -139,12 +178,26 @@ EDITORIAL_THEME = replace(
     ),
 )
 
+EDITORIAL_DARK_THEME = replace(
+    INTER_DARK_THEME,
+    name="editorial-dark",
+    counterpart="editorial",
+    font_stack=EDITORIAL_THEME.font_stack,
+    webfont_url=EDITORIAL_THEME.webfont_url,
+)
+
 DEFAULT_THEME = INTER_THEME
 
 THEMES: Dict[str, Theme] = {
     INTER_THEME.name: INTER_THEME,
+    INTER_DARK_THEME.name: INTER_DARK_THEME,
     EDITORIAL_THEME.name: EDITORIAL_THEME,
+    EDITORIAL_DARK_THEME.name: EDITORIAL_DARK_THEME,
 }
+
+
+def register_theme(theme: Theme) -> None:
+    THEMES[theme.name] = theme
 
 
 def get_theme(name: str) -> Theme:
@@ -152,3 +205,12 @@ def get_theme(name: str) -> Theme:
         return THEMES[name]
     except KeyError:
         raise ValueError(f"Unknown theme '{name}'. Available: {sorted(THEMES)}")
+
+
+def default_theme(appearance: Appearance = Appearance.LIGHT) -> Theme:
+    if appearance == Appearance.LIGHT:
+        return DEFAULT_THEME
+    counterpart = DEFAULT_THEME.counterpart
+    if counterpart is None:
+        return DEFAULT_THEME
+    return THEMES[counterpart]

@@ -1,7 +1,7 @@
 query_id = "87"
 generator = "v3"
-gen_length = 3441
-preql_size = 1085
+gen_length = 3501
+preql_size = 1105
 comp_size = 1163
 generated_sql = """
 
@@ -10,13 +10,13 @@ cheerful as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
-    cast(\"store_sales_date_date\".\"D_DATE\" as date) as \"store_sales_date_date\"
+    cast(\"store_sales_sale_date_date\".\"D_DATE\" as date) as \"store_sales_sale_date_date\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    \"store_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,
@@ -26,13 +26,13 @@ uneven as (
 SELECT
     \"catalog_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"catalog_sales_billing_customer_first_name\",
     \"catalog_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"catalog_sales_billing_customer_last_name\",
-    cast(\"catalog_sales_sold_date_date\".\"D_DATE\" as date) as \"catalog_sales_sold_date_date\"
+    cast(\"catalog_sales_sale_date_date\".\"D_DATE\" as date) as \"catalog_sales_sale_date_date\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sold_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_sold_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sale_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"catalog_sales_billing_customer_customers\" on \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"catalog_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"catalog_sales_sold_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" is not null
+    \"catalog_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,
@@ -42,13 +42,13 @@ young as (
 SELECT
     \"web_sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"web_sales_billing_customer_first_name\",
     \"web_sales_billing_customer_customers\".\"C_LAST_NAME\" as \"web_sales_billing_customer_last_name\",
-    cast(\"web_sales_date_date\".\"D_DATE\" as date) as \"web_sales_date_date\"
+    cast(\"web_sales_sale_date_date\".\"D_DATE\" as date) as \"web_sales_sale_date_date\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_sale_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"web_sales_billing_customer_customers\" on \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" = \"web_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"web_sales_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"web_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"web_sales_web_sales\".\"WS_BILL_CUSTOMER_SK\" is not null
 
 GROUP BY
     1,
@@ -58,21 +58,21 @@ abhorrent as (
 SELECT
     \"cheerful\".\"store_sales_customer_last_name\" as \"_tvf_union_last_name\",
     \"cheerful\".\"store_sales_customer_first_name\" as \"_tvf_union_first_name\",
-    \"cheerful\".\"store_sales_date_date\" as \"_tvf_union_sale_date\"
+    \"cheerful\".\"store_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
     \"cheerful\"
 EXCEPT
 SELECT
     \"uneven\".\"catalog_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
     \"uneven\".\"catalog_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
-    \"uneven\".\"catalog_sales_sold_date_date\" as \"_tvf_union_sale_date\"
+    \"uneven\".\"catalog_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
     \"uneven\"
 EXCEPT
 SELECT
     \"young\".\"web_sales_billing_customer_last_name\" as \"_tvf_union_last_name\",
     \"young\".\"web_sales_billing_customer_first_name\" as \"_tvf_union_first_name\",
-    \"young\".\"web_sales_date_date\" as \"_tvf_union_sale_date\"
+    \"young\".\"web_sales_sale_date_date\" as \"_tvf_union_sale_date\"
 FROM
     \"young\")
 SELECT

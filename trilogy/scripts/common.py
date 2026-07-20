@@ -472,6 +472,7 @@ def create_executor(
         ),
         config=conf,
         staging=config.staging,
+        chart_theme=config.report_theme,
     )
     if config.startup_sql:
         for script in config.startup_sql:

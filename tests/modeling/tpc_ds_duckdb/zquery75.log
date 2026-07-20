@@ -1,7 +1,7 @@
 query_id = "75"
 generator = "v3"
-gen_length = 6893
-preql_size = 1507
+gen_length = 6948
+preql_size = 1517
 comp_size = 2947
 generated_sql = """
 
@@ -36,31 +36,31 @@ FROM
 abundant as (
 SELECT
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\"
+    \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
+    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
 UNION ALL
 SELECT
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-    \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\"
+    \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
 UNION ALL
 SELECT
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_date_sk\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\"
+    \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
 young as (
@@ -73,11 +73,11 @@ SELECT
     sum(\"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0)) as \"_curr_curr_cnt\"
 FROM
     \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_date_date\".\"D_YEAR\" = 2002
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2002
 
 GROUP BY
     1,
@@ -94,11 +94,11 @@ SELECT
     sum(\"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0)) as \"_prev_prev_cnt\"
 FROM
     \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"abundant\".\"sales_date_sk\" = \"sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_date_date\".\"D_YEAR\" = 2001
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2001
 
 GROUP BY
     1,

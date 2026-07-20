@@ -132,6 +132,11 @@ ERROR_CODES: dict[int, str] = {
         "the `(`. Built-in functions (`sum(...)`, `count(...)`, `coalesce(...)`) "
         "need no `@`."
     ),
+    228: (
+        "Parenthesized select after `from`? The `from` in a `chart`/`copy` "
+        "statement takes a BARE select statement, not a parenthesized one - "
+        "remove the parentheses and write `from select <cols> ...;` directly."
+    ),
 }
 
 
@@ -210,6 +215,31 @@ def detect_select_distinct(text: str, pos: int) -> int | None:
     if match is None:
         return None
     return match.start(1)
+
+
+_FROM_PAREN_RE = re.compile(r"\bfrom\s*\(", re.IGNORECASE)
+_CHART_COPY_HEAD_RE = re.compile(r"\b(chart|copy\s+into)\b", re.IGNORECASE)
+
+
+def detect_paren_select_after_from(text: str, pos: int) -> int | None:
+    """Locate a parenthesized select handed to a `chart`/`copy` statement's
+    `from` - e.g. `chart ... from (select ...)`. The grammar wants a bare
+    select statement, so both backends fail right at the `(` with an opaque
+    `expected select_statement`. Returns the `(` position, or None. Shared by
+    both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    if _CHART_COPY_HEAD_RE.search(text, stmt_start, pos) is None:
+        return None
+    m = None
+    for cand in _FROM_PAREN_RE.finditer(text, stmt_start, pos + 2):
+        m = cand
+    if m is None:
+        return None
+    paren = m.end() - 1
+    # both backends report the failure at (or just after) the paren itself
+    if abs(paren - pos) > 2:
+        return None
+    return paren
 
 
 _GROUP_BY_RE = re.compile(r"\bgroup\s+by\b", re.IGNORECASE)

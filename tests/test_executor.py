@@ -63,3 +63,47 @@ def test_mock_result():
     assert x["a"] == 1
     r2 = result.fetchmany(10)
     assert len(r2) == 1
+
+
+def test_escape_literal_colons():
+    from trilogy.engine import (
+        LITERAL_COLON_ESCAPE,
+        escape_literal_colons,
+        unescape_literal_colons,
+    )
+
+    assert (
+        escape_literal_colons("select regexp_extract(url, 'http(?:s)?://')")
+        == f"select regexp_extract(url, 'http(?{LITERAL_COLON_ESCAPE}s)?{LITERAL_COLON_ESCAPE}//')"
+    )
+    # colons outside literals remain bindable params
+    assert escape_literal_colons("select :param from t") == "select :param from t"
+    # doubled-quote escape stays inside the literal
+    assert (
+        escape_literal_colons("select 'it''s :x'")
+        == f"select 'it''s {LITERAL_COLON_ESCAPE}x'"
+    )
+    # backslash-escaped quote (BigQuery-style literal) does not end the string
+    assert (
+        escape_literal_colons("select 'a\\':b'")
+        == f"select 'a\\'{LITERAL_COLON_ESCAPE}b'"
+    )
+    # unescape is the exact inverse for escaped output
+    for sql in (
+        "select regexp_extract(url, 'http(?:s)?://')",
+        "select 'it''s :x'",
+        "select ':a :b', ':c'",
+    ):
+        assert unescape_literal_colons(escape_literal_colons(sql)) == sql
+
+
+def test_raw_sql_colon_in_string_literal_not_a_param():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.execute_raw_sql("CREATE TABLE urls (url VARCHAR)")
+    exec.execute_raw_sql("INSERT INTO urls VALUES ('https://example.com/x')")
+    exec.parse_text("""key url string;
+datasource urls (url: url) grain (url) address urls;
+auto domain <- regexp_extract(url, 'http(?:s)?://([^/]+)', 1);
+""")
+    rs = exec.execute_query("select domain;")
+    assert rs.fetchall() == [("example.com",)]

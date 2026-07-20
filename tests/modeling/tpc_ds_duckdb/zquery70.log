@@ -1,7 +1,7 @@
 query_id = "70"
 generator = "v3"
-gen_length = 3333
-preql_size = 1204
+gen_length = 3363
+preql_size = 1219
 comp_size = 1258
 generated_sql = """
 
@@ -12,10 +12,10 @@ SELECT
     sum(\"ss_store_sales\".\"SS_NET_PROFIT\") as \"state_total\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 
 GROUP BY
     1),
@@ -45,10 +45,10 @@ SELECT
     \"ss_store_store\".\"S_STATE\" as \"ss_store_state\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and exists (select 1 from abundant where abundant.\"top_states_ts_state\" is not distinct from \"ss_store_store\".\"S_STATE\")
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and exists (select 1 from abundant where abundant.\"top_states_ts_state\" is not distinct from \"ss_store_store\".\"S_STATE\")
 
 GROUP BY
     1,

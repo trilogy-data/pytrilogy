@@ -1,12 +1,12 @@
 query_id = "56"
 generator = "v3"
-gen_length = 3364
-preql_size = 429
+gen_length = 3417
+preql_size = 439
 comp_size = 1857
 generated_sql = """
 
 WITH 
-questionable as (
+cooperative as (
 SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"color_ids\"
 FROM
@@ -22,11 +22,11 @@ SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_catalog_sales_unified\".\"CS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    exists (select 1 from cooperative where cooperative.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -34,11 +34,11 @@ SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_store_sales_unified\".\"SS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_store_sales_unified\".\"SS_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    exists (select 1 from cooperative where cooperative.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -46,11 +46,11 @@ SELECT
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"sales_pos_bill_address_customer_address\" on \"sales_web_sales_unified\".\"WS_BILL_ADDR_SK\" = \"sales_pos_bill_address_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_date_date\".\"D_YEAR\" = 2001 and \"sales_date_date\".\"D_MOY\" = 2 and exists (select 1 from questionable where questionable.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5
+    exists (select 1 from cooperative where cooperative.\"color_ids\" is not distinct from \"sales_item_items\".\"I_ITEM_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 2
 )
 SELECT
     \"cheerful\".\"sales_item_id\" as \"sales_item_id\",

@@ -34,7 +34,12 @@ def render_report(
         else source.with_suffix("." + backend.extension)
     )
     segments = parse_markdown(source.read_text(encoding="utf-8"))
-    elements = run_document(segments, working_path=source.parent, executor=executor)
+    elements = run_document(
+        segments,
+        working_path=source.parent,
+        executor=executor,
+        chart_theme=resolved_theme.name,
+    )
     backend.render(elements, target, resolved_theme)
     return target
 

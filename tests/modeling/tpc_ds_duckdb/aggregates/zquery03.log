@@ -1,15 +1,15 @@
 query_id = 3
 generator = "v3"
-gen_length = 2088
+gen_length = 2113
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_date_year\" as \"store_sales_date_year\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_sale_date_year\" as \"store_sales_sale_date_year\",
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     \"dsstore_sales_date_month_of_year_store_sales_date_year_store_sales_item_id_store_sales_ticket_number_7c04f90c_filtered_on_month_of_year_manufacturer_id\"
@@ -20,7 +20,7 @@ GROUP BY
     4,
     5)
 SELECT
-    \"questionable\".\"store_sales_date_year\" as \"store_sales_date_year\",
+    \"questionable\".\"store_sales_sale_date_year\" as \"store_sales_sale_date_year\",
     \"questionable\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
     \"questionable\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
     sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"sum_agg\"
@@ -32,7 +32,7 @@ GROUP BY
     2,
     3
 ORDER BY 
-    \"questionable\".\"store_sales_date_year\" asc,
+    \"questionable\".\"store_sales_sale_date_year\" asc,
     \"sum_agg\" desc,
     \"questionable\".\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

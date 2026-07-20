@@ -100,6 +100,10 @@ class SnowflakeDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "does not exist"
     COLUMN_NOT_FOUND_PATTERN = "invalid identifier"
 
+    def render_string_literal(self, value: str) -> str:
+        # Snowflake treats backslash as an escape character in string literals.
+        return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[TableColumn]:

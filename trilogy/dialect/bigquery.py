@@ -248,6 +248,11 @@ class BigqueryDialect(BaseDialect):
         "INTERSECT": "INTERSECT DISTINCT",
     }
 
+    def render_string_literal(self, value: str) -> str:
+        # BigQuery treats backslash as an escape character in string literals;
+        # a verbatim `\.` (e.g. from a regex) is an illegal escape sequence.
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
     def hash_column_value(self, column_name: str) -> str:
         return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"
 
