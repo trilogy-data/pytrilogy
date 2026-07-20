@@ -20,7 +20,7 @@ WHERE
 GROUP BY
     1,
     2),
-abundant as (
+questionable as (
 SELECT
     \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
     avg(\"cheerful\".\"item_revenue\") as \"store_avg_revenue\"
@@ -54,6 +54,14 @@ FROM
 WHERE
     \"questionable\".\"item_revenue\" <= 0.1 * \"abundant\".\"store_avg_revenue\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"questionable\".\"store_avg_revenue\"
 ORDER BY 
     \"questionable\".\"store_sales_store_name\" asc nulls first,
     \"questionable\".\"store_sales_item_desc\" asc nulls first

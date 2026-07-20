@@ -107,40 +107,162 @@ GROUP BY
     4),
 abhorrent as (
 SELECT
-    \"young\".\"_curr_curr_amt\" as \"curr_curr_amt\",
-    \"young\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
-    \"young\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
-    \"young\".\"_curr_i_category_id\" as \"curr_i_category_id\",
-    \"young\".\"_curr_i_class_id\" as \"curr_i_class_id\",
-    \"young\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
+    \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"amt_per_row\",
+    \"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0) as \"cnt_per_row\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"_curr_i_brand_id\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"_curr_i_category_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"_curr_i_class_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"_curr_i_manufact_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
-    \"young\"),
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2002
+),
+juicy as (
+SELECT
+    \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"amt_per_row\",
+    \"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0) as \"cnt_per_row\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"_prev_i_brand_id\",
+    \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"_prev_i_category_id\",
+    \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"_prev_i_class_id\",
+    \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"_prev_i_manufact_id\",
+    \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
+FROM
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
+WHERE
+    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2001
+),
+late as (
+SELECT
+    \"abhorrent\".\"sales_item_brand_id\" as \"sales_item_brand_id\",
+    \"abhorrent\".\"sales_item_category_id\" as \"sales_item_category_id\",
+    \"abhorrent\".\"sales_item_class_id\" as \"sales_item_class_id\",
+    \"abhorrent\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
+    sum(\"abhorrent\".\"amt_per_row\") as \"_curr_curr_amt\",
+    sum(\"abhorrent\".\"cnt_per_row\") as \"_curr_curr_cnt\"
+FROM
+    \"abhorrent\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 concerned as (
 SELECT
-    \"juicy\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
-    \"juicy\".\"_prev_i_category_id\" as \"prev_i_category_id\",
-    \"juicy\".\"_prev_i_class_id\" as \"prev_i_class_id\",
-    \"juicy\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
-    \"juicy\".\"_prev_prev_amt\" as \"prev_prev_amt\",
-    \"juicy\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
+    \"juicy\".\"sales_item_brand_id\" as \"sales_item_brand_id\",
+    \"juicy\".\"sales_item_category_id\" as \"sales_item_category_id\",
+    \"juicy\".\"sales_item_class_id\" as \"sales_item_class_id\",
+    \"juicy\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
+    sum(\"juicy\".\"amt_per_row\") as \"_prev_prev_amt\",
+    sum(\"juicy\".\"cnt_per_row\") as \"_prev_prev_cnt\"
 FROM
-    \"juicy\")
+    \"juicy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+macho as (
+SELECT
+    \"abhorrent\".\"_curr_i_brand_id\" as \"_curr_i_brand_id\",
+    \"abhorrent\".\"_curr_i_category_id\" as \"_curr_i_category_id\",
+    \"abhorrent\".\"_curr_i_class_id\" as \"_curr_i_class_id\",
+    \"abhorrent\".\"_curr_i_manufact_id\" as \"_curr_i_manufact_id\",
+    \"late\".\"_curr_curr_amt\" as \"_curr_curr_amt\",
+    \"late\".\"_curr_curr_cnt\" as \"_curr_curr_cnt\"
+FROM
+    \"late\"
+    INNER JOIN \"abhorrent\" on \"late\".\"sales_item_brand_id\" is not distinct from \"abhorrent\".\"_curr_i_brand_id\" AND \"late\".\"sales_item_category_id\" is not distinct from \"abhorrent\".\"_curr_i_category_id\" AND \"late\".\"sales_item_class_id\" is not distinct from \"abhorrent\".\"_curr_i_class_id\" AND \"late\".\"sales_item_manufacturer_id\" is not distinct from \"abhorrent\".\"_curr_i_manufact_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6),
+young as (
+SELECT
+    \"concerned\".\"_prev_prev_amt\" as \"_prev_prev_amt\",
+    \"concerned\".\"_prev_prev_cnt\" as \"_prev_prev_cnt\",
+    \"juicy\".\"_prev_i_brand_id\" as \"_prev_i_brand_id\",
+    \"juicy\".\"_prev_i_category_id\" as \"_prev_i_category_id\",
+    \"juicy\".\"_prev_i_class_id\" as \"_prev_i_class_id\",
+    \"juicy\".\"_prev_i_manufact_id\" as \"_prev_i_manufact_id\"
+FROM
+    \"concerned\"
+    INNER JOIN \"juicy\" on \"concerned\".\"sales_item_brand_id\" is not distinct from \"juicy\".\"_prev_i_brand_id\" AND \"concerned\".\"sales_item_category_id\" is not distinct from \"juicy\".\"_prev_i_category_id\" AND \"concerned\".\"sales_item_class_id\" is not distinct from \"juicy\".\"_prev_i_class_id\" AND \"concerned\".\"sales_item_manufacturer_id\" is not distinct from \"juicy\".\"_prev_i_manufact_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6),
+scrawny as (
+SELECT
+    \"macho\".\"_curr_curr_amt\" as \"curr_curr_amt\",
+    \"macho\".\"_curr_curr_cnt\" as \"curr_curr_cnt\",
+    \"macho\".\"_curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"macho\".\"_curr_i_category_id\" as \"curr_i_category_id\",
+    \"macho\".\"_curr_i_class_id\" as \"curr_i_class_id\",
+    \"macho\".\"_curr_i_manufact_id\" as \"curr_i_manufact_id\"
+FROM
+    \"macho\"),
+sparkling as (
+SELECT
+    \"young\".\"_prev_i_brand_id\" as \"prev_i_brand_id\",
+    \"young\".\"_prev_i_category_id\" as \"prev_i_category_id\",
+    \"young\".\"_prev_i_class_id\" as \"prev_i_class_id\",
+    \"young\".\"_prev_i_manufact_id\" as \"prev_i_manufact_id\",
+    \"young\".\"_prev_prev_amt\" as \"prev_prev_amt\",
+    \"young\".\"_prev_prev_cnt\" as \"prev_prev_cnt\"
+FROM
+    \"young\"),
+friendly as (
+SELECT
+    \"scrawny\".\"curr_curr_amt\" as \"curr_curr_amt\",
+    \"scrawny\".\"curr_curr_cnt\" as \"curr_curr_cnt\",
+    \"sparkling\".\"prev_prev_amt\" as \"prev_prev_amt\",
+    \"sparkling\".\"prev_prev_cnt\" as \"prev_prev_cnt\",
+    coalesce(\"scrawny\".\"curr_i_brand_id\",\"sparkling\".\"prev_i_brand_id\") as \"curr_i_brand_id\",
+    coalesce(\"scrawny\".\"curr_i_brand_id\",\"sparkling\".\"prev_i_brand_id\") as \"prev_i_brand_id\",
+    coalesce(\"scrawny\".\"curr_i_category_id\",\"sparkling\".\"prev_i_category_id\") as \"curr_i_category_id\",
+    coalesce(\"scrawny\".\"curr_i_category_id\",\"sparkling\".\"prev_i_category_id\") as \"prev_i_category_id\",
+    coalesce(\"scrawny\".\"curr_i_class_id\",\"sparkling\".\"prev_i_class_id\") as \"curr_i_class_id\",
+    coalesce(\"scrawny\".\"curr_i_class_id\",\"sparkling\".\"prev_i_class_id\") as \"prev_i_class_id\",
+    coalesce(\"scrawny\".\"curr_i_manufact_id\",\"sparkling\".\"prev_i_manufact_id\") as \"curr_i_manufact_id\",
+    coalesce(\"scrawny\".\"curr_i_manufact_id\",\"sparkling\".\"prev_i_manufact_id\") as \"prev_i_manufact_id\"
+FROM
+    \"scrawny\"
+    LEFT OUTER JOIN \"sparkling\" on \"scrawny\".\"curr_i_brand_id\" is not distinct from \"sparkling\".\"prev_i_brand_id\" AND \"scrawny\".\"curr_i_category_id\" is not distinct from \"sparkling\".\"prev_i_category_id\" AND \"scrawny\".\"curr_i_class_id\" is not distinct from \"sparkling\".\"prev_i_class_id\" AND \"scrawny\".\"curr_i_manufact_id\" is not distinct from \"sparkling\".\"prev_i_manufact_id\")
 SELECT
     2001 as \"prev_year\",
     2002 as \"year_\",
-    coalesce(\"abhorrent\".\"curr_i_brand_id\",\"concerned\".\"prev_i_brand_id\") as \"curr_i_brand_id\",
-    coalesce(\"abhorrent\".\"curr_i_class_id\",\"concerned\".\"prev_i_class_id\") as \"curr_i_class_id\",
-    coalesce(\"abhorrent\".\"curr_i_category_id\",\"concerned\".\"prev_i_category_id\") as \"curr_i_category_id\",
-    coalesce(\"abhorrent\".\"curr_i_manufact_id\",\"concerned\".\"prev_i_manufact_id\") as \"curr_i_manufact_id\",
-    \"concerned\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
-    \"abhorrent\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
-    \"abhorrent\".\"curr_curr_cnt\" - \"concerned\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
-    \"abhorrent\".\"curr_curr_amt\" - \"concerned\".\"prev_prev_amt\" as \"sales_amt_diff\"
+    \"friendly\".\"curr_i_brand_id\" as \"curr_i_brand_id\",
+    \"friendly\".\"curr_i_class_id\" as \"curr_i_class_id\",
+    \"friendly\".\"curr_i_category_id\" as \"curr_i_category_id\",
+    \"friendly\".\"curr_i_manufact_id\" as \"curr_i_manufact_id\",
+    \"friendly\".\"prev_prev_cnt\" as \"prev_yr_cnt\",
+    \"friendly\".\"curr_curr_cnt\" as \"curr_yr_cnt\",
+    \"friendly\".\"curr_curr_cnt\" - \"friendly\".\"prev_prev_cnt\" as \"sales_cnt_diff\",
+    \"friendly\".\"curr_curr_amt\" - \"friendly\".\"prev_prev_amt\" as \"sales_amt_diff\"
 FROM
-    \"abhorrent\"
-    LEFT OUTER JOIN \"concerned\" on \"abhorrent\".\"curr_i_brand_id\" is not distinct from \"concerned\".\"prev_i_brand_id\" AND \"abhorrent\".\"curr_i_category_id\" is not distinct from \"concerned\".\"prev_i_category_id\" AND \"abhorrent\".\"curr_i_class_id\" is not distinct from \"concerned\".\"prev_i_class_id\" AND \"abhorrent\".\"curr_i_manufact_id\" is not distinct from \"concerned\".\"prev_i_manufact_id\"
+    \"friendly\"
 WHERE
-    cast(\"abhorrent\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"concerned\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
+    cast(\"friendly\".\"curr_curr_cnt\" as numeric(17,2)) / cast(\"friendly\".\"prev_prev_cnt\" as numeric(17,2)) < 0.9
 
 ORDER BY 
     \"sales_cnt_diff\" asc nulls first,

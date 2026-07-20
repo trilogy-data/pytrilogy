@@ -8,6 +8,7 @@ generated_sql = """
 WITH 
 thoughtful as (
 SELECT
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_sk\",
     \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\"

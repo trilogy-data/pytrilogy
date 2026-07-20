@@ -1,8 +1,8 @@
 [
   {
-    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
-    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
+    "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
@@ -10,9 +10,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/optimization/test_union_branch_projection_collision.py::test_nested_greatest_refresh_keeps_watermark_projection",
     "bucket": "SHAPE",
-    "detail": "AssertionError:",
+    "detail": "AssertionError: expected a GROUP-BY CTE producing multi_wm",
     "expected": [
       "SHAPE"
     ],
@@ -74,17 +74,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/discovery/test_global_avg_filter_group_fanout.py::test_global_avg_filter_does_not_fan_out_group",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert [('13', 1, De...mal('900.0'))] == [('13', 1, 70...', 2, 1400.0)]",
+    "node": "tests/discovery/test_outer_where_pushes_into_global_agg.py::test_outer_where_pushes_into_global_agg_with_post_agg_filter",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/discovery/test_outer_where_pushes_into_global_agg.py::test_outer_where_pushes_into_global_agg_with_post_agg_filter",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/discovery/test_global_avg_filter_group_fanout.py::test_global_avg_filter_does_not_fan_out_group",
+    "bucket": "ROWS",
+    "detail": "AssertionError: assert [('13', 1, De...mal('900.0'))] == [('13', 1, 70...', 2, 1400.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -170,6 +170,14 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
+    "bucket": "ROWS",
+    "detail": "AssertionError: (1285, 1226)",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
     "bucket": "XPASS",
     "detail": "",
@@ -202,14 +210,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
-    "bucket": "ROWS",
-    "detail": "AssertionError: (1285, 1226)",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_membership_in_having_auto_concept_renders_valid_subselect",
     "bucket": "CRASH",
     "detail": "ValueError: Could not render the query: Missing source reference to local.ws_2001. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planne",
@@ -234,7 +234,7 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
     "bucket": "XPASS",
     "detail": "",
     "expected": [],
@@ -242,7 +242,7 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
     "bucket": "XPASS",
     "detail": "",
     "expected": [],
@@ -282,6 +282,18 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
+    "bucket": "CRASH",
+    "detail": "_duckdb.IOException: IO Error: Failed to delete file \".tmp\\duckdb_temp_storage_DEFAULT-1.tmp\": The process cannot access the file because it is being used by another process.",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false,
+    "varied": [
+      "CRASH",
+      "XPASS"
+    ]
+  },
+  {
     "node": "tests/test_query_processing.py::test_query_aggregation",
     "bucket": "ROWS",
     "detail": "assert 1 == 2",
@@ -298,17 +310,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw",
+    "node": "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv",
     "bucket": "ROWS",
-    "detail": "assert [(1, 1000.0),..., (3, 3000.0)] == [(1, 1000.0),...0), (4, None)]",
+    "detail": "assert [(1, 100.0), ...), (4, 400.0)] == [(1, 100.0), ...), (4, 400.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv",
+    "node": "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw",
     "bucket": "ROWS",
-    "detail": "assert [(1, 100.0), ...), (4, 400.0)] == [(1, 100.0), ...), (4, 400.0)]",
+    "detail": "assert [(1, 1000.0),..., (3, 3000.0)] == [(1, 1000.0),...0), (4, None)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -346,14 +358,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles",
-    "bucket": "CRASH",
-    "detail": "",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
     "bucket": "XPASS",
     "detail": "",
@@ -362,8 +366,8 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
-    "bucket": "XPASS",
+    "node": "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles",
+    "bucket": "CRASH",
     "detail": "",
     "expected": [],
     "escalation": false,

@@ -21,7 +21,7 @@ SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
+    \"sales_sale_date_date\".\"D_WEEK_SEQ\" as \"sales_sale_date_week_seq\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
@@ -33,7 +33,7 @@ SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
+    \"sales_sale_date_date\".\"D_WEEK_SEQ\" as \"sales_sale_date_week_seq\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
@@ -45,7 +45,7 @@ SELECT
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\"
+    \"sales_sale_date_date\".\"D_WEEK_SEQ\" as \"sales_sale_date_week_seq\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
@@ -60,12 +60,9 @@ SELECT
 FROM
     \"questionable\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-GROUP BY
-    1,
-    2,
-    3,
-    \"questionable\".\"sales_item_sk\",
-    \"questionable\".\"sales_order_id\")
+WHERE
+    exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"questionable\".\"sales_sale_date_week_seq\")
+)
 SELECT
     \"yummy\".\"sales_item_id\" as \"item_id\",
     sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",

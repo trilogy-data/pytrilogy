@@ -490,13 +490,26 @@ def _resolve_condition_sources(
                 "Could not resolve condition existence arguments "
                 f"{[c.address for c in existence_args]}"
             )
+        # An existence feeder is side-channel-only: slice its outputs to the
+        # subselect columns (its mandatory contract). The nested plan can come
+        # back carrying its predicate args as extra row outputs (`max_total`
+        # for a HAVING membership), and any of those shared with the consumer
+        # promotes the feeder to a row-join candidate in MergeNode resolution —
+        # a spurious value-join whose grain then leaks the plan-local virt
+        # across the rowset boundary. v3 renders the feeder as the bare
+        # subselect column; match it.
+        ex_node = ex_info.strategy_node
+        existence_addrs = {c.address for c in existence_args}
+        sliced = [o for o in ex_node.output_concepts if o.address in existence_addrs]
+        if sliced and len(sliced) < len(ex_node.output_concepts):
+            ex_node.set_output_concepts(sliced)
         for concept in existence_args:
             if concept.address not in seen_existence_addrs:
                 seen_existence_addrs.add(concept.address)
                 sources.existence_concepts.append(concept)
-        if id(ex_info.strategy_node) not in seen_parent_ids:
-            seen_parent_ids.add(id(ex_info.strategy_node))
-            sources.existence_parents.append(ex_info.strategy_node)
+        if id(ex_node) not in seen_parent_ids:
+            seen_parent_ids.add(id(ex_node))
+            sources.existence_parents.append(ex_node)
     return sources
 
 

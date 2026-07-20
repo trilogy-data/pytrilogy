@@ -1,6 +1,6 @@
 query_id = "44"
-generator = "v3"
-gen_length = 3607
+generator = "v4"
+gen_length = 3904
 preql_size = 1021
 comp_size = 1462
 generated_sql = """
@@ -15,6 +15,15 @@ WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
 wakeful as (
+SELECT
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
+    \"ss_store_sales\".\"SS_NET_PROFIT\" as \"ss_net_profit\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" = 1
+),
+abundant as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     avg(CASE WHEN \"ss_store_sales\".\"SS_STORE_SK\" = 1 THEN \"ss_store_sales\".\"SS_NET_PROFIT\" ELSE NULL END) as \"_virt_agg_avg_7707029941687820_wscope\"
@@ -110,6 +119,10 @@ FROM
 WHERE
     coalesce(\"abhorrent\".\"descending_rnk_d\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") < 11
 
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     coalesce(\"abhorrent\".\"descending_rnk_d\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") asc nulls first,
     \"abhorrent\".\"ascending_best_performing\" desc nulls first,

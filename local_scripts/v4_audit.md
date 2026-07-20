@@ -1,51 +1,118 @@
-# v4 compatibility audit (last refreshed 2026-07-20, session 14)
+# v4 compatibility audit (last refreshed 2026-07-20, session 15)
 
-## Current state (after 2026-07-20 session 14)
+## Current state (after 2026-07-20 session 15)
 
-**Full v4 sweep (session 14): 31 real failed / 5785 passed**
-(`local_scripts/v4_sweep_0720_s14b.log`; raw count 33 — minus the
-`tests/cli/test_display.py` rich_enabled detached-run console noise and a
-`tests/modeling/faa/test_llm.py` live-GPT flake where the LLM projected 3
-columns instead of the requested 2 — both pass in isolation). Honest delta vs
-s13: **cleared pushdown_partitioned ×2 + orderby_derived_expr ×1 (−3), ZERO
-new failures** (two full sweeps this session: s14 pre-orderby-fix at 32 real,
-s14b after). TPC-DS battery = the pre-existing 6 exactly (q72 intact), run
-twice; classifier exit 0, no escalations; ruff/mypy(309)/black clean. 82
-errors are clickhouse-server env (not real).
+**Full v4 sweep (session 15): 28 real failed / 5789 passed**
+(`local_scripts/v4_sweep_0720_s15b.log`; raw count 29 — minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise; the faa
+LLM flake did not fire this run). Honest delta vs s14: **cleared
+window_expression_join ×2 + having_bare_max ×1 (−3), ZERO new failures** —
+every remaining entry diffs onto the s14 list. TPC-DS battery = the
+pre-existing 6 exactly (q72 intact), run standalone AND inside the sweep;
+classifier exit 0, no escalations; ruff/mypy(309)/black clean. 82 errors are
+clickhouse-server env (not real). Both changed files are v4-only
+(`concept_strategies_v4.py`, `v4_helper/source_planning.py`) and the shared
+`discovery_utility.py` experiment was reverted to byte-baseline — v3
+untouched by construction.
 
-**The 31 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+**The 28 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
 q64_correlated_filter + or_membership_with_projected_aggregate), fuzzer ×2
-(pre-existing corpus stability, env/seed), ×2 families (multi_partial_anchor,
-scoped_join_expression_keys window ×2 = one bug, duckdb_rowset
-variance/stddev keys-3, rollup_scoped_join) and singles
-(twin_keeps_scalar_refs, having_bare_max, dim_bridge all_subset_unaffected,
+(pre-existing corpus stability, env/seed), families (multi_partial_anchor ×2,
+duckdb_rowset variance/stddev keys-3 ×2, rollup_scoped_join ×2) and singles
+(twin_keeps_scalar_refs, dim_bridge all_subset_unaffected,
 cross_rowset_membership expression_key, scoped_derived_rowset exp_rows1,
 rowset_generation_matrix islanded, rowset_cross_datasource null_property,
 rowset_body_limit, cube_two_windows, membership_having dimension_key,
 existence_feeder_pushdown, collapse_basic funnel, union_bare_aggregate
 set_semantics, setops except_and_union, constant_in_cross_datasource_merge).
 
-**NEXT options (with session-14 diagnoses banked):**
+**NEXT options (existence-adjacent singles re-diagnosed END of s15 —
+failure modes verified BYTE-IDENTICAL before/after the s15 existence-slice
+fix via path-limited `git stash push -- <two files>` A/B, so these notes are
+current):**
 
-- `test_window_expression_join` ×2 (ONE bug): the scoped-join axis feeder
-  (`union join rank orders.oid order by orders.amt desc = customers.rnk`) is
-  planned standalone with mandatory ≈ {rank virt, oid}; FINAL assembly prunes
-  the root scan carrying `amt`, then the OUTER merge claims `orders.amt` as an
-  output no parent provides (INVALID_REFERENCE). Fix shape: the outer plan
-  must widen the feeder (or keep its root contributor) for consumer-needed
-  columns FD-riding the feeder's grain — the s1 duckdb_rowset "un-hide feeder
-  outputs" lesson, but on the scoped-join axis path. NOTE: the
-  `_materialize_for_query` harness in discovery_v4.py does NOT thread scoped
-  joins (env.scoped_join_key_groups comes back empty) — debug via the real
-  pipeline (monkeypatch search_concepts) instead.
-- `having_bare_max` (test_where_scalar_aggregate_degenerate_cograin): rowset
-  body `select sct.cid having total > 0.5*max_total`; the body's
-  `_virt_filter_cid_*` address survives into the resolved grain that
-  `_group_to_grain_if_required` → `check_if_group_required` diffs against the
-  OUTER build env → UndefinedConceptException. A rowset-boundary scope leak,
-  not a grain bug.
-- TPC-DS cluster ×6, or XPASS prune (24 xpassed in s14b; classifier exit 0 so
-  no label escalations, but a prune pass needs isolation + in-suite green).
+- `membership_having dimension_key`
+  (test_membership_having_aggregate_dimension_key_groupby, q44 family):
+  wrong rows — expected the 2 best/worst pairs
+  `[(1,itemC,itemA),(2,itemA,itemC)]`, v4 returns 4:
+  `[(1,C,A),(1,C,C),(2,A,A),(2,A,C)]`. The worst-side rowset's
+  (desc_rank, product_name) correlation is LOST — each rank pairs with BOTH
+  products, so the `subset join best.pair_rank_best = worst.pair_rank_worst`
+  fans 2×. NOTE the test docstring describes the HISTORICAL bug (dimension
+  key missing from GROUP BY, execution error) — v4's current mode is
+  decorrelated window-rank pairing, a different defect. Adjacent to the
+  s15-fixed window_expression_join (rank used as a join axis), so suspect
+  the rank virt's row-identity inside the `worst`/`best` boundaries.
+- `cross_rowset_membership expression_key`
+  (test_scoped_join_cross_rowset_membership_existence, q2 family): the
+  INVALID_REFERENCE assert PASSES (the existence set sources fine now);
+  wrong rows — `subset join ftr.ws - 53 = cur.ws` returns the UNION of the
+  offset pairing AND the identity pairing (row `(1, 40.0, 40.0)` is exactly
+  the plain_key cell's row): expected `[(1,40,50),(2,None,40)]`, got 4 rows.
+  The derived-key relation appears to keep BOTH the substituted offset axis
+  and a raw `ws = ws` pairing alive. plain_key cell passes.
+- `existence_feeder_pushdown` (test_membership_feeders_do_not_chain):
+  structural/optimization assert — with 5 membership feeders in one WHERE,
+  each feeder CTE references every EARLIER sibling feeder (10 cross-refs =
+  O(n²) semijoin chaining). Rows aren't checked; the fix is feeder
+  independence (each membership set should plan standalone), likely in how
+  feeder N's plan inherits the query WHERE (which still contains memberships
+  1..N-1) — compare v3's independent-feeder rendering.
+- TPC-DS cluster ×6, or XPASS prune (24 xpassed; classifier exit 0 so no
+  label escalations, but a prune pass needs isolation + in-suite green).
+
+## ✅ 2026-07-20 (session 15) — scoped-window connector carries FD-riding bridge concepts (+2) & existence feeders sliced to subselect columns (+1)
+
+Two v4-only fixes; verified by full sweep (31→28 real, zero new), TPC-DS
+battery twice (pre-existing 6 exactly), classifier exit 0, ruff/mypy/black
+clean. v3 untouched by construction (both files v4-only; a shared-helper
+change was tried and REVERTED — see lesson).
+
+1. **`_derived_connector_nodes` (source_planning.py)** — window_expression_join
+   ×2. `union join rank orders.oid order by orders.amt desc = customers.rnk`:
+   the datasource gap-fill deliberately stands down for non-BASIC merge
+   bridges ("the connector supplies that side"), but the connector's nested
+   search only carried `[origin] + grain keys` — `orders.amt` (needed by the
+   consumer, FD of the connector grain {oid}) had NO provider, and a
+   partial-accepting attempt let the bridge through `_bridge_parents_cover`
+   unchecked → INVALID_REFERENCE at render. Fix: the connector's mandatory
+   also carries uncovered bridge concepts whose grain components are a subset
+   of the origin's grain (`carried`). v4 now renders v3's plan one CTE
+   tighter (amt rides the window CTE).
+2. **`_resolve_condition_sources` (concept_strategies_v4.py)** —
+   having_bare_max. An existence feeder's nested plan comes back carrying its
+   predicate args as row outputs (`max_total` for a rowset-body HAVING
+   membership); any of those shared with the consumer defeats MergeNode's
+   `_is_existence_only` and promotes the feeder to a ROW-JOIN candidate — a
+   spurious value-join (`ON q.max_total = t.max_total`) whose grain then
+   leaks the plan-local `_virt_filter_*` across the rowset boundary, crashing
+   `check_if_group_required` in the outer env (UndefinedConceptException).
+   Fix: slice the existence parent's outputs to the subselect columns (its
+   mandatory contract) at creation. The feeder renders as v3's bare-virt CTE
+   + pure `WHERE EXISTS`; the virt never enters any grain. This enforces the
+   phase-boundary contract "existence edges are side-channel-only" at the
+   feeder source instead of hoping merge resolution demotes it.
+
+LESSONS:
+- **The first having_bare_max fix was WRONG and was reverted** (a
+  parent-QDS-tree fallback in shared `check_if_group_required` that resolved
+  body-scope addresses). Reviewer pushback ("the boundary should only expose
+  parent-env-known concepts") forced re-measurement: v3 does NOT co-create
+  body virts in the parent build env (instrumented `materialize_for_select`:
+  outer env has no virt under either planner) — v3 avoids the crash because
+  its plan never puts the virt in a scope-crossing grain (existence sources
+  are excluded from `calculate_effective_parent_grain`). When a "fix" makes a
+  foreign address resolvable, ask instead why the address crosses the scope
+  at all — the leak was a wiring bug, not a lookup gap.
+- Rowset-boundary invariant (now enforced where it matters): anything that
+  crosses the boundary in outputs OR grain must be outer-env-known; plan
+  virtuals stay body-side because membership feeders are existence-only.
+- Detached-sweep gotcha #2: `Start-Process powershell -Command "<cmd>"`
+  strips the backtick-escaped inner quotes — `-m "not adventureworks..."`
+  arrived unquoted again (25-byte "no tests ran" log, ~40 min lost). Write
+  the sweep command to a `.ps1` (`local_scripts/run_v4_sweep_s15.ps1`) and
+  `Start-Process powershell -File <path>`; health-check the log for
+  "no tests ran"/"ERROR: file or directory not found" ~90s after launch.
 
 ## ✅ 2026-07-20 (session 14) — window-over-coarser-aggregate merge keys + filter-only peel gate (+2) & ORDER BY alias-source carry (+1)
 

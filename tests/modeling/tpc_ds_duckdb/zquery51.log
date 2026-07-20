@@ -28,7 +28,7 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null
 ),
-yummy as (
+cooperative as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
@@ -43,7 +43,7 @@ GROUP BY
     1,
     2,
     3),
-cooperative as (
+yummy as (
 SELECT
     \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
     cast(\"sales_sale_date_date\".\"D_DATE\" as date) as \"sales_sale_date_date\",
@@ -72,10 +72,7 @@ SELECT
 	END) as \"web_has_row\"
 FROM
     \"yummy\"
-GROUP BY
-    1,
-    2),
-uneven as (
+    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"yummy\".\"sales_sale_date_date\" is not distinct from \"abundant\".\"sales_sale_date_date\")
 SELECT
     \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\",
     \"cooperative\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
@@ -87,20 +84,20 @@ SELECT
     \"uneven\".\"sales_item_sk\" as \"item_sk\",
     \"uneven\".\"sales_sale_date_date\" as \"d_date\",
     CASE
-	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"uneven\".\"web_cume\"
+	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"juicy\".\"web_cume\"
 	ELSE null
 	END as \"web_sales\",
     CASE
-	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"uneven\".\"store_cume\"
+	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"juicy\".\"store_cume\"
 	ELSE null
 	END as \"store_sales\",
-    \"uneven\".\"web_cume\" as \"web_cumulative\",
-    \"uneven\".\"store_cume\" as \"store_cumulative\"
+    \"juicy\".\"web_cume\" as \"web_cumulative\",
+    \"juicy\".\"store_cume\" as \"store_cumulative\"
 FROM
     \"juicy\"
     INNER JOIN \"uneven\" on \"juicy\".\"sales_item_sk\" = \"uneven\".\"sales_item_sk\" AND \"juicy\".\"sales_sale_date_date\" is not distinct from \"uneven\".\"sales_sale_date_date\"
 WHERE
-    \"uneven\".\"web_cume\" > \"uneven\".\"store_cume\"
+    \"juicy\".\"web_cume\" > \"juicy\".\"store_cume\"
 
 ORDER BY 
     \"item_sk\" asc nulls first,

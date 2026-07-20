@@ -6,7 +6,7 @@ comp_size = 2512
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
      'CATALOG'  as \"sales_channel\",
      true  as \"sales_is_returned\",
@@ -30,7 +30,7 @@ SELECT
     \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
-abundant as (
+uneven as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
@@ -74,7 +74,8 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
-)
+),
+juicy as (
 SELECT
     \"sales_sale_date_date\".\"D_YEAR\" as \"ss_sold_year\",
     coalesce(\"abundant\".\"sales_item_sk\",\"cheerful\".\"sales_item_sk\") as \"ss_item_sk\",
@@ -98,7 +99,23 @@ GROUP BY
     2,
     3
 HAVING
-    \"store_qty\" > 0 and ( coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 or coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 )
+    ( coalesce(\"ws_qty\",0) > 0 or coalesce(\"cs_qty\",0) > 0 )
+)
+SELECT
+    \"juicy\".\"sales_sale_date_year\" as \"ss_sold_year\",
+    \"juicy\".\"sales_item_sk\" as \"ss_item_sk\",
+    \"juicy\".\"sales_billing_customer_sk\" as \"ss_customer_sk\",
+    round(cast(\"juicy\".\"ss_qty\" as numeric(7,2)) / cast(coalesce(\"juicy\".\"ws_qty\",0) + coalesce(\"juicy\".\"cs_qty\",0) as numeric(7,2)),2) as \"ratio\",
+    \"juicy\".\"ss_qty\" as \"store_qty\",
+    \"juicy\".\"ss_wc\" as \"store_wholesale_cost\",
+    \"juicy\".\"ss_sp\" as \"store_sales_price\",
+    coalesce(\"juicy\".\"ws_qty\",0) + coalesce(\"juicy\".\"cs_qty\",0) as \"other_chan_qty\",
+    coalesce(\"juicy\".\"ws_wc\",0) + coalesce(\"juicy\".\"cs_wc\",0) as \"other_chan_wholesale_cost\",
+    coalesce(\"juicy\".\"ws_sp\",0) + coalesce(\"juicy\".\"cs_sp\",0) as \"other_chan_sales_price\"
+FROM
+    \"juicy\"
+WHERE
+    \"juicy\".\"ss_qty\" > 0
 
 ORDER BY 
     \"ss_sold_year\" asc nulls first,

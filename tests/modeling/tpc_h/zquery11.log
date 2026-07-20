@@ -58,4 +58,4 @@ WHERE
     \"abundant\".\"_virt_agg_sum_7056827604753688_wscope\" > \"cooperative\".\"germany_total_value\" * 0.0001
 
 ORDER BY 
-    \"total_value\" desc"""
+    \"abundant\".\"total_value\" desc"""

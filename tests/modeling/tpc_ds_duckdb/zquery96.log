@@ -5,7 +5,7 @@ preql_size = 357
 comp_size = 382
 generated_sql = """
 SELECT
-    count(CONCAT(cast(\"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as string), '-', cast(\"store_sales_store_sales\".\"SS_ITEM_SK\" as string))) as \"ct\"
+    count(CONCAT(cast(coalesce(\"store_sales_store_returns\".\"SR_TICKET_NUMBER\",\"store_sales_store_sales\".\"SS_TICKET_NUMBER\") as string), '-', cast(coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") as string))) as \"ct\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"

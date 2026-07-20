@@ -4,14 +4,16 @@ gen_length = 2658
 preql_size = 1545
 comp_size = 1089
 generated_sql = """
+
+WITH 
+questionable as (
 SELECT
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
-    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_name\",
-    sum(\"store_sales_store_sales\".\"SS_QUANTITY\") as \"store_sales_quantity\",
-    sum(\"store_sales_store_returns\".\"SR_RETURN_QUANTITY\") as \"store_returns_quantity\",
-    sum(\"catalog_sales_catalog_sales\".\"CS_QUANTITY\") as \"catalog_sales_quantity\"
+    \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" as \"store_sales_return_customer_sk\",
+    \"store_sales_store_returns\".\"SR_ITEM_SK\" as \"store_sales_item_sk\",
+    \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" as \"store_sales_return_date_sk\",
+    \"store_sales_store_returns\".\"SR_RETURN_QUANTITY\" as \"store_sales_return_quantity\",
+    \"store_sales_store_returns\".\"SR_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    (\"store_sales_store_returns\".\"SR_TICKET_NUMBER\" is not null) as \"store_sales_is_returned\"
 FROM
     \"memory\".\"store_returns\" as \"store_sales_store_returns\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"store_sales_store_returns\".\"SR_ITEM_SK\" = \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\"
@@ -31,10 +33,59 @@ GROUP BY
     4
 HAVING
     \"catalog_sales_quantity\" > 0
-
+),
+concerned as (
+SELECT
+    \"vacuous\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"vacuous\".\"correlated_store_sales_item_id\" as \"correlated_store_sales_item_id\",
+    \"vacuous\".\"correlated_store_sales_store_id\" as \"correlated_store_sales_store_id\",
+    \"vacuous\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    sum(\"vacuous\".\"correlated_store_sales_quantity\") as \"store_sales_quantity\",
+    sum(\"vacuous\".\"correlated_store_sales_return_quantity\") as \"store_returns_quantity\"
+FROM
+    \"vacuous\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+young as (
+SELECT
+    \"concerned\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"concerned\".\"store_sales_quantity\" as \"store_sales_quantity\",
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_id\" as \"correlated_store_sales_item_id\",
+    \"yummy\".\"correlated_store_sales_item_id\" as \"store_sales_item_name\",
+    \"yummy\".\"correlated_store_sales_store_id\" as \"correlated_store_sales_store_id\",
+    \"yummy\".\"correlated_store_sales_store_id\" as \"store_sales_store_text_id\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"store_name\"
+FROM
+    \"yummy\"
+    INNER JOIN \"concerned\" on \"yummy\".\"correlated_store_sales_item_desc\" = \"concerned\".\"correlated_store_sales_item_desc\" AND \"yummy\".\"correlated_store_sales_item_id\" = \"concerned\".\"correlated_store_sales_item_id\" AND \"yummy\".\"correlated_store_sales_store_id\" is not distinct from \"concerned\".\"correlated_store_sales_store_id\" AND \"yummy\".\"correlated_store_sales_store_name\" is not distinct from \"concerned\".\"correlated_store_sales_store_name\")
+SELECT
+    \"young\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"young\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    \"young\".\"store_name\" as \"store_name\",
+    \"young\".\"store_sales_quantity\" as \"store_sales_quantity\",
+    \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"juicy\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\"
+FROM
+    \"young\"
+    INNER JOIN \"juicy\" on \"young\".\"correlated_store_sales_item_desc\" = \"juicy\".\"correlated_store_sales_item_desc\" AND \"young\".\"correlated_store_sales_item_id\" = \"juicy\".\"correlated_store_sales_item_id\" AND \"young\".\"correlated_store_sales_store_id\" is not distinct from \"juicy\".\"correlated_store_sales_store_id\" AND \"young\".\"correlated_store_sales_store_name\" is not distinct from \"juicy\".\"correlated_store_sales_store_name\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
 ORDER BY 
-    \"store_sales_item_name\" asc,
-    \"store_sales_item_desc\" asc,
-    \"store_sales_store_text_id\" asc,
-    \"store_name\" asc
+    \"young\".\"store_sales_item_name\" asc,
+    \"young\".\"store_sales_item_desc\" asc,
+    \"young\".\"store_sales_store_text_id\" asc,
+    \"young\".\"store_name\" asc
 LIMIT (100)"""

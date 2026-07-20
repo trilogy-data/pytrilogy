@@ -1,6 +1,6 @@
 query_id = "02"
-generator = "v3"
-gen_length = 2698
+generator = "v4"
+gen_length = 3412
 preql_size = 562
 comp_size = 840
 generated_sql = """
@@ -8,9 +8,21 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
+    \"partsupp\".\"ps_partkey\" as \"id\",
+    \"partsupp\".\"ps_suppkey\" as \"supplier_id\",
+    \"partsupp\".\"ps_supplycost\" as \"supply_cost\",
+    \"supplier_nation_region_region\".\"r_name\" as \"supplier_nation_region_name\"
+FROM
+    \"memory\".\"partsupp\" as \"partsupp\"
+    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
+    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"),
+yummy as (
+SELECT
     \"part\".\"p_mfgr\" as \"manufacturer\",
     \"part\".\"p_partkey\" as \"id\",
-    \"partsupp\".\"ps_supplycost\" as \"supply_cost\",
+    \"partsupp\".\"ps_suppkey\" as \"supplier_id\",
+    \"supplier_nation_nation\".\"n_nationkey\" as \"supplier_nation_id\",
     \"supplier_supplier\".\"s_acctbal\" as \"supplier_account_balance\",
     \"supplier_supplier\".\"s_address\" as \"supplier_address\",
     \"supplier_supplier\".\"s_comment\" as \"supplier_comment\",
@@ -22,39 +34,57 @@ FROM
     INNER JOIN \"memory\".\"part\" as \"part\" on \"partsupp\".\"ps_partkey\" = \"part\".\"p_partkey\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
-    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
-    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
+    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS'
 ),
-questionable as (
+abundant as (
 SELECT
-    \"partsupp\".\"ps_partkey\" as \"id\",
-    min(CASE WHEN \"supplier_nation_region_region\".\"r_name\" = 'EUROPE' THEN \"partsupp\".\"ps_supplycost\" ELSE NULL END) as \"min_supply_cost_in_europe\"
-FROM
-    \"memory\".\"partsupp\" as \"partsupp\"
-    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
-    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
-    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
-GROUP BY
-    1)
-SELECT
-    \"cooperative\".\"supplier_account_balance\" as \"supplier_account_balance\",
-    \"cooperative\".\"supplier_name\" as \"supplier_name\",
-    \"cooperative\".\"supplier_nation_name\" as \"supplier_nation_name\",
     \"cooperative\".\"id\" as \"id\",
-    \"cooperative\".\"manufacturer\" as \"manufacturer\",
-    \"cooperative\".\"supplier_address\" as \"supplier_address\",
-    \"cooperative\".\"supplier_phone\" as \"supplier_phone\",
-    \"cooperative\".\"supplier_comment\" as \"supplier_comment\"
+    min(CASE WHEN \"cooperative\".\"supplier_nation_region_name\" = 'EUROPE' THEN \"cooperative\".\"supply_cost\" ELSE NULL END) as \"min_supply_cost_in_europe\"
 FROM
     \"cooperative\"
-    INNER JOIN \"questionable\" on \"cooperative\".\"id\" = \"questionable\".\"id\"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    \"cooperative\".\"id\" as \"id\",
+    \"cooperative\".\"supplier_id\" as \"supplier_id\",
+    \"cooperative\".\"supply_cost\" as \"supply_cost\"
+FROM
+    \"cooperative\"),
+uneven as (
+SELECT
+    \"part\".\"p_partkey\" as \"id\",
+    \"questionable\".\"supplier_id\" as \"supplier_id\"
+FROM
+    \"questionable\"
+    INNER JOIN \"abundant\" on \"questionable\".\"id\" = \"abundant\".\"id\"
+    INNER JOIN \"memory\".\"part\" as \"part\" on \"questionable\".\"id\" = \"part\".\"p_partkey\"
 WHERE
-    \"cooperative\".\"supply_cost\" = \"questionable\".\"min_supply_cost_in_europe\"
+    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"questionable\".\"supply_cost\" = \"abundant\".\"min_supply_cost_in_europe\"
 
+GROUP BY
+    1,
+    2,
+    \"abundant\".\"min_supply_cost_in_europe\",
+    \"part\".\"p_size\",
+    \"part\".\"p_type\",
+    \"questionable\".\"supply_cost\")
+SELECT
+    \"yummy\".\"supplier_account_balance\" as \"supplier_account_balance\",
+    \"yummy\".\"supplier_name\" as \"supplier_name\",
+    \"yummy\".\"supplier_nation_name\" as \"supplier_nation_name\",
+    \"uneven\".\"id\" as \"id\",
+    \"yummy\".\"manufacturer\" as \"manufacturer\",
+    \"yummy\".\"supplier_address\" as \"supplier_address\",
+    \"yummy\".\"supplier_phone\" as \"supplier_phone\",
+    \"yummy\".\"supplier_comment\" as \"supplier_comment\"
+FROM
+    \"yummy\"
+    INNER JOIN \"uneven\" on \"yummy\".\"id\" = \"uneven\".\"id\" AND \"yummy\".\"supplier_id\" = \"uneven\".\"supplier_id\"
 ORDER BY 
-    \"cooperative\".\"supplier_account_balance\" desc,
-    \"cooperative\".\"supplier_nation_name\" asc,
-    \"cooperative\".\"supplier_name\" asc,
-    \"cooperative\".\"id\" asc
+    \"yummy\".\"supplier_account_balance\" desc,
+    \"yummy\".\"supplier_nation_name\" asc,
+    \"yummy\".\"supplier_name\" asc,
+    \"uneven\".\"id\" asc
 LIMIT (100)"""

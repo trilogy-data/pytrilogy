@@ -671,13 +671,29 @@ def _derived_connector_nodes(
             # even when another parent already covers it — it IS the join column;
             # dropping it leaves the merge with no shared key and a 1=1 cross join
             # (hackernews: the recursion's `id` is also the post scan's `id`).
+            # An uncovered bridge concept FD-riding the connector's grain must
+            # ride the connector too: the datasource gap-fill stands down for
+            # non-BASIC merge bridges, so no raw scan will ever supply it
+            # (window-key join: `orders.amt` rides the rank connector at oid
+            # grain — v3 computes the window inline on the amt-carrying scan).
+            grain_components = set(origin.grain.components)
+            carried = [
+                c
+                for c in plan.concepts
+                if c.address not in covered
+                and c.address != origin.address
+                and c.address not in grain_components
+                and c.grain.components
+                and set(c.grain.components) <= grain_components
+            ]
             mandatory = unique(
                 [origin]
                 + [
                     env.concepts[address]
                     for address in origin.grain.components
                     if address in env.concepts
-                ],
+                ]
+                + carried,
                 "address",
             )
             history.connectors_in_progress.add(origin.address)

@@ -15,12 +15,11 @@ WHERE
     (\"item2_items\".\"I_ITEM_SK\" is not null and \"item2_items\".\"I_ITEM_SK\" in (2,3,5,7,11,13,17,19,23,29))
 
 GROUP BY
-    1),
-uneven as (
+    1)
 SELECT
-    \"web_sales_billing_customer_current_address_customer_address\".\"CA_CITY\" as \"web_sales_billing_customer_current_address_city\",
     \"web_sales_billing_customer_current_address_customer_address\".\"CA_ZIP\" as \"web_sales_billing_customer_current_address_zip\",
-    \"web_sales_web_sales\".\"WS_SALES_PRICE\" as \"web_sales_sales_price\"
+    \"web_sales_billing_customer_current_address_customer_address\".\"CA_CITY\" as \"web_sales_billing_customer_current_address_city\",
+    sum(\"web_sales_web_sales\".\"WS_SALES_PRICE\") as \"total_sales\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
@@ -32,20 +31,8 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3,
-    \"web_sales_item_items\".\"I_ITEM_SK\",
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\")
-SELECT
-    \"uneven\".\"web_sales_billing_customer_current_address_zip\" as \"web_sales_billing_customer_current_address_zip\",
-    \"uneven\".\"web_sales_billing_customer_current_address_city\" as \"web_sales_billing_customer_current_address_city\",
-    sum(\"uneven\".\"web_sales_sales_price\") as \"total_sales\"
-FROM
-    \"uneven\"
-GROUP BY
-    1,
     2
 ORDER BY 
-    \"uneven\".\"web_sales_billing_customer_current_address_zip\" asc,
-    \"uneven\".\"web_sales_billing_customer_current_address_city\" asc
+    \"web_sales_billing_customer_current_address_customer_address\".\"CA_ZIP\" asc,
+    \"web_sales_billing_customer_current_address_customer_address\".\"CA_CITY\" asc
 LIMIT (100)"""

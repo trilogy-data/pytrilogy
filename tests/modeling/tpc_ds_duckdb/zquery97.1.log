@@ -17,7 +17,7 @@ GROUP BY
     1,
     2,
     3),
-questionable as (
+thoughtful as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_sk\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_sk\",
@@ -28,7 +28,7 @@ GROUP BY
     1,
     2,
     3),
-uneven as (
+questionable as (
 SELECT
     \"catalog_sales_sale_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_sale_date_month_seq\",
     \"store_sales_sale_date_date\".\"D_MONTH_SEQ\" as \"store_sales_sale_date_month_seq\",
@@ -61,16 +61,16 @@ GROUP BY
     \"uneven\".\"item_sk\")
 SELECT
     sum(CASE
-	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is null THEN 1
+	WHEN \"questionable\".\"store_sales\" is not null and \"questionable\".\"catalog_sales\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"yummy\".\"store_sales\" is null and \"yummy\".\"catalog_sales\" is not null THEN 1
+	WHEN \"questionable\".\"store_sales\" is null and \"questionable\".\"catalog_sales\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is not null THEN 1
+	WHEN \"questionable\".\"store_sales\" is not null and \"questionable\".\"catalog_sales\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"yummy\""""
+    \"questionable\""""

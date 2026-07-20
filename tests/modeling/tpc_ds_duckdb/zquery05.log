@@ -137,6 +137,12 @@ FROM
     \"memory\".\"web_sales\" as \"s_web_sales_unified\"),
 scrawny as (
 SELECT
+    \"abundant\".\"s_channel_dim_text_id\" as \"s_channel_dim_text_id\",
+    \"cheerful\".\"s_return_channel_dim_text_id\" as \"s_return_channel_dim_text_id\",
+    \"sweltering\".\"s_ext_sales_price\" as \"s_ext_sales_price\",
+    \"sweltering\".\"s_net_profit\" as \"s_net_profit\",
+    \"vacuous\".\"s_return_amount\" as \"s_return_amount\",
+    \"vacuous\".\"s_return_net_loss\" as \"s_return_net_loss\",
     CASE
 	WHEN coalesce(\"abundant\".\"s_channel\",\"cheerful\".\"s_channel\",\"sweltering\".\"s_channel\",\"vacuous\".\"s_channel\",\"young\".\"s_channel\") = 'STORE' THEN 'store channel'
 	WHEN coalesce(\"abundant\".\"s_channel\",\"cheerful\".\"s_channel\",\"sweltering\".\"s_channel\",\"vacuous\".\"s_channel\",\"young\".\"s_channel\") = 'CATALOG' THEN 'catalog channel'
@@ -189,9 +195,20 @@ SELECT
     coalesce(sum(\"scrawny\".\"_virt_filter_net_profit_1155069841620038\"),0.0) - coalesce(sum(\"scrawny\".\"_virt_filter_return_net_loss_7776255813480323\"),0.0) as \"profit\"
 FROM
     \"scrawny\"
+WHERE
+    \"scrawny\".\"entity_text\" is not null
+)
+SELECT
+    \"kaput\".\"channel_label\" as \"channel_label\",
+    \"kaput\".\"entity_id\" as \"entity_id\",
+    coalesce(sum(CASE WHEN \"kaput\".\"s_sale_date_date\" BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"kaput\".\"s_channel_dim_text_id\" is not null THEN \"kaput\".\"s_ext_sales_price\" ELSE NULL END),0.0) as \"sales\",
+    coalesce(sum(CASE WHEN \"kaput\".\"s_return_date_date\" BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"kaput\".\"s_return_channel_dim_text_id\" is not null THEN \"kaput\".\"s_return_amount\" ELSE NULL END),0.0) as \"returns\",
+    coalesce(sum(CASE WHEN \"kaput\".\"s_sale_date_date\" BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"kaput\".\"s_channel_dim_text_id\" is not null THEN \"kaput\".\"s_net_profit\" ELSE NULL END),0.0) - coalesce(sum(CASE WHEN \"kaput\".\"s_return_date_date\" BETWEEN cast('2000-08-23' as date) AND cast('2000-09-06' as date) and \"kaput\".\"s_return_channel_dim_text_id\" is not null THEN \"kaput\".\"s_return_net_loss\" ELSE NULL END),0.0) as \"profit\"
+FROM
+    \"kaput\"
 GROUP BY
     ROLLUP (1, 2)
 ORDER BY 
-    \"scrawny\".\"channel_label\" asc nulls first,
-    \"scrawny\".\"entity_id\" asc nulls first
+    \"kaput\".\"channel_label\" asc nulls first,
+    \"kaput\".\"entity_id\" asc nulls first
 LIMIT (100)"""

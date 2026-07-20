@@ -1,6 +1,6 @@
 query_id = "15"
 generator = "v4"
-gen_length = 1716
+gen_length = 1721
 preql_size = 401
 comp_size = 560
 generated_sql = """
@@ -38,22 +38,11 @@ SELECT
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
     \"thoughtful\".\"total_revenue\" as \"total_revenue\"
 FROM
-    \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"thoughtful\" on \"part_supplier_supplier\".\"s_suppkey\" = \"thoughtful\".\"part_supplier_id\"
+    \"thoughtful\"
     INNER JOIN \"cheerful\" on 1=1
+    LEFT OUTER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"thoughtful\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
 WHERE
     \"thoughtful\".\"_virt_agg_sum_9262565358839663_wscope\" = \"cheerful\".\"max_supplier_rev\"
 
-GROUP BY
-    1)
-SELECT
-    \"cooperative\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
-    \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
-    \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
-    \"cooperative\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"supplier\" as \"part_supplier_supplier\" on \"cooperative\".\"part_supplier_id\" = \"part_supplier_supplier\".\"s_suppkey\"
 ORDER BY 
-    \"cooperative\".\"part_supplier_id\" asc"""
+    \"thoughtful\".\"part_supplier_id\" asc"""

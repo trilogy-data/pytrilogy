@@ -6,7 +6,7 @@ comp_size = 1159
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
@@ -30,39 +30,39 @@ FROM
 WHERE
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
 ),
-cooperative as (
+questionable as (
 SELECT
     max(CASE
-	WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' THEN \"cheerful\".\"sales_order_id\"
+	WHEN \"thoughtful\".\"sales_channel\" = 'CATALOG' THEN \"thoughtful\".\"sales_order_id\"
 	ELSE 0
 	END) as \"_pair_presence_catalog_present\",
     max(CASE
-	WHEN \"cheerful\".\"sales_channel\" = 'STORE' THEN \"cheerful\".\"sales_order_id\"
+	WHEN \"thoughtful\".\"sales_channel\" = 'STORE' THEN \"thoughtful\".\"sales_order_id\"
 	ELSE 0
 	END) as \"_pair_presence_store_present\"
 FROM
-    \"cheerful\"
+    \"thoughtful\"
 GROUP BY
-    \"cheerful\".\"sales_billing_customer_sk\",
-    \"cheerful\".\"sales_item_sk\"),
-abundant as (
+    \"thoughtful\".\"sales_billing_customer_sk\",
+    \"thoughtful\".\"sales_item_sk\"),
+uneven as (
 SELECT
-    \"cooperative\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",
-    \"cooperative\".\"_pair_presence_store_present\" as \"pair_presence_store_present\"
+    \"questionable\".\"_pair_presence_catalog_present\" as \"pair_presence_catalog_present\",
+    \"questionable\".\"_pair_presence_store_present\" as \"pair_presence_store_present\"
 FROM
-    \"cooperative\")
+    \"questionable\")
 SELECT
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" >= 1 and \"abundant\".\"pair_presence_catalog_present\" = 0 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" = 0 THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" = 0 and \"abundant\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" = 0 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"abundant\".\"pair_presence_store_present\" >= 1 and \"abundant\".\"pair_presence_catalog_present\" >= 1 THEN 1
+	WHEN \"uneven\".\"pair_presence_store_present\" >= 1 and \"uneven\".\"pair_presence_catalog_present\" >= 1 THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"abundant\""""
+    \"uneven\""""
