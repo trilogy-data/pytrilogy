@@ -32,6 +32,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
+from .concept_graph import _statement_scoped_relation_members
 from .condition_placement import plan_condition_placements
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
@@ -1236,6 +1237,18 @@ def _group_final_grain_contribution(
         _resolve_rowset_key(addr, environment) for addr in attrs[gid].grain_components
     }
     rowset_keys = (resolved - set(attrs[gid].grain_components)) & merge_grain
+    # A STATEMENT-scoped relation member the group carries is the merge's join
+    # axis whether or not it is the group's grain: `subset join
+    # best.pair_rank_best = worst.pair_rank_worst` projects only the two product
+    # names, so neither BASIC rename group advertises the rank and the FINAL
+    # merge cross-joins ON 1=1 (q44's decorrelated best/worst pairing). Global
+    # `merge` identities are excluded — they pair INNER and never define a
+    # statement's join axis (advertising one strands a partial dimension).
+    if environment is not None:
+        available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
+        rowset_keys |= (
+            _statement_scoped_relation_members(environment) & merge_grain & available
+        )
     return frozenset(rowset_keys)
 
 

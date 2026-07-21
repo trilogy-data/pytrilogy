@@ -1,35 +1,177 @@
-# v4 compatibility audit (last refreshed 2026-07-20, session 15)
+# v4 compatibility audit (last refreshed 2026-07-21, session 17)
 
-## Current state (after 2026-07-20 session 15)
+## Current state (after 2026-07-21 session 17)
 
-**Full v4 sweep (session 15): 28 real failed / 5789 passed**
-(`local_scripts/v4_sweep_0720_s15b.log`; raw count 29 — minus the
-`tests/cli/test_display.py` rich_enabled detached-run console noise; the faa
-LLM flake did not fire this run). Honest delta vs s14: **cleared
-window_expression_join ×2 + having_bare_max ×1 (−3), ZERO new failures** —
-every remaining entry diffs onto the s14 list. TPC-DS battery = the
-pre-existing 6 exactly (q72 intact), run standalone AND inside the sweep;
-classifier exit 0, no escalations; ruff/mypy(309)/black clean. 82 errors are
-clickhouse-server env (not real). Both changed files are v4-only
-(`concept_strategies_v4.py`, `v4_helper/source_planning.py`) and the shared
-`discovery_utility.py` experiment was reverted to byte-baseline — v3
-untouched by construction.
+**Full v4 sweep (session 17): 28 real failed / 5911 passed**
+(`local_scripts/v4_sweep_0720_s17b.log`; raw 29 — minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s16: **cleared `membership_having dimension_key` and
+`cross_rowset_membership expression_key` (−2), ZERO new failures**
+(`comm` diff of the FAILED lists against the s16 sweep: exactly those two
+removed, nothing added). TPC-DS = the pre-existing 6 exactly (q72 intact);
+classifier exit 0 (no label escalations; xpassed 24→26 — two tracked entries
+now xpass, prune candidates); ruff/mypy(310)/black clean. Both fixes are
+v4-only files (`concept_strategies_v4.py`, `v4_helper/group_graph.py`), so no
+v3 sweep is needed.
 
 **The 28 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
-q64_correlated_filter + or_membership_with_projected_aggregate), fuzzer ×2
-(pre-existing corpus stability, env/seed), families (multi_partial_anchor ×2,
+q64_correlated_filter + or_membership_with_projected_aggregate), new-corpus
+×5 (year_over_year recorrelation ×2, multileg null-identity ×2, union_arm
+partner_only_in_join), families (multi_partial_anchor ×2, duckdb_rowset
+variance/stddev keys-3 ×2, rollup_scoped_join ×2) and singles
+(twin_keeps_scalar_refs, dim_bridge all_subset_unaffected,
+scoped_derived_rowset exp_rows1, rowset_generation_matrix islanded,
+rowset_cross_datasource null_property, rowset_body_limit, cube_two_windows,
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge).
+
+**NEXT options:** the new-corpus ×5 (undiagnosed, A/B-verified pre-existing);
+`scoped_derived_rowset exp_rows1` (`agg.period = fut.period + 53` subset/LEFT
+renders FULL — the sibling of s17's fix #1, and the code comment at the
+derived-member obligation predicts exactly this trade-off); TPC-DS ×6; XPASS
+prune (26 xpassed).
+
+## ✅ 2026-07-21 (session 17) — derived relation key materializes its own undemanded arg (+1) & a scoped-relation member the group carries advertises the merge axis (+1)
+
+Two v4-only fixes, verified by a full sweep (28 real, zero new), TPC-DS = the
+pre-existing 6, classifier exit 0, ruff/mypy/black clean.
+
+1. **`resolve_rowset` (concept_strategies_v4.py)** — cross_rowset_membership
+   `expression_key`. The DERIVED relation-member obligation
+   (`subset join ftr_sales.ws - 53 = cur_sales.ws`) only materialized the
+   derived key when EVERY lineage arg was already a boundary handle. The outer
+   query never projects `ftr_sales.ws`, so the offset key had no producer at
+   all: the ftr boundary exposed only `dw`/`sales_amt`, the completion merge
+   found no axis and rendered `LEFT OUTER JOIN ... ON 1=1` (4 rows, the union
+   of the offset pairing and an identity pairing). Fix: an undemanded arg that
+   is THIS rowset's own handle (`addr in derived`, its `BuildRowsetItem`
+   content in `produced`) is materialized on the boundary alongside the derived
+   key; side identity is still structural because the arg must be this
+   rowset's. v4 now renders v3's plan (`ON cur.ws = juicy._virt_func_subtract`).
+   The args must be materialized as VISIBLE outputs — carrying them in
+   `hidden` fails `validate_inputs` downstream (a consumer filter node needs a
+   non-hidden parent output).
+2. **`_group_final_grain_contribution` (group_graph.py)** — membership_having
+   `dimension_key` (q44 best/worst rank pairing). `_final_merge_grain`
+   correctly held the authored axis (`best.pair_rank_best` /
+   `worst.pair_rank_worst`), but `final_merge_grain` in `_assemble_final_node`
+   is the UNION OF THE CONTRIBUTORS' `projection_grain`, and a non-grouping
+   (BASIC rename) group advertised only *resolved rowset grain keys*. The outer
+   select projects just the two product names, so the worst-side group
+   advertised nothing, the FINAL merge cross-joined `ON 1=1` and each rank
+   paired with both products (4 rows, correlation lost). Fix: a group also
+   advertises any scoped-relation member it actually carries
+   (`input_concepts | output_concepts`). Rows now match v3.
+
+   **HARD-WON gate — STATEMENT scope only.** The first cut used
+   `environment.scoped_join_key_groups` directly, which ALSO contains global
+   `merge` identities; the sweep caught `tests/modeling/stocks
+   ::test_calculated_field` (A/B-confirmed attributable) — a merge-identity key
+   entered the merge grain and stranded partial dimensions
+   (`UnresolvableQueryException: symbol.latitude/longitude`). Gate on
+   `_statement_scoped_relation_members` (the existing helper in
+   concept_graph.py, with exactly this exclusion documented). LESSON:
+   `scoped_join_key_groups` is NOT "the authored joins" — filter it whenever
+   the consequence is a change in row identity or join axis.
+
+Repro scripts kept: `local_scripts/repro_s17_xrs.py`,
+`local_scripts/repro_s17_q44.py` (both take `v3`/`v4` and print SQL + rows).
+Sweep launcher: `local_scripts/run_v4_sweep_s17.ps1` (PS `Out-File` streams,
+so the log fills progressively — the "no tests ran" health check works).
+
+## Superseded state (after 2026-07-20 session 16)
+
+**Full v4 sweep (session 16, on the NEW main base): 30 real failed / 5909
+passed** (`local_scripts/v4_sweep_0720_s16.log`; raw 31 — minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise; the faa
+LLM flake and fuzzer ×2 did not fire the final run). Honest delta vs s15:
+**cleared existence_feeder_pushdown (−1), ZERO new failures attributable to
+the session** — mid-session the user's `git pull origin main -Xours` rebased
+the branch onto new main (see the rebase note below), whose +~120-test corpus
+carries **5 pre-existing v4 gaps** (A/B-verified byte-identical with the
+session's fix reverted): discovery
+`test_year_over_year_growth_not_recorrelated_on_names` ×2
+(test_filter_node_retains_row_grain_keys + test_subset_rowset_enrichment_contract),
+join_matrix `test_multileg_scoped_join_null_identity` ×2 [v4 cells], and
+`test_union_arm_subset_join_full_grain` partner_only_in_join. **Full v3 sweep:
+4 failed / 5995 passed** — display noise + multileg [v4] dual-planner cells +
+null_property (fails via its v4 leg); zero v3 failures. TPC-DS = the
+pre-existing 6 exactly (q72 intact), standalone battery AND in-sweep;
+ruff/mypy(310)/black clean; xpassed 24 (unchanged, no classifier deltas — the
+change is optimizer-level, planner untouched). 82 errors are
+clickhouse-server env (not real).
+
+**The 30 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), new-corpus
+×5 (year_over_year recorrelation ×2, multileg null-identity ×2,
+union_arm partner_only_in_join), families (multi_partial_anchor ×2,
 duckdb_rowset variance/stddev keys-3 ×2, rollup_scoped_join ×2) and singles
 (twin_keeps_scalar_refs, dim_bridge all_subset_unaffected,
 cross_rowset_membership expression_key, scoped_derived_rowset exp_rows1,
 rowset_generation_matrix islanded, rowset_cross_datasource null_property,
 rowset_body_limit, cube_two_windows, membership_having dimension_key,
-existence_feeder_pushdown, collapse_basic funnel, union_bare_aggregate
-set_semantics, setops except_and_union, constant_in_cross_datasource_merge).
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge). Fuzzer ×2 are
+intermittent (env/seed) and absent from the final run.
 
-**NEXT options (existence-adjacent singles re-diagnosed END of s15 —
-failure modes verified BYTE-IDENTICAL before/after the s15 existence-slice
-fix via path-limited `git stash push -- <two files>` A/B, so these notes are
-current):**
+## ✅ 2026-07-20 (session 16) — existence promotion double-lists into both CTE maps (+1) & rebase onto new main
+
+**One shared-optimizer fix** (`trilogy/core/optimizations/predicate_pushdown.py`,
+verified by full v4 AND v3 sweeps ×2 each + TPC-DS battery + row-parity
+execution): cleared `existence_feeder_pushdown`
+(test_membership_feeders_do_not_chain — 5 membership feeder CTEs chained
+10 cross-refs, the O(n²) q11 25GiB-OOM shape).
+
+Root cause was NOT the v4 planner: the pre-optimization v4 plan was correct
+(independent feeders, all EXISTS on the final node `wary`, existence_source_map
+fully populated). `_check_parent`'s existence-source promotion classified
+"existence-only" by `x not in cte.source_map` — but naturally-planned CTEs
+double-list existence concepts in BOTH maps, so the feeders promoted into the
+intermediate consumer's row `source_map` only. The sibling-feeder chaining
+guard in `optimize` reads only `existence_source_map`, went blind, and the
+next optimizer round pushed each membership EXISTS into the other feeders
+(v3 dodges by accident: its final CTE's row parents have other
+condition-free children, so the push never proceeds — v4's 1:1 chain lets it
+through). FIX: keep the original promotion exactly, and ALSO register
+`x in existence_conditions` into `parent_cte.existence_source_map` (two
+lines). SQL 18.7KB→12.4KB, feeders fully independent, rows match v3.
+
+**HARD-WON: two rejected fix shapes for the same bug.**
+(1) "Existence args promote into existence_source_map INSTEAD of source_map"
+— broke v3 `test_window_clone` (`where order_id in filtered` with `filtered`
+a lag window): the renderer's WHERE/QUALIFY split (dialect/base.py ~2689)
+computes `materialized` from **source_map only**, so an existence-map-only
+window concept routed the pushed EXISTS to QUALIFY in a windowless CTE →
+DuckDB binder error. (2) "…unless the consumer projects it" — same failure;
+the cascade pushes through intermediate consumers that don't project the
+window. LESSON: the two CTE maps are not alternatives — `source_map` feeds
+the renderer's materialized/scalar decisions, `existence_source_map` feeds
+the chaining guard; a concept in an existence role that is also row-sourced
+must live in BOTH, matching the plan-constructed shape. Diff the map contents
+of a naturally-planned CTE before "correcting" which map an optimizer writes.
+
+**Mid-session rebase rescue.** The user's `git pull origin main -Xours`
+stalled a rebase on its FINAL pick (their `more_work` commit holding this
+session's work) — blocked by battery-dirtied zquery logs (the standing
+gotcha), while the detached v3 sweep was still rewriting them mid-rebase.
+Recovery: kill the sweep's process tree by ROOT PID (taskkill /T — never
+name-based), `git checkout -- tests/modeling`, drop the collided untracked
+sweep log, `git rebase --continue`. Integrity: `-Xours` under REBASE favors
+the UPSTREAM side, so verify nothing was silently dropped — range-diff showed
+4 `!` commits, but hash-comparing each overlap file's cumulative branch delta
+(old-base..old-tip vs new-base..HEAD) proved all code changes survived; drift
+was confined to regenerated artifacts. Sweeps run mid-rebase or pre-rebase
+are stale — re-run everything on the rebased tree.
+
+**PowerShell gotcha #3:** `stash@{0}` in a PowerShell git command gets
+brace-mangled (`error: unknown switch 'e'`) — and a follow-up `git stash
+drop` in the same chain then dropped the WRONG stash (the temp one holding
+uncommitted work; reconstructed from the edit history). Quote it
+(`'stash@{0}'`) or avoid stash round-trips in PS chains; prefer
+`git checkout <commit> -- <file>` + re-apply for A/B tests of committed work.
+
+**NEXT options (carried from s15, still current — the s15 re-diagnoses were
+for the planner, untouched this session):**
 
 - `membership_having dimension_key`
   (test_membership_having_aggregate_dimension_key_groupby, q44 family):
@@ -51,13 +193,9 @@ current):**
   the plain_key cell's row): expected `[(1,40,50),(2,None,40)]`, got 4 rows.
   The derived-key relation appears to keep BOTH the substituted offset axis
   and a raw `ws = ws` pairing alive. plain_key cell passes.
-- `existence_feeder_pushdown` (test_membership_feeders_do_not_chain):
-  structural/optimization assert — with 5 membership feeders in one WHERE,
-  each feeder CTE references every EARLIER sibling feeder (10 cross-refs =
-  O(n²) semijoin chaining). Rows aren't checked; the fix is feeder
-  independence (each membership set should plan standalone), likely in how
-  feeder N's plan inherits the query WHERE (which still contains memberships
-  1..N-1) — compare v3's independent-feeder rendering.
+- New-corpus ×5 (from the main rebase): year_over_year recorrelation ×2 +
+  multileg null-identity ×2 + union_arm partner_only_in_join — undiagnosed;
+  A/B-verified independent of the s16 optimizer fix.
 - TPC-DS cluster ×6, or XPASS prune (24 xpassed; classifier exit 0 so no
   label escalations, but a prune pass needs isolation + in-suite green).
 

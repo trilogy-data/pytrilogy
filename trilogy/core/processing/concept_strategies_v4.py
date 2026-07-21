@@ -834,7 +834,32 @@ def resolve_rowset(
             ):
                 continue
             arg_addrs = {a.address for a in member_concept.concept_arguments}
-            if arg_addrs and arg_addrs <= handle_addrs:
+            if not arg_addrs:
+                continue
+            # An arg the outer query never demanded is not a handle yet — but if
+            # it IS one of this rowset's own handles the boundary can still
+            # materialize it (hidden), which is the only way the derived key
+            # gets a producer at all (`subset join ftr.ws - 53 = cur.ws` never
+            # projects `ftr.ws`; without this the completion merge has no axis
+            # and cross-joins ON 1=1).
+            pending: list[tuple[BuildConcept, BuildConcept]] = []
+            for arg_addr in sorted(arg_addrs - handle_addrs):
+                arg_handle = environment.concepts.get(arg_addr)
+                if (
+                    arg_addr not in derived
+                    or arg_handle is None
+                    or not isinstance(arg_handle.lineage, BuildRowsetItem)
+                    or arg_handle.lineage.content.address not in produced
+                ):
+                    break
+                pending.append(
+                    (arg_handle, produced[arg_handle.lineage.content.address])
+                )
+            else:
+                for arg_handle, arg_input in pending:
+                    handles.append(arg_handle)
+                    inputs.append(arg_input)
+                    handle_addrs.add(arg_handle.address)
                 handles.append(member_concept)
                 handle_addrs.add(member_addr)
 
