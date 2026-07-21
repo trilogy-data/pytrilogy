@@ -18,7 +18,10 @@ GROUP BY
     1),
 questionable as (
 SELECT
+     'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
@@ -30,7 +33,10 @@ WHERE
 
 UNION ALL
 SELECT
+     'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
@@ -42,7 +48,10 @@ WHERE
 
 UNION ALL
 SELECT
+     'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
@@ -54,13 +63,24 @@ WHERE
 ),
 juicy as (
 SELECT
-    \"questionable\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
-    sum(\"questionable\".\"sales_ext_sales_price\") as \"total_sales\"
+    \"questionable\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"questionable\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\"
 FROM
     \"questionable\"
+GROUP BY
+    1,
+    2,
+    \"questionable\".\"sales_channel\",
+    \"questionable\".\"sales_item_sk\",
+    \"questionable\".\"sales_order_id\")
+SELECT
+    \"juicy\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
+    sum(\"juicy\".\"sales_ext_sales_price\") as \"total_sales\"
+FROM
+    \"juicy\"
 GROUP BY
     1
 ORDER BY 
     \"total_sales\" asc nulls first,
-    \"questionable\".\"sales_item_manufacturer_id\" asc nulls first
+    \"juicy\".\"sales_item_manufacturer_id\" asc nulls first
 LIMIT (100)"""

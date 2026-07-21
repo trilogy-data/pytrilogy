@@ -27,8 +27,7 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    1),
-questionable as (
+    1)
 SELECT
     \"cheerful\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
     \"cheerful\".\"sum_sales\" as \"sum_sales\",
@@ -41,15 +40,9 @@ WHERE
 	WHEN \"cooperative\".\"avg_monthly_sales\" > 0 THEN abs(\"cheerful\".\"sum_sales\" - \"cooperative\".\"avg_monthly_sales\") / \"cooperative\".\"avg_monthly_sales\"
 	ELSE null
 	END > 0.1
-)
-SELECT
-    \"questionable\".\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    \"questionable\".\"sum_sales\" as \"sum_sales\",
-    \"questionable\".\"avg_monthly_sales\" as \"avg_monthly_sales\"
-FROM
-    \"questionable\"
+
 ORDER BY 
-    \"questionable\".\"store_sales_item_manager_id\" asc,
-    \"questionable\".\"avg_monthly_sales\" asc,
-    \"questionable\".\"sum_sales\" asc
+    \"cheerful\".\"store_sales_item_manager_id\" asc,
+    \"cooperative\".\"avg_monthly_sales\" asc,
+    \"cheerful\".\"sum_sales\" asc
 LIMIT (100)"""

@@ -35,7 +35,7 @@ SELECT
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-vacuous as (
+juicy as (
 SELECT
     \"uneven\".\"_bought_amt\" as \"bought_amt\",
     \"uneven\".\"_bought_bought_city\" as \"bought_bought_city\",
@@ -48,28 +48,20 @@ SELECT
     \"wakeful\".\"customer_last_name\" as \"customer_last_name\",
     \"wakeful\".\"customer_first_name\" as \"customer_first_name\",
     \"wakeful\".\"customer_current_address_city\" as \"customer_current_address_city\",
-    \"vacuous\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"vacuous\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"vacuous\".\"bought_amt\" as \"bought_amt\",
-    \"vacuous\".\"bought_profit\" as \"bought_profit\"
+    \"juicy\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"juicy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"juicy\".\"bought_amt\" as \"bought_amt\",
+    \"juicy\".\"bought_profit\" as \"bought_profit\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"wakeful\" on \"vacuous\".\"bought_store_sales_customer_sk\" = \"wakeful\".\"customer_sk\"
+    \"wakeful\"
+    INNER JOIN \"juicy\" on \"wakeful\".\"customer_sk\" = \"juicy\".\"bought_store_sales_customer_sk\"
 WHERE
-    \"wakeful\".\"customer_current_address_city\" != \"vacuous\".\"bought_bought_city\"
+    \"wakeful\".\"customer_current_address_city\" != \"juicy\".\"bought_bought_city\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7
 ORDER BY 
     \"wakeful\".\"customer_last_name\" asc nulls first,
     \"wakeful\".\"customer_first_name\" asc nulls first,
     \"wakeful\".\"customer_current_address_city\" asc nulls first,
-    \"vacuous\".\"bought_bought_city\" asc nulls first,
-    \"vacuous\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"juicy\".\"bought_bought_city\" asc nulls first,
+    \"juicy\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

@@ -11,6 +11,7 @@ SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
@@ -21,6 +22,7 @@ SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
@@ -31,12 +33,13 @@ SELECT
      'WEB'  as \"sales_channel\",
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
+    \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
      1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-sweltering as (
+concerned as (
 SELECT
     avg(\"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\") as \"_avg_sales_average_sales\"
 FROM
@@ -45,7 +48,7 @@ FROM
 WHERE
     \"sales_sale_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
 ),
-abundant as (
+questionable as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
@@ -63,45 +66,47 @@ GROUP BY
     2,
     3,
     4),
-macho as (
+sparkling as (
 SELECT
-    \"sweltering\".\"_avg_sales_average_sales\" as \"avg_sales_average_sales\"
+    \"concerned\".\"_avg_sales_average_sales\" as \"avg_sales_average_sales\"
 FROM
-    \"sweltering\"),
-yummy as (
+    \"concerned\"),
+abundant as (
 SELECT
-    \"abundant\".\"sales_item_brand_id\" as \"_cross_tuples_ci_brand_id\",
-    \"abundant\".\"sales_item_category_id\" as \"_cross_tuples_ci_category_id\",
-    \"abundant\".\"sales_item_class_id\" as \"_cross_tuples_ci_class_id\"
+    \"questionable\".\"sales_item_brand_id\" as \"_cross_tuples_ci_brand_id\",
+    \"questionable\".\"sales_item_category_id\" as \"_cross_tuples_ci_category_id\",
+    \"questionable\".\"sales_item_class_id\" as \"_cross_tuples_ci_class_id\"
 FROM
-    \"abundant\"
+    \"questionable\"
 GROUP BY
     1,
     2,
     3
 HAVING
-    count(distinct \"abundant\".\"sales_channel\") = 3
+    count(distinct \"questionable\".\"sales_channel\") = 3
 ),
-concerned as (
+uneven as (
 SELECT
-    \"yummy\".\"_cross_tuples_ci_brand_id\" as \"cross_tuples_ci_brand_id\",
-    \"yummy\".\"_cross_tuples_ci_category_id\" as \"cross_tuples_ci_category_id\",
-    \"yummy\".\"_cross_tuples_ci_class_id\" as \"cross_tuples_ci_class_id\"
+    \"abundant\".\"_cross_tuples_ci_brand_id\" as \"_cross_tuples_ci_brand_id\",
+    \"abundant\".\"_cross_tuples_ci_category_id\" as \"_cross_tuples_ci_category_id\",
+    \"abundant\".\"_cross_tuples_ci_class_id\" as \"_cross_tuples_ci_class_id\"
 FROM
-    \"yummy\"),
-questionable as (
+    \"abundant\"),
+yummy as (
 SELECT
-    \"cheerful\".\"sales_channel\" as \"sales_channel\",
+    \"uneven\".\"_cross_tuples_ci_brand_id\" as \"cross_tuples_ci_brand_id\",
+    \"uneven\".\"_cross_tuples_ci_category_id\" as \"cross_tuples_ci_category_id\",
+    \"uneven\".\"_cross_tuples_ci_class_id\" as \"cross_tuples_ci_class_id\"
+FROM
+    \"uneven\"),
+juicy as (
+SELECT
     \"cheerful\".\"sales_list_price\" as \"sales_list_price\",
     \"cheerful\".\"sales_quantity\" as \"sales_quantity\",
     \"cheerful\".\"sales_sale_line_item_counter\" as \"sales_sale_line_item_counter\",
-    \"sales_item_items\".\"I_BRAND_ID\" as \"_l0_filtered_brand_l0\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"_l0_filtered_category_l0\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"sales_item_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"_l0_filtered_class_l0\",
     \"sales_item_items\".\"I_CLASS_ID\" as \"sales_item_class_id\",
-    LOWER(\"cheerful\".\"sales_channel\")  as \"_l0_filtered_channel_l0\",
     LOWER(\"cheerful\".\"sales_channel\")  as \"channel_label\"
 FROM
     \"cheerful\"
@@ -187,26 +192,58 @@ GROUP BY
     4,
     5,
     6,
-    \"macho\".\"avg_sales_average_sales\"),
-kaput as (
+    7,
+    \"cheerful\".\"sales_channel\",
+    \"cheerful\".\"sales_item_sk\",
+    \"cheerful\".\"sales_order_id\"),
+vacuous as (
 SELECT
-    \"scrawny\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"scrawny\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"scrawny\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"scrawny\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"scrawny\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"scrawny\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
+    \"juicy\".\"channel_label\" as \"_l0_filtered_channel_l0\",
+    \"juicy\".\"sales_item_brand_id\" as \"_l0_filtered_brand_l0\",
+    \"juicy\".\"sales_item_category_id\" as \"_l0_filtered_category_l0\",
+    \"juicy\".\"sales_item_class_id\" as \"_l0_filtered_class_l0\",
+    sum(\"juicy\".\"sales_quantity\" * \"juicy\".\"sales_list_price\") as \"_l0_filtered_bucket_sum_l0\",
+    sum(\"juicy\".\"sales_sale_line_item_counter\") as \"_l0_filtered_bucket_count_l0\"
 FROM
-    \"scrawny\")
+    \"juicy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+abhorrent as (
 SELECT
-    \"kaput\".\"l0_filtered_channel_l0\" as \"channel\",
-    \"kaput\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
-    \"kaput\".\"l0_filtered_class_l0\" as \"i_class_id\",
-    \"kaput\".\"l0_filtered_category_l0\" as \"i_category_id\",
-    sum(\"kaput\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
-    sum(\"kaput\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
+    \"vacuous\".\"_l0_filtered_brand_l0\" as \"_l0_filtered_brand_l0\",
+    \"vacuous\".\"_l0_filtered_bucket_count_l0\" as \"_l0_filtered_bucket_count_l0\",
+    \"vacuous\".\"_l0_filtered_bucket_sum_l0\" as \"_l0_filtered_bucket_sum_l0\",
+    \"vacuous\".\"_l0_filtered_category_l0\" as \"_l0_filtered_category_l0\",
+    \"vacuous\".\"_l0_filtered_channel_l0\" as \"_l0_filtered_channel_l0\",
+    \"vacuous\".\"_l0_filtered_class_l0\" as \"_l0_filtered_class_l0\"
 FROM
-    \"kaput\"
+    \"sparkling\"
+    INNER JOIN \"vacuous\" on 1=1
+WHERE
+    \"vacuous\".\"_l0_filtered_bucket_sum_l0\" > \"sparkling\".\"avg_sales_average_sales\"
+),
+sweltering as (
+SELECT
+    \"abhorrent\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
+    \"abhorrent\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
+    \"abhorrent\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
+    \"abhorrent\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
+    \"abhorrent\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
+    \"abhorrent\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
+FROM
+    \"abhorrent\")
+SELECT
+    \"sweltering\".\"l0_filtered_channel_l0\" as \"channel\",
+    \"sweltering\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
+    \"sweltering\".\"l0_filtered_class_l0\" as \"i_class_id\",
+    \"sweltering\".\"l0_filtered_category_l0\" as \"i_category_id\",
+    sum(\"sweltering\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
+    sum(\"sweltering\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
+FROM
+    \"sweltering\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 

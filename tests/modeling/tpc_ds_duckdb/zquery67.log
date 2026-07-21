@@ -26,7 +26,7 @@ FROM
 WHERE
     \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 ),
-questionable as (
+cooperative as (
 SELECT
     \"thoughtful\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
     \"thoughtful\".\"ss_item_category\" as \"ss_item_category\",
@@ -56,33 +56,20 @@ SELECT
 FROM
     \"cooperative\")
 SELECT
-    \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
     \"questionable\".\"ss_item_category\" as \"ss_item_category\",
     \"questionable\".\"ss_item_class\" as \"ss_item_class\",
+    \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
     \"questionable\".\"ss_item_product_name\" as \"ss_item_product_name\",
     \"questionable\".\"ss_sale_date_year\" as \"ss_sale_date_year\",
     \"questionable\".\"ss_sale_date_quarter\" as \"ss_sale_date_quarter\",
     \"questionable\".\"ss_sale_date_month_of_year\" as \"ss_sale_date_month_of_year\",
     \"questionable\".\"ss_store_id\" as \"ss_store_id\",
     \"questionable\".\"sumsales\" as \"sumsales\",
-    rank() over (partition by \"questionable\".\"ss_item_category\" order by \"questionable\".\"sumsales\" desc ) as \"rk\"
+    \"questionable\".\"rk\" as \"rk\"
 FROM
-    \"questionable\")
-SELECT
-    \"abundant\".\"ss_item_category\" as \"ss_item_category\",
-    \"abundant\".\"ss_item_class\" as \"ss_item_class\",
-    \"abundant\".\"ss_item_brand_name\" as \"ss_item_brand_name\",
-    \"abundant\".\"ss_item_product_name\" as \"ss_item_product_name\",
-    \"abundant\".\"ss_sale_date_year\" as \"ss_sale_date_year\",
-    \"abundant\".\"ss_sale_date_quarter\" as \"ss_sale_date_quarter\",
-    \"abundant\".\"ss_sale_date_month_of_year\" as \"ss_sale_date_month_of_year\",
-    \"abundant\".\"ss_store_id\" as \"ss_store_id\",
-    \"abundant\".\"sumsales\" as \"sumsales\",
-    \"abundant\".\"rk\" as \"rk\"
-FROM
-    \"abundant\"
+    \"questionable\"
 WHERE
-    \"abundant\".\"rk\" <= 100
+    \"questionable\".\"rk\" <= 100
 
 ORDER BY 
     \"questionable\".\"ss_item_category\" asc nulls first,

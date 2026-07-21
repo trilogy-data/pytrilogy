@@ -430,7 +430,10 @@ def test_predicate_pushdown_parent_propagates_existence_dependency():
 
     assert optimized is True
     assert parent.condition == condition
-    assert parent.source_map[exists.address] == [existence_parent.name]
+    # an existence argument promotes into existence_source_map (the map the
+    # sibling-feeder chaining guard reads) even when the consumer tracked it
+    # in source_map
+    assert parent.existence_source_map[exists.address] == [existence_parent.name]
     assert parent.parent_ctes == [existence_parent]
 
 

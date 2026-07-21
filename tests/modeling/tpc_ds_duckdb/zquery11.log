@@ -15,6 +15,9 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+WHERE
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
+
 UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
@@ -24,6 +27,9 @@ SELECT
     \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+
 UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
@@ -67,8 +73,10 @@ HAVING
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE cast(0.0 as numeric)
 	END )
-)
+),
+abundant as (
 SELECT
+    \"cooperative\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
     \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
@@ -98,8 +106,8 @@ GROUP BY
     3,
     4
 ORDER BY 
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" asc nulls first,
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\" asc nulls first,
-    \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" asc nulls first
+    \"abundant\".\"sales_billing_customer_id\" asc nulls first,
+    \"abundant\".\"sales_billing_customer_first_name\" asc nulls first,
+    \"abundant\".\"sales_billing_customer_last_name\" asc nulls first,
+    \"abundant\".\"sales_billing_customer_preferred_cust_flag\" asc nulls first
 LIMIT (100)"""

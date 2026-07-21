@@ -614,9 +614,14 @@ class PredicatePushdown(OptimizationRule):
                 # regular dependency CTE or from an already-inlined datasource
                 # (datasource inlining runs before this pass) — propagate both
                 # so the pushed subselect has a real source to render against
-                # instead of a dangling CTE reference. A subselect-only feeder
-                # is absent from ``source_map`` entirely and lives in
-                # ``existence_source_map``; promote it into the same map.
+                # instead of a dangling CTE reference. An existence argument of
+                # the candidate promotes into ``existence_source_map`` even when
+                # the consumer double-lists it in ``source_map`` — classifying
+                # by source_map absence alone dropped the feeder into the
+                # parent's row map, where the sibling-feeder guard in
+                # ``optimize`` (which reads only ``existence_source_map``)
+                # could not see it, and the next round chained the parent's
+                # membership atoms into each other's feeders (O(n^2) semijoins).
                 promotions: list[
                     tuple[
                         str, list[str], bool, list[CTE | UnionCTE], list[DatasourceCTE]
@@ -628,12 +633,14 @@ class PredicatePushdown(OptimizationRule):
                         or x in parent_cte.existence_source_map
                     ):
                         continue
-                    existence_only = x not in cte.source_map
-                    if existence_only and x not in cte.existence_source_map:
+                    existence_only = (
+                        x in existence_conditions or x not in cte.source_map
+                    )
+                    if x not in cte.source_map and x not in cte.existence_source_map:
                         continue
                     source_names = (
                         cte.existence_source_map[x]
-                        if existence_only
+                        if x in cte.existence_source_map
                         else cte.source_map[x]
                     )
                     dep_sources = [

@@ -6,7 +6,7 @@ comp_size = 1699
 generated_sql = """
 
 WITH 
-thoughtful as (
+cheerful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
@@ -26,22 +26,22 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity' and \"sales_sale_date_date\".\"D_YEAR\" = 1998 and \"sales_sale_date_date\".\"D_MOY\" = 12
 ),
-abundant as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_sk\" as \"_my_customers_my_cust_id\"
+    \"cheerful\".\"sales_billing_customer_sk\" as \"_my_customers_my_cust_id\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
 GROUP BY
     1),
-juicy as (
+uneven as (
 SELECT
-    \"abundant\".\"_my_customers_my_cust_id\" as \"my_customers_my_cust_id\"
+    \"thoughtful\".\"_my_customers_my_cust_id\" as \"my_customers_my_cust_id\"
 FROM
-    \"abundant\"),
-sweltering as (
+    \"thoughtful\"),
+sparkling as (
 SELECT
-    \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"_my_revenue_rev_cust_id\",
-    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"_my_revenue_revenue\"
+    \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_sk\",
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
@@ -52,37 +52,47 @@ WHERE
     exists (select 1 from uneven where uneven.\"my_customers_my_cust_id\" is not distinct from \"ss_store_sales\".\"SS_CUSTOMER_SK\") and \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
 
 GROUP BY
-    1),
-friendly as (
-SELECT
-    \"sweltering\".\"_my_revenue_rev_cust_id\" as \"my_revenue_rev_cust_id\",
-    \"sweltering\".\"_my_revenue_revenue\" as \"my_revenue_revenue\"
-FROM
-    \"sweltering\"),
-divergent as (
-SELECT
-    count(\"friendly\".\"my_revenue_rev_cust_id\") as \"num_customers\"
-FROM
-    \"friendly\"),
-kaput as (
-SELECT
-    cast(round(\"friendly\".\"my_revenue_revenue\" / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(\"friendly\".\"my_revenue_revenue\" / 50,0) as int) as \"segment\"
-FROM
-    \"friendly\")
-SELECT
-    \"kaput\".\"segment\" as \"segment\",
-    \"divergent\".\"num_customers\" as \"num_customers\",
-    \"kaput\".\"segment_base\" as \"segment_base\"
-FROM
-    \"divergent\"
-    FULL JOIN \"kaput\" on 1=1
-GROUP BY
     1,
     2,
-    3
+    \"ss_store_sales\".\"SS_ITEM_SK\",
+    \"ss_store_sales\".\"SS_TICKET_NUMBER\"),
+abhorrent as (
+SELECT
+    \"sparkling\".\"ss_customer_sk\" as \"_my_revenue_rev_cust_id\",
+    sum(\"sparkling\".\"ss_ext_sales_price\") as \"_my_revenue_revenue\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1),
+sweltering as (
+SELECT
+    \"abhorrent\".\"_my_revenue_rev_cust_id\" as \"my_revenue_rev_cust_id\",
+    \"abhorrent\".\"_my_revenue_revenue\" as \"my_revenue_revenue\"
+FROM
+    \"abhorrent\"),
+macho as (
+SELECT
+    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) as \"segment\"
+FROM
+    \"sweltering\"
+GROUP BY
+    1,
+    2),
+late as (
+SELECT
+    count(\"sweltering\".\"my_revenue_rev_cust_id\") as \"num_customers\"
+FROM
+    \"sweltering\")
+SELECT
+    \"macho\".\"segment\" as \"segment\",
+    coalesce(\"late\".\"num_customers\",0) as \"num_customers\",
+    \"macho\".\"segment_base\" as \"segment_base\"
+FROM
+    \"late\"
+    FULL JOIN \"macho\" on 1=1
 ORDER BY 
-    \"kaput\".\"segment\" asc nulls first,
-    \"divergent\".\"num_customers\" asc nulls first,
-    \"kaput\".\"segment_base\" asc nulls first
+    \"macho\".\"segment\" asc nulls first,
+    coalesce(\"late\".\"num_customers\",0) asc nulls first,
+    \"macho\".\"segment_base\" asc nulls first
 LIMIT (100)"""

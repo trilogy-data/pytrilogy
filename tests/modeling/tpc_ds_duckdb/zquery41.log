@@ -44,9 +44,6 @@ FROM
 WHERE
     \"cheerful\".\"filtered_product_name\" is not null
 
-GROUP BY
-    1,
-    \"wakeful\".\"manufact_matches\"
 ORDER BY 
     \"cheerful\".\"filtered_product_name\" asc
 LIMIT (100)"""

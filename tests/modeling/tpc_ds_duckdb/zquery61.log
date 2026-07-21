@@ -4,10 +4,14 @@ gen_length = 3530
 preql_size = 628
 comp_size = 1279
 generated_sql = """
+
+WITH 
+abundant as (
 SELECT
-    sum(CASE WHEN \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_TV\" = 'Y' THEN \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" ELSE NULL END) as \"promotions\",
-    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total\",
-    ( cast(sum(CASE WHEN \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'Y' or \"ss_promotion_promotion\".\"P_CHANNEL_TV\" = 'Y' THEN \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" ELSE NULL END) as numeric(15,4)) / cast(sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as numeric(15,4)) ) * 100 as \"ratio\"
+    \"ss_promotion_promotion\".\"P_CHANNEL_DMAIL\" as \"ss_promotion_channel_dmail\",
+    \"ss_promotion_promotion\".\"P_CHANNEL_EMAIL\" as \"ss_promotion_channel_email\",
+    \"ss_promotion_promotion\".\"P_CHANNEL_TV\" as \"ss_promotion_channel_tv\",
+    \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -57,6 +61,6 @@ FROM
     FULL JOIN \"juicy\" on 1=1
     FULL JOIN \"vacuous\" on 1=1
 ORDER BY 
-    \"promotions\" asc nulls first,
-    \"total\" asc nulls first
+    \"yummy\".\"promotions\" asc nulls first,
+    \"vacuous\".\"total\" asc nulls first
 LIMIT (100)"""
