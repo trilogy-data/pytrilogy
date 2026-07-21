@@ -1,6 +1,89 @@
-# v4 compatibility audit (last refreshed 2026-07-21, session 19)
+# v4 compatibility audit (last refreshed 2026-07-21, session 20)
 
-## Current state (after 2026-07-21 session 19)
+## Current state (after 2026-07-21 session 20)
+
+**Full v4 sweep (session 20): 23 real failed / 5916 passed**
+(`local_scripts/v4_sweep_0721_s20.log` — raw 24, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s19: **cleared `year_over_year_growth_not_recorrelated_on_names` ×2
+(−2), ZERO new failures** (`comm` diff of the FAILED lists against the s19c
+sweep: exactly those two removed, nothing added). TPC-DS = the pre-existing 6
+exactly; xpassed 29 (unchanged — no classifier deltas); ruff/mypy(310)/black
+clean. The 82 errors are clickhouse-server env (not real). One-line fix in a
+v4-only file (`v4_helper/group_graph.py`), so no v3 sweep is needed.
+
+**The 23 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), new-corpus ×3
+(multileg null-identity ×2, union_arm partner_only_in_join), families
+(multi_partial_anchor ×2, duckdb_rowset variance/stddev keys-3 ×2) and singles
+(twin_keeps_scalar_refs, dim_bridge all_subset_unaffected,
+rowset_generation_matrix islanded, rowset_cross_datasource null_property,
+rowset_body_limit, cube_two_windows, collapse_basic funnel,
+union_bare_aggregate set_semantics, setops except_and_union,
+constant_in_cross_datasource_merge).
+
+**NEXT options:** the remaining new-corpus ×3 (multileg null-identity ×2 is a
+join_matrix dual-planner pair, so it also has a v3 leg to compare against);
+TPC-DS ×6; `cube_two_windows`; XPASS prune (29 xpassed).
+
+## ✅ 2026-07-21 (session 20) — a rowset body's dimension projection advertises its FD key as the merge axis (+2)
+
+### Fix — `_compute_concept_sets` FINAL sibling-grain rule (group_graph.py, v4-only)
+
+Cleared `test_year_over_year_growth_not_recorrelated_on_names` in BOTH
+`tests/discovery/test_filter_node_retains_row_grain_keys.py` and
+`tests/discovery/test_subset_rowset_enrichment_contract.py` — the SAME query
+duplicated across two files, so one fix is worth 2. It was the audit's top
+"NEXT" (undiagnosed, A/B-verified pre-existing since the s16 rebase).
+
+Minimal repro (`local_scripts/repro_s20_min.py`, cases a–h; the full shape is
+`repro_s20_yoy.py`):
+
+```
+with st as
+select csk as s_csk, cid as s_cid, ss_year as s_yr, sum(ss_net) as st_tot;
+select st.s_csk, st.s_cid, st.st_tot;
+```
+
+v4 returned all 9 `csk × cid` combinations; v3 returns 3. **The identical PLAIN
+select (`select csk, cid, ss_year, sum(ss_net)`) plans correctly** — that A/B
+is what localized it to the rowset-body nested plan. In the real q74 shape the
+fan re-correlated web totals to customers on non-unique `(first_name,
+last_name)`, admitting customer B (declining web ratio) alongside A.
+
+Root cause, from the body-plan group dump (`local_scripts/s20_diag.py`, which
+plans the rowset body directly via `_build_nested_select` + `search_concepts`):
+
+| group | grain | outputs |
+|---|---|---|
+| `grp:root:root:dim:local.csk` (synthetic) | ∅ | `cid` |
+| `grp:basic:d*:local.csk` (`cid as s_cid`) | `{csk}` | `_st_s_cid` |
+| `grp:aggregate:d0:csk\|ss_year` | `{csk, ss_year}` | `_st_st_tot, csk, ss_year` |
+
+The `s_cid` rename group is regrafted onto a synthetic dim ROOT by
+`_synthetic_dimension_regraft_parent`, which DELETES its edges to the fact
+root. It knows its grain is `{csk}` and its capability includes `csk` (the ROOT
+branch of the capability pass adds `source_grain_of`), but nothing DEMANDED it:
+the FINAL-contributor rule advertised a group's grain only when a sibling had
+the **exact same** grain. So the boundary merge had no axis and rendered
+`FULL JOIN ... ON 1=1`. The plain select works only by accident — there `csk`
+is a mandatory statement output, so `cap_gid & mandatory_alias_addresses`
+already carries it.
+
+Fix: also advertise when a sibling's grain is a STRICT SUPERSET and that
+sibling can produce the components — a dimension projection joining back to the
+fact stream on its FD key.
+
+**Note the deliberate narrowness.** The obvious "always advertise grain ∩ cap"
+was rejected after checking the actual dump: the sibling rename groups carry
+DEFINITIONAL grains (`_st_s_yr` → `{ss_id}`, `_st_s_csk` → `{ws_id}`), not
+their real row grain. Unconditional advertising would make them expose `ss_id`
+and force a join back to the raw fact — a fan-out. Gating on "some FINAL
+sibling's grain strictly covers mine AND it can produce those columns" is what
+separates a real shared axis from a definitional-grain artifact: no sibling
+covers `{ss_id}`/`{ws_id}`, so those groups stay untouched.
+
+## Superseded state (after 2026-07-21 session 19)
 
 **Full v4 sweep (session 19): 25 real failed / 5914 passed**
 (`local_scripts/v4_sweep_0721_s19c.log` — the certified final tree; raw 26,

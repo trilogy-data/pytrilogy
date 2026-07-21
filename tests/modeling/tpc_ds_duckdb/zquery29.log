@@ -1,6 +1,6 @@
 query_id = "29"
 generator = "v4"
-gen_length = 8262
+gen_length = 7745
 preql_size = 1545
 comp_size = 1089
 generated_sql = """
@@ -55,6 +55,23 @@ SELECT
     \"uneven\".\"store_sales_ticket_number\" as \"correlated_store_sales_ticket_number\"
 FROM
     \"uneven\"),
+young as (
+SELECT
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_id\" as \"correlated_store_sales_item_id\",
+    \"yummy\".\"correlated_store_sales_store_id\" as \"correlated_store_sales_store_id\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
+    sum(\"yummy\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
+FROM
+    \"yummy\"
+GROUP BY
+    1,
+    2,
+    3,
+    4
+HAVING
+    \"catalog_sales_quantity\" > 0
+),
 vacuous as (
 SELECT
     \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
@@ -76,21 +93,12 @@ GROUP BY
     \"yummy\".\"correlated_store_sales_ticket_number\"),
 juicy as (
 SELECT
-    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
-    \"yummy\".\"correlated_store_sales_item_id\" as \"correlated_store_sales_item_id\",
-    \"yummy\".\"correlated_store_sales_store_id\" as \"correlated_store_sales_store_id\",
-    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
-    sum(\"yummy\".\"correlated_catalog_sales_quantity\") as \"catalog_sales_quantity\"
+    \"yummy\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"yummy\".\"correlated_store_sales_item_id\" as \"store_sales_item_name\",
+    \"yummy\".\"correlated_store_sales_store_id\" as \"store_sales_store_text_id\",
+    \"yummy\".\"correlated_store_sales_store_name\" as \"store_name\"
 FROM
-    \"yummy\"
-GROUP BY
-    1,
-    2,
-    3,
-    4
-HAVING
-    \"catalog_sales_quantity\" > 0
-),
+    \"yummy\"),
 concerned as (
 SELECT
     \"vacuous\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
@@ -105,33 +113,19 @@ GROUP BY
     1,
     2,
     3,
-    4),
-young as (
+    4)
 SELECT
-    \"concerned\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"juicy\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    \"juicy\".\"store_name\" as \"store_name\",
     \"concerned\".\"store_sales_quantity\" as \"store_sales_quantity\",
-    \"yummy\".\"correlated_store_sales_item_desc\" as \"correlated_store_sales_item_desc\",
-    \"yummy\".\"correlated_store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"yummy\".\"correlated_store_sales_item_id\" as \"correlated_store_sales_item_id\",
-    \"yummy\".\"correlated_store_sales_item_id\" as \"store_sales_item_name\",
-    \"yummy\".\"correlated_store_sales_store_id\" as \"correlated_store_sales_store_id\",
-    \"yummy\".\"correlated_store_sales_store_id\" as \"store_sales_store_text_id\",
-    \"yummy\".\"correlated_store_sales_store_name\" as \"correlated_store_sales_store_name\",
-    \"yummy\".\"correlated_store_sales_store_name\" as \"store_name\"
-FROM
-    \"yummy\"
-    INNER JOIN \"concerned\" on \"yummy\".\"correlated_store_sales_item_desc\" = \"concerned\".\"correlated_store_sales_item_desc\" AND \"yummy\".\"correlated_store_sales_item_id\" = \"concerned\".\"correlated_store_sales_item_id\" AND \"yummy\".\"correlated_store_sales_store_id\" is not distinct from \"concerned\".\"correlated_store_sales_store_id\" AND \"yummy\".\"correlated_store_sales_store_name\" is not distinct from \"concerned\".\"correlated_store_sales_store_name\")
-SELECT
-    \"young\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"young\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    \"young\".\"store_name\" as \"store_name\",
-    \"young\".\"store_sales_quantity\" as \"store_sales_quantity\",
-    \"young\".\"store_returns_quantity\" as \"store_returns_quantity\",
-    \"juicy\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\"
+    \"concerned\".\"store_returns_quantity\" as \"store_returns_quantity\",
+    \"young\".\"catalog_sales_quantity\" as \"catalog_sales_quantity\"
 FROM
     \"young\"
-    INNER JOIN \"juicy\" on \"young\".\"correlated_store_sales_item_desc\" = \"juicy\".\"correlated_store_sales_item_desc\" AND \"young\".\"correlated_store_sales_item_id\" = \"juicy\".\"correlated_store_sales_item_id\" AND \"young\".\"correlated_store_sales_store_id\" is not distinct from \"juicy\".\"correlated_store_sales_store_id\" AND \"young\".\"correlated_store_sales_store_name\" is not distinct from \"juicy\".\"correlated_store_sales_store_name\"
+    INNER JOIN \"concerned\" on \"young\".\"correlated_store_sales_item_desc\" = \"concerned\".\"correlated_store_sales_item_desc\" AND \"young\".\"correlated_store_sales_item_id\" = \"concerned\".\"correlated_store_sales_item_id\" AND \"young\".\"correlated_store_sales_store_id\" is not distinct from \"concerned\".\"correlated_store_sales_store_id\" AND \"young\".\"correlated_store_sales_store_name\" is not distinct from \"concerned\".\"correlated_store_sales_store_name\"
+    INNER JOIN \"juicy\" on \"young\".\"correlated_store_sales_item_desc\" = \"juicy\".\"store_sales_item_desc\" AND \"young\".\"correlated_store_sales_item_id\" = \"juicy\".\"store_sales_item_name\" AND \"young\".\"correlated_store_sales_store_id\" is not distinct from \"juicy\".\"store_sales_store_text_id\" AND \"young\".\"correlated_store_sales_store_name\" is not distinct from \"juicy\".\"store_name\"
 GROUP BY
     1,
     2,
@@ -141,8 +135,8 @@ GROUP BY
     6,
     7
 ORDER BY 
-    \"young\".\"store_sales_item_name\" asc,
-    \"young\".\"store_sales_item_desc\" asc,
-    \"young\".\"store_sales_store_text_id\" asc,
-    \"young\".\"store_name\" asc
+    \"juicy\".\"store_sales_item_name\" asc,
+    \"juicy\".\"store_sales_item_desc\" asc,
+    \"juicy\".\"store_sales_store_text_id\" asc,
+    \"juicy\".\"store_name\" asc
 LIMIT (100)"""

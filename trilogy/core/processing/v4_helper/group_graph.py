@@ -1824,7 +1824,19 @@ def _compute_concept_sets(
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
-                        if facts[sibling].grain == fact.grain:
+                        sibling_fact = facts[sibling]
+                        # Same-grain sibling: the grain IS the shared row
+                        # identity. A STRICTLY FINER sibling that can also
+                        # produce these components is the same story one level
+                        # down — this group is a dimension projection joining
+                        # back to the fact stream on its FD key (a rowset
+                        # body's `cid as s_cid` beside `sum(net)` grouped by
+                        # `csk, year`). Without the axis the merge cross-joins
+                        # every dimension row onto every fact row.
+                        if sibling_fact.grain == fact.grain or (
+                            fact.grain < sibling_fact.grain
+                            and fact.grain <= io.capability[sibling]
+                        ):
                             outs |= fact.grain & cap_gid
                             break
                 continue

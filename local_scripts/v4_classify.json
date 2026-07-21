@@ -1,6 +1,6 @@
 [
   {
-    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
+    "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
@@ -10,7 +10,7 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/usa_names/test_names.py::test_aggregate_filter_anonymous",
+    "node": "tests/complex/test_bound_conversion_existence.py::test_bound_conversion_existence_presto",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
@@ -48,20 +48,20 @@
     "downgrade": false
   },
   {
+    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
-    "expected": [],
     "escalation": false,
     "downgrade": false
   },
@@ -98,17 +98,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
+    "node": "tests/engine/test_duckdb.py::test_derived_membership_existence",
+    "bucket": "SHAPE",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.amt<Purpose.PROPERTY>Derivation.ROOT>'] from current model (v4 discovery).",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_derived_membership_existence",
-    "bucket": "SHAPE",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.amt<Purpose.PROPERTY>Derivation.ROOT>'] from current model (v4 discovery).",
+    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -122,17 +122,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnionOutputResolutionError: Internal planner error: could not resolve union/multiselect output 'local._combined_sort_k' against CTE 'uneven' (it is not in that CTE's outputs ['",
+    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_aggregated",
+    "bucket": "ROWS",
+    "detail": "AssertionError: assert [('ep100', De...imal('95.0'))] == [('ep100', 51...ep300', 55.0)]",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_aggregated",
-    "bucket": "ROWS",
-    "detail": "AssertionError: assert [('ep100', De...imal('95.0'))] == [('ep100', 51...ep300', 55.0)]",
+    "node": "tests/engine/test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.UnionOutputResolutionError: Internal planner error: could not resolve union/multiselect output 'local._combined_sort_k' against CTE 'uneven' (it is not in that CTE's outputs ['",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -162,9 +162,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
-    "bucket": "ROWS",
-    "detail": "AssertionError: (1285, 1226)",
+    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -178,9 +178,9 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/join_resolution/test_join_resolution.py::test_ambiguous_error_with_forced_join",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/modeling/gcat/test_gcat.py::test_filter_node_group_injection",
+    "bucket": "ROWS",
+    "detail": "AssertionError: (1285, 1226)",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -234,6 +234,14 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "bucket": "XPASS",
+    "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_four",
     "bucket": "XPASS",
     "detail": "",
@@ -242,7 +250,7 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_seven",
+    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen",
     "bucket": "XPASS",
     "detail": "",
     "expected": [],
@@ -258,37 +266,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_h/test_tpch_queries.py::test_seventeen",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
-  },
-  {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
-    "bucket": "OTHER",
-    "detail": "",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false,
-    "varied": [
-      "OTHER",
-      "XPASS"
-    ]
   },
   {
     "node": "tests/test_parsing.py::test_circular_aliasing_inverse",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.composite_id<Purpose.KEY>Derivation.ROOT>'] from current model (v4 discovery).",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -342,6 +330,18 @@
     "downgrade": false
   },
   {
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
+    "bucket": "TIMEOUT",
+    "detail": "",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false,
+    "varied": [
+      "TIMEOUT",
+      "XPASS"
+    ]
+  },
+  {
     "node": "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure",
     "bucket": "SHAPE",
     "detail": "assert 'LEFT OUTER JOIN' in '\\nWITH \\nthoughtful as (\\nSELECT\\n    \"fb_fb\".\"it\" as \"_agg_b_it\",\\n    sum(\"fb_fb\".\"q\") as \"_agg_b_qb\"\\nFROM\\n    \"f...g_a_it\" as \"agg_a_it\",\\n    \"yummy\".\"agg_a_qa\" as \"",
@@ -374,6 +374,14 @@
     "downgrade": false
   },
   {
+    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
+    "bucket": "ROWS",
+    "detail": "AssertionError: [(1, 1, 10, 8)]",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
     "node": "tests/test_where_clause.py::test_case_where",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.DisconnectedConceptsException: WHERE input(s) ['local.category_id'] cannot be related to the query outputs ['local.category_id', 'local.category_name']: no join or merge connec",
@@ -385,14 +393,6 @@
     "node": "tests/test_where_clause.py::test_where_scalar",
     "bucket": "XPASS",
     "detail": "",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
-    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
-    "bucket": "ROWS",
-    "detail": "AssertionError: [(1, 1, 10, 8)]",
     "expected": [],
     "escalation": false,
     "downgrade": false

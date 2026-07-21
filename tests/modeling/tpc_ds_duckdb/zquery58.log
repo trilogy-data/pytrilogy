@@ -1,6 +1,6 @@
 query_id = "58"
 generator = "v4"
-gen_length = 5143
+gen_length = 5621
 preql_size = 1377
 comp_size = 2250
 generated_sql = """
@@ -62,24 +62,59 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
 WHERE
     exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"questionable\".\"sales_sale_date_week_seq\")
-)
+),
+vacuous as (
 SELECT
-    \"yummy\".\"sales_item_id\" as \"item_id\",
-    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
-    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ss_dev\",
-    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
-    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"cs_dev\",
-    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\",
-    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ws_dev\",
-    (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 as \"avg_rev\"
+    \"yummy\".\"sales_item_id\" as \"sales_item_id\",
+    CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END as \"_virt_filter_ext_sales_price_2613615356807588\",
+    CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END as \"_virt_filter_ext_sales_price_5511141461727120\",
+    CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END as \"_virt_filter_ext_sales_price_2201881228813271\"
 FROM
-    \"yummy\"
+    \"yummy\"),
+young as (
+SELECT
+    \"vacuous\".\"sales_item_id\" as \"sales_item_id\",
+    ( sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\") / ( (( sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") ) + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\")) / 3 ) ) * 100 as \"ws_dev\",
+    ( sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") / ( (( sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") ) + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\")) / 3 ) ) * 100 as \"cs_dev\",
+    ( sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") / ( (( sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") ) + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\")) / 3 ) ) * 100 as \"ss_dev\",
+    (( sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") ) + sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\")) / 3 as \"avg_rev\",
+    sum(\"vacuous\".\"_virt_filter_ext_sales_price_2201881228813271\") as \"ws_item_rev\",
+    sum(\"vacuous\".\"_virt_filter_ext_sales_price_2613615356807588\") as \"cs_item_rev\",
+    sum(\"vacuous\".\"_virt_filter_ext_sales_price_5511141461727120\") as \"ss_item_rev\"
+FROM
+    \"vacuous\"
 GROUP BY
     1
 HAVING
     \"ss_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\" and \"ss_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"cs_item_rev\" BETWEEN 0.9 * \"ws_item_rev\" AND 1.1 * \"ws_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"ss_item_rev\" AND 1.1 * \"ss_item_rev\" and \"ws_item_rev\" BETWEEN 0.9 * \"cs_item_rev\" AND 1.1 * \"cs_item_rev\"
-
+),
+concerned as (
+SELECT
+    \"vacuous\".\"sales_item_id\" as \"item_id\"
+FROM
+    \"vacuous\")
+SELECT
+    \"concerned\".\"item_id\" as \"item_id\",
+    \"young\".\"ss_item_rev\" as \"ss_item_rev\",
+    \"young\".\"ss_dev\" as \"ss_dev\",
+    \"young\".\"cs_item_rev\" as \"cs_item_rev\",
+    \"young\".\"cs_dev\" as \"cs_dev\",
+    \"young\".\"ws_item_rev\" as \"ws_item_rev\",
+    \"young\".\"ws_dev\" as \"ws_dev\",
+    \"young\".\"avg_rev\" as \"avg_rev\"
+FROM
+    \"young\"
+    INNER JOIN \"concerned\" on \"young\".\"sales_item_id\" = \"concerned\".\"item_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
 ORDER BY 
-    \"item_id\" asc nulls first,
-    \"ss_item_rev\" asc nulls first
+    \"concerned\".\"item_id\" asc nulls first,
+    \"young\".\"ss_item_rev\" asc nulls first
 LIMIT (100)"""
