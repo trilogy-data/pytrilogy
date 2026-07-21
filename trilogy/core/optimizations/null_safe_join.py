@@ -16,6 +16,11 @@ null-rejects it (predicate pushdown migrates downstream ``IS NOT NULL`` /
 null-propagating filters into the producer's condition, so this picks them up
 without any optimizer looking at the consumer), or (c) for a ``UnionCTE``,
 every branch independently proves the column non-null.
+
+The *joining* CTE's own condition also counts: it applies to the joined
+output, so the rows a plain ``=`` would drop relative to ``IS NOT DISTINCT
+FROM`` (both key sides NULL) are exactly rows the WHERE deletes anyway when it
+null-rejects any member of the key's equivalence family.
 """
 
 from __future__ import annotations
@@ -157,7 +162,11 @@ class SimplifyNullSafeJoins(OptimizationRule):
     The reported case is a FULL align that ``UpgradeJoinOnGuards`` proved
     INNER but left a stale ``Modifier.NULLABLE`` behind; once it is INNER the
     null-safe form only adds spurious NULL-vs-NULL matches that ``=`` (with a
-    non-null side) provably never produces."""
+    non-null side) provably never produces.
+
+    Proof sources: each side's producing CTE, plus the joining CTE's own
+    condition — a WHERE that null-rejects the key family deletes the both-NULL
+    rows the null-safe form would otherwise admit."""
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -165,6 +174,7 @@ class SimplifyNullSafeJoins(OptimizationRule):
         if not isinstance(cte, CTE):
             return False, None
         changed = False
+        local_proofs: set[str] | None = None
         for join in cte.joins or []:
             if (
                 not isinstance(join, Join)
@@ -172,10 +182,19 @@ class SimplifyNullSafeJoins(OptimizationRule):
                 or not join.joinkey_pairs
             ):
                 continue
+            if local_proofs is None:
+                local_proofs = (
+                    condition_proves_non_null(cte.condition)
+                    if cte.condition is not None
+                    else set()
+                )
             all_pairs_safe = True
             for pair in join.joinkey_pairs:
-                safe = _proven_non_null(pair.left, pair.cte) or _proven_non_null(
-                    pair.right, join.right_cte
+                safe = (
+                    not pair.left.equivalent_addresses.isdisjoint(local_proofs)
+                    or not pair.right.equivalent_addresses.isdisjoint(local_proofs)
+                    or _proven_non_null(pair.left, pair.cte)
+                    or _proven_non_null(pair.right, join.right_cte)
                 )
                 all_pairs_safe = all_pairs_safe and safe
                 if safe and Modifier.NULLABLE in pair.modifiers:

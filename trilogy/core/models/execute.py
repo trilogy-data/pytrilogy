@@ -433,6 +433,22 @@ class CTE:
             pending.extend(adjacent[current] - seen)
         return concepts
 
+    def from_scope_aliases(self) -> set[str]:
+        """Alias tokens referenceable in this CTE's rendered FROM clause: the
+        base plus every join participant. A parent wired in only through an
+        EXISTS subquery (e.g. the post-aggregation HAVING semijoin) is in
+        parent_ctes — and can leak into source_map — but is NOT in scope."""
+        scope = {self.base_alias}
+        for join in self.joins:
+            if not isinstance(join, Join):
+                continue
+            scope.add(join.name_for(self, join.right_cte))
+            if join.left_cte is not None:
+                scope.add(join.name_for(self, join.left_cte))
+            for pair in join.joinkey_pairs or []:
+                scope.add(join.name_for(self, pair.cte))
+        return scope
+
     def get_alias(
         self, concept: BuildConcept, source: str | None = None
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:

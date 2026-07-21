@@ -186,7 +186,13 @@ def test_gen_filter_node_includes_adjacent_sibling_filter_content(test_environme
     )
 
     assert node is not None
+    # requested outputs lead; the tail is the retained row-parent grain
+    # (_row_grain_outputs) so a downstream fuse joins on it, not on
+    # whatever incidental columns survive narrowing
     assert [x.address for x in node.output_concepts] == [
         filtered_revenue.address,
         filtered_other_sales_price.address,
+        "local.category_name",
+        "local.revenue",
+        "local.other_sales_price",
     ]

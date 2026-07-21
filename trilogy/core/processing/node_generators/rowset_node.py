@@ -802,6 +802,89 @@ def _enrich_via_derived_join_key(
     )
 
 
+def _relation_key_group_mates(
+    environment: BuildEnvironment,
+) -> dict[str, set[str]]:
+    """`distinct_scoped_join_group_mates` plus SUBSET groups whose members
+    serve the statement purely as correlation keys.
+
+    A subset member that keeps distinct identity (a rowset/derived key) has
+    rows only in its own scope, so relating another scope's values across the
+    declared join follows the standard sourcing contract: materialize the other
+    side's member and merge over the relation locally (TPC-DS q74) rather than
+    delegating to the outer loop's fuse. But when the AUTHOR references a
+    member — projects it (q44's aliased rank), null-tests it (q35's
+    OR-of-member-null-tests) — its values and null-presence must come from its
+    own scope via the outer loop's presence-probe machinery; enriching fuses
+    it onto the anchor, where it can never read NULL and its row population is
+    the fused axis. Such groups are withheld entirely. The gate is the
+    STATEMENT-level authored set, not the current request: a per-request gate
+    opens and closes across loop iterations of the same statement (conditions
+    are withheld from some builds), planning the same relation two ways.
+    Blocking a group only stops mates being REQUESTED — a member both sides
+    already expose (e.g. a filter's year argument) still pairs in join
+    inference by pseudonym, so value-used members lose nothing."""
+    out = environment.distinct_scoped_join_group_mates()
+    distinct_members = environment.distinct_scoped_join_group_members()
+    authored = environment.statement_authored_addresses
+    for _, group in environment.scoped_join_key_groups.items():
+        distinct = [m for m in sorted(group) if m in distinct_members]
+        if len(distinct) < 2:
+            continue
+        if any(m in out for m in distinct):
+            continue
+        if authored is None or any(m in authored for m in distinct):
+            continue
+        # ALL-rowset-key groups only (mirrors `pseudonym_unsatisfiable_group_
+        # mates`): a derived-expression member (`agg.period + 53`) relates the
+        # sides by materializing the key on ITS side — that is
+        # `_enrich_via_derived_join_key`'s machinery, and requesting it as a
+        # mate from the other side mis-pairs the merge (mixed derived+plain
+        # composite joined on the plain key alone).
+        members = [environment.concepts.get(m) for m in distinct]
+        if any(c is None or c.derivation != Derivation.ROWSET for c in members):
+            continue
+        for member in distinct:
+            out.setdefault(member, set()).update(m for m in distinct if m != member)
+    return out
+
+
+def _relation_keys_fully_covered(
+    environment: BuildEnvironment,
+    remaining: List[BuildConcept],
+    mates_map: dict[str, set[str]],
+) -> bool:
+    """The local enrichment merge must carry EVERY authored key group binding
+    this node's scope to the scopes being sourced: a partial key set
+    under-correlates the sides (a composite `subset join p = p and r = r`
+    whose projected period key was gated out of the mates map joined on
+    region alone and fanned out). A group's external member is covered when
+    the map will request it as a mate, or the value request already carries
+    it as an argument (q74's year inside the filtered sums). Anything less:
+    decline, falling back to the outer loop's fuse."""
+    needed_scopes: set[str] = set()
+    for c in remaining:
+        needed_scopes |= _rowset_scopes(c)
+    covered = {c.address for c in remaining}
+    for c in remaining:
+        covered |= {a.address for a in c.concept_arguments}
+    # RAW groups, not distinct-identity members: a derived subset key
+    # (`agg.period + 53`) substitutes both its members onto the anonymous
+    # canonical, leaving no distinct member for the mate machinery to see —
+    # but the raw group still names the sourced side's address.
+    for _, group in environment.scoped_join_key_groups.items():
+        members = sorted(group)
+        needed_side = [m for m in members if m.split(".", 1)[0] in needed_scopes]
+        if not needed_side:
+            continue
+        if any(m in mates_map for m in members):
+            continue
+        if any(m in covered for m in needed_side):
+            continue
+        return False
+    return True
+
+
 def _enrich_via_group_mate_keys(
     enrich_remaining: List[BuildConcept],
     local_optional: List[BuildConcept],
@@ -812,11 +895,12 @@ def _enrich_via_group_mate_keys(
     history: History,
     conditions: BuildWhereClause | None,
     node: RowsetNode,
-    coalescing_members: dict[str, set[str]],
+    relation_group_mates: dict[str, set[str]],
     producible: set[str],
 ) -> StrategyNode | None:
-    """Enrich a rowset across a coalescing scoped join whose key groups expose
-    no non-rowset bridge canonical (rowset <-> rowset `union`/`full` join, q59).
+    """Enrich a rowset across a scoped join whose key groups expose no
+    non-rowset bridge canonical (rowset <-> rowset `union` join, q59; `subset`
+    join, q74).
 
     Each side of such a join materializes its OWN key-group member and the
     merge pairs the group over the shared canonical, so there is no external
@@ -839,7 +923,7 @@ def _enrich_via_group_mate_keys(
     mate_groups: list[set[str]] = []
     mates: list[BuildConcept] = []
     for out_c in node.output_concepts:
-        group_mates = coalescing_members.get(out_c.address)
+        group_mates = relation_group_mates.get(out_c.address)
         if not group_mates:
             continue
         external: list[BuildConcept] = []
@@ -898,7 +982,7 @@ def _enrich_via_group_mate_keys(
     if any(not (exposed & group) for group in mate_groups):
         return None
     for x in list(node.output_concepts):
-        if x.address in node.hidden_concepts and x.address in coalescing_members:
+        if x.address in node.hidden_concepts and x.address in relation_group_mates:
             node.unhide_output_concepts([x])
     non_hidden = [
         x for x in node.output_concepts if x.address not in node.hidden_concepts
@@ -1049,22 +1133,31 @@ def _enrich_rowset_node(
         + [canonical for _, canonical in bridge_keys]
     )
     if not possible_joins:
-        # No bridge canonical at all — the rowset<->rowset coalescing-join case:
+        # No bridge canonical at all — the rowset<->rowset scoped-join case:
         # every group member is a rowset/derived column, so the only join
-        # columns are the other side's own members.
+        # columns are the other side's own members. Author-unreferenced
+        # subset-group members qualify too (`_relation_key_group_mates`): they
+        # are pure correlation keys, so the standard contract applies — source
+        # the other side locally and merge over the declared relation (q74).
         if relation_remaining:
-            merged = _enrich_via_group_mate_keys(
-                unique(relation_remaining + routed_cond, "address"),
-                local_optional,
-                environment,
-                g,
-                depth,
-                source_concepts,
-                history,
-                conditions if len(routed_cond) == len(cond_remaining) else None,
-                node,
-                coalescing_members,
-                producible,
+            enrich_request = unique(relation_remaining + routed_cond, "address")
+            mates_map = _relation_key_group_mates(environment)
+            merged = (
+                _enrich_via_group_mate_keys(
+                    enrich_request,
+                    local_optional,
+                    environment,
+                    g,
+                    depth,
+                    source_concepts,
+                    history,
+                    conditions if len(routed_cond) == len(cond_remaining) else None,
+                    node,
+                    mates_map,
+                    producible,
+                )
+                if _relation_keys_fully_covered(environment, enrich_request, mates_map)
+                else None
             )
             if merged is not None:
                 return merged

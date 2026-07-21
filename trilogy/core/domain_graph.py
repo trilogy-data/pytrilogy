@@ -345,6 +345,18 @@ class DomainGraph:
             groups.setdefault(target, {target}).add(source)
         return groups
 
+    def statement_relation_members(self) -> set[str]:
+        """Raw endpoints of statement-scoped declared relations — the join
+        keys the current statement's scoped-join clauses name, as opposed to
+        ambient global merges."""
+        return {
+            addr
+            for e in self.edges
+            if e.provenance is EdgeProvenance.DECLARED
+            and e.scope is EdgeScope.STATEMENT
+            for addr in (e.source, e.target)
+        }
+
     def binding_sources(self, address: str) -> set[str]:
         """Identifiers of datasources natively binding `address`."""
         out: set[str] = set()

@@ -2050,6 +2050,25 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
+                # A scoped join inside an arm can canonicalize an authored
+                # member onto its join partner's address (`wr.order_number`
+                # emitted as `ws.order_number`), so the arm CTE carries only
+                # the partner column. The pairing is the same merged key by
+                # declaration — accept a scoped-join partner (or pseudonym
+                # twin) among the CTE outputs.
+                joined: set[frozenset[str]] = {
+                    frozenset((s, t))
+                    for select in self.selects
+                    for s, t, _ in select.scoped_joins
+                }
+                for c in x.concepts:
+                    for out in cte.output_columns:
+                        if (
+                            frozenset((c.address, out.address)) in joined
+                            or out.address in c.pseudonyms
+                            or c.address in out.pseudonyms
+                        ):
+                            return out
 
         # Reaching here means this CTE can't source the column directly
         # (typically an outer aggregate grouped it away before a projection
@@ -2618,7 +2637,20 @@ class Factory:
 
         def _rowset_outer_pair(s: str, t: str, jt: JoinType) -> bool:
             if jt is JoinType.LEFT_OUTER:
-                return _is_rowset_keyed(s)
+                # Either side: a rowset ANCHOR (source) cannot be substituted
+                # onto, and a rowset SUBSET side (target) must not be
+                # substituted AWAY — collapsing it onto a ROOT anchor makes
+                # every authored reference (a projection, a null-test) read
+                # the anchor's full population and lets the rowset body (and
+                # its WHERE) prune out of the plan entirely (TPC-DS q35
+                # `subset join <rowset> = <root key>`). A DERIVED anchor
+                # (`nb.w = ta.w + 52`) keeps the substitution path: the
+                # derived-key machinery materializes the expression on its own
+                # side and needs the rowset member collapsed onto the anonymous
+                # canonical to pair the composite legs.
+                return _is_rowset_keyed(s) or (
+                    _is_rowset_keyed(t) and not _is_derived_keyed(s)
+                )
             if jt is JoinType.FULL:
                 return (
                     _is_rowset_keyed(s)

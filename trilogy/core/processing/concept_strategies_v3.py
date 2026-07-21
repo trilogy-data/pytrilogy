@@ -434,7 +434,55 @@ def _restrict_completion_conditions(
     return where, reduced
 
 
+def _prune_subsumed_stack_nodes(
+    stack: list[StrategyNode], depth: int
+) -> list[StrategyNode]:
+    """Drop a stack node a sibling was built directly on top of.
+
+    A priority concept sourced early (e.g. a rowset member, before a derived
+    concept whose own sourcing pulls the whole relation) leaves a bare node
+    that a later sibling extends — the sibling's own parent is an equivalent
+    of it (same resolved source), e.g. a rowset enrichment merge over the very
+    rowset already on the stack. Fusing both anyway re-joins the extended node
+    to its own ingredient on whatever outputs overlap: at best a redundant
+    self-join, at worst (if a generator narrows away the relation's keys) a
+    re-correlation on non-unique columns — the TPC-DS q74 failure class. This
+    is plan hygiene plus defense in depth: with rowset subset-enrichment
+    (`_relation_key_group_mates`) and filter-node grain retention
+    (`_row_grain_outputs`) in place, no current test *depends* on it for
+    correctness. CTE-level dedup can't do this — `deduplicate_nodes` requires
+    condition-free, partial-free trees, which enriched/filtered shapes never
+    are, and it collapses relations, not join edges. Only the direct-parent
+    relationship is pruned: wider containment pruning reshapes plans that
+    legitimately share sources (q59 offset join)."""
+    if len(stack) < 2:
+        return stack
+    pruned = list(stack)
+    for node in list(pruned):
+        if node.conditions is not None:
+            continue
+        node_outputs = {c.address for c in node.usable_outputs}
+        node_identifier = node.resolve().identifier
+        for other in pruned:
+            if other is node:
+                continue
+            if not node_outputs <= {c.address for c in other.usable_outputs}:
+                continue
+            if node_identifier not in {
+                parent.resolve().identifier for parent in other.parents
+            }:
+                continue
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} pruning stack node "
+                f"{node}: sibling {other} extends an equivalent source"
+            )
+            pruned.remove(node)
+            break
+    return pruned
+
+
 def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
+    context.stack = _prune_subsumed_stack_nodes(context.stack, context.depth)
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
     non_virtual_different = len(context.completion_mandatory) != len(

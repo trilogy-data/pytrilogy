@@ -305,8 +305,8 @@ def test_explore_json_imported_roles_carry_descriptions(runner, tmp_path):
     assert set(combined.split(", ")) == {"sold_date", "ship_date"}
     entry = concepts["namespaced"][combined]
     assert entry["roles"] == {
-        "sold_date": "date the item sold",
-        "ship_date": "date the item shipped",
+        "sold_date": {"description": "date the item sold", "direct": True},
+        "ship_date": {"description": "date the item shipped", "direct": True},
     }
     assert any("year" in json.dumps(g) for g in entry["concepts"])
 

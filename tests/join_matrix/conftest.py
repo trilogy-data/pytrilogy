@@ -32,6 +32,11 @@ _OFFSET_ROWSET = (
     "v4 aggregate-rowset offset join: subset-side projected member key resolves "
     "only from partial sources (q59 shape; v3 fix = _enrich_rowset_node)"
 )
+_ROWSET_ONTO_ROOT = (
+    "v4 rowset-onto-ROOT subset join: projecting the rowset member INNER-"
+    "collapses the anchor instead of preserving the coalesced group axis "
+    "(q35 mixed shape; v3 = pseudonym_unsatisfiable_group_mates widening)"
+)
 
 V4_FAILING: dict[str, str] = {
     "test_coalescing_presence_matrix.py::test_presence_union_cast_single": _AXIS_RECURSION,
@@ -51,6 +56,7 @@ V4_FAILING: dict[str, str] = {
     "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_join_order_swapped": _MULTI_PROBE,
     "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_with_property_and_aggregate": _MULTI_PROBE,
     "test_aggregate_rowset_offset_join.py::test_offset_join_between_aggregate_rowsets_plans_on_authored_keys": _OFFSET_ROWSET,
+    "test_subset_join_rowset_onto_root.py::test_projecting_member_key_is_group_axis": _ROWSET_ONTO_ROOT,
 }
 
 

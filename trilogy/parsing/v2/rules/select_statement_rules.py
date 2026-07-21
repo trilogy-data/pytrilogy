@@ -403,6 +403,13 @@ def _anonymous_select_transform(
             "expression (`... as name`) to end the list.",
         )
     name = suggest_select_alias(text)
+    # Same per-rowset mangling as aliased outputs below: without it, identical
+    # unaliased expressions in different union(...) arms (`0::numeric` in each)
+    # share one address, and the align items' positional identity collapses —
+    # find_source resolves the wrong arm's column and the real one is pruned.
+    rowset_name = context.semantic_state.current_rowset_name
+    if rowset_name is not None:
+        name = context.semantic_state.mangle_rowset_alias(rowset_name, name)
     concept = arbitrary_to_concept_v2(
         transformation, context=context, name=name, metadata=meta
     )

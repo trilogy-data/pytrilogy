@@ -1,17 +1,17 @@
-# Trilogy failure analysis — 20260717-173332
+# Trilogy failure analysis — 20260720-140600
 
-- Run `20260717-173332_ingest` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 1576 | failed: 193 (12%)
+- Run `20260720-140600` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 1423 | failed: 173 (12%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `other` | 139 | 72% |
-| `syntax-parse` | 42 | 22% |
-| `join-resolution` | 6 | 3% |
-| `cli-misuse` | 4 | 2% |
-| `undefined-concept` | 1 | 1% |
+| `other` | 121 | 70% |
+| `syntax-parse` | 39 | 23% |
+| `cli-misuse` | 9 | 5% |
+| `join-resolution` | 2 | 1% |
+| `type-error` | 1 | 1% |
 | `syntax-missing-alias` | 1 | 1% |
 
 ## Detail
@@ -23,62 +23,94 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_1858999935.preql`
+- `trilogy `
 
   ```text
-  Syntax error in answer_1858999935.preql: ORDER BY references 'weekly_sales.combined.dow', which is not in the SELECT projection (line 15). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --weekly_sales.combined.dow order by weekly_sales.combined.dow asc`.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 23 column 12 (char 846). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy file write -e -c answer_1858999935.preql import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+# Combined sales per (week_seq, dow)
+with combi…sales, 53) over (order by combined_sales.week_seq, combined_sales.dow) as future_sales
+order by combined_sales.week_seq, combined_sales.dow
+limit 20;`
+
+  ```text
+  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
+    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
+  Alternatively use `--escapes` with a single-line `\n`-escaped string.
   ```
 - `trilogy run answer_1858999935.preql`
 
   ```text
-  Syntax error in answer_1858999935.preql: ORDER BY references 'weekly_sales.combined.dow', which is not in the SELECT projection (line 24). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --weekly_sales.combined.dow order by weekly_sales.combined.dow asc`.
+  Syntax error in answer_1858999935.preql: 2 undefined concept references; fix all before re-running:
+    - date_dim.week_seq (line 38, col 41, in SELECT); did you mean: cs.call_center.date_dim.week_seq, date_dim.year, cs.ship_date.week_seq, cs.sold_date.week_seq, ws.ship_date.week_seq, ws.sold_date.week_seq?
+    - date_dim.year (line 38, col 65, in WHERE); did you mean: cs.call_center.date_dim.year, date_dim.week_seq, cs.ship_date.year, cs.sold_date.year, ws.ship_date.year, ws.sold_date.year?
   ```
-- `trilogy run answer_3805575480.preql`
+- `trilogy run answer_1858999935.preql`
 
   ```text
-  Resolution error in answer_3805575480.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {item.manufact_id, brand_id, brand_name}; {total_ext_sales_price, year, store_sales.date_dim.moy}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_1858999935.preql: Undefined concept: d.
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 3864 (char 3863). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 78 column 3 (char 2658). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy run answer_3863442186.preql`
 
   ```text
-  Syntax error in answer_3863442186.preql: Undefined concept: sv01.customer_id. Suggestions: ['s.customer.customer_id', 'cs.bill_customer.customer_id', 'cs.ship_customer.customer_id', 'ws.bill_customer.customer_id', 'ws.ship_customer.customer_id', 'store_vals.s.customer.customer_id']
+  Syntax error in answer_3863442186.preql: Undefined concept: store.sold_date.year. Suggestions: ['store.date_dim.year', 'store.store.date_dim.year', 'store.promotion.end_date.year', 'web.sold_date.year', 'catalog.sold_date.year', 'web.ship_date.year']
   ```
-- `trilogy run answer_3863442186.preql`
-
-  ```text
-  Syntax error in answer_3863442186.preql: Undefined concept: sv02.store_val. Suggestions: ['store_vals.store_val']
-  ```
-- `trilogy run --import raw.catalog_sales:cs --import raw.store_sales:s --import raw.web_sales:ws select s.customer.customer_id, s.customer.first_name, s.custom…_2002 > 0 and c_2002 > 0 and w_2002 > 0 and c_2002/c_2001 > s_2002/s_2001 and c_2002/c_2001 > w_2002/w_2001 order by s.customer.customer_id limit 10;`
-
-  ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_id, c_2001, c_2002}; {s_2001, s_2002, s.customer.customer_id, s.customer.first_name, s.customer.last_name, s.customer.preferred_cust_flag}; {w_2001, w_2002, ws.bill_customer.customer_id}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read answer_3863442186.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/customer.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run --import raw.item:i with qual_items as select i.item_sk as sk, i.category as cat, avg(i.current_price) by i.category as cat_avg where i.category is not null and i.current_price > 1.2 * (avg(i.current_price) by i.category);`
-
-  ```text
-  Syntax error in stdin: Nothing was executed: parsed 2 definition statement(s) (1 import, 1 rowset) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
-- `trilogy file read answer_883027685.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_3705756794.preql`
+
+  ```text
+  Syntax error in answer_3705756794.preql: Undefined concept: wr.web_site.site_id. Suggestions: ['wr.item.item_id', 'wr.item.item_desc', 'wr.item.item_sk', 'ws.web_site.site_id', 'ws.web_site.site_sk', 'ws.web_site.mkt_id']
+  ```
+- `trilogy run answer_3705756794.preql`
+
+  ```text
+  Unexpected error in answer_3705756794.preql: Missing ws.order_number in {'ws.item.item_sk': ['resonant', 'puffy'], 'ws.web_site.site_id': ['resonant'], 'ws.web_site.site_sk': ['resonant'], 'wr.date_dim.date': ['puffy'], 'wr.date_dim.date_sk': ['puffy'], 'wr.item.item_sk': ['resonant', 'puffy'], 'wr.net_loss': ['puffy'], 'wr.order_number': ['puffy'], 'local.site_id_concat': []}, source map dict_keys(['ws.item.item_sk', 'ws.web_site.site_id', 'ws.web_site.site_sk', 'wr.date_dim.date', 'wr.date_dim.date_sk', 'wr.item.item_sk', 'wr.net_loss', 'wr.order_number', 'local.site_id_concat'])
+  ```
+- `trilogy run --import raw.store_sales:ss select count(grain(ss.order_number, ss.item.item_sk)) where ss.date_dim.date between '2000-08-23'::date and '2000-09-06'::date and ss.store.store_sk is not null;`
+
+  ```text
+  Syntax error in stdin: Undefined concept: ss.order_number (line 2, in SELECT). Suggestions: ['ss.store.street_number', 'ss.store.suite_number', 'ss.ticket_number']
+  ```
+- `trilogy run -e -c --import raw/store_sales:ss --import raw/store_returns:sr --import raw/catalog_sales:cs --import raw/catalog_returns:cr --import raw/web_sa…atalog_page_sk is not null
+union join ws.sold_date.date between '2000-08-23'::date and '2000-09-06'::date
+union join ws.web_site.site_sk is not null;`
+
+  ```text
+  Environment variable must be in KEY=VALUE format or be a path to an existing env file: -c
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_883027685.preql`
+
+  ```text
+  Resolution error in answer_883027685.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 20). The requested concepts split into 2 disconnected subgraphs: {cat_avg.cat_avg_price}; {line_item_count, sales.customer.customer_address.address_sk, sales.customer.customer_address.state, sales.date_dim.moy, sales.date_dim.year, sales.item.category, sales.item.current_price}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read answer_883027685.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -86,24 +118,46 @@
 - `trilogy run answer_689898357.preql`
 
   ```text
-  Syntax error in answer_689898357.preql: Comparison `ss.promotion.channel_email = 'N'` matches every value of nullable enum field 'ss.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'ss.promotion.channel_email is not null'.
+  Syntax error in answer_689898357.preql: Comparison `store_sales.promotion.channel_email = 'N'` matches every value of nullable enum field 'store_sales.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'store_sales.promotion.channel_email is not null'.
   ```
-- `trilogy run answer_3263796749.preql`
-
-  ```text
-  Syntax error in answer_3263796749.preql: Undefined concept: item.item_sk. Suggestions: ['store_sales.item.item_sk', 'store_sales.promotion.item.item_sk']
-  ```
-- `trilogy run answer_219203908.preql`
-
-  ```text
-  Syntax error in answer_219203908.preql: `by rollup (…)` cannot re-aggregate the bare measure reference `leaf_groups.total_sales`. Alias it with an explicit aggregate (e.g. `sum(leaf_groups.total_sales) as total_sales_total`).
-  ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_returns.preql`
+- `trilogy run answer_3697706765.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+  ```text
+  Syntax error in answer_3697706765.preql: Undefined concept: customer.customer_address.zip.
+  ```
+- `trilogy run answer_3697706765.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+
+  ```text
+  Syntax error in answer_3697706765.preql: Undefined concept: customer_address.zip.
+  ```
+- `trilogy run --import raw.store_sales:store_sales --param zips=24128,76232 select unnest(split(zips, ',')) as pzip;`
+
+  ```text
+  Syntax error in stdin: Undefined concept: local.zips (line 2, in SELECT). Suggestions: ['pzip']
+  ```
+- `trilogy file read answer_3697706765.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_4199102535.preql`
+
+  ```text
+  Syntax error in answer_4199102535.preql: 2 undefined concept references; fix all before re-running:
+    - ss.sold_date.year (line 13, col 9, in WHERE); did you mean: ss.sold_date.moy, ss.date_dim.year, ss.store.date_dim.year, ws.sold_date.year, cs.sold_date.year, ws.ship_date.year?
+    - ss.sold_date.moy (line 14, col 9, in WHERE); did you mean: ss.sold_date.year, ss.date_dim.moy, ss.store.date_dim.moy, ws.sold_date.moy, cs.sold_date.moy, ws.ship_date.moy?
+  ```
+- `trilogy run answer_219203908.preql`
+
+  ```text
+  Syntax error in answer_219203908.preql: Undefined concept: ws.sold_date.moz. Suggestions: ['ws.sold_date.moy', 'ws.sold_date.qoy', 'ws.sold_date.dow']
+  ```
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -111,9 +165,29 @@
 - `trilogy run answer_2524943990.preql`
 
   ```text
-  Syntax error in answer_2524943990.preql: Comparison `catalog_sales.call_center.county = 'Williamson County'` matches every value of enum field 'catalog_sales.call_center.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  Syntax error in answer_2524943990.preql: Comparison `cs.call_center.county = 'Williamson County'` matches every value of enum field 'cs.call_center.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
   ```
-- `trilogy file read raw/item.preql`
+- `trilogy run answer_2524943990.debug2.preql`
+
+  ```text
+  Syntax error in answer_2524943990.debug2.preql: Undefined concept: local.order_number (line 11, in SELECT). Suggestions: ['cs.order_number', 'cr.order_number', 'no_catalog_return_orders.order_number']
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_765177085.preql`
+
+  ```text
+  Resolution error in answer_765177085.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 9). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.year, cs_qty_avg, cs_qty_count, cs_qty_cv, cs_qty_stddev}; {item_desc, item_id, ss_qty_avg, ss_qty_count, ss_qty_cv, ss_qty_stddev, store_state, ss.customer.customer_sk, ss.date_dim.year, ss.item.item_sk}; {sr_qty_avg, sr_qty_count, sr_qty_cv, sr_qty_stddev, sr.customer.customer_sk, sr.date_dim.year}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read answer_1835050598.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -123,7 +197,32 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy run answer_2928586490.preql`
+
+  ```text
+  Resolution error in answer_2928586490.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 78). The requested concepts split into 2 disconnected subgraphs: {cust.first_name, cust.last_name}; {cust_totals.total_sales, total_sales}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3825713089.preql`
+
+  ```text
+  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 6). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.moy, cs.sold_date.year, catalog_sale_net_profit}; {item_code, item_description, store_code, store_name, store_sale_net_profit, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk, ss.ticket_number}; {store_return_net_loss, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year, sr.item.item_sk, sr.ticket_number}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3825713089.preql`
+
+  ```text
+  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 7). The requested concepts split into 2 disconnected subgraphs: {_ss_with_returns_customer_sk, _ss_with_returns_item_code, _ss_with_returns_item_description, _ss_with_returns_item_sk, _ss_with_returns_ss_net_profit, _ss_with_returns_store_code, _ss_with_returns_store_name, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk, ss.ticket_number}; {_ss_with_returns_sr_net_loss, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year, sr.item.item_sk, sr.ticket_number}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3825713089.preql`
+
+  ```text
+  Syntax error in answer_3825713089.preql: Undefined concept: ss_with_returns.sr_net_loss (line 46, in SELECT). Suggestions: ['ss_with_returns.ss_net_profit', 'ss_with_returns.store_name', 'ss_with_returns.item_sk']
+  ```
+- `trilogy run answer_3825713089.preql`
+
+  ```text
+  Resolution error in answer_3825713089.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 29). The requested concepts split into 3 disconnected subgraphs: {cs_matches.cs_net_profit, cs_matches.cust_sk, cs_matches.item_sk}; {store_return_net_loss}; {store_sale_net_profit, ss.item.item_desc, ss.item.item_id, ss.store.store_id, ss.store.store_name}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy file read answer_3825713089.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -133,189 +232,89 @@
   ```text
   Syntax error in answer_4254732537.preql: Comparison `cs.promotion.channel_email = 'N'` matches every value of nullable enum field 'cs.promotion.channel_email', which contains only these values: 'N'. It only excludes nulls; simplify it to 'cs.promotion.channel_email is not null'.
   ```
-- `trilogy file read answer_4080205480.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 27 column 12 (char 1185). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 30 column 10 (char 1053). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy run answer_1798498862.preql`
 
   ```text
-  Resolution error in answer_1798498862.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 9). The requested concepts split into 3 disconnected subgraphs: {cs.bill_customer.customer_sk, cs.item.item_sk, cs.sold_date.year, total_catalog_sales_qty}; {item_code, item_description, store_code, store_name, total_store_sales_qty, ss.customer.customer_sk, ss.date_dim.moy, ss.date_dim.year, ss.item.item_sk}; {total_store_return_qty, sr.customer.customer_sk, sr.date_dim.moy, sr.date_dim.year}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_1798498862.preql: HAVING references 'combined.catalog_sale_quantity', which is not defined (line 48). Check for a typo or import the relevant concept.
   ```
-- `trilogy `
+- `trilogy run answer_4207382245.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 108 column 3 (char 3803). Re-issue the call with valid JSON arguments.
+  Syntax error in answer_4207382245.preql: HAVING references 'web_pivoted.web_q2_over_q1', 'store_pivoted.store_q2_over_q1', 'web_pivoted.web_q3_over_q2', 'store_pivoted.store_q3_over_q2', which are not defined (line 41). Check for a typo or import the relevant concept.
   ```
-- `trilogy file read answer_4207382245.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read trilogy.toml`
+- `trilogy file read answer_525180526.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file list assets --recursive`
-
-  ```text
-  No such path: assets
   ```
 - `trilogy run answer_3530408544.preql`
 
   ```text
-  Syntax error in answer_3530408544.preql: Comparison `ss.store.county = 'Williamson County'` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  Syntax error in answer_3530408544.preql: Comparison `store_sales.store.county = 'Williamson County'` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
   ```
-- `trilogy run answer_4140546834.preql`
+- `trilogy run answer_3530408544.preql`
 
   ```text
-  Unexpected error in answer_4140546834.preql: (_duckdb.ConversionException) Conversion Error: Casting value "103919104.54" to type DECIMAL(12,4) failed: value is out of range!
-
-  LINE 41: ...tive"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("cooperative"."_virt_agg_sum_6719372088781090...
-                                                                         ^
-  [SQL:
-  WITH
-  thoughtful as (
-  SELECT
-      "sales_item_item"."i_category" as "sales_item_category",
-      "sales_item_item"."i_class" as "sales_item_class",
-      "sales_store_sales"."ss_ext_sales_price" as "sales_ext_sales_price",
-      "sales_store_sales"."ss_net_profit" as "sales_net_profit"
-  FROM
-      "store_sales" as "sales_store_sales"
-      INNER JOIN "item" as "sales_item_item" on "sales_store_sales"."ss_item_sk" = "sales_item_item"."i_item_sk"
-      INNER JOIN "store" as "sales_store_store" on "sales_store_sales"."ss_store_sk" = "sales_store_store"."s_store_sk"
-      INNER JOIN "date_dim" as "sales_date_dim_date_dim" on "sales_store_sales"."ss_sold_date_sk" = "sales_date_dim_date_dim"."d_date_sk"
-  WHERE
-      "sales_date_dim_date_dim"."d_year" = 2001 and "sales_store_store"."s_state" = 'TN'
-  ),
-  cooperative as (
-  SELECT
-      "thoughtful"."sales_item_category" as "sales_item_category",
-      "thoughtful"."sales_item_class" as "sales_item_class",
-      CASE
-  	WHEN grouping("thoughtful"."sales_item_category") + grouping("thoughtful"."sales_item_class") = 0 THEN "thoughtful"."sales_item_category"
-  	ELSE null
-  	END as "_virt_func_case_8529937465942981",
-      grouping("thoughtful"."sales_item_category") as "_virt_agg_grouping_1670065760616147",
-      grouping("thoughtful"."sales_item_class") as "_virt_agg_grouping_8417677704977793",
-      sum("thoughtful"."sales_ext_sales_price") as "_virt_agg_sum_6719372088781090",
-      sum("thoughtful"."sales_net_profit") as "_virt_agg_sum_2722582045378473"
-  FROM
-      "thoughtful"
-  GROUP BY
-      ROLLUP (1, 2)),
-  questionable as (
-  SELECT
-      "cooperative"."_virt_agg_grouping_1670065760616147" as "_virt_agg_grouping_1670065760616147",
-      "cooperative"."_virt_agg_grouping_8417677704977793" as "_virt_agg_grouping_8417677704977793",
-      "cooperative"."_virt_agg_sum_2722582045378473" as "_virt_agg_sum_2722582045378473",
-      "cooperative"."_virt_agg_sum_6719372088781090" as "_virt_agg_sum_6719372088781090",
-      "cooperative"."sales_item_category" as "sales_item_category",
-      "cooperative"."sales_item_class" as "sales_item_class",
-      rank() over (partition by "cooperative"."_virt_func_case_8529937465942981" order by cast("cooperative"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("cooperative"."_virt_agg_sum_6719372088781090",0) as numeric(12,4)) asc ) as "within_subgroup_rank"
-  FROM
-      "cooperative")
-  SELECT
-      cast("questionable"."_virt_agg_sum_2722582045378473" as numeric(12,4)) / cast(nullif("questionable"."_virt_agg_sum_6719372088781090",0) as numeric(12,4)) as "gross_margin",
-      "questionable"."sales_item_category" as "sales_item_category",
-      "questionable"."sales_item_class" as "sales_item_class",
-      "questionable"."_virt_agg_grouping_1670065760616147" + "questionable"."_virt_agg_grouping_8417677704977793" as "hierarchy_level",
-      "questionable"."within_subgroup_rank" as "within_subgroup_rank"
-  FROM
-      "questionable"
-  ORDER BY
-      "hierarchy_level" desc nulls first,
-      "questionable"."sales_item_category" asc nulls first,
-      "questionable"."within_subgroup_rank" asc nulls first
-  LIMIT (100)]
-  (Background on this error at: https://sqlalche.me/e/20/9h9h)
+  Syntax error in answer_3530408544.preql: Comparison `store_sales.store.county = 'Williamson County'` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
   ```
-- `trilogy run answer_3770074305.preql`
+- `trilogy run answer_3530408544.preql`
 
   ```text
-  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_716388299314788}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_3770074305.preql`
-
-  ```text
-  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 12). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_1579400739239040}. Are you missing a join or merge statement to relate them?
-  Note: the membership predicate(s) `(item.item_sk) in (inv_summary.inventory.item.item_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
-  ```
-- `trilogy run answer_3770074305.preql`
-
-  ```text
-  Resolution error in answer_3770074305.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgraphs: {item.current_price, item.item_desc, item.item_id, item.item_sk, item.manufact_id}; {_virt_agg_sum_716388299314788}. Are you missing a join or merge statement to relate them?
-  Note: the membership predicate(s) `(item.item_sk) in (inventory.item.item_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_142117636.preql`
-
-  ```text
-  Resolution error in answer_142117636.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 8). The requested concepts split into 4 disconnected subgraphs: {dd.year, _inventory_stats_month_num}; {_inventory_stats_avg_qoh, _inventory_stats_std_qoh}; {_inventory_stats_it_sk}; {_inventory_stats_wh_sk}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_3530408544.preql: Undefined concept: store_sales.date_dim (line 3, in WHERE). Suggestions: ['store_sales.date_dim.date_sk', 'store_sales.date_dim.date_id', 'store_sales.date_dim.date', 'store_sales.date_dim.month_seq', 'store_sales.date_dim.week_seq', 'store_sales.date_dim.quarter_seq']
   ```
 - `trilogy `
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 1 column 1686 (char 1685). Re-issue the call with valid JSON arguments.
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 70 column 3 (char 2784). Re-issue the call with valid JSON arguments.
   ```
-- `trilogy run answer_630074061.preql`
+- `trilogy run answer_3809267817.preql`
 
   ```text
-  Syntax error in answer_630074061.preql: Undefined concept: cr.order_number. Suggestions: ['cs.order_number']
+  Syntax error in answer_3809267817.preql: 2 undefined concept references; fix all before re-running:
+    - raw.customer.customer_sk (line 38, col 33, in WHERE); did you mean: raw.customer.customer_address.state, raw.customer.customer_demographics.demo_sk, raw.customer.customer_demographics.gender, store_sales.customer.customer_sk, web_sales.bill_customer.customer_sk, web_sales.ship_customer.customer_sk?
+    - raw.customer.customer_demographics.demo_sk (line 39, col 9, in WHERE); did you mean: raw.customer.customer_demographics.gender, raw.customer.customer_demographics.dep_count, raw.customer.customer_demographics.marital_status, store_sales.customer.customer_demographics.demo_sk, web_sales.bill_customer.customer_demographics.demo_sk, web_sales.ship_customer.customer_demographics.demo_sk?
   ```
-- `trilogy run --import raw.item:item select item.product_name where item.manufact_id between 1 and 500 and item.manufact in (select item2.manufact where (item2… or (item2.category = 'Electronics' and item2.color = 'mint' and item2.units = 'Gross' and item2.size = 'N/A')) order by item.product_name limit 100;`
+- `trilogy run answer_3809267817.preql`
 
   ```text
-  Syntax error in stdin: 5 undefined concept references; fix all before re-running:
-    - item2.manufact (line 2, col 96, in SELECT); did you mean: item2.units, item.manufact, item.manufact_id?
-    - item2.category (line 2, col 118, in WHERE); did you mean: item2.color, item.category, item.category_id?
-    - item2.color (line 2, col 147, in WHERE); did you mean: item2.category, item.color, item.class?
-    - item2.units (line 2, col 171, in WHERE); did you mean: item2.size, item2.manufact, item.units, item.item_sk?
-    - item2.size (line 2, col 194, in WHERE); did you mean: item2.units, item.size, item.item_sk?
+  Resolution error in answer_3809267817.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 38). The requested concepts split into 2 disconnected subgraphs: {customer.customer_demographics.demo_sk, dep_college_count, dep_count, dep_employed_count, gender, marital_status, state}; {customer_count, qualifying_custs.cust_sk}. Are you missing a join or merge statement to relate them?
+  Note: the membership predicate(s) `(qualifying_custs.cust_sk) in (customer.customer_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
   ```
-- `trilogy run answer_968172492.preql`
+- `trilogy run answer_3809267817.preql`
 
   ```text
-  Syntax error in answer_968172492.preql: 2 undefined concept references; fix all before re-running:
-    - item.item_id (line 13, col 20, in SELECT); did you mean: ws.item.item_id, ws.promotion.item.item_id, item.item_sk, ws.item.item_desc?
-    - item.item_sk (line 14, col 19, in WHERE); did you mean: ws.item.item_sk, ws.promotion.item.item_sk, item.item_id, ws.item.item_desc?
+  Resolution error in answer_3809267817.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 37). The requested concepts split into 2 disconnected subgraphs: {cust_set.cust_sk}; {customer.customer_demographics.demo_sk, _cust_with_demo_dep_college_count, _cust_with_demo_dep_count, _cust_with_demo_dep_employed_count, _cust_with_demo_gender, _cust_with_demo_marital_status, _cust_with_demo_state}. Are you missing a join or merge statement to relate them?
+  Note: the membership predicate(s) `(cust_set.cust_sk) in (customer.customer_sk)` span these subgraphs, but membership only filters rows on its left side — it does not join the two sides, so it cannot relate them for outputs or grouping. To combine values from both sides, author a query-scoped join or a merge on shared keys.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy `
 
   ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database describe store_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 67 (char 66). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy file read raw/catalog_sales.preql`
 
@@ -327,12 +326,25 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2940558602.preql`
+- `trilogy file read raw/store_sales.preql`
 
   ```text
-  Syntax error in answer_2940558602.preql: 2 undefined concept references; fix all before re-running:
-    - sr.return_amount (line 17, in SELECT); did you mean: sr.return_amt, sr.return_quantity, sr.return_tax?
-    - sr.return_amount (line 11, col 7, in WHERE); did you mean: sr.return_amt, sr.return_quantity, sr.return_tax?
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_2118989494.preql`
+
+  ```text
+  Syntax error in answer_2118989494.preql: Undefined concept: date_dim.year.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read answer_2940558602.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
@@ -344,283 +356,234 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy run answer_1809796058.preql`
+
+  ```text
+  Resolution error in answer_1809796058.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {days_0_30, days_31_60, days_61_90, days_91_120, days_gt_120, sales.customer.customer_sk, sales.store.city, sales.store.company_id, sales.store.county, sales.store.state, sales.store.store_name, sales.store.store_sk, sales.store.street_name, sales.store.street_number, sales.store.street_type, sales.store.suite_number, sales.store.zip}; {returns.customer.customer_sk, returns.date_dim.moy, returns.date_dim.year}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_3560698360.preql`
+
+  ```text
+  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_rt.store_daily.item_sk, store_rt.store_daily.sale_date, store_rt.store_running_total, web_rt.web_daily.item_sk, web_rt.web_daily.sale_date, web_rt.web_running_total}; still unresolved: {local._combined_store_running_max, local._combined_web_running_max}
+  ```
+- `trilogy file read answer_71623752.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.running_total, store_run.sale_date, web_run.item_sk, web_run.running_total, web_run.sale_date}; still unresolved: {local.store_running_max, local.web_running_max}
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.running_total, store_run.sale_date, web_run.item_sk, web_run.running_total, web_run.sale_date}; still unresolved: {local.store_running_max, local.web_running_max}
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {store_daily.sale_date, web_daily.daily_total, web_daily.item_sk, web_daily.sale_date}
-  ```
-- `trilogy run answer_3560698360.preql`
-
-  ```text
-  Resolution error in answer_3560698360.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {store_run.item_sk, store_run.sale_date, web_run.daily_total}; still unresolved: {local.web_running_total}
-  ```
-- `trilogy run answer_71623752.preql`
-
-  ```text
-  Resolution error in answer_71623752.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 30). The requested concepts split into 2 disconnected subgraphs: {manuf_avg.avg_quarterly_sales, manuf_avg.manuf_id}; {quarterly_totals.manuf_id, quarterly_totals.total_unit_price}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_3553309440.preql --param dec_ms=1187`
-
-  ```text
-  Syntax error in answer_3553309440.preql: Unsupported datatype BIGINT for parameter dec_ms. (line 6, column 1)
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.customer.customer_sk, sum(ss.ext_sales_price) as tot, ss.store.county, ss.store.state, ss.customer.customer…sold_date.month_seq=1187) and ss.store.county = ss.customer.customer_address.county and ss.store.state = ss.customer.customer_address.state limit 10;`
-
-  ```text
-  Syntax error in stdin: 4 undefined concept references; fix all before re-running:
-    - cs.bill_customer.customer_sk (line 2, col 259, in SELECT); did you mean: ss.customer.customer_sk, ss.customer.customer_id, ss.customer.customer_address.zip?
-    - cs.item.category (line 2, col 294, in WHERE); did you mean: cs.item.class, ss.item.category, ss.promotion.item.category, ss.item.category_id?
-    - cs.item.class (line 2, col 323, in WHERE); did you mean: cs.item.category, ss.item.class, ss.promotion.item.class, ss.item.class_id, ss.item.color?
-    - cs.sold_date.month_seq (line 2, col 353, in WHERE); did you mean: ss.date_dim.month_seq, ss.store.date_dim.month_seq, ss.promotion.end_date.month_seq, ss.customer.first_sales_date.month_seq, ss.customer.last_review_date.month_seq, ss.promotion.start_date.month_seq?
   ```
 - `trilogy file read answer_3553309440.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run --import raw/catalog_sales:cs --import raw/store_sales:ss --import raw/web_sales:ws select ss.item.item_id, sum(ss.ext_sales_price) as store_tot,…_tot, sum(ws.ext_sales_price) as web_tot where ss.date_dim.week_seq = 5218 and cs.sold_date.week_seq = 5218 and ws.sold_date.week_seq = 5218 limit 5;`
+- `trilogy run answer_3247656127.preql`
 
   ```text
-  Resolution error in stdin: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 3 disconnected subgraphs: {cs.sold_date.week_seq, cat_tot}; {store_tot, ss.date_dim.week_seq, ss.item.item_id}; {web_tot, ws.sold_date.week_seq}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_3247656127.preql: Undefined concept: store_sales.sold_date.moy. Suggestions: ['store_sales.date_dim.moy', 'store_sales.store.date_dim.moy', 'store_sales.promotion.end_date.moy', 'web_sales.sold_date.moy', 'catalog_sales.sold_date.moy', 'web_sales.ship_date.moy']
   ```
-- `trilogy file write --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Rowsets: per-item totals by channel… catalog_totals.total and 1.1 * catalog_totals.total
-order by store_totals.item_id, store_totals.total nulls first
-limit 100;
- answer_145690531.preql`
+- `trilogy run answer_3247656127.preql`
 
   ```text
-  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
-    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
-  Alternatively use `--escapes` with a single-line `\n`-escaped string.
+  Syntax error in answer_3247656127.preql: Undefined concept: store_sales.bill_addr.gmt_offset. Suggestions: ['store_sales.store.gmt_offset', 'store_sales.customer_address.gmt_offset', 'store_sales.customer.customer_address.gmt_offset', 'web_sales.bill_addr.gmt_offset', 'catalog_sales.bill_addr.gmt_offset', 'web_sales.ship_addr.gmt_offset']
   ```
-- `trilogy run answer_1623435181.preql`
+- `trilogy run answer_345752060.preql`
 
   ```text
-  Resolution error in answer_1623435181.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {next_yr.pivoted.fri_total, next_yr.pivoted.mon_total, next_yr.pivoted.sat_total, next_yr.pivoted.sun_total, next_yr.pivoted.thu_total, next_yr.pivoted.tue_total, next_yr.pivoted.wed_total, next_yr.pivoted.weekly_sales.s_code, next_yr.pivoted.weekly_sales.s_name, next_yr.pivoted.weekly_sales.wk_seq, this_yr.pivoted.fri_total, this_yr.pivoted.mon_total, this_yr.pivoted.sat_total, this_yr.pivoted.sun_total, this_yr.pivoted.thu_total, this_yr.pivoted.tue_total, this_yr.pivoted.wed_total, this_yr.pivoted.weekly_sales.s_code, this_yr.pivoted.weekly_sales.s_name, this_yr.pivoted.weekly_sales.wk_seq}
+  Syntax error in answer_345752060.preql: Undefined concept: item.category. Suggestions: ['ss.item.category', 'cs.item.category', 'ws.item.category', 'ss.promotion.item.category', 'cs.promotion.item.category', 'ws.promotion.item.category']
   ```
-- `trilogy `
+- `trilogy run answer_345752060.preql`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 42 column 12 (char 1431). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  Syntax error in answer_345752060.preql: Undefined concept: ss.sold_date.moy. Suggestions: ['ss.date_dim.moy', 'ss.store.date_dim.moy', 'ss.promotion.end_date.moy', 'cs.sold_date.moy', 'ws.sold_date.moy', 'cs.ship_date.moy']
   ```
 - `trilogy run answer_1484301313.preql`
 
   ```text
   Syntax error in answer_1484301313.preql: Comparison `store_sales.promotion.channel_email = 'Y'` can never match enum field 'store_sales.promotion.channel_email', which contains only these values: 'N'. It is always false and should be removed.
   ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_3544057080.preql`
+
+  ```text
+  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 8 definition statement(s) (4 imports, 4 rowsets) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
+  ```
+- `trilogy run answer_3544057080.preql`
+
+  ```text
+  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 8 definition statement(s) (4 imports, 4 rowsets) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
+  ```
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy run answer_1256642802.preql`
+
+  ```text
+  Unexpected error in answer_1256642802.preql: (_duckdb.BinderException) Binder Error: Referenced table "yummy" not found!
+  Candidate tables: "abundant"
+
+  LINE 71: ...store_sk") and "abundant"."item_rev_item_revenue" <= 0.1 * "yummy"."store_avg_store_avg_rev"
+                                                                         ^
+  [SQL:
+  WITH
+  cheerful as (
+  SELECT
+      "store_sales_store_sales"."ss_item_sk" as "store_sales_item_item_sk",
+      coalesce("store_sales_store_sales"."ss_store_sk","store_sales_store_store"."s_store_sk") as "store_sales_store_store_sk",
+      sum("store_sales_store_sales"."ss_sales_price") as "_item_rev_item_revenue"
+  FROM
+      "store_sales" as "store_sales_store_sales"
+      INNER JOIN "store" as "store_sales_store_store" on "store_sales_store_sales"."ss_store_sk" = "store_sales_store_store"."s_store_sk"
+      INNER JOIN "date_dim" as "store_sales_date_dim_date_dim" on "store_sales_store_sales"."ss_sold_date_sk" = "store_sales_date_dim_date_dim"."d_date_sk"
+  WHERE
+      "store_sales_date_dim_date_dim"."d_year" = 1998 and coalesce("store_sales_store_sales"."ss_store_sk","store_sales_store_store"."s_store_sk") is not null
+
+  GROUP BY
+      1,
+      2),
+  questionable as (
+  SELECT
+      "cheerful"."_item_rev_item_revenue" as "_item_rev_item_revenue",
+      "cheerful"."store_sales_store_store_sk" as "store_sales_store_store_sk",
+      "store_sales_item_item"."i_brand" as "store_sales_item_brand",
+      "store_sales_item_item"."i_current_price" as "store_sales_item_current_price",
+      "store_sales_item_item"."i_item_desc" as "store_sales_item_item_desc",
+      "store_sales_item_item"."i_wholesale_cost" as "store_sales_item_wholesale_cost",
+      "store_sales_store_store"."s_store_name" as "store_sales_store_store_name"
+  FROM
+      "cheerful"
+      INNER JOIN "item" as "store_sales_item_item" on "cheerful"."store_sales_item_item_sk" = "store_sales_item_item"."i_item_sk"
+      INNER JOIN "store" as "store_sales_store_store" on "cheerful"."store_sales_store_store_sk" = "store_sales_store_store"."s_store_sk"),
+  abundant as (
+  SELECT
+      "questionable"."_item_rev_item_revenue" as "item_rev_item_revenue",
+      "questionable"."store_sales_item_brand" as "item_rev_store_sales_item_brand",
+      "questionable"."store_sales_item_current_price" as "item_rev_store_sales_item_current_price",
+      "questionable"."store_sales_item_item_desc" as "item_rev_store_sales_item_item_desc",
+      "questionable"."store_sales_item_wholesale_cost" as "item_rev_store_sales_item_wholesale_cost",
+      "questionable"."store_sales_store_store_name" as "item_rev_store_sales_store_store_name",
+      "questionable"."store_sales_store_store_sk" as "item_rev_store_sales_store_store_sk"
+  FROM
+      "questionable"),
+  uneven as (
+  SELECT
+      "abundant"."item_rev_store_sales_store_store_sk" as "item_rev_store_sales_store_store_sk",
+      avg("abundant"."item_rev_item_revenue") as "_store_avg_store_avg_rev"
+  FROM
+      "abundant"
+  GROUP BY
+      1),
+  juicy as (
+  SELECT
+      "uneven"."item_rev_store_sales_store_store_sk" as "store_avg_item_rev_store_sales_store_store_sk"
+  FROM
+      "uneven"),
+  yummy as (
+  SELECT
+      "uneven"."_store_avg_store_avg_rev" as "store_avg_store_avg_rev",
+      "uneven"."item_rev_store_sales_store_store_sk" as "store_avg_item_rev_store_sales_store_store_sk"
+  FROM
+      "uneven")
+  SELECT
+      "abundant"."item_rev_store_sales_store_store_name" as "item_rev_store_sales_store_store_name",
+      "abundant"."item_rev_store_sales_item_item_desc" as "item_rev_store_sales_item_item_desc",
+      "abundant"."item_rev_item_revenue" as "item_rev_item_revenue",
+      "abundant"."item_rev_store_sales_item_current_price" as "item_rev_store_sales_item_current_price",
+      "abundant"."item_rev_store_sales_item_wholesale_cost" as "item_rev_store_sales_item_wholesale_cost",
+      "abundant"."item_rev_store_sales_item_brand" as "item_rev_store_sales_item_brand"
+  FROM
+      "abundant"
+  WHERE
+      exists (select 1 from yummy where yummy."store_avg_item_rev_store_sales_store_store_sk" is not distinct from "abundant"."item_rev_store_sales_store_store_sk") and "abundant"."item_rev_item_revenue" <= 0.1 * "yummy"."store_avg_store_avg_rev"
+
+  GROUP BY
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+  ORDER BY
+      "abundant"."item_rev_store_sales_store_store_name" asc nulls first,
+      "abundant"."item_rev_store_sales_item_item_desc" asc nulls first
+  LIMIT (100)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
+  ```
+- `trilogy file read raw/catalog_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
 - `trilogy database list`
 
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 64 (char 63). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Syntax error in answer_3544057080.preql: Nothing was executed: parsed 10 definition statement(s) (5 imports, 3 concepts, 2 rowsets) but none produce output. A rowset/with/concept file does nothing on its own — add a final `select` that consumes them.
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Syntax error in answer_3544057080.preql: ORDER BY references 'y2000.sl_00', which is not in the SELECT projection (line 97). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --y2000.sl_00 order by y2000.sl_00 asc`.
-  ```
-- `trilogy run answer_3544057080.preql`
-
-  ```text
-  Resolution error in answer_3544057080.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 25). The requested concepts split into 2 disconnected subgraphs: {cs.item.item_sk, item_total_cs_ext_list_price}; {item_total_cr_refund}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_1256642802.preql`
-
-  ```text
-  Resolution error in answer_1256642802.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 12). The requested concepts split into 3 disconnected subgraphs: {item.brand, item.current_price, item.item_desc, item.wholesale_cost}; {per_item_revenue_1998}; {store.store_name, store.store_sk}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_1256642802.preql`
-
-  ```text
-  Resolution error in answer_1256642802.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 7). The requested concepts split into 4 disconnected subgraphs: {dd.year}; {item.brand, item.current_price, item.item_desc, item.item_sk, item.wholesale_cost}; {_per_item_item_revenue}; {store.store_name, store.store_sk}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy run answer_1256642802.preql`
-
-  ```text
-  Resolution error in answer_1256642802.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {per_item.item_revenue, per_item.ss.item.brand, per_item.ss.item.current_price, per_item.ss.item.item_desc, per_item.ss.item.wholesale_cost, per_item.ss.store.store_name, store_avg.store_item_avg}
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/warehouse.preql`
+- `trilogy run answer_2091535883.preql`
+
+  ```text
+  Resolution error in answer_2091535883.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 7). The requested concepts split into 2 disconnected subgraphs: {cs.bill_cdemo.marital_status, cs.bill_hdemo.buy_potential, cs.quantity, cs.ship_date.date, cs.sold_date.date, cs.sold_date.week_seq, cs.sold_date.year, inv.quantity_on_hand, no_promo_cnt, total_cnt, with_promo_cnt, wh.warehouse_name}; {item.item_desc}.
+    - `item.item_desc` is disconnected — did you mean `cs.item.item_desc`? (connected to the other concepts)
+  These look like separately-imported copies of models already reachable through a connected import; chain through that path (e.g. `cs.item.item_desc`) instead of importing a second, disconnected copy.
+  ```
+- `trilogy file read raw/store.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database describe time_dim`
+- `trilogy run --import raw.store_sales:store_sales select store.store_sk, store.county limit 10;`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_2874833976.preql`
-
-  ```text
-  Syntax error in answer_2874833976.preql: Undefined concept: _virt_agg_grouping_4453574046401692.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/inventory.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file write --content import raw.catalog_sales as cs;
-
-where
-  cs.sold_date.year = 1999
-  and cs.ship_customer.household_demographics.buy_potential = …) > 5
-
-select
-  cs.item.item_desc as item_description,
-  cs.sold_date.week_seq as week_sequence,
-  count(*) as cnt
-limit 10;
- answer_2091535883.preql`
-
-  ```text
-  trilogy file write: `--content` takes a SINGLE string argument. Your args list put 2 separate tokens after --content (treating it like a shell command). In a tool call, pass the entire file body as one string element after --content, with newlines embedded literally — e.g.
-    {"args": ["file", "write", "query70.preql", "--content", "import raw.store_sales as store_sales;\n\nselect ..."]}
-  Alternatively use `--escapes` with a single-line `\n`-escaped string.
-  ```
-- `trilogy database describe store`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  Syntax error in stdin: 2 undefined concept references; fix all before re-running:
+    - store.store_sk (line 2, col 8, in SELECT); did you mean: store_sales.store.store_sk, store_sales.store.store_id?
+    - store.county (line 2, col 24, in SELECT); did you mean: store_sales.store.county, store_sales.customer_address.county, store_sales.customer.customer_address.county, store_sales.store.country, store_sales.coupon_amt?
   ```
 - `trilogy run answer_1772060640.preql`
 
   ```text
-  Syntax error in answer_1772060640.preql: Comparison `ss.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  Syntax error in answer_1772060640.preql: Comparison `store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
   ```
 - `trilogy run answer_1772060640.preql`
 
   ```text
-  Syntax error in answer_1772060640.preql: Comparison `ss.store.county = 'Williamson County'` matches every value of enum field 'ss.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  Syntax error in answer_1772060640.preql: ORDER BY references 'store_sales.customer.customer_sk', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --store_sales.customer.customer_sk order by store_sales.customer.customer_sk asc`.
   ```
-- `trilogy run answer_3840922834.preql`
+- `trilogy run answer_1772060640.preql`
 
   ```text
-  Syntax error in answer_3840922834.preql: Undefined concept: local.cust_sk. Suggestions: ['web_by_cust_year.cust_sk', 'store_by_cust_year.cust_sk', 'c.customer_sk']
+  Syntax error in answer_1772060640.preql: Comparison `store_sales.store.county in ('Orange County', 'Bronx County', 'Franklin Parish', 'Williamson County')` matches every value of enum field 'store_sales.store.county', which contains only these values: 'Williamson County'. It is always true and should be removed.
+  ```
+- `trilogy file read answer_1772060640.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy `
+- `trilogy database list`
 
   ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 107 column 12 (char 3617). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy run answer_3046445280.preql`
-
-  ```text
-  Resolution error in answer_3046445280.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 11). The requested concepts split into 2 disconnected subgraphs: {item.category, _store_ch_brand_id, _store_ch_cat_id, _store_ch_class_id, _store_ch_manu_id}; {_store_ch_net_amt, _store_ch_net_qty, _store_ch_yr}. Are you missing a join or merge statement to relate them?
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/web_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
 - `trilogy file read raw/catalog_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy database describe store_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe web_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy database describe catalog_sales`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under raw/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 109 column 12 (char 3759). Re-issue the call with valid JSON arguments.
-  ```
-- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -628,187 +591,156 @@ limit 10;
 - `trilogy run answer_1226264875.preql`
 
   ```text
-  Syntax error in answer_1226264875.preql: 10 undefined concept references; fix all before re-running:
-    - local.cat_qty (line 74, in SELECT); did you mean: catalog_nr.cat_qty, cat_wc, cat_sp?
-    - local.web_qty (line 74, in SELECT); did you mean: web_nr.web_qty, web_wc, web_sp?
-    - local.cat_qty (line 78, in SELECT); did you mean: catalog_nr.cat_qty, cat_wc, cat_sp?
-    - local.web_qty (line 78, in SELECT); did you mean: web_nr.web_qty, web_wc, web_sp?
-    - local.cat_wc (line 79, in SELECT); did you mean: catalog_nr.cat_wc, cat_sp, cat_qty?
-    - local.web_wc (line 79, in SELECT); did you mean: web_nr.web_wc, web_sp, web_qty?
-    - local.cat_sp (line 80, in SELECT); did you mean: catalog_nr.cat_sp, cat_wc, cat_qty?
-    - local.web_sp (line 80, in SELECT); did you mean: web_nr.web_sp, web_wc, web_qty?
-    - item_sk (line 91, col 5, in ORDER BY); did you mean: ss.item.item_sk, sr.item.item_sk, cs.item.item_sk, cr.item.item_sk, ws.item.item_sk, wr.item.item_sk?
-    - cust_sk (line 92, col 5, in ORDER BY); did you mean: store_nr.cust_sk, web_nr.cust_sk3, cat_sp?
+  Syntax error in answer_1226264875.preql: Join chain repeats source `catalog_never_returned` (keys `catalog_never_returned.yr` and `catalog_never_returned.item_sk`). A `=` chain joins ONE key across distinct sources; join a composite key with `and` or separate clauses (e.g. `a.k1 = b.k1 and a.k2 = b.k2`). (line 53, column 1)
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws…, sum(case when store_nr.store_qty is not null then 1 else 0 end) as cnt_2, sum(case when combined.other_qty > 0 then 1 else 0 end) as cnt_other_gt0;`
+
+  ```text
+  Syntax error in stdin: count(<constant>) does not identify rows. Count the row grain instead, for example `count(grain(key1, key2))`; for a conditional count use `count(grain(key1, key2) ? condition)`.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws… else 0 end) as cnt_store_sk_not_null,
+    sum(case when combined.other_qty > 0 then 1 else 0 end) as cnt_comb_gt0
+having
+    combined.other_qty > 0;`
+
+  ```text
+  Syntax error in stdin: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 52). Move the filter to WHERE to filter before aggregation.
   ```
 - `trilogy run answer_1226264875.preql`
 
   ```text
-  Resolution error in answer_1226264875.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {catweb_never.ot_qty, catweb_never.ot_sp, catweb_never.ot_wc, store_never.cust_sk, store_never.item_sk, store_never.st_qty, store_never.st_sp, store_never.st_wc, store_never.yr}
+  Resolution error in answer_1226264875.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 58). The requested concepts split into 2 disconnected subgraphs: {cat_groups.cat_qty, cat_groups.cust_sk, cat_groups.item_sk, cat_groups.yr}; {store_groups.cust_sk, store_groups.item_sk}. Are you missing a join or merge statement to relate them?
+  ```
+- `trilogy run answer_1226264875.preql`
+
+  ```text
+  Referenced table \"waggish\" not found!\nCandidate tables: \"premium\"\n\nLINE 233: ...t_sk\",\"premium\".\"web_nr_cust_sk\",\"uneven\".\"cat_nr_cust_sk\",\"waggish\".\"cat_nr_cust_sk\",\"waggish\".\"store_nr_cust_sk\"...\n                                                                        ^\n[SQL: \nWITH \nmacho as (\nSELECT\n    \"wr_web_returns\".\"wr_order_number\" as \"wr_order_number\",\n    coalesce(\"wr_item_item\".\"i_item_sk\",\"wr_web_returns\".\"wr_item_sk\") as \"wr_item_item_sk\"\nFROM\n    \"item\" as \"wr_item_item\"\n    LEFT OUTER JOIN \"web_returns\" as \"wr_web_returns
+  …
+  desc nulls last,\n    \"store_sprice\" desc nulls last,\n    \"other_qty\" asc nulls first,\n    \"other_wcost\" asc nulls first,\n    \"other_sprice\" asc nulls first,\n    \"ratio\" asc nulls first\nLIMIT (100)]\n(Background on this error at: https://sqlalche.me/e/20/f405)",
+    "error_type": "ProgrammingError"
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 21.065,
+    "ok": false,
+    "rows": 0
+  }
+  {
+    "event": "output_truncated",
+    "dropped_events": 1,
+    "note": "Output exceeded the tool cap; trailing events dropped. Narrow the call (--regex, --show, fewer rows) to see the rest."
+  }
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws…item_sk
+union join store_nr.cust_sk = web_nr.cust_sk
+select count(1) as cnt
+having
+    coalesce(cat_nr.cat_qty, 0) + coalesce(web_nr.web_qty, 0) > 0;`
+
+  ```text
+  Syntax error in stdin: count(<constant>) does not identify rows. Count the row grain instead, for example `count(grain(key1, key2))`; for a conditional count use `count(grain(key1, key2) ? condition)`.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws…ct
+    count(grain(store_nr.yr, store_nr.item_sk, store_nr.cust_sk)) as cnt
+having
+    coalesce(cat_nr.cat_qty, 0) + coalesce(web_nr.web_qty, 0) > 0;`
+
+  ```text
+  Syntax error in stdin: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 46). Move the filter to WHERE to filter before aggregation.
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws… 0 then 1 else 0 end) as both_conditions
+having
+    store_nr.wcost is not null
+    and coalesce(cat_nr.cat_qty, 0) + coalesce(web_nr.web_qty, 0) > 0;`
+
+  ```text
+  Syntax error in stdin: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 46). Move the filter to WHERE to filter before aggregation.
   ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2910545909.preql`
+- `trilogy `
 
   ```text
-  Syntax error in answer_2910545909.preql: Duplicate select output for ss.ticket_number; Line: 3
+  Tool call 'trilogy' rejected: invalid tool arguments: Invalid \escape: line 14 column 27 (char 610). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 63 column 12 (char 2523). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Unterminated string starting at: line 1 column 63 (char 62). Re-issue the call with valid JSON arguments.
   ```
 - `trilogy run answer_943796012.preql`
 
   ```text
-  Syntax error in answer_943796012.preql: Comparison `s.promotion.channel_tv = 'N'` matches every value of nullable enum field 's.promotion.channel_tv', which contains only these values: 'N'. It only excludes nulls; simplify it to 's.promotion.channel_tv is not null'.
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Syntax error in answer_943796012.preql: `by rollup (…)` requires at least one aggregate (or re-aggregable pre-aggregated measure) in the select to group; found none.
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Syntax error in answer_943796012.preql: 2 undefined concept references; fix all before re-running:
-    - channel (line 55, col 10, in ORDER BY); did you mean: combined.channel?
-    - outlet_id (line 55, col 31, in ORDER BY); did you mean: combined.outlet_id?
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Resolution error in answer_943796012.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced: {local.___tvf_arm_0_channel, local.___tvf_arm_0_outlet_id}; still unresolved: {local.___tvf_arm_0_total_returns, local.___tvf_arm_0_total_sales, local.___tvf_arm_0_total_scoped_profit}
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
-  ```
-- `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Unexpected error in answer_943796012.preql: Missing sr.item.item_sk in {'s.date_dim.date': ['hard'], 's.date_dim.date_sk': ['hard'], 's.item.current_price': ['hard'], 's.item.item_sk': ['hard'], 's.net_paid': ['hard'], 's.promotion.channel_tv': ['hard'], 's.promotion.promo_sk': ['hard'], 's.store.store_id': ['hard'], 's.store.store_sk': ['hard'], 's.ticket_number': ['hard'], 'local.___tvf_arm_0_outlet_id': []}, source map dict_keys(['s.date_dim.date', 's.date_dim.date_sk', 's.item.current_price', 's.item.item_sk', 's.net_paid', 's.promotion.channel_tv', 's.promotion.promo_sk', 's.store.store_id', 's.store.store_sk', 's.ticket_number', 'local.___tvf_arm_0_outlet_id'])
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Syntax error in answer_943796012.preql: Undefined concept: local.oid. Suggestions: ['ss.oid', 'srr.oid', 'css.oid', 'crr.oid', 'wss.oid']
-  ```
-- `trilogy run answer_943796012.preql`
-
-  ```text
-  Syntax error in answer_943796012.preql: Missing source map entry for sr.item.item_sk with pseudonyms set(), have map: {'s.item.item_sk': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.item_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.rec_start_date': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.rec_end_date': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.item_desc': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.current_price': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.wholesale_cost': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.brand_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.brand': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.class_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.class': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.category_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.category': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manufact_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manufact': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.size': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.formulation': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.color': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.units': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.container': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.manager_id': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}, 's.item.product_name': {BuildDatasource(name='item', columns=[BuildColumnAssignment(alias='i_item_sk', concept=s.item.item_sk@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_item_id', concept=s.item.item_id@Grain<s.item.item_sk>, modifiers=set(), origin_address=None), BuildColumnAssignment(alias='i_rec_start_date', concept=s.item.rec_start_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_rec_end_date', concept=s.item.rec_end_date@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_item_desc', concept=s.item.item_desc@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_current_price', concept=s.item.current_price@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_wholesale_cost', concept=s.item.wholesale_cost@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand_id', concept=s.item.brand_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_brand', concept=s.item.brand@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class_id', concept=s.item.class_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_class', concept=s.item.class@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category_id', concept=s.item.category_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_category', concept=s.item.category@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact_id', concept=s.item.manufact_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manufact', concept=s.item.manufact@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_size', concept=s.item.size@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_formulation', concept=s.item.formulation@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_color', concept=s.item.color@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_units', concept=s.item.units@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_container', concept=s.item.container@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_manager_id', concept=s.item.manager_id@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None), BuildColumnAssignment(alias='i_product_name', concept=s.item.product_name@Grain<s.item.item_sk>, modifiers={<Modifier.NULLABLE: 'Nullable'>}, origin_address=None)], address=Address(location='item', write_location=None, quoted=False, exists=True, type=<AddressType.TABLE: 'table'>, partition_columns=[], additional_locations=[]), grain=BuildGrain(components={'s.item.item_sk'}, where_clause=None, _str='Grain<s.item.item_sk>', _str_no_condition='Grain<s.item.item_sk>', abstract=False), namespace='s.item', metadata=DatasourceMetadata(freshness_concept=None, partition_fields=[], line_no=None), where=None, non_partial_for=None, column_level_partial_addresses=set())}}
+  Syntax error in answer_943796012.preql: Comparison `ss.promotion.channel_tv = 'N'` matches every value of nullable enum field 'ss.promotion.channel_tv', which contains only these values: 'N'. It only excludes nulls; simplify it to 'ss.promotion.channel_tv is not null'.
   ```
 - `trilogy run answer_426809370.preql`
 
   ```text
-  Syntax error in answer_426809370.preql: Undefined concept: cr.returning_customer. Suggestions: ['cr.returning_customer.customer_sk', 'cr.returning_customer.customer_id', 'cr.returning_customer.salutation', 'cr.returning_customer.first_name', 'cr.returning_customer.last_name', 'cr.returning_customer.preferred_cust_flag']
+  Syntax error in answer_426809370.preql: 3 undefined concept references; fix all before re-running:
+    - local.salutation (line 29, col 25, in ORDER BY); did you mean: cr.refunded_customer.salutation, cr.returning_customer.salutation?
+    - local.first_name (line 29, col 37, in ORDER BY); did you mean: cr.refunded_customer.first_name, cr.returning_customer.first_name, last_name?
+    - local.last_name (line 29, col 49, in ORDER BY); did you mean: cr.refunded_customer.last_name, cr.returning_customer.last_name, first_name?
+  ```
+- `trilogy run answer_426809370.preql`
+
+  ```text
+  Resolution error in answer_426809370.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 16). The requested concepts split into 2 disconnected subgraphs: {cr.date_dim.year, cr.returning_addr.state, cr.returning_customer.customer_address.city, cr.returning_customer.customer_address.country, cr.returning_customer.customer_address.county, cr.returning_customer.customer_address.gmt_offset, cr.returning_customer.customer_address.location_type, cr.returning_customer.customer_address.state, cr.returning_customer.customer_address.street_name, cr.returning_customer.customer_address.street_number, cr.returning_customer.customer_address.street_type, cr.returning_customer.customer_address.suite_number, cr.returning_customer.customer_address.zip, cr.returning_customer.first_name, cr.returning_customer.last_name, cr.returning_customer.salutation}; {customer_state_totals.total_amt, customer_code, state_avg_total}. Are you missing a join or merge statement to relate them?
   ```
 - `trilogy file read answer_426809370.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
+- `trilogy file read raw/catalog_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
 - `trilogy file read raw/store_returns.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_4111870542.preql`
-
-  ```text
-  Resolution error in answer_4111870542.preql: Discovery error: couldn't source all these concepts into one query; you may need a join or merge to relate them across models. Sourced individually but not joinable from model: {catalog_agg.catalog_qty, store_agg.item_id, store_agg.store_qty, web_agg.web_qty}
-  ```
-- `trilogy file read raw/store_returns.preql`
+- `trilogy file read raw/web_returns.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2852230229.preql`
+- `trilogy file read answer_2852230229.preql`
 
   ```text
-  Import error in answer_2852230229.preql: Unable to import '.\raw\sold_date.preql': [Errno 2] No such file or directory: '.\\raw\\sold_date.preql'.
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2852230229.preql`
+- `trilogy run answer_32504671.preql`
 
   ```text
-  Syntax error in answer_2852230229.preql: Undefined concept: _virt_agg_grouping_7561668700388452.
+  Syntax error in answer_32504671.preql: Comparison `ss.household_demographics.vehicle_count <= 6` matches every value of enum field 'ss.household_demographics.vehicle_count', which contains only these values: -1, 0, 1, 2, 3, 4. It is always true and should be removed.
   ```
-- `trilogy run answer_2852230229.preql`
+- `trilogy run answer_32504671.preql`
 
   ```text
-  Resolution error in answer_2852230229.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {item.category, item.class, hierarchy_level}; {total_net_paid, ws.sold_date.year}. Are you missing a join or merge statement to relate them?
+  Syntax error in answer_32504671.preql: Comparison `ss.household_demographics.vehicle_count <= 4` matches every value of enum field 'ss.household_demographics.vehicle_count', which contains only these values: -1, 0, 1, 2, 3, 4. It is always true and should be removed.
   ```
 - `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_2852230229.preql`
+- `trilogy run answer_1197120511.preql`
 
   ```text
-  Syntax error in answer_2852230229.preql: Undefined concept: _virt_agg_grouping_164218295708188.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy run answer_32504671.preql`
-
-  ```text
-  Syntax error in answer_32504671.preql: Comparison `store_sales.household_demographics.vehicle_count <= 6` matches every value of enum field 'store_sales.household_demographics.vehicle_count', which contains only these values: -1, 0, 1, 2, 3, 4. It is always true and should be removed.
-  ```
-- `trilogy run answer_32504671.preql`
-
-  ```text
-  Syntax error in answer_32504671.preql: 16 undefined concept references; fix all before re-running:
-    - item.item_sk (line 17, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 17, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 18, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 18, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 19, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 19, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 20, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 20, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 21, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 21, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 22, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 22, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 23, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 23, in SELECT); did you mean: store_sales.ticket_number?
-    - item.item_sk (line 24, in SELECT); did you mean: store_sales.item.item_sk, store_sales.promotion.item.item_sk?
-    - local.ticket_number (line 24, in SELECT); did you mean: store_sales.ticket_number?
-  ```
-- `trilogy `
-
-  ```text
-  Tool call 'trilogy' rejected: invalid tool arguments: Expecting ',' delimiter: line 40 column 12 (char 1430). Re-issue the call with valid JSON arguments.
+  Syntax error in answer_1197120511.preql: Undefined concept: sold_date.date (line 6, col 7, in WHERE). Suggestions: ['ws.sold_date.date', 'ws.ship_date.date', 'ws.promotion.end_date.date', 'ws.web_site.open_date.date', 'ws.web_site.close_date.date', 'ws.promotion.start_date.date']
   ```
 - `trilogy file read raw/store_returns.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/store_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read answer_1827331030.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -818,116 +750,12 @@ limit 10;
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_3281742578.preql`
-
-  ```text
-  Unexpected error in answer_3281742578.preql: Could not render the query: Missing source CTE for wr.order_number. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
-
-  Full SQL with sentinel(s):
-
-  WITH
-  cheerful as (
-  SELECT
-      "ws_web_sales"."ws_order_number" as "ws_order_number",
-      "ws_web_sales"."ws_warehouse_sk" as "ws_warehouse_warehouse_sk"
-  FROM
-      "web_sales" as "ws_web_sales"
-  GROUP BY
-      1,
-      2),
-  quizzical as (
-  SELECT
-      "wr_web_returns"."wr_order_number" as "wr_order_number"
-  FROM
-      "web_returns" as "wr_web_returns"
-  GROUP BY
-      1),
-  thoughtful as (
-  SELECT
-      "cheerful"."ws_order_number" as "ws_order_number",
-      (exists (select 1 from INVALID_REFERENCE_BUG<Missing source CTE for wr.order_number> where INVALID_REFERENCE_BUG<Missing source CTE for wr.order_number>."wr_order_number" is not distinct from "cheerful"."ws_order_number")) as "order_has_return"
-  FROM
-      "cheerful"
-  GROUP BY
-      1,
-      2
-  HAVING
-      count(distinct "cheerful"."ws_warehouse_warehouse_sk") > 1
-  ),
-  cooperative as (
-  SELECT
-      "thoughtful"."ws_order_number" as "ws_order_number"
-  FROM
-      "thoughtful"
-  WHERE
-      coalesce("thoughtful"."order_has_return",False) = False
-
-  GROUP BY
-      1),
-  abundant as (
-  SELECT
-      "cooperative"."ws_order_number" as "candidate_orders_ws_order_number"
-  FROM
-      "cooperative"),
-  juicy as (
-  SELECT
-      "ws_web_sales"."ws_order_number" as "ws_order_number"
-  FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "web_site" as "ws_web_site_web_site" on "ws_web_sales"."ws_web_site_sk" = "ws_web_site_web_site"."web_site_sk"
-      INNER JOIN "date_dim" as "ws_ship_date_date_dim" on "ws_web_sales"."ws_ship_date_sk" = "ws_ship_date_date_dim"."d_date_sk"
-      INNER JOIN "customer_address" as "ws_ship_addr_customer_address" on "ws_web_sales"."ws_ship_addr_sk" = "ws_ship_addr_customer_address"."ca_address_sk"
-  WHERE
-      "ws_web_site_web_site"."web_company_name" = 'pri' and "ws_ship_date_date_dim"."d_date" BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_addr_customer_address"."ca_state" = 'IL' and exists (select 1 from abundant where abundant."candidate_orders_ws_order_number" is not distinct from "ws_web_sales"."ws_order_number")
-
-  GROUP BY
-      1),
-  sparkling as (
-  SELECT
-      "ws_web_sales"."ws_ext_ship_cost" as "ws_ext_ship_cost",
-      "ws_web_sales"."ws_net_profit" as "ws_net_profit"
-  FROM
-      "web_sales" as "ws_web_sales"
-      INNER JOIN "web_site" as "ws_web_site_web_site" on "ws_web_sales"."ws_web_site_sk" = "ws_web_site_web_site"."web_site_sk"
-      INNER JOIN "date_dim" as "ws_ship_date_date_dim" on "ws_web_sales"."ws_ship_date_sk" = "ws_ship_date_date_dim"."d_date_sk"
-      INNER JOIN "customer_address" as "ws_ship_addr_customer_address" on "ws_web_sales"."ws_ship_addr_sk" = "ws_ship_addr_customer_address"."ca_address_sk"
-  WHERE
-      exists (select 1 from abundant where abundant."candidate_orders_ws_order_number" is not distinct from "ws_web_sales"."ws_order_number") and "ws_ship_date_date_dim"."d_date" BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_ship_addr_customer_address"."ca_state" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri'
-
-  GROUP BY
-      1,
-      2,
-      "ws_web_sales"."ws_item_sk",
-      "ws_web_sales"."ws_order_number"),
-  young as (
-  SELECT
-      count(md5(CONCAT_WS('', coalesce(cast("juicy"."ws_order_number" as string),'
-  ')))) as "order_count"
-  FROM
-      "juicy"),
-  abhorrent as (
-  SELECT
-      sum("sparkling"."ws_ext_ship_cost") as "total_ext_ship_cost",
-      sum("sparkling"."ws_net_profit") as "total_net_profit"
-  FROM
-      "sparkling")
-  SELECT
-      coalesce("young"."order_count",0) as "order_count",
-      "abhorrent"."total_ext_ship_cost" as "total_ext_ship_cost",
-      "abhorrent"."total_net_profit" as "total_net_profit"
-  FROM
-      "young"
-      FULL JOIN "abhorrent" on 1=1
-  ORDER BY
-      coalesce("young"."order_count",0) asc
-  LIMIT (100)
-  ```
-- `trilogy run answer_569612608.preql`
-
-  ```text
-  Syntax error in answer_569612608.preql: Undefined concept: web_returns.order_number. Suggestions: ['ws.order_number', 'eligible_orders.ws.order_number']
-  ```
 - `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read answer_3734509910.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -940,152 +768,158 @@ limit 10;
 
 ### `syntax-parse`
 
-- `trilogy file write answer_1858999935.preql --content import raw.catalog_sales as catalog;
-import raw.web_sales as web;
-
-with combined as union(
-    (select c…) as sales)
-) -> (ws, dow, sales)
-
-select combined.ws, combined.dow, sum(combined.sales) as total_sales
-order by combined.ws, combined.dow
-limit 20;
-`
+- `trilogy run --import raw.catalog_sales:cs select cs.sold_date.week_seq, cs.sold_date.dow, cs.sold_date.year, sum(cs.net_paid) as sales where cs.sold_date.year=2001 group by cs.sold_date.week_seq, cs.sold_date.dow, cs.sold_date.year order by cs.sold_date.week_seq, cs.sold_date.dow limit 20;`
 
   ```text
-  refused to write 'answer_1858999935.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...s sales) ) -> (ws, dow, sales) ???  select combined.ws, combined...
-
-  Write stats: received 433 chars / 433 bytes; tail: …'as total_sales\\norder by combined.ws, combined.dow\\nlimit 20;\\n'.
+   where cs.sold_date.year=2001 ??? group by cs.sold_date.week_seq...
   ```
-- `trilogy file write answer_1858999935.preql --content import raw.catalog_sales as catalog;
-import raw.web_sales as web;
-import raw.date_dim as d;
-
-# Combined … 0, 53) over (partition by weekly_sales.dow order by weekly_sales.ws), 2) as ratio_sun
-where weekly_sales.ws in ws_2001.ws
-order by weekly_sales.ws;
-`
+- `trilogy run --import raw.date_dim:dd select dd.week_seq, dd.year, min(dd.date) as first_date, max(dd.date) as last_date where dd.week_seq between 5322 and 5325 group by dd.week_seq, dd.year order by dd.week_seq;`
 
   ```text
-  refused to write 'answer_1858999935.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...n 2001 with ws_2001 as select ??? distinct d.week_seq as ws wher...
-
-  Write stats: received 974 chars / 974 bytes; tail: …'ere weekly_sales.ws in ws_2001.ws\\norder by weekly_sales.ws;\\n'.
+  ...eek_seq between 5322 and 5325 ??? group by dd.week_seq, dd.year
   ```
-- `trilogy file write answer_3863442186.preql -e -c import raw.store_sales as s;
+- `trilogy file write answer_3705756794.preql -e -c import raw.store_sales as ss;
+import raw.store_returns as sr;
 import raw.catalog_sales as cs;
+import raw.cat…oin wr.item.item_sk = ws.item.item_sk
+)
+-> (channel_label string, entity_id string?, ext_sales_val numeric, returns_val numeric, profit_val numeric);`
+
+  ```text
+  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 11:5
+     |
+  11 |     where ss.date_dim.date between '2000-08-23'::date and '2000-09-06'::date
+     |     ^---
+     |
+     = expected tvf_rel_arg
+  Location:
+   union(     # Store sales     ??? where ss.date_dim.date between...
+  ```
+- `trilogy run --import raw/web_returns:wr --import raw/web_sales:ws select concat('web_site', ws.web_site.site_id) as eid, coalesce(sum(wr.return_amt), 0) as r…etween '2000-08-23'::date and '2000-09-06'::date subset join wr.order_number = ws.order_number subset join wr.item.item_sk = ws.item.item_sk limit 5;`
+
+  ```text
+  Syntax error in stdin:  --> 3:172
+    |
+  3 | select concat('web_site', ws.web_site.site_id) as eid, coalesce(sum(wr.return_amt), 0) as ret_amt where wr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date subset join wr.order_number = ws.order_number subset join wr.item.item_sk = ws.item.item_sk limit 5;
+    |                                                                                                                                                                            ^---
+    |
+    = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...::date and '2000-09-06'::date ??? subset join wr.order_number =
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/catalog_returns:cr 
+with test_union as union(
+    (where cs.sold_date.date between '2000-08-23'::date …
+        -coalesce(sum(cr.net_loss), 0)
+    )
+) -> (channel_label, entity_id, ext_sales_val, returns_val, profit_val);
+
+select test_union.* limit 20;`
+
+  ```text
+  Syntax error in stdin:   --> 25:21
+     |
+  25 | select test_union.* limit 20;
+     |                     ^---
+     |
+     = expected access_chain
+  Location:
+  ...it_val);  select test_union.* ??? limit 20;
+  ```
+- `trilogy run --import raw.store_sales:store_sales --param zips=24128,76232 select store_sales.customer_address.zip, count(store_sales.customer.customer_sk ? store_sales.customer.preferred_cust_flag = 'Y') as pref_cnt group by store_sales.customer_address.zip having pref_cnt > 10;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ..._cust_flag = 'Y') as pref_cnt ??? group by store_sales.customer_...
+  ```
+- `trilogy file write answer_2524943990.preql --content import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
 import raw.web_sales as ws;
 
-# Compute annual c…store_annual.first_name asc nulls first,
-    store_annual.last_name asc nulls first,
-    store_annual.preferred_cust_flag asc nulls first
-limit 100
-;`
+# Set A: …der_count,
+    sum(cs.ext_ship_cost) as total_extended_ship_cost,
+    sum(cs.net_profit) as total_net_profit
+order by
+    order_count desc
+limit 100;`
 
   ```text
-  refused to write 'answer_3863442186.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2524943990.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ...in (2001, 2002) ;  select     ??? distinct store_annual.customer...
-
-  Write stats: received 2080 chars / 2080 bytes; tail: …'store_annual.preferred_cust_flag asc nulls first\\nlimit 100\\n;'.
-  ```
-- `trilogy run --import raw/store_returns:sr select sr.store.store_id as entity_id, sum(sr.return_amt) as total_returns, sum(sr.net_loss) as total_loss where sr.date_dim.date between '2000-08-23'::date and '2000-09-06'::date and sr.store.store_id is not null group by entity_id limit 5`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...sr.store.store_id is not null ??? group by entity_id limit 5;
-  ```
-- `trilogy run --import raw.store_sales:s select s.item.category, avg(s.item.current_price) as avg_price where s.item.category is not null group by s.item.category limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...e s.item.category is not null ??? group by s.item.category limit...
-  ```
-- `trilogy file write answer_3263796749.preql --content import raw.store_sales as store_sales;
-
-select
-    case
-        when count(grain(item.item_sk, ticket_nu…re_sales.quantity between 81 and 100)
-        else avg(store_sales.net_paid ? store_sales.quantity between 81 and 100)
-    end as bucket_81_100
-by *;`
-
-  ```text
-  refused to write 'answer_3263796749.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 29:1
+    --> 11:1
      |
-  29 | by *;
+  11 | select
      | ^---
      |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
   Location:
-  ...100)     end as bucket_81_100 ??? by *;
-
-  Write stats: received 1583 chars / 1583 bytes; tail: …'.quantity between 81 and 100)\\n    end as bucket_81_100\\nby *;'.
+  ...se_sk) by ws.order_number > 1 ??? select     ws.order_number ;
   ```
-- `trilogy file write answer_4077069387.preql --content import raw.web_sales as ws;
-
-# Filter period first
-where ws.sold_date.date between '1999-02-22'::date an…0)) * 100.0 as pct_of_class
-order by
-    ws.item.category,
-    ws.item.class,
-    ws.item.item_id,
-    ws.item.item_desc,
-    pct_of_class
-limit 100;`
-
-  ```text
-  refused to write 'answer_4077069387.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [104]: Definition or statement after WHERE/SELECT? Concept definitions (`auto`/`property`/`key`/`metric`/`rowset`), `def`, `datasource`, and `import` are top-level statements and must appear BEFORE the `where`/`select` block - they cannot sit inside a query. Move this statement above your `where`, and make sure each statement ends with `;`. Example: put `auto x <- sum(sales.amount) by store.id;` above `where ... select ...`.
-  Location:
-  ...otal per item (at item grain) ??? auto item_total <- sum(ws.ext_...
-
-  Write stats: received 840 chars / 840 bytes; tail: …'.item_id,\\n    ws.item.item_desc,\\n    pct_of_class\\nlimit 100;'.
-  ```
-- `trilogy file write answer_219203908.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
+- `trilogy file write answer_2524943990.preql --content import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
 import raw.web_sales as ws;
 
-# Step 1: Find…y leaf_groups.channel nulls first, leaf_groups.brand_id nulls first, leaf_groups.class_id nulls first, leaf_groups.category_id nulls first
+# Set A: …der_count,
+    sum(cs.ext_ship_cost) as total_extended_ship_cost,
+    sum(cs.net_profit) as total_net_profit
+order by
+    order_count desc
 limit 100;`
 
   ```text
-  refused to write 'answer_219203908.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2524943990.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
+    --> 12:1
+     |
+  12 | select
+     | ^---
+     |
+     = expected limit, order_by, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
   Location:
-  ...99 and 2001)) by * as avg_val ??? from ss),   (select avg(cs.qua...
+   having     warehouse_cnt > 1 ??? select     ws.order_number;  #...
+  ```
+- `trilogy file write answer_2524943990.preql --content import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.web_sales as ws;
 
-  Write stats: received 4069 chars / 4069 bytes; tail: …' nulls first, leaf_groups.category_id nulls first\\nlimit 100;'.
+# Set A: …der_count,
+    sum(cs.ext_ship_cost) as total_extended_ship_cost,
+    sum(cs.net_profit) as total_net_profit
+order by
+    order_count desc
+limit 100;`
+
+  ```text
+  refused to write 'answer_2524943990.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 12:1
+     |
+  12 | select
+     | ^---
+     |
+     = expected limit, order_by, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+   having     warehouse_cnt > 1 ??? select     order_number;  # Se...
   ```
 - `trilogy file write answer_765177085.preql --content import raw.store_sales as ss;
 import raw.store_returns as sr;
 import raw.catalog_sales as cs;
 
-# Items so…s.store_sk = ss.store.store_sk
-order by item_id asc nulls first,
-         item_desc asc nulls first,
-         store_state asc nulls first
+# Step 1: … 0) as cs_qty_cv
+order by matched.item_id asc nulls first,
+    matched.item_desc asc nulls first,
+    matched.store_state asc nulls first
 limit 100;
 `
 
@@ -1095,315 +929,255 @@ limit 100;
   Parse error:
    --> 6:1
     |
-  6 | rowset store_sales_set as
+  6 | rowset store_sales_2001 as
     | ^---
     |
     = expected EOI, block, or show_statement
   Location:
-  ...# Items sold in store in 2001 ??? rowset store_sales_set as wher...
-
-  Write stats: received 3112 chars / 3112 bytes; tail: …'ulls first,\\n         store_state asc nulls first\\nlimit 100;\\n'.
+  ...s in 2001 with valid customer ??? rowset store_sales_2001 as whe...
   ```
-- `trilogy file write answer_2604809012.preql --content import raw.inventory as inv;
-
-# Filter items by current_price between 0.99 and 1.49
-where inv.item.curre…::numeric) between (2.0/3.0) and (3.0/2.0)
-order by
-    inv.warehouse.warehouse_name asc nulls first,
-    inv.item.item_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'answer_2604809012.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [211]: Expression in `by` clause must be wrapped in parens - write `by (expr1, expr2, ...)`. Bare identifiers (`by a, b`) work without parens, but any function call, cast, or other expression needs them.
-  Location:
-  ...ntory as inv;  # Filter items ??? by current_price between 0.99
-
-  Write stats: received 977 chars / 977 bytes; tail: …'nulls first,\\n    inv.item.item_id asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write answer_2604809012.preql --content import raw.inventory as inv;
-
-# Restrict to items whose current price is between 0.99 and 1.49
-where inv…r_total / before_total::numeric <= 3.0/2.0
-order by
-    inv.warehouse.warehouse_name asc nulls first,
-    inv.item.item_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'answer_2604809012.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 7:1
-    |
-  7 | where inv.date_dim.date >= '2000-02-10'::date and inv.date_dim.date <= '2000-04-10'::date
-    | ^---
-    |
-    = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
-  Location:
-  ...ange that covers both windows ??? where inv.date_dim.date >= '20...
-
-  Write stats: received 889 chars / 889 bytes; tail: …'nulls first,\\n    inv.item.item_id asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy file write answer_4207382245.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-
-# Store sales quarterly total…ombined.web_q3 / combined.web_q2 as web_q3_over_q2,
-    combined.store_q3 / combined.store_q2 as store_q3_over_q2
-order by
-    combined.county asc
-;
-`
-
-  ```text
-  refused to write 'answer_4207382245.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
-  Location:
-  ...store_q.county = web_q.county ??? subset join store_q.q = web_q....
-
-  Write stats: received 1924 chars / 1924 bytes; tail: …'e_q2 as store_q3_over_q2\\norder by\\n    combined.county asc\\n;\\n'.
-  ```
-- `trilogy file write answer_4207382245.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-
-# Store sales quarterly total…ombined.web_q3 / combined.web_q2 as web_q3_over_q2,
-    combined.store_q3 / combined.store_q2 as store_q3_over_q2
-order by
-    combined.county asc
-;
-`
-
-  ```text
-  refused to write 'answer_4207382245.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
-  Location:
-  ...store_q.county = web_q.county ??? subset join store_q.q = web_q....
-
-  Write stats: received 1924 chars / 1924 bytes; tail: …'e_q2 as store_q3_over_q2\\norder by\\n    combined.county asc\\n;\\n'.
-  ```
-- `trilogy file write answer_142117636.preql --content import raw.inventory as inv;
-import raw.date_dim as dd;
-import raw.warehouse as wh;
-import raw.item as it…sk
-order by jan.wh_sk asc, jan.it_sk asc, jan.month_num asc, jan.avg_qoh asc, jan.cv asc, feb.month_num asc, feb.avg_qoh asc, feb.cv asc
-nulls first;`
-
-  ```text
-  refused to write 'answer_142117636.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 10:1
-     |
-  10 | with inventory_stats as
-     | ^---
-     |
-     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
-  Location:
-  ...dev, coefficient of variation ??? with inventory_stats as select...
-
-  Write stats: received 1544 chars / 1544 bytes; tail: …' feb.month_num asc, feb.avg_qoh asc, feb.cv asc\\nnulls first;'.
-  ```
-- `trilogy run --import raw.item:item select distinct item.category limit 20;`
-
-  ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ...port raw.item as item; select ??? distinct item.category limit 2...
-  ```
-- `trilogy file write answer_3560698360.preql --content import raw.store_sales as store_sales;
-import raw.web_sales as web_sales;
-
-# Per-item, per-day running t…te = web_run.sale_date
-having
-    web_running_max > store_running_max
-order by
-    item_sk asc nulls first,
-    sale_date asc nulls first
-limit 100
-;`
-
-  ```text
-  refused to write 'answer_3560698360.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 10:118
-     |
-  10 |     sum(sum(store_sales.sales_price)) over (partition by store_sales.item.item_sk order by store_sales.date_dim.date rows between unbounded preceding and current row) as running_total
-     |                                                                                                                      ^---
-     |
-     = expected ORDER_DIRECTION_LA, ORDERING_DIRECTION, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-   by store_sales.date_dim.date ??? rows between unbounded precedi...
-
-  Write stats: received 1883 chars / 1883 bytes; tail: …'k asc nulls first,\\n    sale_date asc nulls first\\nlimit 100\\n;'.
-  ```
-- `trilogy run --import raw/date_dim:date_dim select distinct date_dim.month_seq where date_dim.year = 1998 and date_dim.moy = 12;`
-
-  ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ....date_dim as date_dim; select ??? distinct date_dim.month_seq wh...
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/catalog_sales:cs select ss.customer.customer_sk, sum(ss.ext_sales_price) as tot where ss.date_dim.month_…nd ss.store.state = ss.customer.customer_address.state group by ss.customer.customer_sk having sum(ss.ext_sales_price) > 0 order by tot desc limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...stomer.customer_address.state ??? group by ss.customer.customer_...
-  ```
-- `trilogy run --import raw/store_sales:ss select distinct ss.store.county, ss.store.state limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
-  Location:
-  ...raw.store_sales as ss; select ??? distinct ss.store.county, ss.s...
-  ```
-- `trilogy file write answer_3247656127.preql --content import raw.store_sales as ss;
+- `trilogy file write answer_3825713089.preql --content import raw.store_sales as ss;
+import raw.store_returns as sr;
 import raw.catalog_sales as cs;
-import raw.web_sales as ws;
 
-# Find item_i…e,
-    sum(combined.total_sale) as total_sale_price
+# Store s…null
 order by
-    total_sale_price asc nulls first,
-    combined.item_code asc nulls first
-limit 100
-;`
-
-  ```text
-  refused to write 'answer_3247656127.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
-  Location:
-  ...) ) -> (item_code, total_sale) ??? select     combined.item_code...
-
-  Write stats: received 1768 chars / 1768 bytes; tail: …'ls first,\\n    combined.item_code asc nulls first\\nlimit 100\\n;'.
-  ```
-- `trilogy run --import raw/store_sales:store select store.item.item_id, sum(store.ext_sales_price) as tot where store.date_dim.week_seq = 5218 group by store.item.item_id limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...tore.date_dim.week_seq = 5218 ??? group by store.item.item_id li...
-  ```
-- `trilogy file write answer_145690531.preql --content import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-
-# Rowsets: per…als.total between 0.9 * catalog_totals.total and 1.1 * catalog_totals.total
-order by store_totals.item_id, store_totals.total nulls first
+  ss_with_returns.item_code,
+  ss_with_returns.item_description,
+  ss_with_returns.store_code,
+  ss_with_returns.store_name
 limit 100;
 `
 
   ```text
-  refused to write 'answer_145690531.preql': not syntactically valid Trilogy.
+  refused to write 'answer_3825713089.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+   --> 6:1
+    |
+  6 | rowset ss_with_returns as
+    | ^---
+    |
+    = expected EOI, block, or show_statement
   Location:
-  ...total ;  # Join them together ??? subset join store_totals.item_...
-
-  Write stats: received 1854 chars / 1854 bytes; tail: …'e_totals.item_id, store_totals.total nulls first\\nlimit 100;\\n'.
+  ...y those with matching returns ??? rowset ss_with_returns as wher...
   ```
-- `trilogy file write answer_3544057080.preql --content import raw.store_sales as ss;
+- `trilogy file write answer_751385098.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
+
+with common_co…    ws.sold_date.date as sale_date
+  )
+) -> (last_name, first_name, sale_date)
+
+select 
+    count(common_combos.sale_date) as combo_count
+limit 100;
+`
+
+  ```text
+  refused to write 'answer_751385098.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Location:
+  ...t_name, first_name, sale_date) ???  select      count(common_com...
+  ```
+- `trilogy file write answer_1663418777.preql --content import raw.item as item;
+
+# Find item_sk's matching the eight profiles
+with profile_items as
+select
+    … item.manufact)
+    and item.manufact_id between 1 and 500
+select
+    distinct item.product_name as product_name
+order by
+    product_name
+limit 100;`
+
+  ```text
+  refused to write 'answer_1663418777.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 19:45
+     |
+  19 |     item.manufact in (profile_items.item_sk -> item.item_sk by item.manufact -> item.manufact)
+     |                                             ^---
+     |
+     = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...act in (profile_items.item_sk ??? -> item.item_sk by item.manufa...
+  ```
+- `trilogy file write answer_1663418777.preql --content import raw.item as item;
+
+# Find manufact values from items matching the eight profiles
+with profile_man… and 500
+    and item.manufact in profile_manuf.manufact
+select distinct
+    item.product_name as product_name
+order by
+    product_name
+limit 100;
+
+`
+
+  ```text
+  refused to write 'answer_1663418777.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...profile_manuf.manufact select ??? distinct     item.product_name...
+  ```
+- `trilogy run --import raw.item:item select item.manufact, item.manufact_id, item.category, item.color, item.units, item.size, count(item.item_sk) as cnt where…fact_id between 1 and 500 group by item.manufact, item.manufact_id, item.category, item.color, item.units, item.size order by item.manufact limit 20;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...manufact_id between 1 and 500 ??? group by item.manufact, item.m...
+  ```
+- `trilogy run --import raw/catalog_sales:cs --import raw/web_sales:ws --import raw/store_sales:ss --import raw/date_dim:dd select sum(ss.ext_sales_price) as to…where ws.sold_date.year = 1998 and ws.sold_date.moy = 12 and ws.item.category = 'Women' and ws.item.class = 'maternity')) by ss.customer.customer_sk;`
+
+  ```text
+  Syntax error in stdin: Syntax [213]: A `by <grain>` clause must follow an aggregate, but the expression before it has none. If the `by` sits inside an aggregate's parentheses (`max(x by *)`), move it outside the call: `max(x) by *`. To take each distinct value once per grain, wrap it in `group(...)` - e.g. `group(item.current_price) by item.id, item.category`. For a reduction, use an aggregate: `sum(x) by ...`, `avg(x) by ...`, `max(x) by ...`.
+  Location:
+  ...ws.item.class = 'maternity')) ??? by ss.customer.customer_sk;
+  ```
+- `trilogy file write answer_2986518257.preql -e -c import raw/catalog_sales as cs;
+
+# First, compute monthly totals of per-unit sales price
+# We need Dec 1998,…sequenced.moy,
+    sequenced.avg_monthly_sales,
+    sequenced.month_total,
+    sequenced.prev_month_total,
+    sequenced.next_month_total
+limit 100;
+`
+
+  ```text
+  refused to write 'answer_2986518257.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 1:8
+    |
+  1 | import raw/catalog_sales as cs;
+    |        ^---
+    |
+    = expected IMPORT_DOT
+  Location:
+  import ??? raw/catalog_sales as cs;  # Fi...
+  ```
+- `trilogy run --import raw/store_sales:store_sales select store_sales.item.item_id, sum(store_sales.ext_sales_price) as store_total where store_sales.date_dim.week_seq = 5218 group by store_sales.item.item_id limit 10;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...ales.date_dim.week_seq = 5218 ??? group by store_sales.item.item...
+  ```
+- `trilogy file write answer_3544057080.preql -e -c import raw.store_sales as ss;
 import raw.catalog_sales as cs;
 import raw.catalog_returns as cr;
-import r…as sale_lines,
-    sum(ss.wholesale_cost) as wholesale_cost_sum,
-    sum(ss.list_price) as list_price_sum,
-    sum(ss.coupon_amt) as coupon_amt_sum
-;`
+import raw.s… use a different approach.
+
+# Let me just directly build the main query.
+# First, let me get the aggregate for store_sales with all the conditions.
+
+`
 
   ```text
   refused to write 'answer_3544057080.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 23:1
+   --> 7:1
+    |
+  7 | item_colors <- ('purple', 'burlywood', 'indian', 'spring', 'floral', 'medium');
+    | ^---
+    |
+    = expected EOI, block, or show_statement
+  Location:
+  ...returns as sr;  # Item filter ??? item_colors <- ('purple', 'bur...
+  ```
+- `trilogy file write answer_3544057080.preql -e -c import raw.store_sales as ss;
+import raw.store_returns as sr;
+
+# Items in store_sales that also have store_r…n ss.ticket_number = sr.ticket_number
+ and ss.item.item_sk = sr.item.item_sk
+;
+
+select
+    ss_ret.item_key,
+    count(ss_ret.ticket) as cnt
+limit 5;
+`
+
+  ```text
+  refused to write 'answer_3544057080.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 10:1
      |
-  23 | subset join sr.item.item_sk = ss.item.item_sk
+  10 | union join ss.ticket_number = sr.ticket_number
      | ^---
      |
      = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
   Location:
-   sr.ticket_number is not null ??? subset join sr.item.item_sk =
-
-  Write stats: received 3844 chars / 3844 bytes; tail: …'s list_price_sum,\\n    sum(ss.coupon_amt) as coupon_amt_sum\\n;'.
+   sr.ticket_number is not null ??? union join ss.ticket_number =
   ```
-- `trilogy file write answer_2874833976.preql --content import raw.store_sales as ss;
-
-# Top 5 states by store net profit in 2000
-with top_states as
-where ss.da…s.date_dim.year = 2000
-  and ss.store.state is not null
-  and ss.store.state in top_states.state
-order by level desc, ss.store.state, rnk
-limit 100;
+- `trilogy file write answer_3544057080.preql -e -c import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.catalog_returns as cr;
+import raw.s…qualifying_items.item_key
+  and sr.ticket_number is not null
+union join ss.ticket_number = sr.ticket_number
+ and ss.item.item_sk = sr.item.item_sk
+;
 `
 
   ```text
-  refused to write 'answer_2874833976.preql': not syntactically valid Trilogy.
+  refused to write 'answer_3544057080.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 29:1
+    --> 60:1
      |
-  29 | where ss.date_dim.year = 2000
+  60 | union join ss.ticket_number = sr.ticket_number
      | ^---
      |
-     = expected limit, order_by, or having
+     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
   Location:
-  ...store.state, ss.store.county) ??? where ss.date_dim.year = 2000
-
-  Write stats: received 1001 chars / 1001 bytes; tail: …'s.state\\norder by level desc, ss.store.state, rnk\\nlimit 100;\\n'.
+   sr.ticket_number is not null ??? union join ss.ticket_number =
   ```
-- `trilogy run --import raw.store_sales:ss select ss.store.state, sum(ss.net_profit) as state_profit where ss.date_dim.year = 2000 and ss.store.state is not null group by ss.store.state order by state_profit desc limit 5;`
+- `trilogy run --import raw.store_sales:ss select ss.store.store_id, count(grain(ss.ticket_number, ss.item.item_sk)) as cnt where ss.date_dim.year = 2000 and ss.store.store_sk is not null group by 1 order by 2 desc limit 10;`
 
   ```text
   Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...nd ss.store.state is not null ??? group by ss.store.state order
+  ...ss.store.store_sk is not null ??? group by 1 order by 2 desc lim...
   ```
-- `trilogy file write answer_42596196.preql --content import raw.catalog_sales as cs;
-import raw.web_sales as ws;
-import raw.store_sales as ss;
-
-with combined a…order by
-  total_extended_sales_price desc nulls first,
-  combined.brand_id nulls first,
-  combined.hour nulls first,
-  combined.minute nulls first
-;`
+- `trilogy run --import raw.store_sales:ss select ss.item.category, ss.item.class, count(grain(ss.ticket_number, ss.item.item_sk)) as cnt where ss.date_dim.year = 2000 and ss.store.store_sk is not null group by 1, 2 order by 1, 2 limit 20;`
 
   ```text
-  refused to write 'answer_42596196.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 6:4
-    |
-  6 |   (import raw.catalog_sales as cs
-    |    ^---
-    |
-    = expected select_statement
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ...;  with combined as union(   ( ??? import raw.catalog_sales as cs...
+  ...ss.store.store_sk is not null ??? group by 1, 2 order by 1, 2 li...
+  ```
+- `trilogy run --import raw/store:store select distinct store.state;`
 
-  Write stats: received 1588 chars / 1588 bytes; tail: …'  combined.hour nulls first,\\n  combined.minute nulls first\\n;'.
+  ```text
+  Syntax error in stdin: Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...rt raw.store as store; select ??? distinct store.state;
   ```
 - `trilogy file write answer_42596196.preql --content import raw.catalog_sales as cs;
 import raw.web_sales as ws;
 import raw.store_sales as ss;
 
-with combined a…order by
-  total_extended_sales_price desc nulls first,
-  combined.brand_id nulls first,
-  combined.hour nulls first,
-  combined.minute nulls first
+with combined a…tended_sales_price
+order by
+    total_extended_sales_price desc nulls first,
+    brand_id nulls first,
+    hour nulls first,
+    minute nulls first
 ;`
 
   ```text
@@ -1412,221 +1186,86 @@ with combined a…order by
   Parse error:
   Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
   Location:
-   minute bigint, total numeric) ???  select   combined.brand_id,
-
-  Write stats: received 1492 chars / 1492 bytes; tail: …'  combined.hour nulls first,\\n  combined.minute nulls first\\n;'.
+  ...te bigint, ext_price numeric?) ???  select     combined.brand_id...
   ```
-- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
-
-where
-  cs.sold_date.year = 1999
-  and cs.ship_customer.household_demog…, cs.sold_date.date, day) > 5
-
-select
-  cs.item.item_desc as item_description,
-  cs.sold_date.week_seq as week_sequence,
-  count(*) as cnt
-limit 10;
-`
+- `trilogy run --import raw.store_sales:store_sales select store_sales.store.county, count(grain(store_sales.item.item_sk, store_sales.ticket_number)) as cnt group by store_sales.store.county;`
 
   ```text
-  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a NON-NULL GRAIN KEY: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). It MUST be a key, and one that is not nullable: `count(x)` skips rows where `x` is NULL, so counting a nullable property (a name, a date, any optional field) silently undercounts. When the grain takes SEVERAL keys, name them with `grain(...)`: `count(grain(order_id, item.id))` counts order+item combinations, and `count_distinct(grain(first_name, last_name, sale_date))` counts distinct combinations - `grain()` is never NULL, so combinations with a missing member still count. For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
   Location:
-  ....week_seq as week_sequence,   ??? count(*) as cnt limit 10;
-
-  Write stats: received 385 chars / 385 bytes; tail: …'date.week_seq as week_sequence,\\n  count(*) as cnt\\nlimit 10;\\n'.
+  ..._sales.ticket_number)) as cnt ??? group by store_sales.store.cou...
   ```
-- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
-
-select
-  cs.sold_date.year as yr,
-  count(cs.order_number) as cnt
-group by cs.sold_date.year
-order by yr;
-`
-
-  ```text
-  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...count(cs.order_number) as cnt ??? group by cs.sold_date.year ord...
-
-  Write stats: received 139 chars / 139 bytes; tail: …'rder_number) as cnt\\ngroup by cs.sold_date.year\\norder by yr;\\n'.
-  ```
-- `trilogy file write answer_2091535883.preql --content import raw.catalog_sales as cs;
-
-where 
-  cs.sold_date.year = 1999
-  and cs.ship_customer.household_demographics.buy_potential = '>10000'
-
-select
-  count(cs.order_number) as cnt
-by *;
-`
-
-  ```text
-  refused to write 'answer_2091535883.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:1
-    |
-  9 | by *;
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...count(cs.order_number) as cnt ??? by *;
-
-  Write stats: received 184 chars / 184 bytes; tail: …"al = '>10000'\\n\\nselect\\n  count(cs.order_number) as cnt\\nby *;\\n".
-  ```
-- `trilogy file write answer_3840922834.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
-import raw.customer as c;
-
-# Rowset 1: store s…_2002 / pivoted.store_2001)
-select
-    pivoted.cust_code,
-    pivoted.fname,
-    pivoted.lname
-order by pivoted.cust_code asc nulls first
-limit 100;
-`
-
-  ```text
-  refused to write 'answer_3840922834.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [226]: Misplaced `subset|union join`. The key looks fine - the join is in the wrong PLACE. A query-scoped join is part of a `select` statement, not a standalone statement and not a pre-`where` clause. Put it right after the select list (preferred, SQL-like): `where <filters> select <cols> subset join a.key = b.key`. The clause order is `where` -> `select` <cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also sit between `where` and `select`, but never before `where` and never on its own. Full reference: `trilogy agent-info syntax example query-structure`.
-  Location:
-  ...columns with cust_combined as ??? subset join store_by_cust_year...
-
-  Write stats: received 2050 chars / 2050 bytes; tail: …'lname\\norder by pivoted.cust_code asc nulls first\\nlimit 100;\\n'.
-  ```
-- `trilogy file write answer_747155668.preql --content import raw.store_sales as ss;
-import raw.web_sales as ws;
-import raw.catalog_sales as cs;
-
-with combined …ls first,
-         combined.sale_year nulls first,
-         combined.sale_quarter nulls first,
-         combined.item_category nulls first
+- `trilogy file write answer_747155668.preql --content # Answer to question 747155668
+# Across three sales channels, report on sales lines with missing referenc…nnel nulls first, combined.missing_ref nulls first, combined.year nulls first, combined.quarter nulls first, combined.category nulls first
 limit 100;`
 
   ```text
   refused to write 'answer_747155668.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+   --> 6:3
+    |
+  6 |   import raw.store_sales as ss
+    |   ^---
+    |
+    = expected tvf_rel_arg
   Location:
-  ...total_ext_sales_price numeric) ???  select   combined.channel,
-
-  Write stats: received 2171 chars / 2171 bytes; tail: …'irst,\\n         combined.item_category nulls first\\nlimit 100;'.
+  ...annel - missing ss_store_sk   ??? import raw.store_sales as ss
   ```
-- `trilogy file write answer_3210116865.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…annel is null then 0 else 1 end,
-    combined.channel asc nulls first,
-    combined.outlet asc nulls first,
-    sum(combined.returns) desc
+- `trilogy file write answer_747155668.preql --content # Answer to question 747155668
+# Across three sales channels, report on sales lines with missing referenc…les_price
+order by combined.channel nulls first, combined.missing_ref nulls first, combined.year nulls first, combined.quarter nulls first
 limit 100;`
 
   ```text
-  refused to write 'answer_3210116865.preql': not syntactically valid Trilogy.
+  refused to write 'answer_747155668.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
-  Location:
-  ...turns numeric, profit numeric) ???  select     combined.channel
-
-  Write stats: received 4501 chars / 4501 bytes; tail: …'t asc nulls first,\\n    sum(combined.returns) desc\\nlimit 100;'.
-  ```
-- `trilogy run --import raw/store_sales:ss select ss.date_dim.year, ss.item.item_sk, ss.customer.customer_sk, sum(ss.quantity) as qty where ss.date_dim.year = 2000 and ss.customer.customer_sk is not null group by year, item_sk, cust_sk limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...tomer.customer_sk is not null ??? group by year, item_sk, cust_s...
-  ```
-- `trilogy file write answer_1226264875.preql --content import raw.store_sales as ss;
-import raw.store_returns as sr;
-import raw.catalog_sales as cs;
-import raw…ast,
-    combined_qty asc nulls first,
-    combined_wc_sum asc nulls first,
-    combined_sp_sum asc nulls first,
-    ratio asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'answer_1226264875.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 33:1
+    --> 10:3
      |
-  33 | union all
-     | ^---
-     |
-     = expected join_clause, metadata, limit, order_by, where, having, or select_grouping
-  Location:
-  ...sum(cs.sales_price) as cat_sp ??? union all where ws.sold_date.y...
-
-  Write stats: received 2482 chars / 2482 bytes; tail: …'sp_sum asc nulls first,\\n    ratio asc nulls first\\nlimit 100;'.
-  ```
-- `trilogy run --import raw/store_sales:ss --import raw/store_returns:sr select ss.item.item_sk, ss.customer.customer_sk, sum(ss.quantity) as qty, sum(ss.wholes…ustomer.customer_sk is not null and (ss.ticket_number, ss.item.item_sk) not in (sr.ticket_number, sr.item.item_sk) group by item_sk, cust_sk limit 5;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...cket_number, sr.item.item_sk) ??? group by item_sk, cust_sk limi...
-  ```
-- `trilogy run --import raw/store_returns:sr select sr.item.item_id, sr.return_quantity where sr.item.item_id in (select sr2.item.item_id where sr2.date_dim.week_seq in (5244, 5257, 5264) group by sr2.item.item_id having sum(sr2.return_quantity) is null) and sr.date_dim.week_seq in (5244, 5257, 5264) limit 10;`
-
-  ```text
-  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
-  Location:
-  ...eek_seq in (5244, 5257, 5264) ??? group by sr2.item.item_id havi...
-  ```
-- `trilogy file write answer_2869182220.preql --content import raw.store_returns as sr;
-import raw.customer as c;
-
-# Get the set of customer_demographic keys (d…dden grain fields
-    --return_demo_profiles.ticket_number,
-    --return_demo_profiles.item.item_sk
-order by c.customer_id asc nulls first
-limit 100;`
-
-  ```text
-  refused to write 'answer_2869182220.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 19:3
-     |
-  19 | --return_demo_profiles.profile_demo_sk as h_profile,
+  10 |   where ss.store.store_sk is null
      |   ^---
      |
-     = expected PURPOSE, PROPERTY, UNIQUE, or AUTO
+     = expected tvf_rel_arg
   Location:
-  ...urn as hidden grain fields  -- ??? return_demo_profiles.profile_d...
-
-  Write stats: received 1457 chars / 1457 bytes; tail: …'em.item_sk\\norder by c.customer_id asc nulls first\\nlimit 100;'.
+  ...annel - missing ss_store_sk   ??? where ss.store.store_sk is nul...
   ```
-- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
+- `trilogy run --import raw.store_sales:ss select ss.date_dim.year as yr, ss.item.item_sk as item_sk, ss.customer.customer_sk as cust_sk, count(grain(ss.ticket_number, ss.item.item_sk)) as cnt where ss.date_dim.year=2000 and ss.customer.customer_sk is not null group by yr, item_sk, cust_sk limit 10;`
 
-# Filter web sales to year 2000
-where ws.sold_…_refunded_cash,
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...tomer.customer_sk is not null ??? group by yr, item_sk, cust_sk
+  ```
+- `trilogy run --import raw.store_sales:ss --import raw.store_returns:sr --import raw.catalog_sales:cs --import raw.catalog_returns:cr --import raw.web_sales:ws…_sk,
+    sum(ws.quantity) as web_qty
+;
+
+select count(1) as cnt from store_nr;
+select count(1) as cnt from cat_nr;
+select count(1) as cnt from web_nr;`
+
+  ```text
+  Syntax error in stdin: Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
+  Location:
+  ...qty ;  select count(1) as cnt ??? from store_nr; select count(1)...
+  ```
+- `trilogy run --import raw/catalog_returns:cr select cr.item.item_id, sum(cr.return_quantity) as cat_qty, count(grain(cr.order_number, cr.item.item_sk)) as cat_rows where cr.date_dim.week_seq in (5244, 5257, 5264) group by cr.item.item_id limit 5;`
+
+  ```text
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...eek_seq in (5244, 5257, 5264) ??? group by cr.item.item_id limit...
+  ```
+- `trilogy file write answer_927797426.preql --content import raw.web_returns as wr;
+
+# Match web returns to web sales by item and order number (same grain)
+sub…ash,
     avg(wr.fee) as avg_return_fee
-order by
-    reason_desc_20,
-    avg_sold_qty,
-    avg_refunded_cash,
-    avg_return_fee
+order by reason_desc_20,
+         avg_sold_qty,
+         avg_refunded_cash,
+         avg_return_fee
 limit 100;`
 
   ```text
@@ -1635,113 +1274,145 @@ limit 100;`
   Parse error:
   Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
   Location:
-  ...rder_number = wr.order_number ??? union join ws.item.item_sk = w...
-
-  Write stats: received 2990 chars / 2990 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
+  ...and order number (same grain) ??? subset join wr.item.item_sk =
   ```
-- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
+- `trilogy file write answer_927797426.preql --content import raw.web_returns as wr;
+import raw.web_sales as ws;
 
-# Filter web sales to year 2000
-where ws.sold_…_refunded_cash,
+# Match web returns to web sales by item and o…ash,
     avg(wr.fee) as avg_return_fee
-order by
-    reason_desc_20,
-    avg_sold_qty,
-    avg_refunded_cash,
-    avg_return_fee
+order by reason_desc_20,
+         avg_sold_qty,
+         avg_refunded_cash,
+         avg_return_fee
 limit 100;`
 
   ```text
   refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+  Syntax [226]: Misplaced `subset|union join`. The key looks fine - the join is in the wrong PLACE. A query-scoped join is part of a `select` statement, not a standalone statement and not a pre-`where` clause. Put it right after the select list (preferred, SQL-like): `where <filters> select <cols> subset join a.key = b.key`. The clause order is `where` -> `select` <cols> -> join(s) -> `having` -> `order by` -> `limit`; a join may also sit between `where` and `select`, but never before `where` and never on its own. Full reference: `trilogy agent-info syntax example query-structure`.
   Location:
-   grain: item and order_number ??? union join ws.order_number = w...
-
-  Write stats: received 2374 chars / 2374 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
+  ...and order number (same grain) ??? subset join wr.item.item_sk =
   ```
-- `trilogy file write answer_927797426.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
+- `trilogy file write answer_2852230229.preql --content import raw.web_sales as ws;
 
-# Filter web sales to year 2000
-where ws.sold_…')
-     and ws.net_profit between 50 and 250)
-  )
+where ws.sold_date.year = 2000
+select
+    ws.item.category,
+    ws.item.cla…m.class)
 order by
-    reason_desc_20,
-    avg_sold_qty,
-    avg_refunded_cash,
-    avg_return_fee
+    hier_level desc nulls first,
+    case when hier_level = 0 then ws.item.category end nulls first,
+    rnk nulls first
 limit 100;`
 
   ```text
-  refused to write 'answer_927797426.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2852230229.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [225]: Expected a join condition. A query-scoped `subset|union join` needs a key equality - write `subset join a.key = b.key` (or `union join a.key = b.key`). Chain more keys for a composite grain with `= c.key`, and separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). Both sides must be real fields or expressions - `...` is not a placeholder.
+   --> 9:93
+    |
+  9 |     rank(ws.item.category, ws.item.class) over (partition by grouping(ws.item.category) = 1 and grouping(ws.item.class) = 1, grouping(ws.item.category) = 0 and grouping(ws.item.class) = 0, ws.item.category order by sum(ws.net_paid) desc) as rnk
+    |                                                                                             ^---
+    |
+    = expected dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or window_sql_order
   Location:
-  ...avg(wr.fee) as avg_return_fee ??? union join ws.order_number = w...
-
-  Write stats: received 2209 chars / 2209 bytes; tail: …'ld_qty,\\n    avg_refunded_cash,\\n    avg_return_fee\\nlimit 100;'.
+  ...rouping(ws.item.category) = 1 ??? and grouping(ws.item.class) =
   ```
-- `trilogy file write answer_3281742578.preql --content import raw.web_sales as ws;
-import raw.web_returns as wr;
+- `trilogy file write answer_210925266.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+import raw.web_sales as ws;
 
-# Step 1: Identify candidate orders that have…as order_count,
-    sum(ws.ext_ship_cost) as total_ext_ship_cost,
-    sum(ws.net_profit) as total_net_profit
-order by
-    order_count asc
-limit 100
+# Distinct (la…sale_date);
+
+# Count the surviving unique combinations
+select count(grain(only_store.last_name, only_store.first_name, only_store.sale_date)) as cnt;`
+
+  ```text
+  refused to write 'answer_210925266.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 38:4
+     |
+  38 |   (store_combos),
+     |    ^---
+     |
+     = expected select_statement
+  Location:
+  ...with only_store as except(   ( ??? store_combos),   (catalog_comb...
+  ```
+- `trilogy file write answer_32504671.preql --content import raw.store_sales as ss;
+
+# Condition: store named 'ese'
+where ss.store.store_name = 'ese'
+
+# Conditi…e_dim.hour = 12 and ss.time_dim.minute >= 0 and (ss.time_dim.hour < 12 or (ss.time_dim.hour = 12 and ss.time_dim.minute < 30))) as bucket_1200_1230
 ;`
 
   ```text
-  refused to write 'answer_3281742578.preql': not syntactically valid Trilogy.
+  refused to write 'answer_32504671.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 22:11
+    --> 11:1
      |
-  22 |     exist wr.order_number
-     |           ^---
+  11 | where (
+     | ^---
      |
-     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or JOIN_TYPE
   Location:
-  ...urn_orders as where     exist ??? wr.order_number select     wr....
+  ...stomer.household_demographics ??? where (   (ss.household_demogr...
   ```
-
-### `join-resolution`
-
-- `trilogy run --import raw.store_sales:s --import raw.item:i with qualifying_items as select i.category as cat, avg(i.current_price) by i.category as cat_avg; …t_price > 1.2 * qualifying_items.cat_avg as is_qualifying where i.category is not null and i.current_price > 1.2 * qualifying_items.cat_avg limit 10;`
+- `trilogy run --import raw.web_sales:ws select ws.ship_hdemo.dep_count, ws.web_page.char_count, count(grain(ws.order_number, ws.item.item_sk)) as cnt where ws.ship_hdemo.dep_count = 6 and ws.web_page.char_count between 5000 and 5200 and ws.time_dim.hour in (8,9,19,20) group by 1,2 order by 1 limit 5;`
 
   ```text
-  Resolution error in stdin: Could not resolve connections for query with output ['i.item_sk<Purpose.KEY>Derivation.ROOT>', 'i.category<Purpose.PROPERTY>Derivation.ROOT>', 'i.current_price<Purpose.PROPERTY>Derivation.ROOT>', 'qualifying_items.cat_avg<Purpose.METRIC>Derivation.ROWSET>', 'local.is_qualifying<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
+  Syntax error in stdin: Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ....time_dim.hour in (8,9,19,20) ??? group by 1,2 order by 1 limit
   ```
-- `trilogy run --import raw/store_sales:store_sales --import raw/item:item select item.item_sk, count(grain(store_sales.ticket_number, item.item_sk)) as cnt where store_sales.date_dim.year = 2000 and item.item_sk is not null limit 5;`
+- `trilogy file write answer_569612608.preql --content import raw.web_sales as ws;
+import raw.web_returns as wr;
+
+# Step 1: Identify eligible orders - use more … sum(ws.ext_ship_cost) as total_extended_shipping_cost,
+    sum(ws.net_profit) as total_net_profit
+order by
+    eligible_order_count desc
+limit 100;
+`
 
   ```text
-  Resolution error in stdin: Could not resolve connections for query with output ['item.item_sk<Purpose.KEY>Derivation.ROOT>', 'local.cnt<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  refused to write 'answer_569612608.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 16:1
+     |
+  16 | select
+     | ^---
+     |
+     = expected limit, order_by, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+  ...r in (select wr.order_number) ??? select     ws.order_number,
   ```
-- `trilogy run answer_1256642802.preql`
+- `trilogy file write answer_3562094594.preql --content import raw.store_sales as ss;
+import raw.catalog_sales as cs;
+
+# Set of (customer, item_sk) combos from …(only_catalog.cust_sk, only_catalog.item_sk)) as only_catalog_count,
+    count(grain(both_sets.cust_sk, both_sets.item_sk)) as both_count
+limit 100;
+`
 
   ```text
-  Resolution error in answer_1256642802.preql: Could not resolve connections for query with output ['ss.store.store_name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.item_desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue<Purpose.METRIC>Derivation.BASIC>', 'local.item_current_price<Purpose.PROPERTY>Derivation.BASIC>', 'local.item_wholesale_cost<Purpose.PROPERTY>Derivation.BASIC>', 'local.item_brand<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
-  ```
-- `trilogy run answer_1256642802.preql`
+  refused to write 'answer_3562094594.preql': not syntactically valid Trilogy.
 
-  ```text
-  Resolution error in answer_1256642802.preql: Could not resolve connections for query with output ['ss.store.store_name<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.item_desc<Purpose.PROPERTY>Derivation.ROOT>', 'local.per_item_revenue_1998<Purpose.METRIC>Derivation.AGGREGATE>', 'ss.item.current_price<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.wholesale_cost<Purpose.PROPERTY>Derivation.ROOT>', 'ss.item.brand<Purpose.PROPERTY>Derivation.ROOT>'] from current model.
-  ```
-- `trilogy run answer_3046445280.preql`
-
-  ```text
-  Resolution error in answer_3046445280.preql: Could not resolve connections for query with output ['local.___tvf_arm_0_yr<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_brand_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_class_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_cat_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_manu_id<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_net_qty<Purpose.PROPERTY>Derivation.BASIC>', 'local.___tvf_arm_0_net_amt<Purpose.PROPERTY>Derivation.BASIC>'] from current model.
-  ```
-- `trilogy run answer_2852230229.preql`
-
-  ```text
-  Resolution error in answer_2852230229.preql: Could not resolve connections for query with output ['local.total_net_paid<Purpose.METRIC>Derivation.AGGREGATE>', 'item.category<Purpose.PROPERTY>Derivation.ROOT>', 'item.class<Purpose.PROPERTY>Derivation.ROOT>', 'local.hierarchy_level<Purpose.METRIC>Derivation.BASIC>', 'local.rnk<Purpose.PROPERTY>Derivation.WINDOW>', 'local._virt_agg_grouping_7561668700388452<Purpose.METRIC>Derivation.AGGREGATE>', 'local._virt_agg_grouping_1927481247739235<Purpose.METRIC>Derivation.AGGREGATE>'] from current model.
+  Parse error:
+    --> 22:9
+     |
+  22 | except((store_combos.cust_sk, store_combos.item_sk), (catalog_combos.cust_sk, catalog_combos.item_sk))
+     |         ^---
+     |
+     = expected select_statement
+  Location:
+  ...os with only_store as except(( ??? store_combos.cust_sk, store_co...
   ```
 
 ### `cli-misuse`
@@ -1751,65 +1422,91 @@ limit 100
   ```text
   Invalid value for 'PATH': File 'raw/' is a directory.
   ```
-- `trilogy file write -e -c import raw.web_sales as ws;
-
-# Filter period first
-where ws.sold_date.date between '1999-02-22'::date and '1999-03-24'::date
-  and w…0)) * 100.0 as pct_of_class
-order by
-    ws.item.category,
-    ws.item.class,
-    ws.item.item_id,
-    ws.item.item_desc,
-    pct_of_class
-limit 100;`
+- `trilogy files read raw/catalog_sales.preql`
 
   ```text
-  Missing argument 'PATH'.
+  No such command 'files'.
   ```
-- `trilogy explore raw/`
+- `trilogy explore raw/store_sales`
 
   ```text
-  Invalid value for 'PATH': File 'raw/' is a directory.
+  Invalid value for 'PATH': File 'raw/store_sales' does not exist.
   ```
-- `trilogy explore raw/ --regex sales|store_sales|catalog_sales|web_sales`
+- `trilogy explore raw/catalog_sales`
 
   ```text
-  Invalid value for 'PATH': File 'raw/' is a directory.
+  Invalid value for 'PATH': File 'raw/catalog_sales' does not exist.
+  ```
+- `trilogy explore raw/web_sales`
+
+  ```text
+  Invalid value for 'PATH': File 'raw/web_sales' does not exist.
+  ```
+- `trilogy explore raw/store_sales.preql --regex net paid customer date`
+
+  ```text
+  Got unexpected extra arguments (paid customer date)
+  ```
+- `trilogy explore raw/web_sales.preql --regex net paid customer date`
+
+  ```text
+  Got unexpected extra arguments (paid customer date)
+  ```
+- `trilogy explore raw/customer.preql --regex customer first last code`
+
+  ```text
+  Got unexpected extra arguments (first last code)
+  ```
+- `trilogy explore raw`
+
+  ```text
+  Invalid value for 'PATH': File 'raw' is a directory.
   ```
 
-### `undefined-concept`
+### `join-resolution`
 
-- `trilogy explore answer_3863442186.preql`
+- `trilogy run --import raw.catalog_sales:cs --import raw.web_sales:ws select 
+    cs.sold_date.week_seq as wk, 
+    cs.sold_date.dow as dw, 
+    sum(cs.net_paid) + sum(ws.net_paid) as sales 
+where cs.net_paid is not null or ws.net_paid is not null
+order by wk, dw
+limit 20;`
 
   ```text
-  Failed to parse answer_3863442186.preql: (UndefinedConceptException(...), "Undefined concept: sv01.customer_id. Suggestions: ['s.customer.customer_id', 'cs.bill_customer.customer_id', 'cs.ship_customer.customer_id', 'ws.bill_customer.customer_id', 'ws.ship_customer.customer_id', 'store_vals.s.customer.customer_id']")
+  Resolution error in stdin: Could not resolve connections for query with output ['local.wk<Purpose.PROPERTY>Derivation.BASIC>', 'local.dw<Purpose.PROPERTY>Derivation.BASIC>', 'local.sales<Purpose.METRIC>Derivation.BASIC>'] from current model.
+  ```
+- `trilogy run --import raw.catalog_sales:cs --import raw.web_sales:ws select cs.sold_date.week_seq, cs.sold_date.dow, sum(cs.net_paid) + sum(ws.net_paid) as sales where cs.sold_date.week_seq in (5270, 5323) order by cs.sold_date.week_seq, cs.sold_date.dow limit 20;`
+
+  ```text
+  Resolution error in stdin: Could not resolve connections for query with output ['cs.sold_date.week_seq<Purpose.PROPERTY>Derivation.ROOT>', 'cs.sold_date.dow<Purpose.PROPERTY>Derivation.ROOT>', 'local.sales<Purpose.METRIC>Derivation.BASIC>'] from current model.
+  ```
+
+### `type-error`
+
+- `trilogy run --import raw/date_dim:date_dim --import raw/item:item select date_dim.date, date_dim.week_seq, date_dim.year where date_dim.date between '2000-01-01' and '2000-01-07' limit 10;`
+
+  ```text
+  Syntax error in stdin: Cannot use BETWEEN with incompatible types DATE and STRING (low)
   ```
 
 ### `syntax-missing-alias`
 
-- `trilogy file write answer_3979964698.preql -c import raw.web_sales as web;
-import raw.catalog_sales as cat;
+- `trilogy file write answer_2869182220.preql --content import raw.store_returns as sr;
+import raw.customer as c;
 
-with combined as union(
-  (
-    select
-      web…sum(combined.monthly_net ? combined.sale_month = 12) as dec_net
+# For each store return, we want the returnin…ome_band.lower_bound >= 38128
+    and c.household_demographics.income_band.upper_bound <= 88128
 order by
-  combined.wh_name nulls first,
-  combined.sale_year nulls first
-limit 100;
-`
+    customer_code asc nulls first
+limit 100;`
 
   ```text
-  refused to write 'answer_3979964698.preql': not syntactically valid Trilogy.
+  refused to write 'answer_2869182220.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `hidden warehouse sk distinguishes but is not displayed
-    -- 8 visible grouping fields
-    combined.wh_name as hidden_warehouse_sk_distinguishes_but_is`
+  Syntax [201]: Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y` Here: `hidden fields for grain
+      -- sr.ticket_number as hidden_fields_for_grain_sr_ticket_number`
   Location:
-  ...hly_net);  select   -- hidden ??? warehouse sk distinguishes but...
-
-  Write stats: received 5000 chars / 5000 bytes; tail: …'me nulls first,\\n  combined.sale_year nulls first\\nlimit 100;\\n'.
+  ...) as full_name,     -- hidden ??? fields for grain     -- sr.tic...
   ```

@@ -1,6 +1,6 @@
 query_id = "64"
 generator = "v3"
-gen_length = 20878
+gen_length = 21156
 preql_size = 3913
 comp_size = 3783
 generated_sql = """
@@ -9,6 +9,7 @@ WITH
 sweltering as (
 SELECT
     \"ss_store_sales\".\"SS_ADDR_SK\" as \"ss_pos_address_sk\",
+    \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     \"ss_store_sales\".\"SS_STORE_SK\" as \"ss_store_sk\",
     coalesce(\"ss_store_sales\".\"SS_ADDR_SK\") as \"_virt_presence_9866050310038537\",
     coalesce(\"ss_store_sales\".\"SS_STORE_SK\") as \"_virt_presence_334607598686241\"
@@ -51,18 +52,6 @@ FROM
     \"sweltering\"
 WHERE
     \"sweltering\".\"_virt_presence_9866050310038537\" is not null
-
-GROUP BY
-    1,
-    2),
-macho as (
-SELECT
-    \"sweltering\".\"_virt_presence_334607598686241\" as \"_virt_presence_334607598686241\",
-    \"sweltering\".\"ss_store_sk\" as \"ss_store_sk\"
-FROM
-    \"sweltering\"
-WHERE
-    \"sweltering\".\"_virt_presence_334607598686241\" is not null
 
 GROUP BY
     1,
@@ -131,6 +120,20 @@ FROM
 WHERE
     exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"ss_item_items\".\"I_ITEM_SK\",\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\")) and \"ss_sale_date_date\".\"D_YEAR\" = 1999 and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 65 AND 74 and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"ss_store_sales\".\"SS_ADDR_SK\" is not null and \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" is not null
 ),
+macho as (
+SELECT
+    \"sweltering\".\"_virt_presence_334607598686241\" as \"_virt_presence_334607598686241\",
+    \"sweltering\".\"ss_item_sk\" as \"ss_item_sk\",
+    \"sweltering\".\"ss_store_sk\" as \"ss_store_sk\"
+FROM
+    \"sweltering\"
+WHERE
+    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from \"sweltering\".\"ss_item_sk\") and \"sweltering\".\"_virt_presence_334607598686241\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
 hard as (
 SELECT
     \"puffy\".\"_virt_presence_9866050310038537\" as \"_virt_presence_9866050310038537\",
@@ -168,7 +171,7 @@ SELECT
     \"late\".\"ss_wholesale_cost\" as \"ss_wholesale_cost\"
 FROM
     \"macho\"
-    INNER JOIN \"late\" on \"macho\".\"ss_store_sk\" is not distinct from \"late\".\"ss_store_sk\"
+    INNER JOIN \"late\" on \"macho\".\"ss_item_sk\" = \"late\".\"ss_item_sk\" AND \"macho\".\"ss_store_sk\" is not distinct from \"late\".\"ss_store_sk\"
 WHERE
     \"late\".\"ss_is_returned\" and \"macho\".\"_virt_presence_334607598686241\" is not null
 

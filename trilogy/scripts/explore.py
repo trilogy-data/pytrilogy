@@ -37,9 +37,10 @@ _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 #   json v2: conformed dimensions collapse into one combined-key entry
 #            (``"date, return_date, …": [schema]``) — the default. Imported
 #            namespaces render in the same full grouped-declaration form
-#            under ``namespaced`` (each entry pairs its schema with the
-#            import-line description(s)); they are never collapsed to the
-#            old name-only leaf list.
+#            under ``namespaced`` (each entry pairs its schema with a
+#            per-binding ``roles`` map carrying import-line descriptions
+#            and structural provenance — see ``_role_provenance``); they
+#            are never collapsed to the old name-only leaf list.
 #   rich v1: the only rich shape so far (no conformed dedup yet).
 RENDER_TYPE_JSON = "json"
 RENDER_TYPE_RICH = "rich"
@@ -675,6 +676,30 @@ def _dedup_conformed(
     return deduped
 
 
+def _role_parent(member: str) -> str:
+    """The binding a nested role is reached through (``customer`` for
+    ``customer.household_demographics``); empty for a direct import."""
+    return member.rsplit(".", 1)[0] if "." in member else ""
+
+
+def _role_provenance(member: str, description: str) -> dict:
+    """Neutral per-binding role entry for a combined conformed-dimension key:
+    the hand-authored import description when present, plus structural
+    provenance derived from the semantic address alone — ``via`` names the
+    parent binding a nested role hangs off; ``direct`` marks the explored
+    file's own import. Deliberately never derived from physical columns:
+    bindings stay distinct roles even when one table happens to back both."""
+    entry: dict = {}
+    if description:
+        entry["description"] = description
+    parent = _role_parent(member)
+    if parent:
+        entry["via"] = parent
+    else:
+        entry["direct"] = True
+    return entry
+
+
 def _imported_payload(
     env: Environment,
     imported_items: list[tuple[str, Concept]],
@@ -685,12 +710,20 @@ def _imported_payload(
     """Full-detail rendering of imported namespaces: the same grouped
     declaration layout as the local ``namespaces`` section, with role-played
     conformed dimensions deduped into one combined-key entry (v2+, same
-    machinery as locals). Each entry pairs its schema (``concepts``) with the
-    import-line description — a per-role ``roles`` map on a combined entry,
-    because those descriptions are what distinguish look-alike roles
-    (sale-time vs current-snapshot demographics). A name-only collapse here
-    hid key semantics (surrogate ``sk`` vs business ``id``), enum value sets,
-    and role notes — the exact facts an agent mis-guesses most expensively.
+    machinery as locals). Each entry pairs its schema (``concepts``) with a
+    per-binding ``roles`` map, because a bare combined key reads as a set of
+    interchangeable aliases when the members are in fact distinct semantic
+    bindings that can resolve to different dimension members for the same
+    fact row (TPC-DS q96: ``household_demographics`` vs
+    ``customer.household_demographics``). The map carries the import-line
+    descriptions when authored and structural provenance always
+    (``_role_provenance``); it is emitted whenever a description exists or
+    the members' parent paths differ — an all-direct alias group
+    (``sold_date``/``ship_date``) with no descriptions stays bare to protect
+    the dedup's token savings, since its alias names already distinguish the
+    roles. A name-only collapse here hid key semantics (surrogate ``sk`` vs
+    business ``id``), enum value sets, and role notes — the exact facts an
+    agent mis-guesses most expensively.
 
     Internal ``__`` namespaces stay hidden here; ``_``-prefixed private leaves
     are already stripped upstream by ``filter_hidden`` (unless
@@ -707,15 +740,12 @@ def _imported_payload(
     for key, groups in grouped.items():
         members = key.split(_ROLE_DELIM)
         entry: dict = {}
-        descs = {
-            m: (descriptions.get(m) or "").strip()
-            for m in members
-            if (descriptions.get(m) or "").strip()
-        }
+        descs = {m: (descriptions.get(m) or "").strip() for m in members}
         if len(members) > 1:
-            if descs:
-                entry["roles"] = descs
-        elif descs:
+            heterogeneous = len({_role_parent(m) for m in members}) > 1
+            if heterogeneous or any(descs.values()):
+                entry["roles"] = {m: _role_provenance(m, descs[m]) for m in members}
+        elif descs[members[0]]:
             entry["description"] = descs[members[0]]
         entry["concepts"] = groups
         out[key] = entry

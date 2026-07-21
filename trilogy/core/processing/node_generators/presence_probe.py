@@ -99,6 +99,40 @@ def member_binding_datasources(
     return off_grain + at_grain
 
 
+def co_declared_group_keys(
+    member_address: str,
+    datasource: BuildDatasource,
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Axis keys of OTHER statement-declared join-key groups with a member
+    physically bound in `datasource`.
+
+    A composite scoped join (`union join a.t = b.t and a.i = b.i`) declares
+    presence at the compound (t, i) grain. A probe scan carrying only its own
+    group's key groups the member's table to that single key and re-joins on
+    it alone, silently coarsening "did (t, i) match?" to "did t match ANY
+    row?" (TPC-DS q64 is_returned). Limited to statement-scoped declarations:
+    a global `merge` is ambient identity, not a join constraint of this query,
+    so a merged concept bound in the probed table must not narrow the probe."""
+    statement_members = environment.domain_graph.statement_relation_members()
+    out: list[BuildConcept] = []
+    for canonical, members in sorted(environment.scoped_join_key_groups.items()):
+        if member_address in members or canonical == member_address:
+            continue
+        if not members & statement_members:
+            continue
+        key = environment.concepts.get(canonical)
+        if key is None:
+            continue
+        if any(
+            datasource.name == d.name
+            for m in sorted(members)
+            for d in member_binding_datasources(m, environment)
+        ):
+            out.append(key)
+    return out
+
+
 def coalescing_axis_group(
     address: str, environment: BuildEnvironment
 ) -> tuple[str, set[str]] | None:
@@ -292,9 +326,15 @@ def gen_presence_probe_node(
         f"{LOGGER_PREFIX} pinning probe {concept.address} for member"
         f" {member_address} to datasource {datasource.name}"
     )
+    co_keys = co_declared_group_keys(member_address, datasource, environment)
+    if co_keys:
+        logger.info(
+            f"{LOGGER_PREFIX} probe carries co-declared join keys"
+            f" {[c.address for c in co_keys]} bound in {datasource.name}"
+        )
     node, force_group = create_datasource_node(
         datasource,
-        [key],
+        [key] + co_keys,
         accept_partial=True,
         environment=environment,
         depth=depth + 1,
@@ -341,10 +381,12 @@ def gen_presence_probe_node(
     remaining = [c for c in local_optional if c.address != key.address]
     if remaining:
         # Cover local_optional per the generator contract: the pinned scan can
-        # never provide it (it carries only the group key + probe), so source
-        # the rest alongside the key and join on it.
+        # never provide it (it carries only the group keys + probe), so source
+        # the rest alongside the keys and join on them. Co-declared keys ride
+        # along even when unrequested: without them the enrich side joins the
+        # probe on the probed key alone, re-coarsening the compound grain.
         enrich = source_concepts(
-            mandatory_list=unique([key] + remaining, "address"),
+            mandatory_list=unique([key] + co_keys + remaining, "address"),
             environment=environment,
             g=g,
             depth=depth + 1,
@@ -360,7 +402,7 @@ def gen_presence_probe_node(
         input_concepts=unique(
             [c for p in parents for c in p.output_concepts], "address"
         ),
-        output_concepts=unique([concept, key] + remaining, "address"),
+        output_concepts=unique([concept, key] + co_keys + remaining, "address"),
         environment=environment,
         parents=parents,
         depth=depth,

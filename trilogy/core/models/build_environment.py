@@ -195,25 +195,29 @@ class BuildEnvironment:
 
     def pseudonym_unsatisfiable_group_mates(self) -> dict[str, set[str]]:
         """`distinct_scoped_join_group_mates` widened for STACK VALIDATION:
-        additionally, in SUBSET (`left`/`subset`) groups whose distinct
-        members are ALL rowset keys, a member the author REFERENCES is never
-        satisfied through a group-mate pseudonym. Its values and per-row
+        additionally, in SUBSET (`left`/`subset`) groups, an authored member
+        is never satisfied through a group-mate pseudonym when EITHER end of
+        the pairing is a rowset key. A rowset member's values and per-row
         presence exist only in its own scope: counting it as found off a
         mate drops its source from the plan entirely, stranding every
         reference (a presence probe, a projection) as a render sentinel or
         silently swapping in the mate's row population (q35 `subset join`
-        between rowsets). Two carve-outs keep the mechanism cases working:
-        an UNREFERENCED member stays satisfiable — it enters requests only
-        synthetically (an aggregate grain canonicalized onto the group
-        root), where the declaration is pure domain metadata and satisfying
-        it via the mate is the ruled collapse-to-referenced-side semantics —
-        and a group with a non-rowset member is exempt entirely: a bound
-        (ROOT) member resolves by binding substitution, and a
-        derived-expression key relates the sides BY materializing the key
-        and pairing it with the anchor over the pseudonym, so blocking would
-        break that machinery. Validation-only: the rowset enrichment
-        machinery consumes the narrower map, where a subset mate is a
-        satisfiable request, not an exposure obligation."""
+        between rowsets); and in the mirror direction a rowset mate carries
+        only its own filtered rows, so crediting the ROOT anchor off the
+        rowset's pseudonym silently narrows the anchor's population to the
+        subset (q35 `subset join <rowset> = <root key>`, member projected).
+        Carve-outs keep the mechanism cases working: an UNREFERENCED member
+        stays satisfiable — it enters requests only synthetically (an
+        aggregate grain canonicalized onto the group root), where the
+        declaration is pure domain metadata and satisfying it via the mate
+        is the ruled collapse-to-referenced-side semantics; an all-ROOT
+        group resolves by binding substitution; and a group with a
+        derived-expression member is exempt entirely — a derived key
+        relates the sides BY materializing the key and pairing it with the
+        anchor over the pseudonym, so blocking would break that machinery.
+        Validation-only: the rowset enrichment machinery consumes the
+        narrower map, where a subset mate is a satisfiable request, not an
+        exposure obligation."""
         out = self.distinct_scoped_join_group_mates()
         subset_anchored = {
             self.domain_graph.canonical(addr)
@@ -223,13 +227,30 @@ class BuildEnvironment:
         for canonical, distinct in self._distinct_scoped_join_groups():
             if canonical not in subset_anchored:
                 continue
-            members = [self.concepts.get(m) for m in distinct]
-            if any(c is None or c.derivation != Derivation.ROWSET for c in members):
+            concepts = {m: self.concepts.get(m) for m in distinct}
+            if any(c is None for c in concepts.values()):
+                continue
+            derivations = {m: c.derivation for m, c in concepts.items() if c}
+            if any(
+                d not in (Derivation.ROWSET, Derivation.ROOT)
+                for d in derivations.values()
+            ):
+                continue
+            if all(d is Derivation.ROOT for d in derivations.values()):
                 continue
             unsatisfiable = {m for m in distinct if authored is None or m in authored}
             for member in distinct:
-                if unsatisfiable - {member}:
-                    out.setdefault(member, set()).update(unsatisfiable - {member})
+                blocked = {
+                    m
+                    for m in unsatisfiable
+                    if m != member
+                    and (
+                        derivations[m] is Derivation.ROWSET
+                        or derivations[member] is Derivation.ROWSET
+                    )
+                }
+                if blocked:
+                    out.setdefault(member, set()).update(blocked)
         return out
 
     def gen_concept_list_caches(self) -> None:

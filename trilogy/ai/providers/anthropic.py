@@ -80,6 +80,21 @@ class AnthropicProvider(LLMProvider):
             ),
         )
 
+    @staticmethod
+    def _build_usage(usage: dict) -> UsageDict:
+        # With caching enabled, input_tokens covers only the uncached portion;
+        # cached tokens are reported in the cache_* fields.
+        input_tokens = (
+            usage["input_tokens"]
+            + usage.get("cache_creation_input_tokens", 0)
+            + usage.get("cache_read_input_tokens", 0)
+        )
+        return UsageDict(
+            prompt_tokens=input_tokens,
+            completion_tokens=usage["output_tokens"],
+            total_tokens=input_tokens + usage["output_tokens"],
+        )
+
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]
     ) -> LLMResponse:
@@ -103,6 +118,10 @@ class AnthropicProvider(LLMProvider):
                         "model": self.model,
                         "messages": conversation_messages,
                         "max_tokens": options.max_tokens or DEFAULT_MAX_TOKENS,
+                        # Automatic prompt caching: caches the last cacheable
+                        # block so repeated prefixes (system + tools + history)
+                        # are read from cache on subsequent turns.
+                        "cache_control": {"type": "ephemeral"},
                         # "temperature": options.temperature or 0.7,
                         # "top_p": options.top_p if hasattr(options, "top_p") else 1.0,
                     }
@@ -157,12 +176,7 @@ class AnthropicProvider(LLMProvider):
                     for block in content
                     if block.get("type") == "tool_use" and block.get("name")
                 ],
-                usage=UsageDict(
-                    prompt_tokens=data["usage"]["input_tokens"],
-                    completion_tokens=data["usage"]["output_tokens"],
-                    total_tokens=data["usage"]["input_tokens"]
-                    + data["usage"]["output_tokens"],
-                ),
+                usage=self._build_usage(data["usage"]),
             )
 
         except httpx.HTTPStatusError as error:

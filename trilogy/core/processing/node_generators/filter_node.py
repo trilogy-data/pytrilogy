@@ -72,6 +72,22 @@ def _same_concepts(left: list[BuildConcept], right: list[BuildConcept]) -> bool:
     return _concept_addresses(left) == _concept_addresses(right)
 
 
+def _row_grain_outputs(
+    output_concepts: list[BuildConcept], row_parent: StrategyNode
+) -> list[BuildConcept]:
+    # Narrowing outputs to [concept] + optionals can drop the row parent's
+    # grain keys, advertising a coarser (false) grain; a downstream merge then
+    # re-correlates rows on whatever non-unique columns survive (TPC-DS q74
+    # joined web sums back to customers on first/last name). Keep any output
+    # that carries a component of the parent grain, directly or by pseudonym.
+    components = row_parent.resolve().grain.components
+    return [
+        x
+        for x in output_concepts
+        if x.address in components or components.intersection(x.pseudonyms)
+    ]
+
+
 def _aggregate_filter_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -505,10 +521,12 @@ def gen_filter_node(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
         filter_node.set_output_concepts(
-            [
-                concept,
-            ]
-            + optional_outputs
+            unique(
+                [concept]
+                + optional_outputs
+                + _row_grain_outputs(filter_node.output_concepts, row_parent),
+                "address",
+            )
         )
         return filter_node
     missing_optional = _missing_optional(filter_node.output_concepts, local_optional)

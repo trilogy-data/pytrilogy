@@ -98,24 +98,48 @@ trilogy explore raw/my_fact.preql --regex 'date\.(year|week_seq)'
 trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose property
 ```
 
-**Reading the JSON output: shared (conformed) dimensions.** A fact often plays the same
-dimension in several roles (a date used as `date`, `return_date`, `ship_customer.first_sales_date`,
-...). These role namespaces share one identical schema, so the JSON lists them **together in a
-single key, comma-separated, with the schema shown once**:
+**Reading the JSON output: shared (conformed) dimensions.** A fact often binds the same
+dimension type under several distinct roles (a date used as `date`, `return_date`,
+`ship_customer.first_sales_date`, ...). These role namespaces share one identical schema, so
+the JSON lists them **together in a single key, comma-separated, with the schema shown once**:
 
 ```json
-"namespaces": {
-  "date, return_date, ship_customer.first_sales_date": [
-    { "keys": ["date.id int; # ..."] },
-    { "grain": "date.id", "properties": ["year int::year; # ...", "week_seq int::week; # ..."] }
-  ]
+"namespaced": {
+  "household_demographics, customer.household_demographics": {
+    "roles": {
+      "household_demographics": {"direct": true},
+      "customer.household_demographics": {"via": "customer"}
+    },
+    "concepts": [
+      { "keys": ["household_demographics.demo_sk bigint;"] },
+      { "grain": "household_demographics.demo_sk", "properties": ["dep_count bigint;"] }
+    ]
+  }
 }
 ```
 
-This means **every namespace in that comma-separated key exposes every listed concept**. The
-declarations are written using the first namespace as the example prefix; to reference another
-role, substitute its name — e.g. `return_date.year`, `ship_customer.first_sales_date.week_seq`.
-A key with no comma is a single namespace as usual. (Pass `--expand-roles` for the older
+Every namespace in the comma-separated key exposes every listed concept. The declarations use
+the first namespace as the example prefix; spell another role by replacing the prefix — e.g.
+`customer.household_demographics.dep_count`.
+
+**The listed names are NOT interchangeable.** Sharing a schema does not mean sharing meaning:
+each name is a distinct semantic binding, and swapping one for another changes *which
+dimension row a given fact row resolves to*, not just the spelling. Filtering
+`household_demographics.dep_count` and `customer.household_demographics.dep_count` can return
+different results. Pick the role whose meaning matches the question, using the `roles` map:
+
+- `"direct": true` — the explored file's own binding. On a fact model this describes the
+  fact event itself (e.g. the household demographics recorded on the sale).
+- `"via": "X"` — reached through the imported binding `X`; it describes X's own relationship
+  to the dimension (e.g. `customer.household_demographics` is the customer's household link,
+  which need not match what was recorded on any particular sale).
+- `"description"` — a note from the model author; when present it is authoritative.
+
+When the question is about the fact/event itself, prefer the direct role; use a `via` role
+only when the question asks about the related entity's attribute. A combined entry with no
+`roles` map is a group of same-level aliases whose names alone distinguish them (e.g.
+`sold_date` vs `ship_date`) — the same non-interchangeability still applies. A key with no
+comma is a single namespace as usual. (Pass `--expand-roles` for the older
 one-namespace-per-entry dump.)
 
 ---
