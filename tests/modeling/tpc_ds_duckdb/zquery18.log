@@ -1,6 +1,6 @@
 query_id = "18"
-generator = "v3"
-gen_length = 7684
+generator = "v4"
+gen_length = 7101
 preql_size = 1797
 comp_size = 1593
 generated_sql = """
@@ -44,47 +44,45 @@ FROM
 WHERE
     \"cs_pos_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'F' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'Unknown' and \"cs_billing_customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and (\"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" is not null and \"cs_billing_customer_customers\".\"C_BIRTH_MONTH\" in (1,6,8,9,12,2)) and \"cs_sale_date_date\".\"D_YEAR\" = 1998 and (\"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" is not null and \"cs_billing_customer_current_address_customer_address\".\"CA_STATE\" in ('MS','IN','ND','OK','NM','VA'))
 ),
-uneven as (
+yummy as (
 SELECT
-    \"abundant\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
     \"abundant\".\"cs_item_sk\" as \"cs_item_sk\",
     \"abundant\".\"cs_order_number\" as \"cs_order_number\",
     \"abundant\".\"cs_pos_customer_demographic_dependent_count\" as \"row_dep_count\"
 FROM
-    \"abundant\"),
-yummy as (
+    \"abundant\"
+GROUP BY
+    1,
+    2,
+    3),
+uneven as (
+SELECT
+    \"abundant\".\"cs_billing_customer_birth_year\" as \"row_birth_year\",
+    \"abundant\".\"cs_item_sk\" as \"cs_item_sk\",
+    \"abundant\".\"cs_order_number\" as \"cs_order_number\"
+FROM
+    \"abundant\"
+GROUP BY
+    1,
+    2,
+    3),
+juicy as (
 SELECT
     \"questionable\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",
     \"questionable\".\"cs_billing_customer_current_address_county\" as \"cs_billing_customer_current_address_county\",
     \"questionable\".\"cs_billing_customer_current_address_state\" as \"cs_billing_customer_current_address_state\",
     \"questionable\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
     \"questionable\".\"cs_item_id\" as \"cs_item_id\",
-    \"questionable\".\"cs_item_sk\" as \"cs_item_sk\",
     \"questionable\".\"cs_list_price\" as \"cs_list_price\",
     \"questionable\".\"cs_net_profit\" as \"cs_net_profit\",
-    \"questionable\".\"cs_order_number\" as \"cs_order_number\",
     \"questionable\".\"cs_quantity\" as \"cs_quantity\",
     \"questionable\".\"cs_sales_price\" as \"cs_sales_price\",
-    \"uneven\".\"row_dep_count\" as \"row_dep_count\"
-FROM
-    \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"),
-juicy as (
-SELECT
     \"uneven\".\"row_birth_year\" as \"row_birth_year\",
-    \"yummy\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",
-    \"yummy\".\"cs_billing_customer_current_address_county\" as \"cs_billing_customer_current_address_county\",
-    \"yummy\".\"cs_billing_customer_current_address_state\" as \"cs_billing_customer_current_address_state\",
-    \"yummy\".\"cs_coupon_amt\" as \"cs_coupon_amt\",
-    \"yummy\".\"cs_item_id\" as \"cs_item_id\",
-    \"yummy\".\"cs_list_price\" as \"cs_list_price\",
-    \"yummy\".\"cs_net_profit\" as \"cs_net_profit\",
-    \"yummy\".\"cs_quantity\" as \"cs_quantity\",
-    \"yummy\".\"cs_sales_price\" as \"cs_sales_price\",
     \"yummy\".\"row_dep_count\" as \"row_dep_count\"
 FROM
     \"uneven\"
-    INNER JOIN \"yummy\" on \"uneven\".\"cs_item_sk\" = \"yummy\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"yummy\".\"cs_order_number\")
+    INNER JOIN \"questionable\" on \"uneven\".\"cs_item_sk\" = \"questionable\".\"cs_item_sk\" AND \"uneven\".\"cs_order_number\" = \"questionable\".\"cs_order_number\"
+    INNER JOIN \"yummy\" on \"questionable\".\"cs_item_sk\" = \"yummy\".\"cs_item_sk\" AND \"questionable\".\"cs_order_number\" = \"yummy\".\"cs_order_number\")
 SELECT
     \"juicy\".\"cs_item_id\" as \"cs_item_id\",
     \"juicy\".\"cs_billing_customer_current_address_country\" as \"cs_billing_customer_current_address_country\",

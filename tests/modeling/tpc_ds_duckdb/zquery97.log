@@ -1,6 +1,6 @@
 query_id = "97"
-generator = "v3"
-gen_length = 2509
+generator = "v4"
+gen_length = 2868
 preql_size = 1214
 comp_size = 1159
 generated_sql = """
@@ -14,6 +14,7 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" is not null and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
@@ -26,6 +27,7 @@ SELECT
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11

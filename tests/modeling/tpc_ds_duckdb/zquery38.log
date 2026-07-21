@@ -1,6 +1,6 @@
 query_id = "38"
-generator = "v3"
-gen_length = 2575
+generator = "v4"
+gen_length = 2916
 preql_size = 1247
 comp_size = 1032
 generated_sql = """
@@ -27,71 +27,54 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-cooperative as (
+questionable as (
 SELECT
+    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
+    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" as \"sales_sale_date_month_seq\",
     \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
     \"thoughtful\".\"sales_channel\" as \"sales_channel\",
-    \"thoughtful\".\"sales_sale_date_sk\" as \"sales_sale_date_sk\"
+    cast(\"sales_sale_date_date\".\"D_DATE\" as date) as \"sales_sale_date_date\"
 FROM
     \"thoughtful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+WHERE
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
+
 GROUP BY
     1,
     2,
-    3),
-abundant as (
+    3,
+    4,
+    5,
+    6,
+    \"thoughtful\".\"sales_sale_date_sk\"),
+uneven as (
 SELECT
     sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
+	WHEN \"questionable\".\"sales_channel\" = 'CATALOG' and \"questionable\".\"sales_sale_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_sk\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_in_window\",
     sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
+	WHEN \"questionable\".\"sales_channel\" = 'STORE' and \"questionable\".\"sales_sale_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_sk\" is not null THEN 1
 	ELSE 0
 	END) as \"store_in_window\",
     sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
+	WHEN \"questionable\".\"sales_channel\" = 'WEB' and \"questionable\".\"sales_sale_date_month_seq\" BETWEEN 1200 AND 1200 + 11 and \"questionable\".\"sales_billing_customer_sk\" is not null THEN 1
 	ELSE 0
 	END) as \"web_in_window\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cooperative\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
-
+    \"questionable\"
 GROUP BY
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\",
-    cast(\"sales_sale_date_date\".\"D_DATE\" as date))
-SELECT
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"catalog_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"store_in_window\",
-    sum(CASE
-	WHEN \"cooperative\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11 and \"cooperative\".\"sales_billing_customer_sk\" is not null THEN 1
-	ELSE 0
-	END) as \"web_in_window\"
-FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cooperative\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"cooperative\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1200 + 11
-
-GROUP BY
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\",
-    cast(\"sales_sale_date_date\".\"D_DATE\" as date))
+    \"questionable\".\"sales_billing_customer_first_name\",
+    \"questionable\".\"sales_billing_customer_last_name\",
+    \"questionable\".\"sales_sale_date_date\")
 SELECT
     sum(CASE
 	WHEN \"uneven\".\"store_in_window\" > 0 and \"uneven\".\"catalog_in_window\" > 0 and \"uneven\".\"web_in_window\" > 0 THEN 1
 	ELSE 0
 	END) as \"cnt\"
 FROM
-    \"abundant\"
+    \"uneven\"
 LIMIT (100)"""

@@ -1,6 +1,6 @@
 query_id = "75"
-generator = "v3"
-gen_length = 6948
+generator = "v4"
+gen_length = 10742
 preql_size = 1517
 comp_size = 2947
 generated_sql = """
@@ -63,48 +63,6 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-young as (
-SELECT
-    \"sales_item_items\".\"I_BRAND_ID\" as \"_curr_i_brand_id\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"_curr_i_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"_curr_i_class_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"_curr_i_manufact_id\",
-    sum(\"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0)) as \"_curr_curr_amt\",
-    sum(\"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0)) as \"_curr_curr_cnt\"
-FROM
-    \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
-WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2002
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-juicy as (
-SELECT
-    \"sales_item_items\".\"I_BRAND_ID\" as \"_prev_i_brand_id\",
-    \"sales_item_items\".\"I_CATEGORY_ID\" as \"_prev_i_category_id\",
-    \"sales_item_items\".\"I_CLASS_ID\" as \"_prev_i_class_id\",
-    \"sales_item_items\".\"I_MANUFACT_ID\" as \"_prev_i_manufact_id\",
-    sum(\"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0)) as \"_prev_prev_amt\",
-    sum(\"abundant\".\"sales_quantity\" - coalesce(\"cheerful\".\"sales_return_quantity\",0)) as \"_prev_prev_cnt\"
-FROM
-    \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"abundant\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
-WHERE
-    \"sales_item_items\".\"I_CATEGORY\" = 'Books' and \"sales_sale_date_date\".\"D_YEAR\" = 2001
-
-GROUP BY
-    1,
-    2,
-    3,
-    4),
 abhorrent as (
 SELECT
     \"abundant\".\"sales_ext_sales_price\" - coalesce(\"cheerful\".\"sales_return_amount\",0.0) as \"amt_per_row\",

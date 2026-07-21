@@ -1,6 +1,6 @@
 query_id = "78"
-generator = "v3"
-gen_length = 6495
+generator = "v4"
+gen_length = 6674
 preql_size = 2560
 comp_size = 2512
 generated_sql = """
@@ -77,22 +77,25 @@ WHERE
 ),
 juicy as (
 SELECT
-    \"sales_sale_date_date\".\"D_YEAR\" as \"ss_sold_year\",
-    coalesce(\"abundant\".\"sales_item_sk\",\"cheerful\".\"sales_item_sk\") as \"ss_item_sk\",
-    \"abundant\".\"sales_billing_customer_sk\" as \"ss_customer_sk\",
-    round(cast(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as numeric(7,2)),2) as \"ratio\",
-    sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"store_qty\",
-    sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"store_wholesale_cost\",
-    sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'STORE' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"store_sales_price\",
-    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) as \"other_chan_qty\",
-    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END),0) as \"other_chan_wholesale_cost\",
-    coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END),0) as \"other_chan_sales_price\"
+    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\",
+    coalesce(\"sales_billing_customer_customers\".\"C_CUSTOMER_SK\",\"uneven\".\"sales_billing_customer_sk\") as \"sales_billing_customer_sk\",
+    coalesce(\"thoughtful\".\"sales_item_sk\",\"uneven\".\"sales_item_sk\") as \"sales_item_sk\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'CATALOG' THEN \"uneven\".\"sales_quantity\" ELSE NULL END) as \"cs_qty\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'CATALOG' THEN \"uneven\".\"sales_sales_price\" ELSE NULL END) as \"cs_sp\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'CATALOG' THEN \"uneven\".\"sales_wholesale_cost\" ELSE NULL END) as \"cs_wc\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'STORE' THEN \"uneven\".\"sales_quantity\" ELSE NULL END) as \"ss_qty\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'STORE' THEN \"uneven\".\"sales_sales_price\" ELSE NULL END) as \"ss_sp\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'STORE' THEN \"uneven\".\"sales_wholesale_cost\" ELSE NULL END) as \"ss_wc\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'WEB' THEN \"uneven\".\"sales_quantity\" ELSE NULL END) as \"ws_qty\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'WEB' THEN \"uneven\".\"sales_sales_price\" ELSE NULL END) as \"ws_sp\",
+    sum(CASE WHEN coalesce(\"thoughtful\".\"sales_channel\",\"uneven\".\"sales_channel\") = 'WEB' THEN \"uneven\".\"sales_wholesale_cost\" ELSE NULL END) as \"ws_wc\"
 FROM
-    \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
+    \"uneven\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"uneven\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"uneven\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"sales_channel\" = \"thoughtful\".\"sales_channel\" AND \"uneven\".\"sales_item_sk\" = \"thoughtful\".\"sales_item_sk\" AND \"uneven\".\"sales_order_id\" = \"thoughtful\".\"sales_order_id\"
 WHERE
-    \"cheerful\".\"sales_is_returned\" is null and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"abundant\".\"sales_billing_customer_sk\" is not null
+    \"thoughtful\".\"sales_is_returned\" is null and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and coalesce(\"sales_billing_customer_customers\".\"C_CUSTOMER_SK\",\"uneven\".\"sales_billing_customer_sk\") is not null
 
 GROUP BY
     1,

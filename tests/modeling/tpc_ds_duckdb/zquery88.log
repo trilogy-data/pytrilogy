@@ -1,6 +1,6 @@
 query_id = "88"
-generator = "v3"
-gen_length = 4108
+generator = "v4"
+gen_length = 4842
 preql_size = 1281
 comp_size = 5658
 generated_sql = """
@@ -8,14 +8,14 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 10 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_5523193564151284\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 10 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_2810566918284340\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 11 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_3204132470626722\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 11 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_5772604446830271\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 12 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_8131349511282978\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 8 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_4048667078682888\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 9 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_3810486465458736\",
-    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 9 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN \"store_sales_store_sales\".\"SS_ITEM_SK\" ELSE NULL END) as \"_virt_agg_count_7710809156002229\"
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 10 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_5523193564151284\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 10 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_2810566918284340\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 11 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_3204132470626722\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 11 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_5772604446830271\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 12 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_8131349511282978\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 8 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_4048667078682888\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 9 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 0 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 30 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_3810486465458736\",
+    count(CASE WHEN \"store_sales_sale_time_time\".\"T_HOUR\" = 9 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_sale_time_time\".\"T_MINUTE\" < 60 THEN coalesce(\"store_sales_store_returns\".\"SR_ITEM_SK\",\"store_sales_store_sales\".\"SS_ITEM_SK\") ELSE NULL END) as \"_virt_agg_count_7710809156002229\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
@@ -28,13 +28,13 @@ WHERE
 GROUP BY
     coalesce(\"store_sales_store_returns\".\"SR_TICKET_NUMBER\",\"store_sales_store_sales\".\"SS_TICKET_NUMBER\"))
 SELECT
-    sum(\"thoughtful\".\"_virt_agg_count_4048667078682888\") as \"h8_30_to_9\",
-    sum(\"thoughtful\".\"_virt_agg_count_3810486465458736\") as \"h9_to_9_30\",
-    sum(\"thoughtful\".\"_virt_agg_count_7710809156002229\") as \"h9_30_to_10\",
-    sum(\"thoughtful\".\"_virt_agg_count_5523193564151284\") as \"h10_to_10_30\",
-    sum(\"thoughtful\".\"_virt_agg_count_2810566918284340\") as \"h10_30_to_11\",
-    sum(\"thoughtful\".\"_virt_agg_count_3204132470626722\") as \"h11_to_11_30\",
-    sum(\"thoughtful\".\"_virt_agg_count_5772604446830271\") as \"h11_30_to_12\",
-    sum(\"thoughtful\".\"_virt_agg_count_8131349511282978\") as \"h12_to_12_30\"
+    sum(\"cooperative\".\"_virt_agg_count_4048667078682888\") as \"h8_30_to_9\",
+    sum(\"cooperative\".\"_virt_agg_count_3810486465458736\") as \"h9_to_9_30\",
+    sum(\"cooperative\".\"_virt_agg_count_7710809156002229\") as \"h9_30_to_10\",
+    sum(\"cooperative\".\"_virt_agg_count_5523193564151284\") as \"h10_to_10_30\",
+    sum(\"cooperative\".\"_virt_agg_count_2810566918284340\") as \"h10_30_to_11\",
+    sum(\"cooperative\".\"_virt_agg_count_3204132470626722\") as \"h11_to_11_30\",
+    sum(\"cooperative\".\"_virt_agg_count_5772604446830271\") as \"h11_30_to_12\",
+    sum(\"cooperative\".\"_virt_agg_count_8131349511282978\") as \"h12_to_12_30\"
 FROM
     \"cooperative\""""

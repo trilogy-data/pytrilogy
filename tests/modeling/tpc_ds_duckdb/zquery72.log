@@ -8,12 +8,17 @@ generated_sql = """
 WITH 
 yummy as (
 SELECT
-    \"cs_item_items\".\"I_ITEM_DESC\" as \"item_desc\",
-    \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"warehouse_name\",
-    \"cs_sale_date_date\".\"D_WEEK_SEQ\" as \"week_seq\",
-    count(CASE WHEN \"cs_catalog_sales\".\"CS_PROMO_SK\" is null THEN md5(CONCAT_WS('\u001f', coalesce(cast(\"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_item_sk\" as string),'\u001e'), coalesce(cast(\"inv_date_date\".\"D_DATE_SK\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_warehouse_sk\" as string),'\u001e'))) ELSE NULL END) as \"no_promo\",
-    count(CASE WHEN \"cs_catalog_sales\".\"CS_PROMO_SK\" is not null THEN md5(CONCAT_WS('\u001f', coalesce(cast(\"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_item_sk\" as string),'\u001e'), coalesce(cast(\"inv_date_date\".\"D_DATE_SK\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_warehouse_sk\" as string),'\u001e'))) ELSE NULL END) as \"promo\",
-    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_item_sk\" as string),'\u001e'), coalesce(cast(\"inv_date_date\".\"D_DATE_SK\" as string),'\u001e'), coalesce(cast(\"inv_warehouse_inventory\".\"inv_warehouse_sk\" as string),'\u001e')))) as \"total_cnt\"
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_PROMO_SK\" as \"cs_promotion_sk\",
+    \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"cs_sale_date_sk\",
+    \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
+    \"cs_sale_date_date\".\"D_WEEK_SEQ\" as \"cs_sale_date_week_seq\",
+    \"inv_date_date\".\"D_DATE_SK\" as \"inv_date_sk\",
+    \"inv_warehouse_inventory\".\"inv_item_sk\" as \"inv_item_sk\",
+    \"inv_warehouse_inventory\".\"inv_warehouse_sk\" as \"inv_warehouse_sk\",
+    \"inv_warehouse_warehouse\".\"w_warehouse_name\" as \"inv_warehouse_name\",
+    cast(\"cs_sale_date_date\".\"D_DATE\" as date) as \"cs_sale_date_date\",
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) as \"cs_ship_date_date\"
 FROM
     \"memory\".\"inventory\" as \"inv_warehouse_inventory\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"cs_catalog_sales\" on \"inv_warehouse_inventory\".\"inv_item_sk\" = \"cs_catalog_sales\".\"CS_ITEM_SK\"
@@ -25,7 +30,70 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inv_warehouse_warehouse\" on \"inv_warehouse_inventory\".\"inv_warehouse_sk\" = \"inv_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
-    \"cs_sale_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and date_diff('day', cast(\"cs_sale_date_date\".\"D_DATE\" as date), cast(\"cs_ship_date_date\".\"D_DATE\" as date)) > 5 and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sale_date_date\".\"D_WEEK_SEQ\"
+    \"cs_sale_date_date\".\"D_YEAR\" = 1999 and \"cs_pos_household_demographic_household_demographics\".\"HD_BUY_POTENTIAL\" = '>10000' and \"cs_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'D' and \"inv_warehouse_inventory\".\"inv_quantity_on_hand\" < \"cs_catalog_sales\".\"CS_QUANTITY\" and \"inv_date_date\".\"D_WEEK_SEQ\" = \"cs_sale_date_date\".\"D_WEEK_SEQ\"
+),
+young as (
+SELECT
+    \"yummy\".\"cs_sale_date_sk\" as \"cs_sale_date_sk\",
+    \"yummy\".\"cs_sale_date_week_seq\" as \"cs_sale_date_week_seq\",
+    date_diff('day', \"yummy\".\"cs_sale_date_date\", \"yummy\".\"cs_ship_date_date\") as \"cs_days_to_ship\"
+FROM
+    \"yummy\"),
+juicy as (
+SELECT
+    \"yummy\".\"cs_item_desc\" as \"cs_item_desc\",
+    \"yummy\".\"cs_item_desc\" as \"item_desc\",
+    \"yummy\".\"cs_order_number\" as \"cs_order_number\",
+    \"yummy\".\"cs_promotion_sk\" as \"cs_promotion_sk\",
+    \"yummy\".\"cs_sale_date_sk\" as \"cs_sale_date_sk\",
+    \"yummy\".\"cs_sale_date_week_seq\" as \"cs_sale_date_week_seq\",
+    \"yummy\".\"cs_sale_date_week_seq\" as \"week_seq\",
+    \"yummy\".\"inv_date_sk\" as \"inv_date_sk\",
+    \"yummy\".\"inv_item_sk\" as \"inv_item_sk\",
+    \"yummy\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    \"yummy\".\"inv_warehouse_name\" as \"warehouse_name\",
+    \"yummy\".\"inv_warehouse_sk\" as \"inv_warehouse_sk\",
+    md5(CONCAT_WS('\u001f', coalesce(cast(\"yummy\".\"cs_order_number\" as string),'\u001e'), coalesce(cast(\"yummy\".\"inv_item_sk\" as string),'\u001e'), coalesce(cast(\"yummy\".\"inv_date_sk\" as string),'\u001e'), coalesce(cast(\"yummy\".\"inv_warehouse_sk\" as string),'\u001e'))) as \"_virt_func_hash_3658193313443410\"
+FROM
+    \"yummy\"),
+concerned as (
+SELECT
+    \"juicy\".\"cs_sale_date_week_seq\" as \"cs_sale_date_week_seq\",
+    \"juicy\".\"inv_item_sk\" as \"inv_item_sk\",
+    \"juicy\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    count(CASE WHEN \"juicy\".\"cs_promotion_sk\" is not null THEN \"juicy\".\"_virt_func_hash_3658193313443410\" ELSE NULL END) as \"promo\",
+    count(CASE WHEN \"juicy\".\"cs_promotion_sk\" is null THEN \"juicy\".\"_virt_func_hash_3658193313443410\" ELSE NULL END) as \"no_promo\",
+    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"juicy\".\"cs_order_number\" as string),'\u001e'), coalesce(cast(\"juicy\".\"inv_item_sk\" as string),'\u001e'), coalesce(cast(\"juicy\".\"inv_date_sk\" as string),'\u001e'), coalesce(cast(\"juicy\".\"inv_warehouse_sk\" as string),'\u001e')))) as \"total_cnt\"
+FROM
+    \"juicy\"
+GROUP BY
+    1,
+    2,
+    3,
+    \"juicy\".\"cs_item_desc\"),
+vacuous as (
+SELECT
+    \"juicy\".\"cs_sale_date_sk\" as \"cs_sale_date_sk\",
+    \"juicy\".\"inv_item_sk\" as \"inv_item_sk\",
+    \"juicy\".\"inv_warehouse_name\" as \"inv_warehouse_name\",
+    \"juicy\".\"item_desc\" as \"item_desc\",
+    \"juicy\".\"warehouse_name\" as \"warehouse_name\",
+    \"juicy\".\"week_seq\" as \"week_seq\"
+FROM
+    \"juicy\")
+SELECT
+    \"vacuous\".\"item_desc\" as \"item_desc\",
+    \"vacuous\".\"warehouse_name\" as \"warehouse_name\",
+    coalesce(\"concerned\".\"cs_sale_date_week_seq\",\"vacuous\".\"week_seq\",\"young\".\"cs_sale_date_week_seq\") as \"week_seq\",
+    \"concerned\".\"no_promo\" as \"no_promo\",
+    \"concerned\".\"promo\" as \"promo\",
+    \"concerned\".\"total_cnt\" as \"total_cnt\"
+FROM
+    \"vacuous\"
+    FULL JOIN \"concerned\" on \"vacuous\".\"inv_item_sk\" = \"concerned\".\"inv_item_sk\" AND \"vacuous\".\"inv_warehouse_name\" is not distinct from \"concerned\".\"inv_warehouse_name\" AND \"vacuous\".\"week_seq\" = \"concerned\".\"cs_sale_date_week_seq\"
+    RIGHT OUTER JOIN \"young\" on \"vacuous\".\"cs_sale_date_sk\" is not distinct from \"young\".\"cs_sale_date_sk\"
+WHERE
+    \"young\".\"cs_days_to_ship\" > 5
 
 GROUP BY
     1,
