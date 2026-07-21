@@ -400,10 +400,19 @@ def _resolve_union_select(
         # the per-arm internal columns so the rendered SELECT emits only the
         # union outputs — sourced from the hidden columns via find_source.
         arm_own = [c.address for c in arm_node.output_concepts]
-        for out in list(arm_node.output_concepts):
-            merge_name = lineage.get_merge_concept(out)
-            if merge_name:
-                arm_node.output_concepts.append(environment.concepts[merge_name])
+        # Re-expose each arm's columns under the shared union outputs, in the
+        # canonical align order — a UNION ALL stacks positionally, so every
+        # arm's projection must list the outputs in the same order regardless
+        # of its own column order. A scoped join inside the arm can emit the
+        # authored key under its partner's address, so resolve through the
+        # partner/pseudonym (`find_source` recovers the physical column at
+        # render). The per-arm internal columns are hidden.
+        produced = {
+            lineage.get_merge_concept_resolved(out) for out in arm_node.output_concepts
+        }
+        for merged in ordered_outputs:
+            if merged.address in produced:
+                arm_node.output_concepts.append(merged)
         arm_node.hidden_concepts = set(arm_own)
         arm_node.rebuild_cache()
         arm_nodes.append(arm_node)

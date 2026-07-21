@@ -1,6 +1,138 @@
-# v4 compatibility audit (last refreshed 2026-07-21, session 20)
+# v4 compatibility audit (last refreshed 2026-07-21, session 21)
 
-## Current state (after 2026-07-21 session 20)
+## Current state (after 2026-07-21 session 21)
+
+**Full v4 sweep (session 21): 20 real failed / 5919 passed**
+(`local_scripts/v4_sweep_0721_s21.log` — raw 21, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s20: **cleared `multileg_scoped_join_null_identity` ×2 [v4 cells] and
+`union_arm_join_partner_only_in_join` (−3), ZERO new failures** (`comm` diff of
+the FAILED lists against the s20 sweep: exactly those three removed, nothing
+added). **The new-corpus ×3 group — the audit's top NEXT since the s16 rebase —
+is now CLEARED.** TPC-DS = the pre-existing 6 exactly; xpassed 29 (unchanged —
+no classifier deltas); ruff/mypy(310)/black clean. The 82 errors are
+clickhouse-server env (not real).
+
+Two of the three changed files are v4-only (`v4_helper/concept_graph.py`,
+`concept_strategies_v4.py`). The third (`models/build.py`) is SHARED but the
+change is purely ADDITIVE — a new method `get_merge_concept_resolved` whose only
+caller is `_resolve_union_select` in concept_strategies_v4 (grep-verified); the
+existing `get_merge_concept` is untouched, so v3's multiselect path is unchanged
+by construction and no v3 sweep is needed.
+
+**The 20 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), families
+(multi_partial_anchor ×2, duckdb_rowset variance/stddev keys-3 ×2) and singles
+(twin_keeps_scalar_refs, dim_bridge all_subset_unaffected,
+rowset_generation_matrix islanded, rowset_cross_datasource null_property,
+rowset_body_limit, cube_two_windows, collapse_basic funnel,
+union_bare_aggregate set_semantics, setops except_and_union,
+constant_in_cross_datasource_merge).
+
+**NEXT options:** `duckdb_rowset` keys-3 ×2 (the last open cell of the s14
+family — `union join quantity = r_filtered.return_quantity`, where the
+aggregate ARG *is* a relation member; adjacent to this session's widening-gate
+work and diagnosed in the s14 entry); `multi_partial_anchor` ×2; TPC-DS ×6;
+`cube_two_windows`; XPASS prune (29 xpassed).
+
+## ✅ 2026-07-21 (session 21) — the aggregate-grain widener only fires across a ROWSET boundary (+2) & a union arm re-exposes its scoped-join partner in canonical order (+1)
+
+### Fix 1 — `_relation_crosses_rowset_boundary` (concept_graph.py, v4-only)
+
+Cleared `test_multileg_null_identity_holds[v4]` and
+`test_multileg_sql_parity_via_not_null[v4]` (join_matrix dual-planner, so the
+[v3] cells were a live oracle throughout).
+
+Minimal repro (`local_scripts/repro_s21_multileg.py`, cases a–k; case `j` is the
+irreducible one):
+
+```
+select ss.item.item_sk, ss.store, sum(ss.profit)
+union join ss.ticket = sr.ticket;
+```
+
+v3 renders `GROUP BY item, store` over the raw fact. v4 rendered **no GROUP BY
+at all** — one row per ticket. In the real multileg shape that surfaced as
+`ss_profit` 100 instead of 300: the per-ticket split, combined with
+`having sr_loss is not null`, dropped every anchor row with no return match.
+
+Root cause is the s14 fix #5 (aggregate grain under statement-scoped joins),
+which widened a no-`by` aggregate's `grain_components` by
+`aggregate_input_grain ∩ statement-scoped relation members`. `ss.ticket` is
+both the aggregate input's grain component and a relation member, so the
+aggregate's grain became `{item, store, ticket}` → grain already matched the
+source → group elided entirely. (Case `j` needs only the join declaration; `sr`
+is never otherwise referenced, and the widening still fired.)
+
+Fix: only widen when a member of that relation is a **ROWSET handle**. That is
+the case s14 was actually built for (`union join ticket = r_filtered.r_ticket`,
+`union join quantity = r_filtered.return_quantity`) and it stays widening. The
+distinction is where the coalesced axis first exists: a rowset is an opaque body
+whose row identity exists no earlier than its boundary, so an aggregate riding
+the relation must sit ABOVE the join. When every member is a plain concept the
+axis is a native column of each side's own fact, and each side aggregates at its
+authored grain BEFORE the merge coalesces — widening there leaks the axis into
+the GROUP BY.
+
+**Note what did NOT change.** duckdb_rowset keys-1/keys-2 and the q97 presence
+counts still take the widening path (verified in-suite under v4, not just in
+isolation); the keys-3 cells fail exactly as before, unchanged.
+
+### Fix 2 — `get_merge_concept_resolved` (build.py, additive) + arm re-exposure in canonical align order (`_resolve_union_select`, v4-only)
+
+Cleared `test_union_arm_join_partner_only_in_join`. Shape: a `union(...)` arm
+that groups by the returns-side key while the sales side appears only in the
+subset joins.
+
+```
+with combined as union(
+  (where ... select wr.order_number, 0.0),
+  (where ... select wr.order_number, coalesce(sum(wr.return_amt),0.0)
+   subset join wr.item = ws.item
+   subset join wr.order_number = ws.order_number)
+) -> (eid, ret);
+```
+
+TWO defects, one behind the other. What localized both was dumping each arm's
+resolved node outputs next to the align items
+(`local_scripts/s21_ua_diag2.py`, which patches `_resolve_union_select`):
+
+```
+align local._combined_eid <- ['wr.order_number', 'wr.order_number']
+arm1 output_components: ['local.___tvf_arm_1_return_amt_coalesce', 'ws.order_number']
+   merge local.___tvf_arm_1_return_amt_coalesce -> local._combined_ret
+   (wr.order_number: NO MERGE — the arm emits ws.order_number)
+```
+
+1. **The arm's authored key is emitted under its PARTNER's address.** The subset
+   join canonicalizes `wr.order_number` onto `ws.order_number`, so the arm node
+   never carries the address the align item names. `get_merge_concept` matches
+   `check in item.concepts_lcl` — exact address only — so it returned None and
+   the arm never re-exposed `_combined_eid`. The arm rendered ONE column against
+   the other arm's two: a DuckDB column-count mismatch. Note `find_source`
+   ALREADY has this partner/pseudonym recovery for the RENDER side (added for
+   the sibling `test_union_arm_full_grain_subset_join`); the planning side had
+   no equivalent. New `get_merge_concept_resolved` mirrors it — exact match
+   first, then scoped-join partner or pseudonym twin.
+2. **Re-exposure order is load-bearing.** With (1) alone the arm emitted both
+   columns but as `(_combined_ret, _combined_eid)` while arm 0 emitted
+   `(_combined_eid, _combined_ret)` — a UNION ALL stacks POSITIONALLY, so the
+   query ran and returned silently transposed rows (`(2.0, 10)` for
+   `(eid, ret)`). The old loop appended merge concepts in ARM-OUTPUT iteration
+   order, which differs per arm. `render_cte` renders a union arm with
+   `auto_sort=False`, i.e. straight off that CTE's own `output_columns` order,
+   so nothing downstream re-aligns it. Fix: append `ordered_outputs` (the
+   canonical align order, identical for every arm) filtered to what this arm
+   produces — matching what v3's `gen_union_select_node` gets from its
+   `arm_cols + ordered_outputs` rename wrapper.
+
+LESSON: a crash and a wrong-rows bug can be stacked in one code path, and fixing
+the crash first makes the second one silent. After (1) the query EXECUTED — the
+column-count error was gone and only a row-value comparison caught the
+transposition. Always re-check rows against the oracle after a "make it render"
+fix, never just that the SQL is now valid.
+
+## Superseded state (after 2026-07-21 session 20)
 
 **Full v4 sweep (session 20): 23 real failed / 5916 passed**
 (`local_scripts/v4_sweep_0721_s20.log` — raw 24, minus the
@@ -22,9 +154,10 @@ rowset_body_limit, cube_two_windows, collapse_basic funnel,
 union_bare_aggregate set_semantics, setops except_and_union,
 constant_in_cross_datasource_merge).
 
-**NEXT options:** the remaining new-corpus ×3 (multileg null-identity ×2 is a
-join_matrix dual-planner pair, so it also has a v3 leg to compare against);
-TPC-DS ×6; `cube_two_windows`; XPASS prune (29 xpassed).
+**NEXT options (as of s20; all three new-corpus items cleared in s21):** the
+remaining new-corpus ×3 (multileg null-identity ×2 is a join_matrix dual-planner
+pair, so it also has a v3 leg to compare against); TPC-DS ×6;
+`cube_two_windows`; XPASS prune (29 xpassed).
 
 ## ✅ 2026-07-21 (session 20) — a rowset body's dimension projection advertises its FD key as the merge axis (+2)
 

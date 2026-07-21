@@ -2044,6 +2044,32 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 return f"{item.namespace}.{item.alias}"
         return None
 
+    def get_merge_concept_resolved(self, check: BuildConcept) -> str | None:
+        """`get_merge_concept`, but tolerant of a scoped-join partner or
+        pseudonym standing in for the authored align member. A subset/union
+        join inside an arm canonicalizes the authored key onto its partner's
+        address (`wr.order_number` emitted as `ws.order_number`), so the arm
+        node exposes the partner column; the pairing is the same merged key by
+        declaration. Mirrors `find_source`'s partner recovery on the planning
+        side, so the arm re-exposes its i-th column under the union output."""
+        direct = self.get_merge_concept(check)
+        if direct is not None:
+            return direct
+        joined: set[frozenset[str]] = {
+            frozenset((s, t))
+            for select in self.selects
+            for s, t, _ in select.scoped_joins
+        }
+        for item in self.align.items:
+            for c in item.concepts:
+                if (
+                    frozenset((c.address, check.address)) in joined
+                    or check.address in c.pseudonyms
+                    or c.address in check.pseudonyms
+                ):
+                    return f"{item.namespace}.{item.alias}"
+        return None
+
     def find_source(self, concept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept:
         for x in self.align.items:
             if concept.name == x.alias:

@@ -181,6 +181,28 @@ def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
     return mates
 
 
+def _relation_crosses_rowset_boundary(
+    address: str, environment: BuildEnvironment
+) -> bool:
+    """Whether a scoped-join relation member is paired with a ROWSET handle.
+
+    Only then is the coalesced axis exclusively post-merge: the rowset is an
+    opaque body whose row identity exists no earlier than its boundary, so an
+    aggregate riding the relation must sit above the join. When every member is
+    a plain concept the axis is a native column of each side's own fact, and
+    each side aggregates at its authored grain BEFORE the merge coalesces —
+    widening there would leak the axis into the GROUP BY and split the answer
+    per joined row (the multileg `union join ss.ticket = sr.ticket` shape).
+    """
+    for mate in _relation_mates(address, environment):
+        mate_concept = environment.concepts.get(mate)
+        if mate_concept is not None and isinstance(
+            mate_concept.lineage, BuildRowsetItem
+        ):
+            return True
+    return False
+
+
 def _collapsible_anchor(concept: BuildConcept, environment: BuildEnvironment) -> bool:
     """An anchor member eligible for the grain-identity redirect: a handle of
     a plain reprojection rowset (single SelectLineage body) the statement
@@ -749,8 +771,8 @@ def _add_concept(
         if is_materialized_root
         else _aggregate_input_grain(concept, environment, out_grain)
     )
-    # Under a STATEMENT-scoped preserving join (`union join ticket =
-    # r_filtered.r_ticket`), row identity is the coalesced relation axis: an
+    # Under a STATEMENT-scoped preserving join to a ROWSET (`union join ticket
+    # = r_filtered.r_ticket`), row identity is the coalesced relation axis: an
     # aggregate whose inputs ride the relation computes per axis row, not per
     # its authored dimension grain (v3 renders it at the joined relation's
     # grain via the grain-match formulas; the outer select then dedups).
@@ -767,9 +789,12 @@ def _add_concept(
         and aggregate_input_grain
         and dimension_grain
     ):
-        axis_members = aggregate_input_grain & _statement_scoped_relation_members(
-            environment
-        )
+        axis_members = {
+            addr
+            for addr in aggregate_input_grain
+            & _statement_scoped_relation_members(environment)
+            if _relation_crosses_rowset_boundary(addr, environment)
+        }
         if axis_members:
             out_grain |= axis_members
     graph.add_node(nid)
