@@ -1,6 +1,241 @@
-# v4 compatibility audit (last refreshed 2026-07-21, session 17)
+# v4 compatibility audit (last refreshed 2026-07-21, session 19)
 
-## Current state (after 2026-07-21 session 17)
+## Current state (after 2026-07-21 session 19)
+
+**Full v4 sweep (session 19): 25 real failed / 5914 passed**
+(`local_scripts/v4_sweep_0721_s19c.log` — the certified final tree; raw 26,
+minus the `tests/cli/test_display.py` rich_enabled detached-run console noise).
+Honest delta vs s18: **cleared `rollup_scoped_join three_key` (−1), ZERO new
+failures** (`comm` diff of the FAILED lists against the s18 sweep: exactly that
+one removed, nothing added). The `rollup_scoped_join` family is now CLEARED
+(all 3 cells). ruff/mypy(310)/black clean.
+
+THREE sweeps this session, in order: `s19.log` (placement fix only — 26 raw),
+`s19b.log` (+ the grouping-mode refactor — 28 raw, both adds stale fixtures),
+`s19c.log` (fixtures fixed — 26 raw, failure list BYTE-IDENTICAL to s19, so the
+refactor is provably behavior-neutral). All changed files are v4-only
+(`condition_placement.py`, `group_rules.py`, `models.py`, `concept_graph.py`,
+`group_graph.py`, `strategy_builder.py` — the v4_helper package, whose only
+importers are v4_node_generators/* + concept_strategies_v4), so no v3 sweep is
+needed.
+
+**The 25 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), new-corpus ×5
+(year_over_year recorrelation ×2, multileg null-identity ×2, union_arm
+partner_only_in_join), families (multi_partial_anchor ×2, duckdb_rowset
+variance/stddev keys-3 ×2) and singles (twin_keeps_scalar_refs, dim_bridge
+all_subset_unaffected, rowset_generation_matrix islanded,
+rowset_cross_datasource null_property, rowset_body_limit, cube_two_windows,
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge).
+
+**NEXT options:** the new-corpus ×5 (undiagnosed, A/B-verified pre-existing);
+TPC-DS ×6; `cube_two_windows` (adjacent to this session's grouping-mode work);
+XPASS prune (29 xpassed).
+
+## ✅ 2026-07-21 (session 19) — a WHERE over a coalesced scoped-join axis stops at the last group that can still emit it (+1) & grouping mode is typed end-to-end
+
+### Fix — `_grouping_barrier_host` (condition_placement.py, v4-only)
+
+Cleared `rollup_scoped_join
+test_three_key_subset_join_rollup_executes_and_matches_canonical`. Shape:
+`subset join per_ch.b/c/g = all_ch.b/c/g where all_ch.* is not null
+by rollup (ch,b,c,g)`. v4 raised a duckdb BinderException — the rollup CTE
+emitted `all_ch_b/c/g` as bare un-grouped columns beside `GROUP BY ROLLUP(...)`.
+
+Root cause: the atom's row inputs are scoped-join members, so the existing
+branch correctly drops the ROWSET boundary host (a member reference reads as
+the COALESCED axis, which only exists post-merge) and routes to
+`FINAL_RECONVERGENCE`. But every path to FINAL crosses the ROLLUP aggregate,
+whose grain is `per_ch.*` — so FINAL demanded an axis the aggregate cannot
+group by. The right host (the aggregate itself, whose INPUT *is* the completion
+merge) had already been filtered out one step earlier, at the
+`active_relation_hosts` prune.
+
+Fix: before falling through to FINAL, search the PRE-prune candidate list
+(`relation_candidates`) for a GROUP BY-emitting group that (a) has every
+dropped boundary host as an ancestor — so its input is the completion merge and
+the coalesced axis is a real column there — and (b) whose own grain does not
+cover the atom's inputs, so nothing above it can read them. Host the atom there:
+a pre-aggregation WHERE, which is also the only semantically correct spot (post
+rollup the axis is NULL-ed by `grouping()`). v4 now matches v3's plan and rows.
+
+**Note the deliberate breadth:** the gate is `_EMITS_GROUP_BY`, not
+`nulls_grouping_keys` — the invariant is column SURVIVAL (a group can only emit
+what it groups by), which holds for any GROUP BY, standard or not. That is a
+DIFFERENT question from subtotal-NULLing; rollup fails both. Conflating them
+would have silently narrowed the fix.
+
+### Cleanup — grouping mode typed end-to-end (v4-only)
+
+Prompted by the review question "is the rollup abstraction clean?". It was not:
+the semantic fact (`AggregateGroupingMode`, already typed on
+`BuildAggregateWrapper.grouping`) was unwrapped to `.value` at the graph
+boundary and thereafter re-derived by sniffing strings.
+
+- `ConceptAttrs.grouping_mode` is now `AggregateGroupingMode | None` (was
+  `str | None`); `GroupBucket`/`GroupAttrs` carry a non-optional
+  `grouping_mode`, defaulting to STANDARD.
+- One shared predicate `nulls_grouping_keys(mode)` (models.py), exposed as a
+  property on both `GroupBucket` and `GroupAttrs`, documents the invariant in
+  ONE place: *a non-standard grouping group NULLs its own grouping keys on the
+  subtotal rows it adds, so nothing above it may filter/join/re-aggregate on
+  them.*
+- Consumers that stopped string-sniffing: `":grp:" in gid` (strategy_builder)
+  → `attrs[gid].nulls_grouping_keys`; `discriminator.startswith("grp:")`
+  (condition_placement) → `b.nulls_grouping_keys`; `_fold_rollup_key_dims`'s
+  `concept_attrs[n].grouping_mode not in (None, "standard")` member-walk →
+  `b.nulls_grouping_keys`; `partition_aggregates`' two `== "standard"` splits →
+  `nulls_grouping_keys(...)`.
+- All three producers converge on `_apply_grouping_mode(bucket, mode, *extra)`,
+  which sets SEMANTICS and IDENTITY together so they cannot drift.
+  `discriminator` keeps its one real job (bucket identity — a ROLLUP bucket must
+  not collide with a STANDARD one at the same label/depth/grain, since one CTE
+  cannot carry both GROUP BY clauses); it is no longer a semantics channel.
+
+**SCOPE — this cleanup is DONE; do not "consolidate" the physical layer.** A
+grep for rollup handling suggests ~6 scattered restatements of the
+NULL-injection invariant. That reading is WRONG, and was walked back after
+reading the sites:
+
+- Every stringly-typed sniff lived in the v4 GROUP-GRAPH layer, and step 1
+  removed all of them. Nothing is left to type.
+- The PHYSICAL layer already has exactly ONE producer: `nodes/group_node.py`
+  computes `nullable_concepts` from `lineage.grouping`. Downstream consumers
+  read that computed fact — `value_set_join_upgrade._key_nullable` never
+  inspects grouping mode at all (rollup is only its docstring's motivating
+  example). That is correct layering, not duplication.
+- `null_safe_join._rollup_injects_null` DOES also read the mode, for a
+  different question: blocking the upstream parent-walk from proving a rollup
+  key non-null at the source where it genuinely is non-null. A proof barrier,
+  not a nullability restatement. Merging it would lose that.
+- `group_graph.py:1615` is window grain widening keyed on
+  `GROUPING_DERIVATIONS`; it never reads grouping mode. Mis-filed on first pass.
+
+`nulls_grouping_keys(mode)` takes a MODE; the physical helpers take
+`(cte, addrs)`. Unifying them drags a planner predicate across the
+planner/physical boundary — coupling two correctly-separated layers, not
+removing duplication. A `RollupNode(GroupNode)` subclass buys dispatch nothing
+needs (rendering via `rollup_concepts` already works; nullability already has
+its single producer). Neither is worth doing before OR after v3 deprecation.
+
+LATENT BUG this surfaced: `_partition_grouped_aggregates` built its
+discriminator as `f"grp:{grouping_mode}"`. Benign while the field was a string;
+with an enum it would have rendered `grp:AggregateGroupingMode.ROLLUP`. The
+helper uses `.value` explicitly. This is the failure mode stringly-typed
+plumbing hides.
+
+SEQUENCING LESSON: the s19 sweep was launched BEFORE the refactor and therefore
+validates only the placement fix — Python imports at process start, so a
+mid-sweep edit is invisible to the running process. Never credit a sweep for
+code that landed after it launched.
+
+The refactor's own sweep (`v4_sweep_0721_s19b.log`) came back **28 failed /
+5912** — +2 vs s19, both in `tests/core/processing/test_v4_group_behaviors.py`
+(`test_partition_rollup_aggregates_share_bucket`,
+`..._split_by_source_signature`). NOT production regressions: the fixtures
+built `ConceptAttrs(grouping_mode="rollup")` with the raw string the type no
+longer admits, so `_apply_grouping_mode` hit `'str' object has no attribute
+'value'`. Fixtures updated to `AggregateGroupingMode.ROLLUP`; final tree
+certified by `v4_sweep_0721_s19c.log`.
+
+Worth noting what let the bad type travel: `nulls_grouping_keys("rollup")`
+returns True (a `str` compares unequal to the enum member), so the wrong type
+passed the predicate and only died two lines later at `.value`. NO runtime
+isinstance guard was added — the annotation is the contract, mypy covers
+`trilogy/`, and a guard at the failure site is exactly the belt-and-suspenders
+this repo rejects. The stale caller was the bug; it was fixed at source.
+
+## Superseded state (after 2026-07-21 session 18)
+
+**Full v4 sweep (session 18): 26 real failed / 5913 passed**
+(`local_scripts/v4_sweep_0721_s18.log`; raw 27 — minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s17: **cleared `scoped_derived_rowset exp_rows1` and (collateral)
+`rollup_scoped_join two_key_subset_join_partial_rollup_builds` (−2), ZERO new
+failures** (`comm` diff of the FAILED lists against the s17 sweep: exactly
+those two removed, nothing added). TPC-DS = the pre-existing 6 exactly (q72
+intact), standalone battery AND in-sweep; classifier exit 0 (no label
+escalations; 10 XPASS entries); ruff/mypy(310)/black clean. Both fixes are in
+v4-only files (`v4_helper/strategy_builder.py`, `v4_helper/group_graph.py`),
+so no v3 sweep is needed.
+
+**The 26 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), new-corpus ×5
+(year_over_year recorrelation ×2, multileg null-identity ×2, union_arm
+partner_only_in_join), families (multi_partial_anchor ×2, duckdb_rowset
+variance/stddev keys-3 ×2) and singles (twin_keeps_scalar_refs, dim_bridge
+all_subset_unaffected, rollup_scoped_join three_key,
+rowset_generation_matrix islanded, rowset_cross_datasource null_property,
+rowset_body_limit, cube_two_windows, collapse_basic funnel,
+union_bare_aggregate set_semantics, setops except_and_union,
+constant_in_cross_datasource_merge).
+
+**NEXT options:** the new-corpus ×5 (undiagnosed, A/B-verified pre-existing);
+`rollup_scoped_join three_key` (its two-key sibling just fell out of s18 —
+likely adjacent); TPC-DS ×6; XPASS prune (10 xpassed, one `~varied`).
+
+## ✅ 2026-07-21 (session 18) — a rowset boundary stops synthesizing ANOTHER rowset's handle (+1) & a grouping group advertises the scoped axis member it owns (+1)
+
+Two v4-only fixes for ONE shape: `scoped_derived_rowset exp_rows1`
+(`select agg.period, sum(agg.tot)/sum(fut.tot) subset join
+fut.period + 53 = agg.period`) rendered `FULL JOIN ... ON 1=1` with all three
+periods populated; v3 renders LEFT with `[(1,None),(2,None),(54,37/150)]`. v4
+now matches v3's plan and rows. Verified by a full sweep (26 real, zero new),
+TPC-DS battery (pre-existing 6), classifier exit 0, ruff/mypy/black clean.
+
+1. **`_widen_merge_join_keys` (strategy_builder.py)** — the merge-key widener
+   let the **fut** rowset boundary synthesize `agg.period`: a handle's ROW
+   LINEAGE alone makes it look satisfiable from any scan over the same base
+   (`agg.period` and `fut.period` both descend from `s.period`), so
+   `concept_satisfiable` said yes and the boundary emitted fut's raw period
+   UNDER agg's address. The merge's coalesce then mixed the real axis
+   (`period + 53`) with that impostor column. Fix: a parent that already
+   projects a rowset carries handles only for THAT rowset.
+   **HARD-WON gate — `parent_rowsets` must be non-empty.** The first cut
+   blocked the carry on ANY parent and broke
+   `test_aggregate_restricted_by_member_null_test` (q35 shape, 30 vs 7): a
+   plain scan is exactly where a `subset join rs.k = l_key` relation
+   legitimately substitutes the handle onto the anchor. Only a FOREIGN rowset
+   boundary is wrong.
+2. **`_compute_concept_sets` (group_graph.py)** — with the impostor gone the
+   fut aggregate still rendered as a grainless global `sum` cross-joined
+   `ON 1=1`. `sum(fut.tot)` is a bare aggregate, so it co-grains to the select
+   grain `agg.period`; on the fut side that axis' column IS the derived key.
+   Capability said the aggregate group could not preserve the virt (it is not
+   the group's own grain key), so `outs |= fact.grain & cap_gid` added
+   NOTHING and the group advertised no axis at all. Fix: members of a
+   STATEMENT-scoped relation are alternative physical columns for ONE logical
+   axis (`_scoped_axis_mates`), so (a) a mate a parent supplies is
+   preservable, and (b) a grouping group whose grain component it cannot
+   produce advertises the mate it can. Gated on
+   `_statement_scoped_relation_members` — global `merge` identities excluded
+   (the s17 lesson).
+
+LESSON: the audit's predicted diagnosis ("the sibling of s17's fix #1 — the
+derived-member obligation materializes the key and widens LEFT to FULL") was
+WRONG. The obligation fires and is correct — v3 materializes the same derived
+key in the same boundary CTE. The defect was two layers downstream. What
+localized it: comparing the noopt CTE dumps side by side
+(`local_scripts/s18_ctes.py` prints every CTE's outputs + source_map) and
+noticing the fut boundary emitted an `agg_s_period` column v3 never had.
+
+Harness note: `local_scripts/discovery_v4.py::_materialize_for_query` now
+threads `caches.scoped_joins` into the Factory and `materialize_for_select`
+(it did not, so `scoped_join_key_groups`/`domain_graph` came back EMPTY and
+every scoped-join diagnostic was of a DIFFERENT plan than the real one).
+`local_scripts/s18_diag.py` additionally sets
+`statement_authored_addresses`/`statement_output_addresses`; both are needed
+for the harness plan to match `get_query_node`. Repro kept:
+`local_scripts/repro_s18_sdr.py` (`v3`/`v4` [key] [noopt]).
+
+Detached-sweep note: the venv `python.exe` is a shim — the REAL pytest process
+is its grandchild, so a PID watch on the `Start-Process` handle (or its direct
+child) reports 0 CPU / 2 MB and looks dead. Find the working PID via
+`Get-CimInstance Win32_Process -Filter "ParentProcessId=<pid>"` before
+concluding a sweep has stalled.
+
+## Superseded state (after 2026-07-21 session 17)
 
 **Full v4 sweep (session 17): 28 real failed / 5911 passed**
 (`local_scripts/v4_sweep_0720_s17b.log`; raw 29 — minus the

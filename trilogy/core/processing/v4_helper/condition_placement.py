@@ -343,11 +343,11 @@ def _uncovered_exposing_output_contributor(
     condition inputs and skip here). Condition-phase (d1) groups are population
     scope and never receive row atoms.
 
-    Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS,
-    carried in the bucket discriminator): those groups NULL-inject rolled-up
-    dims on subtotal rows, and a WHERE re-applied above the merge would drop
-    every subtotal (q05 lost its rollup totals)."""
-    if any(b.discriminator.startswith("grp:") for b in buckets.values()):
+    Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS):
+    those groups NULL-inject rolled-up dims on subtotal rows, and a WHERE
+    re-applied above the merge would drop every subtotal (q05 lost its rollup
+    totals)."""
+    if any(b.nulls_grouping_keys for b in buckets.values()):
         return False
     covered: set[str] = set(chosen_groups)
     for gid in chosen_groups:
@@ -386,6 +386,39 @@ def _validate_not_pushed_past_independent_barrier(
                 f"downstream of d0 barrier(s) {sorted(offending)}; "
                 f"conditions cannot be pushed past row-shape changes."
             )
+
+
+def _grouping_barrier_host(
+    candidates: list[str],
+    dropped_hosts: list[str],
+    row_inputs: set[str],
+    group_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+) -> str | None:
+    """The last group at which the atom's inputs still exist as raw columns.
+
+    A GROUP BY candidate downstream of EVERY dropped boundary host has the
+    completion merge as its own input, so the coalesced axis is a real column
+    there. Above it the axis is gone: a grouping group can only emit a column
+    it groups by, and this one's grain excludes the inputs — routing to FINAL
+    makes FINAL demand an un-grouped column and the binder rejects the CTE
+    (`by rollup` + a multi-key `subset join`).
+
+    This is about column SURVIVAL, and so applies to any GROUP BY, standard or
+    not. It is a different question from `nulls_grouping_keys` (which is about
+    subtotal rows NULLing keys that do survive); rollup happens to fail both."""
+    if not dropped_hosts:
+        return None
+    for gid in candidates:
+        bucket = buckets.get(gid)
+        if bucket is None or bucket.derivation not in _EMITS_GROUP_BY:
+            continue
+        if row_inputs <= set(bucket.grain_components):
+            continue
+        ancestors = nx.ancestors(group_graph, gid)
+        if all(host in ancestors for host in dropped_hosts):
+            return gid
+    return None
 
 
 def plan_condition_placements(
@@ -612,6 +645,7 @@ def plan_condition_placements(
             # host still wins (its SELECT applies the WHERE pre-merge within
             # the pipeline, q72), and when nothing survives the tail routes
             # the atom to FINAL.
+            relation_candidates = list(candidates)
             candidates = [
                 gid
                 for gid in candidates
@@ -644,7 +678,29 @@ def plan_condition_placements(
                 # WHERE — FINAL pulls the probe's producer in as a keyed side
                 # input instead.
                 dropped_rowset_host = len(non_rowset_candidates) != len(candidates)
+                dropped_hosts = [
+                    gid for gid in candidates if gid not in non_rowset_candidates
+                ]
                 candidates = non_rowset_candidates
+                # A GROUP BY candidate every dropped boundary must flow THROUGH
+                # to reach FINAL is where the coalesced axis last exists as a
+                # raw column: routing past it makes FINAL demand the axis from
+                # an aggregate that cannot group by it (`by rollup` + a
+                # multi-key `subset join` — the axis columns come out ungrouped
+                # and the binder rejects them). Host it there instead, a
+                # pre-aggregation WHERE above the completion merge.
+                barrier = _grouping_barrier_host(
+                    relation_candidates, dropped_hosts, row_inputs, group_graph, buckets
+                )
+                if dropped_rowset_host and barrier is not None:
+                    placements.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(barrier,),
+                            reason=PlacementReason.UPSTREAM_MOST,
+                        )
+                    )
+                    continue
                 if dropped_rowset_host or (
                     candidates and not any(gid in main_lineage for gid in candidates)
                 ):

@@ -1,6 +1,6 @@
 query_id = "44"
 generator = "v4"
-gen_length = 3904
+gen_length = 3844
 preql_size = 1021
 comp_size = 1462
 generated_sql = """
@@ -105,26 +105,25 @@ abhorrent as (
 SELECT
     \"sparkling\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"sparkling\".\"ascending_rnk_a\" as \"ascending_rnk_a\",
-    \"sparkling\".\"ascending_rnk_a\" as \"descending_rnk_d\",
     \"sparkling\".\"ascending_rnk_a\" as \"rnk\"
 FROM
     \"sparkling\")
 SELECT
-    coalesce(\"abhorrent\".\"descending_rnk_d\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") as \"rnk\",
+    coalesce(\"abhorrent\".\"ascending_rnk_a\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") as \"rnk\",
     \"abhorrent\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"late\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
     \"abhorrent\"
     LEFT OUTER JOIN \"late\" on \"abhorrent\".\"rnk\" = \"late\".\"descending_rnk_d\"
 WHERE
-    coalesce(\"abhorrent\".\"descending_rnk_d\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") < 11
+    coalesce(\"abhorrent\".\"ascending_rnk_a\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") < 11
 
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    coalesce(\"abhorrent\".\"descending_rnk_d\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") asc nulls first,
+    coalesce(\"abhorrent\".\"ascending_rnk_a\",\"abhorrent\".\"rnk\",\"late\".\"descending_rnk_d\") asc nulls first,
     \"abhorrent\".\"ascending_best_performing\" desc nulls first,
     \"late\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

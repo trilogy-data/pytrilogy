@@ -1,6 +1,6 @@
 query_id = "77"
 generator = "v4"
-gen_length = 11889
+gen_length = 11761
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -231,12 +231,6 @@ FROM
 WHERE
     \"sparkling\".\"cs_grouped_cs_sales\" is not null
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
 UNION ALL
 SELECT
     \"puffy\".\"___tvf_arm_1_u_channel\" as \"_l0_union_u_channel\",
@@ -249,12 +243,6 @@ FROM
 WHERE
     \"puffy\".\"ss_grouped_ss_sales\" is not null
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5
 UNION ALL
 SELECT
     \"cloudy\".\"___tvf_arm_2_u_channel\" as \"_l0_union_u_channel\",
@@ -266,13 +254,7 @@ FROM
     \"cloudy\"
 WHERE
     \"cloudy\".\"ws_grouped_ws_sales\" is not null
-
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5),
+),
 trite as (
 SELECT
     \"flashy\".\"_l0_union_u_channel\" as \"l0_union_u_channel\",

@@ -1,0 +1,1635 @@
+{
+  "concept_edges": [
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "agg.s.period",
+      "target": "local._virt_agg_sum_4149934679595063"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "agg.s.period",
+      "target": "local._virt_agg_sum_9228488784072447"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "agg.tot",
+      "target": "local._virt_agg_sum_4149934679595063"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "fut.s.period",
+      "target": "local._virt_agg_sum_9228488784072447"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "fut.tot",
+      "target": "local._virt_agg_sum_9228488784072447"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "local._virt_agg_sum_4149934679595063",
+      "target": "local.r"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "local._virt_agg_sum_9228488784072447",
+      "target": "local.r"
+    }
+  ],
+  "concepts": [
+    {
+      "address": "agg.s.period",
+      "aggregate_input_grain": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "existence_only": false,
+      "grain": [
+        "agg.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "agg.s.period",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "property",
+      "rowset_name": "agg"
+    },
+    {
+      "address": "agg.tot",
+      "aggregate_input_grain": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "existence_only": false,
+      "grain": [
+        "agg.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "agg.tot",
+      "is_rename": false,
+      "keys": [
+        "agg.s.period"
+      ],
+      "purpose": "metric",
+      "rowset_name": "agg"
+    },
+    {
+      "address": "fut.s.period",
+      "aggregate_input_grain": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "existence_only": false,
+      "grain": [
+        "fut.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "fut.s.period",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "property",
+      "rowset_name": "fut"
+    },
+    {
+      "address": "fut.tot",
+      "aggregate_input_grain": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "existence_only": false,
+      "grain": [
+        "fut.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "fut.tot",
+      "is_rename": false,
+      "keys": [
+        "fut.s.period"
+      ],
+      "purpose": "metric",
+      "rowset_name": "fut"
+    },
+    {
+      "address": "local._virt_agg_sum_4149934679595063",
+      "aggregate_input_grain": [
+        "agg.s.period"
+      ],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "agg.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": "standard",
+      "id": "local._virt_agg_sum_4149934679595063",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local._virt_agg_sum_9228488784072447",
+      "aggregate_input_grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "existence_only": false,
+      "grain": [
+        "agg.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": "standard",
+      "id": "local._virt_agg_sum_9228488784072447",
+      "is_rename": false,
+      "keys": [],
+      "purpose": "metric",
+      "rowset_name": null
+    },
+    {
+      "address": "local.r",
+      "aggregate_input_grain": [],
+      "depth": "d*",
+      "derivation": "basic",
+      "existence_only": false,
+      "grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "granularity": "multi_row",
+      "grouping_mode": null,
+      "id": "local.r",
+      "is_rename": false,
+      "keys": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "purpose": "metric",
+      "rowset_name": null
+    }
+  ],
+  "group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:aggregate:d0:agg.s.period",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:aggregate:d0:agg.s.period",
+      "target": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "target": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "grp:aggregate:d0:agg.s.period"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": "pre_condition",
+      "source": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": "pre_condition",
+      "source": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "target": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period"
+    }
+  ],
+  "groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:aggregate:d0:agg.s.period",
+            "output_addresses": [
+              "agg.s.period",
+              "local._virt_agg_sum_4149934679595063"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+            "output_addresses": [
+              "agg.s.period",
+              "local._virt_agg_sum_9228488784072447"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+            "output_addresses": [
+              "local.r",
+              "agg.s.period"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period"
+            ]
+          },
+          {
+            "group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+            "output_addresses": [
+              "agg.tot",
+              "agg.s.period"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period",
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:rowset:d0:fut.s.period:rowset:fut",
+            "output_addresses": [
+              "fut.s.period",
+              "fut.tot"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period",
+              "agg.s.period"
+            ]
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "s.period",
+          "agg.s.period"
+        ],
+        "output_addresses": [
+          "local.r",
+          "agg.s.period"
+        ],
+        "required_grain": [
+          "agg.s.period"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "agg.s.period",
+        "agg.tot",
+        "fut.s.period",
+        "fut.tot",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447",
+        "local.r"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "kind": "merge",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "agg.s.period"
+      ],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:agg.s.period",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "preserve_keys": [
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.tot",
+            "agg.s.period"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "members": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "secondary_members": [
+        "agg.s.period"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "preserve_keys": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "preserve_keys": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_outputs": [
+            "fut.s.period",
+            "fut.tot"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "members": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "secondary_members": [
+        "agg.s.period"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d*",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:aggregate:d0:agg.s.period",
+          "preserve_keys": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period",
+            "local._virt_agg_sum_4149934679595063"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "preserve_keys": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period",
+            "local._virt_agg_sum_9228488784072447"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "members": [
+        "local.r"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local.r"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ],
+      "primary_members": [
+        "local.r"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "final_contract": null,
+      "grain": [
+        "fut.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "outputs": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": "pre_condition"
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": "pre_condition"
+        }
+      ]
+    }
+  ],
+  "merged_group_edges": [
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:aggregate:d0:agg.s.period",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:aggregate:d0:agg.s.period",
+      "target": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "target": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "grp:aggregate:d0:agg.s.period"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "target": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period"
+    },
+    {
+      "alt_group": null,
+      "kind": "merge",
+      "phase": null,
+      "source": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "target": "__final__"
+    },
+    {
+      "alt_group": null,
+      "kind": "lineage",
+      "phase": null,
+      "source": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "target": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period"
+    }
+  ],
+  "merged_groups": [
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "final",
+      "derivation": "final",
+      "final_contract": {
+        "contributor_contracts": [
+          {
+            "group_id": "grp:aggregate:d0:agg.s.period",
+            "output_addresses": [
+              "agg.s.period",
+              "local._virt_agg_sum_4149934679595063"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+            "output_addresses": [
+              "agg.s.period",
+              "local._virt_agg_sum_9228488784072447"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+            "output_addresses": [
+              "local.r",
+              "agg.s.period"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period"
+            ]
+          },
+          {
+            "group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+            "output_addresses": [
+              "agg.tot",
+              "agg.s.period"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period",
+              "agg.s.period"
+            ]
+          },
+          {
+            "group_id": "grp:rowset:d0:fut.s.period:rowset:fut",
+            "output_addresses": [
+              "fut.s.period",
+              "fut.tot"
+            ],
+            "preserve_keys": [],
+            "projection_grain": [
+              "s.period",
+              "agg.s.period"
+            ]
+          }
+        ],
+        "deduplicate_to_grain": true,
+        "merge_grain": [
+          "s.period",
+          "agg.s.period"
+        ],
+        "output_addresses": [
+          "local.r",
+          "agg.s.period"
+        ],
+        "required_grain": [
+          "agg.s.period"
+        ]
+      },
+      "grain": [],
+      "hidden": [],
+      "id": "__final__",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "agg.s.period",
+        "agg.tot",
+        "fut.s.period",
+        "fut.tot",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447",
+        "local.r"
+      ],
+      "outputs": [],
+      "predecessors": [
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "kind": "merge",
+          "phase": null
+        }
+      ],
+      "primary_members": [],
+      "secondary_members": [],
+      "successors": []
+    },
+    {
+      "aggregate_input_grain": [
+        "agg.s.period"
+      ],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:agg.s.period",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "preserve_keys": [
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.tot",
+            "agg.s.period"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "members": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "secondary_members": [
+        "agg.s.period"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "aggregate",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "preserve_keys": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "may_project_dimension": true,
+          "parent_group_id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "preserve_keys": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_grain": [
+            "agg.s.period",
+            "fut.s.period"
+          ],
+          "required_outputs": [
+            "fut.s.period",
+            "fut.tot"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "members": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "secondary_members": [
+        "agg.s.period"
+      ],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d*",
+      "derivation": "basic",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period",
+        "fut.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+      "input_contracts": [
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:aggregate:d0:agg.s.period",
+          "preserve_keys": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period",
+            "local._virt_agg_sum_4149934679595063"
+          ]
+        },
+        {
+          "channel": "row_stream",
+          "consumer_group_id": "grp:basic:d*:agg.s.period|fut.s.period:sig:6582d9",
+          "may_project_dimension": false,
+          "parent_group_id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "preserve_keys": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_grain": [
+            "fut.s.period",
+            "agg.s.period"
+          ],
+          "required_outputs": [
+            "agg.s.period",
+            "local._virt_agg_sum_9228488784072447"
+          ]
+        }
+      ],
+      "inputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "members": [
+        "local.r"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "local.r"
+      ],
+      "predecessors": [
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": null
+        }
+      ],
+      "primary_members": [
+        "local.r"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "final_contract": null,
+      "grain": [
+        "agg.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:rowset:d0:agg.s.period:rowset:agg",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "outputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period",
+          "kind": "lineage",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    },
+    {
+      "aggregate_input_grain": [],
+      "conditions": [],
+      "depth": "d0",
+      "derivation": "rowset",
+      "final_contract": null,
+      "grain": [
+        "fut.s.period"
+      ],
+      "hidden": [],
+      "id": "grp:rowset:d0:fut.s.period:rowset:fut",
+      "input_contracts": [],
+      "inputs": [],
+      "members": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "outputs": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "predecessors": [],
+      "primary_members": [
+        "fut.s.period",
+        "fut.tot"
+      ],
+      "secondary_members": [],
+      "successors": [
+        {
+          "id": "__final__",
+          "kind": "merge",
+          "phase": null
+        },
+        {
+          "id": "grp:aggregate:d0:agg.s.period:input:agg.s.period|fut.s.period",
+          "kind": "lineage",
+          "phase": null
+        }
+      ]
+    }
+  ],
+  "strategy_nodes": [
+    {
+      "conditions": null,
+      "datasource": "s.sales",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<s.sid>",
+      "hidden": [],
+      "id": "n0",
+      "inputs": [
+        "s.sid",
+        "s.period",
+        "s.region",
+        "s.amt"
+      ],
+      "nullable": [],
+      "outputs": [
+        "s.amt",
+        "s.period",
+        "s.sid"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "s.amt",
+        "s.period",
+        "s.sid"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n1",
+      "inputs": [
+        "s.amt",
+        "s.period"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local._agg_tot",
+        "s.period"
+      ],
+      "parents": [
+        "n0"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local._agg_tot",
+        "s.period"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<agg.s.period>",
+      "hidden": [],
+      "id": "n2",
+      "inputs": [
+        "s.period",
+        "local._agg_tot"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "parents": [
+        "n1"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "agg.tot"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n3",
+      "inputs": [
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ],
+      "parents": [
+        "n2"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": "s.sales",
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<s.sid>",
+      "hidden": [],
+      "id": "n4",
+      "inputs": [
+        "s.sid",
+        "s.period",
+        "s.region",
+        "s.amt"
+      ],
+      "nullable": [],
+      "outputs": [
+        "s.amt",
+        "s.period",
+        "s.sid"
+      ],
+      "parents": [],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "s.amt",
+        "s.period",
+        "s.sid"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n5",
+      "inputs": [
+        "s.amt",
+        "s.period"
+      ],
+      "nullable": [],
+      "outputs": [
+        "local._fut_tot",
+        "s.period"
+      ],
+      "parents": [
+        "n4"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "local._fut_tot",
+        "s.period"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<fut.s.period>",
+      "hidden": [],
+      "id": "n6",
+      "inputs": [
+        "s.period",
+        "local._fut_tot"
+      ],
+      "nullable": [],
+      "outputs": [
+        "fut.s.period",
+        "fut.tot",
+        "agg.s.period"
+      ],
+      "parents": [
+        "n5"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "fut.s.period",
+        "fut.tot",
+        "agg.s.period"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": "Grain<agg.s.period>",
+      "hidden": [],
+      "id": "n7",
+      "inputs": [
+        "s.period",
+        "local._agg_tot"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "agg.tot",
+        "fut.s.period"
+      ],
+      "parents": [
+        "n1"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "agg.tot",
+        "fut.s.period"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n8",
+      "inputs": [
+        "fut.s.period",
+        "fut.tot",
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "nullable": [],
+      "outputs": [
+        "fut.s.period",
+        "fut.tot",
+        "agg.s.period",
+        "agg.tot"
+      ],
+      "parents": [
+        "n6",
+        "n7"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "fut.s.period",
+        "fut.tot",
+        "agg.s.period",
+        "agg.tot"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n9",
+      "inputs": [
+        "fut.tot",
+        "agg.s.period"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "parents": [
+        "n8"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "group",
+      "type": "GroupNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_9228488784072447"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": null,
+      "grain": null,
+      "hidden": [],
+      "id": "n10",
+      "inputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "parents": [
+        "n3",
+        "n9"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "merge",
+      "type": "MergeNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ]
+    },
+    {
+      "conditions": null,
+      "datasource": null,
+      "existence": [],
+      "force_group": false,
+      "grain": null,
+      "hidden": [],
+      "id": "n11",
+      "inputs": [
+        "agg.s.period",
+        "local._virt_agg_sum_4149934679595063",
+        "local._virt_agg_sum_9228488784072447"
+      ],
+      "nullable": [],
+      "outputs": [
+        "agg.s.period",
+        "local.r"
+      ],
+      "parents": [
+        "n10"
+      ],
+      "partials": [],
+      "preexisting_conditions": null,
+      "rollups": [],
+      "source_type": "select",
+      "type": "SelectNode",
+      "usable_outputs": [
+        "agg.s.period",
+        "local.r"
+      ]
+    }
+  ]
+}

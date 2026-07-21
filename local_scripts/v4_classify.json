@@ -48,20 +48,20 @@
     "downgrade": false
   },
   {
-    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
-    "bucket": "SHAPE",
-    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/modeling/tpc_h/instantiated/tpc_h/test_instantiated_tpc_h.py::test_adhoc07",
     "bucket": "SHAPE",
     "detail": "AssertionError:",
     "expected": [
       "SHAPE"
     ],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/discovery/test_aggregates_comprehensive.py::test_high_value_customer_filter",
+    "bucket": "SHAPE",
+    "detail": "AssertionError: Expected high_value_customers table, got: SELECT",
+    "expected": [],
     "escalation": false,
     "downgrade": false
   },
@@ -90,14 +90,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_derived_membership_existence",
-    "bucket": "SHAPE",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.amt<Purpose.PROPERTY>Derivation.ROOT>'] from current model (v4 discovery).",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 19). The requested concepts split into 2 disconnected subg",
@@ -106,17 +98,25 @@
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion",
+    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
     "bucket": "CRASH",
-    "detail": "Failed: DID NOT RAISE <class 'trilogy.core.exceptions.UnresolvableQueryException'>",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key",
+    "node": "tests/engine/test_duckdb.py::test_derived_membership_existence",
+    "bucket": "SHAPE",
+    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.amt<Purpose.PROPERTY>Derivation.ROOT>'] from current model (v4 discovery).",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion",
     "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.s<Purpose.PROPERTY>Derivation.BASIC>', 'local.w<Purpose.PROPERTY>Derivation.BASIC>', 'lo",
+    "detail": "Failed: DID NOT RAISE <class 'trilogy.core.exceptions.UnresolvableQueryException'>",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -266,17 +266,29 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
-    "bucket": "CRASH",
-    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgr",
+    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
+    "bucket": "OTHER",
+    "detail": "",
     "expected": [],
     "escalation": false,
-    "downgrade": false
+    "downgrade": false,
+    "varied": [
+      "OTHER",
+      "XPASS"
+    ]
   },
   {
     "node": "tests/test_parsing.py::test_circular_aliasing_inverse",
     "bucket": "CRASH",
     "detail": "trilogy.core.exceptions.UnresolvableQueryException: Could not resolve connections for query with output ['local.composite_id<Purpose.KEY>Derivation.ROOT>'] from current model (v4 discovery).",
+    "expected": [],
+    "escalation": false,
+    "downgrade": false
+  },
+  {
+    "node": "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain",
+    "bucket": "CRASH",
+    "detail": "trilogy.core.exceptions.DisconnectedConceptsException: Discovery error: cannot merge all concepts into one connected query (statement at line 5). The requested concepts split into 2 disconnected subgr",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -291,8 +303,8 @@
   },
   {
     "node": "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_resolves_correctly",
-    "bucket": "ROWS",
-    "detail": "assert [(1000.0, 30.... 30.0, 300.0)] == [(1000.0, 10.... 20.0, 200.0)]",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -330,17 +342,17 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
-    "bucket": "XPASS",
-    "detail": "",
+    "node": "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure",
+    "bucket": "SHAPE",
+    "detail": "assert 'LEFT OUTER JOIN' in '\\nWITH \\nthoughtful as (\\nSELECT\\n    \"fb_fb\".\"it\" as \"_agg_b_it\",\\n    sum(\"fb_fb\".\"q\") as \"_agg_b_qb\"\\nFROM\\n    \"f...g_a_it\" as \"agg_a_it\",\\n    \"yummy\".\"agg_a_qa\" as \"",
     "expected": [],
     "escalation": false,
     "downgrade": false
   },
   {
-    "node": "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure",
-    "bucket": "SHAPE",
-    "detail": "assert 'LEFT OUTER JOIN' in '\\nWITH \\nthoughtful as (\\nSELECT\\n    \"fb_fb\".\"it\" as \"_agg_b_it\",\\n    sum(\"fb_fb\".\"q\") as \"_agg_b_qb\"\\nFROM\\n    \"f...g_a_it\" as \"agg_a_it\",\\n    \"yummy\".\"agg_a_qa\" as \"",
+    "node": "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans",
+    "bucket": "XPASS",
+    "detail": "",
     "expected": [],
     "escalation": false,
     "downgrade": false
@@ -370,14 +382,6 @@
     "downgrade": false
   },
   {
-    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
-    "bucket": "ROWS",
-    "detail": "AssertionError: [(1, 1, 10, 8)]",
-    "expected": [],
-    "escalation": false,
-    "downgrade": false
-  },
-  {
     "node": "tests/test_where_clause.py::test_where_scalar",
     "bucket": "XPASS",
     "detail": "",
@@ -386,15 +390,11 @@
     "downgrade": false
   },
   {
-    "node": "tests/modeling/tpc_ds_duckdb/test_queries.py::test_sixty_four",
-    "bucket": "TIMEOUT",
-    "detail": "",
+    "node": "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved",
+    "bucket": "ROWS",
+    "detail": "AssertionError: [(1, 1, 10, 8)]",
     "expected": [],
     "escalation": false,
-    "downgrade": false,
-    "varied": [
-      "TIMEOUT",
-      "XPASS"
-    ]
+    "downgrade": false
   }
 ]

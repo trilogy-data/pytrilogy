@@ -20,7 +20,12 @@ from typing import Callable
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    FunctionType,
+    Purpose,
+)
 from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -700,9 +705,9 @@ def _add_concept(
     # modes into their own buckets — two AGGREGATEs sharing grain but
     # using different grouping modes need separate CTEs (one emits GROUP
     # BY, the other GROUP BY ROLLUP).
-    grouping_mode = None
+    grouping_mode: AggregateGroupingMode | None = None
     if not is_materialized_root and isinstance(concept.lineage, BuildAggregateWrapper):
-        grouping_mode = concept.lineage.grouping.value
+        grouping_mode = concept.lineage.grouping
     # Rowset identity: every handle of one rowset shares a row population (the
     # rowset is one sub-query, planned in full by `gen_rowset`), so the rowset
     # grouping rule buckets them into a single boundary group by name. This

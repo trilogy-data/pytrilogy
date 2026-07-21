@@ -28,6 +28,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFilterItem,
     BuildGrain,
+    BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
 )
@@ -1186,6 +1187,11 @@ def _widen_merge_join_keys(
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
+        parent_rowsets = {
+            concept.lineage.rowset.name
+            for concept in parent.output_concepts
+            if isinstance(concept.lineage, BuildRowsetItem)
+        }
         existence = {concept.address for concept in parent.existence_concepts}
         carried: list[BuildConcept] = []
         input_candidates: list[BuildConcept] = []
@@ -1195,6 +1201,20 @@ def _widen_merge_join_keys(
             # An existence concept is consumed via a subselect, not joined as a
             # row column, so it can't be carried as a widenable output.
             if concept.address in existence:
+                continue
+            # A rowset handle names a column of ITS OWN boundary. Row lineage
+            # alone makes it look satisfiable from any scan over the same base
+            # (`agg.period` and `fut.period` both descend from `s.period`), but
+            # synthesizing it on ANOTHER rowset's boundary emits a different value
+            # under that address — `subset join fut.period + 53 = agg.period` then
+            # joins `agg.period = agg.period` off the fut side and pairs every
+            # period with itself. A non-rowset parent (a plain scan the relation
+            # substitutes the handle onto, q35's anchor) is unaffected.
+            if (
+                parent_rowsets
+                and isinstance(concept.lineage, BuildRowsetItem)
+                and concept.lineage.rowset.name not in parent_rowsets
+            ):
                 continue
             if not concept_satisfiable(concept, available):
                 continue
@@ -2344,9 +2364,7 @@ def _assemble_final_node(
         if (
             final_conditions is not None
             and not final_already_applied
-            # Non-standard grouping is carried in the group id via the bucket
-            # discriminator (`grp:rollup` / `grp:cube` / `grp:grouping_sets`).
-            and ":grp:" in gid
+            and attrs[gid].nulls_grouping_keys
             and sole_node.parents
             and not final_conditions.existence_arguments
         ):

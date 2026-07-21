@@ -699,11 +699,7 @@ def _fold_rollup_key_dims(
     rollups = [
         (gid, b)
         for gid, b in buckets.items()
-        if b.derivation == Derivation.AGGREGATE
-        and any(
-            concept_attrs[n].grouping_mode not in (None, "standard")
-            for n in b.primary_node_ids
-        )
+        if b.derivation == Derivation.AGGREGATE and b.nulls_grouping_keys
     ]
     if not rollups:
         return
@@ -784,6 +780,7 @@ def _materialize_group_graph(
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
+            grouping_mode=bucket.grouping_mode,
         )
         group_graph.add_node(gid)
 
@@ -1653,6 +1650,24 @@ def _topological_dependency_order(
         return None
 
 
+def _scoped_axis_mates(
+    environment: BuildEnvironment | None,
+) -> dict[str, frozenset[str]]:
+    """Each STATEMENT-scoped join axis member -> the OTHER sides' members. They
+    are alternative physical columns for one logical axis, so a group that owns
+    one of them owns the axis. Global `merge` identities are excluded (they pair
+    INNER and never redefine row identity)."""
+    if environment is None:
+        return {}
+    scoped = _statement_scoped_relation_members(environment)
+    mates: dict[str, set[str]] = {}
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members} & scoped
+        for address in relation:
+            mates.setdefault(address, set()).update(relation - {address})
+    return {address: frozenset(other) for address, other in mates.items()}
+
+
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1663,6 +1678,7 @@ def _compute_concept_sets(
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
     scoped_join_member_addresses: frozenset[str] = frozenset(),
+    scoped_axis_mates: dict[str, frozenset[str]] | None = None,
 ) -> None:
     """Per-group input/output/hidden concept sets.
 
@@ -1713,11 +1729,19 @@ def _compute_concept_sets(
                 cap.update(source_grain_of.get(addr, frozenset()))
             io.capability[gid] = cap
             continue
+        # A grouping group's grain component that is a STATEMENT-scoped join axis
+        # is equally expressed by any other member of that relation — the members
+        # ARE the same value, each rendered on its own side. So a mate a parent
+        # supplies is preservable even though it isn't the group's own grain key.
+        grain_mates: set[str] = set()
+        if scoped_axis_mates and fact.derivation in GROUPING_DERIVATIONS:
+            for component in fact.grain:
+                grain_mates |= scoped_axis_mates.get(component, frozenset())
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
             for addr in io.capability.get(pgid, set()):
-                if fact.behavior.can_preserve(
+                if addr in grain_mates or fact.behavior.can_preserve(
                     concept_graph,
                     concept_edges,
                     concept_attrs,
@@ -1826,6 +1850,18 @@ def _compute_concept_sets(
                 outs |= facts[sibling].grain & cap_gid
         if fact.derivation in GROUPING_DERIVATIONS:
             outs |= fact.grain & cap_gid
+            # A grouping group whose grain component is a STATEMENT-scoped join
+            # axis it cannot produce still owns that axis — through its OWN side's
+            # member of the relation (`subset join fut.period + 53 = agg.period`
+            # canonicalizes the axis to `agg.period`, but the fut side's column IS
+            # the derived key). Advertise the member it can produce, or the group
+            # renders as a grainless global aggregate the FINAL merge can only
+            # cross-join (scoped_derived_rowset exp_rows1).
+            for missing in fact.grain - cap_gid:
+                for mate in sorted((scoped_axis_mates or {}).get(missing, ())):
+                    if mate in cap_gid:
+                        outs.add(mate)
+                        break
         io.outputs[gid] = outs
 
         ins: set[str] = set()
@@ -2063,6 +2099,7 @@ def build_group_graph(
                 if environment is not None
                 else frozenset()
             ),
+            scoped_axis_mates=_scoped_axis_mates(environment),
         )
         _refresh_input_contracts(
             group_graph, group_edges, attrs, concept_attrs, concept_edges
