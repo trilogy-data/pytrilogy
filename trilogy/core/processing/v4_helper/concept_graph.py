@@ -892,7 +892,33 @@ def _add_concept(
     # partition keys and filter property keys. So every fetcher result
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
-    for upstream in fetcher(concept, environment):
+    upstreams = list(fetcher(concept, environment))
+    # A non-rename BASIC whose grain is the coalesced axis of a rowset-crossing
+    # preserving relation reads the COMPLETED axis row: a null-sensitive scalar
+    # (`coalesce(web.qty, 0) + ...`) computed on only the sides it reads gets
+    # NULL-padded by the merge above instead of evaluating on the padded row
+    # (multi_partial_anchor: store-only customers came back NULL, not 0). Wire
+    # the axis member itself as an upstream so the axis-owning boundary parents
+    # this group and the completion merge sits below the computation. Renames
+    # are null-transparent — they commute with the padding and keep the
+    # existing axis-advertising machinery (q44) untouched.
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.BASIC
+        and not is_rename
+        and environment.scoped_join_key_groups
+    ):
+        upstream_addrs = {u.address for u in upstreams}
+        scoped = _statement_scoped_relation_members(environment)
+        for addr in sorted(out_grain & scoped):
+            axis = environment.concepts.get(addr)
+            if (
+                axis is not None
+                and addr not in upstream_addrs
+                and _relation_crosses_rowset_boundary(addr, environment)
+            ):
+                upstreams.append(axis)
+    for upstream in upstreams:
         # Substitute here too so the edge wires to the origin's node (the
         # recursive call below adds the origin, not the bare key) — otherwise
         # the bare key gets an implicit graph node with no attrs entry. A

@@ -319,10 +319,8 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_bv": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_matrix": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans": _V4_MASKED_LEAK,
-    "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles": _V4_MASKED_LEAK,
-    "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved": _V4_MASKED_LEAK,
     "tests/test_where_clause.py::test_case_where": _V4_MASKED_LEAK,
     "tests/test_where_clause.py::test_where_scalar": _V4_MASKED_LEAK,
 }

@@ -1,6 +1,117 @@
-# v4 compatibility audit (last refreshed 2026-07-21, session 22)
+# v4 compatibility audit (last refreshed 2026-07-22, session 23)
 
-## Current state (after 2026-07-21 session 22)
+## Current state (after 2026-07-22 session 23)
+
+**Full v4 sweep (session 23): 15 real failed / 5924 passed**
+(`local_scripts/v4_sweep_0722_s23.log` — raw 16, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s22: **cleared `multi_partial_anchor` ×2 + `dim_bridge
+all_subset_unaffected` (−3), ZERO new failures** (`comm` diff of the FAILED
+lists against the s22 sweep: exactly those three removed, nothing added).
+**Both the `multi_partial_anchor` family (the audit's top NEXT — the last
+multi-cell family) and the `dim_bridge` single are CLEARED.** TPC-DS = the
+pre-existing 6 exactly (battery ran twice, once per fix); xpassed 31 (+2 vs
+s22, BOTH attributable: `three_source_chained_outer_join_anchor_preserved` and
+`rowset_outer_join_having_on_partial_measure` flipped to passing —
+A/B-verified by stash-reverting the two fix files — and both registry entries
+are now PRUNED, so the next sweep counts them as plain passes);
+ruff/mypy(310)/black clean. The 82 errors are clickhouse-server env (not real).
+
+Both changed files are v4-only (`v4_helper/concept_graph.py`;
+`concept_strategies_v4.py`, whose `resolve_rowset`/`search_concepts` are
+reached only via `_get_query_node_v4` behind `CONFIG.use_v4_discovery`), so no
+v3 sweep is needed.
+
+**The 15 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate) and singles
+(twin_keeps_scalar_refs, rowset_generation_matrix islanded,
+rowset_cross_datasource null_property, rowset_body_limit, cube_two_windows,
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge). No multi-cell families
+remain outside TPC-DS.
+
+**NEXT options:** `rowset_body_limit` + `rowset_cross_datasource
+null_property` (both rowset-boundary singles, adjacent to this session's
+partial-marking work); TPC-DS ×6; `cube_two_windows`; XPASS prune (31 xpassed
+this sweep, 2 of them now registry-pruned — the standing 29 remain).
+
+## ✅ 2026-07-22 (session 23) — a null-sensitive BASIC rides the coalesced axis above the completion merge (+2) & a subset boundary's partial flag is gated on ITS anchor, not the whole relation (+1)
+
+Cleared `multi_partial_anchor` ×2 (`test_chained_left_join_narrows_to_store_
+anchor`, `test_explicit_filter_matches_directional`) and `dim_bridge
+test_all_subset_unaffected`. Repros kept: `local_scripts/repro_s23_mpa.py`,
+`local_scripts/repro_s23_dimbridge.py` (both `v3|v4 [noopt]`), group dumps
+`s23_groups.py` / `s23_db_groups.py [tree]` (the `tree` arg prints the built
+StrategyNode tree with partials — what localized fix 2), relation dump
+`s23_relations.py`, single-side probe `s23_single.py`.
+
+HARNESS TRAP (the s18 one, hit again): the first `s23_relations.py` dump ran
+WITHOUT `history.build_caches.scoped_joins`, so `scoped_join_key_groups` came
+back EMPTY and the group dump showed a graph of a DIFFERENT query (grains
+un-canonicalized, no axis). Every scoped-join diagnostic must set
+`caches.scoped_joins` from `select.join_clauses` before
+`_materialize_for_query`.
+
+### Fix 1 — `_add_concept` BASIC axis upstream (concept_graph.py, v4-only)
+
+```
+select store_nr.cust_id, store_nr.store_qty,
+       coalesce(web_nr.web_qty,0) + coalesce(catalog_nr.catalog_qty,0) as other_qty
+subset join catalog_nr.cust_id = web_nr.cust_id = store_nr.cust_id
+```
+
+v4 returned `(1, 100.0, None)` for the store-only customer — v3 gives `0.0`.
+The `other_qty` BASIC group's grain was already the canonical axis
+(`store_nr.cust_id`) but its PARENTS were only the lineage args' boundaries
+(web + catalog): a BASIC's upstream fetcher walks lineage args only, never
+grain components. The group's row domain was web∪catalog custs; the FINAL
+merge LEFT-joined the store anchor to it and padded `other_qty` itself to
+NULL — the coalesce had already fired below the pad. A SINGLE-side
+`coalesce(web_qty, 0)` fails the same way (s23_single.py), so this wasn't
+about multi-side expressions.
+
+Fix: a non-rename BASIC whose grain rides a rowset-crossing statement-scoped
+relation wires the axis member itself as an upstream — the axis-owning
+boundary parents the group, the completion merge sits below the computation,
+and the scalar evaluates on the padded row. Gates: `not is_rename` (a rename
+is null-transparent — commutes with padding — and the q44 rename-advertising
+machinery must stay untouched), `_statement_scoped_relation_members`, and
+`_relation_crosses_rowset_boundary` (the s17/s21 gates).
+
+This is the scalar sibling of the s21/s22 AGGREGATE axis rule, and the s22
+lesson verbatim: the missing input had its own unwired channel (grain
+components) into an existing rule.
+
+### Fix 2 — `resolve_rowset` scoped_partial gate (concept_strategies_v4.py, v4-only)
+
+`dim_bridge` (q11 family): three year rowsets + a customer dim bridge in ONE
+relation (`subset join c.id = sr01.cust_id`, `sr02 = sr01`, `sr03 = sr01`).
+v4 dropped Bob (no 2002 revenue) — and noopt returned him with BOTH other
+years NULL, so two defects were visible in one plan: the FINAL merge joined
+the two subset boundaries `sr02 INNER sr03` before RIGHT-joining the anchor.
+
+Root cause: the subset-side partial marking (v3's `scoped_partial`) was gated
+on `_mates_all_rowset` — ALL relation mates must be rowset handles. The dim
+bridge's `c.id` is a ROOT concept, so ONE foreign member stripped the partial
+flag from every rowset sibling; unmarked, `get_join_type` INNERed the subset
+boundaries together (partial → FULL is the row-preserving contract).
+
+Fix: gate on the handle's declared subset-edge ANCHORS (`DomainRelation.
+SUBSET` + `EdgeProvenance.DECLARED`, edge target) being rowset handles — the
+property that matters is who the handle is subset OF, not who else is in the
+relation. The protected case (`subset join yr2000.r_item_id = item_id`,
+conflicting-filter year-over-year, ROOT anchor) stays unmarked and stays
+green. The FINAL now renders `sr02 FULL sr03 RIGHT anchor` and rows match v3.
+
+Collateral: `rowset_outer_join_having_on_partial_measure` (registry
+`_V4_MASKED_LEAK`) flipped to passing — same partial-marking family.
+
+LESSON: when a boolean gate protects against a KNOWN bad case, express it in
+terms of the EDGE that made the case bad (which side anchors this subset),
+not the coarsest available aggregate (what else is in the relation) — the
+coarse form silently disables the feature for every richer composition.
+
+## Superseded state (after 2026-07-21 session 22)
 
 **Full v4 sweep (session 22): 18 real failed / 5921 passed**
 (`local_scripts/v4_sweep_0721_s22.log` — raw 19, minus the

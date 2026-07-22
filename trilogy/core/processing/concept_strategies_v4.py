@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
@@ -876,21 +877,29 @@ def resolve_rowset(
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary (v3's
     # `scoped_partial` in `_collect_advertised_outputs`) instead of INNER-
-    # narrowing the anchor to the intersection. Restricted to relations whose
-    # OTHER members are also rowset handles (the rowset-pair matrix): a mixed
-    # root↔rowset relation resolves through binding substitution, and marking
-    # the rowset side there re-routed a boundary measure onto the root scan
-    # (conflicting-filter year-over-year join re-derived `cnt_2000` row-wise).
+    # narrowing the anchor to the intersection. Gated on the subset edge's
+    # ANCHOR (its declared superset target) being a rowset handle, not on the
+    # whole relation: a mixed root↔rowset relation whose anchor is the ROOT
+    # side resolves through binding substitution, and marking the rowset side
+    # there re-routed a boundary measure onto the root scan (conflicting-filter
+    # year-over-year join re-derived `cnt_2000` row-wise). But a ROOT member
+    # elsewhere in the relation (a dim BRIDGE beside rowset-anchored subsets,
+    # the q11 shape) must not strip the flag from siblings whose own anchor IS
+    # a rowset — unmarked, two subset boundaries INNER-join each other and drop
+    # the anchor rows they don't share (dim_bridge all_subset_unaffected).
     subset_sources = environment.domain_graph.subset_sources()
 
-    def _mates_all_rowset(address: str) -> bool:
-        mates: set[str] = set()
-        for canonical, members in environment.scoped_join_key_groups.items():
-            if address in members:
-                mates |= (members | {canonical}) - {address}
-        mate_concepts = [environment.concepts.get(m) for m in mates]
-        return bool(mate_concepts) and all(
-            m is not None and m.derivation == Derivation.ROWSET for m in mate_concepts
+    def _subset_anchors_all_rowset(address: str) -> bool:
+        targets = {
+            e.target
+            for e in environment.domain_graph.edges
+            if e.relation is DomainRelation.SUBSET
+            and e.provenance is EdgeProvenance.DECLARED
+            and e.source == address
+        }
+        target_concepts = [environment.concepts.get(t) for t in targets]
+        return bool(target_concepts) and all(
+            t is not None and t.derivation == Derivation.ROWSET for t in target_concepts
         )
 
     scoped_partial = [
@@ -898,7 +907,7 @@ def resolve_rowset(
         for h in handles
         if h.address in subset_sources
         and isinstance(h.lineage, BuildRowsetItem)
-        and _mates_all_rowset(h.address)
+        and _subset_anchors_all_rowset(h.address)
     ]
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content — map through the BuildRowsetItem
