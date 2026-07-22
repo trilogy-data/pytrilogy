@@ -193,11 +193,14 @@ def _relation_crosses_rowset_boundary(
     each side aggregates at its authored grain BEFORE the merge coalesces —
     widening there would leak the axis into the GROUP BY and split the answer
     per joined row (the multileg `union join ss.ticket = sr.ticket` shape).
+
+    The property is the RELATION's, not the member's, so it holds whichever
+    side is named — the handle itself answers True as readily as its mate.
     """
-    for mate in _relation_mates(address, environment):
-        mate_concept = environment.concepts.get(mate)
-        if mate_concept is not None and isinstance(
-            mate_concept.lineage, BuildRowsetItem
+    for member in {address, *_relation_mates(address, environment)}:
+        member_concept = environment.concepts.get(member)
+        if member_concept is not None and isinstance(
+            member_concept.lineage, BuildRowsetItem
         ):
             return True
     return False
@@ -789,10 +792,26 @@ def _add_concept(
         and aggregate_input_grain
         and dimension_grain
     ):
+        # The MEASURE the aggregate reads can itself be a relation member
+        # (`count(r_filtered.return_quantity)` under `union join quantity =
+        # r_filtered.return_quantity`). It never enters `aggregate_input_grain`
+        # — an argument contributes its own grain, not itself — but a measure
+        # the relation pairs on is an axis column like any other: the aggregate
+        # reads it per coalesced axis row, so the axis has to be in the grain or
+        # the merge above loses that leg of the pairing. Only the FUNCTION's
+        # arguments: the wrapper's `by` grain is already the output grain, and
+        # feeding those back through here re-adds them as axis members and
+        # splits the answer per joined row (union_reproject direct-RHS).
+        candidates = set(aggregate_input_grain)
+        if isinstance(concept.lineage, BuildAggregateWrapper):
+            candidates |= {
+                arg.address
+                for arg in concept.lineage.function.concept_arguments
+                if isinstance(arg, BuildConcept)
+            }
         axis_members = {
             addr
-            for addr in aggregate_input_grain
-            & _statement_scoped_relation_members(environment)
+            for addr in candidates & _statement_scoped_relation_members(environment)
             if _relation_crosses_rowset_boundary(addr, environment)
         }
         if axis_members:

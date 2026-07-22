@@ -1,6 +1,135 @@
-# v4 compatibility audit (last refreshed 2026-07-21, session 21)
+# v4 compatibility audit (last refreshed 2026-07-21, session 22)
 
-## Current state (after 2026-07-21 session 21)
+## Current state (after 2026-07-21 session 22)
+
+**Full v4 sweep (session 22): 18 real failed / 5921 passed**
+(`local_scripts/v4_sweep_0721_s22.log` — raw 19, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s21: **cleared `composite_union_join_rowset_two_pass_aggregate_groups`
+stddev-3 + variance-3 (−2), ZERO new failures** (`comm` diff of the FAILED lists
+against the s21 sweep: exactly those two removed, nothing added). **The
+`duckdb_rowset` keys-3 family — the audit's top NEXT — is now CLEARED.** TPC-DS =
+the pre-existing 6 exactly; xpassed 29 (unchanged — no classifier deltas);
+ruff/mypy(310)/black clean. The 82 errors are clickhouse-server env (not real).
+
+Both changed files are v4-only (`v4_helper/strategy_builder.py`,
+`v4_helper/concept_graph.py` — the v4_helper package, whose only importers are
+v4_node_generators/* + concept_strategies_v4), so no v3 sweep is needed.
+
+**The 18 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate), one family
+(multi_partial_anchor ×2) and singles (twin_keeps_scalar_refs, dim_bridge
+all_subset_unaffected, rowset_generation_matrix islanded,
+rowset_cross_datasource null_property, rowset_body_limit, cube_two_windows,
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge).
+
+**NEXT options:** `multi_partial_anchor` ×2 (the only remaining multi-cell
+family — `test_chained_left_join_narrows_to_store_anchor` +
+`test_explicit_filter_matches_directional`, both scoped-LEFT anchor selection,
+adjacent to this session's relation-member/side-identity work); TPC-DS ×6;
+`cube_two_windows`; XPASS prune (29 xpassed).
+
+## ✅ 2026-07-21 (session 22) — a scoped-relation member is read from ITS OWN side, and an aggregate's measure can be the axis (+2)
+
+Cleared `duckdb_rowset test_composite_union_join_rowset_two_pass_aggregate_
+groups[stddev-3]` and `[variance-3]` — the last open cells of the s14 family and
+the audit's top NEXT. Three v4-only fixes (`v4_helper/strategy_builder.py`,
+`v4_helper/concept_graph.py`), each independently load-bearing (A/B-verified by
+reverting one at a time: dropping any one puts the cells back to red).
+
+Repro: `local_scripts/repro_s22_keys3.py [v3|v4] [1|2|3] [noopt]`; group dump
+`local_scripts/s22_groups.py`; source-request trace `local_scripts/s22_trace3.py`.
+
+```
+where year = 2001
+select state as st, stddev(quantity) as m, count(r_filtered.return_quantity) as c
+union join ticket   = r_filtered.r_ticket
+union join item     = r_filtered.ritem
+union join quantity = r_filtered.return_quantity;   -- keys-3 adds this leg
+```
+
+keys-1/keys-2 already passed; keys-3 returned 2 rows against v3's 4, with the
+count wrong on every row. What made keys-3 different is the third leg: the
+aggregate's MEASURE (`r_filtered.return_quantity`) is itself a relation member,
+so it is a pseudonym of `local.quantity` — and a pseudonym is a column the
+anchor scan can bind.
+
+**The group graph is byte-identical between keys-2 and keys-3.** Everything
+below is strategy/source planning; that A/B is what localized it.
+
+### Fix 1 — `_drop_unadvertised_rowset_handles` (strategy_builder.py)
+
+The ROOT group advertised `{item, quantity, state, ticket, r_ticket, ritem}` —
+the two key mates it substitutes for, deliberately NOT `return_quantity`. But
+`plan_source`'s bridge walk reaches any address the datasource can bind, and
+post-substitution the sales scan binds `r_filtered.return_quantity` (it IS
+`quantity`). The scan emitted it, `parent_for_consumer`'s slice
+(`needed & parent_outputs`) picked it up, and the count read the ANCHOR's
+quantity — non-NULL on every row, so `c` was 1 everywhere. Fix: after building a
+ROOT group, strip rowset handles its concept sets never advertised. The handle
+names a value of the rowset BODY; a column bound under it by pseudonym is an
+impostor.
+
+### Fix 2 — the ROOT slice keeps its mates, and re-sources when it holds the wrong side (`parent_for_consumer`)
+
+Two parts, both required:
+
+1. **Slice expansion.** With fix 1 the slice became `{state, r_ticket, ritem}` —
+   and the rebuild died on `INVALID_REFERENCE_BUG<Missing source reference to
+   local.r_item>`: a handle the scan renders for its MATE is rendered FROM the
+   mate's column, so `r_filtered.ritem` off the sales scan IS `local.item`. The
+   slice now pulls in `_relation_mates(...) & parent_outputs`.
+2. **Adoption.** The q94 rule adopts a narrower ROOT rebuild only when it
+   strictly prunes leaf datasources; otherwise it shares the wide node "and lets
+   column projection narrow it". That reasoning fails for a relation member:
+   the merge above PAIRS on it, so carrying `quantity` turned the returns join
+   from a 2-key match into a 3-key one that matches nothing. Adopt the rebuild
+   when the shared node carries a relation member whose MATE is in `needed` —
+   this consumer reads that axis from the other side.
+
+   **HARD-WON — projection cannot substitute for the rebuild.** The first cut
+   trimmed the offending columns off `node.copy()` instead of re-sourcing. It
+   had no effect: the two members are pseudonyms, so the shared CTE exposes the
+   handle's alias off `quantity` no matter what the node's `output_concepts`
+   say. Only a scan that never binds the column will do. **And the obvious
+   broad gate — "adopt whenever the slice drops any relation member" — broke
+   `test_q29_existence_feeder_no_datasource_build_cache`** (a dangling
+   `"abhorrent"` CTE reference). Gating on "the MATE is demanded" is what
+   separates "this consumer reads the other side" from "this consumer just
+   doesn't need the column".
+
+### Fix 3 — an aggregate's measure enters the axis widening (`_add_concept`, concept_graph.py)
+
+With 1+2 the plan matched v3 structurally and 3 of 4 rows came out; the missing
+row was the FULL-join artifact `(None, None, None)`, because v4's FINAL merge
+joined on two legs where v3 joins on three. The third leg was absent because the
+count group never carried `return_quantity` past its own projection.
+
+The s14 widener (an aggregate under a rowset-crossing preserving relation
+computes per coalesced axis row) only ever looked at `aggregate_input_grain` —
+and an argument contributes its own GRAIN there, never itself. A measure the
+relation pairs on is an axis column like any other. Widening now also considers
+the aggregate function's arguments.
+
+Two gates, both learned the hard way:
+
+- **The FUNCTION's arguments, not the wrapper's.** `BuildAggregateWrapper`'s
+  `concept_arguments` include its `by` grain; feeding those back re-added them
+  as axis members and split the answer per joined row —
+  `test_composite_subset_join_direct_union_rhs_rowset_lhs` returned 10 for 20.
+  Caught by the wider battery, not by the family.
+- **`_relation_crosses_rowset_boundary` is now symmetric.** It checked only the
+  MATES for a `BuildRowsetItem`, so it answered False when handed the handle
+  itself — exactly the address that appears here. The property belongs to the
+  RELATION, not to whichever member you name.
+
+LESSON: an aggregate argument and an aggregate's grain are different channels
+into the same widening rule, and only one of them was wired. When a fix needs a
+"why was this never in the candidate set?" answer, check whether the missing
+input has its own channel rather than widening the existing one.
+
+## Superseded state (after 2026-07-21 session 21)
 
 **Full v4 sweep (session 21): 20 real failed / 5919 passed**
 (`local_scripts/v4_sweep_0721_s21.log` — raw 21, minus the

@@ -51,6 +51,7 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.v4_node_generators import build_node
 from trilogy.utility import unique
 
+from .concept_graph import _relation_mates, _statement_scoped_relation_members
 from .condition_injection import (
     ConditionSources,
     condition_row_args,
@@ -671,6 +672,12 @@ def _parent_nodes_for(
             return node.copy()
         parent_outputs = {concept.address for concept in node.output_concepts}
         slice_addresses = needed & parent_outputs
+        # A scoped-relation member this scan carries for its MATE (the rowset
+        # handle the merge joins on) is rendered from the mate's own column, so
+        # the slice has to keep that column even though the consumer never named
+        # it -- `r_filtered.ritem` off the sales scan IS `local.item`.
+        for address in sorted(slice_addresses):
+            slice_addresses |= _relation_mates(address, environment) & parent_outputs
         if not slice_addresses or slice_addresses == parent_outputs:
             return node.copy()
         outputs = [
@@ -707,7 +714,25 @@ def _parent_nodes_for(
         # duplication -- share the already-built ROOT and let column projection
         # narrow it (q94: a count(order_number) consumer of a filtered
         # web_sales-dim join must not re-source the whole join).
-        if not (_leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)):
+        # ...unless the shared ROOT carries the WRONG SIDE of a relation this
+        # consumer reads from its mate. `count(rs.return_quantity)` under
+        # `union join quantity = rs.return_quantity` needs the rowset's column;
+        # the anchor's `quantity` is the same axis, so the merge above pairs on
+        # it too and the returns join goes from a 2-key match to a 3-key one
+        # that matches nothing. Projection can't shed it -- the two members are
+        # pseudonyms, so the shared CTE exposes the handle's alias off `quantity`
+        # whatever the node's outputs say. Only a scan without the column will
+        # do, and the rebuild is that scan.
+        relation_members = _statement_scoped_relation_members(environment)
+        carries_wrong_side = any(
+            address in relation_members
+            and bool(_relation_mates(address, environment) & needed)
+            for address in parent_outputs - slice_addresses
+        )
+        if not (
+            carries_wrong_side
+            or _leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)
+        ):
             return node.copy()
         return sliced
 
@@ -1238,6 +1263,28 @@ def _widen_merge_join_keys(
                     ]
                 )
                 parent.rebuild_cache()
+
+
+def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) -> None:
+    """Strip a rowset handle a ROOT scan renders only by pseudonym substitution.
+
+    A `union join quantity = rs.return_quantity` makes the two members
+    pseudonyms, so the fact scan can bind `rs.return_quantity` to its own
+    `quantity` column and the bridge walk picks it up even though the group's
+    concept sets never advertised it. That column is an IMPOSTOR: the handle
+    names a value of the rowset body, and a consumer reading it off the anchor
+    sees the anchor's own row (`count(rs.return_quantity)` counts every sales
+    row instead of the matched returns). The mates the merge genuinely needs as
+    a join axis ARE advertised, so keeping the contract is enough."""
+    keep = [
+        o
+        for o in node.output_concepts
+        if o.address in advertised or not isinstance(o.lineage, BuildRowsetItem)
+    ]
+    if len(keep) == len(node.output_concepts):
+        return
+    node.set_output_concepts(keep)
+    node.rebuild_cache()
 
 
 def _filter_intrinsic_pushdown_safe(group_graph: nx.DiGraph, gid: str) -> bool:
@@ -2926,6 +2973,8 @@ def build_strategy_node(
         )
         if node is None:
             continue
+        if derivation == Derivation.ROOT:
+            _drop_unadvertised_rowset_handles(node, set(select_addrs))
         node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
