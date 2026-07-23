@@ -43,6 +43,7 @@ from trilogy.core.models.core import (
     NumericType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
 )
 
 if TYPE_CHECKING:
@@ -349,7 +350,34 @@ def reduce_expression(
 
     lower_check: Any
     upper_check: Any
-    if datatype in (DataType.INTEGER, DataType.FLOAT, DataType.DOUBLE):
+    declared_ranges = None
+    if isinstance(datatype, ValidatedType):
+        # Declared ranges shrink the domain that must be covered — same trust
+        # model as the EnumType branch above (data conformance is checked by
+        # datasource validation). Regex domains are not reasoned about.
+        if datatype.pattern is not None or not datatype.ranges:
+            return False
+        declared_ranges = datatype.ranges
+        base = datatype.data_type
+        if base in (
+            DataType.INTEGER,
+            DataType.BIGINT,
+            DataType.FLOAT,
+            DataType.DOUBLE,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        ):
+            lower_check = float("-inf")
+            upper_check = float("inf")
+        elif base == DataType.DATE:
+            lower_check = date.min
+            upper_check = date.max
+        elif base in (DataType.DATETIME, DataType.TIMESTAMP):
+            lower_check = datetime.min
+            upper_check = datetime.max
+        else:
+            return False
+    elif datatype in (DataType.INTEGER, DataType.FLOAT, DataType.DOUBLE):
         lower_check = float("-inf")
         upper_check = float("inf")
     elif datatype == DataType.DATE:
@@ -392,6 +420,25 @@ def reduce_expression(
             pass
         else:
             return False
+    if declared_ranges is not None:
+        # is_fully_covered treats `start` as already covered (safe when start
+        # is the type's own -inf bound); a finite declared minimum must itself
+        # be covered, so back it off by one increment.
+        def _covered_start(lo: Any) -> Any:
+            try:
+                return lo - increment
+            except (OverflowError, ValueError, TypeError):
+                return lo
+
+        return all(
+            is_fully_covered(
+                _covered_start(r.min) if r.min is not None else lower_check,
+                r.max if r.max is not None else upper_check,
+                ranges,
+                increment,  # type: ignore[arg-type]
+            )
+            for r in declared_ranges
+        )
     return is_fully_covered(lower_check, upper_check, ranges, increment)  # type: ignore[arg-type]
 
 

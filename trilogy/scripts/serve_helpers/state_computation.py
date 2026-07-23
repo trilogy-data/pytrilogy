@@ -2,12 +2,7 @@
 
 from pathlib import Path
 
-from trilogy.execution.config import (
-    RuntimeConfig,
-    apply_env_vars,
-    load_config_file,
-    load_env_file,
-)
+from trilogy.execution.config import RuntimeConfig, load_config_file
 from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.serve_helpers.models import (
@@ -38,10 +33,6 @@ def compute_state_sync(
 
     if config_path:
         config = load_config_file(config_path)
-        for env_file in config.env_files:
-            env_vars = load_env_file(env_file)
-            if env_vars:
-                apply_env_vars(env_vars)
     else:
         config = RuntimeConfig(startup_trilogy=[], startup_sql=[])
 

@@ -55,6 +55,7 @@ from trilogy.core.models.core import (
     ArrayType,
     DataType,
     TraitDataType,
+    ValidatedType,
     arg_to_datatype,
     is_compatible_datatype,
     merge_datatypes,
@@ -1611,7 +1612,7 @@ def union_item_to_concept(
     selects: list[SelectStatement],
     environment: Environment,
     purpose: Purpose | None = None,
-    datatype: DataType | TraitDataType | None = None,
+    datatype: DataType | TraitDataType | ValidatedType | None = None,
     nullable: bool = False,
 ) -> Concept:
     """Build one positional output concept of a relational ``union(...)`` TVF.

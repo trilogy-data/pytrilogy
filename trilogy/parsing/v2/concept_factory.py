@@ -32,7 +32,7 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     WhereClause,
 )
-from trilogy.core.models.core import DataType, TraitDataType
+from trilogy.core.models.core import DataType, TraitDataType, ValidatedType
 from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -106,7 +106,7 @@ def union_item_to_concept_v2(
     selects: list[SelectStatement],
     context: "RuleContext",
     purpose: Purpose | None = None,
-    datatype: DataType | TraitDataType | None = None,
+    datatype: DataType | TraitDataType | ValidatedType | None = None,
     nullable: bool = False,
 ) -> Concept:
     """v2 wrapper for ``union_item_to_concept`` (relational union TVF output)."""

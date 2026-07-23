@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.author import CustomType
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import CONCRETE_TYPES, ValidatedType
 from trilogy.core.statements.author import TypeDeclaration
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -34,12 +34,14 @@ def type_declaration(
     name = str(hydrate(name_tokens[0]))
     drop_clause = node.optional_node(SyntaxNodeKind.TYPE_DROP_CLAUSE)
     drop_on: list[FunctionType] = hydrate(drop_clause) if drop_clause else []
-    datatypes: list[DataType] = [
+    datatypes: list[CONCRETE_TYPES] = [
         hydrate(child)
         for child in node.child_nodes()
         if child.kind != SyntaxNodeKind.TYPE_DROP_CLAUSE
     ]
-    final: DataType | list[DataType] = (
+    if len(datatypes) > 1 and any(isinstance(d, ValidatedType) for d in datatypes):
+        raise fail(node, "validators are not supported on union type declarations")
+    final: CONCRETE_TYPES | list[CONCRETE_TYPES] = (
         datatypes[0] if len(datatypes) == 1 else datatypes
     )
     new_type = CustomType(

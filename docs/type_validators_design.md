@@ -34,19 +34,28 @@ key code string['[A-Z]+'];          -- full-match regex (re.fullmatch)
 ## Enforcement
 
 1. **Datasource validation** (`trilogy.core.validation`): sampled rows are
-   checked in `type_check`; out-of-domain values raise
-   `DatasourceColumnBindingError` with a "violates declared domain" message.
+   checked in `type_check` (out-of-domain values raise
+   `DatasourceColumnBindingError`), and `validate_declared_domains` runs a
+   **full-table SQL-side scan** per domain-declaring column — ranges/enums as
+   comparison predicates, regex as an anchored `REGEXP_CONTAINS` (`^(?:…)$` to
+   mirror `re.fullmatch`; regex flavor is the executing dialect's). Both ride
+   `validate_environment` / the `validate` statement.
 2. **Query authoring**: `Comparison`/`Between` construction calls
    `constant_domain_violation` (`core/models/core.py`) and raises
    `SyntaxError` for provably-false predicates against literals:
    - `score = 250`, `score in (50, 250)` — value outside ranges / regex
    - `score > 150` when max is 100 (union envelope for multi-range)
    - `score between 150 and 200`
-   Always-true predicates (`!= 500`, `not in (500,)`) are not flagged.
-   `EnumType` is deliberately excluded: enum domains may be sampled/inferred,
-   so non-member comparisons remain legal possibly-empty filters
-   (`tests/engine/test_enum_unions.py`); ValidatedType domains are always
-   user-declared.
+   `EnumType` domains get the same impossibility check (membership for `=`/`in`
+   elements, min/max envelope for inequalities over numeric members).
+
+   **Only provably-FALSE predicates are flagged — never tautologies.**
+   Always-true predicates (`!= 500`, `not in (500,)`, domain-covering filters)
+   parse untouched: through a nullable FK they carry load-bearing join
+   null-rejection, and advising their removal caused a silent wrong result
+   (`evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md`).
+   Error messages advise fixing the constant or updating the declaration —
+   never removing the predicate.
 3. **Mocks** (`trilogy.dialect.mock`): range-validated columns generate
    in-domain values; regex-validated columns raise `NotImplementedError`
    (loud, not best-effort).
@@ -64,10 +73,57 @@ Both parser backends (lark + pest — pest changes require `maturin develop`)
 produce the shared `VALIDATED_TYPE`/`RANGE_SPEC` syntax nodes hydrated once in
 `parsing/v2/rules/concept_rules.py`.
 
-## Not in v1 (follow-ups)
+## Trait carry-through
 
-- Validators on `type` declarations / carried through `::trait` application.
-- `::trait` suffix combined with a validator (`int[0..100]::percent`).
-- Optimizer use of declared ranges in `reduce_expression` domain coverage.
-- Validators on `tvf_output_item`, `struct_component`, function bindings.
-- SQL-side (pushdown) validation of full tables rather than sampled rows.
+`type pct int[0..100];` declares a validator-carrying custom type;
+`int::pct` transfers the constraint onto the authored base (a
+`TraitDataType` whose `.type` is the `ValidatedType`), so trait-applied
+concepts are enforced everywhere validators are. `int[0..100]::pct` (explicit
+brackets plus trait) is allowed when the constraints agree; differing
+constraints from two sources is a hard "Conflicting validators" error.
+Validators on union `type` declarations (`type x int[0..1] | string`) are
+rejected. Validators also parse on `struct_component` fields and
+`tvf_output_item` outputs.
+
+## Optimizer integration
+
+`reduce_expression` (condition_utility.py) treats declared ranges as the
+coverage domain — same trust model as its existing `EnumType` branch (data
+conformance is checked by datasource validation): `score >= 0` fully covers
+`int[0..100]`, so CASE-exhaustiveness and datasource-injection completeness
+proofs can use it. Every declared range must be covered; open bounds fall
+back to the base type's bounds; regex domains are not reasoned about.
+
+## Ingest inference & stdlib traits
+
+`trilogy ingest` infers validators (`detect_numeric_bounds`, full-scan MIN/MAX
+like enum detection): integer non-key columns get tight `[min..max]` (exact for
+the ingested source; regenerated on re-ingest), continuous float/numeric
+measures get only a structural `[0..]` sign bound when non-negative. Keys, enum
+columns, and trait-assigned columns are skipped (a trait may carry its own
+stdlib validator; observed partial bounds would conflict on re-parse).
+
+String enforcement rides the **stdlib traits** instead of per-column regex
+inference: `std.date` types carry ranges (`type month int[1..12];`, year/
+quarter/week/day/hour/minute/second/day_of_week), `std.net` carries permissive
+regexes matching the ingest value-gates (`email_address string['\S+@\S+']`,
+ipv4, url), `std.color.hex` a hex-color pattern. Trait composition then
+enforces them anywhere the trait is applied. An enum base composing with a
+validated trait (`enum<int>[1,2,3,4]::quarter` — ingest's enum + rich-type
+wrap) verifies the members against the validator and keeps the narrower enum.
+Geography traits (`us_state`, `postal_code`, …) deliberately carry no regex:
+their name-based detection has no value gate, so international/full-name data
+would false-fail.
+
+## Function bindings
+
+`def clamped(x: int[0..100]) -> ...;` — validators parse on bindings and
+`CustomFunctionFactory.__call__` rejects out-of-domain literal arguments at
+author time (`@clamped(250)` errors; concept args pass through, enforced at
+their own declaration).
+
+## Follow-ups
+
+- Trait-typed bindings (`x: int::pct`) demand the trait of the passed arg, so
+  literal args fail the trait check before any domain check — carry-through
+  for literals would need trait-inference relaxation.

@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path as PathlibPath
-from typing import Any, Callable, Iterable, Sequence, Union
+from typing import Any, Callable, Iterable, Mapping, Sequence, Union
 
 from click.exceptions import Exit
 
@@ -19,7 +19,7 @@ from trilogy.core.statements.execute import (
     ProcessedValidateStatement,
 )
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.config import RuntimeConfig, load_config_file
+from trilogy.execution.config import RuntimeConfig, apply_env_vars, load_config_file
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
@@ -211,7 +211,9 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 
 
 def get_runtime_config(
-    path: PathlibPath, config_override: PathlibPath | None = None
+    path: PathlibPath,
+    config_override: PathlibPath | None = None,
+    extra_env: Mapping[str, str] | None = None,
 ) -> RuntimeConfig:
     config_path: PathlibPath | None = None
 
@@ -221,10 +223,14 @@ def get_runtime_config(
         config_path = find_trilogy_config(path)
 
     if not config_path:
+        # extra_env (CLI --env) must reach os.environ even without a config
+        # file; with one, load_config_file applies it.
+        if extra_env:
+            apply_env_vars(dict(extra_env))
         return RuntimeConfig(startup_trilogy=[], startup_sql=[])
 
     try:
-        return load_config_file(config_path)
+        return load_config_file(config_path, extra_env=extra_env)
     except Exception as e:
         print_error(f"Failed to load configuration file {config_path}: {e}")
         handle_execution_exception(e)
@@ -250,7 +256,9 @@ def _looks_like_path(input: str) -> bool:
 
 
 def resolve_input_information(
-    input: str, config_path_input: PathlibPath | None = None
+    input: str,
+    config_path_input: PathlibPath | None = None,
+    extra_env: Mapping[str, str] | None = None,
 ) -> tuple[Iterable[PathlibPath | StringIO], PathlibPath, str, str, RuntimeConfig]:
     input_as_path = PathlibPath(input)
     files: Iterable[StringIO | PathlibPath]
@@ -261,12 +269,10 @@ def resolve_input_information(
         if pathlib_path.is_dir():
             directory = pathlib_path
             input_type = "directory"
-            config = get_runtime_config(pathlib_path, config_path_input)
-
         else:
             directory = pathlib_path.parent
             input_type = "file"
-            config = get_runtime_config(pathlib_path, config_path_input)
+        config = get_runtime_config(pathlib_path, config_path_input, extra_env)
 
         input_name = pathlib_path.name
     else:
@@ -278,7 +284,7 @@ def resolve_input_information(
         directory = PathlibPath.cwd()
         input_type = "query"
         input_name = "inline"
-        config = get_runtime_config(directory, config_path_input)
+        config = get_runtime_config(directory, config_path_input, extra_env)
     return files, directory, input_type, input_name, config
 
 

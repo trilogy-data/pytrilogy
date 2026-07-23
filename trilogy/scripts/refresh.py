@@ -242,7 +242,6 @@ def _managed_dependency_edges(
 def _preview_directory_refresh(
     cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
 ) -> tuple[bool, nx.DiGraph | None]:
-    from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
         merge_runtime_config,
         resolve_input_information,
@@ -256,24 +255,19 @@ def _preview_directory_refresh(
     from trilogy.scripts.environment import parse_env_vars
 
     input_path = input_path.resolve()
-    files_iter, _, _, _, config = resolve_input_information(
-        str(input_path), cli_params.config_path
-    )
-    files = list(files_iter)
 
-    # Load environment variables
-    for env_file in config.env_files:
-        env_vars = load_env_file(env_file)
-        if env_vars:
-            apply_env_vars(env_vars)
-
+    cli_env_vars: dict[str, str] = {}
     if cli_params.env:
         try:
             cli_env_vars = parse_env_vars(cli_params.env)
         except ValueError as e:
             print_error(str(e))
             raise Exit(1) from e
-        apply_env_vars(cli_env_vars)
+
+    files_iter, _, _, _, config = resolve_input_information(
+        str(input_path), cli_params.config_path, extra_env=cli_env_vars or None
+    )
+    files = list(files_iter)
 
     edialect, _ = merge_runtime_config(cli_params, config)
     force_sources = (

@@ -21,7 +21,7 @@ from trilogy.authoring import (
 from trilogy.constants import REMOTE_PREFIXES
 from trilogy.core.enums import AddressType, Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain, Metadata
-from trilogy.core.models.core import EnumType, TraitDataType
+from trilogy.core.models.core import EnumType, TraitDataType, ValidatedType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.base import BaseDialect, TableColumn, nullable_from_str
 from trilogy.dialect.duckdb import DUCKDB_SAMPLE_SEED
@@ -61,6 +61,7 @@ from trilogy.scripts.ingest_helpers.formatting import (
 from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 from trilogy.scripts.ingest_helpers.typing import (
     detect_enum_types,
+    detect_numeric_bounds,
     detect_rich_type,
 )
 from trilogy.utility import safe_open
@@ -373,6 +374,7 @@ def _process_column(
     sample_rows: list[tuple],
     concept_mapping: dict[str, str],
     enum_type: EnumType | None = None,
+    bounds_type: ValidatedType | None = None,
 ) -> tuple[Concept, ColumnAssignment, str | None]:
 
     column_name = col.column_name
@@ -406,10 +408,16 @@ def _process_column(
         concept_name, trilogy_type, rich_values
     )
     base: DataType | EnumType = trilogy_type if enum_type is None else enum_type
-    final_datatype: TraitDataType | DataType | EnumType
+    final_datatype: TraitDataType | DataType | EnumType | ValidatedType
     if trait_import and trait_type_name:
+        # traits may carry their own stdlib validator; observed bounds would
+        # conflict with it on re-parse, so trait columns skip bound inference
         final_datatype = TraitDataType(type=base, traits=[trait_type_name])
         print_info(f"Detected rich type for '{concept_name}': {trait_type_name}")
+    elif enum_type is None and bounds_type is not None:
+        trait_import = None
+        final_datatype = bounds_type
+        print_info(f"Inferred value bounds for '{concept_name}': {bounds_type}")
     else:
         trait_import = None
         final_datatype = base
@@ -555,6 +563,12 @@ def create_datasource_from_file(
         source_expr,
         [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
     )
+    bounds_map = detect_numeric_bounds(
+        exec,
+        source_expr,
+        [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
+        skip=set(keys) | set(enum_map.keys()),
+    )
 
     required_imports: set[str] = set()
     column_assignments = []
@@ -567,6 +581,7 @@ def create_datasource_from_file(
             sample_rows,
             column_concept_mapping,
             enum_map.get(col.column_name),
+            bounds_map.get(col.column_name),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
@@ -664,6 +679,12 @@ def create_datasource_from_table(
         dialect.safe_quote(qualified_name),
         [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
     )
+    bounds_map = detect_numeric_bounds(
+        exec,
+        dialect.safe_quote(qualified_name),
+        [(c.column_name, _concrete_datatype(c.trilogy_type)) for c in columns],
+        skip=set(keys) | set(enum_map.keys()),
+    )
 
     # Track required imports for rich types
     required_imports: set[str] = set()
@@ -679,6 +700,7 @@ def create_datasource_from_table(
             sample_rows,
             column_concept_mapping,
             enum_map.get(col.column_name),
+            bounds_map.get(col.column_name),
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
@@ -844,10 +866,19 @@ def ingest(
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    runtime_config = (
-        get_runtime_config(PathlibPath(config))
-        if config
-        else get_runtime_config(PathlibPath.cwd())
+    cli_env_vars: dict[str, str] = {}
+    if env:
+        from trilogy.scripts.environment import parse_env_vars
+
+        try:
+            cli_env_vars = parse_env_vars(env)
+        except ValueError as e:
+            print_error(str(e))
+            raise Exit(1) from e
+
+    runtime_config = get_runtime_config(
+        PathlibPath(config) if config else PathlibPath.cwd(),
+        extra_env=cli_env_vars or None,
     )
 
     # Determine dialect. File sources require DuckDB (the only engine that
@@ -871,17 +902,6 @@ def ingest(
             f"File sources: {file_sources}"
         )
         raise Exit(1)
-
-    if env:
-        from trilogy.execution.config import apply_env_vars
-        from trilogy.scripts.environment import parse_env_vars
-
-        try:
-            cli_env_vars = parse_env_vars(env)
-        except ValueError as e:
-            print_error(str(e))
-            raise Exit(1) from e
-        apply_env_vars(cli_env_vars)
 
     try:
         exec = create_executor(

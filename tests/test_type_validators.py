@@ -253,14 +253,26 @@ def test_impossible_comparisons(backend: ParserBackend):
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_enum_constant_membership_still_allowed(backend: ParserBackend):
-    """Enum domains may be sampled/inferred, so non-member comparisons stay
-    legal possibly-empty filters (see tests/engine/test_enum_unions.py) —
-    only user-declared ValidatedType domains are enforced at authoring time."""
+def test_enum_constant_membership(backend: ParserBackend):
+    """Enum impossibility is enforced like ValidatedType domains: constants
+    provably outside the declared values hard-error. In-domain predicates —
+    including domain-covering ones — parse untouched (they can carry join
+    null-rejection; see tests/engine/test_enum_unions.py and the q16 bug doc)."""
     prelude = "key status enum<string>['open', 'closed'];\n"
     with _using_backend(backend):
-        Environment().parse(prelude + "select status where status = 'pending';")
+        with pytest.raises(Exception, match="can never match a declared value"):
+            Environment().parse(prelude + "select status where status = 'pending';")
+        with pytest.raises(Exception, match="can never match a declared value"):
+            Environment().parse(
+                prelude + "select status where status in ('open', 'pending');"
+            )
+        # in-domain, tautology-shaped, and always-true predicates all parse
         Environment().parse(prelude + "select status where status = 'open';")
+        Environment().parse(
+            prelude + "select status where status in ('open', 'closed');"
+        )
+        Environment().parse(prelude + "select status where status != 'pending';")
+        Environment().parse(prelude + "select status where status not in ('pending',);")
 
 
 def test_type_check_validated():
@@ -408,6 +420,297 @@ def test_mock_validated():
     vstr = ValidatedType(type=DataType.STRING, pattern="[A-Z]+")
     with pytest.raises(NotImplementedError):
         mock_datatype(vstr, DataType.STRING, 10)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validator_carried_through_trait(backend: ParserBackend):
+    """`type pct int[0..100];` + `int::pct` enforces the range via the trait."""
+    prelude = "type pct int[0..100];\nkey score int::pct;\n"
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(prelude)
+        dt = env.concepts["score"].datatype
+        assert isinstance(dt, TraitDataType)
+        assert dt.traits == ["pct"]
+        assert isinstance(dt.type, ValidatedType)
+        assert dt.type.ranges == (ValueRange(min=0, max=100),)
+        assert type_check(50, dt)
+        assert not type_check(250, dt)
+        with pytest.raises(Exception, match="outside declared domain"):
+            Environment().parse(prelude + "select score where score = 250;")
+        Environment().parse(prelude + "select score where score = 50;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validated_type_with_trait_suffix(backend: ParserBackend):
+    prelude = "type pct int[0..100];\nkey score int[0..100]::pct;\n"
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(prelude)
+        dt = env.concepts["score"].datatype
+        assert isinstance(dt, TraitDataType)
+        assert isinstance(dt.type, ValidatedType)
+        assert dt.type.ranges == (ValueRange(min=0, max=100),)
+        # conflicting validators from two sources is a loud error
+        with pytest.raises(Exception, match="Conflicting validators"):
+            Environment().parse("type pct int[0..100];\nkey score int[0..50]::pct;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validated_type_trait_round_trip(backend: ParserBackend):
+    text = "type pct int[0..100];\nkey score int[0..100]::pct;\n"
+    with _using_backend(backend):
+        env = Environment()
+        _, stmts = env.parse(text)
+        rendered = "\n".join(Renderer().to_string(s) for s in stmts)
+        env2 = Environment()
+        env2.parse(rendered)
+        assert env.concepts["score"].datatype == env2.concepts["score"].datatype
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validated_type_union_type_declaration_rejected(backend: ParserBackend):
+    with _using_backend(backend):
+        with pytest.raises(Exception, match="union type declarations"):
+            Environment().parse("type weird int[0..100] | string;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validated_struct_component(backend: ParserBackend):
+    with _using_backend(backend):
+        env = Environment()
+        env.parse("key wrapper struct<score: int[0..100], label: string>;")
+        dt = env.concepts["wrapper"].datatype
+        from trilogy.core.models.core import StructType
+
+        assert isinstance(dt, StructType)
+        field = dt.field_types["score"]
+        assert isinstance(field, ValidatedType)
+        assert field.ranges == (ValueRange(min=0, max=100),)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_validated_tvf_output(backend: ParserBackend):
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        results = executor.execute_text("""
+            key id int;
+            property id.score int;
+
+            datasource scores (id: id, score: score)
+            grain (id)
+            query '''
+            SELECT 1 AS id, 50 AS score
+            ''';
+
+            with combined as union(
+              (select id, score),
+              (select id, score)
+            ) -> (uid, uscore int[0..100]);
+            select combined.uid, combined.uscore;
+            """)
+        rows = results[-1].fetchall()
+        assert [tuple(r) for r in rows] == [(1, 50), (1, 50)]
+
+
+def test_reduce_expression_declared_ranges():
+    from trilogy.core.processing.condition_utility import reduce_expression
+
+    vint = ValidatedType(type=DataType.INTEGER, ranges=(ValueRange(min=0, max=100),))
+    # full coverage of the declared domain via one atom
+    assert reduce_expression(vint, [(ComparisonOperator.GTE, 0)])
+    assert reduce_expression(vint, [(ComparisonOperator.LTE, 100)])
+    assert reduce_expression(
+        vint, [(ComparisonOperator.LT, 50), (ComparisonOperator.GTE, 50)]
+    )
+    # partial coverage is not enough
+    assert not reduce_expression(vint, [(ComparisonOperator.GTE, 1)])
+    assert not reduce_expression(vint, [(ComparisonOperator.LT, 100)])
+    # bare int still requires full-line coverage
+    assert not reduce_expression(DataType.INTEGER, [(ComparisonOperator.GTE, 0)])
+    assert reduce_expression(
+        DataType.INTEGER, [(ComparisonOperator.LT, 0), (ComparisonOperator.GTE, 0)]
+    )
+    # multi-range: every declared range must be covered
+    multi = ValidatedType(
+        type=DataType.INTEGER,
+        ranges=(ValueRange(min=0, max=10), ValueRange(min=20, max=30)),
+    )
+    assert not reduce_expression(multi, [(ComparisonOperator.LTE, 10)])
+    assert reduce_expression(multi, [(ComparisonOperator.LTE, 100)])
+    # open bound falls back to the base type's bound on that side
+    open_max = ValidatedType(type=DataType.INTEGER, ranges=(ValueRange(min=0),))
+    assert not reduce_expression(open_max, [(ComparisonOperator.LTE, 100)])
+    assert reduce_expression(open_max, [(ComparisonOperator.GTE, 0)])
+    # regex domains are not reasoned about
+    vstr = ValidatedType(type=DataType.STRING, pattern="[A-Z]+")
+    assert not reduce_expression(vstr, [(ComparisonOperator.EQ, "ABC")])
+
+
+def test_enum_inequality_envelope():
+    from trilogy.core.models.core import EnumType
+
+    enum = EnumType(type=DataType.BIGINT, values=[138504, 294242, 621234, 977787])
+    assert constant_domain_violation(enum, ComparisonOperator.GT, 977787) is not None
+    assert constant_domain_violation(enum, ComparisonOperator.GTE, 977787) is None
+    assert constant_domain_violation(enum, ComparisonOperator.LT, 138504) is not None
+    assert constant_domain_violation(enum, ComparisonOperator.EQ, 0) is not None
+    assert constant_domain_violation(enum, ComparisonOperator.EQ, 138504) is None
+    # NE / NOT_IN (always-true shaped) never flagged
+    assert constant_domain_violation(enum, ComparisonOperator.NE, 0) is None
+    # string-valued enums: only membership, no envelope
+    senum = EnumType(type=DataType.STRING, values=["open", "closed"])
+    assert (
+        constant_domain_violation(senum, ComparisonOperator.EQ, "pending") is not None
+    )
+    assert constant_domain_violation(senum, ComparisonOperator.GT, "a") is None
+
+
+def test_full_table_domain_validation_beyond_sample():
+    """SQL-side domain checks scan the whole table — a violation outside the
+    100-row Python sample is still caught."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.score int[0..100];
+
+        datasource scores (
+            id: id,
+            score: score,
+        )
+        grain (id)
+        query '''
+        SELECT i AS id, i % 100 AS score FROM range(500) t(i)
+        UNION ALL
+        SELECT 999 AS id, 250 AS score
+        ''';
+        """)
+    with pytest.raises(ModelValidationError, match="violate declared domain"):
+        validate_environment(executor.environment, exec=executor)
+
+
+def test_full_table_domain_validation_regex_and_enum():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.code string['[A-Z]+'];
+
+        datasource codes (
+            id: id,
+            code: code,
+        )
+        grain (id)
+        query '''
+        SELECT i AS id, 'ABC' AS code FROM range(200) t(i)
+        UNION ALL
+        SELECT 999 AS id, 'abc' AS code
+        ''';
+        """)
+    with pytest.raises(ModelValidationError, match="violate declared domain"):
+        validate_environment(executor.environment, exec=executor)
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.status enum<string>['open', 'closed'];
+
+        datasource statuses (
+            id: id,
+            status: status,
+        )
+        grain (id)
+        query '''
+        SELECT i AS id, 'open' AS status FROM range(200) t(i)
+        UNION ALL
+        SELECT 999 AS id, 'pending' AS status
+        ''';
+        """)
+    with pytest.raises(ModelValidationError, match="violate declared domain"):
+        validate_environment(executor.environment, exec=executor)
+
+
+def test_full_table_domain_validation_passes_clean_data():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.score int[0..100];
+        property id.code string['[A-Z]+']?;
+
+        datasource scores (
+            id: id,
+            score: score,
+            code: code,
+        )
+        grain (id)
+        query '''
+        SELECT i AS id, i % 100 AS score, 'ABC' AS code FROM range(500) t(i)
+        UNION ALL
+        SELECT 999 AS id, 100 AS score, NULL AS code
+        ''';
+        """)
+    validate_environment(executor.environment, exec=executor)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_function_binding_validator(backend: ParserBackend):
+    prelude = (
+        "def clamped(x: int[0..100]) -> x * 2;\n"
+        "key id int;\n"
+        "property id.score int;\n"
+        "datasource scores (id: id, score: score) grain (id) address tbl;\n"
+    )
+    with _using_backend(backend):
+        # literal outside the declared binding domain is a hard error
+        with pytest.raises(Exception, match="outside declared domain"):
+            Environment().parse(prelude + "select id, @clamped(250) as doubled;")
+        # in-domain literal and concept args are fine
+        Environment().parse(prelude + "select id, @clamped(50) as doubled;")
+        Environment().parse(prelude + "select id, @clamped(score) as doubled;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_stdlib_traits_carry_validators(backend: ParserBackend):
+    """std.date/std.net type declarations carry validators; trait composition
+    enforces them on any concept using the trait."""
+    with _using_backend(backend):
+        env = Environment()
+        env.parse("import std.date;\nkey m int::month;")
+        dt = env.concepts["m"].datatype
+        assert isinstance(dt, TraitDataType)
+        assert isinstance(dt.type, ValidatedType)
+        assert dt.type.ranges == (ValueRange(min=1, max=12),)
+        with pytest.raises(Exception, match="outside declared domain"):
+            Environment().parse(
+                "import std.date;\nkey m int::month;\nselect m where m = 13;"
+            )
+        Environment().parse(
+            "import std.date;\nkey m int::month;\nselect m where m = 12;"
+        )
+        with pytest.raises(Exception, match="can never match declared pattern"):
+            Environment().parse(
+                "import std.net;\nkey e string::email_address;\n"
+                "select e where e = 'not-an-email';"
+            )
+        Environment().parse(
+            "import std.net;\nkey e string::email_address;\n"
+            "select e where e = 'user@example.com';"
+        )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_enum_base_composes_with_validated_trait(backend: ParserBackend):
+    """enum<...>::trait (ingest's enum + rich-type wrap): enum members are
+    verified against the trait's validator and the narrower enum is kept."""
+    from trilogy.core.models.core import EnumType
+
+    with _using_backend(backend):
+        env = Environment()
+        env.parse("import std.date;\nkey q enum<int>[1, 2, 3, 4]::quarter;")
+        dt = env.concepts["q"].datatype
+        assert isinstance(dt, TraitDataType)
+        assert isinstance(dt.type, EnumType)
+        with pytest.raises(Exception, match="violate validator"):
+            Environment().parse("import std.date;\nkey q enum<int>[1, 2, 13]::quarter;")
 
 
 def test_query_execution_with_validators():

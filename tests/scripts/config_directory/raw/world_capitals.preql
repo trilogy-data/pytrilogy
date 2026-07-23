@@ -5,7 +5,7 @@ key country string::country;
 
 properties country (
     capital string,
-    population int,
+    population int[462000..25700000],
     latitude float::latitude,
     longitude float::longitude,
 );

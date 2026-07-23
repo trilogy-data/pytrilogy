@@ -14,7 +14,13 @@ from trilogy.core.models.author import (
     RowsetItem,
     RowsetLineage,
 )
-from trilogy.core.models.core import DataType, TraitDataType
+from trilogy.core.models.core import (
+    DataType,
+    EnumType,
+    NumericType,
+    TraitDataType,
+    ValidatedType,
+)
 from trilogy.core.statements.author import SelectStatement, UnionSelectStatement
 from trilogy.parsing.v2.concept_factory import union_item_to_concept_v2
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
@@ -36,7 +42,7 @@ class TVFOutputItem:
 
     name: str
     purpose: Purpose | None = None
-    datatype: DataType | TraitDataType | None = None
+    datatype: DataType | TraitDataType | ValidatedType | None = None
     nullable: bool = False
     metadata: Metadata | None = None
 
@@ -49,7 +55,7 @@ def tvf_output_item(
     # Children (all but name optional): [hide] name [purpose] [datatype] [nullable] [metadata]
     name: str | None = None
     purpose: Purpose | None = None
-    datatype: DataType | TraitDataType | None = None
+    datatype: DataType | TraitDataType | ValidatedType | None = None
     nullable = False
     metadata: Metadata | None = None
     for arg in hydrated_children(node, hydrate):
@@ -61,7 +67,9 @@ def tvf_output_item(
             purpose = arg
         elif isinstance(arg, Metadata):
             metadata = arg
-        elif name is None and not isinstance(arg, (DataType, TraitDataType)):
+        elif name is None and not isinstance(
+            arg, (DataType, TraitDataType, ValidatedType, EnumType, NumericType)
+        ):
             name = str(arg)
         else:
             datatype = arg

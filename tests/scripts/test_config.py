@@ -1485,3 +1485,154 @@ def test_audit_warns_unknown_report_key(tmp_path):
     assert len(warnings) == 1
     assert "theem" in warnings[0]
     assert "[report]" in warnings[0]
+
+
+def _pg_toml(tmp_path: Path, **overrides: str) -> Path:
+    fields = {
+        "host": '"db.example.com"',
+        "port": "5432",
+        "username": '"analytics"',
+        "password": '"hunter2"',
+        "database": '"warehouse"',
+    }
+    fields.update(overrides)
+    body = "\n".join(f"{k} = {v}" for k, v in fields.items())
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(f'[engine]\ndialect = "postgres"\n\n[engine.config]\n{body}\n')
+    return toml_path
+
+
+def test_env_interpolation_single_ref(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_PG_PASSWORD", 's3cr"\\et')
+    toml_path = _pg_toml(tmp_path, password='"${env:TRILOGY_TEST_PG_PASSWORD}"')
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.password == 's3cr"\\et'
+
+
+def test_env_interpolation_mixed_literal_and_multiple_refs(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_HOST_A", "db1")
+    monkeypatch.setenv("TRILOGY_TEST_HOST_B", "example")
+    toml_path = _pg_toml(
+        tmp_path, host='"${env:TRILOGY_TEST_HOST_A}.${env:TRILOGY_TEST_HOST_B}.com"'
+    )
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.host == "db1.example.com"
+
+
+def test_env_interpolation_env_file_supplies_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_EF_PASSWORD", "shellvalue")
+    (tmp_path / ".env").write_text("TRILOGY_TEST_EF_PASSWORD=fromfile\n")
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        'env_file = ".env"\n\n[engine]\ndialect = "postgres"\n\n[engine.config]\n'
+        'host = "h"\nport = 1\nusername = "u"\n'
+        'password = "${env:TRILOGY_TEST_EF_PASSWORD}"\ndatabase = "d"\n'
+    )
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.password == "fromfile"
+
+
+def test_env_interpolation_extra_env_wins_over_env_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_PRIO", "shell")
+    (tmp_path / ".env").write_text("TRILOGY_TEST_PRIO=file\n")
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        'env_file = ".env"\n\n[engine]\ndialect = "postgres"\n\n[engine.config]\n'
+        'host = "h"\nport = 1\nusername = "u"\n'
+        'password = "${env:TRILOGY_TEST_PRIO}"\ndatabase = "d"\n'
+    )
+    config = load_config_file(toml_path, extra_env={"TRILOGY_TEST_PRIO": "cli"})
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.password == "cli"
+    assert os.environ["TRILOGY_TEST_PRIO"] == "cli"
+
+
+def test_env_interpolation_missing_vars_collected(tmp_path, monkeypatch):
+    from trilogy.core.exceptions import ConfigurationException
+
+    monkeypatch.delenv("TRILOGY_TEST_MISSING_A", raising=False)
+    monkeypatch.delenv("TRILOGY_TEST_MISSING_B", raising=False)
+    toml_path = _pg_toml(
+        tmp_path,
+        host='"${env:TRILOGY_TEST_MISSING_A}"',
+        password='"${env:TRILOGY_TEST_MISSING_B}"',
+    )
+    with raises(ConfigurationException) as excinfo:
+        load_config_file(toml_path)
+    msg = str(excinfo.value)
+    assert "TRILOGY_TEST_MISSING_A (in engine.config.host)" in msg
+    assert "TRILOGY_TEST_MISSING_B (in engine.config.password)" in msg
+
+
+def test_env_interpolation_escape_and_no_reexpansion(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_OTHER", "should-not-appear")
+    monkeypatch.setenv("TRILOGY_TEST_INDIRECT", "${env:TRILOGY_TEST_OTHER}")
+    toml_path = _pg_toml(
+        tmp_path,
+        host='"$${env:TRILOGY_TEST_OTHER}"',
+        password='"${env:TRILOGY_TEST_INDIRECT}"',
+    )
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.host == "${env:TRILOGY_TEST_OTHER}"
+    assert config.engine_config.password == "${env:TRILOGY_TEST_OTHER}"
+
+
+def test_env_interpolation_non_string_values_untouched(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_PORT", "5433")
+    toml_path = _pg_toml(tmp_path, port='"${env:TRILOGY_TEST_PORT}"')
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    # No implicit coercion: a ref always yields a string.
+    assert config.engine_config.port == "5433"
+
+    toml_path2 = _pg_toml(tmp_path)
+    config2 = load_config_file(toml_path2)
+    assert isinstance(config2.engine_config, PostgresConfig)
+    assert config2.engine_config.port == 5432
+
+
+def test_env_interpolation_env_file_path_itself_interpolated(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_ENVFILE_NAME", "custom.env")
+    monkeypatch.setenv("TRILOGY_TEST_CUSTOM_PW", "shell")
+    (tmp_path / "custom.env").write_text("TRILOGY_TEST_CUSTOM_PW=fromcustom\n")
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        'env_file = "${env:TRILOGY_TEST_ENVFILE_NAME}"\n\n'
+        '[engine]\ndialect = "postgres"\n\n[engine.config]\n'
+        'host = "h"\nport = 1\nusername = "u"\n'
+        'password = "${env:TRILOGY_TEST_CUSTOM_PW}"\ndatabase = "d"\n'
+    )
+    config = load_config_file(toml_path)
+    assert isinstance(config.engine_config, PostgresConfig)
+    assert config.engine_config.password == "fromcustom"
+
+
+def test_serve_connection_passes_refs_through_verbatim(tmp_path, monkeypatch):
+    monkeypatch.delenv("TRILOGY_TEST_SC_SECRET", raising=False)
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        '[serve.connection]\ntype = "duckdb"\n\n[serve.connection.options]\n'
+        'token = "${env:TRILOGY_TEST_SC_SECRET}"\n'
+    )
+    # Published values keep the reference form; an unset var there is not an
+    # error because it is never resolved.
+    config = load_config_file(toml_path)
+    assert config.serve_connection is not None
+    assert config.serve_connection.options["token"] == "${env:TRILOGY_TEST_SC_SECRET}"
+
+
+def test_audit_output_never_contains_resolved_values(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRILOGY_TEST_AUDIT_SECRET", "resolved-secret-value")
+    toml_path = tmp_path / "trilogy.toml"
+    toml_path.write_text(
+        'unknown_key = "${env:TRILOGY_TEST_AUDIT_SECRET}"\n\n'
+        '[engine]\ndialect = "duckdb"\n'
+    )
+    warnings = audit_config_file(toml_path)
+    combined = "\n".join(warnings)
+    assert "unknown_key" in combined
+    assert "resolved-secret-value" not in combined

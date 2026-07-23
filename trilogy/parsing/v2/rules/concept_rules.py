@@ -475,7 +475,7 @@ def data_type(
     base: Any
     if isinstance(
         resolved,
-        (StructType, ArrayType, NumericType, MapType, EnumType),
+        (StructType, ArrayType, NumericType, MapType, EnumType, ValidatedType),
     ):
         base = resolved
     else:
@@ -483,24 +483,74 @@ def data_type(
         name = str(resolved).lower()
         base = DataType(_DATATYPE_SPELLING_ALIASES.get(name, name))
     if traits:
-        line = node.meta.line if node.meta else None
-        for trait in traits:
-            matched = context.types.get(trait)
-            if matched is None:
-                known = set(context.environment.data_types.keys())
-                known.update(name for name, _ in context.semantic_state.pending_types())
-                similar = difflib.get_close_matches(trait, list(known))
-                hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
-                raise TypeError(
-                    f"Invalid type (trait) {trait} for {base}, line {line}.{hint}"
-                )
-            if not is_compatible_datatype(matched.type, base):
-                raise TypeError(
-                    f"Invalid type (trait) {trait} for {base}, line {line}. "
-                    f"Trait expects type {matched.type}, has {base}"
-                )
-        return TraitDataType(type=base, traits=traits)
+        return _apply_traits(base, traits, context, node)
     return base
+
+
+def _apply_traits(
+    base: Any,
+    traits: list[str],
+    context: RuleContext,
+    node: SyntaxNode,
+) -> TraitDataType:
+    """Resolve trait names against declared types and wrap the base.
+
+    A trait whose declared type carries a validator (``type pct int[0..100]``)
+    transfers that validator onto the authored base, so ``int::pct`` enforces
+    the range. Conflicting validators from multiple sources are an error."""
+    line = node.meta.line if node.meta else None
+    carried: ValidatedType | None = base if isinstance(base, ValidatedType) else None
+    for trait in traits:
+        matched = context.types.get(trait)
+        if matched is None:
+            known = set(context.environment.data_types.keys())
+            known.update(name for name, _ in context.semantic_state.pending_types())
+            similar = difflib.get_close_matches(trait, list(known))
+            hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
+            raise TypeError(
+                f"Invalid type (trait) {trait} for {base}, line {line}.{hint}"
+            )
+        if not is_compatible_datatype(matched.type, base):
+            raise TypeError(
+                f"Invalid type (trait) {trait} for {base}, line {line}. "
+                f"Trait expects type {matched.type}, has {base}"
+            )
+        if isinstance(matched.type, ValidatedType):
+            if isinstance(base, EnumType):
+                # an enum base is already a (narrower) domain — verify its
+                # members satisfy the trait's validator, then keep the enum
+                bad = [v for v in base.values if not matched.type.check_value(v)]
+                if bad:
+                    raise TypeError(
+                        f"Enum values {bad} violate validator {matched.type} "
+                        f"declared on trait {trait}, line {line}"
+                    )
+                continue
+            if isinstance(base, ValidatedType):
+                scalar_base: Any = base.type
+            elif isinstance(base, (DataType, NumericType)):
+                scalar_base = base
+            else:
+                raise TypeError(
+                    f"Validator-carrying trait {trait} cannot apply to "
+                    f"non-scalar type {base}, line {line}"
+                )
+            rebuilt = ValidatedType(
+                type=scalar_base,
+                ranges=matched.type.ranges,
+                pattern=matched.type.pattern,
+            )
+            if carried is not None and (
+                carried.ranges != rebuilt.ranges or carried.pattern != rebuilt.pattern
+            ):
+                raise TypeError(
+                    f"Conflicting validators for type at line {line}: "
+                    f"{carried} vs {rebuilt} (from trait {trait}). Declare a "
+                    "single validator source."
+                )
+            carried = carried if carried is not None else rebuilt
+    final_base = carried if carried is not None else base
+    return TraitDataType(type=final_base, traits=traits)
 
 
 def numeric_type(
@@ -648,18 +698,25 @@ def validated_type(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> ValidatedType:
+) -> ValidatedType | TraitDataType:
     base: DataType | NumericType | None = None
     specs: list[_RangeSpec] = []
+    traits: list[str] = []
+    seen_spec = False
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if base is None and child.value not in ("[", "]", ","):
+            if child.value in ("[", "]", ",", "::"):
+                continue
+            if base is None and not seen_spec:
                 name = str(child.value).lower()
                 base = DataType(_DATATYPE_SPELLING_ALIASES.get(name, name))
+            elif seen_spec:
+                traits.append(str(child.value))
             continue
         if child.kind == SyntaxNodeKind.NUMERIC_TYPE:
             base = hydrate(child)
         elif child.kind == SyntaxNodeKind.RANGE_SPEC:
+            seen_spec = True
             specs.append(hydrate(child))
     if base is None or not specs:
         raise fail(
@@ -678,7 +735,10 @@ def validated_type(
             re.compile(pattern)
         except re.error as e:
             raise fail(node, f"invalid regex in string validator {pattern!r}: {e}")
-        return ValidatedType(type=base, pattern=pattern)
+        result: ValidatedType = ValidatedType(type=base, pattern=pattern)
+        if traits:
+            return _apply_traits(result, traits, context, node)
+        return result
     ranges: list[ValueRange] = []
     for spec in specs:
         low, high = spec.low, spec.high
@@ -712,7 +772,10 @@ def validated_type(
             ranges.append(ValueRange(min=low, max=high))
         except ValueError as e:
             raise fail(spec.node, str(e))
-    return ValidatedType(type=base, ranges=tuple(ranges))
+    ranged: ValidatedType = ValidatedType(type=base, ranges=tuple(ranges))
+    if traits:
+        return _apply_traits(ranged, traits, context, node)
+    return ranged
 
 
 def concept_nullable_modifier(

@@ -618,6 +618,35 @@ def is_compatible_datatype(left, right):
     return False
 
 
+def _envelope_violation(
+    domain: str,
+    operator: ComparisonOperator,
+    value: Any,
+    global_min: Any,
+    global_max: Any,
+) -> str | None:
+    try:
+        if operator == ComparisonOperator.GT:
+            if global_max is not None and global_max <= value:
+                return f"declared domain {domain} has no value > {_render_bound(value)}"
+        elif operator == ComparisonOperator.GTE:
+            if global_max is not None and global_max < value:
+                return (
+                    f"declared domain {domain} has no value >= {_render_bound(value)}"
+                )
+        elif operator == ComparisonOperator.LT:
+            if global_min is not None and global_min >= value:
+                return f"declared domain {domain} has no value < {_render_bound(value)}"
+        elif operator == ComparisonOperator.LTE:
+            if global_min is not None and global_min > value:
+                return (
+                    f"declared domain {domain} has no value <= {_render_bound(value)}"
+                )
+    except TypeError:
+        return None
+    return None
+
+
 def constant_domain_violation(
     expected: Any,
     operator: ComparisonOperator,
@@ -625,15 +654,41 @@ def constant_domain_violation(
 ) -> str | None:
     """A reason string when comparing a literal against a concept whose declared
     domain (ValidatedType ranges/regex or EnumType membership) makes the
-    comparison provably never match; None when satisfiable or undecidable."""
+    comparison provably never match; None when satisfiable or undecidable.
+
+    Only provably-FALSE predicates are flagged. In-domain predicates — even
+    ones matching every declared value — must parse untouched: they can carry
+    load-bearing join null-rejection through nullable FK paths
+    (evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md),
+    and a narrower authored intent than the current domain snapshot is
+    legitimate. Error messages must never advise removing a predicate."""
     while isinstance(expected, TraitDataType):
         expected = expected.type
     if isinstance(value, Enum):
         return None
-    # EnumType is deliberately NOT checked here: enum domains may be sampled /
-    # inferred (see tests/engine/test_enum_unions.py), so a non-member
-    # comparison is a legitimate possibly-empty filter. ValidatedType domains
-    # are always user-declared, so impossibility is a real authoring error.
+    if isinstance(expected, EnumType):
+        members = expected.values
+        if not members:
+            return None
+        if operator in (ComparisonOperator.EQ, ComparisonOperator.IN):
+            if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                return None
+            if value not in members:
+                return (
+                    f"{value!r} can never match a declared value of {expected} — "
+                    "fix the constant, or update the enum declaration if the "
+                    "domain is stale"
+                )
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            return None
+        if not all(
+            isinstance(m, (int, float)) and not isinstance(m, bool) for m in members
+        ):
+            return None
+        return _envelope_violation(
+            str(expected), operator, value, min(members), max(members)
+        )
     if not isinstance(expected, ValidatedType):
         return None
     if expected.pattern is not None:
@@ -659,30 +714,7 @@ def constant_domain_violation(
     maxes: list[Any] = [r.max for r in expected.ranges]
     global_min = None if any(m is None for m in mins) else min(mins)
     global_max = None if any(m is None for m in maxes) else max(maxes)
-    try:
-        if operator == ComparisonOperator.GT:
-            if global_max is not None and global_max <= value:
-                return (
-                    f"declared domain {expected} has no value > {_render_bound(value)}"
-                )
-        elif operator == ComparisonOperator.GTE:
-            if global_max is not None and global_max < value:
-                return (
-                    f"declared domain {expected} has no value >= {_render_bound(value)}"
-                )
-        elif operator == ComparisonOperator.LT:
-            if global_min is not None and global_min >= value:
-                return (
-                    f"declared domain {expected} has no value < {_render_bound(value)}"
-                )
-        elif operator == ComparisonOperator.LTE:
-            if global_min is not None and global_min > value:
-                return (
-                    f"declared domain {expected} has no value <= {_render_bound(value)}"
-                )
-    except TypeError:
-        return None
-    return None
+    return _envelope_violation(str(expected), operator, value, global_min, global_max)
 
 
 def reduce_tuple_element_datatypes(

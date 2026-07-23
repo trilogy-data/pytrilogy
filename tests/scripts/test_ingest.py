@@ -31,6 +31,7 @@ from trilogy.scripts.ingest_helpers.typing import (
     MAX_ENUM_VALUE_LENGTH,
     _enum_from_values,
     detect_enum_types,
+    detect_numeric_bounds,
 )
 from trilogy.scripts.trilogy import cli
 
@@ -70,6 +71,58 @@ def test_ingest():
     assert "capital" in content
     # The grain detection should identify country as a key
     assert "key country" in content.lower() or "country: country" in content.lower()
+
+
+def test_detect_numeric_bounds():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql("""
+        CREATE TABLE bounds_t AS
+        SELECT i AS id, (i % 100) + 1 AS quantity, i * 1.5 AS price,
+               -5 + i AS delta, NULL::INT AS empty_col
+        FROM range(1000) r(i)
+        """)
+    bounds = detect_numeric_bounds(
+        executor,
+        "bounds_t",
+        [
+            ("id", DataType.INTEGER),
+            ("quantity", DataType.INTEGER),
+            ("price", DataType.FLOAT),
+            ("delta", DataType.INTEGER),
+            ("empty_col", DataType.INTEGER),
+            ("name", DataType.STRING),
+        ],
+        skip={"id"},
+    )
+    # ints get tight full-scan bounds; floats only a non-negative sign bound
+    assert str(bounds["quantity"]) == "int[1..100]"
+    assert str(bounds["price"]) == "float[0..]"
+    assert str(bounds["delta"]) == "int[-5..994]"
+    # keys, all-null, and non-numeric columns are skipped
+    assert "id" not in bounds
+    assert "empty_col" not in bounds
+    assert "name" not in bounds
+
+
+def test_ingest_infers_numeric_bounds_end_to_end():
+    path = Path(__file__).parent
+    runner = CliRunner()
+    config_dir = path / "config_directory"
+    results = runner.invoke(
+        cli,
+        [
+            "ingest",
+            "world_capitals",
+            "--config",
+            str(config_dir / "trilogy.toml"),
+            "--env",
+            "test=fun",
+        ],
+    )
+    if results.exception:
+        raise results.exception
+    content = (config_dir / "raw" / "world_capitals.preql").read_text()
+    assert "population int[" in content
 
 
 def test_ingest_with_db_primary_key():

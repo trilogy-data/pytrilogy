@@ -3255,6 +3255,14 @@ class CustomFunctionFactory:
                     raise FunctionArgumentException(
                         f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
                     )
+            violation = constant_domain_violation(
+                arg.datatype, ComparisonOperator.EQ, creation_arg_list[arg_idx]
+            )
+            if violation:
+                raise FunctionArgumentException(
+                    f"Invalid argument passed into custom function @{self.name} in "
+                    f"position {arg_idx+1} for argument {arg.name}: {violation}"
+                )
 
         if isinstance(nout, ReferenceReplaceable) and creation_arg_list:
             replacements: ReferenceReplacements = [
@@ -3346,7 +3354,7 @@ class ArgBinding(Namespaced, DataTyped):
 @dataclass
 class CustomType:
     name: str
-    type: DataType | list[DataType]
+    type: CONCRETE_TYPES | list[CONCRETE_TYPES]
     drop_on: list[FunctionType] = dc_field(default_factory=list)
     add_on: list[FunctionType] = dc_field(default_factory=list)
 

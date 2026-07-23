@@ -12,7 +12,14 @@ from trilogy.authoring import (
     TraitDataType,
     arg_to_datatype,
 )
-from trilogy.core.enums import ComparisonOperator, Modifier, Purpose
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Modifier,
+    Purpose,
+)
 from trilogy.core.exceptions import (
     DatasourceColumnBindingData,
     DatasourceColumnBindingError,
@@ -21,11 +28,20 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.build import (
     BuildComparison,
+    BuildConcept,
+    BuildConditional,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
+    BuildParenthetical,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import CONCRETE_TYPES, EnumType, ValidatedType
+from trilogy.core.models.core import (
+    CONCRETE_TYPES,
+    EnumType,
+    TupleWrapper,
+    ValidatedType,
+)
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -98,6 +114,147 @@ def validate_unique_properties(
                     ran=True,
                 )
             )
+    return results
+
+
+def domain_violation_condition(
+    concept: BuildConcept,
+) -> BuildConditional | None:
+    """A SQL-side predicate matching non-null rows whose value violates the
+    concept's declared domain (ValidatedType ranges/regex or EnumType
+    membership); None when the concept declares no checkable domain."""
+    dt = concept.datatype
+    while isinstance(dt, TraitDataType):
+        dt = dt.type
+    violation: BuildComparison | BuildConditional | BuildParenthetical | None = None
+    if isinstance(dt, EnumType):
+        if not dt.values:
+            return None
+        violation = BuildComparison(
+            left=concept,
+            operator=ComparisonOperator.NOT_IN,
+            right=TupleWrapper(list(dt.values), type=dt.type),
+        )
+    elif isinstance(dt, ValidatedType):
+        if dt.pattern is not None:
+            # anchored to mirror the Python-side re.fullmatch semantics
+            regex = BuildFunction(
+                operator=FunctionType.REGEXP_CONTAINS,
+                arguments=[concept, f"^(?:{dt.pattern})$"],
+                output_data_type=DataType.BOOL,
+                output_purpose=Purpose.PROPERTY,
+                arg_count=2,
+            )
+            violation = BuildComparison(
+                left=regex, operator=ComparisonOperator.EQ, right=False
+            )
+        elif dt.ranges:
+            per_range: list[BuildComparison | BuildParenthetical] = []
+            for r in dt.ranges:
+                parts = []
+                if r.min is not None:
+                    parts.append(
+                        BuildComparison(
+                            left=concept, operator=ComparisonOperator.LT, right=r.min
+                        )
+                    )
+                if r.max is not None:
+                    parts.append(
+                        BuildComparison(
+                            left=concept, operator=ComparisonOperator.GT, right=r.max
+                        )
+                    )
+                if len(parts) == 2:
+                    per_range.append(
+                        BuildParenthetical(
+                            content=BuildConditional(
+                                left=parts[0],
+                                right=parts[1],
+                                operator=BooleanOperator.OR,
+                            )
+                        )
+                    )
+                elif parts:
+                    per_range.append(parts[0])
+            if not per_range:
+                return None
+            violation = per_range[0]
+            for nxt in per_range[1:]:
+                violation = BuildConditional(
+                    left=violation, right=nxt, operator=BooleanOperator.AND
+                )
+    if violation is None:
+        return None
+    return BuildConditional(
+        left=BuildComparison(
+            left=concept, operator=ComparisonOperator.IS_NOT, right=MagicConstants.NULL
+        ),
+        right=(
+            violation
+            if isinstance(violation, (BuildComparison, BuildParenthetical))
+            else BuildParenthetical(content=violation)
+        ),
+        operator=BooleanOperator.AND,
+    )
+
+
+def validate_declared_domains(
+    datasource: BuildDatasource,
+    env: Environment,
+    build_env: BuildEnvironment,
+    exec: Executor | None,
+) -> list[ValidationTest]:
+    """Full-table SQL-side domain checks: unlike the sampled type checks, these
+    scan every row of the datasource for values outside a declared
+    ValidatedType range/regex or EnumType membership."""
+    results: list[ValidationTest] = []
+    seen: set[str] = set()
+    for col in datasource.columns:
+        concept = build_env.concepts[col.concept.address]
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        condition = domain_violation_condition(concept)
+        if condition is None:
+            continue
+        query = easy_query(
+            concepts=[concept],
+            datasource=datasource,
+            env=env,
+            condition=condition,
+            grain=BuildGrain(components={concept.address}),
+            limit=10,
+        )
+        if exec is None:
+            results.append(
+                ValidationTest(
+                    raw_query=query,
+                    check_type=ExpectationType.ROWCOUNT,
+                    expected="0",
+                    result=None,
+                    ran=False,
+                )
+            )
+            continue
+        sql = exec.generate_sql(query)[-1]
+        rows = exec.execute_raw_sql(sql).fetchmany(10)
+        error = None
+        if rows:
+            error = DatasourceModelValidationError(
+                f"Datasource {datasource.name} failed validation. Values for "
+                f"{concept.address} violate declared domain "
+                f"{str(concept.datatype)}: {[row_to_dict(r) for r in rows]}"
+            )
+        results.append(
+            ValidationTest(
+                raw_query=query,
+                generated_query=sql,
+                check_type=ExpectationType.ROWCOUNT,
+                expected="0",
+                result=error,
+                ran=True,
+            )
+        )
     return results
 
 
@@ -353,6 +510,12 @@ def validate_datasource(
             )
         )
     results += validate_unique_properties(
+        validation_datasource,
+        env,
+        build_env,
+        exec,
+    )
+    results += validate_declared_domains(
         validation_datasource,
         env,
         build_env,

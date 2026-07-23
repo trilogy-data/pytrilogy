@@ -11,7 +11,7 @@ from trilogy.core.models.author import (
     TraitDataType,
     WhereClause,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, ValidatedType
 from trilogy.core.statements.author import FunctionDeclaration
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -24,7 +24,7 @@ from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 @dataclass
 class FunctionBindingType:
-    type: DataType | TraitDataType | None = None
+    type: DataType | TraitDataType | ValidatedType | None = None
 
 
 def function_binding_list(

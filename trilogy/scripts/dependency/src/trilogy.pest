@@ -249,7 +249,7 @@ chart_statement     = { ^"chart" ~ chart_component+ }
 // =============================================================================
 function = { table_function | raw_function }
 
-function_binding_type    = { ":" ~ data_type }
+function_binding_type    = { ":" ~ (validated_type | data_type) }
 function_binding_default = { "=" ~ expr }
 function_binding_item    = { IDENTIFIER ~ function_binding_type? ~ function_binding_default? }
 function_binding_list    = { function_binding_item ~ ("," ~ function_binding_item)* ~ ","? }
@@ -262,7 +262,7 @@ table_function = { _DEF_TABLE ~ IDENTIFIER ~ "(" ~ function_binding_list? ~ ")" 
 // TYPE DECLARATION
 // =============================================================================
 type_drop_clause = { ^"drop" ~ IDENTIFIER ~ ("|" ~ IDENTIFIER)* }
-type_declaration = { ^"type" ~ IDENTIFIER ~ data_type ~ ("|" ~ data_type)* ~ type_drop_clause? }
+type_declaration = { ^"type" ~ IDENTIFIER ~ (validated_type | data_type) ~ ("|" ~ (validated_type | data_type))* ~ type_drop_clause? }
 
 // =============================================================================
 // ROWSET
@@ -480,7 +480,7 @@ union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
 // NULL-safe row comparison); except left-folds over 3+ arms.
 _EXCEPT_TVF     = _{ ^"except(" }
 _INTERSECT_TVF  = _{ ^"intersect(" }
-tvf_output_item      = { select_hide_modifier? ~ IDENTIFIER ~ (PURPOSE? ~ data_type ~ concept_nullable_modifier?)? ~ metadata? }
+tvf_output_item      = { select_hide_modifier? ~ IDENTIFIER ~ (PURPOSE? ~ (validated_type | data_type) ~ concept_nullable_modifier?)? ~ metadata? }
 tvf_output           = { "->" ~ "(" ~ tvf_output_item ~ ("," ~ tvf_output_item)* ~ ","? ~ ")" }
 tvf_rel_arg          = { "(" ~ select_statement ~ ")" }
 _tvf_arg             = _{ tvf_rel_arg }
@@ -886,7 +886,7 @@ AUTO     = @{ ^"auto" }
 // =============================================================================
 numeric_type = { (^"numeric" | ^"decimal") ~ "(" ~ int_lit ~ "," ~ int_lit ~ ")" }
 map_type     = { ^"map" ~ "<" ~ (data_type | IDENTIFIER) ~ "," ~ (data_type | IDENTIFIER) ~ ">" }
-struct_component = { IDENTIFIER ~ ":" ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+struct_component = { IDENTIFIER ~ ":" ~ (validated_type | data_type) ~ concept_nullable_modifier? ~ metadata? }
 struct_type  = { ^"struct" ~ "<" ~ (struct_component | IDENTIFIER) ~ ("," ~ (struct_component | IDENTIFIER))* ~ ","? ~ ">" }
 list_type    = { (^"list" | ^"array") ~ "<" ~ (data_type | IDENTIFIER) ~ ">" }
 enum_type    = { ^"enum" ~ "<" ~ data_type ~ ">" ~ "[" ~ (string_lit | int_lit) ~ ("," ~ (string_lit | int_lit))* ~ ","? ~ "]" }
@@ -900,7 +900,7 @@ VALIDATED_TYPE_BASE = @{
       ^"string" | ^"numeric" | ^"decimal" | ^"number" | ^"int" | ^"bigint"
     | ^"datetime" | ^"timestamp" | ^"date" | ^"double" | ^"float"
 }
-validated_type = { (numeric_type | VALIDATED_TYPE_BASE) ~ "[" ~ range_spec ~ ("," ~ range_spec)* ~ ","? ~ "]" }
+validated_type = { (numeric_type | VALIDATED_TYPE_BASE) ~ "[" ~ range_spec ~ ("," ~ range_spec)* ~ ","? ~ "]" ~ ("::" ~ IDENTIFIER)? }
 
 // data_type: include composite types before the simple keyword list (order matters).
 data_type = {

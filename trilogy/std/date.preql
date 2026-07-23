@@ -1,16 +1,17 @@
 
 
-type year int;
+type year int[1000..9999];
 type decade int;
 type century int;
-type month int;
+type month int[1..12];
 type month_name string;
-type quarter int;
-type week int;
-type day int;
-type hour int;
-type minute int;
-type second int;
-type day_of_week int;
+type quarter int[1..4];
+type week int[1..53];
+type day int[1..31];
+type hour int[0..23];
+type minute int[0..59];
+type second int[0..59];
+# 0..7 admits both 0-6 and 1-7 weekday conventions
+type day_of_week int[0..7];
 type day_of_week_name string;
 

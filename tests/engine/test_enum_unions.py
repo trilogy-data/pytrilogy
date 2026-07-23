@@ -43,12 +43,14 @@ def test_enum_type_parsed():
     assert set(concept.datatype.values) == {"A", "B"}
 
 
-def test_enum_comparison_non_member_allowed():
-    # Enum domains are sampled, so a comparison against a value outside the sampled
-    # domain is a legitimate (possibly empty) filter, not an error.
+def test_enum_comparison_non_member_rejected():
+    # A constant provably outside the declared enum domain can never match —
+    # hard error at authoring time, consistent with ValidatedType domains. The
+    # error must advise fixing the constant/domain, never removing the filter.
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(PREQL)
-    executor.generate_sql("select sales where category = 'C';")
+    with pytest.raises(Exception, match="can never match a declared value"):
+        executor.generate_sql("select sales where category = 'C';")
 
 
 NULLABLE_ENUM_PREQL = """
@@ -80,29 +82,24 @@ select 1 as warehouse_sk, 138504 as sq_ft
 """
 
 
-# Enum satisfiability is not enforced: the sampled domain may be incomplete, and
-# for an enum reached through a nullable FK the comparison also carries load-bearing
-# join null-rejection — so a comparison constant over the domain still generates SQL.
+# Only provably-FALSE predicates are rejected. In-domain predicates — even ones
+# matching every declared member (tautology / is-not-null shaped) — must parse
+# and generate SQL untouched: through a nullable FK they carry load-bearing join
+# null-rejection, and advising their removal caused a silent wrong result
+# (evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md).
 @pytest.mark.parametrize(
     "predicate",
     [
-        # Formerly rejected as unsatisfiable over the sampled domain.
-        "sq_ft > 977787",
-        "sq_ft < 138504",
-        "sq_ft = 0",
-        "sq_ft between 100 and 500",
-        "sq_ft in (0, 1)",
-        # Formerly rejected as matching every member (tautology / is-not-null).
+        # Matches every member (tautology / is-not-null shaped) — allowed.
         "sq_ft > 0",
         "sq_ft >= 138504",
         "sq_ft != 0",
         "sq_ft between 0 and 9999999",
         "sq_ft not in (0, 1)",
-        # Discriminating comparisons were always allowed.
+        # Discriminating comparisons — allowed.
         "sq_ft = 138504",
         "sq_ft > 138504",
         "sq_ft between 100 and 300000",
-        "sq_ft in (138504, 999)",
         "sq_ft not in (138504, 999)",
     ],
 )
@@ -112,11 +109,38 @@ def test_enum_comparison_allowed(predicate):
     executor.generate_sql(f"select warehouse_sk where {predicate};")
 
 
-@pytest.mark.parametrize("predicate", ["sq_ft > 0", "sq_ft != 0", "sq_ft = 0"])
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        # Provably false over the declared domain — rejected.
+        "sq_ft > 977787",
+        "sq_ft < 138504",
+        "sq_ft = 0",
+        "sq_ft between 100 and 500",
+        "sq_ft in (0, 1)",
+        # 999 is a non-member IN element: dead arm, almost certainly a typo.
+        "sq_ft in (138504, 999)",
+    ],
+)
+def test_enum_comparison_impossible_rejected(predicate):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NULLABLE_ENUM_PREQL)
+    with pytest.raises(Exception, match="declared"):
+        executor.generate_sql(f"select warehouse_sk where {predicate};")
+
+
+@pytest.mark.parametrize("predicate", ["sq_ft > 0", "sq_ft != 0"])
 def test_enum_constant_comparison_allowed_non_nullable(predicate):
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(NON_NULLABLE_ENUM_PREQL)
     executor.generate_sql(f"select warehouse_sk where {predicate};")
+
+
+def test_enum_constant_comparison_impossible_non_nullable():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(NON_NULLABLE_ENUM_PREQL)
+    with pytest.raises(Exception, match="declared"):
+        executor.generate_sql("select warehouse_sk where sq_ft = 0;")
 
 
 STRING_ENUM_PREQL = """
