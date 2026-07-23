@@ -887,6 +887,10 @@ def resolve_rowset(
     # the q11 shape) must not strip the flag from siblings whose own anchor IS
     # a rowset — unmarked, two subset boundaries INNER-join each other and drop
     # the anchor rows they don't share (dim_bridge all_subset_unaffected).
+    # A LIMITED body overrides the ROOT-anchor exemption: the limit truncates
+    # rows no condition expresses, so the anchor scan's handle binding cannot
+    # stand in for the boundary's row set — unmarked, the merge INNER-narrows
+    # the anchor to the limited rows (rowset_body_limit left readback).
     subset_sources = environment.domain_graph.subset_sources()
 
     def _subset_anchors_all_rowset(address: str) -> bool:
@@ -907,7 +911,7 @@ def resolve_rowset(
         for h in handles
         if h.address in subset_sources
         and isinstance(h.lineage, BuildRowsetItem)
-        and _subset_anchors_all_rowset(h.address)
+        and (select.limit is not None or _subset_anchors_all_rowset(h.address))
     ]
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content — map through the BuildRowsetItem

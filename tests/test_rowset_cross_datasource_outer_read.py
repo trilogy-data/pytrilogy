@@ -195,7 +195,7 @@ select a.aid as k, sum(a.av) as sa;
 
 where a.aw is not null and rs.sa is not null
 select rs.k, a.aw
-left join rs.k = a.aid
+subset join a.aid = rs.k
 order by rs.k;
 """).fetchall()
     assert [tuple(r) for r in rows] == [(2, 2000.0)]

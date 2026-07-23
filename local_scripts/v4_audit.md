@@ -1,6 +1,89 @@
-# v4 compatibility audit (last refreshed 2026-07-22, session 23)
+# v4 compatibility audit (last refreshed 2026-07-22, session 24)
 
-## Current state (after 2026-07-22 session 23)
+## Current state (after 2026-07-22 session 24)
+
+**Full v4 sweep (session 24): 13 real failed / 5928 passed**
+(`local_scripts/v4_sweep_0722_s24.log` — raw 14, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s23: **cleared `rowset_body_limit left_readback` + `rowset_cross_
+datasource null_property` (−2), ZERO new failures** (`comm` diff of the sorted
+FAILED lists, `local_scripts/s23_failed_sorted.txt` vs `s24_failed_sorted.txt`:
+exactly those two removed, nothing added). TPC-DS = the pre-existing 6 exactly
+(standalone battery AND in-sweep); passed 5924→5928 reconciles as +2 fixes and
++2 from the s23 registry prunes now counting as plain passes (xpassed 31→29,
+the standing 29 exactly); ruff/mypy(310)/black clean. The 82 errors are
+clickhouse-server env (not real).
+
+One changed planner file is v4-only (`concept_strategies_v4.py`, reached only
+via `_get_query_node_v4` behind `CONFIG.use_v4_discovery`); the other change is
+a TEST-corpus syntax migration (planner-independent, and the file passes under
+plain v3: 36/36).
+
+**The 13 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate) and singles
+(twin_keeps_scalar_refs, rowset_generation_matrix islanded, cube_two_windows,
+collapse_basic funnel, union_bare_aggregate set_semantics, setops
+except_and_union, constant_in_cross_datasource_merge). No multi-cell families
+remain outside TPC-DS; the rowset-boundary singles are CLEARED.
+
+**NEXT options:** TPC-DS ×6; `cube_two_windows`; `rowset_generation_matrix
+islanded` (s24 mapped its shape: a bare shared-key read of a rowset is
+Disconnected in v3 but v4's ROOT scan synthesizes the handle by pseudonym and
+silently joins — limit-independent, see `local_scripts/repro_s24_sharedkey.py`);
+XPASS prune (29 standing).
+
+## ✅ 2026-07-22 (session 24) — a LIMITED rowset body overrides the ROOT-anchor scoped_partial exemption (+1) & null_property migrated off removed `left join` syntax (+1)
+
+Cleared `rowset_body_limit test_left_readback_keeps_dim_rows_beyond_limit` and
+`rowset_cross_datasource_outer_read test_rowset_key_read_back_aligns_with_
+source_null_property` — the audit's top NEXT (both rowset-boundary singles).
+Repros kept: `local_scripts/repro_s24_limit.py`, `repro_s24_nullprop.py`,
+`repro_s24_limit_plainkey.py` (all `v3|v4 [noopt]`), divergence probe
+`repro_s24_sharedkey.py` (runs both planners over limit/nolimit/barekey
+variants).
+
+### Fix 1 — `resolve_rowset` scoped_partial LIMIT override (concept_strategies_v4.py, v4-only)
+
+```
+with rs as select a.aid as k, sum(a.av) as sa order by k desc limit 2;
+select a.aid, a.aw, rs.sa subset join rs.k = a.aid;
+```
+
+v4 returned only the 2 limited rows (INNER, even noopt — planner-level); v3
+LEFT-joins the `a` anchor and keeps all 4 dim rows with NULL rs values. The
+s23 gate marks a subset-source handle partial only when its declared subset
+anchors are rowset handles — a ROOT anchor "resolves through binding
+substitution" (the anchor scan binds the handle by pseudonym, the yr2000
+conflicting-filter protected case). That exemption assumes the binding can
+stand in for the boundary's rows; a LIMIT truncates rows no condition
+expresses, so the substitution reconstructs nothing and the merge INNER-narrows
+the anchor. Fix: `select.limit is not None` overrides the ROOT-anchor
+exemption — the handle is marked partial and the FINAL renders v3's exact
+`anchor LEFT JOIN boundary` + coalesce. The protected yr2000 case (filtered,
+unlimited) is untouched.
+
+REJECTED sibling change, walked back after A/B: also gating the grain-key
+exposure block (line ~752) on `select.limit is None` (the WHERE/HAVING
+rationale reads identically for LIMIT). No observable behavior difference in
+any constructed shape — the partial marking already protects the explicit-join
+cases, and the bare shared-key read diverges for UNLIMITED rowsets too (it's
+the standing `rowset_generation_matrix islanded` item, not a limit defect).
+Belt-and-suspenders; dropped.
+
+### Fix 2 — null_property test migrated off removed syntax (test file only)
+
+The test still authored `left join rs.k = a.aid`, which now fails AT PARSE
+(`HydrationError: left outer join is not supported in query-scoped joins`) —
+planner-independent, so the "v4 failure" was a stale-corpus artifact. Migrated
+to `subset join a.aid = rs.k` (the parser's own migration hint, and the exact
+spelling of its passing sibling `aligns_with_source`). With real syntax BOTH
+planners return the correct `[(2, 2000.0)]` — no v4 defect underneath.
+
+LESSON: a sweep failure can be a TEST-corpus defect, not a planner gap — when
+the traceback dies in parsing, check the failure is even planner-dependent
+before diagnosing discovery.
+
+## Superseded state (after 2026-07-22 session 23)
 
 **Full v4 sweep (session 23): 15 real failed / 5924 passed**
 (`local_scripts/v4_sweep_0722_s23.log` — raw 16, minus the
