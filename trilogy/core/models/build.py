@@ -105,6 +105,7 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
     arg_to_datatype,
 )
 from trilogy.core.models.datasource import (
@@ -4358,6 +4359,10 @@ class Factory:
         return self._build_enum_data_type(base)
 
     def _build_enum_data_type(self, base: EnumType):
+        return base
+
+    @_build_dispatch.register
+    def _(self, base: ValidatedType):
         return base
 
     @_build_dispatch.register

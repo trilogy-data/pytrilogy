@@ -65,6 +65,7 @@ from trilogy.core.models.core import (
     NumericType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
 )
 from trilogy.core.models.datasource import (
     Address,
@@ -657,6 +658,13 @@ class Renderer:
     def _(self, arg: TraitDataType):
         traits = "::".join([x for x in arg.traits])
         return f"{self.to_string(arg.data_type)}::{traits}"
+
+    @to_string.register
+    def _(self, arg: ValidatedType):
+        base = self.to_string(arg.type)
+        if arg.pattern is not None:
+            return f"{base}['{arg.pattern}']"
+        return f"{base}[{', '.join(str(r) for r in arg.ranges)}]"
 
     @to_string.register
     def _(self, arg: ListWrapper):

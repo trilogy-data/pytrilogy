@@ -59,9 +59,9 @@ concept = {
 }
 
 parameter_default      = { ^"default" ~ literal }
-parameter_declaration  = { (^"parameter" | ^"param") ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ parameter_default? ~ metadata? }
-concept_declaration    = { select_hide_modifier? ~ PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
-concept_property_declaration = { select_hide_modifier? ~ UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+parameter_declaration  = { (^"parameter" | ^"param") ~ IDENTIFIER ~ (validated_type | data_type) ~ concept_nullable_modifier? ~ parameter_default? ~ metadata? }
+concept_declaration    = { select_hide_modifier? ~ PURPOSE ~ IDENTIFIER ~ (validated_type | data_type) ~ concept_nullable_modifier? ~ metadata? }
+concept_property_declaration = { select_hide_modifier? ~ UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ (validated_type | data_type) ~ concept_nullable_modifier? ~ metadata? }
 // body is `conditional` (not `expr`) so a derived concept can name a full
 // boolean predicate (`and`/`or`, `between`, `is null`) — the same grammar
 // `?`/`where` accept. `conditional` collapses to a bare `expr` for the
@@ -70,7 +70,7 @@ concept_derivation     = { select_hide_modifier? ~ (PURPOSE | AUTO | PROPERTY) ~
 
 concept_nullable_modifier = { "?" }
 
-inline_property        = { select_hide_modifier? ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+inline_property        = { select_hide_modifier? ~ IDENTIFIER ~ (validated_type | data_type) ~ concept_nullable_modifier? ~ metadata? }
 inline_property_list   = { inline_property ~ ("," ~ inline_property)* ~ ","? }
 properties_declaration = { ^"properties" ~ (prop_ident_list | IDENTIFIER) ~ "(" ~ inline_property_list ~ ")" }
 prop_ident_list        = { "<" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? ~ ">" }
@@ -890,6 +890,17 @@ struct_component = { IDENTIFIER ~ ":" ~ data_type ~ concept_nullable_modifier? ~
 struct_type  = { ^"struct" ~ "<" ~ (struct_component | IDENTIFIER) ~ ("," ~ (struct_component | IDENTIFIER))* ~ ","? ~ ">" }
 list_type    = { (^"list" | ^"array") ~ "<" ~ (data_type | IDENTIFIER) ~ ">" }
 enum_type    = { ^"enum" ~ "<" ~ data_type ~ ">" ~ "[" ~ (string_lit | int_lit) ~ ("," ~ (string_lit | int_lit))* ~ ","? ~ "]" }
+
+// Declaration-only validator suffix: int[0..100], float[0..,..1.5], string['[A-Z]+'],
+// date['2020-01-01'..'2024-12-31']. Ranges are inclusive; comma = OR.
+// Ordered before data_type at declaration sites so the bracket binds to the type.
+RANGE_SEP  = @{ ".." }
+range_spec = { ((int_lit | float_lit | string_lit)? ~ RANGE_SEP ~ (int_lit | float_lit | string_lit)?) | (int_lit | float_lit | string_lit) }
+VALIDATED_TYPE_BASE = @{
+      ^"string" | ^"numeric" | ^"decimal" | ^"number" | ^"int" | ^"bigint"
+    | ^"datetime" | ^"timestamp" | ^"date" | ^"double" | ^"float"
+}
+validated_type = { (numeric_type | VALIDATED_TYPE_BASE) ~ "[" ~ range_spec ~ ("," ~ range_spec)* ~ ","? ~ "]" }
 
 // data_type: include composite types before the simple keyword list (order matters).
 data_type = {

@@ -51,7 +51,7 @@ class ParameterDeclarationSyntax:
             raise syntax_error(node, "Parameter declaration requires one identifier")
         return cls(
             name=identifiers[0],
-            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            datatype=_only_type_node(node),
             default=node.optional_node(SyntaxNodeKind.PARAMETER_DEFAULT),
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
             nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
@@ -60,6 +60,18 @@ class ParameterDeclarationSyntax:
 
 def _is_hidden(node: SyntaxNode) -> bool:
     return node.optional_node(SyntaxNodeKind.SELECT_HIDE_MODIFIER) is not None
+
+
+def _only_type_node(node: SyntaxNode) -> SyntaxNode:
+    """The declared type slot: a plain data_type or a validated_type."""
+    nodes = [
+        c
+        for c in node.child_nodes()
+        if c.kind in (SyntaxNodeKind.DATA_TYPE, SyntaxNodeKind.VALIDATED_TYPE)
+    ]
+    if len(nodes) != 1:
+        raise syntax_error(node, f"Expected one type node, found {len(nodes)}")
+    return nodes[0]
 
 
 @dataclass(frozen=True)
@@ -83,7 +95,7 @@ class ConceptDeclarationSyntax:
         return cls(
             purpose=purposes[0],
             name=names[0],
-            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            datatype=_only_type_node(node),
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
             nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
             hidden=_is_hidden(node),
@@ -116,7 +128,7 @@ class ConceptPropertyDeclarationSyntax:
             unique=node.optional_token(SyntaxTokenKind.UNIQUE),
             property_token=property_token,
             declaration=children[declaration_index],
-            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            datatype=_only_type_node(node),
             metadata=node.optional_node(SyntaxNodeKind.METADATA),
             nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
             hidden=_is_hidden(node),

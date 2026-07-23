@@ -12,7 +12,12 @@ from trilogy.authoring import (
     StructType,
     TraitDataType,
 )
-from trilogy.core.models.core import DataTyped, EnumType, StructComponent
+from trilogy.core.models.core import (
+    DataTyped,
+    EnumType,
+    StructComponent,
+    ValidatedType,
+)
 from trilogy.scripts.explore import build_concepts_payload
 
 
@@ -120,6 +125,7 @@ def datatype_to_field_prompt(
         | MapType
         | NumericType
         | EnumType
+        | ValidatedType
         | DataTyped
         | StructComponent
         | int
@@ -129,6 +135,8 @@ def datatype_to_field_prompt(
 ) -> str:
     if isinstance(datatype, EnumType):
         return f"enum<{', '.join(repr(v) for v in datatype.values)}>"
+    if isinstance(datatype, ValidatedType):
+        return str(datatype)
     if isinstance(datatype, TraitDataType):
         return f"{datatype_to_field_prompt(datatype.type)}({','.join(datatype.traits)})"
     if isinstance(datatype, ArrayType):

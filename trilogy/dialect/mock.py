@@ -1,5 +1,5 @@
 import random
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Iterable
 
 from trilogy.core.enums import Purpose
@@ -10,6 +10,7 @@ from trilogy.core.models.core import (
     DataType,
     EnumType,
     TraitDataType,
+    ValidatedType,
 )
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
@@ -45,9 +46,69 @@ def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
     return [f"#{random.randint(0, 0xFFFFFF):06x}" for _ in range(scale_factor)]
 
 
+def mock_validated(
+    full_type: ValidatedType, scale_factor: int, is_key: bool
+) -> list[Any]:
+    if full_type.pattern is not None:
+        raise NotImplementedError(
+            f"Mocking is not implemented for regex-validated type {full_type}"
+        )
+    base = full_type.data_type
+    ranges = full_type.ranges
+    if base in (DataType.INTEGER, DataType.BIGINT):
+        pool: list[int] = []
+        for r in ranges:
+            lo = int(r.min) if r.min is not None else int(r.max) - 999_999  # type: ignore[arg-type]
+            hi = int(r.max) if r.max is not None else int(r.min) + 999_999  # type: ignore[arg-type]
+            pool.extend(range(lo, min(hi, lo + scale_factor - 1) + 1))
+        if is_key:
+            # cycle: strict uniqueness isn't possible when the domain is smaller
+            # than scale_factor
+            return [pool[i % len(pool)] for i in range(scale_factor)]
+        return [random.choice(pool) for _ in range(scale_factor)]
+    if base in (DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER, DataType.NUMERIC):
+        bounds: list[tuple[float, float]] = []
+        for r in ranges:
+            flo = float(r.min) if r.min is not None else float(r.max) - 999_999.0  # type: ignore[arg-type]
+            fhi = float(r.max) if r.max is not None else float(r.min) + 999_999.0  # type: ignore[arg-type]
+            bounds.append((flo, fhi))
+        if is_key:
+            flo, fhi = bounds[0]
+            step = (fhi - flo) / max(scale_factor, 1)
+            return [flo + step * i for i in range(scale_factor)]
+        return [random.uniform(*random.choice(bounds)) for _ in range(scale_factor)]
+    if base in (DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP):
+        default_span = (
+            timedelta(days=999) if base == DataType.DATE else timedelta(seconds=999_999)
+        )
+        spans: list[tuple[Any, int]] = []
+        for r in ranges:
+            rmin: Any = r.min
+            rmax: Any = r.max
+            tlo = rmin if rmin is not None else rmax - default_span
+            thi = rmax if rmax is not None else rmin + default_span
+            delta = thi - tlo
+            units = delta.days if base == DataType.DATE else int(delta.total_seconds())
+            spans.append((tlo, units))
+        unit = "days" if base == DataType.DATE else "seconds"
+        if is_key:
+            tlo, units = spans[0]
+            return [
+                tlo + timedelta(**{unit: i % (units + 1)}) for i in range(scale_factor)
+            ]
+        out: list[Any] = []
+        for _ in range(scale_factor):
+            tlo, units = random.choice(spans)
+            out.append(tlo + timedelta(**{unit: random.randint(0, units)}))
+        return out
+    raise NotImplementedError(f"Mocking not implemented for validated type {full_type}")
+
+
 def mock_datatype(
     full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int, is_key: bool = False
 ) -> list[Any]:
+    if isinstance(full_type, ValidatedType):
+        return mock_validated(full_type, scale_factor, is_key)
     if isinstance(full_type, EnumType):
         values = list(full_type.values)
         if not values:

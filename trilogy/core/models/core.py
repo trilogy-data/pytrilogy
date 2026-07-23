@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import UserDict, UserList
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -23,7 +24,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import DatePart, Modifier, Ordering
+from trilogy.core.enums import ComparisonOperator, DatePart, Modifier, Ordering
 
 
 class DataTyped:
@@ -46,6 +47,7 @@ TYPEDEF_TYPES = Union[
     "DataTyped",
     "TraitDataType",
     "EnumType",
+    "ValidatedType",
 ]
 
 CONCRETE_TYPES = Union[
@@ -56,6 +58,7 @@ CONCRETE_TYPES = Union[
     "StructType",
     "TraitDataType",
     "EnumType",
+    "ValidatedType",
 ]
 
 KT = TypeVar("KT")
@@ -115,7 +118,7 @@ class TraitDataType:
             return self.type == other
         elif isinstance(other, TraitDataType):
             return self.type == other.type and self.traits == other.traits
-        elif isinstance(other, EnumType):
+        elif isinstance(other, (EnumType, ValidatedType)):
             return self.type == other.type
         return False
 
@@ -164,7 +167,7 @@ class EnumType:
             return self.type == other
         if isinstance(other, EnumType):
             return self.type == other.type and self.values == other.values
-        if isinstance(other, TraitDataType):
+        if isinstance(other, (TraitDataType, ValidatedType)):
             return self.type == other.type
         return False
 
@@ -175,6 +178,100 @@ class EnumType:
     @property
     def value(self) -> str:
         return self.type.value
+
+
+RANGE_BOUND_TYPES = Union[int, float, date, datetime, None]
+
+
+def _render_bound(value: RANGE_BOUND_TYPES) -> str:
+    if isinstance(value, (date, datetime)):
+        return f"'{value.isoformat()}'"
+    return str(value)
+
+
+@dataclass(frozen=True)
+class ValueRange:
+    min: RANGE_BOUND_TYPES = None
+    max: RANGE_BOUND_TYPES = None
+
+    def __post_init__(self):
+        if self.min is None and self.max is None:
+            raise ValueError("ValueRange requires at least one bound")
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError(f"ValueRange min {self.min} exceeds max {self.max}")
+
+    def __str__(self) -> str:
+        if self.min is not None and self.min == self.max:
+            return _render_bound(self.min)
+        left = _render_bound(self.min) if self.min is not None else ""
+        right = _render_bound(self.max) if self.max is not None else ""
+        return f"{left}..{right}"
+
+    def contains(self, value: Any) -> bool:
+        try:
+            if self.min is not None and value < self.min:
+                return False
+            if self.max is not None and value > self.max:
+                return False
+        except TypeError:
+            return False
+        return True
+
+
+@dataclass
+class ValidatedType:
+    """A base type constrained by declared validators: inclusive value ranges
+    (numeric/date/datetime bases) or a full-match regex (string base).
+    Compares equal to its bare base type, mirroring EnumType/TraitDataType."""
+
+    type: Union[DataType, "NumericType"]
+    ranges: tuple[ValueRange, ...] = ()
+    pattern: str | None = None
+
+    def __hash__(self):
+        return hash(self.type)
+
+    def __str__(self) -> str:
+        if isinstance(self.type, NumericType):
+            base = f"numeric({self.type.precision},{self.type.scale})"
+        else:
+            base = self.type.value
+        if self.pattern is not None:
+            return f"{base}[{self.pattern!r}]"
+        return f"{base}[{', '.join(str(r) for r in self.ranges)}]"
+
+    def __eq__(self, other):
+        if isinstance(other, DataType):
+            return self.type == other
+        if isinstance(other, ValidatedType):
+            return (
+                self.type == other.type
+                and self.ranges == other.ranges
+                and self.pattern == other.pattern
+            )
+        if isinstance(other, (TraitDataType, EnumType)):
+            return self.type == other.type
+        return False
+
+    @property
+    def data_type(self) -> DataType:
+        if isinstance(self.type, NumericType):
+            return DataType.NUMERIC
+        return self.type
+
+    @property
+    def value(self) -> str:
+        return self.data_type.value
+
+    def check_value(self, value: Any) -> bool:
+        """True when a non-null value satisfies the declared validators."""
+        if self.pattern is not None:
+            return (
+                isinstance(value, str) and re.fullmatch(self.pattern, value) is not None
+            )
+        if not self.ranges:
+            return True
+        return any(r.contains(value) for r in self.ranges)
 
 
 @dataclass(frozen=True)
@@ -479,6 +576,12 @@ def is_compatible_datatype(left, right):
         return is_compatible_datatype(left.type, right)
     if isinstance(right, EnumType):
         return is_compatible_datatype(left, right.type)
+    # A validated type is a constrained domain over a base type — structurally
+    # compatible with that base; the constraint itself is enforced separately.
+    if isinstance(left, ValidatedType):
+        return is_compatible_datatype(left.type, right)
+    if isinstance(right, ValidatedType):
+        return is_compatible_datatype(left, right.type)
     if left == DataType.ANY or right == DataType.ANY:
         return True
     if left == DataType.NULL or right == DataType.NULL:
@@ -513,6 +616,73 @@ def is_compatible_datatype(left, right):
     if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
         return True
     return False
+
+
+def constant_domain_violation(
+    expected: Any,
+    operator: ComparisonOperator,
+    value: Any,
+) -> str | None:
+    """A reason string when comparing a literal against a concept whose declared
+    domain (ValidatedType ranges/regex or EnumType membership) makes the
+    comparison provably never match; None when satisfiable or undecidable."""
+    while isinstance(expected, TraitDataType):
+        expected = expected.type
+    if isinstance(value, Enum):
+        return None
+    # EnumType is deliberately NOT checked here: enum domains may be sampled /
+    # inferred (see tests/engine/test_enum_unions.py), so a non-member
+    # comparison is a legitimate possibly-empty filter. ValidatedType domains
+    # are always user-declared, so impossibility is a real authoring error.
+    if not isinstance(expected, ValidatedType):
+        return None
+    if expected.pattern is not None:
+        if operator not in (ComparisonOperator.EQ, ComparisonOperator.IN):
+            return None
+        if not isinstance(value, str):
+            return None
+        if not expected.check_value(value):
+            return f"{value!r} can never match declared pattern {expected}"
+        return None
+    if not expected.ranges:
+        return None
+    if expected.data_type in (DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP):
+        if not isinstance(value, (date, datetime)):
+            return None
+    elif isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return None
+    if operator in (ComparisonOperator.EQ, ComparisonOperator.IN):
+        if not expected.check_value(value):
+            return f"{value!r} is outside declared domain {expected}"
+        return None
+    mins: list[Any] = [r.min for r in expected.ranges]
+    maxes: list[Any] = [r.max for r in expected.ranges]
+    global_min = None if any(m is None for m in mins) else min(mins)
+    global_max = None if any(m is None for m in maxes) else max(maxes)
+    try:
+        if operator == ComparisonOperator.GT:
+            if global_max is not None and global_max <= value:
+                return (
+                    f"declared domain {expected} has no value > {_render_bound(value)}"
+                )
+        elif operator == ComparisonOperator.GTE:
+            if global_max is not None and global_max < value:
+                return (
+                    f"declared domain {expected} has no value >= {_render_bound(value)}"
+                )
+        elif operator == ComparisonOperator.LT:
+            if global_min is not None and global_min >= value:
+                return (
+                    f"declared domain {expected} has no value < {_render_bound(value)}"
+                )
+        elif operator == ComparisonOperator.LTE:
+            if global_min is not None and global_min > value:
+                return (
+                    f"declared domain {expected} has no value <= {_render_bound(value)}"
+                )
+    except TypeError:
+        return None
+    return None
 
 
 def reduce_tuple_element_datatypes(
@@ -568,6 +738,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             | ArrayType()
             | MapType()
             | EnumType()
+            | ValidatedType()
             | StructType()
         ):
             return arg

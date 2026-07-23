@@ -84,6 +84,7 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
 )
 from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
@@ -2285,6 +2286,8 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
+        elif isinstance(e, ValidatedType):
+            return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):

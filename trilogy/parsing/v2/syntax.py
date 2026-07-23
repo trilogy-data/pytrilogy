@@ -29,6 +29,8 @@ class SyntaxNodeKind(str, Enum):
     STRUCT_LITERAL = "struct_literal"
     LIST_TYPE = "list_type"
     ENUM_TYPE = "enum_type"
+    VALIDATED_TYPE = "validated_type"
+    RANGE_SPEC = "range_spec"
     CONCEPT_NULLABLE_MODIFIER = "concept_nullable_modifier"
     METADATA = "metadata"
     INT_LITERAL = "int_literal"
@@ -369,6 +371,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "struct_lit": SyntaxNodeKind.STRUCT_LITERAL,
     "list_type": SyntaxNodeKind.LIST_TYPE,
     "enum_type": SyntaxNodeKind.ENUM_TYPE,
+    "validated_type": SyntaxNodeKind.VALIDATED_TYPE,
+    "range_spec": SyntaxNodeKind.RANGE_SPEC,
     "concept_nullable_modifier": SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER,
     "metadata": SyntaxNodeKind.METADATA,
     "int_lit": SyntaxNodeKind.INT_LITERAL,

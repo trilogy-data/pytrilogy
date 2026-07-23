@@ -25,7 +25,7 @@ from trilogy.core.models.build import (
     BuildGrain,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import CONCRETE_TYPES, EnumType
+from trilogy.core.models.core import CONCRETE_TYPES, EnumType, ValidatedType
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -119,6 +119,11 @@ def type_check(
             and input in target_type.values
         )
 
+    if isinstance(target_type, ValidatedType):
+        return type_check(
+            input, target_type.type, nullable
+        ) and target_type.check_value(input)
+
     if target_type == DataType.STRING:
         return isinstance(input, str)
     if target_type == DataType.BYTES:
@@ -185,6 +190,15 @@ def inferred_type_check(
         return (
             isinstance(inferred_type, EnumType)
             and isinstance(target_type, EnumType)
+            and inferred_type == target_type
+        )
+
+    if isinstance(inferred_type, ValidatedType) or isinstance(
+        target_type, ValidatedType
+    ):
+        return (
+            isinstance(inferred_type, ValidatedType)
+            and isinstance(target_type, ValidatedType)
             and inferred_type == target_type
         )
 

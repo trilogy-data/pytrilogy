@@ -2,7 +2,11 @@ from dataclasses import dataclass
 from typing import Any, List, Sequence
 
 from trilogy.core.enums import Modifier
-from trilogy.core.models.core import CONCRETE_TYPES
+from trilogy.core.models.core import (
+    CONCRETE_TYPES,
+    ValidatedType,
+    is_compatible_datatype,
+)
 
 
 class ConfigurationException(Exception):
@@ -118,6 +122,12 @@ class DatasourceColumnBindingData:
             if self.actual_modifiers
             else ""
         )
+        if (
+            isinstance(self.actual_type, ValidatedType)
+            and self.value is not None
+            and is_compatible_datatype(self.value_type, self.actual_type)
+        ):
+            return f"Value '{self.value}' for concept {self.address} violates declared domain {str(self.actual_type)}{actual_mods}"
         return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {str(self.actual_type)}{actual_mods}"
 
     def is_modifier_issue(self) -> bool:

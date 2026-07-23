@@ -61,7 +61,9 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
     arg_to_datatype,
+    constant_domain_violation,
     is_compatible_datatype,
 )
 from trilogy.utility import unique
@@ -625,6 +627,19 @@ def _is_row_tuple(x: Any) -> bool:
     return isinstance(x, Function) and x.operator == FunctionType.ROW_TUPLE
 
 
+def _mirror_operator(operator: ComparisonOperator) -> ComparisonOperator:
+    """`250 > x` constrains x as `x < 250` — swap direction for the right operand."""
+    if operator == ComparisonOperator.GT:
+        return ComparisonOperator.LT
+    if operator == ComparisonOperator.LT:
+        return ComparisonOperator.GT
+    if operator == ComparisonOperator.GTE:
+        return ComparisonOperator.LTE
+    if operator == ComparisonOperator.LTE:
+        return ComparisonOperator.GTE
+    return operator
+
+
 @dataclass
 class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     left: Union[
@@ -716,6 +731,14 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                             f"Cannot compare {left_name} and value-list element "
                             f"{elem} ({et}) with operator {self.operator} in {str(self)}"
                         )
+                    if self.operator == ComparisonOperator.IN:
+                        violation = constant_domain_violation(
+                            left_type, ComparisonOperator.EQ, elem
+                        )
+                        if violation:
+                            raise SyntaxError(
+                                f"Impossible comparison in {str(self)}: {violation}"
+                            )
             elif isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
             ):
@@ -733,6 +756,13 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                 raise SyntaxError(
                     f"Cannot compare {left_name} ({self.left}) and {right_name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
+            violation = constant_domain_violation(left_type, self.operator, self.right)
+            if violation is None:
+                violation = constant_domain_violation(
+                    right_type, _mirror_operator(self.operator), self.left
+                )
+            if violation:
+                raise SyntaxError(f"Impossible comparison in {str(self)}: {violation}")
 
     def __add__(self, other):
         if other is None:
@@ -912,6 +942,15 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                 raise SyntaxError(
                     f"Cannot use BETWEEN with incompatible types {left_name} and {bound_name} ({label})"
                 )
+        # x between low and high == x >= low and x <= high; either arm being
+        # provably outside the declared domain makes the whole predicate false
+        for bound, op in (
+            (self.low, ComparisonOperator.GTE),
+            (self.high, ComparisonOperator.LTE),
+        ):
+            violation = constant_domain_violation(left_type, op, bound)
+            if violation:
+                raise SyntaxError(f"Impossible comparison in {str(self)}: {violation}")
 
     def __add__(self, other) -> "Conditional | Between":
         if other is None:
@@ -1840,6 +1879,8 @@ def get_basic_type(
     if isinstance(type, NumericType):
         return DataType.NUMERIC
     if isinstance(type, EnumType):
+        return get_basic_type(type.type)
+    if isinstance(type, ValidatedType):
         return get_basic_type(type.type)
     if isinstance(type, TraitDataType):
         return get_basic_type(type.type)
@@ -3372,6 +3413,7 @@ FuncArgs = (
     | MapType
     | NumericType
     | EnumType
+    | ValidatedType
     | ListWrapper[Any]
     | TupleWrapper[Any]
     | Comparison

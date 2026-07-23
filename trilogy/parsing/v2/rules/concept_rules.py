@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import difflib
+import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import (
@@ -46,6 +47,8 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
+    ValueRange,
     arg_to_datatype,
     is_compatible_datatype,
 )
@@ -580,6 +583,138 @@ def enum_type(
     return EnumType(type=base_type, values=list(args[1:]))
 
 
+class _RangeSpec(NamedTuple):
+    low: Any
+    high: Any
+    is_range: bool
+    node: SyntaxNode
+
+
+def range_spec(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> _RangeSpec:
+    low: Any = None
+    high: Any = None
+    seen_sep = False
+    for child in node.children:
+        if isinstance(child, SyntaxToken):
+            if child.value == "..":
+                seen_sep = True
+            continue
+        if seen_sep:
+            high = hydrate(child)
+        else:
+            low = hydrate(child)
+    if not seen_sep:
+        high = low
+    if low is None and high is None:
+        raise fail(
+            node,
+            "validator range requires at least one bound, e.g. 0..100, 0.., ..100",
+        )
+    return _RangeSpec(low=low, high=high, is_range=seen_sep, node=node)
+
+
+_VALIDATED_INT_BASES = (DataType.INTEGER, DataType.BIGINT)
+_VALIDATED_FLOAT_BASES = (
+    DataType.FLOAT,
+    DataType.DOUBLE,
+    DataType.NUMBER,
+    DataType.NUMERIC,
+)
+_VALIDATED_TEMPORAL_BASES = (DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP)
+
+
+def _parse_temporal_bound(
+    raw: Any, base: DataType, node: SyntaxNode
+) -> date | datetime:
+    if not isinstance(raw, str):
+        raise fail(
+            node,
+            f"{base.value} validator bounds must be quoted literals like "
+            f"'2024-01-01', got {raw!r}",
+        )
+    try:
+        if base == DataType.DATE:
+            return date.fromisoformat(raw)
+        return datetime.fromisoformat(raw)
+    except ValueError as e:
+        raise fail(node, f"invalid {base.value} literal {raw!r} in validator: {e}")
+
+
+def validated_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> ValidatedType:
+    base: DataType | NumericType | None = None
+    specs: list[_RangeSpec] = []
+    for child in node.children:
+        if isinstance(child, SyntaxToken):
+            if base is None and child.value not in ("[", "]", ","):
+                name = str(child.value).lower()
+                base = DataType(_DATATYPE_SPELLING_ALIASES.get(name, name))
+            continue
+        if child.kind == SyntaxNodeKind.NUMERIC_TYPE:
+            base = hydrate(child)
+        elif child.kind == SyntaxNodeKind.RANGE_SPEC:
+            specs.append(hydrate(child))
+    if base is None or not specs:
+        raise fail(
+            node, "validated type requires a base type and at least one validator"
+        )
+    base_dt = DataType.NUMERIC if isinstance(base, NumericType) else base
+    if base_dt == DataType.STRING:
+        if len(specs) != 1 or specs[0].is_range or not isinstance(specs[0].low, str):
+            raise fail(
+                node,
+                "string validators take exactly one quoted regex pattern, "
+                "e.g. string['[A-Z]+']",
+            )
+        pattern = specs[0].low
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise fail(node, f"invalid regex in string validator {pattern!r}: {e}")
+        return ValidatedType(type=base, pattern=pattern)
+    ranges: list[ValueRange] = []
+    for spec in specs:
+        low, high = spec.low, spec.high
+        if base_dt in _VALIDATED_TEMPORAL_BASES:
+            if not spec.is_range:
+                low = high = _parse_temporal_bound(low, base_dt, spec.node)
+            else:
+                if low is not None:
+                    low = _parse_temporal_bound(low, base_dt, spec.node)
+                if high is not None:
+                    high = _parse_temporal_bound(high, base_dt, spec.node)
+        elif base_dt in _VALIDATED_INT_BASES:
+            for bound in (low, high):
+                if bound is not None and not isinstance(bound, int):
+                    raise fail(
+                        spec.node,
+                        f"{base_dt.value} validator bounds must be integers, "
+                        f"got {bound!r}",
+                    )
+        elif base_dt in _VALIDATED_FLOAT_BASES:
+            for bound in (low, high):
+                if bound is not None and not isinstance(bound, (int, float)):
+                    raise fail(
+                        spec.node,
+                        f"{base_dt.value} validator bounds must be numbers, "
+                        f"got {bound!r}",
+                    )
+        else:
+            raise fail(node, f"validators are not supported on type {base_dt.value}")
+        try:
+            ranges.append(ValueRange(min=low, max=high))
+        except ValueError as e:
+            raise fail(spec.node, str(e))
+    return ValidatedType(type=base, ranges=tuple(ranges))
+
+
 def concept_nullable_modifier(
     node: SyntaxNode,
     context: RuleContext,
@@ -636,6 +771,8 @@ CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.STRUCT_TYPE: struct_type,
     SyntaxNodeKind.STRUCT_COMPONENT: struct_component,
     SyntaxNodeKind.ENUM_TYPE: enum_type,
+    SyntaxNodeKind.VALIDATED_TYPE: validated_type,
+    SyntaxNodeKind.RANGE_SPEC: range_spec,
     SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER: concept_nullable_modifier,
     SyntaxNodeKind.METADATA: metadata,
     SyntaxNodeKind.PROPERTY_IDENTIFIER: prop_ident,
