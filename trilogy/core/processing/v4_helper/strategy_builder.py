@@ -38,6 +38,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
 )
+from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
@@ -1164,6 +1165,47 @@ def _widen_passthrough_group(
             break
 
 
+def _relation_licenses_handle(
+    environment: BuildEnvironment, concept: BuildConcept
+) -> bool:
+    """Whether a declared relation lets a non-rowset scan stand in for a rowset
+    handle. A scoped join (`subset join rs.k = l_key`) or an authored merge makes
+    the handle a substitutable identity of a column the anchor binds; without
+    one, a rowset is opaque — its handle's row lineage alone must not let a scan
+    over the same base re-derive it (a bare shared-key read of a renamed rowset
+    key is Disconnected in v3, never an implicit join)."""
+    if concept.pseudonyms:
+        return True
+    return _scoped_relation_member(environment, concept.address)
+
+
+def _scoped_relation_member(environment: BuildEnvironment, address: str) -> bool:
+    for canonical, members in environment.scoped_join_key_groups.items():
+        if address == canonical or address in members:
+            return True
+    return False
+
+
+def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]:
+    """Addresses of the hidden per-rowset alias concepts a rowset body's renamed
+    outputs materialize (`select aid as k` stores `local._rs_k`; see
+    ``SemanticState.mangle_rowset_alias``). These are internals of the rowset —
+    an un-renamed output's content is the base concept itself and is excluded.
+    Their auto-pseudonym back to the authored source is rename plumbing, not a
+    declared relation, so it never licenses synthesis on a foreign scan."""
+    out: set[str] = set()
+    for concept in [
+        *environment.concepts.values(),
+        *environment.alias_origin_lookup.values(),
+    ]:
+        lineage = concept.lineage
+        if isinstance(lineage, BuildRowsetItem) and lineage.content.name.startswith(
+            f"_{lineage.rowset.name}_"
+        ):
+            out.add(lineage.content.address)
+    return out
+
+
 def _widen_merge_join_keys(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -1181,6 +1223,7 @@ def _widen_merge_join_keys(
         join_key = sibling_outputs.get(address) or _concept_at(environment, address)
         if join_key is not None:
             join_key_concepts.append(join_key)
+    mangled_contents = _mangled_rowset_content_addresses(environment)
 
     for parent in parents:
         # A pure dedup GroupNode (every output rides through from its parents;
@@ -1241,6 +1284,22 @@ def _widen_merge_join_keys(
                 and concept.lineage.rowset.name not in parent_rowsets
             ):
                 continue
+            # A non-rowset parent may substitute a handle only when a declared
+            # relation licenses it (q35's anchor under `subset join rs.k =
+            # l_key`); unlicensed, the synthesis silently joins a query v3
+            # reports as disconnected (rowset_generation_matrix islanded).
+            # A renamed output's mangled content (`_rs_k`) is equally internal
+            # — the licensed plan joins the anchor's own column against the
+            # boundary's handle, never a synthesized body-local.
+            if not parent_rowsets:
+                if isinstance(
+                    concept.lineage, BuildRowsetItem
+                ) and not _relation_licenses_handle(environment, concept):
+                    continue
+                if concept.address in mangled_contents and not _scoped_relation_member(
+                    environment, concept.address
+                ):
+                    continue
             if not concept_satisfiable(concept, available):
                 continue
             carried.append(concept)
@@ -1263,6 +1322,58 @@ def _widen_merge_join_keys(
                     ]
                 )
                 parent.rebuild_cache()
+
+
+def _raise_if_rowset_islanded(
+    parents: list[StrategyNode],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+) -> None:
+    """A FINAL contributor sharing no join axis with any sibling — no common
+    output address, pseudonym link, or scoped-relation mate — is about to
+    cross-join ON 1=1. With a rowset boundary involved that is the v3
+    Disconnected case (a rowset is opaque; only a declared join relates it back
+    to its base), not a legitimate scalar cross join — confirm against the
+    shared connectivity check with rowset islanding ON and surface the typed
+    subgraph error. Grainless parents (constants, global aggregates) cross-join
+    legitimately and stay out of the component analysis."""
+    row_bearing = [p for p in parents if p.grain and p.grain.components]
+    if len(row_bearing) < 2:
+        return
+    if not any(
+        isinstance(o.lineage, BuildRowsetItem)
+        for p in row_bearing
+        for o in p.output_concepts
+    ):
+        return
+    mangled_contents = _mangled_rowset_content_addresses(environment)
+    keys: list[set[str]] = []
+    for parent in row_bearing:
+        addrs: set[str] = set()
+        for o in parent.output_concepts:
+            addrs.add(o.address)
+            # A mangled body-local's pseudonym back to its authored source
+            # (`_rs_k` ~ `a.aid`) is rename plumbing, not a join axis — the
+            # phantom bridge islanding exists to sever.
+            if o.address not in mangled_contents:
+                addrs.update(o.pseudonyms)
+        for canonical, members in environment.scoped_join_key_groups.items():
+            relation = {canonical, *members}
+            if addrs & relation:
+                addrs |= relation
+        keys.append(addrs)
+    component = list(range(len(row_bearing)))
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            if keys[i] & keys[j]:
+                merged = {component[i], component[j]}
+                target = min(merged)
+                component = [target if c in merged else c for c in component]
+    if len(set(component)) > 1:
+        raise_if_disconnected_for(
+            mandatory_list, None, environment, graph, island_rowsets=True
+        )
 
 
 def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) -> None:
@@ -2548,6 +2659,7 @@ def _assemble_final_node(
     final_merge_grain = frozenset().union(
         *(contract.projection_grain for contract in contracts_by_gid.values())
     )
+    mangled_contents = _mangled_rowset_content_addresses(environment)
 
     parents: list[StrategyNode] = []
     for gid in contributing:
@@ -2573,13 +2685,19 @@ def _assemble_final_node(
             # can derive those (it shares the rowset's base key) would absorb the
             # whole rowset and drop its internal filter (rowset_outer_addition).
             # Those handles aren't join keys; the rowset stays a separate merge
-            # contributor.
+            # contributor. A renamed output's mangled content (`_rs_k`) is a
+            # rowset internal the same way — carrying it silently joins a query
+            # v3 reports as disconnected, unless a declared relation licenses it.
             group_concepts.extend(
                 c
                 for address in sorted(preserve_keys)
                 if (c := _concept_at(environment, address)) is not None
                 and address not in seen_group_concepts
                 and c.derivation != Derivation.ROWSET
+                and (
+                    address not in mangled_contents
+                    or _scoped_relation_member(environment, address)
+                )
             )
         if is_root:
             # A filter-only WHERE arg the SELECT never projects (q30.alt's
@@ -2651,6 +2769,7 @@ def _assemble_final_node(
     )
     parents = _fold_passthrough_parents(parents)
     _widen_merge_join_keys(parents, environment, final_merge_grain)
+    _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()
     for p in parents:

@@ -1,6 +1,93 @@
-# v4 compatibility audit (last refreshed 2026-07-22, session 24)
+# v4 compatibility audit (last refreshed 2026-07-23, session 25)
 
-## Current state (after 2026-07-22 session 24)
+## Current state (after 2026-07-23 session 25)
+
+**Full v4 sweep (session 25): 12 real failed / 5929 passed**
+(`local_scripts/v4_sweep_0723_s25.log` — raw 13, minus the
+`tests/cli/test_display.py` rich_enabled detached-run console noise). Honest
+delta vs s24: **cleared `rowset_generation_matrix islanded` (−1), ZERO new
+failures** (`Compare-Object` of the sorted FAILED lists,
+`local_scripts/s24_failed_sorted.txt` vs `s25_failed_sorted.txt`: exactly that
+one removed, nothing added). TPC-DS = the pre-existing 6 exactly (in-sweep AND
+standalone battery — NOTE the battery under `--runxfail` shows 8, which is the
+6 plus the two registry `_V4_MASKED_LEAK` xfails `test_forty_six` and
+`test_membership_in_having_auto_concept` unmasked, NOT new failures; q46's SQL
+was A/B-verified byte-identical pre/post via stash: GROUP BY count 2, len 3757
+both). xpassed 29 / xfailed 45 (both unchanged); ruff/mypy(310)/black clean.
+The 82 errors are clickhouse-server env (not real). The only changed file is
+v4-only (`v4_helper/strategy_builder.py`), so no v3 sweep is needed.
+
+**The 12 remaining (grouped).** TPC-DS ×6 (q70/q29/q81 + q29-feeder +
+q64_correlated_filter + or_membership_with_projected_aggregate) and singles
+(twin_keeps_scalar_refs, cube_two_windows, collapse_basic funnel,
+union_bare_aggregate set_semantics, setops except_and_union,
+constant_in_cross_datasource_merge). ALL non-TPC-DS rowset items are CLEARED.
+
+**NEXT options:** TPC-DS ×6; `cube_two_windows`; XPASS prune (29 standing);
+registry `_V4_MASKED_LEAK` audit (q46 shape count==2 + membership_in_having —
+both pre-existing, tracked, and unrelated to rowset work).
+
+## ✅ 2026-07-23 (session 25) — an unlicensed rowset handle/body-local is never synthesized on a non-rowset scan, and an axis-less FINAL with a rowset boundary raises v3's typed Disconnected (+1)
+
+Cleared `rowset_generation_matrix single_rowset_islanded_property_clean_error`
+(the s24-mapped NEXT). The v3 contract, confirmed by oracle probes
+(`local_scripts/repro_s24_sharedkey.py`, `repro_s25_enrich.py`): reading a
+rowset's outputs beside base concepts with NO declared relation is
+`DisconnectedConceptsException` whenever the rowset RENAMED its key
+(`select item_id as k`) — even if the handle key itself is projected, and
+limit-independent; only an UN-renamed pass-through key (`select item_id`, whose
+`BuildRowsetItem.content` IS the base concept) or a declared scoped
+join/merge licenses the join-back. v4 silently INNER-joined all four renamed
+shapes by re-deriving the handle on the base scan through row lineage. All in
+`v4_helper/strategy_builder.py` (v4-only):
+
+1. **`_widen_merge_join_keys` license gate.** A non-rowset parent may carry a
+   rowset handle only when `_relation_licenses_handle` passes (handle has
+   authored pseudonyms — scoped-join mates/merges — or is a
+   `scoped_join_key_groups` member). Same for a MANGLED body-local content
+   (`local._rs_k`, the `_{rowset}_{name}` alias of
+   `SemanticState.mangle_rowset_alias`) — with the stricter
+   scoped-membership-only license, because a content's auto-pseudonym back to
+   its authored source (`_rs_k` ~ `a.aid`) is rename plumbing, not a relation.
+   q35's anchor substitution (`subset join rs.k = l_key`) stays licensed.
+2. **ROOT preserve-keys carry** (`_assemble_final_node`) gets the same
+   mangled-content exclusion: the FINAL merge grain can hold a rowset's
+   resolved grain key (`_rs_k`), and carrying it onto the root scan
+   materialized the phantom axis. The q46 legit case (bought rowset's grain
+   carries the UN-renamed `customer.sk`) is untouched by construction.
+3. **`_raise_if_rowset_islanded`** (after the FINAL widening): when ≥2
+   row-bearing parents (empty-grain constants/global aggregates excluded)
+   partition into >1 component under shared-address ∪ pseudonym ∪
+   scoped-relation-mate axes — with mangled contents' pseudonyms excluded from
+   the axis sets, same reasoning — and a rowset boundary is involved, delegate
+   to the shared `raise_if_disconnected_for(..., island_rowsets=True)`. That
+   reuses v3's exact typed error + subgraph message, and only fires in the
+   already-suspect axis-less situation, so islanding false-positives cannot
+   affect healthy queries; if islanding finds the graph connected we fall
+   through to today's behavior.
+
+Without piece 3 the gates alone degraded the islanded read to a silent
+`ON 1=1` cartesian — strictly worse than the bug. A blocked synthesis MUST be
+paired with a reachable typed error, not just removed.
+
+BONUS parity beyond the failing corpus (no tests existed): `select rs.k,
+rs.sv, a.aw` (key projected, plain AND aggregate rowsets) and the LIMIT/no-LIMIT
+bare measure reads now all raise exactly like v3; the un-renamed-key readback
+and declared-join shapes keep identical rows (all six shapes in
+`repro_s25_enrich.py` + `repro_s24_sharedkey.py`).
+
+HARNESS NOTE (cost of getting it wrong: a false "2 new TPC-DS regressions"
+scare): the standalone TPC-DS battery run with `--runxfail` UNMASKS the
+registry `_V4_MASKED_LEAK` xfails (q46, membership_in_having), so its raw
+count reads 8 where the sweep reads 6. Compare batteries to the sweep only
+after accounting for registry entries — or run without `--runxfail`.
+
+Diagnostics kept: `local_scripts/s25_groups.py` (group dump, `kp` arg for the
+key-projected variant), `s25_pseudonyms.py` (handle pseudonyms bare vs
+joined — a declared scoped join is visible as mate pseudonyms on the HANDLE;
+a bare read has none, which is what makes pseudonyms a usable license).
+
+## Superseded state (after 2026-07-22 session 24)
 
 **Full v4 sweep (session 24): 13 real failed / 5928 passed**
 (`local_scripts/v4_sweep_0722_s24.log` — raw 14, minus the
