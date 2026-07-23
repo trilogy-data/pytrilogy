@@ -4,6 +4,7 @@ from typing import Any, List, Sequence
 from trilogy.core.enums import Modifier
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
+    TraitDataType,
     ValidatedType,
     is_compatible_datatype,
 )
@@ -122,8 +123,11 @@ class DatasourceColumnBindingData:
             if self.actual_modifiers
             else ""
         )
+        declared = self.actual_type
+        if isinstance(declared, TraitDataType):
+            declared = declared.type
         if (
-            isinstance(self.actual_type, ValidatedType)
+            isinstance(declared, ValidatedType)
             and self.value is not None
             and is_compatible_datatype(self.value_type, self.actual_type)
         ):

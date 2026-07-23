@@ -104,8 +104,10 @@ columns, and trait-assigned columns are skipped (a trait may carry its own
 stdlib validator; observed partial bounds would conflict on re-parse).
 
 String enforcement rides the **stdlib traits** instead of per-column regex
-inference: `std.date` types carry ranges (`type month int[1..12];`, year/
-quarter/week/day/hour/minute/second/day_of_week), `std.net` carries permissive
+inference: `std.date`'s calendar-position types carry ranges
+(`type month int[1..12];`, year/quarter/week/day/day_of_week) —
+hour/minute/second stay unbounded because they double as duration-unit tags
+(`duration numeric::second`). `std.net` carries permissive
 regexes matching the ingest value-gates (`email_address string['\S+@\S+']`,
 ipv4, url), `std.color.hex` a hex-color pattern. Trait composition then
 enforces them anywhere the trait is applied. An enum base composing with a

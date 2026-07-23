@@ -657,7 +657,22 @@ class Renderer:
     @to_string.register
     def _(self, arg: TraitDataType):
         traits = "::".join([x for x in arg.traits])
-        return f"{self.to_string(arg.data_type)}::{traits}"
+        base = arg.data_type
+        if isinstance(base, ValidatedType) and self.environment:
+            # a validator carried from a declared trait type is restored on
+            # re-parse, so render the authored bare base — keeps ingest output
+            # and fmt round-trips byte-stable
+            for trait in arg.traits:
+                declared = self.environment.data_types.get(trait)
+                if (
+                    declared is not None
+                    and isinstance(declared.type, ValidatedType)
+                    and declared.type.ranges == base.ranges
+                    and declared.type.pattern == base.pattern
+                ):
+                    base = base.type
+                    break
+        return f"{self.to_string(base)}::{traits}"
 
     @to_string.register
     def _(self, arg: ValidatedType):

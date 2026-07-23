@@ -8,9 +8,11 @@ type month_name string;
 type quarter int[1..4];
 type week int[1..53];
 type day int[1..31];
-type hour int[0..23];
-type minute int[0..59];
-type second int[0..59];
+# hour/minute/second stay unbounded: they double as duration-unit tags
+# (e.g. `duration numeric::second`), unlike the calendar-position types above
+type hour int;
+type minute int;
+type second int;
 # 0..7 admits both 0-6 and 1-7 weekday conventions
 type day_of_week int[0..7];
 type day_of_week_name string;

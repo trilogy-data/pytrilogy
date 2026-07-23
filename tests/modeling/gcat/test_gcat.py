@@ -525,7 +525,7 @@ def test_join_discovery():
     queries = base.parse_text("""import launch_dashboard;
 
 where
-  org.flag = 'abc123'
+  org.flag = 'https://example.com/abc123'
 SELECT
     count(vehicle.family) by __preql_internal.all_rows -> all_vehicles,
 LIMIT 1
