@@ -14,12 +14,17 @@ from collections import defaultdict
 from typing import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind
-from .models import ConceptAttrs, GroupBucket
+from .models import ConceptAttrs, GroupBucket, nulls_grouping_keys
 
 NodeItem = tuple[str, ConceptAttrs]
 EnsureAssignedFn = Callable[[Derivation], None]
@@ -49,6 +54,29 @@ def _bucket_for(
         grain_components=grain,
         label=label,
     )
+
+
+def _apply_grouping_mode(
+    bucket: GroupBucket,
+    grouping_mode: AggregateGroupingMode | None,
+    *extra: str,
+) -> None:
+    """Record an aggregate's GROUP BY mode on its bucket.
+
+    Two things fall out of one mode and must not drift apart: the SEMANTICS
+    consumers ask about (`bucket.nulls_grouping_keys`) and the IDENTITY that
+    keeps a non-standard bucket from colliding with a STANDARD one of the same
+    (label, depth, grain) — one CTE cannot carry both GROUP BY clauses.
+    ``extra`` appends further discriminator segments for rules that also split
+    on their own signature."""
+    segments: list[str] = []
+    if grouping_mode is not None:
+        bucket.grouping_mode = grouping_mode
+        if nulls_grouping_keys(grouping_mode):
+            segments.append(f"grp:{grouping_mode.value}")
+    segments += extra
+    if segments:
+        bucket.discriminator = ":".join(segments)
 
 
 def _split_by_label(items: list[NodeItem]) -> dict[str, list[NodeItem]]:
@@ -88,7 +116,7 @@ def partition_by_depth_and_grain(
     aggregate concepts and harmlessly collapses to a single value
     there."""
     by_key: dict[
-        tuple[str, DepthLabel, frozenset[str], str | None],
+        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
         GroupBucket,
     ] = {}
     for node, data in items:
@@ -101,11 +129,7 @@ def partition_by_depth_and_grain(
         bucket = by_key.get(key)
         if bucket is None:
             bucket = _bucket_for(depth_label, derivation, grain, label=label)
-            # Encode grouping mode in the bucket discriminator so distinct
-            # modes map to distinct group ids (and survive the topo/edge
-            # walks below as separate nodes).
-            if grouping_mode and grouping_mode != "standard":
-                bucket.discriminator = f"grp:{grouping_mode}"
+            _apply_grouping_mode(bucket, grouping_mode)
             by_key[key] = bucket
         _add_member(bucket, node, data)
     return list(by_key.values())
@@ -138,12 +162,8 @@ def partition_aggregates(
     while agg6/7 read ``group(..) by order_number, item.id`` values at that same
     row grain). Splitting them into one ROLLUP CTE per source — rejoined on the
     grouping dims — is fragile (null-safety on rolled-up keys) and slower."""
-    standard = [
-        (n, d) for n, d in items if not d.grouping_mode or d.grouping_mode == "standard"
-    ]
-    grouped = [
-        (n, d) for n, d in items if d.grouping_mode and d.grouping_mode != "standard"
-    ]
+    standard = [(n, d) for n, d in items if not nulls_grouping_keys(d.grouping_mode)]
+    grouped = [(n, d) for n, d in items if nulls_grouping_keys(d.grouping_mode)]
     buckets = _partition_standard_aggregates(standard)
     buckets += _partition_grouped_aggregates(
         grouped,
@@ -192,7 +212,8 @@ def _partition_grouped_aggregates(
     (label, depth, grain, mode) whose stop-signatures are equal or nest."""
     buckets: list[GroupBucket] = []
     by_shape: dict[
-        tuple[str, DepthLabel, frozenset[str], str | None], list[NodeItem]
+        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
+        list[NodeItem],
     ] = defaultdict(list)
     for node, data in items:
         by_shape[
@@ -234,8 +255,9 @@ def _partition_grouped_aggregates(
                 *(sigs[i] for i in member_indices)
             )
             sig_repr = "|".join(sorted(shared_sig)) or "none"
-            disc = [f"grp:{grouping_mode}", f"sig:{abs(hash(sig_repr)) % (16**6):06x}"]
-            bucket.discriminator = ":".join(disc)
+            _apply_grouping_mode(
+                bucket, grouping_mode, f"sig:{abs(hash(sig_repr)) % (16**6):06x}"
+            )
             for i in member_indices:
                 node, data = members[i]
                 if data.aggregate_input_grain:
@@ -378,11 +400,20 @@ def partition_roots(
                 # on posts) must NOT co-source — `count(user_id)` reads the
                 # users table, not the post FK column's deduped domain.
                 node_by_addr = {data.address: node for node, data in main_items}
+                # A key collapsed onto another identity (scoped join `left join
+                # a.aid = b.bid`, `merge into`) is present under the canonical
+                # address only; the mate's pseudonyms declare the identity.
+                node_by_pseudonym: dict[str, str] = {}
+                for node, data in main_items:
+                    for pseudonym in data.pseudonyms:
+                        node_by_pseudonym.setdefault(pseudonym, node)
                 for node, data in main_items:
                     if data.purpose != Purpose.PROPERTY:
                         continue
                     for key_addr in data.keys:
-                        key_node = node_by_addr.get(key_addr)
+                        key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(
+                            key_addr
+                        )
                         if key_node is not None and key_node != node:
                             undirected.add_edge(node, key_node)
                 comp_of: dict[str, int] = {}
@@ -808,10 +839,9 @@ def partition_constants(
     the full label so the `@condition` phase suffix doesn't re-split them — and
     surface the bucket at its most-downstream member depth so it produces the
     SELECT output AND carries the WHERE. Mirrors `partition_rowsets`."""
-    by_key: dict[tuple[str, frozenset[str], str | None], GroupBucket] = {}
-    members_by_key: dict[tuple[str, frozenset[str], str | None], list[NodeItem]] = (
-        defaultdict(list)
-    )
+    ConstantKey = tuple[str, frozenset[str], AggregateGroupingMode | None]
+    by_key: dict[ConstantKey, GroupBucket] = {}
+    members_by_key: dict[ConstantKey, list[NodeItem]] = defaultdict(list)
     for node, data in items:
         scope = _scope_and_phase(data.label)[0]
         members_by_key[(scope, data.grain_components, data.grouping_mode)].append(
@@ -826,8 +856,7 @@ def partition_constants(
             else DepthLabel.D0 if DepthLabel.D0 in depths else DepthLabel.D1
         )
         bucket = _bucket_for(depth_label, Derivation.CONSTANT, grain, label=scope)
-        if grouping_mode and grouping_mode != "standard":
-            bucket.discriminator = f"grp:{grouping_mode}"
+        _apply_grouping_mode(bucket, grouping_mode)
         for node, data in members:
             _add_member(bucket, node, data)
         by_key[key] = bucket

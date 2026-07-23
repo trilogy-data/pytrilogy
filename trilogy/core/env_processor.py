@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterator, Sequence
 
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -137,6 +137,16 @@ def add_concept(
     # restrict edges to the content side.
     if isinstance(concept.lineage, BuildFilterItem):
         sources: Sequence[BuildConcept] = concept.lineage.content_concept_arguments
+        # A filter over grainless content (`sum(1 ? cond)`) has no content-side
+        # row identity: its mask varies per row of the condition's row args, so
+        # those args ARE its source rows. Without them the filter node floats
+        # disconnected from the model whose rows it counts.
+        if not any(
+            s.derivation != Derivation.CONSTANT
+            and s.granularity != Granularity.SINGLE_ROW
+            for s in sources
+        ):
+            sources = list(concept.lineage.where.row_arguments)
     else:
         sources = concept.concept_arguments
     if sources:

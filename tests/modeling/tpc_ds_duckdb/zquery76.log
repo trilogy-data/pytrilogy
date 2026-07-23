@@ -1,6 +1,6 @@
 query_id = "76"
-generator = "v3"
-gen_length = 5838
+generator = "v4"
+gen_length = 5367
 preql_size = 1833
 comp_size = 1708
 generated_sql = """
@@ -26,7 +26,7 @@ GROUP BY
     1,
     2,
     3),
-yummy as (
+vacuous as (
 SELECT
     \"ss_item_items\".\"I_CATEGORY\" as \"___tvf_arm_0_i_category\",
     \"ss_sale_date_date\".\"D_QOY\" as \"___tvf_arm_0_d_qoy\",
@@ -46,7 +46,7 @@ GROUP BY
     1,
     2,
     3),
-abhorrent as (
+scrawny as (
 SELECT
     \"ws_item_items\".\"I_CATEGORY\" as \"___tvf_arm_1_i_category\",
     \"ws_sale_date_date\".\"D_QOY\" as \"___tvf_arm_1_d_qoy\",
@@ -66,7 +66,7 @@ GROUP BY
     1,
     2,
     3),
-macho as (
+charming as (
 SELECT
     \"cheerful\".\"___tvf_arm_2_channel\" as \"_q76_results_channel\",
     \"cheerful\".\"___tvf_arm_2_col_name\" as \"_q76_results_col_name\",
@@ -79,47 +79,36 @@ FROM
     \"cheerful\"
 UNION ALL
 SELECT
-    \"yummy\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
-    \"yummy\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
-    \"yummy\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
-    \"yummy\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
-    \"yummy\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
-    \"yummy\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"yummy\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
+    \"vacuous\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
+    \"vacuous\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
+    \"vacuous\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
+    \"vacuous\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
+    \"vacuous\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
+    \"vacuous\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"vacuous\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"yummy\"
+    \"vacuous\"
 UNION ALL
 SELECT
-    \"abhorrent\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
-    \"abhorrent\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
-    \"abhorrent\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
-    \"abhorrent\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
-    \"abhorrent\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
-    \"abhorrent\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"abhorrent\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
+    \"scrawny\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
+    \"scrawny\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
+    \"scrawny\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
+    \"scrawny\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
+    \"scrawny\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
+    \"scrawny\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"scrawny\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"abhorrent\"),
-scrawny as (
+    \"scrawny\")
 SELECT
-    \"macho\".\"_q76_results_channel\" as \"_q76_results_channel\",
-    \"macho\".\"_q76_results_col_name\" as \"_q76_results_col_name\",
-    \"macho\".\"_q76_results_d_qoy\" as \"_q76_results_d_qoy\",
-    \"macho\".\"_q76_results_d_year\" as \"_q76_results_d_year\",
-    \"macho\".\"_q76_results_i_category\" as \"_q76_results_i_category\",
-    \"macho\".\"_q76_results_sales_amt\" as \"_q76_results_sales_amt\",
-    \"macho\".\"_q76_results_sales_cnt\" as \"_q76_results_sales_cnt\"
+    \"charming\".\"_q76_results_channel\" as \"q76_results_channel\",
+    \"charming\".\"_q76_results_col_name\" as \"q76_results_col_name\",
+    \"charming\".\"_q76_results_d_year\" as \"q76_results_d_year\",
+    \"charming\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
+    \"charming\".\"_q76_results_i_category\" as \"q76_results_i_category\",
+    \"charming\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
+    \"charming\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
 FROM
-    \"macho\")
-SELECT
-    \"scrawny\".\"_q76_results_channel\" as \"q76_results_channel\",
-    \"scrawny\".\"_q76_results_col_name\" as \"q76_results_col_name\",
-    \"scrawny\".\"_q76_results_d_year\" as \"q76_results_d_year\",
-    \"scrawny\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
-    \"scrawny\".\"_q76_results_i_category\" as \"q76_results_i_category\",
-    \"scrawny\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
-    \"scrawny\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
-FROM
-    \"scrawny\"
+    \"charming\"
 ORDER BY 
     \"q76_results_channel\" asc nulls first,
     \"q76_results_col_name\" asc nulls first,

@@ -32,6 +32,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
+from .concept_graph import _statement_scoped_relation_members
 from .condition_placement import plan_condition_placements
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
@@ -418,12 +419,36 @@ def _finest_determining_key(
     return finest[0] if len(finest) == 1 else None
 
 
+def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
+    """The arg's address plus every address reachable through its lineage — a
+    derived filter arg (``vehicle_label <- concat(name, '-', variant)``) needs
+    its ROOT inputs co-located wherever the filter is evaluated."""
+    closure: set[str] = set()
+    stack: list[BuildConcept] = [arg]
+    while stack:
+        concept = stack.pop()
+        if concept.address in closure:
+            continue
+        closure.add(concept.address)
+        if concept.lineage is not None:
+            stack.extend(
+                c
+                for c in concept.lineage.concept_arguments
+                if isinstance(c, BuildConcept)
+            )
+    return closure
+
+
 def _pre_aggregate_filter_args(
     conditions: list[BuildWhereClause],
 ) -> frozenset[str]:
     """Row-arg addresses of WHERE clauses that contain NO aggregate term — pure
     pre-aggregate filters that narrow the rows feeding an aggregate (q98's
     ``item.category in (...)``, which also bounds the class-total window).
+    Expanded through each arg's lineage closure: a derived filter arg's ROOT
+    inputs must stay on the fact scan too, or the group hosting the filter
+    cannot render the derived expression (a concat label filter with
+    ``vehicle_name`` peeled to a dim bucket strands ``vehicle_variant``).
 
     A clause that DOES carry an aggregate is a HAVING-style post-aggregate filter
     (q81's ``customer_state > scaled_state and address.state = 'GA'``): its dim
@@ -436,7 +461,8 @@ def _pre_aggregate_filter_args(
             arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
         ):
             continue
-        args |= {arg.address for arg in clause.row_arguments}
+        for arg in clause.row_arguments:
+            args |= _row_arg_lineage_closure(arg)
     return frozenset(args)
 
 
@@ -521,6 +547,12 @@ def _split_root_dimension_clusters(
             grouping_keys |= set(bucket.grain_components)
     if not grouping_keys:
         return
+    d0_grouping_grains = [
+        bucket.grain_components
+        for bucket in buckets.values()
+        if bucket.derivation in GROUPING_DERIVATIONS
+        and bucket.depth_label == DepthLabel.D0
+    ]
     for gid in list(buckets):
         bucket = buckets[gid]
         if (
@@ -563,6 +595,23 @@ def _split_root_dimension_clusters(
             # (`pre_aggregate_filter_args` gate below): its WHERE must narrow the
             # fact rows feeding the aggregate, not a post-join dim.
             if addr not in output_addresses and addr not in post_aggregate_filter_args:
+                continue
+            # A peeled filter-only arg applies as a FINAL entity-key semijoin.
+            # That is faithful only when the filter drops WHOLE groups of every
+            # output-lineage (d0) grouping bucket — each grain must FD-determine
+            # the column (q30.alt: {return_state, customer.sk} → customer's
+            # address state). A coarser-grain aggregate ({part} ⊬ segment) needs
+            # the filter on its fact input rows; peeling silently drops it from
+            # the d0 row stream (dual-scope: outputs recompute over admitted
+            # rows). d1 population buckets are exempt — the WHERE never narrows
+            # them.
+            if addr not in output_addresses and not all(
+                grain
+                and build_fd_determines(
+                    environment, set(grain), addr, include_empty_grain=False
+                )
+                for grain in d0_grouping_grains
+            ):
                 continue
             # Never peel a member that is itself a grouping key of some aggregate:
             # it is a grouping DIMENSION the query re-aggregates over (q24 regroups
@@ -650,11 +699,7 @@ def _fold_rollup_key_dims(
     rollups = [
         (gid, b)
         for gid, b in buckets.items()
-        if b.derivation == Derivation.AGGREGATE
-        and any(
-            concept_attrs[n].grouping_mode not in (None, "standard")
-            for n in b.primary_node_ids
-        )
+        if b.derivation == Derivation.AGGREGATE and b.nulls_grouping_keys
     ]
     if not rollups:
         return
@@ -735,6 +780,7 @@ def _materialize_group_graph(
             secondary_members=tuple(bucket.secondary_members),
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
+            grouping_mode=bucket.grouping_mode,
         )
         group_graph.add_node(gid)
 
@@ -803,6 +849,20 @@ def _materialize_group_graph(
     return group_graph, attrs, group_edges
 
 
+def _statement_relation_addresses(environment: BuildEnvironment) -> frozenset[str]:
+    """Endpoints of query-scoped (STATEMENT) join declarations — the relations
+    whose completion merge can null-extend a side in this query. Global
+    `merge` identities are excluded: they pair INNER and never null-extend."""
+    from trilogy.core.domain_graph import EdgeScope
+
+    return frozenset(
+        addr
+        for e in environment.domain_graph.edges
+        if e.scope is EdgeScope.STATEMENT
+        for addr in (e.source, e.target)
+    )
+
+
 def _inject_conditions(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -811,6 +871,9 @@ def _inject_conditions(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept] | None = None,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
+    concept_attrs: dict[str, ConceptAttrs] | None = None,
+    statement_relation_addresses: frozenset[str] = frozenset(),
+    environment: BuildEnvironment | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -821,6 +884,9 @@ def _inject_conditions(
         conditions,
         mandatory_list,
         scoped_join_key_groups,
+        concept_attrs,
+        statement_relation_addresses,
+        environment,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -871,25 +937,29 @@ def _propagate_raw_filters_to_d1_roots(
     datasource_columns: list[frozenset[str]],
 ) -> set[str]:
     """A `root_d1` bucket is a pristine DUPLICATE of a main fact scan, split off
-    so a d1 calc reads rows untouched by *sibling* WHERE atoms. That split is
-    right when the d1 calc is a separate population:
+    so a d1 calc reads rows untouched by *sibling* WHERE atoms — a
+    WHERE-referenced cross-row computation gates at POPULATION scope, ignoring
+    its peers in the clause (the #599 dual-scope contract; `where f = 1 and
+    sum(z) by x > 5` gates on the unfiltered sums).
 
-    - a SEMIJOIN source — `week_seq in relevent_week_seq` (q02): the source
-      spans all channels, so the outer `sales_channel in (...)` must not narrow
-      it (and propagating there also cycles the CTE graph, since the existence
-      source feeds back into the main stream);
-    - an aggregate over a DIFFERENT table than the filter — `avg(item.price) by
-      category` filtered on `sales.date` (q06): the average is over the item
-      dimension, which the sales-grain date filter never touches.
+    The exception is a GROUP-ATOMIC atom: one whose every row arg is
+    functionally determined by the grouping grain of EVERY cross-row d1
+    aggregate reading the scan. Such an atom keeps or drops whole groups, so
+    the population and filtered values coincide — and NOT propagating it leaks
+    physical artifacts: q74's `billing_customer.sk is not null` (sk is the
+    aggregates' by-key) left a NULL-sk population group that rode the final
+    merge into a spurious all-NULL output row. Mirrors
+    `_where_is_group_atomic` in where_scope_normalization.
 
-    But when the d1 aggregate reads the SAME fact the filter applies to —
-    `avg(ss.net_profit) by item` under `ss.store.id = 1` (q44) — the filter
-    belongs on its input too, or the avg covers the wrong population. So copy a
-    main root's atoms (all raw root-column filters by construction) onto a
-    `root_d1` only when (a) root_d1 feeds no existence source and (b) some
-    single datasource carries BOTH the atom's columns and all of root_d1's scan
-    columns — i.e. the filter and the aggregate genuinely share one table.
-    Returns the root_d1 gids that gained atoms."""
+    Additional gates, each still required: (a) root_d1 feeds no existence
+    source (`week_seq in relevent_week_seq`, q02 — propagating cycles the CTE
+    graph); (b) some single datasource carries BOTH the atom's columns and
+    root_d1's scan columns (an item-dim avg is never narrowed by a sales-grain
+    date filter, q06); (c) a `?`-virtual-filter-scoped predicate is the user's
+    per-aggregate selector and stays off the shared scan (q21); (d) a d1
+    WINDOW/GROUP_TO downstream blocks propagation entirely — atomicity for a
+    window is partition-key containment, and partition keys are not visible on
+    the bucket. Returns the root_d1 gids that gained atoms."""
     existence_sources = {u for u, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE)}
     d1_roots = [
         gid
@@ -908,6 +978,19 @@ def _propagate_raw_filters_to_d1_roots(
     for d1_gid in d1_roots:
         reach = nx.descendants(group_graph, d1_gid) | {d1_gid}
         if reach & existence_sources:
+            continue
+        cross_row_grains: list[set[str]] = []
+        blocked = False
+        for desc in reach - {d1_gid}:
+            desc_attrs = attrs.get(desc)
+            if desc_attrs is None or desc_attrs.depth_label != DepthLabel.D1:
+                continue
+            if desc_attrs.derivation in (Derivation.WINDOW, Derivation.GROUP_TO):
+                blocked = True
+                break
+            if desc_attrs.derivation == Derivation.AGGREGATE:
+                cross_row_grains.append(set(desc_attrs.grain_components))
+        if blocked:
             continue
         d1_members = set(attrs[d1_gid].primary_members)
         # The datasource that supplies the MOST of root_d1's inputs is the table
@@ -940,6 +1023,16 @@ def _propagate_raw_filters_to_d1_roots(
                 # per-aggregate; propagating it to the shared scan would narrow a
                 # sibling aggregate that omits it (q21).
                 if row_args and row_args <= filter_scoped:
+                    continue
+                # Group-atomicity: every row arg FD by every downstream d1
+                # aggregate's grouping grain, so whole groups drop and the
+                # population value is unchanged. A non-atomic peer must never
+                # narrow a population gate's input (dual-scope contract).
+                if not all(
+                    _fd_on_key(concept_attrs, arg, grain)
+                    for grain in cross_row_grains
+                    for arg in row_args
+                ):
                     continue
                 if atom not in attrs[d1_gid].condition_atoms:
                     attrs[d1_gid].condition_atoms.append(atom)
@@ -1011,7 +1104,12 @@ def _rowset_join_key_addresses(
     if not key_addresses and concept.grain:
         key_addresses = set(concept.grain.components)
     if not key_addresses:
-        key_addresses = {concept.address}
+        # A keyless, grainless rowset handle (a global-aggregate scalar body:
+        # `(select max(val)/2 -> half)`) has no join axis. Expanding through its
+        # own lineage would put the aggregate VALUE into the merge grain and
+        # force the row side to re-render the aggregate at row grain
+        # (AGG_GRAIN_MISMATCH). v3 cross-joins such a boundary ON 1=1.
+        return set()
     output: set[str] = set()
     for key_address in key_addresses:
         key_concept = mandatory_by_address.get(key_address)
@@ -1089,6 +1187,31 @@ def _final_merge_grain(
                 resolved = _resolve_rowset_key(key_address, environment)
                 if resolved != key_address:
                     grain.add(resolved)
+    # A mixed root↔rowset relation (`union join return_demos.demo_id = c_demo`)
+    # whose members are not outputs never enters the grain through the loops
+    # above — the rowset boundary and the mate's contributor then share no
+    # declared join key and the FINAL merge cross-joins ON 1=1. The authored
+    # members ARE the join axis: add them whenever a member lives on a FINAL
+    # rowset boundary and another contributor exists to pair with.
+    if environment is not None and environment.scoped_join_key_groups:
+        finals = [
+            gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
+        ]
+        rowset_namespaces: set[str] = set()
+        for gid in finals:
+            if attrs[gid].derivation == Derivation.ROWSET:
+                for member in attrs[gid].members:
+                    namespace, _, _ = member.rpartition(".")
+                    if namespace:
+                        rowset_namespaces.add(namespace)
+        if len(finals) > 1 and rowset_namespaces:
+            for canonical, members in environment.scoped_join_key_groups.items():
+                relation_addrs = {canonical, *members}
+                if any(
+                    addr.rpartition(".")[0] in rowset_namespaces
+                    for addr in relation_addrs
+                ):
+                    grain |= relation_addrs
     return frozenset(grain)
 
 
@@ -1111,6 +1234,18 @@ def _group_final_grain_contribution(
         _resolve_rowset_key(addr, environment) for addr in attrs[gid].grain_components
     }
     rowset_keys = (resolved - set(attrs[gid].grain_components)) & merge_grain
+    # A STATEMENT-scoped relation member the group carries is the merge's join
+    # axis whether or not it is the group's grain: `subset join
+    # best.pair_rank_best = worst.pair_rank_worst` projects only the two product
+    # names, so neither BASIC rename group advertises the rank and the FINAL
+    # merge cross-joins ON 1=1 (q44's decorrelated best/worst pairing). Global
+    # `merge` identities are excluded — they pair INNER and never define a
+    # statement's join axis (advertising one strands a partial dimension).
+    if environment is not None:
+        available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
+        rowset_keys |= (
+            _statement_scoped_relation_members(environment) & merge_grain & available
+        )
     return frozenset(rowset_keys)
 
 
@@ -1174,7 +1309,17 @@ def _consumer_required_input_grain(
     attrs: dict[str, GroupAttrs],
     gid: str,
 ) -> frozenset[str]:
-    grain: set[str] = set(attrs[gid].grain_components)
+    # A group's own derived output can be a grain component (a filter/rowset
+    # concept whose identity IS its grain). Parents can't supply it — requiring
+    # it as an input grain forces a parent to re-derive the concept (e.g. a
+    # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
+    grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
+    # Likewise a component COMPUTED by a grouping row parent (a window ordering
+    # by a coarser-grain aggregate carries the aggregate in its grain) is a
+    # column that parent supplies, not a join axis siblings can carry — widening
+    # a raw scan with it is unrenderable. The parent's grain (added below) is
+    # the joinable identity.
+    parent_computed: set[str] = set()
     for pred in group_graph.predecessors(gid):
         if pred == FINAL_NODE_ID or pred not in attrs:
             continue
@@ -1182,9 +1327,10 @@ def _consumer_required_input_grain(
             continue
         if attrs[pred].derivation in GROUPING_DERIVATIONS:
             grain |= set(attrs[pred].grain_components)
+            parent_computed |= set(attrs[pred].primary_members)
         elif attrs[pred].derivation == Derivation.ROWSET:
             grain |= set(attrs[pred].grain_components)
-    return frozenset(grain)
+    return frozenset(grain - parent_computed)
 
 
 # Consumers that JOIN their row parents (vs. stack/expand them). Only these need
@@ -1291,6 +1437,24 @@ def _refresh_input_contracts(
         bridge_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
+        # A non-grouping consumer pairing a GROUPING row parent (a population
+        # aggregate at grain G) with row-grain siblings joins them ON G — the
+        # aggregate's value repeats per G-group across the row stream (`sum(z)
+        # by x + w`: the sum CTE pairs to the w rows on x). Declare G so the
+        # sibling projections keep the bridge instead of degrading to 1=1.
+        grouping_parent_grain: set[str] = set()
+        if attrs[gid].derivation not in GROUPING_DERIVATIONS:
+            row_parents = [
+                pred
+                for pred in group_graph.predecessors(gid)
+                if pred != FINAL_NODE_ID
+                and pred in attrs
+                and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+            ]
+            if len(row_parents) >= 2:
+                for pred in row_parents:
+                    if attrs[pred].derivation in GROUPING_DERIVATIONS:
+                        grouping_parent_grain |= set(attrs[pred].grain_components)
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -1307,7 +1471,9 @@ def _refresh_input_contracts(
                     required_outputs=required_outputs,
                     required_grain=frozenset() if is_existence else required_grain,
                     preserve_keys=(
-                        frozenset() if is_existence else required_grain | bridge_keys
+                        frozenset()
+                        if is_existence
+                        else required_grain | bridge_keys | grouping_parent_grain
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -1484,6 +1650,24 @@ def _topological_dependency_order(
         return None
 
 
+def _scoped_axis_mates(
+    environment: BuildEnvironment | None,
+) -> dict[str, frozenset[str]]:
+    """Each STATEMENT-scoped join axis member -> the OTHER sides' members. They
+    are alternative physical columns for one logical axis, so a group that owns
+    one of them owns the axis. Global `merge` identities are excluded (they pair
+    INNER and never redefine row identity)."""
+    if environment is None:
+        return {}
+    scoped = _statement_scoped_relation_members(environment)
+    mates: dict[str, set[str]] = {}
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members} & scoped
+        for address in relation:
+            mates.setdefault(address, set()).update(relation - {address})
+    return {address: frozenset(other) for address, other in mates.items()}
+
+
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1493,6 +1677,8 @@ def _compute_concept_sets(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
+    scoped_join_member_addresses: frozenset[str] = frozenset(),
+    scoped_axis_mates: dict[str, frozenset[str]] | None = None,
 ) -> None:
     """Per-group input/output/hidden concept sets.
 
@@ -1543,11 +1729,19 @@ def _compute_concept_sets(
                 cap.update(source_grain_of.get(addr, frozenset()))
             io.capability[gid] = cap
             continue
+        # A grouping group's grain component that is a STATEMENT-scoped join axis
+        # is equally expressed by any other member of that relation — the members
+        # ARE the same value, each rendered on its own side. So a mate a parent
+        # supplies is preservable even though it isn't the group's own grain key.
+        grain_mates: set[str] = set()
+        if scoped_axis_mates and fact.derivation in GROUPING_DERIVATIONS:
+            for component in fact.grain:
+                grain_mates |= scoped_axis_mates.get(component, frozenset())
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
             for addr in io.capability.get(pgid, set()):
-                if fact.behavior.can_preserve(
+                if addr in grain_mates or fact.behavior.can_preserve(
                     concept_graph,
                     concept_edges,
                     concept_attrs,
@@ -1611,11 +1805,38 @@ def _compute_concept_sets(
                 for addr in final_args_here:
                     if is_presence_probe(addr):
                         outs |= lineage_parents.get(addr, set()) & cap_gid
+                # Same shape for a ROWSET boundary feeding a FINAL-deferred
+                # filter (`where return_demos.r_ticket is not null` over a
+                # `union join return_demos.demo_id = c_demo`): the feeder must
+                # join back on the relation axis, so expose the boundary's own
+                # scoped member handles. Not cap-gated — the boundary always
+                # materializes its authored handles from its body.
+                if final_args_here and fact.derivation == Derivation.ROWSET:
+                    boundary_namespaces = {
+                        addr.rpartition(".")[0] for addr in fact.primary
+                    }
+                    outs |= {
+                        member
+                        for member in scoped_join_member_addresses
+                        if member.rpartition(".")[0] in boundary_namespaces
+                    }
                 if fact.grain:
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
-                        if facts[sibling].grain == fact.grain:
+                        sibling_fact = facts[sibling]
+                        # Same-grain sibling: the grain IS the shared row
+                        # identity. A STRICTLY FINER sibling that can also
+                        # produce these components is the same story one level
+                        # down — this group is a dimension projection joining
+                        # back to the fact stream on its FD key (a rowset
+                        # body's `cid as s_cid` beside `sum(net)` grouped by
+                        # `csk, year`). Without the axis the merge cross-joins
+                        # every dimension row onto every fact row.
+                        if sibling_fact.grain == fact.grain or (
+                            fact.grain < sibling_fact.grain
+                            and fact.grain <= io.capability[sibling]
+                        ):
                             outs |= fact.grain & cap_gid
                             break
                 continue
@@ -1641,6 +1862,18 @@ def _compute_concept_sets(
                 outs |= facts[sibling].grain & cap_gid
         if fact.derivation in GROUPING_DERIVATIONS:
             outs |= fact.grain & cap_gid
+            # A grouping group whose grain component is a STATEMENT-scoped join
+            # axis it cannot produce still owns that axis — through its OWN side's
+            # member of the relation (`subset join fut.period + 53 = agg.period`
+            # canonicalizes the axis to `agg.period`, but the fut side's column IS
+            # the derived key). Advertise the member it can produce, or the group
+            # renders as a grainless global aggregate the FINAL merge can only
+            # cross-join (scoped_derived_rowset exp_rows1).
+            for missing in fact.grain - cap_gid:
+                for mate in sorted((scoped_axis_mates or {}).get(missing, ())):
+                    if mate in cap_gid:
+                        outs.add(mate)
+                        break
         io.outputs[gid] = outs
 
         ins: set[str] = set()
@@ -1839,6 +2072,13 @@ def build_group_graph(
         conditions,
         mandatory_list,
         environment.scoped_join_key_groups if environment is not None else None,
+        concept_attrs,
+        (
+            _statement_relation_addresses(environment)
+            if environment is not None
+            else frozenset()
+        ),
+        environment,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,
@@ -1860,6 +2100,18 @@ def build_group_graph(
             concept_attrs,
             buckets,
             mandatory_list,
+            scoped_join_member_addresses=(
+                frozenset(
+                    addr
+                    for canonical, members in (
+                        environment.scoped_join_key_groups or {}
+                    ).items()
+                    for addr in (canonical, *members)
+                )
+                if environment is not None
+                else frozenset()
+            ),
+            scoped_axis_mates=_scoped_axis_mates(environment),
         )
         _refresh_input_contracts(
             group_graph, group_edges, attrs, concept_attrs, concept_edges
@@ -1984,6 +2236,12 @@ def _synthetic_dimension_regraft_parent(
     current = attrs[gid]
     if current.derivation != Derivation.BASIC:
         return None
+    # A condition-phase (d1) group's real input demand only lands when atoms
+    # are injected AFTER this regraft runs; a synthetic bucket built from its
+    # pre-injection inputs freezes out the lineage columns the condition's
+    # derived arg needs (concat-label WHERE: `vehicle_variant` stranded).
+    if current.depth_label == DepthLabel.D1:
+        return None
     key = set(current.grain_components)
     if not key:
         return None
@@ -2098,8 +2356,8 @@ def _merge_basic_into_window_parent(
 
     The post-window filter (`x is not null`) needs no handling here: it has not
     been injected yet (this runs before `_inject_conditions`), and placement
-    refuses to host a filter on a window group's own output
-    (`_CANNOT_HOST_OWN_OUTPUT`), so it defers to FINAL exactly as v3 emits it."""
+    refuses to host a filter on a window group's own output, so it defers to
+    FINAL exactly as v3 emits it."""
     changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:

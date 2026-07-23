@@ -1,6 +1,6 @@
 query_id = "18"
-generator = "v3"
-gen_length = 1329
+generator = "v4"
+gen_length = 1278
 preql_size = 317
 comp_size = 543
 generated_sql = """
@@ -26,10 +26,7 @@ SELECT
     coalesce(\"order_customer_customers\".\"c_custkey\",\"order_orders\".\"o_custkey\") as \"order_customer_id\"
 FROM
     \"memory\".\"customer\" as \"order_customer_customers\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\"
-WHERE
-    \"order_orders\".\"o_orderkey\" is not null
-)
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"order_customer_customers\".\"c_custkey\" = \"order_orders\".\"o_custkey\")
 SELECT
     \"thoughtful\".\"order_customer_name\" as \"order_customer_name\",
     \"thoughtful\".\"order_customer_id\" as \"order_customer_id\",

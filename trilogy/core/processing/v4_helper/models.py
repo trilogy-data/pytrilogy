@@ -2,12 +2,29 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import DepthLabel
 from .edges import EdgeMap, copy_edges
+
+
+def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
+    """Whether a group written with this GROUP BY mode NULLs its own grouping
+    keys on some of the rows it emits.
+
+    ROLLUP/CUBE/GROUPING SETS add subtotal and grand-total rows whose rolled-up
+    key columns are NULL. Every consumer above such a group must treat those
+    keys as unusable: a WHERE, a join axis, or a re-aggregation keyed on them
+    silently drops the subtotals. This is the single question the planner
+    should ask — not "what does the group id string look like"."""
+    return mode is not None and mode != AggregateGroupingMode.STANDARD
 
 
 @dataclass
@@ -85,6 +102,10 @@ class GroupAttrs:
     condition_atoms: list[BoolExpr] = field(default_factory=list)
     # String renderings of the atoms above, just for visualization.
     conditions: list[str] = field(default_factory=list)
+    # How this group's GROUP BY is written. Non-STANDARD modes NULL-inject
+    # their grouping keys on the subtotal rows they add, which is what
+    # `nulls_grouping_keys` exists to ask about.
+    grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     # Populated by `_compute_concept_sets`. Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
     hidden_concepts: tuple[str, ...] = ()
@@ -94,6 +115,10 @@ class GroupAttrs:
     final_contract: FinalAssemblyContract | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)
 
 
 @dataclass
@@ -115,10 +140,17 @@ class ConceptAttrs:
     granularity: Granularity
     depth_label: DepthLabel
     grain_components: frozenset[str] = frozenset()
-    grouping_mode: str | None = None
+    # None for a non-aggregate concept; otherwise the aggregate's GROUP BY
+    # mode, which `partition_aggregates` splits buckets on (one CTE cannot
+    # carry both a flat GROUP BY and a GROUP BY ROLLUP).
+    grouping_mode: AggregateGroupingMode | None = None
     rowset_name: str | None = None
     aggregate_input_grain: frozenset[str] = frozenset()
     keys: frozenset[str] = frozenset()
+    # Addresses this concept answers for under another identity (scoped-join
+    # canonical collapse, `merge into`): lets grouping relate a property root
+    # to its key root when the key was collapsed onto a different address.
+    pseudonyms: frozenset[str] = frozenset()
     # True for a pure rename (``alias(...)`` lineage) — a pseudonym of its
     # source. The renderer resolves it transparently to the source column, so
     # it must not be folded into a rollup group like a genuine transform dim.
@@ -197,6 +229,7 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         rowset_name=a.rowset_name,
         aggregate_input_grain=a.aggregate_input_grain,
         keys=a.keys,
+        pseudonyms=a.pseudonyms,
         is_rename=a.is_rename,
         existence_only=a.existence_only,
     )
@@ -233,3 +266,11 @@ class GroupBucket:
     discriminator: str = ""
     # Grain to normalize this aggregate's inputs to before aggregating.
     aggregate_input_grain: frozenset[str] = frozenset()
+    # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
+    # only exists to keep distinct buckets at distinct group ids. Ask
+    # `nulls_grouping_keys`, never the id string.
+    grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)

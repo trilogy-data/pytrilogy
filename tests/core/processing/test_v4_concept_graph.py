@@ -1,7 +1,7 @@
 """Tests for the v4 concept-graph helpers and the top-level multiselect
 resolver.
 
-The pure-graph helpers (`_filter_existence_only`, `_aggregate_input_grain`) are
+The pure-graph helpers (`_lineage_existence_only`, `_aggregate_input_grain`) are
 exercised on real build concepts pulled from a tiny inline environment — they
 isinstance-check Build* lineage, so synthetic fakes don't reach the branches.
 The end-to-end cases drive `search_concepts` (v4) so the build_concept_graph
@@ -22,7 +22,7 @@ from trilogy.core.processing.concept_strategies_v4 import V4History, search_conc
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.processing.v4_helper.concept_graph import (
     _aggregate_input_grain,
-    _filter_existence_only,
+    _lineage_existence_only,
     _upstream_window,
     build_concept_graph,
 )
@@ -258,7 +258,7 @@ class TestUpstreamWindow:
         assert "local.order_id" not in parents
 
 
-# ----- _filter_existence_only -----------------------------------------
+# ----- _lineage_existence_only -----------------------------------------
 
 
 class TestFilterExistenceOnly:
@@ -268,11 +268,11 @@ class TestFilterExistenceOnly:
         _, benv = _build(EXISTENCE_MODEL)
         f = benv.concepts["local.filtered"]
         assert f.derivation == Derivation.FILTER
-        assert _filter_existence_only(f) == {"local.other"}
+        assert _lineage_existence_only(f) == {"local.other"}
 
     def test_non_filter_returns_empty(self):
         _, benv = _build(EXISTENCE_MODEL)
-        assert _filter_existence_only(benv.concepts["local.id"]) == set()
+        assert _lineage_existence_only(benv.concepts["local.id"]) == set()
 
     def test_existence_edge_wired_into_concept_graph(self):
         _, benv = _build(EXISTENCE_MODEL)

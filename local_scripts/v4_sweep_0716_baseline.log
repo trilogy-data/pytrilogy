@@ -1,0 +1,170 @@
+FF.................................................................s.... [  1%]
+........................................................................ [  2%]
+........................................................s............... [  3%]
+s....................................................................... [  4%]
+........................................................................ [  6%]
+.........................x.............................................. [  7%]
+........................................................................ [  8%]
+........................................................................ [  9%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 13%]
+..................FF.................................................... [ 14%]
+........................................................................ [ 15%]
+........................................................................ [ 17%]
+...........................................................s............ [ 18%]
+........................................................................ [ 19%]
+........................................................................ [ 20%]
+.....................x.........................................xs....... [ 21%]
+s................x..F................x.........X........................ [ 23%]
+......................x..................ssss........................... [ 24%]
+.....................ss..........EEExEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE [ 25%]
+EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE............................ [ 26%]
+....................................x..XXxxx............................ [ 28%]
+............................s........................................... [ 29%]
+.................................................F.................F.F.. [ 30%]
+................x........................x.......F..F................... [ 31%]
+..F........F....F...........................F........................... [ 32%]
+..................................xxF.F...........FF.....xFFFFFFFFFFFFFF [ 34%]
+FFF.................................................s........s.......... [ 35%]
+...........................s............................................ [ 36%]
+........................................................................ [ 37%]
+...............s........................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+..................x.............x...x...........X.X.X.X................. [ 42%]
+........x.x.......x.....................................X.X...x......... [ 43%]
+..................x.............x....................................... [ 45%]
+........................................................................ [ 46%]
+.............................s....x..................x.................. [ 47%]
+..x.....................XX...................x..x...............x....... [ 48%]
+..............................F.......F............x.........F.......... [ 50%]
+......F...F..............F.................x............X....X......F.F. [ 51%]
+...X...F.............................x........x............x.........x.. [ 52%]
+........................................................................ [ 53%]
+.F...........F.......................................................... [ 54%]
+.........s........................................................x..... [ 56%]
+........................................................................ [ 57%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+........................................................................ [ 64%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 70%]
+........................................................................ [ 72%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 76%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+...................................FFF.................................. [ 80%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+.........................................F.............................. [ 84%]
+........................................................................ [ 85%]
+.........x..F...................................x....................... [ 86%]
+.................................FF........x..............F............. [ 87%]
+.................F.......x..FXXXXXXxxxxx..xxx.....X....................F [ 89%]
+...................................x.................................... [ 90%]
+.......................................................F................ [ 91%]
+......................................................F..F..........FF.. [ 92%]
+.............................FF......................................... [ 94%]
+.........x.............................................................. [ 95%]
+........................................................................ [ 96%]
+.................................................................Xx...F. [ 97%]
+...............................................F........................ [ 98%]
+............................................................             [100%]
+============================== warnings summary ===============================
+tests/engine/bigquery/test_bigquery_metadata.py: 1 warning
+tests/engine/test_bigquery.py: 13 warnings
+tests/engine/test_snowflake.py: 5 warnings
+tests/etl/test_bigquery.py: 2 warnings
+tests/modeling/ncaa/test_ncaa.py: 1 warning
+tests/modeling/the_look/test_the_look.py: 1 warning
+tests/scripts/test_trilogy.py: 2 warnings
+  C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\google\cloud\bigquery\client.py:613: UserWarning: Cannot create BigQuery Storage client, the dependency google-cloud-bigquery-storage is not installed.
+    warnings.warn(
+
+tests/engine/snowflake/test_snowflake_metadata.py::test_get_table_schema
+  C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\snowflake\connector\vendored\requests\__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.7) doesn't match a supported version!
+    warnings.warn(
+
+tests/scripts/test_trilogy.py::test_postgres
+  C:\Users\ethan\coding_projects\pytrilogy\trilogy\dialect\enums.py:104: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    logger.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED local_scripts/fuzzer/test_fuzzer.py::test_generated_corpus_is_stable_and_covers_requested_families
+FAILED local_scripts/fuzzer/test_fuzzer.py::test_random_datasets_are_repeatable_and_preserve_domain_invariants
+FAILED tests/core/processing/test_disconnected_components_e2e.py::test_message_includes_failing_statement_line
+FAILED tests/core/processing/test_disconnected_components_e2e.py::test_message_suggests_connected_nested_equivalent
+FAILED tests/discovery/test_constant_in_cross_datasource_merge.py::test_constant_through_def_macro_unnest_and_aggregate
+FAILED tests/engine/test_duckdb_orderby_derived_expr.py::test_order_by_raw_source_column_of_derived_output
+FAILED tests/engine/test_duckdb_rollup_scoped_join.py::test_three_key_subset_join_rollup_executes_and_matches_canonical
+FAILED tests/engine/test_duckdb_rollup_scoped_join.py::test_two_key_subset_join_partial_rollup_builds
+FAILED tests/engine/test_duckdb_rowset.py::test_composite_union_join_rowset_two_pass_aggregate_groups[stddev-3]
+FAILED tests/engine/test_duckdb_rowset.py::test_composite_union_join_rowset_two_pass_aggregate_groups[variance-3]
+FAILED tests/engine/test_duckdb_setops.py::test_except_and_union_over_same_arms_do_not_merge
+FAILED tests/engine/test_duckdb_subquery.py::test_subquery_execution[ParserBackend.PEST-select id where val > (select max(val)/2 -> half) order by id asc;-expected2]
+FAILED tests/engine/test_duckdb_subquery.py::test_subquery_execution[ParserBackend.LARK-select id where val > (select max(val)/2 -> half) order by id asc;-expected2]
+FAILED tests/engine/test_duckdb_union_bare_aggregate.py::test_union_overlapping_keys_set_semantics
+FAILED tests/engine/test_enum_unions.py::test_partial_key_union_matrix[select chan, order_id order by order_id asc;-expected0-names0]
+FAILED tests/engine/test_enum_unions.py::test_partial_key_union_matrix[select chan, item_id, order_id order by order_id asc;-expected1-names0]
+FAILED tests/engine/test_enum_unions.py::test_partial_key_union_matrix[where return_amount is not null select order_id, return_amount order by order_id asc;-expected7-names0]
+FAILED tests/engine/test_enum_unions.py::test_partial_key_union_matrix[where return_amount is not null select order_id, return_amount order by order_id asc;-expected7-names1]
+FAILED tests/engine/test_grain_function.py::test_grain_counts_null_bearing_combinations
+FAILED tests/engine/test_grain_function.py::test_grain_null_sentinel_prevents_collision
+FAILED tests/engine/test_grain_function.py::test_grain_over_coarser_keys_dedupes_to_the_tuple
+FAILED tests/engine/test_grain_function.py::test_grain_args_survive_into_the_group_by
+FAILED tests/engine/test_grain_function.py::test_grain_composes_with_filter
+FAILED tests/engine/test_grain_function.py::test_grain_single_key_is_total - ...
+FAILED tests/engine/test_grain_function.py::test_grain_single_key_dedupes_to_the_key
+FAILED tests/engine/test_grain_function.py::test_grain_over_imported_keys_dedupes_without_filter
+FAILED tests/engine/test_grain_function.py::test_grain_over_imported_keys_dedupes_under_dimension_filter
+FAILED tests/engine/test_grain_function.py::test_grain_over_imported_keys_having_under_dimension_filter
+FAILED tests/engine/test_grain_function.py::test_grain_aggregate_input_grain_carries_composite_keys
+FAILED tests/engine/test_grain_function.py::test_grain_under_dimension_filter_normalizes_before_count_in_sql
+FAILED tests/engine/test_grain_function.py::test_grain_count_equals_count_distinct_under_dimension_filter
+FAILED tests/engine/test_grain_function.py::test_grain_inline_derived_expression_under_dimension_filter
+FAILED tests/engine/test_grain_function.py::test_grain_count_alongside_ordinary_aggregate_of_different_grain
+FAILED tests/engine/test_grain_function.py::test_grain_normalizes_under_fact_local_filter
+FAILED tests/engine/test_grain_function.py::test_grain_global_count_under_dimension_filter
+FAILED tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_q64_correlated_filter_membership_clean_error
+FAILED tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_or_membership_with_projected_aggregate
+FAILED tests/modeling/tpc_ds_duckdb/test_q29_existence_feeder_dangling.py::test_q29_existence_feeder_not_a_dangling_row_source
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_ten - AssertionError: 
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_fourteen - ValueErr...
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_twenty_nine - Asser...
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy - Assertion...
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_seventy_two - trilo...
+FAILED tests/modeling/tpc_ds_duckdb/test_queries.py::test_eighty_one - Assert...
+FAILED tests/optimization/test_collapse_basic_into_group.py::test_funnel_count_over_unbound_merge_key_executes
+FAILED tests/optimization/test_existence_feeder_pushdown.py::test_membership_feeders_do_not_chain
+FAILED tests/test_filter_bare_aggregate_content_grain.py::test_bare_aggregate_filter_selected_alone_resolves
+FAILED tests/test_filter_bare_aggregate_content_grain.py::test_bare_aggregate_filter_membership_rhs_resolves
+FAILED tests/test_filter_bare_aggregate_content_grain.py::test_bare_matches_explicit_by_content
+FAILED tests/test_membership_having_aggregate_dimension_key_groupby.py::test_membership_having_dimension_key_not_in_group_by
+FAILED tests/test_parse_engine_v2.py::test_lark_pest_corpus_parity - Assertio...
+FAILED tests/test_pushdown_partitioned_aggregate_boundary.py::test_where_referenced_aggregate_scope_unfiltered
+FAILED tests/test_pushdown_partitioned_aggregate_boundary.py::test_where_referenced_aggregate_filter_bound_inside
+FAILED tests/test_rollup_multi_window.py::test_cube_two_windows_different_partitions
+FAILED tests/test_rowset_body_limit.py::test_left_readback_keeps_dim_rows_beyond_limit
+FAILED tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_read_back_aligns_with_source_null_property
+FAILED tests/test_rowset_generation_matrix.py::test_rowset_generation_matrix[single_rowset_islanded_property_clean_error]
+FAILED tests/test_scoped_derived_rowset_join_matrix.py::test_scoped_derived_rowset_join_correct[agg.period = fut.period + 53-subset-LEFT-exp_rows1]
+FAILED tests/test_scoped_join_cross_rowset_membership_existence.py::test_cross_rowset_membership_sources_existence[expression_key]
+FAILED tests/test_scoped_join_dim_bridge_outer_key.py::test_all_subset_unaffected
+FAILED tests/test_scoped_join_expression_keys.py::test_window_expression_join[ParserBackend.PEST]
+FAILED tests/test_scoped_join_expression_keys.py::test_window_expression_join[ParserBackend.LARK]
+FAILED tests/test_scoped_left_join_multi_partial_anchor.py::test_chained_left_join_narrows_to_store_anchor
+FAILED tests/test_scoped_left_join_multi_partial_anchor.py::test_explicit_filter_matches_directional
+FAILED tests/test_where_scalar_aggregate_degenerate_cograin.py::test_having_bare_max_matches_where
+FAILED tests/test_where_select_dual_scope.py::test_twin_keeps_scalar_refs_environment_resolved
+66 failed, 5650 passed, 20 skipped, 53 xfailed, 22 xpassed, 27 warnings, 82 errors in 1046.95s (0:17:26)

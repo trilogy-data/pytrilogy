@@ -39,8 +39,6 @@ _ROWSET_ONTO_ROOT = (
 )
 
 V4_FAILING: dict[str, str] = {
-    "test_coalescing_presence_matrix.py::test_presence_union_cast_single": _AXIS_RECURSION,
-    "test_coalescing_presence_matrix.py::test_presence_full_cast_single": _AXIS_RECURSION,
     "test_coalescing_presence_matrix.py::test_presence_union_concat_composite": _AXIS_RECURSION,
     "test_coalescing_presence_matrix.py::test_bare_member_projection_unions_domains": _AXIS_RECURSION,
     "test_composite_matrix.py::test_composite_key_join[plain_derived-union]": _COMPOSITE_FULL,

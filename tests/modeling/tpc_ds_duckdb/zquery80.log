@@ -1,6 +1,6 @@
 query_id = "80"
-generator = "v3"
-gen_length = 6844
+generator = "v4"
+gen_length = 7797
 preql_size = 1137
 comp_size = 3674
 generated_sql = """
@@ -109,13 +109,25 @@ SELECT
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN 'web channel'
 	ELSE null
+	END as \"channel\",
+    CASE
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN 'store channel'
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN 'web channel'
+	ELSE null
 	END as \"channel_label\",
     CASE
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
 	ELSE null
-	END as \"id_label\"
+	END as \"id_label\",
+    CASE
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
+	ELSE null
+	END as \"sk\"
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"vacuous\".\"sales_promotion_sk\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"

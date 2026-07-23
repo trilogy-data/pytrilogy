@@ -1,6 +1,6 @@
 query_id = "22"
-generator = "v3"
-gen_length = 1787
+generator = "v4"
+gen_length = 1447
 preql_size = 589
 comp_size = 806
 generated_sql = """
@@ -14,36 +14,25 @@ FROM
 thoughtful as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
-    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\",
-    coalesce(\"orders_customer_customers\".\"c_custkey\",\"orders_orders\".\"o_custkey\") as \"orders_customer_id\"
+    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
+    SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"cntrycode\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
     LEFT OUTER JOIN \"memory\".\"orders\" as \"orders_orders\" on \"orders_customer_customers\".\"c_custkey\" = \"orders_orders\".\"o_custkey\"
 WHERE
     (SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) is not null and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')) and \"orders_orders\".\"o_orderkey\" is null
-),
-cooperative as (
+)
 SELECT
-    \"thoughtful\".\"orders_customer_account_balance\" as \"orders_customer_account_balance\",
-    \"thoughtful\".\"orders_customer_id\" as \"orders_customer_id\",
-    SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) as \"cntrycode\"
+    \"thoughtful\".\"cntrycode\" as \"cntrycode\",
+    count(\"thoughtful\".\"orders_customer_id\") as \"numcust\",
+    sum(\"thoughtful\".\"orders_customer_account_balance\") as \"totacctbal\"
 FROM
-    \"highfalutin\"
-    INNER JOIN \"thoughtful\" on 1=1
+    \"thoughtful\"
+    INNER JOIN \"highfalutin\" on 1=1
 WHERE
     \"thoughtful\".\"orders_customer_account_balance\" > \"highfalutin\".\"avg_bal_in_target\"
 
 GROUP BY
-    1,
-    2,
-    3)
-SELECT
-    \"cooperative\".\"cntrycode\" as \"cntrycode\",
-    count(\"cooperative\".\"orders_customer_id\") as \"numcust\",
-    sum(\"cooperative\".\"orders_customer_account_balance\") as \"totacctbal\"
-FROM
-    \"cooperative\"
-GROUP BY
     1
 ORDER BY 
-    \"cooperative\".\"cntrycode\" asc"""
+    \"thoughtful\".\"cntrycode\" asc"""

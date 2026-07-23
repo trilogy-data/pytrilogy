@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
@@ -63,6 +64,7 @@ from trilogy.core.processing.node_generators.rowset_node import (
     _scoped_joins_for_rowset,
 )
 from trilogy.core.processing.nodes import (
+    BuildCaches,
     History,
     MergeNode,
     SelectNode,
@@ -190,6 +192,21 @@ def _build_nested_select(
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     if caches.pseudonym_map is None:
         caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    # The shared build caches are keyed on address/grain identity alone, which
+    # is only correct while every build in the resolution applies the SAME
+    # scoped joins — a join changes what an address builds to (canonical
+    # collapse + pseudonym stamping). When this body carries its OWN joins the
+    # outer resolution never saw, entries the outer scope cached are wrong
+    # here (an outer-built join key comes back with no pseudonym link to its
+    # body mate, so the inner aggregate detaches from its grouping key and
+    # FINAL cross-joins ON 1=1); build this scope with fresh caches. The
+    # converse (outer joins EXCLUDED here via `exclude_derived`) keeps the
+    # shared caches: boundary pairing reads the outer join's pseudonym stamps
+    # off them (subset_presence_probe rowset pairs).
+    if any(j not in caches.scoped_joins for j in scoped_joins):
+        caches = BuildCaches(
+            pseudonym_map=caches.pseudonym_map, scoped_joins=scoped_joins
+        )
     factory = Factory(
         environment=author_env,
         build_cache=caches.build_cache,
@@ -384,10 +401,19 @@ def _resolve_union_select(
         # the per-arm internal columns so the rendered SELECT emits only the
         # union outputs — sourced from the hidden columns via find_source.
         arm_own = [c.address for c in arm_node.output_concepts]
-        for out in list(arm_node.output_concepts):
-            merge_name = lineage.get_merge_concept(out)
-            if merge_name:
-                arm_node.output_concepts.append(environment.concepts[merge_name])
+        # Re-expose each arm's columns under the shared union outputs, in the
+        # canonical align order — a UNION ALL stacks positionally, so every
+        # arm's projection must list the outputs in the same order regardless
+        # of its own column order. A scoped join inside the arm can emit the
+        # authored key under its partner's address, so resolve through the
+        # partner/pseudonym (`find_source` recovers the physical column at
+        # render). The per-arm internal columns are hidden.
+        produced = {
+            lineage.get_merge_concept_resolved(out) for out in arm_node.output_concepts
+        }
+        for merged in ordered_outputs:
+            if merged.address in produced:
+                arm_node.output_concepts.append(merged)
         arm_node.hidden_concepts = set(arm_own)
         arm_node.rebuild_cache()
         arm_nodes.append(arm_node)
@@ -439,8 +465,21 @@ def _resolve_condition_sources(
                 "Could not resolve condition row arguments "
                 f"{[c.address for c in row_args]}"
             )
+        feeder = row_info.strategy_node
+        # The standalone feeder plan hides its own grain keys at its FINAL
+        # layer (non-mandatory there), but hidden outputs are invisible to
+        # downstream join inference — the merge back onto `node` degrades to
+        # a cartesian. Un-hide any key the consumer also carries so the pair
+        # joins keyed (a keyless feeder, e.g. a `by *` global, still
+        # cross-joins).
+        shared_hidden = {
+            o.address for o in feeder.output_concepts if o.address in produced_addrs
+        } & set(feeder.hidden_concepts)
+        if shared_hidden:
+            feeder.hidden_concepts = set(feeder.hidden_concepts) - shared_hidden
+            feeder.rebuild_cache()
         sources.row_concepts = row_args
-        sources.row_parents.append(row_info.strategy_node)
+        sources.row_parents.append(feeder)
 
     seen_existence_addrs: set[str] = set()
     seen_parent_ids: set[int] = set()
@@ -461,13 +500,26 @@ def _resolve_condition_sources(
                 "Could not resolve condition existence arguments "
                 f"{[c.address for c in existence_args]}"
             )
+        # An existence feeder is side-channel-only: slice its outputs to the
+        # subselect columns (its mandatory contract). The nested plan can come
+        # back carrying its predicate args as extra row outputs (`max_total`
+        # for a HAVING membership), and any of those shared with the consumer
+        # promotes the feeder to a row-join candidate in MergeNode resolution —
+        # a spurious value-join whose grain then leaks the plan-local virt
+        # across the rowset boundary. v3 renders the feeder as the bare
+        # subselect column; match it.
+        ex_node = ex_info.strategy_node
+        existence_addrs = {c.address for c in existence_args}
+        sliced = [o for o in ex_node.output_concepts if o.address in existence_addrs]
+        if sliced and len(sliced) < len(ex_node.output_concepts):
+            ex_node.set_output_concepts(sliced)
         for concept in existence_args:
             if concept.address not in seen_existence_addrs:
                 seen_existence_addrs.add(concept.address)
                 sources.existence_concepts.append(concept)
-        if id(ex_info.strategy_node) not in seen_parent_ids:
-            seen_parent_ids.add(id(ex_info.strategy_node))
-            sources.existence_parents.append(ex_info.strategy_node)
+        if id(ex_node) not in seen_parent_ids:
+            seen_parent_ids.add(id(ex_node))
+            sources.existence_parents.append(ex_node)
     return sources
 
 
@@ -619,6 +671,30 @@ def resolve_rowset(
     # inner FINAL masked) has no source-map entry in the rendered CTE, so a
     # boundary input mapped to it dangles at render time.
     produced = {o.address: o for o in inner_node.usable_outputs}
+    # A coalescing scoped join (`full`/`subset`/`union`) collapses the join-key
+    # group (`a.aid = b.bid`) onto ONE canonical body column, leaving the
+    # authored side only as a pseudonym of that canonical — so a demanded
+    # handle's content (`a.aid`) has no produced entry of its own. Re-expose
+    # the content on the inner producer (sourced off the canonical column via
+    # the pseudonym) so the boundary can materialize the handle; mirrors v3
+    # `_expose_coalesced_key_sources`.
+    produced_by_pseudonym: dict[str, BuildConcept] = {}
+    for out in produced.values():
+        for pseudonym in out.pseudonyms:
+            produced_by_pseudonym.setdefault(pseudonym, out)
+    coalesced_contents: list[BuildConcept] = []
+    for demanded_handle in outputs:
+        dlineage = demanded_handle.lineage
+        if not isinstance(dlineage, BuildRowsetItem):
+            continue
+        content = dlineage.content
+        if content.address in produced or content.address not in produced_by_pseudonym:
+            continue
+        if content.address not in {c.address for c in coalesced_contents}:
+            coalesced_contents.append(content)
+    if coalesced_contents:
+        inner_node.add_output_concepts(coalesced_contents)
+        produced.update({c.address: c for c in coalesced_contents})
     derived = lineage.rowset.derived_concepts
     demanded = {o.address for o in rowset_outputs}
     handle_pool = list(environment.concepts.values()) + list(
@@ -734,25 +810,100 @@ def resolve_rowset(
         handles.append(probe)
         handle_addrs.add(probe.address)
 
+    # OBLIGATION: a DERIVED relation member (`union join cur.wk + 53 = fut.wk`)
+    # is a BASIC over THIS boundary's handles with no producer group of its own
+    # — materialize it here so the completion merge can pair it with its
+    # authored mate instead of cross-joining ON 1=1 (v3 bundles the derived key
+    # into the rowset body select). OUTER (full/union) relations only: a
+    # directional (left/subset) relation resolves through the scoped-merge
+    # collapse, which substitutes the derived key into the other side's grain
+    # and computes it in a downstream projection — materializing it here too
+    # displaces that path and widens the authored LEFT to FULL
+    # (scoped_derived_rowset_join_matrix). A directional relation's SUBSET
+    # SOURCE member is the exception: it pairs by its own value (`left join
+    # ta.s = nb.s and nb.w = ta.w + 52`, mixed anchors composing to FULL), so
+    # its own side still materializes it. Side identity is structural: every
+    # lineage arg must already be a handle of this boundary.
+    outer_relation_keys = environment.domain_graph.outer_relation_keys()
+    subset_source_members = environment.domain_graph.subset_sources()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        outer_relation = canonical in outer_relation_keys
+        for member_addr in {canonical, *members}:
+            if not outer_relation and member_addr not in subset_source_members:
+                continue
+            if member_addr in handle_addrs or is_presence_probe(member_addr):
+                continue
+            member_concept = environment.concepts.get(member_addr)
+            if (
+                member_concept is None
+                # address mismatch = the scoped-merge collapse substituted this
+                # member to the other side's derivation; that path owns it
+                or member_concept.address != member_addr
+                or member_concept.lineage is None
+                or isinstance(member_concept.lineage, BuildRowsetItem)
+            ):
+                continue
+            arg_addrs = {a.address for a in member_concept.concept_arguments}
+            if not arg_addrs:
+                continue
+            # An arg the outer query never demanded is not a handle yet — but if
+            # it IS one of this rowset's own handles the boundary can still
+            # materialize it (hidden), which is the only way the derived key
+            # gets a producer at all (`subset join ftr.ws - 53 = cur.ws` never
+            # projects `ftr.ws`; without this the completion merge has no axis
+            # and cross-joins ON 1=1).
+            pending: list[tuple[BuildConcept, BuildConcept]] = []
+            for arg_addr in sorted(arg_addrs - handle_addrs):
+                arg_handle = environment.concepts.get(arg_addr)
+                if (
+                    arg_addr not in derived
+                    or arg_handle is None
+                    or not isinstance(arg_handle.lineage, BuildRowsetItem)
+                    or arg_handle.lineage.content.address not in produced
+                ):
+                    break
+                pending.append(
+                    (arg_handle, produced[arg_handle.lineage.content.address])
+                )
+            else:
+                for arg_handle, arg_input in pending:
+                    handles.append(arg_handle)
+                    inputs.append(arg_input)
+                    handle_addrs.add(arg_handle.address)
+                handles.append(member_concept)
+                handle_addrs.add(member_addr)
+
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary (v3's
     # `scoped_partial` in `_collect_advertised_outputs`) instead of INNER-
-    # narrowing the anchor to the intersection. Restricted to relations whose
-    # OTHER members are also rowset handles (the rowset-pair matrix): a mixed
-    # root↔rowset relation resolves through binding substitution, and marking
-    # the rowset side there re-routed a boundary measure onto the root scan
-    # (conflicting-filter year-over-year join re-derived `cnt_2000` row-wise).
+    # narrowing the anchor to the intersection. Gated on the subset edge's
+    # ANCHOR (its declared superset target) being a rowset handle, not on the
+    # whole relation: a mixed root↔rowset relation whose anchor is the ROOT
+    # side resolves through binding substitution, and marking the rowset side
+    # there re-routed a boundary measure onto the root scan (conflicting-filter
+    # year-over-year join re-derived `cnt_2000` row-wise). But a ROOT member
+    # elsewhere in the relation (a dim BRIDGE beside rowset-anchored subsets,
+    # the q11 shape) must not strip the flag from siblings whose own anchor IS
+    # a rowset — unmarked, two subset boundaries INNER-join each other and drop
+    # the anchor rows they don't share (dim_bridge all_subset_unaffected).
+    # A LIMITED body overrides the ROOT-anchor exemption: the limit truncates
+    # rows no condition expresses, so the anchor scan's handle binding cannot
+    # stand in for the boundary's row set — unmarked, the merge INNER-narrows
+    # the anchor to the limited rows (rowset_body_limit left readback).
     subset_sources = environment.domain_graph.subset_sources()
 
-    def _mates_all_rowset(address: str) -> bool:
-        mates: set[str] = set()
-        for canonical, members in environment.scoped_join_key_groups.items():
-            if address in members:
-                mates |= (members | {canonical}) - {address}
-        mate_concepts = [environment.concepts.get(m) for m in mates]
-        return bool(mate_concepts) and all(
-            m is not None and m.derivation == Derivation.ROWSET for m in mate_concepts
+    def _subset_anchors_all_rowset(address: str) -> bool:
+        targets = {
+            e.target
+            for e in environment.domain_graph.edges
+            if e.relation is DomainRelation.SUBSET
+            and e.provenance is EdgeProvenance.DECLARED
+            and e.source == address
+        }
+        target_concepts = [environment.concepts.get(t) for t in targets]
+        return bool(target_concepts) and all(
+            t is not None and t.derivation == Derivation.ROWSET for t in target_concepts
         )
 
     scoped_partial = [
@@ -760,7 +911,7 @@ def resolve_rowset(
         for h in handles
         if h.address in subset_sources
         and isinstance(h.lineage, BuildRowsetItem)
-        and _mates_all_rowset(h.address)
+        and (select.limit is not None or _subset_anchors_all_rowset(h.address))
     ]
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content — map through the BuildRowsetItem
@@ -783,6 +934,21 @@ def resolve_rowset(
             if h.address not in hidden and not is_presence_probe(h.address)
         ]
     )
+    # A multiselect/union boundary's rows are at the FULL align grain even
+    # when only a subset of its outputs is demanded (`subset join x =
+    # all_combos.b` never projects `ch`): the projection does NOT dedup, so
+    # stamping the demanded subset as the grain overclaims uniqueness and a
+    # downstream aggregate elides its GROUP BY over the per-arm fan
+    # (union_reproject direct-RHS: sum fanned to two rows of 10 instead of
+    # re-aggregating to 20). Stamp the grain over every align output instead.
+    if isinstance(built, BuildMultiSelectLineage):
+        full_handles = [
+            handle_concept
+            for addr in sorted(derived)
+            if (handle_concept := environment.concepts.get(addr)) is not None
+        ]
+        if full_handles:
+            boundary_grain = BuildGrain.from_concepts(full_handles)
     key_like = set(boundary_grain.components) | {
         addr
         for canonical, members in environment.scoped_join_key_groups.items()

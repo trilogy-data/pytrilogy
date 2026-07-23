@@ -616,7 +616,16 @@ class PredicatePushdown(OptimizationRule):
                 # so the pushed subselect has a real source to render against
                 # instead of a dangling CTE reference. A subselect-only feeder
                 # is absent from ``source_map`` entirely and lives in
-                # ``existence_source_map``; promote it into the same map.
+                # ``existence_source_map``; promote it into the same map. A
+                # feeder the consumer double-lists (naturally-planned CTEs
+                # carry existence concepts in BOTH maps) promotes into both:
+                # the renderer's WHERE/QUALIFY split and materialized-scalar
+                # checks read ``source_map``, while the sibling-feeder
+                # chaining guard in ``optimize`` reads only
+                # ``existence_source_map`` — writing just one map either
+                # mis-renders the pushed subselect (QUALIFY with no window)
+                # or blinds the guard and re-chains membership semijoins
+                # O(n^2).
                 promotions: list[
                     tuple[
                         str, list[str], bool, list[CTE | UnionCTE], list[DatasourceCTE]
@@ -699,6 +708,8 @@ class PredicatePushdown(OptimizationRule):
                         parent_cte.existence_source_map[x] = list(source_names)
                     else:
                         parent_cte.source_map[x] = list(source_names)
+                        if x in existence_conditions:
+                            parent_cte.existence_source_map[x] = list(source_names)
                     for source in sources:
                         parent_cte.add_dependency(source)
                     for inlined in inlined_sources:

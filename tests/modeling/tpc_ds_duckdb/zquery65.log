@@ -1,6 +1,6 @@
 query_id = "65"
-generator = "v3"
-gen_length = 2418
+generator = "v4"
+gen_length = 2172
 preql_size = 650
 comp_size = 1062
 generated_sql = """
@@ -20,7 +20,7 @@ WHERE
 GROUP BY
     1,
     2),
-abundant as (
+questionable as (
 SELECT
     \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
     avg(\"cheerful\".\"item_revenue\") as \"store_avg_revenue\"
@@ -28,33 +28,37 @@ FROM
     \"cheerful\"
 GROUP BY
     1),
-questionable as (
+cooperative as (
 SELECT
-    \"cheerful\".\"item_revenue\" as \"item_revenue\",
-    \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
-    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
-    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"cheerful\".\"item_revenue\" as \"revenue\",
+    \"cheerful\".\"store_sales_item_sk\" as \"store_sales_item_sk\",
+    \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\"
+FROM
+    \"cheerful\")
+SELECT
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"cooperative\".\"revenue\" as \"revenue\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cheerful\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cheerful\".\"store_sales_store_sk\" = \"store_sales_store_store\".\"S_STORE_SK\")
-SELECT
-    \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"questionable\".\"item_revenue\" as \"revenue\",
-    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    \"questionable\".\"store_sales_item_wholesale_cost\" as \"store_sales_item_wholesale_cost\",
-    \"questionable\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\"
-FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"store_sales_store_sk\" = \"abundant\".\"store_sales_store_sk\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cooperative\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"questionable\" on \"cooperative\".\"store_sales_store_sk\" = \"questionable\".\"store_sales_store_sk\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cooperative\".\"store_sales_store_sk\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"questionable\".\"item_revenue\" <= 0.1 * \"abundant\".\"store_avg_revenue\"
+    \"cooperative\".\"revenue\" <= 0.1 * \"questionable\".\"store_avg_revenue\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"questionable\".\"store_avg_revenue\"
 ORDER BY 
-    \"questionable\".\"store_sales_store_name\" asc nulls first,
-    \"questionable\".\"store_sales_item_desc\" asc nulls first
+    \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
+    \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first
 LIMIT (100)"""

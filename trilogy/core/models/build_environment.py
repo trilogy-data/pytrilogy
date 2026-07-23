@@ -136,6 +136,10 @@ class BuildEnvironment:
     # declarations themselves. None means unknown (conservative consumers
     # treat every member as referenced). Set by `get_query_node`.
     statement_authored_addresses: set[str] | None = None
+    # Same closure restricted to the SELECT outputs (WHERE excluded): a rowset
+    # referenced only in a condition is population-scope (d1) demand, not a
+    # row-stream contributor. Set by `get_query_node`.
+    statement_output_addresses: set[str] | None = None
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

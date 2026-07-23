@@ -2044,6 +2044,32 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 return f"{item.namespace}.{item.alias}"
         return None
 
+    def get_merge_concept_resolved(self, check: BuildConcept) -> str | None:
+        """`get_merge_concept`, but tolerant of a scoped-join partner or
+        pseudonym standing in for the authored align member. A subset/union
+        join inside an arm canonicalizes the authored key onto its partner's
+        address (`wr.order_number` emitted as `ws.order_number`), so the arm
+        node exposes the partner column; the pairing is the same merged key by
+        declaration. Mirrors `find_source`'s partner recovery on the planning
+        side, so the arm re-exposes its i-th column under the union output."""
+        direct = self.get_merge_concept(check)
+        if direct is not None:
+            return direct
+        joined: set[frozenset[str]] = {
+            frozenset((s, t))
+            for select in self.selects
+            for s, t, _ in select.scoped_joins
+        }
+        for item in self.align.items:
+            for c in item.concepts:
+                if (
+                    frozenset((c.address, check.address)) in joined
+                    or check.address in c.pseudonyms
+                    or c.address in check.pseudonyms
+                ):
+                    return f"{item.namespace}.{item.alias}"
+        return None
+
     def find_source(self, concept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept:
         for x in self.align.items:
             if concept.name == x.alias:
@@ -3985,9 +4011,10 @@ class Factory:
         self, where: WhereClause, content: "BuildExpr"
     ) -> BuildWhereClause:
         """Build a filter's `? <condition>` so a bare (no `by`) aggregate in it
-        co-grains to the FILTERED CONTENT's grain — the rows being filtered —
-        rather than inheriting the outer consuming grain. Mirrors how a SELECT's
-        WHERE co-grains its aggregates to the select grain (HAVING semantics).
+        co-grains to the FILTERED CONTENT — the rows being filtered — rather than
+        inheriting the outer consuming grain. Mirrors how a SELECT's WHERE
+        co-grains its aggregates to the select grain (HAVING semantics): the
+        content is the filter's implicit `SELECT`, so the aggregate groups by it.
 
         Without this, `auto f <- p ? (count(x) > 4)` consumed in another model
         groups the count by the consumer's key (e.g. a foreign `catalog.item.id`
@@ -3996,7 +4023,17 @@ class Factory:
         # A non-concept content (e.g. a literal) has no grain to co-grain to.
         if not isinstance(content, BuildConcept):
             return self.build(where)
-        content_grain = Grain(components=set(content.grain.components))
+        # Group by the content's OWN grain — i.e. the grain of `SELECT <content>`.
+        # For a scalar that is the content itself (`{content.address}`): `select sp`
+        # / `select name` dedupe to the value. NOT `content.grain`, which is the
+        # finer definitional/FD grain a property or derived scalar descends to
+        # (`sp`/`name` -> `s_item`) and would over-partition the count. An
+        # already-grouped content (aggregate/window) is the exception: there the
+        # declared grain IS its grouping identity, so keep it.
+        if content.derivation in (Derivation.AGGREGATE, Derivation.WINDOW):
+            content_grain = Grain(components=set(content.grain.components))
+        else:
+            content_grain = Grain(components={content.address})
         if self.aggregate_grain == content_grain:
             return self.build(where)
         saved = self.aggregate_grain

@@ -400,6 +400,7 @@ def _resolve_bridge_graph(
                 accept_partial=attempt.accepts_partial,
                 environment=request.environment,
                 synonyms=synonyms,
+                penalize_partial=True,
             )
         except nx.exception.NetworkXNoPath:
             break
@@ -670,13 +671,29 @@ def _derived_connector_nodes(
             # even when another parent already covers it — it IS the join column;
             # dropping it leaves the merge with no shared key and a 1=1 cross join
             # (hackernews: the recursion's `id` is also the post scan's `id`).
+            # An uncovered bridge concept FD-riding the connector's grain must
+            # ride the connector too: the datasource gap-fill stands down for
+            # non-BASIC merge bridges, so no raw scan will ever supply it
+            # (window-key join: `orders.amt` rides the rank connector at oid
+            # grain — v3 computes the window inline on the amt-carrying scan).
+            grain_components = set(origin.grain.components)
+            carried = [
+                c
+                for c in plan.concepts
+                if c.address not in covered
+                and c.address != origin.address
+                and c.address not in grain_components
+                and c.grain.components
+                and set(c.grain.components) <= grain_components
+            ]
             mandatory = unique(
                 [origin]
                 + [
                     env.concepts[address]
                     for address in origin.grain.components
                     if address in env.concepts
-                ],
+                ]
+                + carried,
                 "address",
             )
             history.connectors_in_progress.add(origin.address)
@@ -893,9 +910,31 @@ def _local_concept_nodes_for_datasource(
                 and canonical.address in bridge_addresses
                 and _datasource_renders_derived(datasource, canonical)
             )
+            # A datasource-materialized aggregate/window (`customer_order_count`
+            # in a summary table) is requested by its `.address` but reaches this
+            # scan under its `_virt_agg_*` canonical node -- match the canonical
+            # too, but only when the scan physically BINDS it as a column. Without
+            # the binding guard a fact scan would emit the aggregate via its
+            # reverse-lineage edge (order_id -> count) and recompute it wrongly;
+            # with it, only the summary table that owns the column emits it.
+            # Restricted to AGGREGATE/WINDOW: a plain root concept already matches
+            # via `address in bridge_addresses` (its canonical IS its address), and
+            # widening this to every derivation re-sources probe/filter members off
+            # the wrong scan (gcat decom_spine).
+            renders_materialized_canonical = (
+                canonical is not None
+                and canonical.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
+                and canonical.address in bridge_addresses
+                and datasource is not None
+                and _datasource_can_output(datasource, canonical.address)
+            )
             if (
                 canonical is not None
-                and (address in bridge_addresses or renders_derived_key)
+                and (
+                    address in bridge_addresses
+                    or renders_derived_key
+                    or renders_materialized_canonical
+                )
                 and _datasource_renders_probe(datasource, address, environment)
             ):
                 concepts.setdefault(address, neighbor)

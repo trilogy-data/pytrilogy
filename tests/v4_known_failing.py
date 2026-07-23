@@ -267,12 +267,12 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/discovery/test_global_avg_filter_group_fanout.py::test_global_avg_filter_does_not_fan_out_group": _V4_MASKED_LEAK,
     "tests/discovery/test_outer_where_pushes_into_global_agg.py::test_outer_where_pushes_into_global_agg_with_post_agg_filter": _V4_MASKED_LEAK,
     "tests/engine/demo/test_demo_duckdb_subselect.py::test_subselect_non_correlated": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb.py::test_composite_rollup_aggregate_keeps_group_by": _V4_MASKED_LEAK,
+    # test_composite_rollup_aggregate_keeps_group_by pruned 2026-07-14 s3
+    # (isolation + in-suite verified): fixed by the non-standard-grouping
+    # parent-fold gate + rollup FINAL passthrough in strategy_builder.
     "tests/engine/test_duckdb.py::test_derived_membership_existence": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb.py::test_predicate_not_pushed_past_window_order_key": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb_rowset.py::test_rowset_membership_feeder_scoped_joined_to_own_output_no_recursion": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb_rowset.py::test_scoped_left_join_coalesce_keeps_unmatched": _V4_MASKED_LEAK,
-    "tests/engine/test_duckdb_rowset.py::test_tvf_union_arm_local_join": _V4_MASKED_LEAK,
     "tests/engine/test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column": _V4_MASKED_LEAK,
     "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_aggregated": _V4_MASKED_LEAK,
     "tests/engine/test_enum_unions.py::test_enum_union_arm_spanning_multiple_sources_in_tvf": _V4_MASKED_LEAK,
@@ -306,25 +306,21 @@ V4_KNOWN_FAILING: dict[str, str] = {
     "tests/test_parse_engine_v2.py::test_empty_top_level_rollup_inherits_build_grain": _V4_MASKED_LEAK,
     "tests/test_parsing.py::test_circular_aliasing_inverse": _V4_MASKED_LEAK,
     "tests/test_query_processing.py::test_query_aggregation": _V4_MASKED_LEAK,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_propagation": _V4_ROWSET_XDS_CONTAM,
+    # 2026-07-13: pruned join_propagation / outer_read_key / left_k_aw /
+    # readback_inner_k (renamed intersection_k, now passing) + the LEFT matrix
+    # cells — the subordinate coalesced-key readback family is FIXED (nested
+    # builds get fresh caches when the body adds scoped joins; coalesced handle
+    # content re-exposed on the inner producer; scoped-collapsed keys relate
+    # property roots in the ROOT split). Remaining entries are the FULL-body
+    # readback + b-side property carry.
     "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_join_resolves_correctly": _V4_ROWSET_XDS_RESIDUAL,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_cross_datasource_rowset_outer_read_key": _V4_ROWSET_XDS_CONTAM,
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_aw": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_full_k_bv": _V4_ROWSET_XDS_RESIDUAL,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_inner_k": _V4_ROWSET_XDS_RESIDUAL,
-    "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_aw": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_left_k_bv": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_cross_datasource_outer_read.py::test_rowset_key_readback_matrix": _V4_ROWSET_XDS_RESIDUAL,
     "tests/test_rowset_derived_twice_join_bugs.py::test_q64_join_form_plans": _V4_MASKED_LEAK,
-    "tests/test_rowset_outer_join_having_on_partial_measure.py::test_outer_rowset_left_join_having_on_partial_measure": _V4_MASKED_LEAK,
-    "tests/test_scoped_join.py::test_rowset_outer_join_shared_base_no_fanout": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_all_left_unaffected": _V4_MASKED_LEAK,
     "tests/test_scoped_join_dim_bridge_outer_key.py::test_inner_to_dim_plus_two_left_rowsets_compiles": _V4_MASKED_LEAK,
-    "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_blends_two_rowset_measures": _V4_MASKED_LEAK,
-    "tests/test_scoped_join_rowset_outer_blend.py::test_left_join_optional_key_projects_preserved_value": _V4_MASKED_LEAK,
-    "tests/test_three_source_scoped_outer_join.py::test_three_source_chained_outer_join_anchor_preserved": _V4_MASKED_LEAK,
-    "tests/test_three_source_scoped_outer_join.py::test_three_source_star_outer_join_anchor_preserved": _V4_MASKED_LEAK,
-    "tests/test_three_source_scoped_outer_join.py::test_two_source_outer_join_anchor_preserved": _V4_MASKED_LEAK,
     "tests/test_where_clause.py::test_case_where": _V4_MASKED_LEAK,
     "tests/test_where_clause.py::test_where_scalar": _V4_MASKED_LEAK,
 }

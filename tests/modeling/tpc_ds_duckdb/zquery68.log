@@ -1,6 +1,6 @@
 query_id = "68"
-generator = "v3"
-gen_length = 4089
+generator = "v4"
+gen_length = 4242
 preql_size = 1181
 comp_size = 1453
 generated_sql = """
@@ -45,11 +45,12 @@ SELECT
     \"customer_current_address_customer_address\".\"CA_CITY\" as \"customer_current_address_city\",
     \"highfalutin\".\"customer_first_name\" as \"customer_first_name\",
     \"highfalutin\".\"customer_last_name\" as \"customer_last_name\",
+    \"highfalutin\".\"customer_sk\" as \"bought_store_sales_customer_sk\",
     \"highfalutin\".\"customer_sk\" as \"customer_sk\"
 FROM
     \"highfalutin\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"highfalutin\".\"customer_current_address_sk\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-vacuous as (
+concerned as (
 SELECT
     \"yummy\".\"_bought_bought_city\" as \"bought_bought_city\",
     \"yummy\".\"_bought_extended_price\" as \"bought_extended_price\",
@@ -63,18 +64,27 @@ SELECT
     \"cheerful\".\"customer_last_name\" as \"customer_last_name\",
     \"cheerful\".\"customer_first_name\" as \"customer_first_name\",
     \"cheerful\".\"customer_current_address_city\" as \"customer_current_address_city\",
-    \"vacuous\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"vacuous\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"vacuous\".\"bought_extended_price\" as \"bought_extended_price\",
-    \"vacuous\".\"bought_extended_tax\" as \"bought_extended_tax\",
-    \"vacuous\".\"bought_list_price\" as \"bought_list_price\"
+    \"concerned\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"concerned\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"concerned\".\"bought_extended_price\" as \"bought_extended_price\",
+    \"concerned\".\"bought_extended_tax\" as \"bought_extended_tax\",
+    \"concerned\".\"bought_list_price\" as \"bought_list_price\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"cheerful\" on \"vacuous\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"customer_sk\"
+    \"concerned\"
+    INNER JOIN \"cheerful\" on \"concerned\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"customer_sk\"
 WHERE
-    \"cheerful\".\"customer_current_address_city\" != \"vacuous\".\"bought_bought_city\"
+    \"cheerful\".\"customer_current_address_city\" != \"concerned\".\"bought_bought_city\"
 
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
 ORDER BY 
     \"cheerful\".\"customer_last_name\" asc nulls first,
-    \"vacuous\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"concerned\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

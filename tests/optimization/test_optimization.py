@@ -430,6 +430,64 @@ def test_predicate_pushdown_parent_propagates_existence_dependency():
 
     assert optimized is True
     assert parent.condition == condition
+    # a row-sourced existence concept keeps its source_map promotion — the
+    # renderer's WHERE/QUALIFY split and materialized checks read source_map
+    # (a window arg absent from it mis-renders the pushed subselect as QUALIFY)
+    assert parent.source_map[exists.address] == [existence_parent.name]
+    assert parent.parent_ctes == [existence_parent]
+
+
+def test_predicate_pushdown_existence_promotion_registers_in_existence_map():
+    """A membership feeder must register in the parent's existence_source_map
+    (the map the sibling-feeder chaining guard reads) even when the consumer
+    double-lists it in source_map — source_map-only promotion blinds the guard
+    and re-chains membership semijoins O(n^2). The source_map entry is also
+    kept: the renderer's WHERE/QUALIFY split reads it."""
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    exists = BuildConcept(
+        name="exists_id",
+        canonical_name="exists_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    condition = BuildSubselectComparison(
+        left=row,
+        right=exists,
+        operator=ComparisonOperator.IN,
+    )
+    parent = _simple_cte("parent", [row])
+    existence_parent = _simple_cte("existence_parent", [exists])
+    consumer = _simple_cte(
+        "consumer",
+        [row],
+        condition=condition,
+        parent_ctes=[parent, existence_parent],
+        source_map={
+            row.address: [parent.name],
+            exists.address: [existence_parent.name],
+        },
+    )
+    consumer.existence_source_map[exists.address] = [existence_parent.name]
+
+    optimized = PredicatePushdown()._check_parent(
+        consumer,
+        parent,
+        condition,
+        {parent.name: [consumer]},
+    )
+
+    assert optimized is True
+    assert parent.condition == condition
+    assert parent.existence_source_map[exists.address] == [existence_parent.name]
     assert parent.source_map[exists.address] == [existence_parent.name]
     assert parent.parent_ctes == [existence_parent]
 

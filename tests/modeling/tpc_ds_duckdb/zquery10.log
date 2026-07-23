@@ -1,6 +1,6 @@
 query_id = "10"
-generator = "v3"
-gen_length = 7095
+generator = "v4"
+gen_length = 7254
 preql_size = 2161
 comp_size = 1858
 generated_sql = """
@@ -42,7 +42,7 @@ FROM
 WHERE
     \"sales_sale_date_date\".\"D_YEAR\" = 2002 and (\"sales_sale_date_date\".\"D_MOY\" is not null and \"sales_sale_date_date\".\"D_MOY\" in (1,2,3,4))
 ),
-thoughtful as (
+questionable as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"cheerful\".\"sales_purchasing_customer_sk\" as \"sales_purchasing_customer_sk\",
@@ -50,28 +50,24 @@ SELECT
     \"cheerful\".\"sales_sale_date_year\" as \"sales_sale_date_year\"
 FROM
     \"cheerful\"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
-abundant as (
+    LEFT OUTER JOIN \"memory\".\"customer\" as \"sales_purchasing_customer_customers\" on \"cheerful\".\"sales_purchasing_customer_sk\" = \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\"),
+yummy as (
 SELECT
-    CASE WHEN (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG')) and \"thoughtful\".\"sales_sale_date_year\" = 2002 and (\"thoughtful\".\"sales_sale_date_month_of_year\" is not null and \"thoughtful\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
+    CASE WHEN \"questionable\".\"sales_channel\" = 'STORE' and \"questionable\".\"sales_sale_date_year\" = 2002 and (\"questionable\".\"sales_sale_date_month_of_year\" is not null and \"questionable\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"questionable\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
 FROM
-    \"thoughtful\"
+    \"questionable\"
 WHERE
-    (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('WEB','CATALOG'))
+    \"questionable\".\"sales_channel\" = 'STORE'
 
 GROUP BY
     1),
-questionable as (
+abundant as (
 SELECT
-    CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2002 and (\"thoughtful\".\"sales_sale_date_month_of_year\" is not null and \"thoughtful\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"thoughtful\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
+    CASE WHEN (\"questionable\".\"sales_channel\" is not null and \"questionable\".\"sales_channel\" in ('WEB','CATALOG')) and \"questionable\".\"sales_sale_date_year\" = 2002 and (\"questionable\".\"sales_sale_date_month_of_year\" is not null and \"questionable\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"questionable\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
 FROM
-    \"thoughtful\"
+    \"questionable\"
 WHERE
-    \"thoughtful\".\"sales_channel\" = 'STORE'
+    (\"questionable\".\"sales_channel\" is not null and \"questionable\".\"sales_channel\" in ('WEB','CATALOG'))
 
 GROUP BY
     1)
@@ -95,7 +91,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_current_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_current_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    exists (select 1 from questionable where questionable.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from abundant where abundant.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" is not null
+    (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" is not null and exists (select 1 from yummy where yummy.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from abundant where abundant.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\")
 
 GROUP BY
     1,
