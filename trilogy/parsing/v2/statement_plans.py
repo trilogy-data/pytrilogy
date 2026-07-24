@@ -76,44 +76,42 @@ class UnsupportedSyntaxError(NotImplementedError):
         super().__init__(message)
 
     @classmethod
-    def from_syntax(
-        cls, message: str, syntax: SyntaxElement
-    ) -> "UnsupportedSyntaxError":
+    def from_syntax(cls, message: str, syntax: SyntaxElement) -> UnsupportedSyntaxError:
         return cls(message, HydrationDiagnostic.from_syntax(message, syntax))
 
 
 class StatementPlan(Protocol):
-    def load_imports(self, hydrator: "NativeHydrator") -> None: ...
+    def load_imports(self, hydrator: NativeHydrator) -> None: ...
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None: ...
+    def collect_symbols(self, hydrator: NativeHydrator) -> None: ...
 
-    def bind(self, hydrator: "NativeHydrator") -> None: ...
+    def bind(self, hydrator: NativeHydrator) -> None: ...
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None: ...
+    def hydrate(self, hydrator: NativeHydrator) -> None: ...
 
-    def validate(self, hydrator: "NativeHydrator") -> None: ...
+    def validate(self, hydrator: NativeHydrator) -> None: ...
 
-    def commit(self, hydrator: "NativeHydrator") -> Any: ...
+    def commit(self, hydrator: NativeHydrator) -> Any: ...
 
 
 class StatementPlanBase:
-    def load_imports(self, hydrator: "NativeHydrator") -> None:
+    def load_imports(self, hydrator: NativeHydrator) -> None:
         return None
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+    def collect_symbols(self, hydrator: NativeHydrator) -> None:
         return None
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: NativeHydrator) -> None:
         return None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         return None
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         return None
 
 
-def finalize_select_tree(output: Any, hydrator: "NativeHydrator") -> None:
+def finalize_select_tree(output: Any, hydrator: NativeHydrator) -> None:
     """v2-native finalize entry point used by statement plans.
 
     Routes through ``select_finalize.finalize_select_tree`` so concept
@@ -128,10 +126,10 @@ class CommentStatementPlan(StatementPlanBase):
     syntax: SyntaxToken
     output: Comment | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_comment(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> Comment | None:
+    def commit(self, hydrator: NativeHydrator) -> Comment | None:
         return self.output
 
 
@@ -143,7 +141,7 @@ class ConceptStatementPlan(StatementPlanBase):
     provided_addresses: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+    def collect_symbols(self, hydrator: NativeHydrator) -> None:
         self.address = collect_concept_address(self.syntax, hydrator.environment)
         if self.address:
             self.provided_addresses = [self.address]
@@ -164,13 +162,13 @@ class ConceptStatementPlan(StatementPlanBase):
         # concept declarations — strict v2 parsing must raise instead.
         self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
         pass
 
     def commit(
         self,
-        hydrator: "NativeHydrator",
+        hydrator: NativeHydrator,
     ) -> ConceptDeclarationStatement | PropertiesDeclarationStatement | None:
         return self.output
 
@@ -180,17 +178,17 @@ class ShowStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ShowStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         if self.output is None:
             return
         content = self.output.content
         if isinstance(content, (SelectStatement, PersistStatement)):
             finalize_select_tree(content, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> ShowStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> ShowStatement | None:
         return self.output
 
 
@@ -202,7 +200,7 @@ class ImportStatementPlan(StatementPlanBase):
     # can be stored on the resulting Import for explore to surface.
     description: str | None = None
 
-    def load_imports(self, hydrator: "NativeHydrator") -> None:
+    def load_imports(self, hydrator: NativeHydrator) -> None:
         # Imports materialize in their own early phase because later
         # statements need the imported concepts/functions/datasources
         # resolvable during collect_symbols, bind, and hydrate. This is
@@ -227,13 +225,13 @@ class ImportStatementPlan(StatementPlanBase):
             request.description = self.description
             self.output = hydrator.import_service.execute(request)
 
-    def commit(self, hydrator: "NativeHydrator") -> ImportStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> ImportStatement | None:
         return self.output
 
 
 def _declare_inline_literals(
     syntax: SyntaxNode,
-    hydrator: "NativeHydrator",
+    hydrator: NativeHydrator,
     namespace: str,
 ) -> None:
     """Pre-declare every inline concept literal address as a scoped symbol.
@@ -261,7 +259,7 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
     output: _SelectLikeT | None = None
     inline_addresses: list[str] = field(default_factory=list)
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+    def collect_symbols(self, hydrator: NativeHydrator) -> None:
         namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
         self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
         for addr in self.inline_addresses:
@@ -269,7 +267,7 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
             hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
         _declare_inline_literals(self.syntax, hydrator, namespace)
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         parse_config = hydrator.parse_config
         pre_keys: set[str] = (
             set(hydrator.environment.concepts.keys())
@@ -280,9 +278,7 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
         if parse_config and parse_config.strict_name_shadow_enforcement:
             self._check_name_shadow(pre_keys, hydrator)
 
-    def _check_name_shadow(
-        self, pre_keys: set[str], hydrator: "NativeHydrator"
-    ) -> None:
+    def _check_name_shadow(self, pre_keys: set[str], hydrator: NativeHydrator) -> None:
         selects: list[SelectStatement] = []
         if isinstance(self.output, SelectStatement):
             selects.append(self.output)
@@ -299,10 +295,10 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
                 f"Use new unique names for these."
             )
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         finalize_select_tree(self.output, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> _SelectLikeT | None:
+    def commit(self, hydrator: NativeHydrator) -> _SelectLikeT | None:
         return self.output
 
 
@@ -321,12 +317,12 @@ class FunctionDefinitionPlan(StatementPlanBase):
     output: FunctionDeclaration | None = None
     parameter_names: list[str] = field(default_factory=list)
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+    def collect_symbols(self, hydrator: NativeHydrator) -> None:
         self.parameter_names = FunctionDefinitionSyntax.from_node(
             self.syntax
         ).parameter_names
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: NativeHydrator) -> None:
         # Register into env.functions during BIND so later concept plans
         # (hydrated inside _sort_and_create_concepts) can resolve @name refs.
         # The pending overlay exposes scoped placeholders staged by
@@ -350,7 +346,7 @@ class FunctionDefinitionPlan(StatementPlanBase):
             name=self.output.name,
         )
 
-    def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
+    def commit(self, hydrator: NativeHydrator) -> FunctionDeclaration | None:
         return self.output
 
 
@@ -359,10 +355,10 @@ class DatasourceStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: Datasource | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> Datasource | None:
+    def commit(self, hydrator: NativeHydrator) -> Datasource | None:
         if self.output is None:
             return None
         # Flush staged concepts before add_datasource so validate_concept
@@ -378,10 +374,10 @@ class MergeStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: MergeStatementV2 | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> MergeStatementV2 | None:
+    def commit(self, hydrator: NativeHydrator) -> MergeStatementV2 | None:
         if self.output is None:
             return None
         for source_c in self.output.sources:
@@ -408,7 +404,7 @@ class RowsetStatementPlan(StatementPlanBase):
         )
         return f"{target_ns}.{source_name}"
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+    def collect_symbols(self, hydrator: NativeHydrator) -> None:
         for child in self.syntax.children:
             if (
                 isinstance(child, SyntaxToken)
@@ -487,7 +483,7 @@ class RowsetStatementPlan(StatementPlanBase):
             )
             hydrator.environment.concepts.rowset_alias_outputs.add(rowset_address)
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: NativeHydrator) -> None:
         # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))
         # resolve to outputs that only exist after rowset_to_concepts runs. Stage deliberate
         # placeholders now; the real concepts replace them during hydrate.
@@ -508,11 +504,11 @@ class RowsetStatementPlan(StatementPlanBase):
             seen.add(address)
             self.forward_addresses.append(address)
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         with hydrator.symbol_table.rowset_scope(self.forward_addresses):
             self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> RowsetDerivationStatement | None:
         if self.output is None:
             return None
         alias_updates = hydrator.semantic_state.drain_rowset_aliases()
@@ -529,13 +525,13 @@ class PersistStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: PersistStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         finalize_select_tree(self.output, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> PersistStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> PersistStatement | None:
         return self.output
 
 
@@ -544,10 +540,10 @@ class RawSQLStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: RawSQLStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> RawSQLStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> RawSQLStatement | None:
         return self.output
 
 
@@ -556,7 +552,7 @@ class TypeDeclarationPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: TypeDeclaration | None = None
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: NativeHydrator) -> None:
         # Stage before concept hydration so `key revenue float::money;`
         # can resolve the trait through the type lookup facade when
         # _sort_and_create_concepts runs after BIND. Durable writes into
@@ -565,7 +561,7 @@ class TypeDeclarationPlan(StatementPlanBase):
         if self.output is not None:
             hydrator.semantic_state.add_type(self.output.type)
 
-    def commit(self, hydrator: "NativeHydrator") -> TypeDeclaration | None:
+    def commit(self, hydrator: NativeHydrator) -> TypeDeclaration | None:
         return self.output
 
 
@@ -580,10 +576,10 @@ class SimpleOperationalStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: Any = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> Any:
+    def commit(self, hydrator: NativeHydrator) -> Any:
         return self.output
 
 
@@ -612,10 +608,10 @@ class CopyStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: CopyStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         if self.output is not None:
             if isinstance(self.output.select, ChartStatement):
                 for layer in self.output.select.layers:
@@ -623,7 +619,7 @@ class CopyStatementPlan(StatementPlanBase):
             else:
                 finalize_select_tree(self.output.select, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> CopyStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> CopyStatement | None:
         return self.output
 
 
@@ -632,15 +628,15 @@ class ChartStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ChartStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def validate(self, hydrator: "NativeHydrator") -> None:
+    def validate(self, hydrator: NativeHydrator) -> None:
         if self.output is not None:
             for layer in self.output.layers:
                 finalize_select_tree(layer.select, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> ChartStatement | None:
+    def commit(self, hydrator: NativeHydrator) -> ChartStatement | None:
         return self.output
 
 
@@ -648,11 +644,11 @@ class ChartStatementPlan(StatementPlanBase):
 class UnsupportedStatementPlan(StatementPlanBase):
     syntax: SyntaxElement
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def hydrate(self, hydrator: NativeHydrator) -> None:
         raise UnsupportedSyntaxError.from_syntax(
             f"No v2 statement plan for syntax node '{syntax_name(self.syntax)}'",
             self.syntax,
         )
 
-    def commit(self, hydrator: "NativeHydrator") -> Any:
+    def commit(self, hydrator: NativeHydrator) -> Any:
         return None

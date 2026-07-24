@@ -10,15 +10,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from discovery_v4 import _materialize_for_query, compile_sql  # noqa: E402
+from discovery_v4 import _materialize_for_query, compile_sql
 
-from trilogy import Dialects, Environment  # noqa: E402
-from trilogy.core.env_processor import generate_graph  # noqa: E402
-from trilogy.core.processing.concept_strategies_v4 import (  # noqa: E402
+from trilogy import Dialects, Environment
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     search_concepts,
 )
-from trilogy.core.statements.author import SelectStatement  # noqa: E402
+from trilogy.core.statements.author import SelectStatement
 
 ENGINE_DIR = Path(__file__).resolve().parent.parent / "tests" / "engine"
 QUERY = """import recursive;

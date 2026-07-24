@@ -25,9 +25,9 @@ import os
 import shutil
 import threading
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
 from . import agent_runner, analyze_run, prompts, scoring
 from .categories import Category, get_category

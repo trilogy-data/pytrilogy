@@ -30,7 +30,7 @@ def test_format_currency_groups_and_trims():
 
 
 def test_format_value():
-    assert format_value(Decimal("120000"), _USD) == "$120,000"
+    assert format_value(Decimal(120000), _USD) == "$120,000"
     assert format_value(340, DataType.INTEGER) == "340"
     assert format_value(None, _USD) == ""
     assert format_value("North", DataType.STRING) == "North"

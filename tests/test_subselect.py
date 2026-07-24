@@ -152,7 +152,7 @@ def table filtered() -> select val where val > 20 order by val asc limit 2;
 
 
 def test_subselect_concept_derivation():
-    env, queries = parse("""
+    env, _queries = parse("""
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -169,7 +169,7 @@ select @top_vals() as top;
 
 def test_subselect_nested_in_function():
     """Verify subselect works as argument to built-in function."""
-    env, queries = parse("""
+    _env, queries = parse("""
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -215,7 +215,7 @@ select top_items;
 
 def test_inline_subselect_basic():
     """Parse inline SUBSELECT(...) without where."""
-    env, queries = parse("""
+    _env, queries = parse("""
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)

@@ -1,7 +1,7 @@
 import re
 from typing import TYPE_CHECKING, Any
 
-from trilogy.core.models.core import DataType, EnumType
+from trilogy.core.models.core import DataType, EnumType, ValidatedType, ValueRange
 
 if TYPE_CHECKING:
     from trilogy.executor import Executor
@@ -192,8 +192,8 @@ def detect_rich_type(
     column_lower = column_name.lower()
 
     matches = []
-    for _, types in RICH_TYPE_PATTERNS.items():
-        for _, config in types.items():
+    for types in RICH_TYPE_PATTERNS.values():
+        for config in types.values():
             allowed = config["base_type"]
             allowed_set = allowed if isinstance(allowed, frozenset) else {allowed}
             if base_datatype not in allowed_set:
@@ -243,6 +243,52 @@ def _enum_from_values(
     if any(isinstance(v, str) and len(v) > MAX_ENUM_VALUE_LENGTH for v in values):
         return None
     return EnumType(type=base_datatype, values=sorted(values))
+
+
+_BOUNDS_INT_TYPES = frozenset({DataType.INTEGER, DataType.BIGINT})
+_BOUNDS_FLOAT_TYPES = frozenset(
+    {DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC, DataType.NUMBER}
+)
+
+
+def detect_numeric_bounds(
+    executor: "Executor",
+    from_clause: str,
+    columns: list[tuple[str, DataType]],
+    skip: set[str],
+) -> dict[str, ValidatedType]:
+    """Infer declared-range validators from a full-table MIN/MAX scan.
+
+    Integer columns get tight inclusive bounds ``[min..max]`` — exact for the
+    ingested source, refreshed on re-ingest. Continuous (float/numeric)
+    measures only get a structural sign bound ``[0..]`` when all values are
+    non-negative: tight float bounds are brittle against data growth.
+    ``skip`` excludes key/enum columns (keys grow; an enum is already the
+    domain)."""
+    eligible = [
+        (n, b)
+        for n, b in columns
+        if n not in skip and (b in _BOUNDS_INT_TYPES or b in _BOUNDS_FLOAT_TYPES)
+    ]
+    if not eligible:
+        return {}
+    quote = executor.generator.safe_quote
+    exprs = ", ".join(f"min({quote(n)}), max({quote(n)})" for n, _ in eligible)
+    row = executor.execute_raw_sql(f"SELECT {exprs} FROM {from_clause}").fetchall()[0]
+    result: dict[str, ValidatedType] = {}
+    for i, (name, base) in enumerate(eligible):
+        lo, hi = row[2 * i], row[2 * i + 1]
+        if lo is None or hi is None:
+            continue
+        if base in _BOUNDS_INT_TYPES:
+            if isinstance(lo, bool) or not isinstance(lo, int):
+                continue
+            result[name] = ValidatedType(
+                type=base, ranges=(ValueRange(min=int(lo), max=int(hi)),)
+            )
+        elif lo >= 0:
+            result[name] = ValidatedType(type=base, ranges=(ValueRange(min=0),))
+    return result
 
 
 def detect_enum_types(

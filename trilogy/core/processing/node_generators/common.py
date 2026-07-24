@@ -1,13 +1,7 @@
+from collections.abc import Callable, Iterable, Sequence
 from itertools import combinations
 from typing import (
-    Callable,
-    Dict,
-    Iterable,
-    List,
     NamedTuple,
-    Sequence,
-    Set,
-    Tuple,
     cast,
 )
 
@@ -66,8 +60,8 @@ def optional_satisfied(
 
 
 def unsatisfied_optionals(
-    local_optional: List[BuildConcept], node: StrategyNode
-) -> List[BuildConcept]:
+    local_optional: list[BuildConcept], node: StrategyNode
+) -> list[BuildConcept]:
     """The optionals a node does not already serve (pseudonym- and partial-aware)."""
     output_addresses = {x.address for x in node.output_concepts}
     partial_addresses = {x.address for x in node.partial_concepts}
@@ -163,14 +157,14 @@ def _local_property_conditions(
 
 def _union_key_siblings(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """Sibling `union(...)` concepts that stack a key for every arm of this
     union — e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
     Such a sibling is the stacked row identity of this union's output."""
     if not isinstance(concept.lineage, BuildFunction):
         return []
     arms = concept.lineage.concept_arguments
-    out: List[BuildConcept] = []
+    out: list[BuildConcept] = []
     for other in environment.concepts.values():
         if other.address == concept.address or other.derivation != Derivation.UNION:
             continue
@@ -188,8 +182,8 @@ def _union_key_siblings(
 def _walk_aggregate_grain_inputs(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    seen: Set[str] | None = None,
-) -> List[BuildConcept]:
+    seen: set[str] | None = None,
+) -> list[BuildConcept]:
     """Collect row-identity concepts an aggregate needs from its arg's
     upstream — without crossing a row-identity boundary.
 
@@ -240,7 +234,7 @@ def _walk_aggregate_grain_inputs(
         if isinstance(content, BuildConcept):
             return _walk_aggregate_grain_inputs(content, environment, seen)
         return []
-    collected: List[BuildConcept] = []
+    collected: list[BuildConcept] = []
     for arg in concept.lineage.concept_arguments:
         if isinstance(arg, BuildConcept):
             collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
@@ -249,7 +243,7 @@ def _walk_aggregate_grain_inputs(
 
 def resolve_function_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     if not isinstance(
         concept.lineage,
         (
@@ -260,7 +254,7 @@ def resolve_function_parent_concepts(
             BuildBetween,
         ),
     ):
-        raise ValueError(
+        raise TypeError(
             f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"
         )
     if concept.derivation == Derivation.AGGREGATE:
@@ -293,21 +287,19 @@ def resolve_function_parent_concepts(
 
 def resolve_condition_parent_concepts(
     condition: BuildWhereClause,
-) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
-    base_existence = []
+) -> tuple[list[BuildConcept], list[tuple[BuildConcept, ...]]]:
     base_rows: list[BuildConcept] = []
     base_rows += condition.row_arguments
-    for ctuple in condition.existence_arguments:
-        base_existence.append(ctuple)
+    base_existence = list(condition.existence_arguments)
     return unique(base_rows, "address"), base_existence
 
 
 def resolve_filter_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
-) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
+) -> tuple[list[BuildConcept], list[tuple[BuildConcept, ...]]]:
     if not isinstance(concept.lineage, (BuildFilterItem,)):
-        raise ValueError(
+        raise TypeError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
     direct_parent = concept.lineage.content
@@ -520,7 +512,7 @@ def _split_conditions_for_enrichment(
 
 def gen_enrichment_node(
     base_node: StrategyNode,
-    join_keys: List[BuildConcept],
+    join_keys: list[BuildConcept],
     local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
@@ -529,7 +521,7 @@ def gen_enrichment_node(
     log_lambda,
     history: History,
     conditions: BuildWhereClause | None = None,
-    partial_concepts: List[BuildConcept] | None = None,
+    partial_concepts: list[BuildConcept] | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)
 
@@ -558,11 +550,11 @@ def gen_enrichment_node(
         )
         if property_node:
             log_lambda(
-                f"{str(type(base_node).__name__)} returning property enrichment node"
+                f"{type(base_node).__name__!s} returning property enrichment node"
             )
             return property_node
     log_lambda(
-        f"{str(type(base_node).__name__)} searching for join keys {LooseBuildConceptList(concepts=join_keys)} and extra required {local_opts}"
+        f"{type(base_node).__name__!s} searching for join keys {LooseBuildConceptList(concepts=join_keys)} and extra required {local_opts}"
     )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
@@ -575,11 +567,11 @@ def gen_enrichment_node(
     )
     if not enrich_node:
         log_lambda(
-            f"{str(type(base_node).__name__)} enrichment node unresolvable, returning just group node"
+            f"{type(base_node).__name__!s} enrichment node unresolvable, returning just group node"
         )
         return base_node
     log_lambda(
-        f"{str(type(base_node).__name__)} returning merge node with group node + enrichment node"
+        f"{type(base_node).__name__!s} returning merge node with group node + enrichment node"
     )
     non_hidden = [
         x
@@ -598,7 +590,7 @@ def gen_enrichment_node(
     )
 
 
-def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
+def resolve_join_order(joins: list[NodeJoin]) -> list[NodeJoin]:
     if not joins:
         return []
     available_aliases: set[StrategyNode] = set()
@@ -621,7 +613,7 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
     available_aliases.add(base.left_node)
     available_aliases.add(base.right_node)
     while final_joins_pre:
-        new_final_joins_pre: List[NodeJoin] = []
+        new_final_joins_pre: list[NodeJoin] = []
         for join in final_joins_pre:
             if join.left_node in available_aliases:
                 # we don't need to join twice
@@ -674,8 +666,8 @@ def is_ds_node(n: str) -> bool:
 
 
 def build_ds_column_index(
-    datasource_lookup: Dict[str, BuildDatasource | BuildUnionDatasource],
-) -> Dict[str, Dict[str, BuildConcept]]:
+    datasource_lookup: dict[str, BuildDatasource | BuildUnionDatasource],
+) -> dict[str, dict[str, BuildConcept]]:
     """
     ds -> { concept_address -> BuildConcept }
     """
@@ -688,21 +680,21 @@ def build_ds_column_index(
 
 def iter_unique_ds_pairs(
     g: nx.Graph | nx.DiGraph,
-) -> Iterable[Tuple[str, str]]:
+) -> Iterable[tuple[str, str]]:
     """
     Yield each unordered datasource pair once.
     """
     seen = set()
     for ds in g.nodes:
         for nbr in g.neighbors(ds):
-            pair = cast(Tuple[str, str], tuple(sorted((ds, nbr))))
+            pair = cast(tuple[str, str], tuple(sorted((ds, nbr))))
             if pair in seen:
                 continue
             seen.add(pair)
             yield pair
 
 
-def get_concept_node_cached(cache: Dict[str, str], concept: BuildConcept):
+def get_concept_node_cached(cache: dict[str, str], concept: BuildConcept):
     """
     Memoized concept -> graph node resolution.
     """
@@ -716,7 +708,7 @@ def existing_join_addresses(
     final: ReferenceGraph,
     concepts: Iterable[BuildConcept],
     get_node,
-) -> Set[str]:
+) -> set[str]:
     """
     Return addresses already present in the final graph.
     """
@@ -927,9 +919,9 @@ def relevant_authored_join_pairs(
 
 
 def inject_authored_join_key_terminals(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """Force the merged key of each traversed authored join relation into the
     resolution as a mandatory terminal, mirroring shared-key treatment: each
     side's subgraph must materialize the key, so the merge join pairs the
@@ -941,7 +933,7 @@ def inject_authored_join_key_terminals(
     pairs, _ = _relevant_authored_join_pairs(all_concepts, environment)
     if not pairs:
         return all_concepts
-    wanted: List[BuildConcept] = []
+    wanted: list[BuildConcept] = []
     for pair in pairs:
         wanted.append(pair.canonical)
         for member in (pair.left, pair.right):
@@ -985,7 +977,7 @@ def reinject_common_join_keys_v2(
 
     # Precompute once
     ds_columns = build_ds_column_index(datasource_lookup)
-    concept_node_cache: Dict[str, str] = {}
+    concept_node_cache: dict[str, str] = {}
 
     injected = False
 
@@ -1004,7 +996,7 @@ def reinject_common_join_keys_v2(
 
         reduced = set(BuildGrain.from_concepts(common_concepts.values()).components)
 
-        get_node = lambda c: get_concept_node_cached(concept_node_cache, c)  # noqa E731
+        get_node = lambda c: get_concept_node_cached(concept_node_cache, c)
 
         existing = existing_join_addresses(
             final,

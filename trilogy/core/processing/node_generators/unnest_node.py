@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
@@ -21,14 +19,14 @@ LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
 def get_pseudonym_parents(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     source_concepts,
     environment: BuildEnvironment,
     g,
     depth,
     history,
     conditions,
-) -> List[StrategyNode]:
+) -> list[StrategyNode]:
     for x in concept.pseudonyms:
         attempt = source_concepts(
             mandatory_list=[environment.alias_origin_lookup[x]] + local_optional,
@@ -47,7 +45,7 @@ def get_pseudonym_parents(
 
 def gen_unnest_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     history: History,
     environment: BuildEnvironment,
     g,
@@ -110,7 +108,7 @@ def gen_unnest_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} unnest node has no parents but conditions inputs {conditions.row_arguments} vs expected output {expected_outputs}"
         )
-        if all([x.address in expected_outputs for x in conditions.row_arguments]):
+        if all(x.address in expected_outputs for x in conditions.row_arguments):
             local_conditions = True
         else:
             parent = source_concepts(

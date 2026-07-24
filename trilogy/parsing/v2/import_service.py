@@ -56,9 +56,7 @@ def _suggest_import_paths(
             # Skip hidden / dunder / venv-ish dirs so the suggestion isn't
             # polluted by `__pycache__`, `.git`, eval worker copies, etc.
             if any(
-                part.startswith(".")
-                or part.startswith("_")
-                or part in ("node_modules", "venv")
+                part.startswith((".", "_")) or part in ("node_modules", "venv")
                 for part in rel.parts
             ):
                 continue
@@ -131,7 +129,7 @@ class ImportHydrationService:
     # UndefinedConceptFull placeholders for datasource columns referencing
     # concepts in that in-flight namespace. Optional for back-compat with
     # direct ImportHydrationService construction in tests.
-    semantic_state: "SemanticState | None" = None
+    semantic_state: SemanticState | None = None
 
     def set_text(self, key: Path | str, text: str) -> None:
         self.text_lookup[key] = text

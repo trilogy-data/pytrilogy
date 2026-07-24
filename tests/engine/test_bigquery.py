@@ -508,7 +508,7 @@ select
 ;
 """)
 
-    result = list(results[-1].fetchall())[0]
+    result = next(iter(results[-1].fetchall()))
 
     # Test aggregate calculations
     assert result.total_revenue == 877.30

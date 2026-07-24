@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import archive  # noqa: E402
-from spec import SPEC  # noqa: E402
+from common import archive
+from spec import SPEC
 
 
 def ingest(results_dir: Path, only: set[str] | None) -> int:

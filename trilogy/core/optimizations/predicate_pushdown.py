@@ -74,17 +74,17 @@ def _predicate_safe_past_null_extension(
             sides.append(join.left_cte.name)
         if parent_cte.name not in sides:
             continue
-        if join.jointype is JoinType.FULL:
-            null_extended = True
-        elif (
-            join.jointype is JoinType.LEFT_OUTER
-            and join.right_cte.name == parent_cte.name
-        ):
-            null_extended = True
-        elif (
-            join.jointype is JoinType.RIGHT_OUTER
-            and join.left_cte is not None
-            and join.left_cte.name == parent_cte.name
+        if (
+            join.jointype is JoinType.FULL
+            or (
+                join.jointype is JoinType.LEFT_OUTER
+                and join.right_cte.name == parent_cte.name
+            )
+            or (
+                join.jointype is JoinType.RIGHT_OUTER
+                and join.left_cte is not None
+                and join.left_cte.name == parent_cte.name
+            )
         ):
             null_extended = True
     if not null_extended:
@@ -193,12 +193,10 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
             continue
         if j.jointype == JoinType.INNER:
             continue
-        if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER):
-            if (
-                isinstance(j.right_cte, (CTE, UnionCTE))
-                and j.right_cte.name == parent_name
-            ):
-                return True
+        if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER) and (
+            isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name
+        ):
+            return True
         if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
             if (
                 isinstance(j.left_cte, (CTE, UnionCTE))
@@ -607,7 +605,7 @@ class PredicatePushdown(OptimizationRule):
                         parent_cte.source_map[x] = [base.name]
         if row_conditions.issubset(materialized):
             children = inverse_map.get(parent_cte.name, [])
-            if all([is_child_of(candidate, child.condition) for child in children]):
+            if all(is_child_of(candidate, child.condition) for child in children):
                 # Existence sources to promote onto the parent (computed before
                 # any mutation so the cycle guard can veto the whole push).
                 # The consumer may source an existence concept either from a
@@ -970,16 +968,14 @@ class PredicatePushdownRemove(OptimizationRule):
         existence_only = [
             parent.name
             for parent in parents
-            if all([x.address in flattened_existence for x in parent.output_columns])
+            if all(x.address in flattened_existence for x in parent.output_columns)
             and len(flattened_existence) > 0
         ]
         if all(
-            [
-                value
-                for key, value in parent_filter_status.items()
-                if key not in existence_only
-            ]
-        ) and not any([isinstance(x, BuildDatasource) for x in cte.source.datasources]):
+            value
+            for key, value in parent_filter_status.items()
+            if key not in existence_only
+        ) and not any(isinstance(x, BuildDatasource) for x in cte.source.datasources):
             self.log(
                 f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
             )

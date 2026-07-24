@@ -1,7 +1,6 @@
 from logging import INFO
 from os.path import dirname
 from pathlib import PurePath
-from typing import Optional
 
 import pandas as pd
 from pytest import fixture
@@ -52,8 +51,8 @@ def create_arbitrary_dimension(exec: Executor, key: str, name: str):
 
 def create_fact(
     exec: Executor,
-    dims: Optional[list[str]] = None,
-    include: Optional[list[str]] = None,
+    dims: list[str] | None = None,
+    include: list[str] | None = None,
 ):
     exec.execute_raw_sql("""create table fact_titanic as 
                          SELECT 
@@ -124,9 +123,9 @@ def create_function_derived_concept(
     operator: FunctionType,
     arguments: list[Concept],
     environment: Environment,
-    output_type: Optional[DataType] = None,
-    output_purpose: Optional[Purpose] = None,
-    metadata: Optional[Metadata] = None,
+    output_type: DataType | None = None,
+    output_purpose: Purpose | None = None,
+    metadata: Metadata | None = None,
 ) -> Concept:
     purpose = (
         function_args_to_output_purpose(arguments, environment)

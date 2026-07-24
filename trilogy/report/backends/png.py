@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
 from trilogy.rendering.theme import DEFAULT_THEME, REPORT_LAYOUT, Theme
 from trilogy.report.backends.base import ReportBackend
@@ -44,7 +43,7 @@ class PngBackend(ReportBackend):
 
     def render(
         self,
-        elements: List[RenderedElement],
+        elements: list[RenderedElement],
         output_path: Path,
         theme: Theme = DEFAULT_THEME,
     ) -> None:

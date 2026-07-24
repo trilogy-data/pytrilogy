@@ -291,7 +291,7 @@ query = text_to_query(
     executor.environment,
     "number of flights by month in 2005",
     Provider.OPENAI,
-    "gpt-5-chat-latest",
+    "gpt-5.5",
     api_key,
 )
 

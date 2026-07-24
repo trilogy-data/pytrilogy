@@ -201,11 +201,9 @@ order by x asc;"""
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
-    assert set([x.address for x in z.lineage.concept_arguments]) == set(
-        [
-            x.address,
-        ]
-    )
+    assert {x.address for x in z.lineage.concept_arguments} == {
+        x.address,
+    }
     assert z.keys == {
         x.address,
     }
@@ -373,7 +371,7 @@ select
     lag(x, 2) over (order by x asc) -> lagged,
 order by x asc;"""
     env, _ = parse(declarations)
-    assert "lagged" in [c.split(".")[-1] for c in env.concepts.keys()]
+    assert "lagged" in [c.split(".")[-1] for c in env.concepts]
     lineage = env.concepts["lagged"].lineage
     assert isinstance(lineage, NavigationWindowItem)
     assert lineage.offset == 2
@@ -436,7 +434,7 @@ property user_id.country_rank <- rank(user_id) over (partition by country order 
         "property user_id.score int;\n"
     )
     env2, _ = parse(prelude + rendered)
-    assert "country_rank" in [c.split(".")[-1] for c in env2.concepts.keys()]
+    assert "country_rank" in [c.split(".")[-1] for c in env2.concepts]
 
 
 def test_window_lag_rendering_with_index():

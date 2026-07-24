@@ -33,7 +33,7 @@ ORDER BY
 
 """
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     query = test_executor.generate_sql(test_select)[0]
     assert "INVALID_REFERENCE_BUG" not in query
 
@@ -69,7 +69,7 @@ ORDER BY
 
 """
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     query = test_executor.generate_sql(test_select)[0]
 
     assert "INVALID_REFERENCE_BUG" not in query
@@ -107,7 +107,7 @@ ORDER BY
 ;
 """
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     query = test_executor.generate_sql(test_select)[0]
 
     assert "INVALID_REFERENCE_BUG" not in query

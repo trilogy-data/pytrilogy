@@ -365,7 +365,7 @@ def test_concept_graph_materialized_root_is_leaf():
     be, mandatory, _ = _build("SELECT customer_id, order_count;")
     roots = frozenset({"local.order_count"})
 
-    _, attrs, edges = build_concept_graph(mandatory, be, [], roots)
+    _, attrs, _edges = build_concept_graph(mandatory, be, [], roots)
     assert attrs["local.order_count"].derivation == Derivation.ROOT
     # A materialized root stops the lineage walk: order_id (count's argument) is
     # never added as an upstream node.

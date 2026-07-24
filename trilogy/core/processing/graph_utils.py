@@ -1,12 +1,11 @@
 from collections import defaultdict
-from typing import Dict, List
 
 from trilogy.core.models.author import Concept
 from trilogy.utility import unique
 
 
 def extract_required_subgraphs(
-    assocs: defaultdict[str, list], path: List[str]
+    assocs: defaultdict[str, list], path: list[str]
 ) -> defaultdict[str, list]:
     ds = path[0]
     current: list[str] = []
@@ -18,21 +17,19 @@ def extract_required_subgraphs(
             ds = val
         else:
             current.append(val)
-    else:
-        if current:
-            assocs[ds] += current
+    if current:
+        assocs[ds] += current
 
     return assocs
 
 
-def extract_mandatory_subgraphs(paths: Dict[str, List[str]], g) -> List[List[Concept]]:
+def extract_mandatory_subgraphs(paths: dict[str, list[str]], g) -> list[list[Concept]]:
     final: list[list[str]] = []
     assocs: defaultdict[str, list] = defaultdict(list)
     for path in paths.values():
         extract_required_subgraphs(assocs, path)
 
-    for _, v in assocs.items():
-        final.append(v)
+    final.extend(assocs.values())
     final_concepts = []
     for value in final:
         final_concepts.append(

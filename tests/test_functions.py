@@ -32,7 +32,7 @@ TEST_DIALECTS = [
 def test_typing():
     x = ArrayType(type=DataType.INTEGER)
 
-    assert x in set([x])
+    assert x in {x}
 
 
 def test_negative_float_parsing(test_environment):
@@ -52,7 +52,7 @@ x
 where x >-1.24;
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
@@ -72,7 +72,7 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
@@ -89,7 +89,7 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
@@ -110,7 +110,7 @@ def test_window_functions(test_environment):
 
 
         """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
@@ -123,7 +123,7 @@ def test_window_datatype(test_environment):
     auto category_rank <- rank category_name order by count(order_id) desc;
 
         """
-    env, parsed = parse(declarations, environment=test_environment)
+    env, _parsed = parse(declarations, environment=test_environment)
     assert env.concepts["category_rank"].datatype == DataType.INTEGER
 
 
@@ -169,7 +169,7 @@ def test_date_functions(test_environment):
     
     
         """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
@@ -213,7 +213,7 @@ def test_explicit_cast(test_environment):
         order_id,
         _str_order_id
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -270,7 +270,7 @@ select
     '2024-01-01 01:01:01'::datetime -> one_datetime,
     'true'::bool -> one_bool,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
 
     select: SelectStatement = parsed[-1]
     z = (
@@ -319,7 +319,7 @@ def test_math_functions(test_environment):
         random,
         square,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -332,7 +332,7 @@ def test_random_randomness(test_environment):
         x,
         random(x) -> random_1,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     z = (
         Dialects.DUCK_DB.default_executor(environment=test_environment)
         .execute_query(parsed[-1])
@@ -375,7 +375,7 @@ def test_string_functions(test_environment):
         hash(category_name, sha256) -> hash_sha256,
         # hash(category_name, sha512) -> hash_sha512
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         engine = None
@@ -403,7 +403,7 @@ def test_case_function(test_environment):
         category_name,
         test_upper_case
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
 
     assert (
         test_environment.concepts["category_name"]
@@ -425,7 +425,7 @@ def test_case_like_function(test_environment):
         category_name,
         test_like
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     assert (
         test_environment.concepts["category_name"]
         in test_environment.concepts["test_like"].lineage.concept_arguments
@@ -451,7 +451,7 @@ def test_simple_case_function(test_environment):
         category_name,
         category_bucket
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     assert (
         test_environment.concepts["category_name"]
         in test_environment.concepts["category_bucket"].lineage.concept_arguments
@@ -476,7 +476,7 @@ def test_simple_case_renders_round_trip(test_environment):
         ELSE 'other'
     END;
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, _parsed = parse(declarations, environment=test_environment)
     concept = test_environment.concepts["category_bucket"]
     renderer = Renderer()
     rendered = renderer.to_string(concept.lineage)
@@ -495,7 +495,7 @@ def test_split_and_index_function(test_environment):
         split(test_string, '_')->split_string,
         split(test_string, '_')[0] -> first_element,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -511,7 +511,7 @@ def test_coalesce(test_environment):
         coalesce(null, 'test')->coalesce_null,
         coalesce(null, null, test_string)->coalesce_null_null,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -526,7 +526,7 @@ def test_constants(test_environment):
         current_date,
         current_datetime,
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -540,7 +540,7 @@ def test_unnest(test_environment):
     select
         x
     ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    env, _parsed = parse(declarations, environment=test_environment)
     assert env.concepts["int_list"].datatype == ArrayType(type=DataType.INTEGER)
     assert env.concepts["x"].datatype == DataType.INTEGER
 

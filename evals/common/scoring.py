@@ -301,7 +301,7 @@ def _sig_round(x: float, sig: int) -> float:
     """Round ``x`` to ``sig`` significant figures (relative precision)."""
     if x == 0.0:
         return 0.0
-    return round(x, -int(math.floor(math.log10(abs(x)))) + (sig - 1))
+    return round(x, -math.floor(math.log10(abs(x))) + (sig - 1))
 
 
 def _round_cell(v: object) -> object:
@@ -328,7 +328,7 @@ def _round_cell(v: object) -> object:
             return v
         v = float(v)
     if isinstance(v, float):
-        if v != v or v in (float("inf"), float("-inf")):
+        if math.isnan(v) or v in (float("inf"), float("-inf")):
             return v
         if v == int(v) and abs(v) < 2**53:
             return float(int(v))  # exact integer value (count/id): keep precise

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from click import echo, style
+from typing_extensions import Self
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture
@@ -78,11 +79,11 @@ class ValidationProgressContext:
     def __init__(self, total: int) -> None:
         self._inner = _ProbeProgressContext(total, task_label="Validating")
 
-    def __enter__(self) -> "ValidationProgressContext":
+    def __enter__(self) -> Self:
         self._inner.__enter__()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self._inner.__exit__(*args)
 
     def set_label(self, label: str) -> None:
@@ -172,9 +173,9 @@ def show_validation_success(
 __all__ = [
     "ValidationFailure",
     "ValidationProgressContext",
+    "_FdStderrCapture",
     "show_validation_failures",
     "show_validation_success",
     "show_validation_targets",
     "validation_progress",
-    "_FdStderrCapture",
 ]

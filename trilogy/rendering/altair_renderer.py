@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, ClassVar
 
 from trilogy.core.enums import ChartPlaceKind, ChartType, ScaleType
 from trilogy.core.models.core import DataType, TraitDataType
@@ -168,7 +168,11 @@ class AltairRenderer(BaseRenderer):
             )
         return charts
 
-    _TEMPORAL_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
+    _TEMPORAL_TYPES: ClassVar[set[DataType]] = {
+        DataType.DATE,
+        DataType.DATETIME,
+        DataType.TIMESTAMP,
+    }
 
     def _field_type(self, layer: ProcessedChartLayer, field: str) -> Any:
         """Vega-Lite type from the concept's declared datatype, so encoding

@@ -523,7 +523,7 @@ def test_engine_missing_single_parameter(dialect, required_params, test_params):
         # Create args with all params except the missing one
         args = ["run", "select 1 as test;", dialect]
         for param_key, param_value in test_params.items():
-            param_name = param_key.lstrip("--")
+            param_name = param_key.removeprefix("--")
             if param_name != missing_param:
                 args.extend([param_key, param_value])
 
@@ -650,8 +650,7 @@ def test_function_argument_type_reported_as_type_error():
                 cli,
                 [
                     "run",
-                    "key id int; datasource nums (id) grain (id) "
-                    "query '''select 1 as id'''; where year(id) = 2000 select id;",
+                    "key id int; datasource nums (id) grain (id) query '''select 1 as id'''; where year(id) = 2000 select id;",
                     "duckdb",
                 ],
             )
@@ -673,10 +672,7 @@ def test_multi_column_subquery_reported_as_syntax_error():
                 cli,
                 [
                     "run",
-                    "key id int; property id.val int; "
-                    "datasource t (id: id, val: val) grain (id) "
-                    "query '''select 1 as id, 10 as val'''; "
-                    "select id where id in (select id -> a, val -> b);",
+                    "key id int; property id.val int; datasource t (id: id, val: val) grain (id) query '''select 1 as id, 10 as val'''; select id where id in (select id -> a, val -> b);",
                     "duckdb",
                 ],
             )

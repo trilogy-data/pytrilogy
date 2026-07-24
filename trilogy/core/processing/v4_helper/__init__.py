@@ -29,17 +29,17 @@ from .models import (
 from .strategy_builder import build_strategy_node
 
 __all__ = [
+    "FINAL_NODE_ID",
+    "GROUPING_DERIVATIONS",
+    "ROW_SHAPE_BARRIER_DERIVATIONS",
     "BuildInfo",
     "ConceptAttrs",
-    "FINAL_NODE_ID",
     "FinalAssemblyContract",
     "FinalContributorContract",
-    "GROUPING_DERIVATIONS",
     "GroupAttrs",
     "GroupBucket",
     "GroupInputContract",
     "InputChannel",
-    "ROW_SHAPE_BARRIER_DERIVATIONS",
     "build_concept_graph",
     "build_group_graph",
     "build_strategy_node",

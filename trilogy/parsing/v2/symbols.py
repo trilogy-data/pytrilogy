@@ -317,14 +317,14 @@ def extract_dependencies(block: SyntaxNode, environment: Environment) -> list[st
 
 
 def topological_sort_plans(
-    concept_plans: list["ConceptStatementPlan"],
+    concept_plans: list[ConceptStatementPlan],
     environment: Environment,
-) -> list["ConceptStatementPlan"]:
+) -> list[ConceptStatementPlan]:
     """Sort concept plans so dependencies are hydrated first."""
     if not concept_plans:
         return []
 
-    addr_to_plan: dict[str, "ConceptStatementPlan"] = {}
+    addr_to_plan: dict[str, ConceptStatementPlan] = {}
     for plan in concept_plans:
         for addr in plan.provided_addresses:
             addr_to_plan[addr] = plan
@@ -347,7 +347,7 @@ def topological_sort_plans(
 
     queue: deque[int] = deque(pid for pid, deg in in_deg.items() if deg == 0)
 
-    ordered: list["ConceptStatementPlan"] = []
+    ordered: list[ConceptStatementPlan] = []
     while queue:
         pid = queue.popleft()
         ordered.append(plan_ids[pid])
@@ -356,7 +356,7 @@ def topological_sort_plans(
             if in_deg[dependent] == 0:
                 queue.append(dependent)
 
-    seen = set(id(p) for p in ordered)
+    seen = {id(p) for p in ordered}
     for plan in concept_plans:
         if id(plan) not in seen:
             ordered.append(plan)

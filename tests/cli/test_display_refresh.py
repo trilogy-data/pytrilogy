@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import trilogy.scripts.display_core as display_core
+from trilogy.scripts import display_core
 from trilogy.scripts.display_models import ManagedDataGroup, StaleDataSourceEntry
 from trilogy.scripts.display_refresh import (
     _common_prefix,

@@ -1,7 +1,8 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
@@ -71,7 +72,7 @@ class ConceptTransform:
         | SubselectItem
     )
     output: Concept  # this has to be a full concept, as it may not exist in environment
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "ConceptTransform":
         return ConceptTransform(
@@ -83,8 +84,8 @@ class ConceptTransform:
 
 @dataclass
 class SelectItem:
-    content: Union[ConceptTransform, ConceptRef]
-    modifiers: List[Modifier] = field(default_factory=list)
+    content: ConceptTransform | ConceptRef
+    modifiers: list[Modifier] = field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
@@ -100,10 +101,10 @@ class SelectItem:
 
     @property
     def is_undefined(self) -> bool:
-        return True if isinstance(self.content, UndefinedConcept) else False
+        return bool(isinstance(self.content, UndefinedConcept))
 
 
-def _row_grain_arguments(node: Any) -> List[ConceptRef]:
+def _row_grain_arguments(node: Any) -> list[ConceptRef]:
     """Concept arguments of a SELECT-derived expression that a HAVING/ORDER BY
     may reference without being a direct output column. Scalar functions pass
     their operands through; an aggregate exposes all of its arguments (matching
@@ -120,7 +121,7 @@ def _row_grain_arguments(node: Any) -> List[ConceptRef]:
     if isinstance(node, Function):
         if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return list(node.concept_arguments)
-        out: List[ConceptRef] = []
+        out: list[ConceptRef] = []
         for arg in node.arguments:
             out += _row_grain_arguments(arg)
         return out
@@ -140,7 +141,7 @@ def _row_grain_arguments(node: Any) -> List[ConceptRef]:
 
 @dataclass
 class FromClause:
-    sources: List[str]
+    sources: list[str]
 
 
 @dataclass
@@ -160,19 +161,19 @@ class SelectJoin:
     authored: JoinType | None = None
 
     @property
-    def modifiers(self) -> List[Modifier]:
+    def modifiers(self) -> list[Modifier]:
         return self.join_type.merge_modifiers
 
 
 @dataclass
 class SelectStatement(HasUUID, SelectTypeMixin):
-    selection: List[SelectItem]
-    where_clause: Optional[WhereClause] = None
-    having_clause: Optional[HavingClause] = None
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
-    eligible_datasources: Optional[list[str]] = None
-    join_clauses: List[SelectJoin] = field(default_factory=list)
+    selection: list[SelectItem]
+    where_clause: WhereClause | None = None
+    having_clause: HavingClause | None = None
+    order_by: OrderBy | None = None
+    limit: int | None = None
+    eligible_datasources: list[str] | None = None
+    join_clauses: list[SelectJoin] = field(default_factory=list)
     meta: Metadata = field(default_factory=Metadata)
     local_concepts: EnvironmentConceptDict = field(
         default_factory=EnvironmentConceptDict
@@ -181,7 +182,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     # SELECT-level multi-level grouping (`by rollup (a, b)` etc.); carried on
     # the lineage and applied to un-pinned aggregates by the build factory, so
     # no shared authoring object is ever mutated with the spec.
-    grouping: Optional[AggregateGrouping] = None
+    grouping: AggregateGrouping | None = None
 
     def __post_init__(self):
         new = []
@@ -232,7 +233,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     def from_inputs(
         cls,
         environment: Environment,
-        selection: List[SelectItem],
+        selection: list[SelectItem],
         order_by: OrderBy | None = None,
         limit: int | None = None,
         meta: Metadata | None = None,
@@ -376,22 +377,20 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                     and isinstance(concept_lineage, Function)
                     and concept_lineage.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
+                ) and concept.address in self.locally_derived:
+                    raise SyntaxError(
+                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                    )
 
                 if (
                     concept_lineage
                     and isinstance(concept_lineage, AggregateWrapper)
                     and concept_lineage.function.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
+                ) and concept.address in self.locally_derived:
+                    raise SyntaxError(
+                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                    )
         output_addresses = {x.address for x in self.output_components}
         alias_sources = self.alias_source_addresses
         allowed_addresses = output_addresses | alias_sources
@@ -441,14 +440,14 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         return sources
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> list[ConceptRef]:
         return [x.concept for x in self.selection]
 
     @property
     def hidden_components(self) -> set[str]:
-        return set(
+        return {
             x.concept.address for x in self.selection if Modifier.HIDDEN in x.modifiers
-        )
+        }
 
     def to_datasource(
         self,
@@ -501,7 +500,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
 @dataclass
 class RawSQLStatement:
     text: str
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    meta: Metadata | None = field(default_factory=Metadata)
 
 
 @dataclass
@@ -510,20 +509,20 @@ class CopyStatement:
     target_type: IOType
     select: Union[SelectStatement, "ChartStatement"]
     options: dict[str, Any] = field(default_factory=dict)
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    meta: Metadata | None = field(default_factory=Metadata)
 
 
 @dataclass
 class MultiSelectStatement(HasUUID, SelectTypeMixin):
-    selects: List[SelectStatement]
+    selects: list[SelectStatement]
     align: AlignClause
     namespace: str
-    derived_concepts: List[Concept]
-    where_clause: Optional[WhereClause] = None
-    having_clause: Optional[HavingClause] = None
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    derived_concepts: list[Concept]
+    where_clause: WhereClause | None = None
+    having_clause: HavingClause | None = None
+    order_by: OrderBy | None = None
+    limit: int | None = None
+    meta: Metadata | None = field(default_factory=Metadata)
     local_concepts: EnvironmentConceptDict = field(
         default_factory=EnvironmentConceptDict
     )
@@ -554,7 +553,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
         return base
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> list[ConceptRef]:
         output = [x.reference for x in self.derived_concepts]
         for select in self.selects:
             output += [
@@ -576,7 +575,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
 
     @property
     def locally_derived(self) -> set[str]:
-        locally_derived: set[str] = set([x.address for x in self.derived_concepts])
+        locally_derived: set[str] = {x.address for x in self.derived_concepts}
         for select in self.selects:
             locally_derived = locally_derived.union(select.locally_derived)
         return locally_derived
@@ -604,12 +603,12 @@ class UnionSelectStatement(MultiSelectStatement):
             order_by=self.order_by,
             where_clause=self.where_clause,
             having_clause=self.having_clause,
-            hidden_components=set(y for x in new_selects for y in x.hidden_components),
+            hidden_components={y for x in new_selects for y in x.hidden_components},
             operator=self.operator,
         )
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> list[ConceptRef]:
         # Only the bound union outputs; arm columns are internal.
         return unique([x.reference for x in self.derived_concepts], "address")
 
@@ -621,7 +620,7 @@ class RowsetDerivationStatement(HasUUID):
     namespace: str
 
     def __repr__(self):
-        return f"RowsetDerivation<{str(self.select)}>"
+        return f"RowsetDerivation<{self.select!s}>"
 
     def __str__(self):
         return self.__repr__()
@@ -633,7 +632,7 @@ class MergeStatementV2(HasUUID):
     targets: dict[str, Concept]
     source_wildcard: str | None = None
     target_wildcard: str | None = None
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
 
 @dataclass
@@ -665,8 +664,8 @@ class PersistStatement(HasUUID):
     datasource: Datasource
     select: SelectStatement
     persist_mode: PersistMode = PersistMode.OVERWRITE
-    partition_by: List[ConceptRef] = field(default_factory=list)
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    partition_by: list[ConceptRef] = field(default_factory=list)
+    meta: Metadata | None = field(default_factory=Metadata)
 
     @property
     def identifier(self):
@@ -738,7 +737,7 @@ class FunctionDeclaration(HasUUID):
     name: str
     args: list[ArgBinding]
     expr: Expr
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    meta: Metadata | None = field(default_factory=Metadata)
 
 
 CHART_ROLES: tuple[str, ...] = (
@@ -783,7 +782,7 @@ class ChartStatement:
     show_title: bool = False
     scale_x: ScaleType | None = None
     scale_y: ScaleType | None = None
-    meta: Optional[Metadata] = field(default_factory=Metadata)
+    meta: Metadata | None = field(default_factory=Metadata)
 
 
 STATEMENT_TYPES = (

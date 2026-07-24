@@ -24,7 +24,7 @@ from trilogy.constants import CONFIG
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "local_scripts"))
 
-from discovery_v4 import (  # noqa: E402
+from discovery_v4 import (
     TPCDS_DIR,
     compile_sql,
     run_tpcds_query,

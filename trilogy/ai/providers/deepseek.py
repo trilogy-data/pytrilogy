@@ -5,7 +5,6 @@ the timeout/retry posture (DeepSeek upstreams are direct, no OpenRouter
 keep-alive masking, so the read timeout actually fires)."""
 
 from os import environ
-from typing import Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.constants import logger
@@ -29,7 +28,7 @@ class DeepSeekProvider(OpenAIProvider):
         name: str,
         model: str,
         api_key: str | None = None,
-        retry_options: Optional[RetryOptions] = None,
+        retry_options: RetryOptions | None = None,
     ):
         api_key = api_key or environ.get("DEEPSEEK_API_KEY")
         if not api_key:

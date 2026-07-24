@@ -95,7 +95,7 @@ def ordering(
         else:
             null_sort = first
     if null_sort:
-        return Ordering(" ".join([base, "nulls", null_sort]))
+        return Ordering(f"{base} nulls {null_sort}")
     return Ordering(base)
 
 

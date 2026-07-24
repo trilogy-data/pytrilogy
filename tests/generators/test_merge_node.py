@@ -30,7 +30,7 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
                 )
             ],
         )
-        len(n.node_joins) == 1
+        assert len(n.node_joins) == 1
     except Exception as e:
         assert isinstance(e, SyntaxError)
 
@@ -63,7 +63,7 @@ def test_graph_resolution():
 
 def test_graph_rez_bridge():
     assocs = defaultdict(list)
-    for k, v in {
+    for v in {
         "c~rich_info.full_name@Grain<rich_info.full_name>": [
             "ds~rich_info.rich_info",
             "c~rich_info.full_name@Grain<rich_info.full_name>",
@@ -83,16 +83,14 @@ def test_graph_rez_bridge():
             "c~rich_info.net_worth_1918_dollars@Grain<Abstract>",
             "c~rich_info.net_worth_1918_dollars@Grain<rich_info.full_name>",
         ],
-    }.items():
+    }.values():
         extract_required_subgraphs(assocs, v)
 
-    assert set(assocs["ds~rich_info.rich_info"]) == set(
-        [
-            "c~rich_info.full_name@Grain<rich_info.full_name>",
-            "c~local.__merge_passenger_last_name_rich_info_last_name@Grain<Abstract>",
-            "c~passenger.last_name@Grain<passenger.id>",
-            "c~passenger.last_name@Grain<Abstract>",
-            "c~rich_info.net_worth_1918_dollars@Grain<Abstract>",
-            "c~rich_info.net_worth_1918_dollars@Grain<rich_info.full_name>",
-        ]
-    )
+    assert set(assocs["ds~rich_info.rich_info"]) == {
+        "c~rich_info.full_name@Grain<rich_info.full_name>",
+        "c~local.__merge_passenger_last_name_rich_info_last_name@Grain<Abstract>",
+        "c~passenger.last_name@Grain<passenger.id>",
+        "c~passenger.last_name@Grain<Abstract>",
+        "c~rich_info.net_worth_1918_dollars@Grain<Abstract>",
+        "c~rich_info.net_worth_1918_dollars@Grain<rich_info.full_name>",
+    }

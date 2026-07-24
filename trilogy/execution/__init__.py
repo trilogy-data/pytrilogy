@@ -9,11 +9,11 @@ from trilogy.dialect.config import (
 )
 
 __all__ = [
+    "BigQueryConfig",
     "DialectConfig",
     "DuckDBConfig",
+    "PostgresConfig",
     "PrestoConfig",
     "SQLiteConfig",
     "SnowflakeConfig",
-    "PostgresConfig",
-    "BigQueryConfig",
 ]

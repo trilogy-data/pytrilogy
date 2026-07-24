@@ -126,7 +126,7 @@ class TestComparisonTypeCompatibility:
 
     def test_integer_vs_float(self):
         """Integer can be compared with float (numeric compatibility)."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             const y <- 2.5;
             select x where x = y;
@@ -134,7 +134,7 @@ class TestComparisonTypeCompatibility:
 
     def test_float_vs_numeric(self):
         """Float can be compared with numeric."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1.5;
             const y numeric(10,2);
             select x where x = y;
@@ -142,7 +142,7 @@ class TestComparisonTypeCompatibility:
 
     def test_string_vs_string(self):
         """String can be compared with string."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 'hello';
             const y <- 'world';
             select x where x = y;
@@ -189,28 +189,28 @@ class TestIsOperatorTypeChecking:
 
     def test_is_null_succeeds(self):
         """IS operator can be used with null."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             select x where x is null;
             """)
 
     def test_is_not_null_succeeds(self):
         """IS NOT operator can be used with null."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             select x where x is not null;
             """)
 
     def test_is_true_succeeds(self):
         """IS operator can be used with boolean true."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- true;
             select x where x is true;
             """)
 
     def test_is_false_succeeds(self):
         """IS operator can be used with boolean false."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- true;
             select x where x is false;
             """)
@@ -246,21 +246,21 @@ class TestInOperatorTypeChecking:
 
     def test_integer_in_integer_array_succeeds(self):
         """Integer can be checked against array of integers."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             select x where x in [1, 2, 3];
             """)
 
     def test_string_in_string_array_succeeds(self):
         """String can be checked against array of strings."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 'hello';
             select x where x in ['hello', 'world'];
             """)
 
     def test_float_in_integer_array_succeeds(self):
         """Float can be checked against array of integers (numeric compatibility)."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1.5;
             select x where x in [1, 2, 3];
             """)
@@ -458,7 +458,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_sqrt_with_integer_succeeds(self):
         """SQRT function works with integer."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 16;
             auto y <- sqrt(x);
             select y;
@@ -466,7 +466,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_abs_with_integer_succeeds(self):
         """ABS function works with integer."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- -5;
             auto y <- abs(x);
             select y;
@@ -703,7 +703,7 @@ class TestCaseExpressionTypeChecking:
 
     def test_case_with_null_branch_succeeds(self):
         """CASE expression with null branch is allowed."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             auto y <- case when x = 1 then 10 else null end;
             select y;
@@ -790,7 +790,7 @@ class TestArithmeticOperationTypes:
 
     def test_divide_integers_produces_float(self):
         """Division of integers produces float."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 10;
             const y <- 3;
             auto z <- x / y;
@@ -826,7 +826,7 @@ class TestStringOperationTypes:
 
     def test_like_with_string_succeeds(self):
         """LIKE operator works with string operands."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 'hello';
             select x where like(x, '%ell%');
             """)
@@ -866,7 +866,7 @@ class TestCustomTypeTraitValidation:
 
     def test_custom_function_with_trait_succeeds(self):
         """Custom function with correct trait succeeds."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             type positive int;
             key field int::positive;
             def add_positive(x: int::positive, y: int::positive) -> x + y;
@@ -904,7 +904,7 @@ class TestAggregateFunctionTypes:
 
     def test_max_with_numeric_succeeds(self):
         """MAX works with numeric types."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             auto y <- max(x);
             select y;
@@ -912,7 +912,7 @@ class TestAggregateFunctionTypes:
 
     def test_min_with_numeric_succeeds(self):
         """MIN works with numeric types."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             auto y <- min(x);
             select y;
@@ -949,7 +949,7 @@ class TestAggregateFunctionTypes:
 
     def test_bool_and_with_bool_succeeds(self):
         """BOOL_AND works with boolean."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- true;
             auto y <- bool_and(x);
             select y;
@@ -957,7 +957,7 @@ class TestAggregateFunctionTypes:
 
     def test_bool_or_with_bool_succeeds(self):
         """BOOL_OR works with boolean."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- true;
             auto y <- bool_or(x);
             select y;
@@ -1010,7 +1010,7 @@ class TestNullHandlingTypes:
 
     def test_nullif_succeeds(self):
         """NULLIF comparing same types works."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- 1;
             auto y <- nullif(x, 0);
             select y;
@@ -1045,7 +1045,7 @@ class TestDateTimeTypeCompatibility:
 
     def test_date_vs_date_comparison_succeeds(self):
         """Date can be compared with date."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- cast('2023-01-01' as date);
             const y <- cast('2023-01-02' as date);
             select x where x < y;
@@ -1062,7 +1062,7 @@ class TestArrayTypeChecking:
 
     def test_typed_array_literal(self):
         """Typed array literal works."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- [1, 2, 3]::array<int>;
             select x;
             """)
@@ -1086,7 +1086,7 @@ class TestArrayTypeChecking:
 
     def test_index_access_on_array_succeeds(self):
         """Index access on array works."""
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
             const x <- [1, 2, 3];
             auto y <- x[0];
             select y;

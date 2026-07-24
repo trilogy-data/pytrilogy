@@ -40,7 +40,7 @@ def _measure(engine: Executor, fname: str) -> int | str:
     text = (working_path / fname).read_text()
     try:
         return len(engine.generate_sql(text)[-1])
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return f"ERR {type(e).__name__}"
 
 
@@ -53,7 +53,7 @@ def main() -> None:
         CONFIG.use_v4_discovery = True
         v4 = _measure(engine, fname)
         flag = "OVER" if isinstance(v4, int) and v4 >= ceiling else ""
-        print(f"{label:>7} {ceiling:>6} {str(v3):>6} {str(v4):>6} {flag:>6}")
+        print(f"{label:>7} {ceiling:>6} {v3!s:>6} {v4!s:>6} {flag:>6}")
 
 
 if __name__ == "__main__":

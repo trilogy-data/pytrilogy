@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional, Set, Union
 
 from trilogy.constants import (
     CONFIG,
@@ -74,8 +73,8 @@ def _datasource_column_for_concept(
 @dataclass(frozen=True)
 class SourceBinding:
     key: str
-    node: "CTE | UnionCTE | None" = None
-    datasource: "BuildDatasource | QueryDatasource | None" = None
+    node: CTE | UnionCTE | None = None
+    datasource: BuildDatasource | QueryDatasource | None = None
     emitted: bool = True
     inlined: bool = False
     branch: bool = False
@@ -84,29 +83,29 @@ class SourceBinding:
 @dataclass
 class CTE:
     name: str
-    source: "QueryDatasource"
-    output_columns: List[BuildConcept]
-    source_map: Dict[str, list[str]]
+    source: QueryDatasource
+    output_columns: list[BuildConcept]
+    source_map: dict[str, list[str]]
     grain: BuildGrain
     base: bool = False
     group_to_grain: bool = False
-    existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
-    parent_ctes: List[Union["CTE", "UnionCTE"]] = field(default_factory=list)
-    joins: List[Union["Join", "InstantiatedUnnestJoin"]] = field(default_factory=list)
+    existence_source_map: dict[str, list[str]] = field(default_factory=dict)
+    parent_ctes: list[CTE | UnionCTE] = field(default_factory=list)
+    joins: list[Join | InstantiatedUnnestJoin] = field(default_factory=list)
     condition: BoolExpr | None = None
-    partial_concepts: List[BuildConcept] = field(default_factory=list)
-    rollup_concepts: List[BuildConcept] = field(default_factory=list)
-    nullable_concepts: List[BuildConcept] = field(default_factory=list)
-    join_derived_concepts: List[BuildConcept] = field(default_factory=list)
+    partial_concepts: list[BuildConcept] = field(default_factory=list)
+    rollup_concepts: list[BuildConcept] = field(default_factory=list)
+    nullable_concepts: list[BuildConcept] = field(default_factory=list)
+    join_derived_concepts: list[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
-    order_by: Optional[BuildOrderBy] = None
-    limit: Optional[int] = None
-    base_name_override: Optional[Union["Address", str]] = None
-    base_alias_override: Optional[str] = None
+    order_by: BuildOrderBy | None = None
+    limit: int | None = None
+    base_name_override: Address | str | None = None
+    base_alias_override: str | None = None
     # Datasource leaves folded into this consumer by inline-datasource.
     # Render-only: deliberately *not* in ``parent_ctes`` so optimizer rules
     # see the consumer exactly as if the datasource were scanned directly.
-    inlined_parents: List["DatasourceCTE"] = field(default_factory=list)
+    inlined_parents: list[DatasourceCTE] = field(default_factory=list)
 
     def __post_init__(self):
         if len(self.join_derived_concepts) > 1:
@@ -117,7 +116,7 @@ class CTE:
         self.output_columns = unique(self.output_columns, "address")
 
     @classmethod
-    def from_datasource(cls, datasource: BuildDatasource) -> "DatasourceCTE":
+    def from_datasource(cls, datasource: BuildDatasource) -> DatasourceCTE:
         qds = QueryDatasource.from_datasource(datasource)
         return DatasourceCTE(
             name=datasource.name,
@@ -148,7 +147,7 @@ class CTE:
 
     @property
     def comment(self) -> str:
-        base = f"Target: {str(self.grain)}. Group: {self.group_to_grain}"
+        base = f"Target: {self.grain!s}. Group: {self.group_to_grain}"
         base += f" Source: {self.source.source_type}. Grains: {[str(ds.grain) for ds in self.parent_ctes]}"
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
@@ -176,9 +175,7 @@ class CTE:
         base += "\n"
         return base
 
-    def inline_parent_datasource(
-        self, parent: "CTE", force_group: bool = False
-    ) -> bool:
+    def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         """Fold a single-datasource parent into this consumer.
 
         Structurally identical to the historical inline (so every downstream
@@ -238,7 +235,7 @@ class CTE:
                 for x in v
             ]
         for k in inline_datasource.output_lcl.addresses:
-            if k in self.source_map and self.source_map[k]:
+            if self.source_map.get(k):
                 continue
             self.source_map[k] = [inline_datasource.safe_identifier]
         self.parent_ctes = [
@@ -252,17 +249,18 @@ class CTE:
         self.add_inlined_datasource(rendered_parent)
         return True
 
-    def __add__(self, other: "CTE" | "UnionCTE"):
+    def __add__(self, other: CTE | UnionCTE):
         if isinstance(other, UnionCTE):
-            raise ValueError("cannot merge CTE and union CTE")
+            # ValueError asserted by tests/test_execute_models.py.
+            raise ValueError("cannot merge CTE and union CTE")  # noqa: TRY004
         logger.info('Merging two copies of CTE "%s"', self.name)
-        if not self.grain == other.grain:
+        if self.grain != other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
                 f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
-        if not self.condition == other.condition:
+        if self.condition != other.condition:
             error = (
                 "Attempting to merge two ctes with different conditions"
                 f" {self.name} {other.name} conditions {self.condition} {other.condition}"
@@ -329,7 +327,7 @@ class CTE:
         return isinstance(base, BuildDatasource) and base.name != CONSTANT_DATASET
 
     @property
-    def source_address(self) -> Union["Address", str]:
+    def source_address(self) -> Address | str:
         if self.base_name_override:
             return self.base_name_override
         base = self.source.base_datasource
@@ -515,10 +513,10 @@ class CTE:
         try:
             return self.source.get_alias(concept, source=source)
         except ValueError as e:
-            return f"INVALID_ALIAS: {str(e)}"
+            return f"INVALID_ALIAS: {e!s}"
 
     @property
-    def group_concepts(self) -> List[BuildConcept]:
+    def group_concepts(self) -> list[BuildConcept]:
         from trilogy.core.processing.condition_utility import condition_implies
 
         rollup_addresses = {c.address for c in self.rollup_concepts}
@@ -621,22 +619,15 @@ class CTE:
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
                 if all(
-                    [
-                        check_is_not_in_group(x)
-                        for x in c.lineage.rendered_concept_arguments
-                    ]
+                    check_is_not_in_group(x)
+                    for x in c.lineage.rendered_concept_arguments
                 ):
                     return True
                 # a basic expression mixing a group key with a locally-computed
                 # aggregate (e.g. a ratio `a / sum(x)`) contains an aggregate and
                 # cannot appear in GROUP BY
-                if has_local_aggregate(c):
-                    return True
-                return False
-            if c.purpose == Purpose.METRIC:
-                return True
-
-            return False
+                return bool(has_local_aggregate(c))
+            return c.purpose == Purpose.METRIC
 
         return (
             unique(
@@ -658,7 +649,7 @@ class CTE:
     @property
     def render_from_clause(self) -> bool:
         if (
-            all([c.derivation == Derivation.CONSTANT for c in self.output_columns])
+            all(c.derivation == Derivation.CONSTANT for c in self.output_columns)
             and not self.parent_ctes
             and not self.group_to_grain
         ):
@@ -666,15 +657,13 @@ class CTE:
         # if we don't need to source any concepts from anywhere
         # render without from
         # most likely to happen from inlining constants
-        if not any([v for v in self.source_map.values()]):
+        if not any(v for v in self.source_map.values()):
             return False
         base = self.source.base_datasource
-        if isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET:
-            return False
-        return True
+        return not (isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET)
 
     @property
-    def sourced_concepts(self) -> List[BuildConcept]:
+    def sourced_concepts(self) -> list[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
 
     @property
@@ -723,7 +712,7 @@ class CTE:
 
     def source_key_for(
         self,
-        source: str | "CTE" | "UnionCTE" | BuildDatasource | "QueryDatasource",
+        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
     ) -> str:
         if isinstance(source, str):
             return self.resolve_render_alias(source)
@@ -749,23 +738,23 @@ class CTE:
     def dependency_nodes(
         self,
         include_inlined: bool = False,
-    ) -> list["CTE | UnionCTE"]:
+    ) -> list[CTE | UnionCTE]:
         return [
             binding.node
             for binding in self.source_bindings(include_inlined=include_inlined)
             if binding.node is not None
         ]
 
-    def add_dependency(self, parent: "CTE | UnionCTE") -> None:
+    def add_dependency(self, parent: CTE | UnionCTE) -> None:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
 
-    def add_inlined_datasource(self, parent: "DatasourceCTE") -> str:
+    def add_inlined_datasource(self, parent: DatasourceCTE) -> str:
         existing = {p.name for p in self.inlined_parents}
         if parent.name not in existing:
             self.inlined_parents.append(parent)
         return self.source_key_for(parent)
 
-    def replace_dependency(self, old: "CTE", new: "CTE | UnionCTE") -> None:
+    def replace_dependency(self, old: CTE, new: CTE | UnionCTE) -> None:
         self.parent_ctes = [
             new if x.safe_identifier == old.safe_identifier else x
             for x in self.parent_ctes
@@ -809,25 +798,25 @@ class CTE:
             if join.right_cte.safe_identifier == old.safe_identifier:
                 join.right_cte = new
 
-    def inlined_parent_for_source(self, source: str) -> "DatasourceCTE | None":
+    def inlined_parent_for_source(self, source: str) -> DatasourceCTE | None:
         for p in self.inlined_parents:
             if source in {p.name, p.datasource.safe_identifier}:
                 return p
         return None
 
-    def inlined_parent_providing(self, concept: BuildConcept) -> "DatasourceCTE | None":
+    def inlined_parent_providing(self, concept: BuildConcept) -> DatasourceCTE | None:
         """An inlined datasource exposing ``concept`` as a raw column."""
         for p in self.inlined_parents:
             if _datasource_column_for_concept(p.datasource, concept) is not None:
                 return p
         return None
 
-    def renders_inline(self, node: "CTE | UnionCTE") -> bool:
+    def renders_inline(self, node: CTE | UnionCTE) -> bool:
         """Whether this consumer renders ``node`` as a folded raw datasource."""
         return self.inlined_parent_for_source(node.name) is not None
 
     def column_for(
-        self, node: "CTE | UnionCTE", concept: BuildConcept
+        self, node: CTE | UnionCTE, concept: BuildConcept
     ) -> str | RawColumnExpr | BuildFunction | BuildAggregateWrapper:
         """Column this consumer should read from ``node``."""
         if isinstance(node, DatasourceCTE) and self.renders_inline(node):
@@ -839,12 +828,12 @@ class CTE:
 class BaseConceptPair:
     left: BuildConcept
     right: BuildConcept
-    existing_datasource: Union[BuildDatasource, "QueryDatasource"]
+    existing_datasource: BuildDatasource | QueryDatasource
 
 
 @dataclass
 class ConceptPair(BaseConceptPair):
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
     @property
     def is_partial(self):
@@ -858,7 +847,7 @@ class ConceptPair(BaseConceptPair):
 @dataclass
 class CTEConceptPair(BaseConceptPair):
     cte: CTE | UnionCTE
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
     @property
     def is_partial(self):
@@ -896,7 +885,7 @@ class UnnestJoin:
 
 
 def raise_helpful_join_validation_error(
-    concepts: List[BuildConcept],
+    concepts: list[BuildConcept],
     left_datasource: BuildDatasource | QueryDatasource | None,
     right_datasource: BuildDatasource | QueryDatasource | None,
 ):
@@ -921,12 +910,12 @@ def raise_helpful_join_validation_error(
 
 @dataclass
 class BaseJoin:
-    right_datasource: Union[BuildDatasource, "QueryDatasource"]
+    right_datasource: BuildDatasource | QueryDatasource
     join_type: JoinType
-    concepts: Optional[List[BuildConcept]] = None
-    left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
+    concepts: list[BuildConcept] | None = None
+    left_datasource: BuildDatasource | QueryDatasource | None = None
     concept_pairs: list[ConceptPair] | None = None
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
 
     def __post_init__(self):
         if (
@@ -984,7 +973,7 @@ class BaseJoin:
         return str(self)
 
     @property
-    def input_concepts(self) -> List[BuildConcept]:
+    def input_concepts(self) -> list[BuildConcept]:
         base = []
         if self.concept_pairs:
             for pair in self.concept_pairs:
@@ -1007,34 +996,34 @@ class BaseJoin:
 
 @dataclass
 class QueryDatasource:
-    input_concepts: List[BuildConcept]
-    output_concepts: List[BuildConcept]
-    datasources: List[Union[BuildDatasource, "QueryDatasource"]]
-    source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource", "UnnestJoin"]]]
+    input_concepts: list[BuildConcept]
+    output_concepts: list[BuildConcept]
+    datasources: list[BuildDatasource | QueryDatasource]
+    source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]
     grain: BuildGrain
-    joins: List[BaseJoin | UnnestJoin]
-    limit: Optional[int] = None
+    joins: list[BaseJoin | UnnestJoin]
+    limit: int | None = None
     condition: BoolExpr | None = None
     source_type: SourceType = field(default=SourceType.SELECT)
     # Row combinator when source_type == UNION. EXCEPT/INTERSECT are
     # non-commutative set operators: their arm order is semantic, so
     # __post_init__ must not re-sort datasources for them.
     set_operator: SetOperator = field(default=SetOperator.UNION_ALL)
-    partial_concepts: List[BuildConcept] = field(default_factory=list)
-    rollup_concepts: List[BuildConcept] = field(default_factory=list)
+    partial_concepts: list[BuildConcept] = field(default_factory=list)
+    rollup_concepts: list[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
-    nullable_concepts: List[BuildConcept] = field(default_factory=list)
-    join_derived_concepts: List[BuildConcept] = field(default_factory=list)
+    nullable_concepts: list[BuildConcept] = field(default_factory=list)
+    join_derived_concepts: list[BuildConcept] = field(default_factory=list)
     force_group: bool | None = None
-    existence_source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource"]]] = (
-        field(default_factory=dict)
+    existence_source_map: dict[str, set[BuildDatasource | QueryDatasource]] = field(
+        default_factory=dict
     )
     ordering: BuildOrderBy | None = None
     # Explicit FROM-clause source. Set when this QDS represents a SELECT with a
     # single canonical base (single BuildDatasource, constant placeholder, or a
     # parent QDS being lifted up). Left as None for joins/merges/unions where
     # no single source is "the base".
-    base_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
+    base_datasource: BuildDatasource | QueryDatasource | None = None
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:
@@ -1045,7 +1034,7 @@ class QueryDatasource:
                 continue
             pairing = join.unique_id
             if pairing in unique_pairs:
-                raise SyntaxError(f"Duplicate join {str(join)}")
+                raise SyntaxError(f"Duplicate join {join!s}")
             unique_pairs.add(pairing)
         self.input_concepts = unique(self.input_concepts, "address")
         self.output_concepts = unique(self.output_concepts, "address")
@@ -1097,7 +1086,7 @@ class QueryDatasource:
         return f"{self.identifier}@<{self.grain}>"
 
     @classmethod
-    def from_datasource(cls, datasource: BuildDatasource) -> "QueryDatasource":
+    def from_datasource(cls, datasource: BuildDatasource) -> QueryDatasource:
         output_concepts = datasource.output_concepts
         return cls(
             input_concepts=output_concepts,
@@ -1167,10 +1156,10 @@ class QueryDatasource:
                 return True
         return False
 
-    def __add__(self, other) -> "QueryDatasource":
+    def __add__(self, other) -> QueryDatasource:
         # these are syntax errors to avoid being caught by current
         if not isinstance(other, QueryDatasource):
-            raise SyntaxError("Can only merge two query datasources")
+            raise SyntaxError("Can only merge two query datasources")  # noqa: TRY004
         if not other.grain == self.grain:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
@@ -1189,7 +1178,7 @@ class QueryDatasource:
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
 
-        merged_datasources: dict[str, Union[BuildDatasource, "QueryDatasource"]] = {}
+        merged_datasources: dict[str, BuildDatasource | QueryDatasource] = {}
 
         for ds in [*self.datasources, *other.datasources]:
             if ds.safe_identifier in merged_datasources:
@@ -1200,10 +1189,10 @@ class QueryDatasource:
                 merged_datasources[ds.safe_identifier] = ds
 
         final_source_map: defaultdict[
-            str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]
+            str, set[BuildDatasource | QueryDatasource | UnnestJoin]
         ] = defaultdict(set)
         final_existence_source_map: defaultdict[
-            str, Set[Union[BuildDatasource, QueryDatasource]]
+            str, set[BuildDatasource | QueryDatasource]
         ] = defaultdict(set)
 
         # add our sources
@@ -1226,13 +1215,11 @@ class QueryDatasource:
         # if a ds was merged (to combine columns), we need to update the source map
         # to use the merged item
         for k, v in final_source_map.items():
-            final_source_map[k] = set(
+            final_source_map[k] = {
                 merged_datasources.get(x.safe_identifier, x) for x in list(v)
-            )
+            }
         for ex_key, ex_sources in final_existence_source_map.items():
-            updated_existence_sources: Set[Union[BuildDatasource, QueryDatasource]] = (
-                set()
-            )
+            updated_existence_sources: set[BuildDatasource | QueryDatasource] = set()
             for source in ex_sources:
                 updated_existence_sources.add(
                     merged_datasources.get(source.safe_identifier, source)
@@ -1245,7 +1232,7 @@ class QueryDatasource:
         # Carry the base from LHS through the merge — the merged datasources
         # dict may have folded the original base into a wider entry (same
         # safe_identifier), so resolve through it.
-        merged_base: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
+        merged_base: BuildDatasource | QueryDatasource | None = None
         if self.base_datasource is not None:
             merged_base = merged_datasources.get(
                 self.base_datasource.safe_identifier, self.base_datasource
@@ -1349,7 +1336,6 @@ class QueryDatasource:
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
-            #
             use_raw_name = isinstance(x, BuildDatasource) and not force_alias
             if source and x.safe_identifier != source:
                 continue
@@ -1368,7 +1354,7 @@ class QueryDatasource:
         existing_str = [str(c) for c in existing]
         datasources = [ds.identifier for ds in self.datasources]
         raise ValueError(
-            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier};"
+            f"{LOGGER_PREFIX} Concept {concept!s} not found on {self.identifier};"
             f" have {existing_str} from {datasources}."
         )
 
@@ -1463,21 +1449,21 @@ class RecursiveCTE(CTE):
         return bottom_derivation, join_gate, bottom_join_gate
 
     @property
-    def internal_ctes(self) -> List[CTE]:
+    def internal_ctes(self) -> list[CTE]:
         filtered_output = [
             x for x in self.output_columns if x.name != RECURSIVE_GATING_CONCEPT
         ]
-        recursive_derived = [
+        recursive_derived = next(
             x for x in self.output_columns if x.derivation == Derivation.RECURSIVE
-        ][0]
+        )
         if not isinstance(recursive_derived.lineage, BuildFunction):
-            raise SyntaxError(
+            raise SyntaxError(  # noqa: TRY004
                 "Recursive CTEs must have a function lineage, found"
                 f" {recursive_derived.lineage}"
             )
         left_recurse_concept = recursive_derived.lineage.concept_arguments[0]
         right_recurse_concept = recursive_derived.lineage.concept_arguments[1]
-        parent_ctes: List[CTE | UnionCTE]
+        parent_ctes: list[CTE | UnionCTE]
         if self.parent_ctes:
             base = self.parent_ctes[0]
             loop_input_cte = base
@@ -1603,15 +1589,15 @@ class UnionCTE:
     source: QueryDatasource
     parent_ctes: list[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
-    output_columns: List[BuildConcept]
+    output_columns: list[BuildConcept]
     grain: BuildGrain
     operator: str = "UNION ALL"
-    order_by: Optional[BuildOrderBy] = None
-    limit: Optional[int] = None
+    order_by: BuildOrderBy | None = None
+    limit: int | None = None
     hidden_concepts: set[str] = field(default_factory=set)
     partial_concepts: list[BuildConcept] = field(default_factory=list)
     rollup_concepts: list[BuildConcept] = field(default_factory=list)
-    existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
+    existence_source_map: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def output_lcl(self) -> LooseBuildConceptList:
@@ -1685,7 +1671,7 @@ class UnionCTE:
     def dependency_nodes(
         self,
         include_branches: bool = False,
-    ) -> list[CTE | "UnionCTE"]:
+    ) -> list[CTE | UnionCTE]:
         return [
             binding.node
             for binding in self.source_bindings(include_branches=include_branches)
@@ -1694,7 +1680,7 @@ class UnionCTE:
 
     def source_key_for(
         self,
-        source: str | CTE | "UnionCTE" | BuildDatasource | QueryDatasource,
+        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
     ) -> str:
         if isinstance(source, str):
             return source
@@ -1705,10 +1691,10 @@ class UnionCTE:
                 return binding.key
         return source.safe_identifier
 
-    def add_dependency(self, parent: CTE | "UnionCTE") -> None:
+    def add_dependency(self, parent: CTE | UnionCTE) -> None:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
 
-    def replace_dependency(self, old: CTE, new: CTE | "UnionCTE") -> None:
+    def replace_dependency(self, old: CTE, new: CTE | UnionCTE) -> None:
         self.parent_ctes = [
             new if x.safe_identifier == old.safe_identifier else x
             for x in self.parent_ctes
@@ -1743,7 +1729,7 @@ class UnionCTE:
         return False
 
     @property
-    def group_concepts(self) -> List[BuildConcept]:
+    def group_concepts(self) -> list[BuildConcept]:
         # unions should always be on unique sets
         return []
 
@@ -1771,18 +1757,16 @@ class Join:
     right_cte: CTE | UnionCTE
     jointype: JoinType
     left_cte: CTE | UnionCTE | None = None
-    joinkey_pairs: List[CTEConceptPair] | None = None
+    joinkey_pairs: list[CTEConceptPair] | None = None
     quote: str | None = None
     condition: BoolExpr | None = None
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: list[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
     # CTE rather than read from a parent alias.
     left_is_local: bool = False
 
     @staticmethod
-    def authoritative(
-        consumer: "CTE | UnionCTE", node: "CTE | UnionCTE"
-    ) -> "CTE | UnionCTE":
+    def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
         """The consumer's own parent instance for ``node``.
 
         Joins keep their own node references, which are *not* the same
@@ -1796,7 +1780,7 @@ class Join:
         return node
 
     @staticmethod
-    def _resolve_alias(consumer: "CTE | UnionCTE", node: "CTE | UnionCTE") -> str:
+    def _resolve_alias(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
         if (
             isinstance(consumer, CTE)
             and isinstance(node, DatasourceCTE)
@@ -1807,11 +1791,11 @@ class Join:
             return consumer.source_key_for(node.name)
         return node.name
 
-    def name_for(self, consumer: "CTE | UnionCTE", node: "CTE | UnionCTE") -> str:
+    def name_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
         """Alias token a consumer references ``node``'s columns by."""
         return self._resolve_alias(consumer, node)
 
-    def reference_for(self, consumer: "CTE | UnionCTE", node: "CTE | UnionCTE") -> str:
+    def reference_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
         """FROM/JOIN source text for ``node`` as seen from ``consumer``.
 
         A normal CTE is referenced by name; an inlined ``DatasourceCTE``
@@ -1865,8 +1849,8 @@ class Join:
 
 
 def coalesce_duplicate_joins(
-    joins: List[Union["Join", "InstantiatedUnnestJoin"]],
-) -> List[Union["Join", "InstantiatedUnnestJoin"]]:
+    joins: list[Join | InstantiatedUnnestJoin],
+) -> list[Join | InstantiatedUnnestJoin]:
     """Coalesce keyed Joins sharing (type, left, right) into one join carrying
     the union of their key pairs. CTE-level joins have no aliasing, so a second
     join to the same right CTE re-joins the very same rows — never a self-join —
@@ -1875,8 +1859,8 @@ def coalesce_duplicate_joins(
     each carried a FULL join to the same parent whose pair sets differed by one
     redundant column). Both copies are plans for the same logical relation, so
     the joined rows must satisfy the union of their pairings."""
-    merged: dict[tuple[JoinType, str | None, str], "Join"] = {}
-    out: List[Union["Join", "InstantiatedUnnestJoin"]] = []
+    merged: dict[tuple[JoinType, str | None, str], Join] = {}
+    out: list[Join | InstantiatedUnnestJoin] = []
     for join in joins:
         if (
             not isinstance(join, Join)
@@ -1911,8 +1895,8 @@ def coalesce_duplicate_joins(
     return out
 
 
-def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:
-    final_ctes_dict: Dict[str, CTE | UnionCTE] = {}
+def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
+    final_ctes_dict: dict[str, CTE | UnionCTE] = {}
     # merge CTEs
     for cte in ctes:
         if cte.name not in final_ctes_dict:

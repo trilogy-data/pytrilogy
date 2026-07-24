@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 
 from trilogy.rendering.theme import DEFAULT_THEME, Theme
 from trilogy.report.document import RenderedElement
@@ -18,7 +17,7 @@ class ReportBackend(ABC):
     @abstractmethod
     def render(
         self,
-        elements: List[RenderedElement],
+        elements: list[RenderedElement],
         output_path: Path,
         theme: Theme = DEFAULT_THEME,
     ) -> None: ...

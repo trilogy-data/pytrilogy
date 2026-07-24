@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import ProgrammingError
 
 from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig, RetryConfig, RetryPolicy
@@ -68,7 +69,7 @@ def test_executor_no_retry_without_config():
     executor = Dialects.DUCK_DB.default_executor()
 
     with patch("time.sleep") as mock_sleep:
-        with pytest.raises(Exception):
+        with pytest.raises(ProgrammingError):
             executor.execute_raw_sql("SELECT error('any_error')")
 
         assert mock_sleep.call_count == 0

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Union
-
-from typing_extensions import TypeAlias
+from typing import Protocol, TypeAlias
 
 from trilogy.core import graph as nx
 from trilogy.execution.state import StaleAsset
@@ -84,7 +82,7 @@ class ManagedRefreshNode:
         return f"ManagedRefreshNode({self.address})"
 
 
-ExecutionNode: TypeAlias = Union[ScriptNode, ManagedRefreshNode]
+ExecutionNode: TypeAlias = ScriptNode | ManagedRefreshNode
 
 
 class DependencyStrategy(Protocol):

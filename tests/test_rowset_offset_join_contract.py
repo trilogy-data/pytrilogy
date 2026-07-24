@@ -14,9 +14,9 @@ end-to-end result over deliberately disjoint oid sets returns the offset match â
 a base-key join would return nothing.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 

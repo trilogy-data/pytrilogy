@@ -764,9 +764,7 @@ def subselect_limit(
 # --- Window handlers ---
 
 
-_WINDOW_SINGLE_ARG_MAP: dict[
-    SyntaxNodeKind, type[WindowItemOver] | type[WindowItemOrder]
-] = {
+_WINDOW_SINGLE_ARG_MAP: dict[SyntaxNodeKind, type[WindowItemOver | WindowItemOrder]] = {
     SyntaxNodeKind.WINDOW_ITEM_OVER: WindowItemOver,
     SyntaxNodeKind.WINDOW_ITEM_ORDER: WindowItemOrder,
     SyntaxNodeKind.WINDOW_SQL_PARTITION: WindowItemOver,

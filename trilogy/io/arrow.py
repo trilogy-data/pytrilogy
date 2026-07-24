@@ -1,5 +1,5 @@
 import sys
-from typing import Iterator
+from collections.abc import Iterator
 
 import pyarrow as pa
 

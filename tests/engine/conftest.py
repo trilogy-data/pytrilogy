@@ -1,5 +1,5 @@
+from collections.abc import Generator
 from os.path import abspath, dirname
-from typing import Generator
 
 from pytest import fixture
 from sqlalchemy import text
@@ -69,7 +69,7 @@ datasource fact_discount (
 
 
 """
-    environment, statements = parse(text, environment=environment)
+    environment, _statements = parse(text, environment=environment)
     yield environment
 
 
@@ -129,7 +129,7 @@ const pi <-3.14;
 const greeting <- 'hello';
 const answer <- 42;
 """
-    environment, statements = parse(text, environment=environment)
+    environment, _statements = parse(text, environment=environment)
     yield environment
 
 
@@ -151,7 +151,6 @@ class PrestoEngineConnection(EngineConnection):
 
 
 class PrestoEngine(ExecutionEngine):
-    pass
 
     def connect(self) -> EngineConnection:
         return PrestoEngineConnection()
@@ -191,8 +190,6 @@ def trino_engine(presto_model, mocker) -> Generator[Executor, None, None]:
 
 class PostgresEngine(ExecutionEngine):
     """Mock since we won't have the engine available in testing"""
-
-    pass
 
     def connect(self) -> EngineConnection:
         return PrestoEngineConnection()

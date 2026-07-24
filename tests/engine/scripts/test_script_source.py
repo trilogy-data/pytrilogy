@@ -74,7 +74,7 @@ select
         environment=Environment(working_path=Path(__file__).parent),
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError, match="enable_python_datasources"):
         executor.execute_text(script)
 
 

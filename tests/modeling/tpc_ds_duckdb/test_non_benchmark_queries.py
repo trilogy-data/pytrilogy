@@ -364,7 +364,7 @@ order by r asc limit 15;
 
 
 def test_copy_perf():
-    env, imports = Environment(working_path=working_path).parse("""
+    env, _imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
 import customer_demographic as pos_customer_demographic;
@@ -472,7 +472,7 @@ def _has_nested_aggregate(sql: str) -> bool:
     — e.g. `sum(CASE WHEN ... THEN sum(x) END)`. DuckDB rejects this with
     'aggregate function calls cannot be nested'."""
     low = sql.lower()
-    agg_open = re.compile(r"\b(?:%s)\(" % "|".join(_AGG_FNS))
+    agg_open = re.compile(r"\b(?:{})\(".format("|".join(_AGG_FNS)))
     for m in agg_open.finditer(low):
         depth, i = 1, m.end()
         while i < len(low) and depth > 0:
@@ -837,7 +837,7 @@ def test_rowset_arithmetic_argument_keeps_precedence():
     env = Environment(working_path=working_path)
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
-    assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.S), sql
+    assert re.search(r"round\(\( .*? \+ .*? \) / \(lead", sql, re.DOTALL), sql
 
 
 def test_tvf_union_rowset_remap_does_not_regroup():
@@ -854,7 +854,7 @@ def test_tvf_union_rowset_remap_does_not_regroup():
         env = Environment(working_path=working_path)
         sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
 
-        assert not re.search(pattern, sql, re.S), sql
+        assert not re.search(pattern, sql, re.DOTALL), sql
 
 
 def _assert_having_membership_subselect_valid(query: str) -> None:
@@ -1017,7 +1017,7 @@ def test_or_filter_over_differently_filtered_aggregates_no_recursion(engine):
     assert re.search(
         r"between date '2000-08-23'.*?\bor\b.*?between date '2000-08-23'",
         sql,
-        re.S | re.I,
+        re.DOTALL | re.IGNORECASE,
     ), sql
     # and the query resolves and executes end-to-end against real data
     engine.execute_text(query)[0].fetchall()

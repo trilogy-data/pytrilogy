@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -14,11 +12,11 @@ class RecursiveNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment: BuildEnvironment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
     ):
         super().__init__(

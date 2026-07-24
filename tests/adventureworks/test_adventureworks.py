@@ -25,7 +25,7 @@ def test_parsing(environment: Environment):
     ) as f:
         file = f.read()
     SqlServerDialect()
-    environment, statements = parse(file, environment=environment)
+    environment, _statements = parse(file, environment=environment)
 
 
 # @pytest.mark.adventureworks_execution
@@ -156,7 +156,7 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
 
 
 def list_to_address(clist: list[Concept]) -> set[str]:
-    return set([c.address for c in clist])
+    return {c.address for c in clist}
 
 
 @pytest.mark.adventureworks
@@ -218,7 +218,7 @@ def test_grain(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    base_env, statements = parse(file, environment=environment)
+    base_env, _statements = parse(file, environment=environment)
     environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     history = History(base_environment=base_env)
@@ -253,7 +253,7 @@ def test_group_to_grain(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    base_env, statements = parse(file, environment=environment)
+    base_env, _statements = parse(file, environment=environment)
     history = History(base_environment=base_env)
     environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
@@ -304,7 +304,7 @@ def test_two_properties_query(environment: Environment):
         file = f.read()
     orig_environment, statements = parse(file, environment=environment)
     environment = orig_environment.materialize_for_select()
-    assert "local.total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
+    assert "local.total_sales_amount_debug_2" in set(environment.concepts.keys())
     environment_graph = generate_graph(environment)
     assert (
         len(

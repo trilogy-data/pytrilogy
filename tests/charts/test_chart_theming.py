@@ -45,7 +45,7 @@ def _chart(executor: Executor):
             _SETUP + "chart layer bar ( x_axis <- category, y_axis <- value );"
         )
     )
-    return [r for r in results if isinstance(r, ChartResult)][0].chart
+    return next(r for r in results if isinstance(r, ChartResult)).chart
 
 
 def test_dark_themes_registered_with_counterparts():
@@ -172,7 +172,7 @@ def test_theme_type_annotation():
 def test_headline_text_uses_theme_colors():
     setup = _SETUP + "chart layer headline ( x_axis <- sum(value) as total );"
     results = list(_executor(chart_theme="inter-dark").execute_text(setup))
-    chart = [r for r in results if isinstance(r, ChartResult)][0].chart
+    chart = next(r for r in results if isinstance(r, ChartResult)).chart
     spec = chart.to_dict()
     colors = {layer["mark"]["color"] for layer in spec["layer"]}
     assert colors == {
@@ -181,7 +181,7 @@ def test_headline_text_uses_theme_colors():
     }
 
     light = list(_executor().execute_text(setup))
-    light_spec = [r for r in light if isinstance(r, ChartResult)][0].chart.to_dict()
+    light_spec = next(r for r in light if isinstance(r, ChartResult)).chart.to_dict()
     light_colors = {layer["mark"]["color"] for layer in light_spec["layer"]}
     assert light_colors == {INTER_THEME.text_primary, INTER_THEME.text_muted}
 
@@ -203,7 +203,7 @@ def test_solo_area_is_visible():
             _SETUP + "chart layer area ( x_axis <- category, y_axis <- value );"
         )
     )
-    chart = [r for r in results if isinstance(r, ChartResult)][0].chart
+    chart = next(r for r in results if isinstance(r, ChartResult)).chart
     spec = theme_chart(chart, INTER_THEME).to_dict()
     assert spec["config"]["area"] == {
         "fillOpacity": 0.35,

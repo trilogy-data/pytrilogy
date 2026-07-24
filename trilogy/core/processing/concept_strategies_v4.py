@@ -90,10 +90,10 @@ from trilogy.core.processing.v4_helper.source_policy import (
 from trilogy.utility import unique
 
 __all__ = [
-    "BuildInfo",
     "FINAL_NODE_ID",
-    "History",
     "ROW_SHAPE_BARRIER_DERIVATIONS",
+    "BuildInfo",
+    "History",
     "V4History",
     "search_concepts",
 ]

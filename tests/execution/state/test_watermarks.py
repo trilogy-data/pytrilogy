@@ -1336,13 +1336,14 @@ def test_get_stale_assets_timezone_mismatch_incremental():
         "trilogy.execution.state.state_store.has_schema_mismatch", return_value=False
     ), patch(
         "trilogy.execution.state.state_store.is_missing_local_file", return_value=False
-    ):
-        with pytest.raises(TypeError) as exc_info:
-            state_store.get_stale_assets(
-                mock_env,
-                MagicMock(),
-                root_assets={"tz_source"},
-            )
+    ), pytest.raises(
+        TypeError
+    ) as exc_info:
+        state_store.get_stale_assets(
+            mock_env,
+            MagicMock(),
+            root_assets={"tz_source"},
+        )
 
     msg = str(exc_info.value)
     assert "synced_at" in msg

@@ -225,7 +225,7 @@ def create_select_node_candidate(
             ),
         )
     else:
-        raise ValueError(f"Unknown datasource type {datasource}")
+        raise TypeError(f"Unknown datasource type {datasource}")
 
 
 def create_select_node(

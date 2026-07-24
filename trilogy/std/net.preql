@@ -1,14 +1,14 @@
 
 ## network types
-type url string; # URL string
-type url_image string; # URL of an image
+type url string['\S+://\S+']; # URL string, scheme required
+type url_image string['\S+://\S+']; # URL of an image
 type domain string; # Domain name
 type ip_net_mask string; # IP network mask
 type ipv6_address string; # IPv6 address
-type ipv4_address string; # IPv4 address
+type ipv4_address string['\d{1,3}(\.\d{1,3}){3}']; # IPv4 address
 
 ## communication types
-type email_address string; # Email address, including @
+type email_address string['\S+@\S+']; # Email address, including @
 
 ## shared types
 type suffix string; # A file suffix or extension, like .txt, .jpg, etc.

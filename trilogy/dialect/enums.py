@@ -1,6 +1,7 @@
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 from trilogy.core.models.environment import Environment
 
@@ -158,8 +159,8 @@ class Dialects(Enum):
     def default_executor(
         self,
         environment: Optional["Environment"] = None,
-        working_path: Optional[Path] = None,
-        hooks: List["BaseHook"] | None = None,
+        working_path: Path | None = None,
+        hooks: list["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
         rendering: Rendering | None = None,
         _engine_factory: Callable | None = None,

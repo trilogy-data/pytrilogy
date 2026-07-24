@@ -37,7 +37,6 @@ def test_duckdb_spatial_setup_enabled_executes_install_and_load(monkeypatch) -> 
         local_concepts: dict[str, Any] | None = None,
     ) -> None:
         executed_sql.append(command)
-        return None
 
     monkeypatch.setattr(Executor, "execute_raw_sql", fake_execute_raw_sql)
     engine = DummyEngine()

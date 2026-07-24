@@ -46,9 +46,7 @@ class StaleAsset:
     kind: RefreshKind = RefreshKind.SQL
 
 
-def _compare_watermark_values(
-    a: str | int | float | date, b: str | int | float | date
-) -> int:
+def _compare_watermark_values(a: str | float | date, b: str | float | date) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
     Handles type mismatches by comparing string representations.
@@ -292,8 +290,6 @@ def get_concept_max_watermark_abstract(
         result = executor.execute_query(f"SELECT MAX({concept_address}) as max_value;")
         row = result.fetchone() if result else None
         value = row[0] if row else None
-    except Exception:
-        raise
     finally:
         executor.environment.datasources.update(hidden)
     return UpdateKey(
@@ -349,6 +345,7 @@ def run_freshness_probe(probe_path: str) -> bool:
         ["uv", "run", "--no-project", "--quiet", probe_path],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -369,6 +366,7 @@ def run_refresh_script(script_path: str, cwd: str | None = None) -> None:
         capture_output=True,
         text=True,
         cwd=cwd,
+        check=False,
     )
     if result.stdout:
         logger.info("refresh_script %s stdout: %s", script_path, result.stdout.strip())

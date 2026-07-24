@@ -1,5 +1,3 @@
-from typing import Optional
-
 from trilogy.core.enums import DatasourceState, PublishAction
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -110,8 +108,8 @@ def handle_processed_show_statement(
 
 
 def raw_validation_to_result(
-    raw: list[ValidationTest], generator: Optional[BaseDialect] = None
-) -> Optional[MockResult]:
+    raw: list[ValidationTest], generator: BaseDialect | None = None
+) -> MockResult | None:
     """Convert raw validation tests to mock result."""
     if not raw:
         return MockResult([], ["check_type", "expected", "result", "ran", "query"])
@@ -136,7 +134,7 @@ def raw_validation_to_result(
 
 def handle_processed_validate_statement(
     query: ProcessedValidateStatement, dialect: BaseDialect, validate_environment_func
-) -> Optional[MockResult]:
+) -> MockResult | None:
     """Handle processed validate statements."""
     results = validate_environment_func(query.scope, query.targets)
     return raw_validation_to_result(results, dialect)

@@ -55,7 +55,7 @@ def main() -> None:
             try:
                 eng.generate_sql(body)
                 print(f"  BUILT(no guard) {name}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"  {type(exc).__name__:<24} {name}: {str(exc)[:70]}")
 
 

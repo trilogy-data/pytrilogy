@@ -928,9 +928,9 @@ def test_build_provider_custom_api_key_env(monkeypatch):
 def test_build_provider_cli_provider_override(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("TRILOGY_AGENT_MODEL", raising=False)
-    provider = _build_provider(AgentConfig(), "gpt-5-chat-latest", "openai")
+    provider = _build_provider(AgentConfig(), "gpt-5.5", "openai")
     assert isinstance(provider, OpenAIProvider)
-    assert provider.model == "gpt-5-chat-latest"
+    assert provider.model == "gpt-5.5"
 
 
 def test_build_provider_cli_provider_override_rejects_unknown():
@@ -1692,7 +1692,7 @@ def test_truncate_json_events_passthrough_under_limit():
 
 
 def test_truncate_json_events_keeps_whole_events_and_appends_note():
-    text = "\n".join('{"event": %d}' % i for i in range(20))
+    text = "\n".join(f'{{"event": {i}}}' for i in range(20))
     out = agent_tools_mod.truncate_json_events(text, 40)
     # Only whole leading events survive, then a synthetic truncation event.
     assert '{"event": 0}' in out
@@ -1703,7 +1703,7 @@ def test_truncate_json_events_keeps_whole_events_and_appends_note():
 
 
 def test_truncate_json_events_handles_trailing_whitespace():
-    text = "\n".join('{"event": %d}' % i for i in range(20)) + "\n  \n"
+    text = "\n".join(f'{{"event": {i}}}' for i in range(20)) + "\n  \n"
     out = agent_tools_mod.truncate_json_events(text, 40)
     assert '{"event": 0}' in out
     assert "output_truncated" in out

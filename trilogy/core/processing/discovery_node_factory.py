@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, Union
+from typing import Protocol
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity
@@ -45,14 +45,14 @@ from trilogy.core.processing.nodes import (
 class SearchConceptsType(Protocol):
     def __call__(
         self,
-        mandatory_list: List[BuildConcept],
+        mandatory_list: list[BuildConcept],
         history: History,
         environment: BuildEnvironment,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
-        conditions: Optional[BuildWhereClause] = None,
-    ) -> Union[StrategyNode, None]: ...
+        conditions: BuildWhereClause | None = None,
+    ) -> StrategyNode | None: ...
 
 
 @dataclass
@@ -60,15 +60,15 @@ class NodeGenerationContext:
     """Encapsulates common parameters for node generation."""
 
     concept: BuildConcept
-    local_optional: List[BuildConcept]
+    local_optional: list[BuildConcept]
     environment: BuildEnvironment
     g: ReferenceGraph
     depth: int
     source_concepts: SearchConceptsType
     history: History
     accept_partial: bool = False
-    conditions: Optional[BuildWhereClause] = None
-    required_concepts: List[BuildConcept] | None = None
+    conditions: BuildWhereClause | None = None
+    required_concepts: list[BuildConcept] | None = None
 
     @property
     def next_depth(self) -> int:
@@ -379,7 +379,7 @@ class RootNodeHandler:
     def __init__(self, context: NodeGenerationContext):
         self.ctx = context
 
-    def generate(self) -> Optional[StrategyNode]:
+    def generate(self) -> StrategyNode | None:
         self.ctx.log_generation("select", "including condition inputs")
 
         root_targets = [self.ctx.concept] + self.ctx.local_optional
@@ -387,8 +387,8 @@ class RootNodeHandler:
         return self._resolve_root_concepts(root_targets)
 
     def _resolve_root_concepts(
-        self, root_targets: List[BuildConcept]
-    ) -> Optional[StrategyNode]:
+        self, root_targets: list[BuildConcept]
+    ) -> StrategyNode | None:
         expanded_node = self._try_merge_expansion(root_targets)
         if expanded_node:
             return expanded_node
@@ -404,8 +404,8 @@ class RootNodeHandler:
         return None
 
     def _try_merge_expansion(
-        self, root_targets: List[BuildConcept]
-    ) -> Optional[StrategyNode]:
+        self, root_targets: list[BuildConcept]
+    ) -> StrategyNode | None:
         # Merge expansion recursively re-searches the injected concepts, which
         # can route back to an identical root search (e.g. a rowset over a
         # window whose enrichment re-resolves these same roots). Guard against
@@ -447,14 +447,14 @@ class RootNodeHandler:
         return None
 
     def _handle_expanded_node(
-        self, expanded: StrategyNode, root_targets: List[BuildConcept]
+        self, expanded: StrategyNode, root_targets: list[BuildConcept]
     ) -> None:
         # gen_merge_node intentionally returns the node *without* preexisting
         # conditions so the calling discovery loop can attach the WHERE clause
         # itself; that wiring requires the condition row arguments to remain
         # in the node's outputs so validate_stack can see them. Without this,
         # the loop reports INCOMPLETE_CONDITION and trips the guardrail.
-        keep: List[BuildConcept] = list(root_targets)
+        keep: list[BuildConcept] = list(root_targets)
         if self.ctx.conditions:
             seen = {c.address for c in keep}
             for arg in self.ctx.conditions.row_arguments:
@@ -470,8 +470,8 @@ class RootNodeHandler:
         )
 
     def _try_synonym_resolution(
-        self, root_targets: List[BuildConcept]
-    ) -> Optional[StrategyNode]:
+        self, root_targets: list[BuildConcept]
+    ) -> StrategyNode | None:
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
             f"Could not resolve root concepts, checking for synonyms for {root_targets}"
@@ -516,7 +516,7 @@ class RootNodeHandler:
 
 def generate_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g: ReferenceGraph,
     depth: int,
@@ -524,7 +524,7 @@ def generate_node(
     history: History,
     accept_partial: bool,
     conditions: BuildWhereClause | None = None,
-    required_concepts: List[BuildConcept] | None = None,
+    required_concepts: list[BuildConcept] | None = None,
 ) -> StrategyNode | None:
 
     context = NodeGenerationContext(

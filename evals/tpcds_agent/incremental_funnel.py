@@ -21,9 +21,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import analyze_run  # noqa: E402
-from common.categories import CATEGORIES, FUNNEL_ORDER  # noqa: E402
-from spec import SPEC  # noqa: E402
+from common import analyze_run
+from common.categories import CATEGORIES, FUNNEL_ORDER
+from spec import SPEC
 
 _LINE = re.compile(
     r"\[(?P<cat>sql_bare|sql_schema|ingest|enriched)\]\s+"

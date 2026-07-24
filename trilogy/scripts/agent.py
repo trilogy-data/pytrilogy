@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import os
 import textwrap
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 from click import argument, option, pass_context
@@ -31,7 +32,7 @@ from trilogy.ai.providers.deepseek import DeepSeekProvider
 from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
-from trilogy.execution.config import AgentConfig, apply_env_vars
+from trilogy.execution.config import AgentConfig
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
     SHOW_MESSAGE_TOOL,
@@ -724,13 +725,14 @@ def agent(
         trilogy agent "analyze sales trends and create a dashboard"
         trilogy agent -i "ingest new data and run validation tests"
     """
+    cli_env: dict[str, str] = {}
     if env:
         try:
-            apply_env_vars(parse_env_vars(env))
+            cli_env = parse_env_vars(env)
         except ValueError as exc:
             raise click.ClickException(str(exc)) from exc
 
-    runtime = get_runtime_config(Path.cwd())
+    runtime = get_runtime_config(Path.cwd(), extra_env=cli_env or None)
     cfg = runtime.agent
     actual_quiet = cfg.quiet if quiet is None else quiet
     llm_provider = _build_provider(cfg, model, provider)

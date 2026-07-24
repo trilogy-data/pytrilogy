@@ -21,8 +21,9 @@ in twin expressions.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import replace as dc_replace
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from trilogy.core.enums import (
     BooleanOperator,

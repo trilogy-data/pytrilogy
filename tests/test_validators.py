@@ -699,8 +699,9 @@ def test_validation_scope_cleans_up_temp_tables():
         executor._validation_temp_tables.append("__trilogy_validation_cache_test")
     # Table should be dropped
     import pytest as _pytest
+    from sqlalchemy.exc import ProgrammingError
 
-    with _pytest.raises(Exception):
+    with _pytest.raises(ProgrammingError):
         executor.execute_raw_sql('SELECT * FROM "__trilogy_validation_cache_test"')
 
 

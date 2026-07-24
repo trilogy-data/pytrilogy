@@ -36,8 +36,9 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace as dc_replace
-from typing import Any, Callable, Iterable, Mapping, NamedTuple, cast
+from typing import Any, NamedTuple, cast
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
@@ -1634,7 +1635,5 @@ def finalize_select_tree(
     elif isinstance(output, MultiSelectStatement):
         for sel in output.selects:
             finalize_select_statement(sel, context)
-    elif isinstance(output, PersistStatement):
-        finalize_select_tree(output.select, context)
-    elif isinstance(output, RowsetDerivationStatement):
+    elif isinstance(output, (PersistStatement, RowsetDerivationStatement)):
         finalize_select_tree(output.select, context)

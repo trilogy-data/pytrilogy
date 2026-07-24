@@ -208,11 +208,11 @@ def reorder_ctes(
         ordered_names = {c.name for c in ordered}
         ordered.extend(c for c in input if c.name not in ordered_names)
         return ordered
-    except nx.NetworkXUnfeasible as e:
+    except nx.NetworkXUnfeasible:
         logger.error(
             "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
         )
-        raise e
+        raise
 
 
 def filter_irrelevant_ctes(
@@ -358,8 +358,8 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if cte.group_to_grain:
         return None
 
-    output_addresses = set([x.address for x in cte.output_columns])
-    parent_output_addresses = set([x.address for x in direct_parent.output_columns])
+    output_addresses = {x.address for x in cte.output_columns}
+    parent_output_addresses = {x.address for x in direct_parent.output_columns}
     if not output_addresses.issubset(parent_output_addresses):
         return None
     if not _grains_equivalent(cte, direct_parent):

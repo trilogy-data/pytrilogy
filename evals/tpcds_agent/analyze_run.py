@@ -6,8 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common.analyze_run import run_main  # noqa: E402
-from spec import SPEC  # noqa: E402
+from common.analyze_run import run_main
+from spec import SPEC
 
 if __name__ == "__main__":
     raise SystemExit(run_main(SPEC.results_dir, SPEC.charts_dir))

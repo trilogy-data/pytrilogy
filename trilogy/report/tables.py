@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from html import escape
-from typing import Any, List
+from typing import Any
 
 from trilogy.rendering.base import prettify_label
 from trilogy.rendering.rich_types import format_value, is_numeric
@@ -16,7 +16,7 @@ def _header(name: str) -> str:
     return prettify_label(name) or name
 
 
-def _padded_types(table: Table) -> List[Any]:
+def _padded_types(table: Table) -> list[Any]:
     types = list(table.column_types)
     types += [None] * (len(table.columns) - len(types))
     return types
@@ -26,9 +26,9 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
 
 
-def _numeric_columns(table: Table, types: List[Any]) -> List[bool]:
+def _numeric_columns(table: Table, types: list[Any]) -> list[bool]:
     """A column is numeric if its rich type says so, or all its values are."""
-    flags: List[bool] = []
+    flags: list[bool] = []
     for index in range(len(table.columns)):
         datatype = types[index]
         if datatype is not None and is_numeric(datatype):
@@ -81,7 +81,7 @@ def table_to_markdown(table: Table) -> str:
         + " | ".join("---:" if numeric[i] else "---" for i in range(len(numeric)))
         + " |"
     )
-    rows: List[str] = []
+    rows: list[str] = []
     for row in table.rows:
         cells = [
             format_value(row[i] if i < len(row) else None, types[i]).replace("|", "\\|")

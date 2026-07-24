@@ -1594,8 +1594,7 @@ full join (
             "single_key_fanout",
             "union join left_rows.k = right_rows.k",
             "on l.k is not distinct from r.k",
-            "A single-key union join preserves many-to-many rows from two "
-            "independently filtered rowsets.",
+            "A single-key union join preserves many-to-many rows from two independently filtered rowsets.",
             ("single_key", "fanout"),
             "l.row_id",
         ),

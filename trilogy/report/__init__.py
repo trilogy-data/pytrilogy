@@ -6,7 +6,7 @@ select statements become tables and chart statements become charts. The
 """
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from trilogy.rendering.theme import DEFAULT_THEME, Theme, get_theme
 from trilogy.report.backends import get_backend
@@ -15,10 +15,10 @@ from trilogy.report.runner import run_document
 
 
 def render_report(
-    source: Union[str, Path],
+    source: str | Path,
     output_format: str = "png",
-    output_path: Union[str, Path, None] = None,
-    theme: Union[str, Theme] = DEFAULT_THEME,
+    output_path: str | Path | None = None,
+    theme: str | Theme = DEFAULT_THEME,
     executor: Any | None = None,
 ) -> Path:
     """Render a markdown report file to the requested format, returning the output path.

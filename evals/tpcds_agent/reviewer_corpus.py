@@ -118,13 +118,13 @@ _NOTDONE_SIGNAL = re.compile(
     r"makes me concerned|uncertain|incomplete|simplif|stuck\b|blocked\b|"
     r"recursion error|\berror\b|unable to|couldn'?t|could not|does ?n'?t work|"
     r"not working|no results because|returns? null|all null)\b",
-    re.I,
+    re.IGNORECASE,
 )
 # Confident completion language with no continuation signal.
 _DONE_SIGNAL = re.compile(
     r"\b(done\b|complete[d]?\b|finished\b|fixed\b|successfully\b|runs cleanly|"
     r"has been (written|created|validated|executed)|task (finished|complete))\b",
-    re.I,
+    re.IGNORECASE,
 )
 
 

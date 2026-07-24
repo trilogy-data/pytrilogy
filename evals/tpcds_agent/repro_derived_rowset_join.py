@@ -48,7 +48,7 @@ def main() -> None:
             try:
                 eng.generate_sql(BASE + tail)
                 print(f"  OK    {name}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"  ERR   {name}: {type(exc).__name__}: {str(exc)[:90]}")
 
 

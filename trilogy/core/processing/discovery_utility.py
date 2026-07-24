@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
@@ -83,7 +83,7 @@ def calculate_effective_parent_grain(
         seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
-                grain += BuildGrain(components=set([x.address for x in join.concepts]))
+                grain += BuildGrain(components={x.address for x in join.concepts})
                 continue
             pairs = join.concept_pairs or []
             for key in pairs:
@@ -109,11 +109,9 @@ def calculate_effective_parent_grain(
                 qds.condition
                 and qds.condition.existence_arguments
                 and any(
-                    [
-                        c.address in block
-                        for c in x.output_concepts
-                        for block in qds.condition.existence_arguments
-                    ]
+                    c.address in block
+                    for c in x.output_concepts
+                    for block in qds.condition.existence_arguments
                 )
             ):
                 logger.debug(f"adding unjoined grain {x.grain} for datasource {x.name}")
@@ -124,7 +122,7 @@ def calculate_effective_parent_grain(
 
 
 def check_if_group_required(
-    downstream_concepts: List[BuildConcept],
+    downstream_concepts: list[BuildConcept],
     parents: list[QueryDatasource | BuildDatasource],
     environment: BuildEnvironment,
     depth: int = 0,
@@ -190,28 +188,22 @@ def check_if_group_required(
     # if the difference is all unique properties whose keys are in the source grain
     # we can also suppress the group
     if difference and all(
-        [
-            x.keys
-            and all(
-                environment.concepts[z].address in comp_grain.components for z in x.keys
-            )
-            for x in difference
-        ]
+        x.keys
+        and all(
+            environment.concepts[z].address in comp_grain.components for z in x.keys
+        )
+        for x in difference
     ):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
-    if difference and all([x.purpose == Purpose.KEY for x in difference]):
+    if difference and all(x.purpose == Purpose.KEY for x in difference):
         logger.info(
             f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
         )
         replaced_grain_raw: list[set[str]] = [
-            (
-                x.keys or set()
-                if x.purpose == Purpose.UNIQUE_PROPERTY
-                else set([x.address])
-            )
+            (x.keys or set() if x.purpose == Purpose.UNIQUE_PROPERTY else {x.address})
             for x in downstream_concepts
             if x.address in target_grain.components
         ]
@@ -250,7 +242,7 @@ def check_if_group_required(
 
 def group_if_required_v2(
     root: StrategyNode,
-    final: List[BuildConcept],
+    final: list[BuildConcept],
     environment: BuildEnvironment,
     where_injected: set[str] | None = None,
     depth: int = 0,
@@ -298,9 +290,7 @@ def group_if_required_v2(
             # we need to group this one more time
             pass
         elif isinstance(root, GroupNode):
-            if set(x.address for x in final) != set(
-                x.address for x in root.output_concepts
-            ):
+            if {x.address for x in final} != {x.address for x in root.output_concepts}:
                 allowed_outputs = [
                     x
                     for x in root.output_concepts
@@ -387,13 +377,11 @@ def evaluate_loop_condition_pushdown(
     # (forcing local condition evaluation)
     # only if all condition inputs are here and we only have roots
     should_evaluate_filter_on_this_level_not_push_down = all(
-        [x.address in mandatory for x in conditions.row_arguments]
+        x.address in mandatory for x in conditions.row_arguments
     ) and not any(
-        [
-            x.derivation not in (ROOT_DERIVATIONS)
-            for x in mandatory
-            if x.address not in conditions.row_arguments
-        ]
+        x.derivation not in (ROOT_DERIVATIONS)
+        for x in mandatory
+        if x.address not in conditions.row_arguments
     )
 
     if (
@@ -455,7 +443,7 @@ def generate_candidates_restrictive(
 
 
 def get_priority_concept(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     attempted_addresses: set[str],
     found_concepts: set[str],
     partial_concepts: set[str],
@@ -564,7 +552,7 @@ def _crossjoinable(concept: BuildConcept) -> bool:
     )
 
 
-def _anchor_nodes(concept: BuildConcept) -> List[str]:
+def _anchor_nodes(concept: BuildConcept) -> list[str]:
     """Reference-graph nodes that tie a concept into the model graph: its own
     node, its default-grain node, and its direct source args' default-grain
     nodes (derived concepts may not carry their own node, but their sources do).
@@ -655,10 +643,10 @@ def _component_map(
 
 def disconnected_components(
     environment: BuildEnvironment,
-    concepts: List[BuildConcept],
+    concepts: list[BuildConcept],
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
-) -> List[List[BuildConcept]]:
+) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component
     (i.e. some join / FK / merge path relates them). >1 group means a genuinely
@@ -684,7 +672,7 @@ def disconnected_components(
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
     # rather than silently vanishing.
-    buckets: dict[object, List[BuildConcept]] = {}
+    buckets: dict[object, list[BuildConcept]] = {}
     for concept in concepts:
         if _crossjoinable(concept):
             continue
@@ -703,7 +691,7 @@ def disconnected_components(
 
 def raise_if_disconnected(
     environment: BuildEnvironment,
-    concepts: List[BuildConcept],
+    concepts: list[BuildConcept],
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
     line_number: int | None = None,
@@ -724,7 +712,7 @@ def raise_if_disconnected(
         )
 
 
-def _output_is_rootless(outputs: List[BuildConcept]) -> bool:
+def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
     """Every output has no datasource dependency: a constant, a single-row scalar,
     or a value generated purely from literals (lineage but no concept arguments,
     e.g. ``unnest([1,2,3,4])``). Such an output cannot correlate with any
@@ -744,7 +732,7 @@ def _output_is_rootless(outputs: List[BuildConcept]) -> bool:
 
 
 def _is_global_aggregate_gate(
-    group: List[BuildConcept], output_addresses: set[str]
+    group: list[BuildConcept], output_addresses: set[str]
 ) -> bool:
     """True when a disconnected subgraph is a pure WHERE aggregate gate rather than
     a missing join: every member is an aggregate row-arg (not an output) at a grain
@@ -759,7 +747,7 @@ def _is_global_aggregate_gate(
     )
 
 
-def _collect_subselect_comparisons(node: object) -> List[BuildSubselectComparison]:
+def _collect_subselect_comparisons(node: object) -> list[BuildSubselectComparison]:
     if isinstance(node, BuildSubselectComparison):
         return [node]
     if isinstance(node, BuildConditional):
@@ -773,7 +761,7 @@ def _collect_subselect_comparisons(node: object) -> List[BuildSubselectCompariso
 
 def membership_span_note(
     conditions: "BuildWhereClause | None",
-    subgraphs: List[List[BuildConcept]],
+    subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
@@ -803,7 +791,7 @@ def membership_span_note(
                     subgraph_of_component.setdefault(comp_of[node], idx)
                     break
 
-    def subgraph_ids(concepts: List[BuildConcept]) -> set[int]:
+    def subgraph_ids(concepts: list[BuildConcept]) -> set[int]:
         # operands consider ALL anchors: an islanded rowset concept's own node
         # sits in its island, but its source args tie back to a real model
         ids = set()
@@ -837,7 +825,7 @@ def membership_span_note(
 
 
 def raise_if_disconnected_for(
-    outputs: List[BuildConcept],
+    outputs: list[BuildConcept],
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
@@ -888,10 +876,10 @@ def raise_if_disconnected_for(
 
 def connected_equivalent_suggestions(
     environment: BuildEnvironment | None,
-    subgraphs: List[List[BuildConcept]],
+    subgraphs: list[list[BuildConcept]],
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
-) -> List[tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Detect the separate-import mistake: a model imported a second time as a
     disconnected copy, so concepts like ``date.year`` split off from a measure that
     already reaches them via a chainable import (``all_sales.date.year``).
@@ -918,7 +906,7 @@ def connected_equivalent_suggestions(
     if not target_comps:
         return []
 
-    suggestions: List[tuple[str, str]] = []
+    suggestions: list[tuple[str, str]] = []
     for group in subgraphs:
         if group is target:
             continue
@@ -944,17 +932,17 @@ def connected_equivalent_suggestions(
 def _strip_default_namespace(addr: str) -> str:
     # default namespace is implicit; keep other namespaces qualified
     default_prefix = f"{DEFAULT_NAMESPACE}."
-    return addr[len(default_prefix) :] if addr.startswith(default_prefix) else addr
+    return addr.removeprefix(default_prefix)
 
 
 def format_disconnected_subgraphs_error(
-    subgraphs: List[List[BuildConcept]],
+    subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment | None = None,
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
     line_number: int | None = None,
 ) -> str:
-    def render(group: List[BuildConcept]) -> str:
+    def render(group: list[BuildConcept]) -> str:
         addrs = sorted(c.address for c in group)
         # drop internal _virt_* scaffolding, but keep raw if that empties a group
         cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
@@ -993,7 +981,7 @@ def format_disconnected_subgraphs_error(
 
 
 def format_unresolved_concepts_error(
-    all_concepts: List[BuildConcept], found_concepts: set[str]
+    all_concepts: list[BuildConcept], found_concepts: set[str]
 ) -> str:
     """Terminal-fallback message when discovery exhausts its candidates without
     building one connected source. Unlike the >1-subgraph case the model graph
@@ -1023,14 +1011,14 @@ def format_unresolved_concepts_error(
 
 
 def _filter_hidden_concepts(
-    output_concepts: List[BuildConcept],
-) -> List[BuildConcept]:
+    output_concepts: list[BuildConcept],
+) -> list[BuildConcept]:
     """The concepts a FILTER output hides inside its lineage: the value it filters
     and its ``? <cond>`` row-arguments. The top-level disconnect check only sees
     outputs + WHERE row-args, so a filter whose condition can't be related to the
     value it filters never splits — it dead-ends on the opaque virtual address.
     Surfacing these lets the standard reachability check do its job."""
-    extra: List[BuildConcept] = []
+    extra: list[BuildConcept] = []
     for c in output_concepts:
         if not isinstance(c.lineage, BuildFilterItem):
             continue
@@ -1039,7 +1027,7 @@ def _filter_hidden_concepts(
     return extra
 
 
-def filter_disconnect_context(output_concepts: List[BuildConcept]) -> str:
+def filter_disconnect_context(output_concepts: list[BuildConcept]) -> str:
     """Specific context appended to the general disconnected-subgraphs message when
     the split runs through a filter on a rowset output. The filtered value (a rowset
     output) and the condition concept genuinely can't be related without relating the
@@ -1077,10 +1065,10 @@ def filter_disconnect_context(output_concepts: List[BuildConcept]) -> str:
 
 
 def raise_if_filter_disconnected(
-    output_concepts: List[BuildConcept],
+    output_concepts: list[BuildConcept],
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
-    extra_required: List[BuildConcept] | None = None,
+    extra_required: list[BuildConcept] | None = None,
 ) -> None:
     """Re-run the reachability check with FILTER outputs' hidden condition concepts
     surfaced (see ``_filter_hidden_concepts``). When that splits the set, raise the
@@ -1239,7 +1227,7 @@ def get_loop_iteration_targets(
     depth: int,
     materialized_canonical: set[str],
     environment: BuildEnvironment | None = None,
-) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
+) -> tuple[BuildConcept, list[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list

@@ -24,7 +24,7 @@ def test_llm_execution():
         executor.environment,
         "number of flights by month in 2005; return only two columns, month and the count of flights; order by month ascending",
         Provider.OPENAI,
-        "gpt-5-chat-latest",
+        "gpt-5.5",
         api_key,
     )
 

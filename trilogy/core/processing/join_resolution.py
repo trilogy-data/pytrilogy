@@ -437,7 +437,7 @@ def resolve_join_order_v2(
             else:
                 output.append(
                     JoinOrderOutput(
-                        left=sorted(eligible_left)[0],
+                        left=min(eligible_left),
                         right=ds,
                         type=JoinType.FULL,
                         keys={},
@@ -524,7 +524,7 @@ def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
-    domain_graph: "DomainGraph | None" = None,
+    domain_graph: DomainGraph | None = None,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 

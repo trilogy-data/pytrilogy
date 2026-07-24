@@ -30,12 +30,12 @@
     
     // property display_name string
     parameter_default: "default"i literal
-    parameter_declaration: ("parameter"i | "param"i) IDENTIFIER data_type concept_nullable_modifier? parameter_default? metadata?
-    concept_declaration: select_hide_modifier? PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
+    parameter_declaration: ("parameter"i | "param"i) IDENTIFIER (data_type | validated_type) concept_nullable_modifier? parameter_default? metadata?
+    concept_declaration: select_hide_modifier? PURPOSE IDENTIFIER (data_type | validated_type) concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
     UNIQUE: "UNIQUE"i
-    concept_property_declaration: select_hide_modifier? UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
+    concept_property_declaration: select_hide_modifier? UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) (data_type | validated_type) concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
     // body is `conditional` (not `expr`) so a derived concept can name a full
     // boolean predicate (`and`/`or`, `between`, `is null`) — the same grammar
@@ -48,7 +48,7 @@
     concept_nullable_modifier: "?"
 
     // properties <key> (...) or properties <key1, key2> (...)
-    inline_property: select_hide_modifier? IDENTIFIER data_type concept_nullable_modifier? metadata?
+    inline_property: select_hide_modifier? IDENTIFIER (data_type | validated_type) concept_nullable_modifier? metadata?
     inline_property_list: inline_property ("," PARSE_COMMENT? inline_property)* ("," PARSE_COMMENT?)?
     properties_declaration: _PROPERTIES (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
     prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
@@ -213,7 +213,7 @@
 
     // FUNCTION blocks
     function: raw_function | table_function
-    function_binding_type: ":" data_type
+    function_binding_type: ":" (data_type | validated_type)
     function_binding_default: /=/ expr
     function_binding_item: IDENTIFIER function_binding_type? function_binding_default?
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
@@ -224,7 +224,7 @@
     // TYPE blocks
     type_drop_clause: "DROP"  IDENTIFIER ("|" IDENTIFIER)*
     //type_add_clause: "ADD" IDENTIFIER ("|" IDENTIFIER)* type_add_clause?
-    type_declaration: "type" IDENTIFIER data_type ("|" data_type)* type_drop_clause? 
+    type_declaration: "type" IDENTIFIER (data_type | validated_type) ("|" (data_type | validated_type))* type_drop_clause?
 
     // user_id where state = Mexico
     // LHS enumerates every non-left-recursive atom alternative (everything
@@ -381,7 +381,7 @@
     // (deduplicated, NULL-safe row comparison); except left-folds over 3+ arms.
     _EXCEPT.1: "EXCEPT("i
     _INTERSECT.1: "INTERSECT("i
-    tvf_output_item: select_hide_modifier? IDENTIFIER (PURPOSE? data_type concept_nullable_modifier?)? metadata?
+    tvf_output_item: select_hide_modifier? IDENTIFIER (PURPOSE? (data_type | validated_type) concept_nullable_modifier?)? metadata?
     tvf_output: "->" "(" tvf_output_item ("," tvf_output_item)* ","? ")"
     tvf_rel_arg: "(" select_statement ")"
     _tvf_arg: tvf_rel_arg
@@ -752,7 +752,7 @@
     // `union(?!\()` keeps the `union(...)` blend function (whose _UNION token
     // requires the immediate paren) lexing as _UNION, not as a join type.
     JOIN_TYPE.2: /(?:left|inner|full|right|cross|subset|union(?!\())\b/i
-    struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
+    struct_component: IDENTIFIER ":" (data_type | validated_type) concept_nullable_modifier? metadata?
     struct_type: "struct"i "<" (struct_component | IDENTIFIER) ("," (struct_component | IDENTIFIER))* ","? ">"
 
     list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">"
@@ -762,6 +762,12 @@
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
     enum_type: "enum"i "<" data_type ">" "[" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? "]"
+
+    // declaration-only validator suffix: int[0..100], float[0..,..1.5], string['[A-Z]+'],
+    // date['2020-01-01'..'2024-12-31']. Ranges are inclusive; comma = OR.
+    RANGE_SEP: ".."
+    range_spec: (int_lit | float_lit | string_lit)? RANGE_SEP (int_lit | float_lit | string_lit)? | (int_lit | float_lit | string_lit)
+    !validated_type: (numeric_type | "string"i | "numeric"i | "decimal"i | "number"i | "int"i | "bigint"i | "datetime"i | "timestamp"i | "date"i | "double"i | "float"i) "[" range_spec ("," range_spec)* ","? "]" ("::" IDENTIFIER)?
 
     !data_type:  ("string"i | "bytes"i | "geography"i | "number"i | "numeric"i | "decimal"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "double"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     

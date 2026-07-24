@@ -8,11 +8,11 @@ from trilogy.parsing.v2.semantic_state import ConceptUpdate, ConceptUpdateKind
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, syntax_name
 
 __all__ = [
+    "ConceptUpdate",
+    "ConceptUpdateKind",
     "DiagnosticSeverity",
     "HydrationDiagnostic",
     "HydrationError",
-    "ConceptUpdate",
-    "ConceptUpdateKind",
 ]
 
 
@@ -35,7 +35,7 @@ class HydrationDiagnostic:
         message: str,
         syntax: SyntaxElement,
         severity: DiagnosticSeverity = DiagnosticSeverity.ERROR,
-    ) -> "HydrationDiagnostic":
+    ) -> HydrationDiagnostic:
         return cls(
             message=message,
             severity=severity,

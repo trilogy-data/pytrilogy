@@ -866,7 +866,7 @@ class TestEagerBFSCallbackException:
 
         # _execute_single is the real wrapper; mock it to return a successful result
         # without needing a real executor or file system.
-        import unittest.mock as mock
+        from unittest import mock
 
         successful_result = ExecutionResult(
             node=ScriptNode(path=Path(node_a)), success=True

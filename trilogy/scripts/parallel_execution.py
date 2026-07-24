@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
@@ -325,8 +327,9 @@ def _create_worker(
                     if on_script_complete:
                         try:
                             on_script_complete(result)
-                        except Exception:
-                            pass  # display errors must not kill the worker or skip _mark_node_complete
+                        except Exception as e:
+                            # display errors must not kill the worker or skip _mark_node_complete
+                            logger.debug("on_script_complete callback failed: %s", e)
 
                     _mark_node_complete(
                         node_key,
@@ -672,7 +675,6 @@ def run_parallel_execution(
     Run parallel execution for directory inputs, or single-script execution
     with polished progress display for single files/inline queries.
     """
-    from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
         create_executor_for_script,
         merge_runtime_config,
@@ -692,25 +694,21 @@ def run_parallel_execution(
 
     # Check if input is a directory (parallel execution)
     pathlib_input = Path(cli_params.input)
-    files_iter, directory, input_type, input_name, config = resolve_input_information(
-        cli_params.input, cli_params.config_path
-    )
-    files = list(files_iter)
 
-    # Load environment variables from config env_files first
-    for env_file in config.env_files:
-        env_vars = load_env_file(env_file)
-        if env_vars:
-            apply_env_vars(env_vars)
-
-    # Then apply CLI --env options (these take precedence)
+    # CLI --env parses first so config loading sees it (env_file values apply
+    # before it; CLI wins).
+    cli_env_vars: dict[str, str] = {}
     if cli_params.env:
         try:
             cli_env_vars = parse_env_vars(cli_params.env)
         except ValueError as e:
             print_error(str(e))
             raise Exit(1) from e
-        apply_env_vars(cli_env_vars)
+
+    files_iter, directory, input_type, input_name, config = resolve_input_information(
+        cli_params.input, cli_params.config_path, extra_env=cli_env_vars or None
+    )
+    files = list(files_iter)
 
     # Merge CLI params with config file
     edialect, parallelism = merge_runtime_config(cli_params, config)

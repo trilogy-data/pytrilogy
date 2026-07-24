@@ -1195,16 +1195,12 @@ def _parse_with_backend(text: str, root: Path, backend):
     "sugar_join,stacked_join",
     [
         (
-            "subset join customers.customer_id = orders.customer_id"
-            " and customers.customer_id = shipments.customer_id",
-            "subset join customers.customer_id = orders.customer_id\n"
-            "subset join customers.customer_id = shipments.customer_id",
+            "subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id",
+            "subset join customers.customer_id = orders.customer_id\nsubset join customers.customer_id = shipments.customer_id",
         ),
         (
-            "union join orders.customer_id = customers.customer_id"
-            " and shipments.customer_id = customers.customer_id",
-            "union join orders.customer_id = customers.customer_id\n"
-            "union join shipments.customer_id = customers.customer_id",
+            "union join orders.customer_id = customers.customer_id and shipments.customer_id = customers.customer_id",
+            "union join orders.customer_id = customers.customer_id\nunion join shipments.customer_id = customers.customer_id",
         ),
     ],
 )

@@ -53,9 +53,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             lineage=function,
             grain=concept.grain,
             namespace=concept.namespace,
-            keys=set(
-                [concept.address],
-            ),
+            keys={concept.address},
             metadata=Metadata(
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
@@ -80,9 +78,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             lineage=function,
             grain=copy.copy(concept.grain),
             namespace=concept.namespace,
-            keys=set(
-                [concept.address],
-            ),
+            keys={concept.address},
             metadata=Metadata(
                 # description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
                 line_number=base_line_number,
@@ -127,9 +123,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             lineage=const_function,
             grain=copy.copy(concept.grain),
             namespace=concept.namespace,
-            keys=set(
-                [concept.address],
-            ),
+            keys={concept.address},
             metadata=Metadata(
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
@@ -268,10 +262,9 @@ def remove_related_concepts(concept: Concept, environment: Environment):
     # Remove datatype-specific concepts
     if concept.datatype == DataType.DATE:
         remove_date_concepts(concept, environment)
-    elif concept.datatype == DataType.DATETIME:
-        remove_date_concepts(concept, environment)
-        remove_datetime_concepts(concept, environment)
-    elif concept.datatype == DataType.TIMESTAMP:
+    elif (
+        concept.datatype == DataType.DATETIME or concept.datatype == DataType.TIMESTAMP
+    ):
         remove_date_concepts(concept, environment)
         remove_datetime_concepts(concept, environment)
 

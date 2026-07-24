@@ -16,7 +16,7 @@ def setup_environment():
 
 def test_total_summary():
     """Test overall totals resolve to total_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -33,7 +33,7 @@ SELECT
 
 def test_customer_aggregates():
     """Test customer-level aggregates resolve to customer_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -49,7 +49,7 @@ SELECT
 
 def test_product_aggregates():
     """Test product-level aggregates resolve to product_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -66,7 +66,7 @@ SELECT
 
 def test_daily_aggregates():
     """Test daily aggregates resolve to daily_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -84,7 +84,7 @@ SELECT
 
 def test_customer_product_aggregates():
     """Test customer-product aggregates resolve to customer_product_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -101,7 +101,7 @@ SELECT
 
 def test_customer_daily_aggregates():
     """Test customer-daily aggregates resolve to customer_daily_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -118,7 +118,7 @@ SELECT
 
 def test_product_daily_aggregates():
     """Test product-daily aggregates resolve to product_daily_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -136,7 +136,7 @@ SELECT
 
 def test_customer_product_daily_aggregates():
     """Test customer-product-daily aggregates resolve to customer_product_daily_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -154,7 +154,7 @@ SELECT
 
 def test_mouse_product_filter():
     """Test filtered aggregate for mouse product resolves to mouse_product_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -172,7 +172,7 @@ WHERE product_id = 202
 
 def test_mouse_customer_filter():
     """Test filtered customer-product aggregate for mouse resolves to mouse_customer_summary table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -190,7 +190,7 @@ WHERE product_id = 202
 
 def test_high_value_customer_filter():
     """Test filtered customer aggregate for high-value customers resolves to high_value_customers table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -208,7 +208,7 @@ WHERE customer_revenue > 100
 @pytest.mark.skip(reason="Need to implement complete detection for canonical types")
 def test_high_value_customer_filter_two():
     """Test filtered customer aggregate for high-value customers resolves to high_value_customers table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -225,7 +225,7 @@ WHERE sum(order_value) > 100
 
 def test_base_orders_table():
     """Test base query without aggregations resolves to orders table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -241,7 +241,7 @@ SELECT
 
 def test_customer_dimension():
     """Test customer dimension query resolves to customers table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -254,7 +254,7 @@ SELECT
 
 def test_product_dimension():
     """Test product dimension query resolves to products table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -267,7 +267,7 @@ SELECT
 
 def test_mixed_aggregation_and_dimension():
     """Test query mixing aggregation and dimension data"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -285,7 +285,7 @@ SELECT
 
 def test_partial_aggregation_match():
     """Test that partial aggregation matches still resolve to appropriate table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -301,7 +301,7 @@ SELECT
 
 def test_aggregate_with_additional_filter():
     """Test aggregation with additional filter that doesn't have a dedicated table"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -350,7 +350,7 @@ SELECT
 @pytest.mark.skip(reason="Stretch: detect when we can use partial agg for full agg")
 def test_cross_dimensional_aggregation_one_key_only():
     """Test aggregation across different dimensions"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     DebuggingHook()
     generated = exec.generate_sql("""
 import aggregate_testing;
@@ -368,7 +368,7 @@ WHERE product_id in (201, 202)
 
 def test_temporal_aggregation():
     """Test temporal aggregation patterns"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT
@@ -384,7 +384,7 @@ WHERE order_date between '2024-01-15'::date and '2024-01-17'::date
 
 def test_complex_multi_dimensional_query():
     """Test complex query spanning multiple dimensions"""
-    env, exec = setup_environment()
+    _env, exec = setup_environment()
     generated = exec.generate_sql("""
 import aggregate_testing;
 SELECT

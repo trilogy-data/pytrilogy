@@ -60,7 +60,7 @@ NODES = list(vkf.V4_KNOWN_FAILING.keys())
 _SQL_TOKEN = re.compile(
     r"\b(select|with recursive|with|from|group by|order by|join|"
     r"case when|cte|datasource|union)\b|\.sql\b|generated",
-    re.I,
+    re.IGNORECASE,
 )
 # A genuine row assertion compares counts or row tuples/lists, not SQL text.
 _ROWCOUNT = re.compile(
@@ -68,7 +68,7 @@ _ROWCOUNT = re.compile(
     r"|\blen\s*\("
     r"|row\s+(count|mismatch)"
     r"|assert\s*[\(\[].*[=!]=\s*[\(\[]",  # tuple/list equality => row data
-    re.I,
+    re.IGNORECASE,
 )
 # A SQL-length-ceiling assert (`assert len(query) < N`) renders as a `<` numeric
 # compare whose `+ where N = len(...)` wraps the whole query. Checked BEFORE _SQL_TOKEN
@@ -78,7 +78,7 @@ _SIZE = re.compile(r"assert\s+\d+\s*<\s*\d+")
 # benchmark suites read-modify-write it per test. This is infra contention, not
 # a planner crash -- such nodes are re-run serially in a second pass.
 _TIMING_COLLISION = re.compile(
-    r"(permissionerror|fileexistserror).*zquery_timing", re.I
+    r"(permissionerror|fileexistserror).*zquery_timing", re.IGNORECASE
 )
 
 
@@ -160,6 +160,7 @@ def _run_pytest(node: str) -> str:
         capture_output=True,
         text=True,
         timeout=TIMEOUT,
+        check=False,
     )
     return r.stdout + r.stderr
 

@@ -55,7 +55,7 @@ class DomainViolation:
     violating_values: int
 
 
-def declared_domain_relations(environment: "Environment") -> list[DomainRelation]:
+def declared_domain_relations(environment: Environment) -> list[DomainRelation]:
     """Declared relations from the domain graph's edges: a SUBSET edge is
     stored subset-side-first (source ⊑ target), so the containment check
     direction is correct by construction. (The former merge-tuple reading
@@ -109,7 +109,7 @@ def generate_domain_checks(
 
 
 def validate_domains(
-    clean_executor: "Executor",
+    clean_executor: Executor,
     relations: list[DomainRelation],
 ) -> list[DomainViolation]:
     """Run every declared-domain check and return the violations found.

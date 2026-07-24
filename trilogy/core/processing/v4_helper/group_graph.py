@@ -1180,9 +1180,10 @@ def _consumer_required_input_grain(
             continue
         if edge_kind(group_edges, pred, gid) == EdgeKind.EXISTENCE:
             continue
-        if attrs[pred].derivation in GROUPING_DERIVATIONS:
-            grain |= set(attrs[pred].grain_components)
-        elif attrs[pred].derivation == Derivation.ROWSET:
+        if (
+            attrs[pred].derivation in GROUPING_DERIVATIONS
+            or attrs[pred].derivation == Derivation.ROWSET
+        ):
             grain |= set(attrs[pred].grain_components)
     return frozenset(grain)
 

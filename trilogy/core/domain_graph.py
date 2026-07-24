@@ -29,9 +29,10 @@ structural and binding edges are true by construction. All derivations are
 deterministic in edge insertion order.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from trilogy.core.enums import JoinType
 
@@ -113,7 +114,7 @@ class FDEdge:
     determinants: frozenset[str]
     dependent: str
     provenance: EdgeProvenance = EdgeProvenance.DECLARED
-    scope: Optional[str] = None
+    scope: str | None = None
 
     def identity(self) -> tuple:
         return (self.determinants, self.dependent, self.scope)
@@ -562,7 +563,7 @@ class DomainGraph:
         self,
         determinants: Iterable[str],
         dependent: str,
-        population: Optional[str] = None,
+        population: str | None = None,
     ) -> bool:
         """FD closure membership: does the determinant tuple uniquely fix
         `dependent` for the rows of `population` (a datasource identifier, or

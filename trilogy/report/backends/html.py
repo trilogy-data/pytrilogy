@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from string import Template
-from typing import List
 
 from trilogy.core.enums import ChartType
 from trilogy.rendering.theme import DEFAULT_THEME, REPORT_LAYOUT, Layout, Theme
@@ -297,7 +296,7 @@ def _render_element(
 
 
 def build_html(
-    elements: List[RenderedElement],
+    elements: list[RenderedElement],
     theme: Theme = DEFAULT_THEME,
     layout: Layout = REPORT_LAYOUT,
     interactive: bool = True,
@@ -329,7 +328,7 @@ class HtmlBackend(ReportBackend):
 
     def render(
         self,
-        elements: List[RenderedElement],
+        elements: list[RenderedElement],
         output_path: Path,
         theme: Theme = DEFAULT_THEME,
     ) -> None:

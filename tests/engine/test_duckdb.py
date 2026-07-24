@@ -1352,11 +1352,11 @@ def test_constants(duckdb_engine: Executor, expected_results):
         == Granularity.SINGLE_ROW
     )
     parent_arg: Concept = duckdb_engine.environment.concepts[
-        [
+        next(
             x.address
             for x in scaled_metric.lineage.concept_arguments
             if x.address == "local.total_count"
-        ][0]
+        )
     ]
     assert (
         len(
@@ -1473,7 +1473,7 @@ def test_show_datasources(duckdb_engine: Executor):
 def test_rollback(duckdb_engine: Executor, expected_results):
     try:
         _ = duckdb_engine.execute_raw_sql("select abc")
-    except Exception:
+    except Exception:  # noqa: S110 -- deliberate failure, testing rollback recovery
         pass
 
     results = duckdb_engine.execute_raw_sql("select 1")
@@ -1510,7 +1510,7 @@ auto z <- rank x order by x desc;
 rowset my_rowset <- select x, z where z = 1;
 
 select my_rowset.x, my_rowset.z;"""
-    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    _, _parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain.components == {
@@ -1529,7 +1529,7 @@ auto z <- rank x order by x desc;
 rowset my_rowset <- select x, max(z)->max_rank;
 
 select my_rowset.x, my_rowset.max_rank;"""
-    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    _, _parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
@@ -1555,7 +1555,7 @@ auto w <- rank x order by x asc;
 rowset my_rowset <- select x, max(z)->max_rank;
 
 select x, w, my_rowset.max_rank;"""
-    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    _, _parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
@@ -1599,7 +1599,7 @@ select
     orid = default_duckdb_engine.environment.concepts["orid"]
     half = default_duckdb_engine.environment.concepts["half_orid"]
     assert orid.address in [x.address for x in half.concept_arguments]
-    assert set([x for x in half.keys]) == {
+    assert {x for x in half.keys} == {
         "local.orid",
     }
     assert half.lineage.operator == FunctionType.DIVIDE
@@ -1639,19 +1639,19 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     build_env = default_duckdb_engine.environment.materialize_for_select()
     customer_orders = build_env.concepts["customer_orders"]
-    assert set([x for x in customer_orders.keys]) == {"local.customer"}
-    assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
+    assert {x for x in customer_orders.keys} == {"local.customer"}
+    assert {x for x in customer_orders.grain.components} == {"local.customer"}
 
     customer_orders_2 = customer_orders
-    assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
-    assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
+    assert {x for x in customer_orders_2.keys} == {"local.customer"}
+    assert {x for x in customer_orders_2.grain.components} == {"local.customer"}
 
     count_by_customer = build_env.concepts[
         "avg_customer_orders"
     ].lineage.concept_arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
-    assert set([x for x in count_by_customer.keys]) == {"local.customer"}
-    assert set([x for x in count_by_customer.grain.components]) == {"local.customer"}
+    assert {x for x in count_by_customer.keys} == {"local.customer"}
+    assert {x for x in count_by_customer.grain.components} == {"local.customer"}
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
     assert round(results[0].avg_store_orders, 2) == 1.33
@@ -2395,9 +2395,7 @@ LIMIT 10;"""
         c.lineage.content if isinstance(c.lineage, FunctionCallWrapper) else c.lineage
     )
     if lineage.operator == FunctionType.CONSTANT:  # type: ignore
-        raise ValueError(
-            "prime_cubed_plus_one should not be constant {}".format(c.lineage)
-        )
+        raise ValueError(f"prime_cubed_plus_one should not be constant {c.lineage}")
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 5

@@ -19,10 +19,10 @@ from trilogy.scripts.trilogy import cli
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from trilogy.scripts.serve import create_app  # noqa: E402
+from trilogy.scripts.serve import create_app
 
 
 def create_test_app(

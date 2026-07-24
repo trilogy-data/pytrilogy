@@ -50,7 +50,7 @@ def _emit_capture(results, cap, capsys, query_limit=None):
 
 def test_emit_includes_column_stats_only_when_truncated(capsys):
     cols = ["page", "sales"]
-    rows = [(f"p{i}", Decimal("100") if i == 0 else None) for i in range(10)]
+    rows = [(f"p{i}", Decimal(100) if i == 0 else None) for i in range(10)]
     payload = _emit_capture(ResultSet(rows=rows, columns=cols), cap=4, capsys=capsys)
     assert payload["truncated"] and payload["omitted"] == 6
     by_col = {s["column"]: s for s in payload["column_stats"]}

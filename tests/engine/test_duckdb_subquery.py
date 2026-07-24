@@ -54,8 +54,7 @@ def _engine():
         ("select id where cat in (select cat -> c where val >= 25);", [(3,)]),
         # rowset-qualified concepts resolve inside the subquery body
         (
-            "with rs as select id, val where val >= 20;"
-            "select id where id in (select rs.id) order by id asc;",
+            "with rs as select id, val where val >= 20;select id where id in (select rs.id) order by id asc;",
             [(2,), (3,)],
         ),
     ],

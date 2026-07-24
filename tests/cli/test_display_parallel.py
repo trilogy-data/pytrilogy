@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import trilogy.scripts.display_core as display_core
+from trilogy.scripts import display_core
 from trilogy.scripts.display_parallel import (
     ParallelProgressTracker,
     _make_futures_context_getter,
@@ -380,9 +380,8 @@ class TestParallelJsonMode:
     def test_progress_tracker_emits_script_start(self, json_mode):
         node = _make_script_node("work.preql")
         tracker = ParallelProgressTracker()
-        with capture_stdout() as buf:
-            with tracker:
-                tracker.on_start(node)
+        with capture_stdout() as buf, tracker:
+            tracker.on_start(node)
         ev = _parse_events(buf.getvalue())[0]
         assert ev["event"] == "script_start"
         assert ev["node"] == "work.preql"
@@ -410,9 +409,8 @@ def test_on_start_unknown_node_type_uses_str_fallback():
     display_core.console = None
     try:
         tracker = ParallelProgressTracker()
-        with capture_stdout() as buf:
-            with tracker:
-                tracker.on_start("bare-node-label")
+        with capture_stdout() as buf, tracker:
+            tracker.on_start("bare-node-label")
         assert "bare-node-label" in buf.getvalue()
     finally:
         display_core.RICH_AVAILABLE = original

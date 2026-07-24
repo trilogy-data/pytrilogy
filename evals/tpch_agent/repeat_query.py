@@ -29,11 +29,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import agent_runner, db, prompts, scoring  # noqa: E402
-from common.categories import CATEGORIES, get_category  # noqa: E402
-from common.main import DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_ENV  # noqa: E402
-from common.report import load_env  # noqa: E402
-from spec import SPEC  # noqa: E402
+from common import agent_runner, db, prompts, scoring
+from common.categories import CATEGORIES, get_category
+from common.main import DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_ENV
+from common.report import load_env
+from spec import SPEC
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

@@ -18,8 +18,8 @@ EVAL_DIR = Path(__file__).resolve().parent
 if str(EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(EVAL_DIR))
 
-import db_build  # noqa: E402
-from common.spec import BenchmarkSpec  # noqa: E402
+import db_build
+from common.spec import BenchmarkSpec
 
 SPEC = BenchmarkSpec(
     name="DABstep",

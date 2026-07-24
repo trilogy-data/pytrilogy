@@ -59,6 +59,7 @@ def run_nodes(nodes: list[str]) -> str:
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return "<<TIMEOUT>>"

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator, Sequence
+from typing import TYPE_CHECKING
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import (
@@ -71,7 +72,7 @@ def show_ingest_header(
 
 
 @contextmanager
-def ingest_progress(total: int) -> "Iterator[_IngestProgress]":
+def ingest_progress(total: int) -> Iterator[_IngestProgress]:
     """Context manager wrapping a Rich progress bar for the ingest run.
 
     Falls back to plain prints when Rich is unavailable.
@@ -106,7 +107,7 @@ class _IngestProgress:
 
 
 class _RichIngestProgress(_IngestProgress):
-    def __init__(self, progress: "Progress", task_id: "TaskID") -> None:
+    def __init__(self, progress: Progress, task_id: TaskID) -> None:
         self._progress = progress
         self._task_id = task_id
         self._current_source: str | None = None
@@ -148,7 +149,7 @@ def _shorten(path: str, max_len: int = 50) -> str:
     return "..." + path[-(max_len - 3) :]
 
 
-def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
+def show_ingest_summary(rows: list[IngestSummaryRow]) -> None:
     """Print a final summary table across all ingested sources."""
     if not rows:
         return
@@ -206,8 +207,8 @@ def show_ingest_summary(rows: list["IngestSummaryRow"]) -> None:
 
 
 def show_fk_summary(
-    inferred: list["InferredFK"],
-    explicit: "dict[str, dict[str, FKBinding]]",
+    inferred: list[InferredFK],
+    explicit: dict[str, dict[str, FKBinding]],
 ) -> None:
     """Print the foreign keys wired into the model, inferred distinct from explicit."""
     overridden = {

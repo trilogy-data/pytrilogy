@@ -13,9 +13,9 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from trilogy.ai.models import LLMToolDefinition
 from trilogy.scripts.display_core import _pretty, print_info
@@ -293,9 +293,7 @@ def _should_skip_entry(name: str) -> bool:
         return True
     if any(name.startswith(p) for p in _LIST_FILES_SKIP_PREFIXES):
         return True
-    if any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES):
-        return True
-    return False
+    return bool(any(name.endswith(s) for s in _LIST_FILES_SKIP_SUFFIXES))
 
 
 def _file_entry(display_path: str, abs_path: Path) -> dict:
@@ -488,6 +486,7 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
             errors="replace",
             env=child_env,
             timeout=600,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return "trilogy error: subprocess timed out after 600s."

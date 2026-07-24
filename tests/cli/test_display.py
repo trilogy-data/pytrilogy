@@ -8,8 +8,7 @@ from io import StringIO
 
 import pytest
 
-import trilogy.scripts.display_core as display_core
-from trilogy.scripts import display
+from trilogy.scripts import display, display_core
 
 RICH_AVAILABLE = False
 if importlib.util.find_spec("rich") is not None:
@@ -113,7 +112,7 @@ def capture_rich_console_output():
             display_core.error_console = original_error_console
     else:
         # If Rich isn't available, just use regular output capture
-        with capture_all_output() as (stdout, stderr):
+        with capture_all_output() as (stdout, _stderr):
             yield stdout
 
 
@@ -640,9 +639,10 @@ class TestContextManagers:
     def test_with_status_context_manager(self, rich_mode):
         """Test with_status as context manager."""
         if rich_mode and RICH_AVAILABLE:
-            with capture_rich_console_output():
-                with display.with_status("Testing operation"):
-                    pass
+            with capture_rich_console_output(), display.with_status(
+                "Testing operation"
+            ):
+                pass
                 # Rich status doesn't write to output until completion
                 # But we can test it doesn't crash
         else:
@@ -720,7 +720,7 @@ class TestActualFormattingDifferences:
                 )
                 assert (
                     has_box_chars
-                ), f"Expected box drawing characters in Rich output: {repr(rich_output)}"
+                ), f"Expected box drawing characters in Rich output: {rich_output!r}"
         else:
             with capture_all_output() as (stdout, stderr):
                 display.show_execution_info(
@@ -738,7 +738,7 @@ class TestActualFormattingDifferences:
                 )
                 assert (
                     not has_box_chars
-                ), f"Did not expect box drawing characters in fallback output: {repr(fallback_output)}"
+                ), f"Did not expect box drawing characters in fallback output: {fallback_output!r}"
 
     def test_table_vs_plain_list_output(self, rich_mode):
         """Test that Rich tables look different from fallback output."""
@@ -759,7 +759,7 @@ class TestActualFormattingDifferences:
                 )
                 assert (
                     has_table_chars
-                ), f"Expected table characters in Rich output: {repr(rich_output)}"
+                ), f"Expected table characters in Rich output: {rich_output!r}"
         else:
             with capture_all_output() as (stdout, stderr):
                 display.print_results_table(query)
@@ -777,7 +777,7 @@ class TestActualFormattingDifferences:
                 )
                 assert (
                     not has_table_chars
-                ), f"Did not expect table characters in fallback output: {repr(fallback_output)}"
+                ), f"Did not expect table characters in fallback output: {fallback_output!r}"
 
 
 class TestShowWatermarks:

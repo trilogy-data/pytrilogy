@@ -28,8 +28,8 @@ from typing import Any, cast
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import networkx as nx  # noqa: E402
+import matplotlib.pyplot as plt
+import networkx as nx
 
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator
@@ -189,7 +189,7 @@ def _layered_layout(
         # Rebuild per-cluster generations by re-topo-sorting each cluster's
         # subgraph independently (so within-cluster ordering uses real edges).
         per_cluster_layers: dict[str, list[list[str]]] = {}
-        for cluster, _ in per_cluster.items():
+        for cluster in per_cluster:
             cnodes = [
                 n
                 for n in graph.nodes
@@ -363,12 +363,12 @@ def render_digraph(
             va="center",
             fontsize=8.5,
             zorder=3,
-            bbox=dict(
-                boxstyle="round,pad=0.4",
-                facecolor=node_colors[n],
-                edgecolor="#444444",
-                linewidth=0.8,
-            ),
+            bbox={
+                "boxstyle": "round,pad=0.4",
+                "facecolor": node_colors[n],
+                "edgecolor": "#444444",
+                "linewidth": 0.8,
+            },
         )
 
     nx.draw_networkx_edges(
@@ -573,12 +573,12 @@ def render_group_digraph(
             va="center",
             fontsize=8.5,
             zorder=3,
-            bbox=dict(
-                boxstyle="round,pad=0.45",
-                facecolor=node_colors[n],
-                edgecolor="#c2185b" if is_cond else "#444444",
-                linewidth=2.2 if is_cond else 0.9,
-            ),
+            bbox={
+                "boxstyle": "round,pad=0.45",
+                "facecolor": node_colors[n],
+                "edgecolor": "#c2185b" if is_cond else "#444444",
+                "linewidth": 2.2 if is_cond else 0.9,
+            },
         )
 
     if lineage_edges:

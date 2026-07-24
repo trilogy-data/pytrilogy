@@ -75,8 +75,7 @@ DAILY = (
         "auto x <- daily.week_seq + 1;",
         "auto x <- sum(daily.day_total) by daily.week_seq;",
         "auto x <- lag(daily.day_total) over (order by daily.week_seq asc);",
-        "def f(d) -> sum(daily.day_total ? daily.day_name = d);\n"
-        "auto x <- @f('Mon');",
+        "def f(d) -> sum(daily.day_total ? daily.day_name = d);\nauto x <- @f('Mon');",
     ],
 )
 def test_shorthand_resolves_in_concept_phase_single_parse(tmp_path, stmt):
@@ -214,10 +213,8 @@ def test_self_join_rowset_phantom_join_key_not_ambiguous(tmp_path):
 @pytest.mark.parametrize(
     "tail",
     [
-        "def pv(d) -> sum(joined.amt ? joined.dw = d) by joined.wk;\n"
-        "select joined.wk, @pv(0) as v;",
-        "def pE() -> sum(joined.amt ? joined.dw = 0) by joined.wk;\n"
-        "select joined.wk, @pE() as v;",
+        "def pv(d) -> sum(joined.amt ? joined.dw = d) by joined.wk;\nselect joined.wk, @pv(0) as v;",
+        "def pE() -> sum(joined.amt ? joined.dw = 0) by joined.wk;\nselect joined.wk, @pE() as v;",
         "def pF(d) -> joined.dw + d;\nselect joined.wk, @pF(0) as v;",
         "def pG(d) -> sum(joined.amt) by joined.dw;\nselect joined.dw, @pG(0) as v;",
     ],

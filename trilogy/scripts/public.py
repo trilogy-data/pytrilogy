@@ -45,7 +45,7 @@ def _normalize_url(url: str) -> str:
 
 def _http_get(url: str, timeout: float = 15.0) -> bytes:
     req = Request(_normalize_url(url), headers={"User-Agent": "trilogy-cli"})
-    with urlopen(req, timeout=timeout) as resp:  # noqa: S310 - known HTTPS endpoint
+    with urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
 

@@ -1,7 +1,8 @@
 import difflib
+from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, ItemsView, Never, ValuesView
+from typing import Never
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.domain_graph import DomainGraph
@@ -40,7 +41,7 @@ class BuildEnvironmentConceptDict(dict):
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> BuildConcept:
         try:
-            return super(BuildEnvironmentConceptDict, self).__getitem__(key)
+            return super().__getitem__(key)
         except KeyError:
             if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".", 1)[1], line_no)
@@ -75,7 +76,7 @@ class BuildEnvironmentDatasourceDict(dict):
 
     def __getitem__(self, key: str) -> BuildDatasource:
         try:
-            return super(BuildEnvironmentDatasourceDict, self).__getitem__(key)
+            return super().__getitem__(key)
         except KeyError:
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key)
@@ -101,14 +102,14 @@ class BuildEnvironment:
     datasources: BuildEnvironmentDatasourceDict = field(
         default_factory=BuildEnvironmentDatasourceDict
     )
-    functions: Dict[str, BuildFunction] = field(default_factory=dict)
-    data_types: Dict[str, DataType] = field(default_factory=dict)
+    functions: dict[str, BuildFunction] = field(default_factory=dict)
+    data_types: dict[str, DataType] = field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
-    cte_name_map: Dict[str, str] = field(default_factory=dict)
+    cte_name_map: dict[str, str] = field(default_factory=dict)
     materialized_concepts: set[str] = field(default_factory=set)
     materialized_canonical_concepts: set[str] = field(default_factory=set)
     non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
-    alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
+    alias_origin_lookup: dict[str, BuildConcept] = field(default_factory=dict)
     # The subset of the graph's declared-subset sources whose key is a *derived*
     # concept (no datasource column binding) and is therefore resolved via the
     # merge mechanism. It survives as a distinct output only on the partial side,
@@ -122,7 +123,7 @@ class BuildEnvironment:
     # of the scoped merge map's source->canonical entries), NOT the transitive
     # pseudonym closure — a rowset key's body/parent pseudonyms are not join
     # operands. Consumed via `distinct_scoped_join_group_members`.
-    scoped_join_key_groups: Dict[str, set[str]] = field(default_factory=dict)
+    scoped_join_key_groups: dict[str, set[str]] = field(default_factory=dict)
     # The full concept domain graph for this build: declared edges (global
     # merges + this build's scoped-join overlay) plus structural, binding and
     # FD edges minted from the author model (docs/domain_graph_design.md).
@@ -261,11 +262,11 @@ class BuildEnvironment:
                 if column.is_complete:
                     non_partial_concrete_concepts.append(column.concept)
                 concrete_concepts.append(column.concept)
-        concrete_addresses = set([x.address for x in concrete_concepts])
-        canonical_addresses = set([x.canonical_address for x in concrete_concepts])
-        non_partial_canonical_addresses = set(
-            [x.canonical_address for x in non_partial_concrete_concepts]
-        )
+        concrete_addresses = {x.address for x in concrete_concepts}
+        canonical_addresses = {x.canonical_address for x in concrete_concepts}
+        non_partial_canonical_addresses = {
+            x.canonical_address for x in non_partial_concrete_concepts
+        }
         self.materialized_concepts = set()
         self.materialized_canonical_concepts = set()
         self.non_partial_materialized_canonical_concepts = set()

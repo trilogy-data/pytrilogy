@@ -55,7 +55,6 @@ def validate_query_is_resolvable(
                 raise NoDatasourceException(
                     f"No datasource exists for root concept {validation_concept}, and no resolvable pseudonyms found from {validation_concept.pseudonyms}. This query is unresolvable from your environment. Check your datasources and imports to make sure this concept is bound."
                 )
-    return None
 
 
 def gen_select_node(

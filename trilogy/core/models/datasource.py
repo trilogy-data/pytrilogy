@@ -1,7 +1,8 @@
+from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -97,7 +98,7 @@ class RawColumnExpr:
 class ColumnAssignment(BaseModel):
     alias: str | RawColumnExpr | Function
     concept: ConceptRef
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: list[Modifier] = Field(default_factory=list)
 
     @field_validator("concept", mode="before")
     def force_reference(cls, v: ConceptRef, info: ValidationInfo):
@@ -148,11 +149,11 @@ class Address:
     # Names of hive-style partition columns for file sources (e.g. parquet glob
     # trees laid out as ``col=value/``). Non-empty iff this address should be
     # read with hive_partitioning enabled.
-    partition_columns: List[str] = field(default_factory=list)
+    partition_columns: list[str] = field(default_factory=list)
     # Additional file paths when the source is an explicit array (e.g.
     # ``file [`a.parquet`, `b.parquet`]``). When non-empty, ``location`` holds
     # the first entry and readers should emit an array call.
-    additional_locations: List[str] = field(default_factory=list)
+    additional_locations: list[str] = field(default_factory=list)
 
     @property
     def is_query(self):
@@ -173,7 +174,7 @@ class Address:
         return any(c in self.location for c in "*?[")
 
     @property
-    def all_locations(self) -> List[str]:
+    def all_locations(self) -> list[str]:
         if self.additional_locations:
             return [self.location, *self.additional_locations]
         return [self.location]
@@ -195,7 +196,7 @@ class File:
 @dataclass
 class DatasourceMetadata:
     freshness_concept: Concept | None
-    partition_fields: List[Concept] = field(default_factory=list)
+    partition_fields: list[Concept] = field(default_factory=list)
     line_no: int | None = None
 
 
@@ -215,23 +216,23 @@ def safe_grain(v) -> Grain:
 
 class Datasource(HasUUID, Namespaced, BaseModel):
     name: str
-    columns: List[ColumnAssignment]
-    address: Union[Address, str]
+    columns: list[ColumnAssignment]
+    address: Address | str
     grain: Grain = Field(
         default_factory=lambda: Grain(components=set()), validate_default=True
     )
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str | None = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
-    where: Optional[WhereClause] = None
-    non_partial_for: Optional[WhereClause] = None
+    where: WhereClause | None = None
+    non_partial_for: WhereClause | None = None
     status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
-    incremental_by: List[ConceptRef] = Field(default_factory=list)
-    partition_by: List[ConceptRef] = Field(default_factory=list)
-    freshness_by: List[ConceptRef] = Field(default_factory=list)
-    freshness_probe: Optional[str] = None
-    refresh_script: Optional[str] = None
+    incremental_by: list[ConceptRef] = Field(default_factory=list)
+    partition_by: list[ConceptRef] = Field(default_factory=list)
+    freshness_by: list[ConceptRef] = Field(default_factory=list)
+    freshness_probe: str | None = None
+    refresh_script: str | None = None
     is_root: bool = False
     is_partial: bool = False
     # Addresses of columns that carried Modifier.PARTIAL *before* the
@@ -268,7 +269,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return {c.alias: c for c in self.columns if c.is_concrete}  # type: ignore[misc]
 
     @property
-    def hidden_concepts(self) -> List[Concept]:
+    def hidden_concepts(self) -> list[Concept]:
         return []
 
     @property
@@ -307,7 +308,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         self,
         concept: Concept,
         alias: str | RawColumnExpr | Function,
-        modifiers: List[Modifier] | None = None,
+        modifiers: list[Modifier] | None = None,
     ):
         self.columns.append(
             ColumnAssignment(
@@ -367,7 +368,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def create_update_statement(
         self,
         environment: "Environment",
-        where: Optional[WhereClause] = None,
+        where: WhereClause | None = None,
         line_no: int | None = None,
     ) -> "SelectStatement":
         from trilogy.core.statements.author import Metadata, SelectItem, SelectStatement
@@ -390,7 +391,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     @property
-    def concepts(self) -> List[ConceptRef]:
+    def concepts(self) -> list[ConceptRef]:
         return [c.concept for c in self.columns]
 
     @property
@@ -398,19 +399,19 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return False
 
     @property
-    def nullable_concepts(self) -> List[ConceptRef]:
+    def nullable_concepts(self) -> list[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
 
     @property
-    def output_concepts(self) -> List[ConceptRef]:
+    def output_concepts(self) -> list[ConceptRef]:
         return self.concepts
 
     @property
-    def partial_concepts(self) -> List[ConceptRef]:
+    def partial_concepts(self) -> list[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
     @property
-    def column_level_partial_concepts(self) -> List[ConceptRef]:
+    def column_level_partial_concepts(self) -> list[ConceptRef]:
         """Columns with intrinsic (pre-stamp) PARTIAL — survive a covering UNION."""
         if not self.column_level_partial_addresses:
             return []
@@ -427,7 +428,7 @@ class EnvironmentDatasourceDict(dict):
 
     def __getitem__(self, key: str) -> Datasource:
         try:
-            return super(EnvironmentDatasourceDict, self).__getitem__(key)
+            return super().__getitem__(key)
         except KeyError:
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key)

@@ -1,7 +1,8 @@
 import hashlib
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from os import PathLike
-from typing import Callable, Iterator, List, TextIO, TypeVar, Union, cast
+from typing import TextIO, TypeVar, cast
 
 from trilogy.constants import DEFAULT_NAMESPACE
 
@@ -10,12 +11,12 @@ INT_HASH_SIZE = 16
 
 @contextmanager
 def safe_open(
-    path: Union[str, PathLike],
+    path: str | PathLike,
     mode: str = "r",
     *,
     encoding: str = "utf-8",
-    errors: Union[str, None] = None,
-    newline: Union[str, None] = None,
+    errors: str | None = None,
+    newline: str | None = None,
 ) -> Iterator[TextIO]:
     """Open a text file with UTF-8 by default.
 
@@ -40,7 +41,7 @@ def string_to_hash(input: str) -> int:
 UniqueArg = TypeVar("UniqueArg")
 
 
-def unique(inputs: List[UniqueArg], property: Union[str, Callable]) -> List[UniqueArg]:
+def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]:
     final = []
     dedupe = set()
     if isinstance(property, str):

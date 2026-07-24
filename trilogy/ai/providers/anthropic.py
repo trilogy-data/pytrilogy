@@ -1,17 +1,22 @@
 from os import environ
-from typing import List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    ProviderError,
+    iter_history_turns,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 DEFAULT_MAX_TOKENS = 10000
 
 
-def _to_anthropic_messages(history: List[LLMMessage]) -> list[dict]:
+def _to_anthropic_messages(history: list[LLMMessage]) -> list[dict]:
     """Anthropic Messages-format conversation (system messages are handled
     separately by the caller). Assistant tool calls become ``tool_use`` content
     blocks and their results become a following user message of ``tool_result``
@@ -59,7 +64,7 @@ class AnthropicProvider(LLMProvider):
         name: str,
         model: str,
         api_key: str | None = None,
-        retry_options: Optional[RetryOptions] = None,
+        retry_options: RetryOptions | None = None,
     ):
         api_key = api_key or environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -69,14 +74,14 @@ class AnthropicProvider(LLMProvider):
         super().__init__(name, api_key, model, Provider.ANTHROPIC)
         self.base_completion_url = "https://api.anthropic.com/v1/messages"
         self.base_model_url = "https://api.anthropic.com/v1/models"
-        self.models: List[str] = []
+        self.models: list[str] = []
         self.type = Provider.ANTHROPIC
         self.retry_options = retry_options or RetryOptions(
             max_retries=5,
             initial_delay_ms=5000,
             retry_status_codes=RETRYABLE_CODES,
             on_retry=lambda attempt, delay_ms, error: logger.info(
-                f"Anthropic API retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
+                f"Anthropic API retry attempt {attempt} after {delay_ms}ms delay due to error: {error!s}"
             ),
         )
 
@@ -96,7 +101,7 @@ class AnthropicProvider(LLMProvider):
         )
 
     def generate_completion(
-        self, options: LLMRequestOptions, history: List[LLMMessage]
+        self, options: LLMRequestOptions, history: list[LLMMessage]
     ) -> LLMResponse:
         try:
             import httpx
@@ -181,8 +186,8 @@ class AnthropicProvider(LLMProvider):
 
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"Anthropic API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"Anthropic API error: {str(error)}")
+            raise ProviderError(f"Anthropic API error: {error!s}")

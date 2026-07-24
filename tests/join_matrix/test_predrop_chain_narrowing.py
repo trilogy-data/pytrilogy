@@ -131,8 +131,7 @@ CELLS = [
     (
         "cross_cte_where_via_rowset",
         MODEL,
-        "with agg as select k, b_val, a_val, c_val;\n"
-        "select agg.k, agg.b_val, agg.c_val where agg.a_val > 0;",
+        "with agg as select k, b_val, a_val, c_val;\nselect agg.k, agg.b_val, agg.c_val where agg.a_val > 0;",
         [(1, 10, None), (2, 20, None)],
     ),
     (

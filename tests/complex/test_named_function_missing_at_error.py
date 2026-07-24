@@ -27,8 +27,7 @@ _BAD = [
         "def mon_sales_sqft(m) -> mon_sales(m) / warehouse.square_feet;"
     ),
     # `def table` named functions are also invoked with `@`
-    "def table gen(n) -> select val order by val desc limit 2;\n"
-    "def use(n) -> gen(n) * 2;",
+    "def table gen(n) -> select val order by val desc limit 2;\ndef use(n) -> gen(n) * 2;",
 ]
 
 # Must keep parsing (correct `@`, built-ins, and unrelated bare identifiers).

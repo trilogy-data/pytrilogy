@@ -27,9 +27,7 @@ def test_direct_select(test_environment, test_environment_graph):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products"
-    }
+    assert {datasource.name for datasource in datasource.datasources} == {"products"}
 
 
 def test_get_datasource_from_window_function(
@@ -118,9 +116,7 @@ def test_select_output(test_environment, test_environment_graph):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products"
-    }
+    assert {datasource.name for datasource in datasource.datasources} == {"products"}
 
 
 def test_basic_aggregate(test_environment: Environment, test_environment_graph):
@@ -159,7 +155,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
     assert datasource.source_type == SourceType.GROUP
-    assert len(set([datasource.name for datasource in datasource.datasources])) == 1
+    assert len({datasource.name for datasource in datasource.datasources}) == 1
     assert datasource.grain.components == {"local.category_id"}
 
 
@@ -199,7 +195,7 @@ def test_full_query(test_environment, test_environment_graph):
 
     processed = process_query(statement=select, environment=test_environment)
 
-    assert set(c.name for c in processed.output_columns) == {
+    assert {c.name for c in processed.output_columns} == {
         "category_id",
         "category_name",
         "total_revenue",

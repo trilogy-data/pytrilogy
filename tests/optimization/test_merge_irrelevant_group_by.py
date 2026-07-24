@@ -10,7 +10,7 @@ from trilogy.core.optimizations.merge_irrelevant_group_by import (
 
 def _get_cols(test_environment: Environment) -> list[BuildConcept]:
     env = test_environment.materialize_for_select()
-    ds = list(env.datasources.values())[0]
+    ds = next(iter(env.datasources.values()))
     return [c.concept for c in ds.columns]
 
 

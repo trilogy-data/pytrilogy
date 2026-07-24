@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 from jinja2 import Template
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
@@ -57,7 +60,7 @@ def date_part(expr: str, part: str) -> str:
         "day_of_week": "(CAST(strftime('%w', {expr}) AS INTEGER) + 1)",
     }
     if part_lower == "quarter":
-        return "(((CAST(strftime('%m', {expr}) AS INTEGER)-1)/3)+1)".format(expr=expr)
+        return f"(((CAST(strftime('%m', {expr}) AS INTEGER)-1)/3)+1)"
     if part_lower not in mapping:
         raise ValueError(f"Unsupported date part for sqlite: {part}")
     return mapping[part_lower].format(expr=expr)
@@ -138,33 +141,15 @@ FUNCTION_MAP = {
             )
         )
     ),
-    FunctionType.DAY: lambda x, types: "CAST(strftime('%d', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.WEEK: lambda x, types: "CAST(strftime('%W', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.MONTH: lambda x, types: "CAST(strftime('%m', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.QUARTER: lambda x, types: "(((CAST(strftime('%m', {}) AS INTEGER)-1)/3)+1)".format(
-        x[0]
-    ),
-    FunctionType.YEAR: lambda x, types: "CAST(strftime('%Y', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.HOUR: lambda x, types: "CAST(strftime('%H', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.MINUTE: lambda x, types: "CAST(strftime('%M', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.SECOND: lambda x, types: "CAST(strftime('%S', {}) AS INTEGER)".format(
-        x[0]
-    ),
-    FunctionType.DAY_OF_WEEK: lambda x, types: "(CAST(strftime('%w', {}) AS INTEGER) + 1)".format(
-        x[0]
-    ),
+    FunctionType.DAY: lambda x, types: f"CAST(strftime('%d', {x[0]}) AS INTEGER)",
+    FunctionType.WEEK: lambda x, types: f"CAST(strftime('%W', {x[0]}) AS INTEGER)",
+    FunctionType.MONTH: lambda x, types: f"CAST(strftime('%m', {x[0]}) AS INTEGER)",
+    FunctionType.QUARTER: lambda x, types: f"(((CAST(strftime('%m', {x[0]}) AS INTEGER)-1)/3)+1)",
+    FunctionType.YEAR: lambda x, types: f"CAST(strftime('%Y', {x[0]}) AS INTEGER)",
+    FunctionType.HOUR: lambda x, types: f"CAST(strftime('%H', {x[0]}) AS INTEGER)",
+    FunctionType.MINUTE: lambda x, types: f"CAST(strftime('%M', {x[0]}) AS INTEGER)",
+    FunctionType.SECOND: lambda x, types: f"CAST(strftime('%S', {x[0]}) AS INTEGER)",
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"(CAST(strftime('%w', {x[0]}) AS INTEGER) + 1)",
     FunctionType.MONTH_NAME: lambda x, types: MONTH_NAME_CASE.format(expr=x[0]),
     FunctionType.DAY_NAME: lambda x, types: DAY_NAME_CASE.format(expr=x[0]),
     FunctionType.FORMAT_TIME: lambda x, types: f"strftime({x[1]}, {x[0]})",
@@ -231,12 +216,18 @@ DATATYPE_MAP: dict[DataType, str] = {
 
 
 class SQLiteDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
-    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        **DATATYPE_MAP,
+    }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQLITE_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE

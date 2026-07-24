@@ -23,7 +23,6 @@ class BaseRenderer(ABC):
         layer_data: list[list[dict]],
     ) -> Any:
         """Render chart from processed chart statement and per-layer query results."""
-        pass
 
     @abstractmethod
     def to_spec(
@@ -32,4 +31,3 @@ class BaseRenderer(ABC):
         layer_data: list[list[dict]],
     ) -> dict:
         """Generate raw visualization spec (e.g., Vega-Lite JSON)."""
-        pass

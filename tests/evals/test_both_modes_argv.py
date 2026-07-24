@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "evals"))
 
-from common.main import (  # noqa: E402
+from common.main import (
     _argv_has_flag,
     _filter_both_modes_argv,
 )

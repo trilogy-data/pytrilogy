@@ -525,7 +525,7 @@ def test_join_discovery():
     queries = base.parse_text("""import launch_dashboard;
 
 where
-  org.flag = 'abc123'
+  org.flag = 'https://example.com/abc123'
 SELECT
     count(vehicle.family) by __preql_internal.all_rows -> all_vehicles,
 LIMIT 1
@@ -593,9 +593,13 @@ SELECT
 order by launch_count desc limit 15;
 """)
     build_env = base.environment.materialize_for_select()
-    validation_components = "local.launch_tag,vehicle.name,vehicle.stage.engine.name,vehicle.stage.name,vehicle.variant".split(
-        ","
-    )
+    validation_components = [
+        "local.launch_tag",
+        "vehicle.name",
+        "vehicle.stage.engine.name",
+        "vehicle.stage.name",
+        "vehicle.variant",
+    ]
     pregrain = BuildGrain.from_concepts(validation_components, environment=build_env)
     assert "vehicle.stage.engine.name" not in pregrain.components, pregrain
     base.generate_sql(queries[-1])

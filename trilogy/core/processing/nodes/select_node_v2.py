@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
@@ -32,24 +30,24 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment: BuildEnvironment,
         datasource: BuildDatasource | None = None,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[BuildConcept] | None = None,
-        rollup_concepts: List[BuildConcept] | None = None,
-        nullable_concepts: List[BuildConcept] | None = None,
+        partial_concepts: list[BuildConcept] | None = None,
+        rollup_concepts: list[BuildConcept] | None = None,
+        nullable_concepts: list[BuildConcept] | None = None,
         accept_partial: bool = False,
-        grain: Optional[BuildGrain] = None,
+        grain: BuildGrain | None = None,
         force_group: bool | None = False,
         conditions: BoolExpr | None = None,
         preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
-        existence_concepts: List[BuildConcept] | None = None,
+        existence_concepts: list[BuildConcept] | None = None,
     ):
         # Derive partial/nullable from datasource columns when not explicitly provided
         if datasource and partial_concepts is None:
@@ -89,7 +87,7 @@ class SelectNode(StrategyNode):
             raise ValueError("Datasource not provided")
         datasource: BuildDatasource = self.datasource
 
-        all_concepts_final: List[BuildConcept] = unique(self.all_concepts, "address")
+        all_concepts_final: list[BuildConcept] = unique(self.all_concepts, "address")
         source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
@@ -175,7 +173,7 @@ class SelectNode(StrategyNode):
         # but still checks its set via an existence subquery; carry the existence
         # parents' source map through so the membership renders (grain-less form).
         if self.parents and self.existence_concepts:
-            parent_sources: List[QueryDatasource | BuildDatasource] = [
+            parent_sources: list[QueryDatasource | BuildDatasource] = [
                 p.resolve() for p in self.parents
             ]
             resolution.datasources += sorted(
@@ -190,16 +188,14 @@ class SelectNode(StrategyNode):
         # if we have parent nodes, we do not need to go to a datasource
         resolution: QueryDatasource | None = None
         if all(
-            [
-                (
-                    c.derivation == Derivation.CONSTANT
-                    or (
-                        c.purpose == Purpose.CONSTANT
-                        and c.derivation == Derivation.MULTISELECT
-                    )
+            (
+                c.derivation == Derivation.CONSTANT
+                or (
+                    c.purpose == Purpose.CONSTANT
+                    and c.derivation == Derivation.MULTISELECT
                 )
-                for c in self.all_concepts
-            ]
+            )
+            for c in self.all_concepts
         ):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
@@ -214,7 +210,7 @@ class SelectNode(StrategyNode):
             if not resolution:
                 return super()._resolve()
             # zip in our parent source map
-            parent_sources: List[QueryDatasource | BuildDatasource] = [
+            parent_sources: list[QueryDatasource | BuildDatasource] = [
                 p.resolve() for p in self.parents
             ]
 

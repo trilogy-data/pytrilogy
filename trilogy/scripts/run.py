@@ -35,12 +35,7 @@ def _looks_like_missing_path(value: str) -> bool:
     """
     if any(c.isspace() for c in value) or ";" in value:
         return False
-    return (
-        value.endswith(".preql")
-        or value.endswith(".sql")
-        or "/" in value
-        or "\\" in value
-    )
+    return value.endswith((".preql", ".sql")) or "/" in value or "\\" in value
 
 
 def _normalize_import(value: str) -> str:
@@ -51,8 +46,7 @@ def _normalize_import(value: str) -> str:
     trilogy expects (``flight``, ``root.flight``).
     """
     stripped = value.strip()
-    if stripped.endswith(".preql"):
-        stripped = stripped[: -len(".preql")]
+    stripped = stripped.removesuffix(".preql")
     stripped = stripped.replace("\\", "/").strip("/")
     while stripped.startswith("./"):
         stripped = stripped[2:]

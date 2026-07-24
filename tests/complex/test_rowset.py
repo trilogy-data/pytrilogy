@@ -82,7 +82,7 @@ select
     top_users.user_post_count
 ;
     """
-    env, parsed = parse(declarations)
+    _env, _parsed = parse(declarations)
 
 
 def test_rowset_grain() -> None:
@@ -111,7 +111,7 @@ select
     top_users.user_post_count
 ;
     """
-    env, parsed = parse(declarations)
+    _env, _parsed = parse(declarations)
 
 
 def test_rowset_alias_name_collision() -> None:

@@ -350,7 +350,7 @@ def _source_concepts_via_graph(
     if accept_partial:
         search_attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
         search_attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
-    for concepts in concept_attempts:
+    for attempt_concepts in concept_attempts:
         # Only defer when this is the primary pruning pass. The partial-datasource
         # path uses filter_conditions and must still push per-source WHEREs.
         defer_conditions_to_merge = (
@@ -366,7 +366,7 @@ def _source_concepts_via_graph(
         for attempt in search_attempts:
             pruned = create_pruned_concept_graph(
                 g,
-                concepts,
+                attempt_concepts,
                 criteria=attempt,
                 environment=environment,
                 conditions=conditions,
@@ -378,7 +378,7 @@ def _source_concepts_via_graph(
                 continue
             sub_nodes = resolve_subgraphs(
                 pruned,
-                relevant=concepts,
+                relevant=attempt_concepts,
                 criteria=attempt,
                 conditions=select_conditions,
                 depth=depth,
@@ -389,7 +389,9 @@ def _source_concepts_via_graph(
         # On the augmented attempt the concept set was widened with filter-only
         # columns; the originally requested concepts still define grain so a
         # finer source gets regrouped instead of fanning the request out.
-        requested_concepts = orig_concepts if concepts is not orig_concepts else None
+        requested_concepts = (
+            orig_concepts if attempt_concepts is not orig_concepts else None
+        )
         candidates = [
             create_select_node_candidate(
                 k,
@@ -857,29 +859,32 @@ def gen_select_merge_node(
         parents = _source_concepts_via_graph(
             normals, g, environment, depth, accept_partial, conditions
         )
-        if not parents and conditions:
-            if _conditions_can_be_sourced_by_components(
+        if (
+            not parents
+            and conditions
+            and _conditions_can_be_sourced_by_components(
                 normals, conditions, environment
-            ):
-                augmented = unique(
-                    normals
-                    + _condition_source_concepts(
-                        decompose_condition(conditions.conditional), environment
-                    ),
-                    "address",
-                )
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} retrying source graph with "
-                    "condition inputs; WHERE atoms are covered by component sources."
-                )
-                parents = _source_concepts_via_graph(
-                    augmented,
-                    g,
-                    environment,
-                    depth,
-                    accept_partial,
-                    conditions,
-                )
+            )
+        ):
+            augmented = unique(
+                normals
+                + _condition_source_concepts(
+                    decompose_condition(conditions.conditional), environment
+                ),
+                "address",
+            )
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} retrying source graph with "
+                "condition inputs; WHERE atoms are covered by component sources."
+            )
+            parents = _source_concepts_via_graph(
+                augmented,
+                g,
+                environment,
+                depth,
+                accept_partial,
+                conditions,
+            )
         if not parents and conditions:
             # Retry with only "covered" condition atoms (those implied by some datasource's
             # non_partial_for) for graph pruning. Foreign datasources (e.g. tree_enrichment

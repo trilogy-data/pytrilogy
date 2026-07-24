@@ -51,7 +51,7 @@ def test_child_of():
     with open(Path(__file__).parent / "pushdown.preql") as f:
         text = f.read()
 
-    env, queries = parse(text)
+    env, _queries = parse(text)
     env = env.materialize_for_select()
 
     test = BuildConditional(

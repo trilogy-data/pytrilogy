@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, SourceType
 from trilogy.core.models.build import (
@@ -34,22 +32,22 @@ class GroupNode(StrategyNode):
 
     def __init__(
         self,
-        output_concepts: List[BuildConcept],
-        input_concepts: List[BuildConcept],
+        output_concepts: list[BuildConcept],
+        input_concepts: list[BuildConcept],
         environment: BuildEnvironment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: Optional[List[BuildConcept]] = None,
-        rollup_concepts: Optional[List[BuildConcept]] = None,
-        nullable_concepts: Optional[List[BuildConcept]] = None,
+        partial_concepts: list[BuildConcept] | None = None,
+        rollup_concepts: list[BuildConcept] | None = None,
+        nullable_concepts: list[BuildConcept] | None = None,
         force_group: bool | None = None,
         conditions: BoolExpr | None = None,
         preexisting_conditions: BoolExpr | None = None,
-        existence_concepts: List[BuildConcept] | None = None,
+        existence_concepts: list[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
-        required_outputs: List[BuildConcept] | None = None,
+        required_outputs: list[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -75,7 +73,7 @@ class GroupNode(StrategyNode):
     @classmethod
     def check_if_required(
         cls,
-        downstream_concepts: List[BuildConcept],
+        downstream_concepts: list[BuildConcept],
         parents: list[QueryDatasource | BuildDatasource],
         environment: BuildEnvironment,
         depth: int = 0,
@@ -85,7 +83,7 @@ class GroupNode(StrategyNode):
         return check_if_group_required(downstream_concepts, parents, environment, depth)
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | BuildDatasource] = [
+        parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
 
@@ -261,9 +259,9 @@ class GroupNode(StrategyNode):
                 "address",
             )
             # re-visible any hidden concepts
-            base.hidden_concepts = set(
-                [x for x in base.hidden_concepts if x not in base.output_concepts]
-            )
+            base.hidden_concepts = {
+                x for x in base.hidden_concepts if x not in base.output_concepts
+            }
             source_map = resolve_concept_map(
                 [base],
                 targets=self.output_concepts,

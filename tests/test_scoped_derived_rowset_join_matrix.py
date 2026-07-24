@@ -123,7 +123,7 @@ def test_scoped_derived_rowset_join_is_safe(base: str, tail: str):
         pytest.fail(f"RecursionError (unguarded planner cycle) on: {tail}")
     except CLEAN:
         return
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         pytest.fail(f"uncaught {type(exc).__name__} on {tail}: {exc}")
     finally:
         sys.setrecursionlimit(prev)

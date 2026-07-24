@@ -4,10 +4,10 @@ import re
 import sys
 from os import environ
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    from typing import Callable
+    from collections.abc import Callable
 
     from trilogy.constants import Rendering
     from trilogy.core.statements.execute import ProcessedQuery
@@ -133,7 +133,7 @@ FUNCTION_MAP = {
     FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     FunctionType.LOG: lambda args, types: render_log(args),
     FunctionType.SPLIT: lambda args, types: (
-        f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
+        f"STRING_SPLIT({','.join([f''' {a!s} ''' for a in args])})"
     ),
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args, types: (f"{args[0]}[{args[1]}]"),
@@ -193,7 +193,7 @@ def get_python_datasource_setup_sql(
     enabled: bool,
     is_windows: bool = False,
     instance_id: str | None = None,
-    staging: "StagingConfig | None" = None,
+    staging: StagingConfig | None = None,
 ) -> str:
     """Return SQL to setup the uv_run macro for Python script datasources.
     Inspired by: https://sidequery.dev/blog/uv-run-duckdb
@@ -360,12 +360,18 @@ DUCKDB_SAMPLE_SEED = 42
 
 
 class DuckDBDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
-    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        **DATATYPE_MAP,
+    }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     SUPPORTS_QUALIFY = True
@@ -380,8 +386,8 @@ class DuckDBDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
 
     def summarize_result(
-        self, query: ProcessedQuery, run_sql: Callable[[str], "ResultProtocol"]
-    ) -> "tuple[list[dict], int] | None":
+        self, query: ProcessedQuery, run_sql: Callable[[str], ResultProtocol]
+    ) -> tuple[list[dict], int] | None:
         """Full-result column stats via DuckDB ``SUMMARIZE`` over the un-limited
         query (one pass; ``distinct`` is ``approx_unique`` — HLL-approximate)."""
         sql = self.compile_without_limit(query)
@@ -414,7 +420,7 @@ class DuckDBDialect(BaseDialect):
     def __init__(
         self,
         rendering: Rendering | None = None,
-        config: "DialectConfig | None" = None,
+        config: DialectConfig | None = None,
         staging: StagingConfig | None = None,
         instance_id: str | None = None,
     ):
@@ -475,7 +481,7 @@ class DuckDBDialect(BaseDialect):
 
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
     # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").
-    DB_COLUMN_TYPE_MAP = {
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "integer": DataType.INTEGER,
         "int4": DataType.INTEGER,
@@ -547,18 +553,18 @@ class DuckDBDialect(BaseDialect):
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
         """Get primary key columns by joining key_column_usage with table_constraints."""
-        pk_query = """
+        pk_query = f"""
         SELECT kcu.column_name
         FROM information_schema.key_column_usage kcu
         JOIN information_schema.table_constraints tc
             ON kcu.constraint_name = tc.constraint_name
             AND kcu.table_name = tc.table_name
-        WHERE kcu.table_name = '{}'
+        WHERE kcu.table_name = '{table_name}'
             AND tc.constraint_type = 'PRIMARY KEY'
-        """.format(table_name)
+        """
 
         if schema:
-            pk_query += " AND kcu.table_schema = '{}'".format(schema)
+            pk_query += f" AND kcu.table_schema = '{schema}'"
 
         pk_query += " ORDER BY kcu.ordinal_position"
 

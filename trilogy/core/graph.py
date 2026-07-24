@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from types import SimpleNamespace
-from typing import Iterable, Iterator, Mapping, MutableMapping, Self, TypeVar, cast
+from typing import Self, TypeVar, cast
 
 try:
     from _preql_import_resolver import PyGraphCore as _RustGraphCore
@@ -41,20 +42,20 @@ exception = SimpleNamespace(
 )
 
 
-def _edge_key(graph: "_GraphBase", left: str, right: str) -> tuple[str, str]:
+def _edge_key(graph: _GraphBase, left: str, right: str) -> tuple[str, str]:
     if graph.directed or left <= right:
         return (left, right)
     return (right, left)
 
 
 def _copy_edge_attrs(
-    graph: "_GraphBase",
+    graph: _GraphBase,
 ) -> dict[tuple[str, str], dict[str, object]]:
     return {edge: attrs.copy() for edge, attrs in graph._edge_attrs.items()}
 
 
 def _weight_triples(
-    graph: "_GraphBase",
+    graph: _GraphBase,
     weight: str,
 ) -> list[tuple[str, str, float]]:
     edges = graph._cached_edges
@@ -93,7 +94,7 @@ GraphT = TypeVar("GraphT", bound="_GraphBase")
 
 
 class _NodeView(Mapping[str, MutableMapping[str, object]]):
-    def __init__(self, graph: "_GraphBase") -> None:
+    def __init__(self, graph: _GraphBase) -> None:
         self._graph = graph
 
     def __iter__(self) -> Iterator[str]:
@@ -117,7 +118,7 @@ class _NodeView(Mapping[str, MutableMapping[str, object]]):
 
 
 class _EdgeView:
-    def __init__(self, graph: "_GraphBase") -> None:
+    def __init__(self, graph: _GraphBase) -> None:
         self._graph = graph
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
@@ -149,7 +150,7 @@ class _EdgeView:
 
 
 class _NeighborView(Mapping[str, MutableMapping[str, object]]):
-    def __init__(self, graph: "_GraphBase", node: str, reverse: bool = False) -> None:
+    def __init__(self, graph: _GraphBase, node: str, reverse: bool = False) -> None:
         self._graph = graph
         self._node = node
         self._reverse = reverse and graph.directed
@@ -177,7 +178,7 @@ class _NeighborView(Mapping[str, MutableMapping[str, object]]):
 
 
 class _AdjacencyView(Mapping[str, _NeighborView]):
-    def __init__(self, graph: "_GraphBase", reverse: bool = False) -> None:
+    def __init__(self, graph: _GraphBase, reverse: bool = False) -> None:
         self._graph = graph
         self._reverse = reverse
 
@@ -219,7 +220,7 @@ class _GraphBase:
                 raise TypeError("Expected graph edges to contain string nodes")
             self.add_edge(left, right)
 
-    def _copy_from(self, other: "_GraphBase") -> None:
+    def _copy_from(self, other: _GraphBase) -> None:
         self._core = other._core.clone_graph()
         self._node_attrs = {
             node: attrs.copy() for node, attrs in other._node_attrs.items()
@@ -469,7 +470,7 @@ class _GraphBase:
         new.graph = self.graph.copy()
         return new
 
-    def to_undirected(self) -> "Graph":
+    def to_undirected(self) -> Graph:
         if not self.directed:
             return cast("Graph", self.copy())
         new = Graph()

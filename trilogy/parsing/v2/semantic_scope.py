@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterator
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Purpose
@@ -24,20 +24,20 @@ class SymbolDefinition:
     address: str
     name: str
     namespace: str
-    scope: "SemanticScope"
+    scope: SemanticScope
     materialized: bool = False
 
 
 @dataclass
 class SymbolReference:
     address: str
-    scope: "SemanticScope"
+    scope: SemanticScope
 
 
 @dataclass
 class SemanticScope:
     kind: ScopeKind
-    parent: "SemanticScope | None" = None
+    parent: SemanticScope | None = None
     definitions: dict[str, SymbolDefinition] = field(default_factory=dict)
 
     def lookup(self, address: str) -> SymbolDefinition | None:

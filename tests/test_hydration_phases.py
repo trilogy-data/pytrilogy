@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from trilogy.core.enums import Purpose
+from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.author import Concept
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -229,12 +230,12 @@ class TestHydrate:
         assert output[0].concept.datatype == DataType.INTEGER
 
     def test_derivation_resolves_lineage(self):
-        env, output = parse_text("key x int;\nauto y <- x + 1;", Environment())
+        env, _output = parse_text("key x int;\nauto y <- x + 1;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
         assert env.concepts["local.y"].lineage is not None
 
     def test_forward_reference_resolved(self):
-        env, output = parse_text("auto y <- x + 1;\nkey x int;", Environment())
+        env, _output = parse_text("auto y <- x + 1;\nkey x int;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
         assert env.concepts["local.y"].lineage is not None
 
@@ -363,7 +364,7 @@ class TestSemanticStateTransaction:
     def test_failed_parse_does_not_leak_concepts(self):
         env = Environment()
         baseline = set(env.concepts.data.keys())
-        with pytest.raises(Exception):
+        with pytest.raises(UndefinedConceptException):
             parse_text("key leaked int;\nselect undefined_col;", env)
         assert "local.leaked" not in env.concepts.data
         assert set(env.concepts.data.keys()) == baseline
@@ -491,12 +492,11 @@ class TestPendingOverlayScope:
         env = Environment()
         state = SemanticState(environment=env)
         state.add(_make_probe("boom"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
-        with pytest.raises(RuntimeError):
-            with state.pending_overlay_scope():
-                assert env.concepts["local.boom"].name == "boom"
-                raise RuntimeError("parse failure")
+        with pytest.raises(RuntimeError), state.pending_overlay_scope():
+            assert env.concepts["local.boom"].name == "boom"
+            raise RuntimeError("parse failure")
         assert env.concepts._overlay_stack == []
-        with pytest.raises(Exception):
+        with pytest.raises(UndefinedConceptException):
             env.concepts["local.boom"]
 
     def test_overlay_sees_concepts_added_mid_scope(self):
@@ -524,11 +524,11 @@ class TestPendingOverlayScope:
         state_b.add(_make_probe("beta"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         with state_a.pending_overlay_scope():
             assert env.concepts["local.alpha"].name == "alpha"
-            with pytest.raises(Exception):
+            with pytest.raises(UndefinedConceptException):
                 env.concepts["local.beta"]
         with state_b.pending_overlay_scope():
             assert env.concepts["local.beta"].name == "beta"
-            with pytest.raises(Exception):
+            with pytest.raises(UndefinedConceptException):
                 env.concepts["local.alpha"]
 
     def test_nested_overlays_read_both(self):
@@ -540,7 +540,7 @@ class TestPendingOverlayScope:
             with env.concepts.push_overlay(inner_view):
                 assert env.concepts["local.inner"].name == "inner"
                 assert env.concepts["local.outer"].name == "outer"
-            with pytest.raises(Exception):
+            with pytest.raises(UndefinedConceptException):
                 env.concepts["local.inner"]
             assert env.concepts["local.outer"].name == "outer"
         assert env.concepts._overlay_stack == []
@@ -627,7 +627,7 @@ class TestConceptLookupFacade:
         env = Environment()
         state = _semantic_state(env)
         lookup = ConceptLookup(state)
-        with pytest.raises(Exception):
+        with pytest.raises(UndefinedConceptException):
             lookup.require("local.nope")
 
     def test_missing_get_returns_none(self):
@@ -678,7 +678,7 @@ class TestStagedParser:
         assert [x.concept.address for x in select.selection] == ["local.x"]
 
     def test_key_then_inline_derivation(self):
-        env, output = _parse_staged("key x int;\nselect x + 1 -> y;")
+        env, _output = _parse_staged("key x int;\nselect x + 1 -> y;")
         assert "local.x" in env.concepts.data
         assert "local.y" in env.concepts.data
         assert env.concepts["local.y"].datatype == DataType.INTEGER

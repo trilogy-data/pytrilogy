@@ -191,7 +191,7 @@ address baz;
         input_concepts=[concept_a],
         output_concepts=[concept_a],
         datasources=[root_ds],
-        grain=BuildGrain(components=set([concept_a.address])),
+        grain=BuildGrain(components={concept_a.address}),
         joins=[],
         source_map={concept_a.address: {root_ds}},
     )
@@ -200,7 +200,7 @@ address baz;
         input_concepts=[concept_a, concept_b],
         output_concepts=[concept_a, concept_b],
         datasources=[join_ds_1],
-        grain=BuildGrain(components=set([concept_a.address, concept_b.address])),
+        grain=BuildGrain(components={concept_a.address, concept_b.address}),
         joins=[],
         source_map={
             concept_a.address: {join_ds_1},
@@ -213,7 +213,7 @@ address baz;
         output_concepts=[concept_a, concept_b, concept_c],
         datasources=[join_ds_2],
         grain=BuildGrain(
-            components=set([concept_b.address])
+            components={concept_b.address}
         ),  # Key point: grain is just b, making it a PK
         joins=[],
         source_map={
@@ -366,7 +366,7 @@ def test_reduce_concept_pairs_fd_mutual_keeps_one():
     greedy over the surviving determinant set, never both pruned."""
     from trilogy.core.domain_graph import DomainGraph, FDEdge
 
-    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    _build_env, a, b, left_qds, right_qds = _fd_test_sources()
     graph = DomainGraph(
         fd_edges=[
             FDEdge(determinants=frozenset({a.address}), dependent=b.address),

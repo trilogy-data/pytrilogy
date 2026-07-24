@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Union
+from typing import Any, Union
 
 from trilogy.core.enums import (
     CreateMode,
@@ -38,8 +38,8 @@ class PersistQueryMixin:
     output_to: MaterializedDataset
     datasource: Datasource
     persist_mode: PersistMode
-    partition_by: List[str]
-    partition_types: List[DataType]
+    partition_by: list[str]
+    partition_types: list[DataType]
 
 
 @dataclass
@@ -48,18 +48,18 @@ class SelectTypeMixin:
     having_clause: Union["HavingClause", None] = field(default=None)
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> list[ConceptRef]:
         raise NotImplementedError
 
 
 @dataclass
 class ProcessedQuery:
-    output_columns: List[ConceptRef]
-    ctes: List[CTE | UnionCTE]
+    output_columns: list[ConceptRef]
+    ctes: list[CTE | UnionCTE]
     base: CTE | UnionCTE
     hidden_columns: set[str] = field(default_factory=set)
-    limit: Optional[int] = None
-    order_by: Optional[BuildOrderBy] = None
+    limit: int | None = None
+    order_by: BuildOrderBy | None = None
     local_concepts: EnvironmentConceptDict = field(
         default_factory=EnvironmentConceptDict
     )
@@ -92,7 +92,7 @@ class ProcessedRawSQLStatement:
 @dataclass
 class ProcessedValidateStatement:
     scope: ValidationScope
-    targets: Optional[List[str]]
+    targets: list[str] | None
 
 
 @dataclass
@@ -107,13 +107,13 @@ class ColumnInfo:
     type: DataType
     nullable: bool = True
     primary_key: bool = False
-    description: Optional[str] = None
+    description: str | None = None
 
 
 @dataclass
 class CreateTableInfo:
     name: str
-    columns: List[ColumnInfo]
+    columns: list[ColumnInfo]
     partition_keys: list[str] = field(default_factory=list)
 
 
@@ -133,48 +133,46 @@ class ProcessedPublishStatement:
 
 @dataclass
 class ProcessedStaticValueOutput:
-    values: List[dict]
+    values: list[dict]
 
 
 @dataclass
 class ProcessedShowStatement:
-    output_columns: List[ConceptRef]
-    output_values: List[
-        Union[
-            BuildConcept,
-            BuildDatasource,
-            ProcessedQuery,
-            ProcessedQueryPersist,
-            ProcessedCopyStatement,
-            ProcessedValidateStatement,
-            ProcessedStaticValueOutput,
-        ]
+    output_columns: list[ConceptRef]
+    output_values: list[
+        BuildConcept
+        | BuildDatasource
+        | ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedCopyStatement
+        | ProcessedValidateStatement
+        | ProcessedStaticValueOutput
     ]
 
 
 @dataclass
 class ProcessedChartLayer:
     layer_type: "ChartType"
-    query: Optional[ProcessedQuery] = None
+    query: ProcessedQuery | None = None
     x_fields: list[str] = field(default_factory=list)
     y_fields: list[str] = field(default_factory=list)
-    color_field: Optional[str] = None
-    size_field: Optional[str] = None
-    group_field: Optional[str] = None
-    x_trellis_field: Optional[str] = None
-    y_trellis_field: Optional[str] = None
-    geo_field: Optional[str] = None
-    annotation_field: Optional[str] = None
+    color_field: str | None = None
+    size_field: str | None = None
+    group_field: str | None = None
+    x_trellis_field: str | None = None
+    y_trellis_field: str | None = None
+    geo_field: str | None = None
+    annotation_field: str | None = None
 
 
 @dataclass
 class ProcessedChartStatement:
-    layers: List[ProcessedChartLayer]
-    placements: List["ChartPlacement"] = field(default_factory=list)
+    layers: list[ProcessedChartLayer]
+    placements: list["ChartPlacement"] = field(default_factory=list)
     hide_legend: bool = False
     show_title: bool = False
-    scale_x: Optional[ScaleType] = None
-    scale_y: Optional[ScaleType] = None
+    scale_x: ScaleType | None = None
+    scale_y: ScaleType | None = None
 
 
 @dataclass
@@ -186,8 +184,8 @@ class ProcessedChartCopyStatement(CopyQueryMixin):
 
 
 # Import here to avoid circular import
-from trilogy.core.enums import ChartType  # noqa: E402
-from trilogy.core.statements.author import ChartPlacement  # noqa: E402
+from trilogy.core.enums import ChartType
+from trilogy.core.statements.author import ChartPlacement
 
 PROCESSED_STATEMENT_TYPES = (
     ProcessedCopyStatement

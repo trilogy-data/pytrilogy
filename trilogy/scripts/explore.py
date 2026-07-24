@@ -11,9 +11,9 @@ from __future__ import annotations
 import re
 import textwrap
 from collections import defaultdict
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator, Sequence
 
 import click
 
@@ -123,7 +123,7 @@ def _is_private_address(address: str) -> bool:
     with a single underscore. The ``__``/``local._env_`` builtin markers are
     governed by the separate ``--include-builtins`` gate and are exempt so that
     flag keeps working independently."""
-    if address.startswith("__") or address.startswith("local._env_"):
+    if address.startswith(("__", "local._env_")):
         return False
     return _display_address(address).rpartition(".")[2].startswith("_")
 
@@ -205,7 +205,7 @@ def _grain_display(addr: str) -> str:
     implicit ``local.`` prefix so a property bound to a local key reads as
     ``@customer_id`` rather than ``@local.customer_id``; cross-namespace
     addresses keep their full dotted path so the agent can find the key."""
-    return addr[len(_LOCAL_PREFIX) :] if addr.startswith(_LOCAL_PREFIX) else addr
+    return addr.removeprefix(_LOCAL_PREFIX)
 
 
 def _grain_suffix(key_addrs: tuple[str, ...]) -> str:
@@ -362,9 +362,7 @@ def _emit_imported_summary(
         # Private ``_``-leaves are already stripped upstream by ``filter_hidden``
         # (unless --include-hidden), so no visibility filter is needed here.
         leaves = sorted(
-            leaf
-            for addr in by_ns[ns]
-            for leaf in [addr[len(prefix) :] if addr.startswith(prefix) else addr]
+            leaf for addr in by_ns[ns] for leaf in [addr.removeprefix(prefix)]
         )
         if not leaves:
             continue
@@ -445,7 +443,7 @@ def _keyset_label(key_addrs: tuple[str, ...]) -> str:
 
 
 def _strip_prefix(decl: str, prefix: str) -> str:
-    return decl[len(prefix) :] if decl.startswith(prefix) else decl
+    return decl.removeprefix(prefix)
 
 
 def _grain_grouped(
@@ -588,7 +586,7 @@ def _conformed_signature(concepts: list[Concept]) -> tuple:
     sig = []
     for c in concepts:
         prefix = f"{c.namespace}."
-        leaf = c.address[len(prefix) :] if c.address.startswith(prefix) else c.address
+        leaf = c.address.removeprefix(prefix)
         sig.append(
             (
                 leaf,
@@ -608,7 +606,7 @@ def _pick_canonical(names: list[str], source: Path) -> str:
     re-reads of one explore output."""
     stem = source.stem
     preferred = [n for n in names if n.rsplit(".", 1)[-1] == stem]
-    return sorted(preferred or names, key=lambda n: (n.count("."), len(n), n))[0]
+    return min(preferred or names, key=lambda n: (n.count("."), len(n), n))
 
 
 _ROLE_DELIM = ", "

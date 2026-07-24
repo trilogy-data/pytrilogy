@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
@@ -130,7 +129,7 @@ def _resolve_parent_row_outputs(
 def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     conditions: BuildWhereClause | None,
     filter_where: BuildWhereClause,
     same_filter_optional: list[BuildConcept],
@@ -191,9 +190,10 @@ def _can_pushdown_as_grouped_filter(
     agg_args = [
         r for r in filter_where.row_arguments if r.derivation == Derivation.AGGREGATE
     ]
-    if isinstance(content, BuildConcept):
-        if any(a.grain != content.grain for a in agg_args):
-            return False
+    if isinstance(content, BuildConcept) and any(
+        a.grain != content.grain for a in agg_args
+    ):
+        return False
     # An aggregate-comparison mixed with a row-level predicate on anything but
     # the group key itself can't collapse into one grouped CTE: the row
     # predicate is invalid in HAVING at the group grain, and pre-filtering rows
@@ -213,18 +213,16 @@ def _can_pushdown_as_grouped_filter(
     # `GROUP BY CASE WHEN ... count(...) ...`) or splits off and regroups at the
     # wrong grain. Fall back to the standard filter-node plan, which computes the
     # predicate CASE at row grain over materialized aggregate columns.
-    if any(
+    return not any(
         r.derivation != Derivation.AGGREGATE and isinstance(r.lineage, BuildFilterItem)
         for r in filter_where.row_arguments
-    ):
-        return False
-    return True
+    )
 
 
 def build_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
 ) -> FilterParentPlan:
@@ -232,7 +230,9 @@ def build_parent_concepts(
         concept, environment
     )
     if not isinstance(concept.lineage, FILTER_TYPES):
-        raise SyntaxError('Filter node must have a filter type lineage"')
+        raise SyntaxError(  # noqa: TRY004
+            'Filter node must have a filter type lineage"'
+        )
     filter_where = concept.lineage.where
 
     same_filter_optional: list[BuildConcept] = []
@@ -355,7 +355,7 @@ def add_existence_sources(
 
 def gen_filter_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -364,7 +364,9 @@ def gen_filter_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     if not isinstance(concept.lineage, FILTER_TYPES):
-        raise SyntaxError('Filter node must have a filter type lineage"')
+        raise SyntaxError(  # noqa: TRY004
+            'Filter node must have a filter type lineage"'
+        )
     where = concept.lineage.where
 
     parent_plan = build_parent_concepts(
@@ -393,23 +395,22 @@ def gen_filter_node(
 
     core_parent_nodes: list[StrategyNode] = []
     flattened_existence = [x for y in parent_existence_concepts for x in y]
-    if parent_existence_concepts:
-        if not add_existence_sources(
-            core_parent_nodes,
-            parent_existence_concepts,
-            source_concepts,
-            environment,
-            g,
-            depth,
-            history,
-        ):
-            # An existence subquery (e.g. a membership RHS) couldn't be sourced
-            # — bail so the search reports a clean UnresolvableQueryException
-            # instead of emitting a dangling INVALID_REFERENCE_BUG CTE.
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} filter node existence parents could not be sourced; abandoning filter node"
-            )
-            return None
+    if parent_existence_concepts and not add_existence_sources(
+        core_parent_nodes,
+        parent_existence_concepts,
+        source_concepts,
+        environment,
+        g,
+        depth,
+        history,
+    ):
+        # An existence subquery (e.g. a membership RHS) couldn't be sourced
+        # — bail so the search reports a clean UnresolvableQueryException
+        # instead of emitting a dangling INVALID_REFERENCE_BUG CTE.
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node existence parents could not be sourced; abandoning filter node"
+        )
+        return None
 
     if not row_parent:
         logger.info(
@@ -472,7 +473,7 @@ def gen_filter_node(
                 [concept] + same_filter_optional + row_output_concepts
             )
         parent.add_parents(core_parent_nodes)
-        if not parent.preexisting_conditions == where.conditional:
+        if parent.preexisting_conditions != where.conditional:
             # add_condition appends ``where.conditional`` to the parent's
             # ``conditions`` (correct), but also resets ``preexisting_conditions``
             # to just the filter's where — clobbering any global query

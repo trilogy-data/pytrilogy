@@ -1,12 +1,15 @@
 import os
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 from tomllib import loads
 
 from trilogy.ai.enums import Provider
 from trilogy.constants import REMOTE_PREFIXES, logger
+from trilogy.core.exceptions import ConfigurationException
 from trilogy.dialect import (
     BigQueryConfig,
     DialectConfig,
@@ -63,11 +66,91 @@ def apply_env_vars(env_vars: dict[str, str]) -> None:
         os.environ[key] = value
 
 
+# First alternative is the escape form: ``$${env:X}`` yields a literal
+# ``${env:X}``.
+_ENV_REF = re.compile(
+    r"\$\$\{env:[A-Za-z_][A-Za-z0-9_]*\}|\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}"
+)
+
+# Subtrees advertised verbatim to clients (serve /index.json): references
+# there are published unresolved rather than interpolated.
+_INTERPOLATION_SKIP = frozenset({"serve.connection"})
+
+
+def _interpolate_string(
+    value: str, env: Mapping[str, str], path: str, missing: list[str]
+) -> str:
+    parts: list[str] = []
+    last = 0
+    for match in _ENV_REF.finditer(value):
+        parts.append(value[last : match.start()])
+        var = match.group(1)
+        if var is None:
+            parts.append(match.group(0)[1:])
+        elif var in env:
+            parts.append(env[var])
+        else:
+            missing.append(f"{var} (in {path})")
+            parts.append(match.group(0))
+        last = match.end()
+    parts.append(value[last:])
+    return "".join(parts)
+
+
+def _interpolate_node(
+    node: Any,
+    path: str,
+    env: Mapping[str, str],
+    skip: frozenset[str],
+    missing: list[str],
+) -> Any:
+    if isinstance(node, dict):
+        out: dict = {}
+        for key, value in node.items():
+            child = f"{path}.{key}" if path else key
+            out[key] = (
+                value
+                if child in skip
+                else _interpolate_node(value, child, env, skip, missing)
+            )
+        return out
+    if isinstance(node, list):
+        return [
+            _interpolate_node(item, f"{path}[{i}]", env, skip, missing)
+            for i, item in enumerate(node)
+        ]
+    if isinstance(node, str):
+        return _interpolate_string(node, env, path, missing)
+    return node
+
+
+def interpolate_env_refs(
+    config_data: dict,
+    env: Mapping[str, str] | None = None,
+    skip: frozenset[str] = frozenset(),
+) -> dict:
+    """Resolve ``${env:VAR}`` references in string values of a parsed config.
+
+    Single pass: resolved values are never re-expanded. Dotted paths in
+    ``skip`` pass through verbatim. Raises ConfigurationException naming every
+    unresolved variable; never echoes resolved values.
+    """
+    env_map: Mapping[str, str] = os.environ if env is None else env
+    missing: list[str] = []
+    resolved = _interpolate_node(config_data, "", env_map, skip, missing)
+    if missing:
+        raise ConfigurationException(
+            "trilogy.toml references undefined environment variable(s): "
+            + ", ".join(missing)
+        )
+    return resolved
+
+
 @dataclass
 class AgentConfig:
-    provider: Optional[Provider] = None
-    model: Optional[str] = None
-    api_key_env: Optional[str] = None
+    provider: Provider | None = None
+    model: str | None = None
+    api_key_env: str | None = None
     max_iterations: int = 50
     tool_output_limit: int = 8192
     # Drop ``show_message`` from the tool list (and its discipline rule from
@@ -204,10 +287,37 @@ def audit_config_file(path: Path) -> list[str]:
     return warnings
 
 
-def load_config_file(path: Path) -> RuntimeConfig:
+def load_config_file(
+    path: Path, extra_env: Mapping[str, str] | None = None
+) -> RuntimeConfig:
     with safe_open(path) as f:
         toml_content = f.read()
     config_data = loads(toml_content)
+
+    # Parse env_file - can be a single string or list of strings.
+    # Top-level; falls back to [engine].env_file for backwards compat.
+    env_raw = config_data.get(
+        "env_file", config_data.get("engine", {}).get("env_file", [])
+    )
+    if isinstance(env_raw, str):
+        env_raw = [env_raw]
+    # env_file paths may themselves reference ${env:...}; resolve against the
+    # environment as it stands before any file is loaded.
+    env_raw = interpolate_env_refs(
+        {"env_file": env_raw}, env={**os.environ, **(extra_env or {})}
+    )["env_file"]
+    env_files = [path.parent / p for p in env_raw]
+
+    # env_file values apply before interpolation so a project can be fully
+    # self-contained; extra_env (CLI --env) applies last and wins.
+    for env_file in env_files:
+        file_vars = load_env_file(env_file)
+        if file_vars:
+            apply_env_vars(file_vars)
+    if extra_env:
+        apply_env_vars(dict(extra_env))
+
+    config_data = interpolate_env_refs(config_data, skip=_INTERPOLATION_SKIP)
 
     staging_raw: dict = config_data.get("staging", {})
     staging = StagingConfig(path=staging_raw.get("path"))
@@ -261,14 +371,6 @@ def load_config_file(path: Path) -> RuntimeConfig:
     else:
         engine_config = None
     setup: dict = config_data.get("setup", {})
-
-    # Parse env_file - can be a single string or list of strings.
-    # Top-level; falls back to [engine].env_file for backwards compat.
-    env_raw = config_data.get("env_file", engine_raw.get("env_file", []))
-    if isinstance(env_raw, str):
-        env_files = [path.parent / env_raw]
-    else:
-        env_files = [path.parent / p for p in env_raw]
 
     serve_raw: dict = config_data.get("serve", {})
     serve_studio_url = serve_raw.get("studio_url", DEFAULT_STUDIO_URL)

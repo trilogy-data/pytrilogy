@@ -253,7 +253,7 @@ def test_grain_under_dimension_filter_normalizes_before_count_in_sql():
         "where yr = 2000 "
         "select item_sk, count(grain(item_id, item_desc, date_sk)) as c;"
     )[-1].lower()
-    normalize_cte, _, count_cte = sql.partition("count(md5")
+    normalize_cte, _, _count_cte = sql.partition("count(md5")
     assert "group by" in normalize_cte
     assert "date_sk" in normalize_cte and "item_sk" in normalize_cte
 

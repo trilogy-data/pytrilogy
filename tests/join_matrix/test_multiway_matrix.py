@@ -56,7 +56,7 @@ def _write(tmp_path: Path) -> Path:
 
 
 def _oracle(join_type: str, form: str) -> list[tuple]:
-    shift = lambda k: k + 1  # noqa: E731
+    shift = lambda k: k + 1
     a = aggregate(LEFT_ROWS, shift)
     b = aggregate(RIGHT_ROWS, shift)
     c = aggregate(MID_ROWS, shift)

@@ -1,15 +1,12 @@
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
+    ClassVar,
     Optional,
-    Sequence,
-    Union,
     cast,
 )
 
@@ -84,6 +81,7 @@ from trilogy.core.models.core import (
     StructType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
 )
 from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
@@ -730,7 +728,7 @@ def safe_get_cte_value(
     quote_char: str,
     render_expr: Callable,
     use_map: dict[str, set[str]],
-) -> Optional[str]:
+) -> str | None:
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -814,23 +812,31 @@ def get_grouped_aggregate_wrapper(
 
 
 class BaseDialect:
-    NUMBERING_WINDOW_FUNCTION_MAP = NUMBERING_WINDOW_FUNCTION_MAP
-    NAVIGATION_WINDOW_FUNCTION_MAP = NAVIGATION_WINDOW_FUNCTION_MAP
-    FUNCTION_MAP = FUNCTION_MAP
-    FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
+    NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
+        dict[WindowType, Callable[[str, str], str]]
+    ] = NUMBERING_WINDOW_FUNCTION_MAP
+    NAVIGATION_WINDOW_FUNCTION_MAP: ClassVar[
+        dict[WindowType, Callable[[str, str, str, int | None], str]]
+    ] = NAVIGATION_WINDOW_FUNCTION_MAP
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = FUNCTION_MAP
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = (
+        FUNCTION_GRAIN_MATCH_MAP
+    )
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
-    DATATYPE_MAP = DATATYPE_MAP
-    COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
-    DB_COLUMN_TYPE_MAP = DB_COLUMN_TYPE_MAP
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
+    COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
+        COMPLEX_DATATYPE_MAP
+    )
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = DB_COLUMN_TYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     SUPPORTS_AGGREGATE_GROUPING_MODES = False
     # Per-dialect spelling of set-operation combinators between UnionCTE arms.
     # Keys are SetOperator values; dialects with non-standard spellings (e.g.
     # BigQuery's EXCEPT DISTINCT) override entries.
-    SET_OPERATOR_MAP: dict[str, str] = {
+    SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         "UNION ALL": "UNION ALL",
         "EXCEPT": "EXCEPT",
         "INTERSECT": "INTERSECT",
@@ -864,7 +870,7 @@ class BaseDialect:
         self,
         e: "MapWrapper[Any, Any]",
         cte: Optional["CTE | UnionCTE"] = None,
-        cte_map: Optional[Dict[str, "CTE | UnionCTE"]] = None,
+        cte_map: dict[str, "CTE | UnionCTE"] | None = None,
         raise_invalid: bool = False,
     ) -> str:
         # Default DuckDB-style; CH and others override.
@@ -1217,7 +1223,9 @@ class BaseDialect:
     ) -> str:
         result = None
         if not isinstance(c, BuildConcept):
-            raise SyntaxError(f"Expected BuildConcept, got {type(c)} {c}")
+            raise SyntaxError(  # noqa: TRY004
+                f"Expected BuildConcept, got {type(c)} {c}"
+            )
         candidates: list[BuildConcept] = []
         if c.pseudonyms:
             candidates += [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
@@ -1609,7 +1617,7 @@ class BaseDialect:
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
@@ -1620,7 +1628,7 @@ class BaseDialect:
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -1632,7 +1640,7 @@ class BaseDialect:
         self,
         rc: BuildConcept,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
     ) -> tuple[str, str]:
         """Resolve a right-hand membership concept to (from_clause, column_ref)
@@ -1684,7 +1692,7 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -1808,7 +1816,7 @@ class BaseDialect:
         right: "ListWrapper[Any] | TupleWrapper[Any]",
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
         materialized_addresses: set[str] | None,
     ) -> str:
@@ -1878,7 +1886,7 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
     ) -> str | None:
         """Render an expression-typed membership RHS (`... in (rs.col::string)`,
@@ -1922,45 +1930,44 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: Union[
-            BuildConcept,
-            BuildFunction,
-            BuildConditional,
-            BuildBetween,
-            BuildAggregateWrapper,
-            BuildComparison,
-            BuildCaseWhen,
-            BuildCaseSimpleWhen,
-            BuildCaseElse,
-            BuildSubselectComparison,
-            BuildSubselectItem,
-            BuildWindowItem,
-            BuildFilterItem,
-            BuildParenthetical,
-            BuildParamaterizedConceptReference,
-            BuildMultiSelectLineage,
-            BuildRowsetItem,
-            str,
-            int,
-            list,
-            bool,
-            float,
-            date,
-            datetime,
-            DataType,
-            TraitDataType,
-            MagicConstants,
-            MapWrapper[Any, Any],
-            MapType,
-            NumericType,
-            StructType,
-            ArrayType,
-            ListWrapper[Any],
-            TupleWrapper[Any],
-            DatePart,
-        ],
-        cte: Optional[CTE | UnionCTE] = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        e: (
+            BuildConcept
+            | BuildFunction
+            | BuildConditional
+            | BuildBetween
+            | BuildAggregateWrapper
+            | BuildComparison
+            | BuildCaseWhen
+            | BuildCaseSimpleWhen
+            | BuildCaseElse
+            | BuildSubselectComparison
+            | BuildSubselectItem
+            | BuildWindowItem
+            | BuildFilterItem
+            | BuildParenthetical
+            | BuildParamaterizedConceptReference
+            | BuildMultiSelectLineage
+            | BuildRowsetItem
+            | str
+            | list
+            | bool
+            | float
+            | date
+            | datetime
+            | DataType
+            | TraitDataType
+            | MagicConstants
+            | MapWrapper[Any, Any]
+            | MapType
+            | NumericType
+            | StructType
+            | ArrayType
+            | ListWrapper[Any]
+            | TupleWrapper[Any]
+            | DatePart
+        ),
+        cte: CTE | UnionCTE | None = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -2285,7 +2292,7 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
-        elif isinstance(e, TraitDataType):
+        elif isinstance(e, (ValidatedType, TraitDataType)):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):
             return e.name
@@ -2306,7 +2313,7 @@ class BaseDialect:
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
 
         else:
-            raise ValueError(f"Unable to render type {type(e)} {e}")
+            raise TypeError(f"Unable to render type {type(e)} {e}")
 
     @staticmethod
     def _grouped_output_is_parent_passthrough(
@@ -2494,7 +2501,7 @@ class BaseDialect:
 
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_index: dict[str, int]
-    ) -> Optional[list[str]]:
+    ) -> list[str] | None:
 
         if not cte.group_to_grain:
             return None
@@ -2782,7 +2789,7 @@ class BaseDialect:
     def generate_ctes(
         self,
         query: ProcessedQuery,
-    ) -> List[CompiledCTE]:
+    ) -> list[CompiledCTE]:
         return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
             # last CTE needs to respect the user output order
             self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
@@ -2848,9 +2855,9 @@ class BaseDialect:
             | MockStatement
             | ChartStatement
         ],
-        hooks: Optional[List[BaseHook]] = None,
-    ) -> List[PROCESSED_STATEMENT_TYPES]:
-        output: List[PROCESSED_STATEMENT_TYPES] = []
+        hooks: list[BaseHook] | None = None,
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
+        output: list[PROCESSED_STATEMENT_TYPES] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:

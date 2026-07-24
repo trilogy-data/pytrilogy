@@ -19,7 +19,7 @@ def setup_titanic(env: Environment):
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
         modifiers=[Modifier.NULLABLE],
     )
 
@@ -29,7 +29,7 @@ def setup_titanic(env: Environment):
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
 
     pclass = Concept(
@@ -38,7 +38,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
     survived = Concept(
         name="survived",
@@ -46,7 +46,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
     fare = Concept(
         name="fare",
@@ -54,7 +54,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
     embarked = Concept(
         name="embarked",
@@ -62,7 +62,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
     cabin = Concept(
         name="cabin",
@@ -70,7 +70,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
     ticket = Concept(
         name="ticket",
@@ -78,7 +78,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys={id.address},
-        grain=Grain(components=set([id.address])),
+        grain=Grain(components={id.address}),
     )
 
     last_name = Concept(
@@ -179,7 +179,7 @@ select
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
     assert ratio.purpose == Purpose.PROPERTY
-    assert set(x for x in env.concepts["survivors"].keys) == {
+    assert set(env.concepts["survivors"].keys) == {
         "passenger.class",
     }
     assert (
@@ -198,7 +198,7 @@ select
         namespace="test",
         environment=env,
     )
-    assert set(x for x in testc.keys) == {
+    assert set(testc.keys) == {
         "passenger.class",
     }
 

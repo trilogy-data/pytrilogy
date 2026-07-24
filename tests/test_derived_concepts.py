@@ -23,7 +23,7 @@ def test_hour_derivation(test_environment):
 def test_filtering_where_on_derived_aggregate(test_environment):
     exception = False
     try:
-        env, _ = parse("""key x int;
+        _env, _ = parse("""key x int;
     property x.cost float;
 
     datasource x_source (
@@ -132,7 +132,7 @@ def test_scalar_select_where_aggregate_still_rejected():
         raised = None
         try:
             parse(_WHERE_AGG_SCHEMA + query)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raised = e
         assert raised is not None, f"expected rejection for: {query}"
         assert "HAVING" in str(raised), str(raised)
@@ -236,7 +236,7 @@ having sum(value) > 15;
 
 
 def test_filtering_valid(test_environment):
-    env, _ = parse("""key x int;
+    _env, _ = parse("""key x int;
 property x.cost float;
 
 datasource x_source (

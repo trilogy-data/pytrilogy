@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "evals"))
 
-from common.prompts import (  # noqa: E402
+from common.prompts import (
     _render_params_block,
     build_single_query_task,
     candidate_filename,
@@ -21,7 +21,7 @@ from common.prompts import (  # noqa: E402
     scoring_candidate_path,
     stage_candidate_for_scoring,
 )
-from common.spec import BenchmarkSpec  # noqa: E402
+from common.spec import BenchmarkSpec
 
 
 def _spec() -> BenchmarkSpec:

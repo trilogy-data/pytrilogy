@@ -1,8 +1,9 @@
 import os
 import platform
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 import tomli_w
 import tomllib
@@ -145,7 +146,7 @@ def test_adhoc02_error():
     with open(working_path / "adhoc02.preql") as f:
         text = f.read()
         with raises(InvalidSyntaxException):
-            env, queries = parse(text, env)
+            env, _queries = parse(text, env)
 
 
 def test_adhoc03(engine: Executor):

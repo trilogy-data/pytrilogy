@@ -93,7 +93,7 @@ def test_double_partial_key_results():
         )[0].fetchall()
     )
 
-    customer_names = set(r[0] for r in results)
+    customer_names = {r[0] for r in results}
     print(f"Results: {results}")
     print(f"Customer names: {customer_names}")
 
@@ -190,7 +190,7 @@ def test_multi_key_partial_results():
     )
 
     print(f"Results: {results}")
-    customer_names = set(r[0] for r in results if r[0] is not None)
+    customer_names = {r[0] for r in results if r[0] is not None}
 
     # fact1 has customers 1,2; fact2 has customers 2,3
     # All should appear via FULL JOIN + COALESCE on customer_id

@@ -1,16 +1,22 @@
 import json
 from os import environ
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    ProviderError,
+    iter_history_turns,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 
-def _extract_google_retry_delay_ms(error: Exception) -> Optional[int]:
+def _extract_google_retry_delay_ms(error: Exception) -> int | None:
     """Parse retryDelay from Google's error body (proto Duration string like '1.5s')."""
     try:
         from httpx import HTTPStatusError
@@ -22,14 +28,14 @@ def _extract_google_retry_delay_ms(error: Exception) -> Optional[int]:
             if "RetryInfo" in detail.get("@type", "") and "retryDelay" in detail:
                 delay_str = detail["retryDelay"].rstrip("s")
                 return int(float(delay_str) * 1000)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to parse Google retryDelay from error body: %s", e)
     return None
 
 
 def _convert_to_google_schema(value: Any) -> Any:
     if isinstance(value, dict):
-        converted: Dict[str, Any] = {}
+        converted: dict[str, Any] = {}
         for key, nested_value in value.items():
             if key == "additionalProperties":
                 continue
@@ -49,7 +55,7 @@ class GoogleProvider(LLMProvider):
         name: str,
         model: str,
         api_key: str | None = None,
-        retry_options: Optional[RetryOptions] = None,
+        retry_options: RetryOptions | None = None,
     ):
         api_key = api_key or environ.get("GOOGLE_API_KEY")
         if not api_key:
@@ -59,25 +65,25 @@ class GoogleProvider(LLMProvider):
         super().__init__(name, api_key, model, Provider.GOOGLE)
         self.base_model_url = "https://generativelanguage.googleapis.com/v1/models"
         self.base_completion_url = "https://generativelanguage.googleapis.com/v1beta"
-        self.models: List[str] = []
+        self.models: list[str] = []
         self.type = Provider.GOOGLE
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
             initial_delay_ms=30000,
             retry_status_codes=RETRYABLE_CODES,
             on_retry=lambda attempt, delay_ms, error: logger.info(
-                f"Google API retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
+                f"Google API retry attempt {attempt} after {delay_ms}ms delay due to error: {error!s}"
             ),
             extract_retry_delay_fn=_extract_google_retry_delay_ms,
         )
 
     def _convert_to_gemini_history(
-        self, messages: List[LLMMessage]
-    ) -> List[Dict[str, Any]]:
+        self, messages: list[LLMMessage]
+    ) -> list[dict[str, Any]]:
         """Convert message history to Gemini `contents`, threading assistant
         tool calls as `functionCall` parts and their results as `functionResponse`
         parts. System messages are skipped (handled separately by the caller)."""
-        contents: List[Dict[str, Any]] = []
+        contents: list[dict[str, Any]] = []
         for msg, tool_calls, results in iter_history_turns(messages):
             if msg.role == "system":
                 continue
@@ -120,7 +126,7 @@ class GoogleProvider(LLMProvider):
         return contents
 
     def generate_completion(
-        self, options: LLMRequestOptions, history: List[LLMMessage]
+        self, options: LLMRequestOptions, history: list[LLMMessage]
     ) -> LLMResponse:
         try:
             import httpx
@@ -143,7 +149,7 @@ class GoogleProvider(LLMProvider):
         # Build request body. Request thought summaries so reasoning shows up in
         # the trace (Gemini 2.5 models think by default but only return the
         # thought parts when includeThoughts is set).
-        request_body: Dict[str, Any] = {
+        request_body: dict[str, Any] = {
             "contents": contents,
             "generationConfig": {"thinkingConfig": {"includeThoughts": True}},
         }
@@ -191,7 +197,7 @@ class GoogleProvider(LLMProvider):
         try:
             # Make the API request with retry logic using a lambda
 
-            def fetch_function() -> Dict[str, Any]:
+            def fetch_function() -> dict[str, Any]:
                 with httpx.Client(timeout=60) as client:
                     resp = client.post(
                         url,
@@ -212,13 +218,13 @@ class GoogleProvider(LLMProvider):
             # Extract text from response
             candidates = data.get("candidates", [])
             if not candidates:
-                raise Exception("No candidates returned from Google API")
+                raise ProviderError("No candidates returned from Google API")
 
             content = candidates[0].get("content", {})
             parts = content.get("parts", [])
 
             if not parts:
-                raise Exception("No parts in response content")
+                raise ProviderError("No parts in response content")
 
             # Parts flagged `thought: true` are reasoning summaries, not answer
             # text — keep them out of the response text and surface separately.
@@ -260,8 +266,8 @@ class GoogleProvider(LLMProvider):
             )
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"Google API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"Google API error: {str(error)}")
+            raise ProviderError(f"Google API error: {error!s}")

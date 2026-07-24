@@ -1,8 +1,11 @@
 import html
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
-from typing import Any, Callable, List, Optional, TypeVar
+from typing import Any, TypeVar
+
+from .base import ProviderError
 
 T = TypeVar("T")
 
@@ -29,16 +32,16 @@ def sanitize_html_escapes(value: Any) -> Any:
 class RetryOptions:
     max_retries: int = 3
     initial_delay_ms: int = 1000
-    retry_status_codes: List[int] = field(
+    retry_status_codes: list[int] = field(
         default_factory=lambda: [429, 500, 502, 503, 504, 525]
     )
     on_retry: Callable[[int, int, Exception], None] | None = None
     retry_after_padding_ms: int = 500
     # Optional: parse a suggested retry delay (ms) from the error body
-    extract_retry_delay_fn: Callable[[Exception], Optional[int]] | None = None
+    extract_retry_delay_fn: Callable[[Exception], int | None] | None = None
 
 
-def _parse_retry_after_ms(value: str) -> Optional[int]:
+def _parse_retry_after_ms(value: str) -> int | None:
     """Return ms from a Retry-After header (seconds int/float or HTTP-date), or None."""
     try:
         return int(float(value) * 1000)
@@ -79,7 +82,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
         except (HTTPError, TransportError, Exception) as error:
             last_error = error
             should_retry = False
-            suggested_ms: Optional[int] = None
+            suggested_ms: int | None = None
 
             if isinstance(error, HTTPStatusError):
                 if (
@@ -111,4 +114,4 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
 
     if last_error:
         raise last_error
-    raise Exception("Retry logic failed unexpectedly")
+    raise ProviderError("Retry logic failed unexpectedly")

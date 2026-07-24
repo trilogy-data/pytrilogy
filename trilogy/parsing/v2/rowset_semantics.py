@@ -95,7 +95,7 @@ def rowset_output_namespace(
 def _rowset_concept(
     orig_address: ConceptRef,
     rowset: RowsetDerivationStatement,
-    context: "RuleContext",
+    context: RuleContext,
     pre_output: list[Concept],
     orig: dict[str, Concept],
     orig_map: dict[str, Concept],
@@ -152,7 +152,7 @@ def _rowset_concept(
 
 def rowset_to_concepts_v2(
     rowset: RowsetDerivationStatement,
-    context: "RuleContext",
+    context: RuleContext,
 ) -> RowsetConceptResult:
     """Derive rowset output concepts via ``context.concepts``.
 
@@ -201,7 +201,7 @@ def rowset_to_concepts_v2(
     for x in pre_output:
         if x.keys:
             if all(k in orig for k in x.keys):
-                x.keys = set([orig[k].address if k in orig else k for k in x.keys])
+                x.keys = {orig[k].address if k in orig else k for k in x.keys}
             else:
                 x.keys = set()
         orig_lineage = orig_map[x.address].lineage

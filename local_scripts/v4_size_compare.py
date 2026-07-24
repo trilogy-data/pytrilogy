@@ -11,10 +11,10 @@ from pathlib import Path
 
 sys.setrecursionlimit(20000)
 
-from tests.modeling.tpc_ds_duckdb.query_size import query_size  # noqa: E402
-from trilogy import Dialects  # noqa: E402
-from trilogy.constants import CONFIG  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from tests.modeling.tpc_ds_duckdb.query_size import query_size
+from trilogy import Dialects
+from trilogy.constants import CONFIG
+from trilogy.core.models.environment import Environment
 
 WORKING = Path("tests/modeling/tpc_ds_duckdb")
 
@@ -60,12 +60,12 @@ def main() -> None:
     for label, pf, ceil in QUERIES:
         try:
             v3_len, v3_ctes, _ = gen(label, pf, v4=False)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             v3_len, v3_ctes = -1, -1
             print(f"{label}: v3 ERROR {type(e).__name__}: {e}")
         try:
             v4_len, v4_ctes, v4_sql = gen(label, pf, v4=True)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             v4_len, v4_ctes = -1, -1
             print(f"{label}: v4 ERROR {type(e).__name__}: {e}")
             continue

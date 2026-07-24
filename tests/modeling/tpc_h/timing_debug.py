@@ -7,8 +7,8 @@ path = Path(__file__).parents[3]
 print(path)
 sys.path.insert(0, str(path))
 
-from trilogy import Dialects, Executor, __version__  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects, Executor, __version__
+from trilogy.core.models.environment import Environment
 
 perf_logger = getLogger("trilogy.parse.performance")
 
@@ -26,7 +26,7 @@ def run_query(engine: Executor, start, idx: int):
     with open(working_path / f"adhoc{idx:02d}.preql") as f:
         text = f.read()
 
-    _, query = engine.environment.parse(text)
+    _, _query = engine.environment.parse(text)
     print("parsed files", datetime.now() - start)
     # _ = engine.generate_sql(query[-1])
 

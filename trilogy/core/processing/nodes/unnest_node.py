@@ -1,5 +1,3 @@
-from typing import List
-
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -15,12 +13,12 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concepts: List[BuildConcept],
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        unnest_concepts: list[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
     ):
         super().__init__(
@@ -38,7 +36,7 @@ class UnnestNode(StrategyNode):
         base = super()._resolve()
         lineage = self.unnest_concepts[0].lineage
         assert isinstance(lineage, BuildFunction)
-        final = "_".join(set([c.address for c in self.unnest_concepts]))
+        final = "_".join({c.address for c in self.unnest_concepts})
         unnest = UnnestJoin(
             concepts=self.unnest_concepts,
             parent=lineage,

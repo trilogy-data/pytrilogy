@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Generator, List, Optional, Protocol
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import TextClause
@@ -54,19 +55,18 @@ def unescape_literal_colons(sql: str) -> str:
 
 class ResultProtocol(Protocol):
 
-    def fetchall(self) -> List[Any]: ...
+    def fetchall(self) -> list[Any]: ...
 
-    def keys(self) -> List[str]: ...
+    def keys(self) -> list[str]: ...
 
-    def fetchone(self) -> Optional[Any]: ...
+    def fetchone(self) -> Any | None: ...
 
-    def fetchmany(self, size: int) -> List[Any]: ...
+    def fetchmany(self, size: int) -> list[Any]: ...
 
-    def __iter__(self) -> Generator[Any, None, None]: ...
+    def __iter__(self) -> Iterator[Any]: ...
 
 
 class EngineConnection(Protocol):
-    pass
 
     def execute(
         self, statement: str | TextClause, parameters: Any | None = None
@@ -87,7 +87,6 @@ class EngineConnection(Protocol):
 
 
 class ExecutionEngine(Protocol):
-    pass
 
     def connect(self) -> EngineConnection:
         pass

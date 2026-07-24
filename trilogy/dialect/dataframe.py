@@ -37,7 +37,6 @@ class DataframeConnectionWrapper(ExecutionEngine):
                 raise ValueError(
                     f"Dataframe {ds.safe_address} not found in dataframes on connection config, have {self.dataframes.keys()}"
                 )
-        pass
 
     def add_dataframe(self, name: str, df: "DataFrame", connection, env: Environment):
         self.dataframes[name] = df

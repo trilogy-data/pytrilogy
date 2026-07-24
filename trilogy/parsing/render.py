@@ -65,6 +65,7 @@ from trilogy.core.models.core import (
     NumericType,
     TraitDataType,
     TupleWrapper,
+    ValidatedType,
 )
 from trilogy.core.models.datasource import (
     Address,
@@ -421,7 +422,7 @@ class Renderer:
 
     @singledispatchmethod
     def to_string(self, arg):
-        raise NotImplementedError("Cannot render type {}".format(type(arg)))
+        raise NotImplementedError(f"Cannot render type {type(arg)}")
 
     @to_string.register
     def _(self, arg: Environment):
@@ -456,7 +457,7 @@ class Renderer:
                 if concept.keys:
                     # avoid duplicate declarations
                     # but we need better composite key support
-                    for key in sorted(list(concept.keys))[:1]:
+                    for key in sorted(concept.keys)[:1]:
                         properties[key].append(concept)
                 else:
                     keys.append(concept)
@@ -499,7 +500,7 @@ class Renderer:
             if datasource.namespace == DEFAULT_NAMESPACE
         ]
         rendered_imports = []
-        for _, imports in arg.imports.items():
+        for imports in arg.imports.values():
             for import_statement in imports:
                 rendered_imports.append(self.to_string(import_statement))
         components = []
@@ -656,7 +657,29 @@ class Renderer:
     @to_string.register
     def _(self, arg: TraitDataType):
         traits = "::".join([x for x in arg.traits])
-        return f"{self.to_string(arg.data_type)}::{traits}"
+        base = arg.data_type
+        if isinstance(base, ValidatedType) and self.environment:
+            # a validator carried from a declared trait type is restored on
+            # re-parse, so render the authored bare base — keeps ingest output
+            # and fmt round-trips byte-stable
+            for trait in arg.traits:
+                declared = self.environment.data_types.get(trait)
+                if (
+                    declared is not None
+                    and isinstance(declared.type, ValidatedType)
+                    and declared.type.ranges == base.ranges
+                    and declared.type.pattern == base.pattern
+                ):
+                    base = base.type
+                    break
+        return f"{self.to_string(base)}::{traits}"
+
+    @to_string.register
+    def _(self, arg: ValidatedType):
+        base = self.to_string(arg.type)
+        if arg.pattern is not None:
+            return f"{base}['{arg.pattern}']"
+        return f"{base}[{', '.join(str(r) for r in arg.ranges)}]"
 
     @to_string.register
     def _(self, arg: ListWrapper):
@@ -721,9 +744,12 @@ class Renderer:
         keyword fall outside that set and should not re-emit ``~``.
         """
         mods: list[Modifier] = list(arg.modifiers)
-        if explicit_partial is not None and Modifier.PARTIAL in mods:
-            if arg.concept.address not in explicit_partial:
-                mods = [m for m in mods if m != Modifier.PARTIAL]
+        if (
+            explicit_partial is not None
+            and Modifier.PARTIAL in mods
+            and arg.concept.address not in explicit_partial
+        ):
+            mods = [m for m in mods if m != Modifier.PARTIAL]
         if mods:
             modifiers = "".join(self.to_string(m) for m in sorted(mods))
         else:
@@ -854,7 +880,7 @@ class Renderer:
         keys_set = concepts[0].keys or set()
         if len(keys_set) == 1:
             key_str = self.to_string(
-                ConceptRef(address=safe_address(list(keys_set)[0]))
+                ConceptRef(address=safe_address(next(iter(keys_set))))
             )
         else:
             # Parser takes the property block's namespace from the first
@@ -947,8 +973,7 @@ class Renderer:
         if isinstance(content, ShowCategory):
             return f"show {content.value};"
         body = self.to_string(content)
-        if body.endswith(";"):
-            body = body[:-1]
+        body = body.removesuffix(";")
         return f"show {body};"
 
     @to_string.register
@@ -1141,9 +1166,10 @@ class Renderer:
         content = self.to_string(arg.content)
         # Plain identifiers can sit naked on the LHS of ``?``; anything else
         # must be parenthesized so the grammar's ``_filter_alt`` rule binds it.
-        if not isinstance(arg.content, (ConceptRef, Concept)):
-            if not (content.startswith("(") and content.endswith(")")):
-                content = f"({content})"
+        if not isinstance(arg.content, (ConceptRef, Concept)) and not (
+            content.startswith("(") and content.endswith(")")
+        ):
+            content = f"({content})"
         where = self.to_string(arg.where)
         return self._pretty(
             [content, Break(priority=8, indent=1, flat=" "), f"? {where}"]
@@ -1261,8 +1287,7 @@ class Renderer:
         path = str(raw_path).replace("\\", ".").replace("/", ".")
         if path.endswith(".preql"):
             path = path.rsplit(".", 1)[0]
-        if path.startswith("."):
-            path = path[1:]
+        path = path.removeprefix(".")
         return path
 
     @to_string.register
@@ -1406,7 +1431,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: KeyMergeStatement):
-        keys = ", ".join(sorted(list(arg.keys)))
+        keys = ", ".join(sorted(arg.keys))
         return f"merge property <{keys}> from {arg.target.address};"
 
     @to_string.register

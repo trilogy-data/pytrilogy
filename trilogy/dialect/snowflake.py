@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode
@@ -87,8 +90,11 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class SnowflakeDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
@@ -132,7 +138,7 @@ class SnowflakeDialect(BaseDialect):
     # Snowflake information_schema reports internal type names that differ from DDL tokens.
     # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ".
     # Extends the shared base map; bare TIMESTAMP defaults to TIMESTAMP_NTZ semantics.
-    DB_COLUMN_TYPE_MAP = {
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "text": DataType.STRING,
         "number": DataType.INTEGER,

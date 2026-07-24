@@ -59,6 +59,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query
+from trilogy.parsing.v2.model import HydrationError
 
 
 def test_basic_query(test_environment):
@@ -452,7 +453,7 @@ def test_render_case(test_environment: Environment):
     test = Renderer().to_string(case_when)
     assert test == "when order_id = 123 then order_id"
 
-    env, parsed = Environment().parse("""
+    _env, parsed = Environment().parse("""
 
 key x int;
 auto y <- case when x = 1 then 1 else 2 end;""")
@@ -465,7 +466,7 @@ end;""", test
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
-    env, parsed = Environment().parse("""
+    _env, parsed = Environment().parse("""
 
 key category_name string;
 auto y <- CASE 
@@ -655,7 +656,7 @@ def test_render_merge():
 
 def test_render_merge_property():
     test = Renderer().to_string(
-        KeyMergeStatement(keys=set(["abc", "def"]), target=ConceptRef(address="abc.id"))
+        KeyMergeStatement(keys={"abc", "def"}, target=ConceptRef(address="abc.id"))
     )
     assert test == "merge property <abc, def> from abc.id;"
 
@@ -1149,7 +1150,7 @@ order by
 def test_render_substring_filter():
     basic = Environment()
 
-    env, commands = basic.parse(
+    _env, commands = basic.parse(
         """
 key id list<int>;
 
@@ -1328,7 +1329,7 @@ auto wsum <- sum(x + 1) over (partition by y order by z);
 def test_render_window_aggregate_over_with_by_rejected():
     """Mixing `by` aggregate grouping with `over (...)` is a parse error."""
     env = Environment()
-    with pytest.raises(Exception):
+    with pytest.raises(HydrationError):
         env.parse("""
 key x int;
 key y int;
@@ -1340,7 +1341,7 @@ auto wsum <- sum(x) by y over (partition by y order by z);
 def test_render_window_aggregate_over_unmappable_aggregate_rejected():
     """An aggregate with no window equivalent (array_agg) can't take `over`."""
     env = Environment()
-    with pytest.raises(Exception):
+    with pytest.raises(HydrationError):
         env.parse("""
 key x int;
 key y int;
@@ -1451,7 +1452,7 @@ property y.y_name string;
 def test_render_trait_type():
     basic = Environment()
 
-    env, commands = basic.parse(
+    _env, commands = basic.parse(
         """
     type email string;
 
@@ -1468,7 +1469,7 @@ def test_render_trait_type():
 def test_render_function():
     basic = Environment()
 
-    env, commands = basic.parse(
+    _env, commands = basic.parse(
         """
 
 def add_thrice(x)-> x +x + x;
@@ -1487,7 +1488,7 @@ select
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
 
-    env, commands = basic.parse("""
+    _env, commands = basic.parse("""
     select round(@add_thrice(1),2) as test_sum;
                 """)
     expected = [
@@ -1519,7 +1520,7 @@ property id.x int;
 # new section
 property id.y int;
 """
-    env, queries = Environment().parse(src)
+    _env, queries = Environment().parse(src)
     kinds = [type(q).__name__ for q in queries]
     assert kinds == [
         "ConceptDeclarationStatement",
@@ -1544,7 +1545,7 @@ property id.y int;
 def test_render_function_trailing_comment():
     basic = Environment()
 
-    env, commands = basic.parse("""
+    _env, commands = basic.parse("""
 def add_thrice(x) -> x + x + x; # multiply x by three via addition
 """)
     rendered = Renderer().to_string(commands[0])
@@ -1561,7 +1562,7 @@ def add_thrice(x) -> x + x + x; # multiply x by three via addition
 def test_render_map():
     basic = Environment()
 
-    env, commands = basic.parse("""
+    _env, commands = basic.parse("""
    const num_map <- {1: 10, 2: 20};
    """)
     expected = [
@@ -1575,7 +1576,7 @@ def test_render_map():
 def test_render_struct():
     basic = Environment()
 
-    env, commands = basic.parse("""
+    _env, commands = basic.parse("""
    const x <- 1;
    const y <- 2;
 

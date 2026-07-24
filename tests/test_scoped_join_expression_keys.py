@@ -8,9 +8,9 @@ parse shape, end-to-end execution, and the equality-only constraint, on both
 grammar backends.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
@@ -248,9 +248,8 @@ def test_non_equality_operator_rejected(models: Path, backend: ParserBackend) ->
         "import orders as orders;\nimport customers as customers;\n"
         "subset join orders.ckey > customers.cid SELECT customers.region;"
     )
-    with _using_backend(backend):
-        with pytest.raises(InvalidSyntaxException, match="join"):
-            parse_text(text, root=models)
+    with _using_backend(backend), pytest.raises(InvalidSyntaxException, match="join"):
+        parse_text(text, root=models)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -260,9 +259,10 @@ def test_scoped_inner_join_rejected(models: Path, backend: ParserBackend) -> Non
         "import orders as orders;\nimport customers as customers;\n"
         "INNER JOIN orders.ckey = customers.cid SELECT customers.region;"
     )
-    with _using_backend(backend):
-        with pytest.raises(HydrationError, match="inner` join is not supported"):
-            parse_text(text, root=models)
+    with _using_backend(backend), pytest.raises(
+        HydrationError, match="inner` join is not supported"
+    ):
+        parse_text(text, root=models)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -274,8 +274,7 @@ def test_filter_chained_onto_join_points_to_where(
         "subset join customers.cid = orders.ckey and orders.amt > 0 "
         "SELECT customers.region;"
     )
-    with _using_backend(backend):
-        with pytest.raises(
-            InvalidSyntaxException, match="Filter input rows in `where`"
-        ):
-            parse_text(text, root=models)
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="Filter input rows in `where`"
+    ):
+        parse_text(text, root=models)

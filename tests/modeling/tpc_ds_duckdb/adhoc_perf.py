@@ -16,15 +16,15 @@ local_pytrilogy_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(local_pytrilogy_path))
 
 
-from trilogy import Dialects  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 
 
 def setup_environment():
     """Setup the environment exactly as in the original test."""
     working_path = Path(__file__).parent
 
-    env, imports = Environment(working_path=working_path).parse("""
+    env, _imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
 import customer_demographic as pos_customer_demographic;

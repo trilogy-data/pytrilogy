@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Literal, Union
+from typing import Literal
 
 from trilogy.constants import (
     DEFAULT_NAMESPACE,
@@ -978,7 +978,7 @@ class _Extractor:
 
 
 def extract_derived_value_scopes(
-    statement: Union[BuildSelectLineage, BuildMultiSelectLineage],
+    statement: BuildSelectLineage | BuildMultiSelectLineage,
     environment: Environment | None = None,
     scoped_joins: list[SelectJoin] | None = None,
 ) -> list[DerivedValueScope]:

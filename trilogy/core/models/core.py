@@ -1,18 +1,15 @@
 from __future__ import annotations
 
+import re
 from collections import UserDict, UserList
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import (
     Any,
-    Callable,
-    Dict,
     Generic,
-    List,
-    Sequence,
-    Tuple,
     TypeVar,
     Union,
     get_args,
@@ -23,7 +20,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import DatePart, Modifier, Ordering
+from trilogy.core.enums import ComparisonOperator, DatePart, Modifier, Ordering
 
 
 class DataTyped:
@@ -46,6 +43,7 @@ TYPEDEF_TYPES = Union[
     "DataTyped",
     "TraitDataType",
     "EnumType",
+    "ValidatedType",
 ]
 
 CONCRETE_TYPES = Union[
@@ -56,6 +54,7 @@ CONCRETE_TYPES = Union[
     "StructType",
     "TraitDataType",
     "EnumType",
+    "ValidatedType",
 ]
 
 KT = TypeVar("KT")
@@ -115,7 +114,7 @@ class TraitDataType:
             return self.type == other
         elif isinstance(other, TraitDataType):
             return self.type == other.type and self.traits == other.traits
-        elif isinstance(other, EnumType):
+        elif isinstance(other, (EnumType, ValidatedType)):
             return self.type == other.type
         return False
 
@@ -164,7 +163,7 @@ class EnumType:
             return self.type == other
         if isinstance(other, EnumType):
             return self.type == other.type and self.values == other.values
-        if isinstance(other, TraitDataType):
+        if isinstance(other, (TraitDataType, ValidatedType)):
             return self.type == other.type
         return False
 
@@ -175,6 +174,100 @@ class EnumType:
     @property
     def value(self) -> str:
         return self.type.value
+
+
+RANGE_BOUND_TYPES = int | float | date | datetime | None
+
+
+def _render_bound(value: RANGE_BOUND_TYPES) -> str:
+    if isinstance(value, (date, datetime)):
+        return f"'{value.isoformat()}'"
+    return str(value)
+
+
+@dataclass(frozen=True)
+class ValueRange:
+    min: RANGE_BOUND_TYPES = None
+    max: RANGE_BOUND_TYPES = None
+
+    def __post_init__(self):
+        if self.min is None and self.max is None:
+            raise ValueError("ValueRange requires at least one bound")
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError(f"ValueRange min {self.min} exceeds max {self.max}")
+
+    def __str__(self) -> str:
+        if self.min is not None and self.min == self.max:
+            return _render_bound(self.min)
+        left = _render_bound(self.min) if self.min is not None else ""
+        right = _render_bound(self.max) if self.max is not None else ""
+        return f"{left}..{right}"
+
+    def contains(self, value: Any) -> bool:
+        try:
+            if self.min is not None and value < self.min:
+                return False
+            if self.max is not None and value > self.max:
+                return False
+        except TypeError:
+            return False
+        return True
+
+
+@dataclass
+class ValidatedType:
+    """A base type constrained by declared validators: inclusive value ranges
+    (numeric/date/datetime bases) or a full-match regex (string base).
+    Compares equal to its bare base type, mirroring EnumType/TraitDataType."""
+
+    type: DataType | NumericType
+    ranges: tuple[ValueRange, ...] = ()
+    pattern: str | None = None
+
+    def __hash__(self):
+        return hash(self.type)
+
+    def __str__(self) -> str:
+        if isinstance(self.type, NumericType):
+            base = f"numeric({self.type.precision},{self.type.scale})"
+        else:
+            base = self.type.value
+        if self.pattern is not None:
+            return f"{base}[{self.pattern!r}]"
+        return f"{base}[{', '.join(str(r) for r in self.ranges)}]"
+
+    def __eq__(self, other):
+        if isinstance(other, DataType):
+            return self.type == other
+        if isinstance(other, ValidatedType):
+            return (
+                self.type == other.type
+                and self.ranges == other.ranges
+                and self.pattern == other.pattern
+            )
+        if isinstance(other, (TraitDataType, EnumType)):
+            return self.type == other.type
+        return False
+
+    @property
+    def data_type(self) -> DataType:
+        if isinstance(self.type, NumericType):
+            return DataType.NUMERIC
+        return self.type
+
+    @property
+    def value(self) -> str:
+        return self.data_type.value
+
+    def check_value(self, value: Any) -> bool:
+        """True when a non-null value satisfies the declared validators."""
+        if self.pattern is not None:
+            return (
+                isinstance(value, str) and re.fullmatch(self.pattern, value) is not None
+            )
+        if not self.ranges:
+            return True
+        return any(r.contains(value) for r in self.ranges)
 
 
 @dataclass(frozen=True)
@@ -259,7 +352,7 @@ class StructComponent:
 @dataclass
 class StructType:
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
-    fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
+    fields_map: dict[str, DataTyped | int | float | str | StructComponent]
 
     @classmethod
     def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
@@ -268,7 +361,7 @@ class StructType:
     def __repr__(self):
         return "struct<{}>".format(
             ", ".join(
-                f"{f.name}:{str(f.type)}"
+                f"{f.name}:{f.type!s}"
                 for f in self.fields
                 if isinstance(f, StructComponent)
             )
@@ -286,8 +379,8 @@ class StructType:
         return self.data_type.value
 
     @property
-    def field_types(self) -> Dict[str, CONCRETE_TYPES]:
-        out: Dict[str, CONCRETE_TYPES] = {}
+    def field_types(self) -> dict[str, CONCRETE_TYPES]:
+        out: dict[str, CONCRETE_TYPES] = {}
         keys = list(self.fields_map.keys())
         for idx, f in enumerate(self.fields):
             if isinstance(f, StructComponent):
@@ -302,7 +395,7 @@ class StructType:
         return hash(str(self))
 
 
-class ListWrapper(Generic[VT], UserList):
+class ListWrapper(UserList, Generic[VT]):
     """Used to distinguish parsed list objects from other lists"""
 
     def __init__(self, *args, type: DataType, nullable: bool = False, **kwargs):
@@ -316,9 +409,9 @@ class ListWrapper(Generic[VT], UserList):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(List[args])  # type: ignore
+            schema = handler(list[args])  # type: ignore
         else:
-            schema = handler(List)
+            schema = handler(list)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod
@@ -326,7 +419,7 @@ class ListWrapper(Generic[VT], UserList):
         return cls(v, type=arg_to_datatype(v[0]))
 
 
-class MapWrapper(Generic[KT, VT], UserDict):
+class MapWrapper(UserDict, Generic[KT, VT]):
     """Used to distinguish parsed map objects from other dicts"""
 
     def __init__(self, *args, key_type: DataType, value_type: DataType, **kwargs):
@@ -340,9 +433,9 @@ class MapWrapper(Generic[KT, VT], UserDict):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(Dict[args])  # type: ignore
+            schema = handler(dict[args])  # type: ignore
         else:
-            schema = handler(Dict)
+            schema = handler(dict)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod
@@ -354,7 +447,7 @@ class MapWrapper(Generic[KT, VT], UserDict):
         )
 
 
-class TupleWrapper(Generic[VT], tuple):
+class TupleWrapper(tuple, Generic[VT]):
     """Used to distinguish parsed tuple objects from other tuples"""
 
     def __init__(self, val, type: CONCRETE_TYPES, nullable: bool = False, **kwargs):
@@ -376,9 +469,9 @@ class TupleWrapper(Generic[VT], tuple):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(Tuple[args])  # type: ignore
+            schema = handler(tuple[args])  # type: ignore
         else:
-            schema = handler(Tuple)
+            schema = handler(tuple)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod
@@ -405,7 +498,7 @@ def tuple_to_wrapper(args):
 
 
 def dict_to_map_wrapper(arg):
-    key_types = [arg_to_datatype(arg) for arg in arg.keys()]
+    key_types = [arg_to_datatype(arg) for arg in arg]
 
     value_types = [arg_to_datatype(arg) for arg in arg.values()]
     assert len(set(key_types)) == 1
@@ -479,6 +572,12 @@ def is_compatible_datatype(left, right):
         return is_compatible_datatype(left.type, right)
     if isinstance(right, EnumType):
         return is_compatible_datatype(left, right.type)
+    # A validated type is a constrained domain over a base type — structurally
+    # compatible with that base; the constraint itself is enforced separately.
+    if isinstance(left, ValidatedType):
+        return is_compatible_datatype(left.type, right)
+    if isinstance(right, ValidatedType):
+        return is_compatible_datatype(left, right.type)
     if left == DataType.ANY or right == DataType.ANY:
         return True
     if left == DataType.NULL or right == DataType.NULL:
@@ -510,9 +609,107 @@ def is_compatible_datatype(left, right):
 
     if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
         return True
-    if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
-        return True
-    return False
+    return {left, right} == {DataType.FLOAT, DataType.INTEGER}
+
+
+def _envelope_violation(
+    domain: str,
+    operator: ComparisonOperator,
+    value: Any,
+    global_min: Any,
+    global_max: Any,
+) -> str | None:
+    try:
+        if operator == ComparisonOperator.GT:
+            if global_max is not None and global_max <= value:
+                return f"declared domain {domain} has no value > {_render_bound(value)}"
+        elif operator == ComparisonOperator.GTE:
+            if global_max is not None and global_max < value:
+                return (
+                    f"declared domain {domain} has no value >= {_render_bound(value)}"
+                )
+        elif operator == ComparisonOperator.LT:
+            if global_min is not None and global_min >= value:
+                return f"declared domain {domain} has no value < {_render_bound(value)}"
+        elif (
+            operator == ComparisonOperator.LTE
+            and global_min is not None
+            and global_min > value
+        ):
+            return f"declared domain {domain} has no value <= {_render_bound(value)}"
+    except TypeError:
+        return None
+    return None
+
+
+def constant_domain_violation(
+    expected: Any,
+    operator: ComparisonOperator,
+    value: Any,
+) -> str | None:
+    """A reason string when comparing a literal against a concept whose declared
+    domain (ValidatedType ranges/regex or EnumType membership) makes the
+    comparison provably never match; None when satisfiable or undecidable.
+
+    Only provably-FALSE predicates are flagged. In-domain predicates — even
+    ones matching every declared value — must parse untouched: they can carry
+    load-bearing join null-rejection through nullable FK paths
+    (evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md),
+    and a narrower authored intent than the current domain snapshot is
+    legitimate. Error messages must never advise removing a predicate."""
+    while isinstance(expected, TraitDataType):
+        expected = expected.type
+    if isinstance(value, Enum):
+        return None
+    if isinstance(expected, EnumType):
+        members = expected.values
+        if not members:
+            return None
+        if operator in (ComparisonOperator.EQ, ComparisonOperator.IN):
+            if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                return None
+            if value not in members:
+                return (
+                    f"{value!r} can never match a declared value of {expected} — "
+                    "fix the constant, or update the enum declaration if the "
+                    "domain is stale"
+                )
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            return None
+        if not all(
+            isinstance(m, (int, float)) and not isinstance(m, bool) for m in members
+        ):
+            return None
+        return _envelope_violation(
+            str(expected), operator, value, min(members), max(members)
+        )
+    if not isinstance(expected, ValidatedType):
+        return None
+    if expected.pattern is not None:
+        if operator not in (ComparisonOperator.EQ, ComparisonOperator.IN):
+            return None
+        if not isinstance(value, str):
+            return None
+        if not expected.check_value(value):
+            return f"{value!r} can never match declared pattern {expected}"
+        return None
+    if not expected.ranges:
+        return None
+    if expected.data_type in (DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP):
+        if not isinstance(value, (date, datetime)):
+            return None
+    elif isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return None
+    if operator in (ComparisonOperator.EQ, ComparisonOperator.IN):
+        if not expected.check_value(value):
+            return f"{value!r} is outside declared domain {expected}"
+        return None
+    mins: list[Any] = [r.min for r in expected.ranges]
+    maxes: list[Any] = [r.max for r in expected.ranges]
+    global_min = None if any(m is None for m in mins) else min(mins)
+    global_max = None if any(m is None for m in maxes) else max(maxes)
+    return _envelope_violation(str(expected), operator, value, global_min, global_max)
 
 
 def reduce_tuple_element_datatypes(
@@ -568,6 +765,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             | ArrayType()
             | MapType()
             | EnumType()
+            | ValidatedType()
             | StructType()
         ):
             return arg

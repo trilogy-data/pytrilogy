@@ -658,6 +658,36 @@ theme = "inter"
   `trilogy render` and chart `copy into` exports; overridable per invocation
   with `--theme` / `copy (theme='...')`.
 
+## Environment variables and secrets
+
+String values anywhere in `trilogy.toml` may reference environment variables
+with `${env:VAR_NAME}`, resolved at config-load time. Never write credentials
+as literals — reference the environment instead:
+
+```toml
+env_file = ".env"          # optional: loads VAR=value lines into the environment first
+
+[engine]
+dialect = "postgres"
+
+[engine.config]
+host = "db.example.com"
+port = 5432
+username = "analytics"
+password = "${env:PG_PASSWORD}"
+database = "warehouse"
+```
+
+- Values may mix literal text and multiple refs:
+  `"postgresql://${env:PG_USER}:${env:PG_PASSWORD}@host/db"`.
+- `$${env:...}` escapes to a literal `${env:...}`; resolution is a single
+  pass (resolved values are never re-expanded).
+- Only string values are interpolated; a ref always yields a string.
+- Undefined variables fail at load time, naming every missing variable.
+- Precedence: shell environment < `env_file` < CLI `--env` values.
+- `[serve.connection]` values are published to clients verbatim (refs are NOT
+  resolved there) — keep that section non-secret.
+
 ## API keys
 
 `[agent]` reads keys from environment variables — never from `trilogy.toml`:

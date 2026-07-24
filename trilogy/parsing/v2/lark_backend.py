@@ -31,14 +31,14 @@ if TYPE_CHECKING:
     from lark import Lark
     from lark.exceptions import UnexpectedToken
 
-_PARSER: "Lark | None" = None
+_PARSER: Lark | None = None
 
 
 def _grammar_path() -> str:
     return join(dirname(dirname(__file__)), "trilogy.lark")
 
 
-def _get_parser() -> "Lark":
+def _get_parser() -> Lark:
     global _PARSER
     if _PARSER is None:
         from lark import Lark
@@ -121,7 +121,7 @@ def _detect_unparenthesized_by_expr_lark(text: str, pos: int) -> int | None:
     return None
 
 
-def _handle_unexpected_token(e: "UnexpectedToken", text: str) -> None:
+def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     from lark import Token
     from lark.exceptions import UnexpectedToken as _UnexpectedToken
 
