@@ -5,12 +5,16 @@ each generated query against the benchmark's reference query (``PRAGMA
 from __future__ import annotations
 
 import json
-import math
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
-from decimal import Decimal
 from pathlib import Path
-from typing import cast
+
+# Row comparison lives in the trilogy package so the eval harness and the
+# `validate ... matches` agent-validation loop grade with identical semantics.
+# The move also fixed the asymmetric exact-integer carve-out that false-failed
+# whole-dollar sums >= 1e6 (q66): numeric cells now compare with the same
+# relative tolerance on both sides.
+from trilogy.core.validation.rows import rows_equal_tolerant as _results_equal
 
 # Marker the agent's ``truncate_middle`` emits. We detect it in tool_result
 # bodies to count how many responses came back truncated.
@@ -282,182 +286,6 @@ def metrics_from_dict(d: dict) -> AgentMetrics:
             )
             for tool, s in d.get("tool_output_stats", {}).items()
         },
-    )
-
-
-# Significant figures used to canonicalize non-integer numeric cells before
-# comparison. A single-precision (`float32`) accumulation — e.g. a `0::float`
-# placeholder that coerces a money column to REAL — carries only ~7 significant
-# digits, so exact `DECIMAL(7,2)` reference sums and the Trilogy float sum can
-# diverge in the 7th+ significant digit (q05: grand total 112458735.49 vs
-# 112458734.70). Rounding both sides to 6 significant figures absorbs that drift
-# while staying far stricter than any genuine TPC-DS/H result difference (which
-# is proportionally much larger than 1e-6). Integer counts/ids are kept EXACT
-# (see below) so this tolerance never merges two distinct row counts.
-COMPARISON_SIG_FIGS = 6
-
-
-def _sig_round(x: float, sig: int) -> float:
-    """Round ``x`` to ``sig`` significant figures (relative precision)."""
-    if x == 0.0:
-        return 0.0
-    return round(x, -math.floor(math.log10(abs(x))) + (sig - 1))
-
-
-def _round_cell(v: object) -> object:
-    """Canonicalize numeric cells so values that are numerically equal compare
-    equal regardless of Python type. The reference SQL emits ``Decimal`` for
-    money/quantity columns while Trilogy-generated SQL often emits ``float``; an
-    exact ``repr`` comparison wrongly flagged equal values as mismatches (e.g.
-    ``19640463.31`` vs ``Decimal('19640463.31')``), silently failing correct
-    answers. We coerce ``int``/``float``/``Decimal`` to a float; exact-integer
-    values (row counts, ids) are kept precise, while fractional values are
-    rounded to ``COMPARISON_SIG_FIGS`` significant figures. That absorbs
-    float32/last-ULP arithmetic-order noise (`a*100/b` vs `100*a/b`) proportional
-    to magnitude — which a fixed decimal-place round cannot, since the drift on a
-    large sum is an absolute value, not a sub-decimal one. Booleans, non-finite
-    values, out-of-range ints, and non-numeric cells are left untouched."""
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, Decimal):
-        if not v.is_finite():
-            return v
-        v = float(v)
-    if isinstance(v, int):
-        if abs(v) >= 2**53:
-            return v
-        v = float(v)
-    if isinstance(v, float):
-        if math.isnan(v) or v in (float("inf"), float("-inf")):
-            return v
-        if v == int(v) and abs(v) < 2**53:
-            return float(int(v))  # exact integer value (count/id): keep precise
-        return _sig_round(v, COMPARISON_SIG_FIGS)
-    return v
-
-
-def _multiset(rows: list) -> Counter[str]:
-    """Order-independent representation of a result set, for comparison.
-
-    Both row order and column order are ignored: the prompts ask for a set of
-    values, not a fixed column layout, so each row's cells are sorted before
-    hashing. Only whether the right data was computed is graded."""
-    return Counter(
-        repr(tuple(sorted((_round_cell(c) for c in r), key=repr))) for r in rows
-    )
-
-
-COMPARISON_REL_TOL = 10 ** (1 - COMPARISON_SIG_FIGS)
-COMPARISON_ABS_TOL = 1e-9
-
-
-def _comparison_cell(value: object) -> tuple[str, object]:
-    """Split non-numerics from numerics and retain exact-integer provenance."""
-    if isinstance(value, bool):
-        return ("exact", repr(value))
-    if isinstance(value, Decimal):
-        if not value.is_finite():
-            return ("exact", repr(value))
-        if value == value.to_integral_value():
-            return ("numeric", (float(value), True))
-        return ("numeric", (float(value), False))
-    if isinstance(value, int):
-        return ("numeric", (float(value), True))
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            return ("exact", repr(value))
-        if value.is_integer() and abs(value) < 2**53:
-            return ("numeric", (value, True))
-        return ("numeric", (value, False))
-    return ("exact", repr(value))
-
-
-def _comparison_row(
-    row: list | tuple,
-) -> tuple[tuple[tuple[str, object], ...], tuple[tuple[float, bool], ...]]:
-    cells = [_comparison_cell(value) for value in row]
-    exact = tuple(sorted((cell for cell in cells if cell[0] == "exact"), key=repr))
-    numeric = tuple(
-        sorted(
-            (
-                cast(tuple[float, bool], cell[1])
-                for cell in cells
-                if cell[0] == "numeric"
-            ),
-            key=lambda x: x[0],
-        )
-    )
-    return exact, numeric
-
-
-def _numeric_rows_close(
-    left: tuple[tuple[float, bool], ...], right: tuple[tuple[float, bool], ...]
-) -> bool:
-    if len(left) != len(right):
-        return False
-    for (a, a_is_integer), (b, b_is_integer) in zip(left, right):
-        if a_is_integer and b_is_integer:
-            if a != b:
-                return False
-        elif not math.isclose(
-            a, b, rel_tol=COMPARISON_REL_TOL, abs_tol=COMPARISON_ABS_TOL
-        ):
-            return False
-    return True
-
-
-def _bucket_matches(
-    candidate: list[tuple[tuple[float, bool], ...]],
-    reference: list[tuple[tuple[float, bool], ...]],
-) -> bool:
-    """Maximum-match one exact-value bucket under tolerant numeric equality."""
-    if len(candidate) != len(reference):
-        return False
-    matched_candidate: dict[int, int] = {}
-
-    def assign(reference_idx: int, seen: set[int]) -> bool:
-        for candidate_idx, candidate_row in enumerate(candidate):
-            if candidate_idx in seen or not _numeric_rows_close(
-                candidate_row, reference[reference_idx]
-            ):
-                continue
-            seen.add(candidate_idx)
-            previous = matched_candidate.get(candidate_idx)
-            if previous is None or assign(previous, seen):
-                matched_candidate[candidate_idx] = reference_idx
-                return True
-        return False
-
-    return all(assign(idx, set()) for idx in range(len(reference)))
-
-
-def _results_equal(candidate: list, reference: list) -> bool:
-    """Compare unordered rows/columns with exact integers and tolerant fractions.
-
-    Independent significant-figure rounding is not suitable for equality: two
-    nearly identical values can land on opposite sides of a rounding boundary.
-    Bucket rows by their exact cells, then maximum-match fractional cells with
-    ``isclose`` so multiset cardinality is still enforced.
-    """
-    if len(candidate) != len(reference):
-        return False
-    candidate_buckets: dict[
-        tuple[tuple[str, object], ...], list[tuple[tuple[float, bool], ...]]
-    ] = defaultdict(list)
-    reference_buckets: dict[
-        tuple[tuple[str, object], ...], list[tuple[tuple[float, bool], ...]]
-    ] = defaultdict(list)
-    for row in candidate:
-        exact, numeric = _comparison_row(row)
-        candidate_buckets[exact].append(numeric)
-    for row in reference:
-        exact, numeric = _comparison_row(row)
-        reference_buckets[exact].append(numeric)
-    if candidate_buckets.keys() != reference_buckets.keys():
-        return False
-    return all(
-        _bucket_matches(rows, reference_buckets[exact])
-        for exact, rows in candidate_buckets.items()
     )
 
 

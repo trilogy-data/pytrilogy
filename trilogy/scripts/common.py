@@ -53,6 +53,9 @@ class ExecutionStats:
     persist_count: int = 0
     update_count: int = 0
     validate_count: int = 0
+    agent_question_count: int = 0
+    agent_passed: int = 0
+    agent_skipped: int = 0
     refresh_queries: list[RefreshQuery] = field(default_factory=list)
 
     def __add__(self, other: "ExecutionStats") -> "ExecutionStats":
@@ -60,6 +63,9 @@ class ExecutionStats:
             persist_count=self.persist_count + other.persist_count,
             update_count=self.update_count + other.update_count,
             validate_count=self.validate_count + other.validate_count,
+            agent_question_count=self.agent_question_count + other.agent_question_count,
+            agent_passed=self.agent_passed + other.agent_passed,
+            agent_skipped=self.agent_skipped + other.agent_skipped,
             refresh_queries=self.refresh_queries + other.refresh_queries,
         )
 
@@ -79,6 +85,14 @@ def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> 
     if "validate" in stat_types and stats.validate_count > 0:
         label = "datasource" if stats.validate_count == 1 else "datasources"
         parts.append(f"{stats.validate_count} {label} validated")
+    if "validate" in stat_types and stats.agent_question_count > 0:
+        label = "question" if stats.agent_question_count == 1 else "questions"
+        parts.append(
+            f"{stats.agent_passed}/{stats.agent_question_count} agent {label} passed"
+        )
+    if "validate" in stat_types and stats.agent_skipped > 0:
+        label = "question" if stats.agent_skipped == 1 else "questions"
+        parts.append(f"{stats.agent_skipped} agent {label} skipped")
 
     return "; ".join(parts)
 
@@ -464,7 +478,11 @@ def create_executor(
         handle_execution_exception(e)
 
     # Create environment and set additional parameters if any exist
-    environment = Environment(working_path=str(directory), namespace=namespace)
+    environment = Environment(
+        working_path=str(directory),
+        namespace=namespace,
+        import_paths=list(config.import_paths),
+    )
     if env_params:
         environment.set_parameters(**env_params)
 
@@ -540,7 +558,10 @@ def _emit_progress_label(label: str) -> None:
 
 
 def validate_environment(
-    executor: Executor, mock: bool = False, quiet: bool = False
+    executor: Executor,
+    mock: bool = False,
+    quiet: bool = False,
+    scope: "Any | None" = None,
 ) -> None:
     """Validate the executor's environment (datasources + concepts) with consistent error handling.
 
@@ -548,6 +569,8 @@ def validate_environment(
         exec: The executor instance
         mock: If True, mock datasources before validation (for unit tests)
         quiet: If True, suppress informational messages (for parallel execution)
+        scope: Optional ValidationScope restricting what is validated
+            (defaults to ALL; used by the unit/integration test-type flags)
 
     Raises:
         Exit: If validation fails
@@ -556,6 +579,9 @@ def validate_environment(
     from trilogy.core.validation.environment import (
         validate_environment as core_validate_environment,
     )
+
+    if scope is None:
+        scope = ValidationScope.ALL
     from trilogy.scripts.display import (
         ValidationFailure,
         ValidationProgressContext,
@@ -593,7 +619,7 @@ def validate_environment(
         try:
             core_validate_environment(
                 executor.environment,
-                ValidationScope.ALL,
+                scope,
                 None,
                 exec=executor,
                 on_target_complete=on_target_complete_quiet,
@@ -634,7 +660,7 @@ def validate_environment(
         try:
             core_validate_environment(
                 executor.environment,
-                ValidationScope.ALL,
+                scope,
                 None,
                 exec=executor,
                 on_target_complete=on_target_complete,

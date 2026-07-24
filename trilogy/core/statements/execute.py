@@ -6,6 +6,7 @@ from trilogy.core.enums import (
     IOType,
     PersistMode,
     PublishAction,
+    QueryComparison,
     ScaleType,
     ValidationScope,
 )
@@ -93,6 +94,23 @@ class ProcessedRawSQLStatement:
 class ProcessedValidateStatement:
     scope: ValidationScope
     targets: list[str] | None
+
+
+@dataclass
+class ProcessedNaturalSelectStatement:
+    question: str
+
+
+@dataclass
+class ProcessedValidateNaturalStatement:
+    question: str
+    expected: ProcessedQuery
+    name: str | None
+    repetitions: int
+    target: float
+    comparison: QueryComparison
+    tags: list[str]
+    timeout: int | None
 
 
 @dataclass
@@ -194,6 +212,8 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedQueryPersist
     | ProcessedShowStatement
     | ProcessedValidateStatement
+    | ProcessedValidateNaturalStatement
+    | ProcessedNaturalSelectStatement
     | ProcessedCreateStatement
     | ProcessedPublishStatement
     | ProcessedMockStatement

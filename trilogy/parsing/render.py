@@ -20,6 +20,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     Purpose,
+    QueryComparison,
     ShowCategory,
     ValidationScope,
 )
@@ -86,6 +87,7 @@ from trilogy.core.statements.author import (
     KeyMergeStatement,
     MergeStatementV2,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PropertiesDeclarationStatement,
     RawSQLStatement,
@@ -94,6 +96,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.parsing.pretty import Break, DocPart
@@ -982,6 +985,30 @@ class Renderer:
             return "validate all;"
         targets = ",".join(arg.targets) if arg.targets else "*"
         return f"validate {arg.scope.value} {targets};"
+
+    @to_string.register
+    def _(self, arg: NaturalSelectStatement):
+        return f"select natural {self.to_string(arg.question)};"
+
+    @to_string.register
+    def _(self, arg: ValidateNaturalStatement):
+        name = f" {arg.name}" if arg.name else ""
+        natural = self.to_string(arg.query).removesuffix(";")
+        body = self.to_string(arg.expected).removesuffix(";").strip()
+        options: list[str] = []
+        if arg.repetitions != 1:
+            options.append(f"repetitions = {arg.repetitions}")
+        if arg.target != 1.0:
+            options.append(f"target = {arg.target}")
+        if arg.comparison is not QueryComparison.TOLERANT:
+            options.append(f"comparison = {arg.comparison.value}")
+        if arg.tags:
+            tags = ", ".join(self.to_string(t) for t in arg.tags)
+            options.append(f"tags = [{tags}]")
+        if arg.timeout is not None:
+            options.append(f"timeout = {arg.timeout}")
+        config = f" with ({', '.join(options)})" if options else ""
+        return f"validate{name} {natural}\nmatches (\n{body}\n){config};"
 
     @to_string.register
     def _(self, arg: SelectStatement):

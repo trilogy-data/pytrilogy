@@ -35,6 +35,7 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PropertiesDeclarationStatement,
     PublishStatement,
@@ -43,6 +44,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
@@ -52,11 +54,13 @@ from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedCreateStatement,
     ProcessedMockStatement,
+    ProcessedNaturalSelectStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
+    ProcessedValidateNaturalStatement,
     ProcessedValidateStatement,
 )
 from trilogy.core.validation.common import (
@@ -102,6 +106,8 @@ GENERATABLE_STATEMENT_TYPES = (
     RawSQLStatement,
     CopyStatement,
     ValidateStatement,
+    ValidateNaturalStatement,
+    NaturalSelectStatement,
     CreateStatement,
     PublishStatement,
     MockStatement,
@@ -460,6 +466,45 @@ class Executor:
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
+
+    @execute_query.register
+    def _(self, query: ValidateNaturalStatement) -> ResultProtocol | None:
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
+
+    @execute_query.register
+    def _(self, query: NaturalSelectStatement) -> ResultProtocol | None:
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
+
+    @execute_query.register
+    def _(self, query: ProcessedValidateNaturalStatement) -> ResultProtocol | None:
+        # The expected select was compiled at generate time (the free tier);
+        # the LLM loop only runs under `trilogy unit/integration --include-type
+        # agent`, never during normal execution.
+        return MockResult(
+            values=[
+                {
+                    "label": query.name or "",
+                    "question": query.question,
+                    "status": (
+                        "skipped - agent validation runs under trilogy "
+                        "unit/integration --include-type agent"
+                    ),
+                }
+            ],
+            columns=["label", "question", "status"],
+        )
+
+    @execute_query.register
+    def _(self, query: ProcessedNaturalSelectStatement) -> ResultProtocol | None:
+        from trilogy.scripts.validate_agent import execute_natural_select
+
+        return execute_natural_select(self, query.question)
 
     @execute_query.register
     def _(self, query: ProcessedMockStatement) -> ResultProtocol | None:

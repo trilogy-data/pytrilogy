@@ -14,6 +14,7 @@ from trilogy.parsing.v2.statement_plans import (
     MergeStatementPlan,
     MockStatementPlan,
     MultiSelectStatementPlan,
+    NaturalSelectStatementPlan,
     PersistStatementPlan,
     PublishStatementPlan,
     RawSQLStatementPlan,
@@ -187,6 +188,8 @@ class StatementPlanner:
                 return CreateStatementPlan(statement)
             case SyntaxNodeKind.VALIDATE_STATEMENT:
                 return ValidateStatementPlan(statement)
+            case SyntaxNodeKind.NATURAL_SELECT_STATEMENT:
+                return NaturalSelectStatementPlan(statement)
             case SyntaxNodeKind.MOCK_STATEMENT:
                 return MockStatementPlan(statement)
             case SyntaxNodeKind.PUBLISH_STATEMENT:

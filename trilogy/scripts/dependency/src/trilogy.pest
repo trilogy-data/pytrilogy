@@ -29,6 +29,7 @@ statement = _{
     | type_declaration
     | multi_select_statement
     | tvf_select_statement
+    | natural_select_statement
     | select_statement
     | persist_statement
     | rowset_derivation_statement
@@ -210,7 +211,18 @@ VALIDATE_SCOPE    = @{ ^"concepts" | ^"datasources" | ^"datasource" | ^"concept"
 validate_statement = {
       (^"validate" ~ ^"all")
     | (^"validate" ~ VALIDATE_SCOPE ~ (IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)?)
+    // the optional label must not eat the `select` keyword: PEG `?` commits once
+    // matched, so guard it with "what follows is not itself the natural select".
+    | (^"validate" ~ (!natural_select_statement ~ IDENTIFIER)? ~ natural_select_statement ~ ^"matches" ~ "(" ~ select_statement ~ ")" ~ validate_query_config?)
 }
+
+// natural-language select: an agent answers the question with a generated query.
+// Must precede select_statement in the statement alternation: PEG commits to a
+// successful alternative, and select_statement would consume `select natural`
+// as a one-item select list and strand the question string.
+natural_select_statement = { ^"select" ~ ^"natural" ~ string_lit }
+validate_query_option    = { IDENTIFIER ~ "=" ~ (literal | IDENTIFIER) }
+validate_query_config    = { ^"with" ~ "(" ~ validate_query_option ~ ("," ~ validate_query_option)* ~ ","? ~ ")" }
 
 mock_statement = { ^"mock" ~ VALIDATE_SCOPE ~ (IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)? }
 
@@ -278,7 +290,7 @@ rowset_derivation_statement = {
 show_category   = { CONCEPTS | DATASOURCES }
 CONCEPTS        = @{ ^"concepts" }
 DATASOURCES     = @{ ^"datasources" }
-show_statement  = { ^"show" ~ (show_category | validate_statement | select_statement | persist_statement) ~ _TERMINATOR }
+show_statement  = { ^"show" ~ (show_category | validate_statement | natural_select_statement | select_statement | persist_statement) ~ _TERMINATOR }
 
 // =============================================================================
 // SELECT-RELATED
