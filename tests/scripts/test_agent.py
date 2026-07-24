@@ -928,9 +928,9 @@ def test_build_provider_custom_api_key_env(monkeypatch):
 def test_build_provider_cli_provider_override(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("TRILOGY_AGENT_MODEL", raising=False)
-    provider = _build_provider(AgentConfig(), "gpt-5-chat-latest", "openai")
+    provider = _build_provider(AgentConfig(), "gpt-5.5", "openai")
     assert isinstance(provider, OpenAIProvider)
-    assert provider.model == "gpt-5-chat-latest"
+    assert provider.model == "gpt-5.5"
 
 
 def test_build_provider_cli_provider_override_rejects_unknown():

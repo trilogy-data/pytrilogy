@@ -38,7 +38,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
             rendered = generator.render_concept_sql(
                 factory.build(avg_user_post_count), cte
             )
-            assert '"post_length") as "user_avg_post_length"' in rendered
+            assert 'avg(length("posts"."text")) as "user_avg_post_length"' in rendered
             found = True
         if found:
             break
