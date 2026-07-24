@@ -321,22 +321,46 @@ matches (
   tomls always carry `import_paths = [<model dir>, ...model's own roots]`, so
   the agent's `answer.preql` resolves `import entrypoint;` regardless of
   seeding.
-- **Workspace seeding still copies the model's TEXT files** (`**/*.preql`,
-  `**/schema.md`, `trilogy.toml`) even with `import_paths`: the agent explores
-  the model by reading files in its cwd, and the copies re-anchor relative
-  file-datasource paths into the workspace (file paths absolutize against the
-  parsing env's working path). Data files are never copied; a relative local
-  `[engine.config] path` in the copied toml is rewritten to its absolute
-  location (remote prefixes and absolute paths untouched).
-- **Unit-tier mock scope**: the mock DuckDB materializes tables under each
-  datasource's ORIGINAL address (quoted addresses as one opaque identifier,
-  dotted names schema-qualified, deterministic seeded rows, committed to
-  file). File-addressed datasources (csv/tsv/parquet) under the model root are
-  mocked too: rows are written in the target format via DuckDB `COPY` into a
-  `mock_files/` staging tree, copied into each repetition workspace so the
-  workspace-anchored paths read them. Loud integration-tier errors remain for
-  what can't be intercepted: remote/outside-model files, globs/multi-file
-  arrays, hive-partitioned reads, and sql/python/query addresses.
+- **Unit tier repoints + re-renders the model into a "mock image"** (the
+  robust replacement for the original address-preserving mock, which had an
+  expected-side gap — see below). Setup, once per script:
+  1. **Materialize** deterministic mock rows for every datasource into a DuckDB
+     file, one table per datasource named by `_mock_name` (a hash of the
+     physical address, so it's stable). A single `MockManager` over the
+     flattened env gives shared concepts (join keys) the same values across
+     datasources, so **cross-datasource joins still match**.
+  2. **Repoint + re-render**: each model `.preql` is parsed, every datasource
+     `repoint`ed at its mock table (a new generic `Datasource.repoint(address)`),
+     and re-rendered with the standard Renderer into an image directory.
+     Because repointing replaces the address entirely, the original address
+     *type is irrelevant* — table, file, remote (`gs://`), query, and script
+     datasources all become mock tables, so the unit tier has **no
+     address-shape restrictions and never touches a remote**. Concept and
+     datasource descriptions round-trip through the renderer, preserving the
+     guidance the eval measures.
+  3. The image's toml points DuckDB at the mock database.
+  Each repetition workspace is a copy of the image. Both the candidate and the
+  expected are compiled *against the image*, so both read the mock tables.
+- **Expected side recompiled against the mock image**: the earlier design
+  compiled the expected once from the model env, which baked the datasources'
+  *original* absolute file paths — so for file/remote datasources the expected
+  read the real model file while the candidate read the mock (a correctness
+  gap that only table addresses, being location-independent names, avoided).
+  The unit tier now re-parses the validations file against the image
+  (`compile_expected_against_image`), making expected and candidate symmetric.
+- **The validations file is excluded from every workspace/image** — it holds
+  the `matches (...)` expected answers, and the agent has file-read access, so
+  seeding it would let the agent read the answer. (This was a latent leak in
+  the copy-everything seeding, fixed here.)
+- **Integration tier is unchanged**: real backend, original addresses,
+  precompiled expected; it seeds the real model files (minus the validations
+  file) and needs no repointing.
+- **Live-verified** end-to-end against a **parquet file datasource** (the case
+  the earlier design got wrong): `trilogy unit <model> --include-type agent`
+  with an Anthropic agent → the agent's query and the recompiled expected both
+  read the mock tables and matched (pass). Per-file re-render preserves std
+  imports and traits (`int::year`, `string::us_state_short`, `enum<...>`), so
+  real trait-using public models build cleanly.
 - **Unit-tier workspace toml** = model toml minus its `[engine]` sections plus
   a DuckDB engine over the mock DB — so `[agent]` provider config carries
   through and the agent + scoring use identical connections.

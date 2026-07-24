@@ -248,6 +248,17 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             return self.address.location
         return self.address
 
+    def repoint(self, address: "str | Address") -> "Datasource":
+        """Point this datasource at a different physical location, leaving its
+        columns/grain/semantics untouched. A bare string is treated as a
+        (quoted-safe) table name. Used to redirect any datasource — table,
+        file, remote, query — at a stand-in table (e.g. a unit-test mock).
+        Mutates in place and returns self for chaining."""
+        if isinstance(address, str):
+            address = Address(location=address, type=AddressType.TABLE, quoted=True)
+        self.address = address
+        return self
+
     def __eq__(self, other):
         if not isinstance(other, Datasource):
             return False

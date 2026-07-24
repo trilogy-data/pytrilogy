@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from hashlib import blake2s
 from pathlib import Path
 
 from trilogy.core.enums import QueryComparison
@@ -175,10 +176,19 @@ def _strip_top_level_import_paths(toml_text: str, model_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def seed_workspace(model_dir: Path, workspace: Path) -> None:
+def seed_workspace(
+    model_dir: Path, workspace: Path, exclude: set[Path] | None = None
+) -> None:
+    """Copy the model's text files + toml into ``workspace`` (integration tier /
+    live natural select). ``exclude`` drops files by resolved path — used to
+    keep the validations file (which holds the expected answers) out of the
+    agent's reach."""
+    exclude = {p.resolve() for p in exclude} if exclude else set()
     workspace.mkdir(parents=True, exist_ok=True)
     for pattern in _SEED_GLOBS:
         for source in sorted(model_dir.glob(pattern)):
+            if source.resolve() in exclude:
+                continue
             relative = source.relative_to(model_dir)
             destination = workspace / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -194,96 +204,46 @@ def seed_workspace(model_dir: Path, workspace: Path) -> None:
         (workspace / "trilogy.toml").write_text(text, encoding="utf-8")
 
 
-# File formats the unit tier can write mock data as. sql/python-script
-# addresses execute code and cannot be mocked as data.
-_MOCKABLE_FILE_COPY: dict[str, str] = {
-    "csv": "(FORMAT CSV, HEADER)",
-    "tsv": "(FORMAT CSV, HEADER, DELIMITER '\\t')",
-    "parquet": "(FORMAT PARQUET)",
-}
-
-
-def _integration_only(datasource, reason: str) -> Exception:
-    from trilogy.core.exceptions import ConfigurationException
-
-    return ConfigurationException(
-        f"Datasource '{datasource.name}' {reason}; the unit-tier mock cannot "
-        "stand in for it. Run this validation under `trilogy integration "
-        "--include-type agent` instead."
-    )
-
-
-def _mock_target(
-    datasource, model_root: Path
-) -> tuple[list[str] | None, tuple[Path, str] | None]:
-    """Where the mock rows for a datasource go: (table identifier parts, None)
-    for table addresses, (None, (model-relative file path, COPY options)) for
-    file addresses under the model root. File paths absolutize against the
-    env's working path at parse time, so a model-local file shows up as
-    ``<model_root>/...`` — the relative part is where the mock file lands in
-    the workspace (the workspace's .preql copies re-anchor it there). Quoted
-    table addresses are a single opaque identifier; unquoted dotted names are
-    schema-qualified."""
-    from trilogy.constants import REMOTE_PREFIXES
+def _mock_name(datasource) -> str:
+    """Stable, SQL-safe table name for a datasource's mock stand-in, keyed by
+    its physical address. The same key is derived from the flattened-env
+    datasource (for materialization) and the per-file datasource statement (for
+    repointing), so the two always agree."""
     from trilogy.core.models.datasource import Address
 
     address = datasource.address
     if isinstance(address, Address):
-        if address.is_file:
-            copy_options = _MOCKABLE_FILE_COPY.get(address.type.value)
-            if copy_options is None:
-                raise _integration_only(
-                    datasource, f"has a {address.type.value} address"
-                )
-            location = address.location
-            if address.additional_locations or address.is_glob:
-                raise _integration_only(
-                    datasource, "reads a multi-file or glob file address"
-                )
-            if address.partition_columns:
-                raise _integration_only(
-                    datasource, "reads a hive-partitioned file address"
-                )
-            if location.startswith(REMOTE_PREFIXES):
-                raise _integration_only(datasource, f"reads a remote file ({location})")
-            try:
-                relative = Path(location).resolve().relative_to(model_root.resolve())
-            except ValueError:
-                raise _integration_only(
-                    datasource,
-                    f"reads a file outside the model directory ({location})",
-                ) from None
-            return None, (relative, copy_options)
-        if address.is_query:
-            raise _integration_only(datasource, "has a query address")
-        if address.quoted:
-            return [address.location], None
-        return [p.strip('"') for p in address.location.split(".")], None
-    return [p.strip('"') for p in str(address).split(".")], None
+        key = f"{address.type.value}:{address.location}"
+        tail = Path(address.location).stem if address.is_file else address.location
+    else:
+        key = str(address)
+        tail = str(address)
+    safe_tail = re.sub(r"\W+", "_", tail).strip("_").lower()[:24] or "ds"
+    digest = blake2s(key.encode("utf-8"), digest_size=6).hexdigest()
+    return f"mock_{safe_tail}_{digest}"
 
 
-def materialize_mock_db(environment, db_path: Path, files_root: Path) -> None:
-    """Materialize deterministic, fully-populated mock rows for every
-    datasource, under each datasource's ORIGINAL address so the workspace's
-    model files resolve against it unchanged. Table addresses become tables in
-    the DuckDB file at ``db_path``; local relative file addresses (csv/tsv/
-    parquet) are written in their format under ``files_root``, which callers
-    copy into each repetition workspace (relative paths resolve against the
-    agent's cwd)."""
+def _materialize_mock_tables(flattened_env, db_path: Path) -> None:
+    """Materialize deterministic, fully-populated mock rows for every datasource
+    into ``db_path`` as a table named by :func:`_mock_name`. A single
+    MockManager over the flattened environment gives shared concepts (join keys)
+    the same values across datasources, so cross-datasource joins still match."""
     import random
 
     from trilogy.dialect.config import DuckDBConfig
     from trilogy.dialect.enums import Dialects
     from trilogy.dialect.mock import MockManager
 
-    env = environment.duplicate()
-    model_root = Path(env.working_path)
     random.seed(0)
-    manager = MockManager(env)
+    manager = MockManager(flattened_env)
     executor = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig(path=str(db_path)))
+    seen: set[str] = set()
     try:
-        for datasource in env.datasources.values():
-            table_parts, file_target = _mock_target(datasource, model_root)
+        for datasource in flattened_env.datasources.values():
+            name = _mock_name(datasource)
+            if name in seen:  # same physical address under multiple namespaces
+                continue
+            seen.add(name)
             concrete = []
             headers = []
             for key, column in datasource.concrete_columns.items():
@@ -294,22 +254,8 @@ def materialize_mock_db(environment, db_path: Path, files_root: Path) -> None:
             executor.execute_raw_sql(
                 "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
             )
-            if file_target is not None:
-                location, options = file_target
-                target = files_root / location
-                target.parent.mkdir(parents=True, exist_ok=True)
-                escaped = target.resolve().as_posix().replace("'", "''")
-                executor.execute_raw_sql(
-                    f"COPY (SELECT * FROM mock_tbl) TO '{escaped}' {options}"
-                )
-                continue
-            assert table_parts is not None
-            if len(table_parts) > 1:
-                schema = ".".join(f'"{p}"' for p in table_parts[:-1])
-                executor.execute_raw_sql(f"CREATE SCHEMA IF NOT EXISTS {schema}")
-            quoted = ".".join(f'"{p}"' for p in table_parts)
             executor.execute_raw_sql(
-                f"CREATE OR REPLACE TABLE {quoted} AS SELECT * FROM mock_tbl"
+                f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM mock_tbl'
             )
         # close() discards an open transaction; commit so the file keeps the
         # mock tables for the (read-only) agent + scoring connections.
@@ -318,11 +264,13 @@ def materialize_mock_db(environment, db_path: Path, files_root: Path) -> None:
         executor.close()
 
 
-def _write_unit_toml(model_dir: Path, workspace: Path, db_path: Path) -> None:
-    """Workspace toml for the unit tier: the model's toml minus its [engine]
-    sections, with a DuckDB engine pointed at the mock database and import
-    resolution falling back to the model directory."""
-    lines: list[str] = [_import_paths_line(model_dir)]
+def _unit_toml(model_dir: Path, image_dir: Path, db_path: Path) -> None:
+    """toml for the mock image: the model's toml minus its [engine] sections,
+    with a DuckDB engine pointed at the mock database. No import_paths — the
+    image is a complete, self-contained copy so working-path resolution finds
+    every (repointed) file, and a fallback to the original model dir would leak
+    un-repointed addresses."""
+    lines: list[str] = []
     source = model_dir / "trilogy.toml"
     if source.exists():
         text = _strip_top_level_import_paths(
@@ -345,7 +293,86 @@ def _write_unit_toml(model_dir: Path, workspace: Path, db_path: Path) -> None:
         f'path = "{db_path.resolve().as_posix()}"',
         "",
     ]
-    (workspace / "trilogy.toml").write_text("\n".join(lines), encoding="utf-8")
+    (image_dir / "trilogy.toml").write_text("\n".join(lines), encoding="utf-8")
+
+
+def build_mock_image(
+    model_dir: Path,
+    image_dir: Path,
+    db_path: Path,
+    flattened_env,
+    exclude: set[Path],
+) -> None:
+    """Build a self-contained, repointed copy of the model under ``image_dir``:
+    every datasource repointed at a mock table (materialized into ``db_path``
+    with referential integrity), the model files re-rendered so the agent (and
+    the expected-answer recompile) resolve against the mock. ``exclude`` drops
+    files by resolved path — the validations file must never reach the agent.
+
+    Repointing makes the original address type irrelevant: table, file, remote,
+    query, and script datasources all become mock tables, so the unit tier has
+    no address-shape restrictions."""
+    from trilogy.core.exceptions import ConfigurationException
+    from trilogy.core.models.datasource import Datasource
+    from trilogy.core.models.environment import Environment
+    from trilogy.parser import parse_text
+    from trilogy.parsing.render import Renderer
+
+    exclude = {p.resolve() for p in exclude}
+    image_dir.mkdir(parents=True, exist_ok=True)
+    _materialize_mock_tables(flattened_env, db_path)
+
+    import_roots = [Path(p) for p in _merged_import_paths(model_dir)]
+    renderer = Renderer()
+    for source in sorted(model_dir.glob("**/*.preql")):
+        if source.resolve() in exclude:
+            continue
+        dest = image_dir / source.relative_to(model_dir)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            env = Environment(working_path=model_dir, import_paths=import_roots)
+            _, statements = parse_text(source.read_text(encoding="utf-8"), env)
+        except Exception as exc:
+            # A file that doesn't parse standalone can't be repointed; copy it
+            # verbatim rather than dropping the model content. Its datasources
+            # (if any) keep their real address — loud on execute, not silent.
+            raise ConfigurationException(
+                f"Could not parse '{source}' standalone to build the unit mock "
+                f"image: {type(exc).__name__}: {exc}"
+            ) from exc
+        for statement in statements:
+            if isinstance(statement, Datasource):
+                statement.repoint(_mock_name(statement))
+        body = "\n".join(renderer.to_string(s) for s in statements)
+        dest.write_text(body + "\n", encoding="utf-8")
+
+    for extra in sorted(model_dir.glob("**/schema.md")):
+        dest = image_dir / extra.relative_to(model_dir)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(extra, dest)
+
+    _unit_toml(model_dir, image_dir, db_path)
+
+
+def compile_expected_against_image(
+    image_dir: Path, validations_source: str
+) -> list[str]:
+    """Recompile the validations file's expected selects against the repointed
+    mock image, returning one SQL string per ``validate ... matches`` statement
+    in source order. Symmetric with how the candidate is compiled in the
+    workspace, so both sides read the mock tables."""
+    from trilogy.core.statements.execute import ProcessedValidateNaturalStatement
+
+    executor = _executor_for_workspace(image_dir)
+    try:
+        processed = executor.parse_text(validations_source)
+        return [
+            executor.generator.compile_statement(p.expected)
+            for p in processed
+            if isinstance(p, ProcessedValidateNaturalStatement)
+        ]
+    finally:
+        executor.close()
 
 
 @dataclass
@@ -514,6 +541,22 @@ def _apply_process_status(result: RepetitionResult, run: AgentRun) -> Repetition
     return result
 
 
+def _seed_rep_workspace(
+    workspace: Path,
+    *,
+    image_dir: Path | None,
+    model_dir: Path,
+    exclude: set[Path],
+) -> None:
+    """Fresh per-repetition workspace: a copy of the repointed mock image (unit
+    tier) or a seeded copy of the real model minus the validations file
+    (integration tier)."""
+    if image_dir is not None:
+        shutil.copytree(image_dir, workspace, dirs_exist_ok=True)
+    else:
+        seed_workspace(model_dir, workspace, exclude=exclude)
+
+
 def run_validation_question(
     *,
     name: str,
@@ -526,26 +569,23 @@ def run_validation_question(
     tags: list[str],
     model_dir: Path,
     run_dir: Path,
-    unit_mock_db: Path | None = None,
-    unit_mock_files: Path | None = None,
+    exclude: set[Path],
+    image_dir: Path | None = None,
 ) -> QuestionResult:
     """Run one embedded validation question: N fresh agent repetitions, each
     scored against the expected SQL. Repetitions run serially (provider
-    pressure); question runs are read-only against the engine. When
-    ``unit_mock_db`` is set (the unit tier) the workspace toml is rewritten to
-    a DuckDB engine over that pre-materialized mock database, and any
-    ``unit_mock_files`` (mock stand-ins for file-addressed datasources) are
-    copied into the workspace so relative file reads resolve there."""
+    pressure); question runs are read-only against the engine. ``image_dir``
+    (unit tier) is the pre-built repointed mock image copied into each
+    workspace; without it (integration tier) the real model is seeded, minus
+    ``exclude`` (the validations file)."""
     result = QuestionResult(name=name, question=question, target=target, tags=tags)
     effective_timeout = timeout or DEFAULT_TIMEOUT_SECONDS
     question_dir = run_dir / name
     for index in range(repetitions):
         workspace = question_dir / f"rep{index + 1}"
-        seed_workspace(model_dir, workspace)
-        if unit_mock_db is not None:
-            _write_unit_toml(model_dir, workspace, unit_mock_db)
-        if unit_mock_files is not None and unit_mock_files.exists():
-            shutil.copytree(unit_mock_files, workspace, dirs_exist_ok=True)
+        _seed_rep_workspace(
+            workspace, image_dir=image_dir, model_dir=model_dir, exclude=exclude
+        )
         log_path = question_dir / f"rep{index + 1}.jsonl"
         task = TASK_TEMPLATE.format(filename=ANSWER_FILENAME, question=question)
         run = run_agent_once(workspace, task, log_path, effective_timeout)

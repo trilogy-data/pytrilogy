@@ -782,7 +782,7 @@ fquarter   = { ^"quarter" ~ "(" ~ expr ~ ")" }
 fyear      = { ^"year" ~ "(" ~ expr ~ ")" }
 
 DATE_PART = @{ ^"day_of_week" | ^"day" | ^"week" | ^"month" | ^"quarter" | ^"year" | ^"minute" | ^"hour" | ^"second" }
-fdate_trunc = { (^"date_trunc" | ^"date_truncate") ~ "(" ~ expr ~ "," ~ DATE_PART ~ ")" }
+fdate_trunc = { (^"date_truncate" | ^"date_trunc") ~ "(" ~ expr ~ "," ~ DATE_PART ~ ")" }
 fdate_part  = { ^"date_part" ~ "(" ~ expr ~ "," ~ DATE_PART ~ ")" }
 fdate_add   = { ^"date_add" ~ "(" ~ expr ~ "," ~ DATE_PART ~ "," ~ expr ~ ")" }
 fdate_sub   = { ^"date_sub" ~ "(" ~ expr ~ "," ~ DATE_PART ~ "," ~ expr ~ ")" }

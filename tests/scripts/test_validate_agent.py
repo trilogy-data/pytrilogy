@@ -8,7 +8,6 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import QueryComparison, ValidationScope
-from trilogy.core.exceptions import ConfigurationException
 from trilogy.core.models.environment import Environment
 from trilogy.scripts import validate_agent as va
 from trilogy.scripts.testing import (
@@ -68,148 +67,179 @@ def test_seed_workspace_leaves_remote_paths(model_dir, tmp_path):
     )
 
 
-def test_write_unit_toml_replaces_engine_keeps_rest(model_dir, tmp_path):
-    (model_dir / "trilogy.toml").write_text(
-        '[engine]\ndialect = "bigquery"\n\n[engine.config]\nproject = "x"\n\n'
-        '[agent]\nprovider = "deepseek"\nmodel = "deepseek-chat"\n',
+def test_repoint_datasource_address():
+    from trilogy.core.models.datasource import Address, Datasource
+    from trilogy.parser import parse_text
+
+    env = Environment()
+    _, stmts = parse_text(
+        "key id int;\n" "datasource filed (id: id) grain (id) file `data/x.parquet`;\n",
+        env,
+    )
+    ds = next(s for s in stmts if isinstance(s, Datasource))
+    assert ds.address.is_file
+    ds.repoint("mock_x")
+    assert isinstance(ds.address, Address)
+    assert ds.address.type.value == "table"
+    assert ds.address.location == "mock_x"
+
+
+def test_mock_name_keyed_by_address():
+    from trilogy.core.models.datasource import Datasource
+    from trilogy.parser import parse_text
+
+    def ds_of(src):
+        _, stmts = parse_text(src, Environment())
+        return next(s for s in stmts if isinstance(s, Datasource))
+
+    a = ds_of("key id int;\ndatasource d (id: id) grain (id) address orders_tbl;\n")
+    b = ds_of("key id int;\ndatasource other (id: id) grain (id) address orders_tbl;\n")
+    c = ds_of("key id int;\ndatasource d (id: id) grain (id) address ship_tbl;\n")
+    # same physical address -> same mock name (independent of ds name);
+    # different address -> different name
+    assert va._mock_name(a) == va._mock_name(b)
+    assert va._mock_name(a) != va._mock_name(c)
+    assert va._mock_name(a).startswith("mock_")
+
+
+@pytest.fixture
+def image(model_dir, tmp_path):
+    """A built mock image + its flattened env, for scoring tests."""
+    (model_dir / "validations.preql").write_text(
+        "import orders;\n\nvalidate total select natural 'sum amount?'\n"
+        "matches ( select sum(amount) -> t );\n",
         encoding="utf-8",
     )
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    db = tmp_path / "mock.duckdb"
-    va._write_unit_toml(model_dir, workspace, db)
-    text = (workspace / "trilogy.toml").read_text(encoding="utf-8")
-    assert 'provider = "deepseek"' in text
-    assert "bigquery" not in text
-    assert "project" not in text
-    assert db.resolve().as_posix() in text
-    assert 'dialect = "duck_db"' in text
-
-
-def test_materialize_mock_db_original_addresses(tmp_path):
-    env = Environment(working_path=tmp_path)
-    env.parse(
-        "key id int;\nproperty id.val float;\n"
-        "datasource plain (id: id, val: val) grain (id) address plain_tbl;\n"
-        "key id2 int;\n"
-        "datasource dotted (id2: id2) grain (id2) address myschema.dotted_tbl;\n"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=model_dir)
     )
-    db_path = tmp_path / "mock.duckdb"
-    va.materialize_mock_db(env, db_path, tmp_path / "mock_files")
-    con = duckdb.connect(str(db_path))
-    try:
-        assert con.execute("select count(*) from plain_tbl").fetchone()[0] > 0
-        assert con.execute("select count(*) from myschema.dotted_tbl").fetchone()[0] > 0
-        # deterministic + fully populated
-        assert (
-            con.execute("select count(*) from plain_tbl where val is null").fetchone()[
-                0
-            ]
-            == 0
-        )
-    finally:
-        con.close()
+    executor.parse_text((model_dir / "orders.preql").read_text(encoding="utf-8"))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    image_dir = run_dir / "mock_model"
+    db = run_dir / "mock.duckdb"
+    exclude = {(model_dir / "validations.preql").resolve()}
+    va.build_mock_image(model_dir, image_dir, db, executor.environment, exclude)
+    return image_dir, run_dir
 
 
-def test_materialize_mock_db_writes_file_datasources(tmp_path):
-    model = tmp_path / "model"
-    (model / "data").mkdir(parents=True)
-    (model / "data" / "things.parquet").write_bytes(b"")
-    (model / "rows.csv").write_bytes(b"")
-    env = Environment(working_path=model)
-    env.parse(
-        "key id int;\nproperty id.val float;\n"
-        "datasource filed (id: id, val: val) grain (id) file `data/things.parquet`;\n"
-        "key cid int;\n"
-        "datasource csvd (cid: cid) grain (cid) file `rows.csv`;\n"
-    )
-    files_root = tmp_path / "mock_files"
-    va.materialize_mock_db(env, tmp_path / "mock.duckdb", files_root)
-    con = duckdb.connect()
-    try:
-        parquet = (files_root / "data" / "things.parquet").as_posix()
-        assert (
-            con.execute(f"select count(*) from read_parquet('{parquet}')").fetchone()[0]
-            > 0
-        )
-        csv = (files_root / "rows.csv").as_posix()
-        assert con.execute(f"select count(*) from read_csv('{csv}')").fetchone()[0] > 0
-    finally:
-        con.close()
+def test_build_mock_image_repoints_and_excludes(image, model_dir):
+    image_dir, _ = image
+    assert (image_dir / "orders.preql").exists()
+    assert (image_dir / "raw" / "extra.preql").exists()
+    # validations file (holds expected answers) kept out of the agent's reach
+    assert not (image_dir / "validations.preql").exists()
+    # datasource repointed to a mock table (mock name keeps a readable tail)
+    body = (image_dir / "orders.preql").read_text(encoding="utf-8")
+    assert "address orders_tbl;" not in body
+    assert "address mock_orders_tbl_" in body
+    # descriptions round-trip through re-render is exercised elsewhere; here we
+    # only assert the engine points at the mock db
+    assert 'dialect = "duck_db"' in (image_dir / "trilogy.toml").read_text("utf-8")
 
 
-def test_materialize_mock_db_rejects_outside_model_files(tmp_path):
+def test_build_mock_image_remote_repoints_no_leak(tmp_path):
     model = tmp_path / "model"
     model.mkdir()
-    (tmp_path / "elsewhere.parquet").write_bytes(b"")
+    (model / "trilogy.toml").write_text('[engine]\ndialect = "duck_db"\n', "utf-8")
+    (model / "remote.preql").write_text(
+        "key id int;\nproperty id.v float;\n"
+        "datasource r (id: id, v: v) grain (id) file `gs://bucket/data.parquet`;\n",
+        encoding="utf-8",
+    )
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=model))
+    ex.parse_text((model / "remote.preql").read_text(encoding="utf-8"))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    va.build_mock_image(
+        model, run_dir / "img", run_dir / "m.duckdb", ex.environment, set()
+    )
+    body = (run_dir / "img" / "remote.preql").read_text(encoding="utf-8")
+    assert "gs://" not in body
+    assert "address mock_data_" in body
+
+
+def test_materialize_mock_tables_referential_integrity(tmp_path):
+    model = tmp_path / "model"
+    model.mkdir()
     env = Environment(working_path=model)
     env.parse(
-        "key id int;\n"
-        "datasource filed (id: id) grain (id) file `../elsewhere.parquet`;\n"
+        "key customer_id int;\nkey order_id int;\n"
+        "datasource customers (customer_id: customer_id) grain (customer_id) "
+        "address cust_tbl;\n"
+        "datasource orders (order_id: order_id, customer_id: customer_id) "
+        "grain (order_id) address ord_tbl;\n"
     )
-    with pytest.raises(ConfigurationException, match="integration"):
-        va.materialize_mock_db(env, tmp_path / "mock.duckdb", tmp_path / "mf")
-
-
-def test_materialize_mock_db_quoted_address_is_opaque(tmp_path):
-    env = Environment(working_path=tmp_path)
-    env.parse(
-        "key id int;\n"
-        "datasource weird (id: id) grain (id) address `my weird.table`;\n"
-    )
-    db_path = tmp_path / "mock.duckdb"
-    va.materialize_mock_db(env, db_path, tmp_path / "mock_files")
-    con = duckdb.connect(str(db_path))
+    db = tmp_path / "m.duckdb"
+    va._materialize_mock_tables(env, db)
+    con = duckdb.connect(str(db))
     try:
-        assert con.execute('select count(*) from "my weird.table"').fetchone()[0] > 0
+        tables = [r[0] for r in con.execute("show tables").fetchall()]
+        cust = next(t for t in tables if "cust" in t)
+        ordt = next(t for t in tables if "ord" in t)
+        # shared key concept mocked consistently -> the join matches rows
+        joined = con.execute(
+            f'select count(*) from "{cust}" c join "{ordt}" o '
+            "on c.customer_id = o.customer_id"
+        ).fetchone()[0]
+        assert joined > 0
     finally:
         con.close()
 
 
 @pytest.fixture
-def scored_workspace(model_dir, tmp_path):
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=model_dir)
-    )
-    executor.parse_text((model_dir / "orders.preql").read_text(encoding="utf-8"))
-    db = tmp_path / "mock.duckdb"
-    va.materialize_mock_db(executor.environment, db, tmp_path / "mock_files")
-    workspace = tmp_path / "ws"
-    va.seed_workspace(model_dir, workspace)
-    va._write_unit_toml(model_dir, workspace, db)
-    expected_sql = 'select sum("amount") as "t" from orders_tbl'
+def scored_workspace(image, model_dir):
+    image_dir, run_dir = image
+    expected_sql = va.compile_expected_against_image(
+        image_dir, (model_dir / "validations.preql").read_text(encoding="utf-8")
+    )[0]
+    workspace = run_dir / "ws"
+    import shutil
+
+    shutil.copytree(image_dir, workspace)
     return workspace, expected_sql
 
 
-def test_score_workspace_file_datasource_end_to_end(tmp_path):
-    """Full unit-tier flow for a parquet-addressed model: mock file written,
-    copied into the workspace, and both candidate + expected read it there."""
+def test_expected_reads_mock_not_real_file(tmp_path):
+    """Regression: the expected side must read the mock, not the real model
+    file. Uses a real parquet with a distinctive value so a leak would fail."""
+    import shutil
+
     model = tmp_path / "model"
     (model / "data").mkdir(parents=True)
-    (model / "data" / "things.parquet").write_bytes(b"")
-    (model / "trilogy.toml").write_text(
-        '[engine]\ndialect = "duck_db"\n', encoding="utf-8"
-    )
+    parquet_path = (model / "data" / "things.parquet").as_posix()
+    con = duckdb.connect()
+    con.execute(f"COPY (SELECT 1 id, 999.0 val) TO '{parquet_path}' (FORMAT PARQUET)")
+    con.close()
+    (model / "trilogy.toml").write_text('[engine]\ndialect = "duck_db"\n', "utf-8")
     (model / "things.preql").write_text(
         "key id int;\nproperty id.val float;\n"
         "datasource filed (id: id, val: val) grain (id) file `data/things.parquet`;\n",
         encoding="utf-8",
     )
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=model)
+    (model / "validations.preql").write_text(
+        "import things;\n\nvalidate t select natural 'sum val?'\n"
+        "matches ( select sum(val) -> t );\n",
+        encoding="utf-8",
     )
-    executor.parse_text((model / "things.preql").read_text(encoding="utf-8"))
-    db = tmp_path / "mock.duckdb"
-    files_root = tmp_path / "mock_files"
-    va.materialize_mock_db(executor.environment, db, files_root)
-    workspace = tmp_path / "ws"
-    va.seed_workspace(model, workspace)
-    va._write_unit_toml(model, workspace, db)
-    import shutil
-
-    shutil.copytree(files_root, workspace, dirs_exist_ok=True)
-    mock_parquet = (workspace / "data" / "things.parquet").resolve().as_posix()
-    expected_sql = f'select sum("val") as "t" from read_parquet(\'{mock_parquet}\')'
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=model))
+    ex.parse_text((model / "things.preql").read_text(encoding="utf-8"))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    image_dir = run_dir / "img"
+    va.build_mock_image(
+        model,
+        image_dir,
+        run_dir / "m.duckdb",
+        ex.environment,
+        {(model / "validations.preql").resolve()},
+    )
+    expected_sql = va.compile_expected_against_image(
+        image_dir, (model / "validations.preql").read_text(encoding="utf-8")
+    )[0]
+    assert "things.parquet" not in expected_sql  # reads mock table, not real file
+    workspace = run_dir / "ws"
+    shutil.copytree(image_dir, workspace)
     (workspace / va.ANSWER_FILENAME).write_text(
         "import things;\nselect sum(val) -> my_total;\n", encoding="utf-8"
     )

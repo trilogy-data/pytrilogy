@@ -95,20 +95,34 @@ def _run_agent_questions(
         / "validate_runs"
         / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{node.path.stem}"
     )
-    unit_mock_db: PathlibPath | None = None
-    unit_mock_files: PathlibPath | None = None
+    # The validations file holds the expected answers — keep it out of every
+    # workspace so the agent can't read them.
+    exclude = {node.path.resolve()}
+    image_dir: PathlibPath | None = None
+    # Expected SQL, one per question in source order. Unit tier recompiles it
+    # against the repointed mock image (so both sides read mock tables); the
+    # integration tier uses the precompiled query against the real backend.
+    expected_sqls = [exec.generator.compile_statement(q.expected) for q in questions]
     if mock_source_env is not None:
         run_dir.mkdir(parents=True, exist_ok=True)
-        unit_mock_db = run_dir / va.MOCK_DB_FILENAME
-        unit_mock_files = run_dir / "mock_files"
-        va.materialize_mock_db(mock_source_env, unit_mock_db, unit_mock_files)
+        image_dir = run_dir / "mock_model"
+        va.build_mock_image(
+            model_dir,
+            image_dir,
+            run_dir / va.MOCK_DB_FILENAME,
+            mock_source_env,
+            exclude,
+        )
+        expected_sqls = va.compile_expected_against_image(
+            image_dir, node.path.read_text(encoding="utf-8")
+        )
     results: list[va.QuestionResult] = []
     for index, question in enumerate(questions):
         name = question.name or f"{node.path.stem}_{index + 1}"
         result = va.run_validation_question(
             name=name,
             question=question.question,
-            expected_sql=exec.generator.compile_statement(question.expected),
+            expected_sql=expected_sqls[index],
             comparison=question.comparison,
             repetitions=question.repetitions,
             target=question.target,
@@ -116,8 +130,8 @@ def _run_agent_questions(
             tags=question.tags,
             model_dir=model_dir,
             run_dir=run_dir,
-            unit_mock_db=unit_mock_db,
-            unit_mock_files=unit_mock_files,
+            exclude=exclude,
+            image_dir=image_dir,
         )
         results.append(result)
         stats.agent_question_count += 1

@@ -50,6 +50,17 @@ def walk_nodes(element: SyntaxElement) -> Iterator[SyntaxNode]:
             yield from walk_nodes(child)
 
 
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize("function_name", ["date_trunc", "date_truncate"])
+def test_date_truncate_aliases(backend: ParserBackend, function_name: str) -> None:
+    with _using_backend(backend):
+        _, statements = Environment().parse(
+            f"select {function_name}('2020-01-01'::date, month) as month;"
+        )
+
+    assert len(statements) == 1
+
+
 def test_parse_syntax_only_returns_syntax() -> None:
     document = parse_syntax("""
 const a <- 1;
