@@ -382,7 +382,8 @@ class DuckDBDialect(BaseDialect):
     SUPPORTS_RESULT_SUMMARY = True
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
-    HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
+    # <=1.4: `... URL "x": 404 (Not Found)`; >=1.5: `... on 'x' (HTTP 404 Not Found)`
+    HTTP_NOT_FOUND_PATTERN = r"404[\s(]*Not Found"
     COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
 
     def summarize_result(

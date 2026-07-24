@@ -861,9 +861,13 @@ class BaseDialect:
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
-    TABLE_NOT_FOUND_PATTERN: str | None = None  # Dialect-specific pattern to match
-    HTTP_NOT_FOUND_PATTERN: str | None = None  # Pattern for HTTP 404 errors (e.g., GCS)
-    COLUMN_NOT_FOUND_PATTERN: str | None = None  # Pattern for column-not-found errors
+    # Case-insensitive regexes matched against driver error text. Keep them
+    # permissive - driver wording shifts between versions (duckdb reworded its
+    # 404 in 1.5), and a missed match turns a recoverable "source is missing"
+    # into a hard failure.
+    TABLE_NOT_FOUND_PATTERN: str | None = None
+    HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
+    COLUMN_NOT_FOUND_PATTERN: str | None = None
 
     def render_string_literal(self, value: str) -> str:
         # Standard SQL: backslash is a plain character; only the quote needs
