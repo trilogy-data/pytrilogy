@@ -13,8 +13,9 @@ without a full rewrite.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Union
+from typing import Union
 
 
 @dataclass(frozen=True)

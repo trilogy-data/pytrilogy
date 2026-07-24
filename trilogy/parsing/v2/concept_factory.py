@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 def arbitrary_to_concept_v2(
     parent,
-    context: "RuleContext",
+    context: RuleContext,
     namespace: str | None = None,
     name: str | None = None,
     metadata: Metadata | None = None,
@@ -68,7 +68,7 @@ def arbitrary_to_concept_v2(
     )
 
 
-def unwrap_transformation_v2(input, context: "RuleContext"):
+def unwrap_transformation_v2(input, context: RuleContext):
     """v2 wrapper for ``unwrap_transformation``."""
     return unwrap_transformation(input, context.environment)
 
@@ -77,7 +77,7 @@ def align_item_to_concept_v2(
     parent: AlignItem,
     align_clause: AlignClause,
     selects: list[SelectStatement],
-    context: "RuleContext",
+    context: RuleContext,
     where: WhereClause | None = None,
     having: HavingClause | None = None,
     limit: int | None = None,
@@ -104,7 +104,7 @@ def union_item_to_concept_v2(
     parent: AlignItem,
     align_clause: AlignClause,
     selects: list[SelectStatement],
-    context: "RuleContext",
+    context: RuleContext,
     purpose: Purpose | None = None,
     datatype: DataType | TraitDataType | ValidatedType | None = None,
     nullable: bool = False,
@@ -125,7 +125,7 @@ def derive_item_to_concept_v2(
     parent,
     name: str,
     lineage: MultiSelectLineage,
-    context: "RuleContext",
+    context: RuleContext,
 ) -> Concept:
     """v2 wrapper for ``derive_item_to_concept``.
 

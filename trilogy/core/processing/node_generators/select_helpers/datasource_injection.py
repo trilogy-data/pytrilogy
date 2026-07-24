@@ -1,6 +1,5 @@
 from collections import defaultdict
 from itertools import product
-from typing import List
 
 from trilogy.core.enums import (
     AddressType,
@@ -97,7 +96,7 @@ def _best_enum_union(
         by_value[val].append(ds)
 
     # All enum values must have at least one candidate source
-    if set(str(v) for v in by_value.keys()) < set(enum_type.values):
+    if set(str(v) for v in by_value) < set(enum_type.values):
         return None
 
     values = list(by_value.keys())
@@ -145,7 +144,7 @@ def _best_enum_union(
 
 def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
-) -> List[list[BuildDatasource]]:
+) -> list[list[BuildDatasource]]:
     concept_addrs = {c.address for c in concepts}
     candidates: list[BuildDatasource] = []
     _PARTIAL = Modifier.PARTIAL

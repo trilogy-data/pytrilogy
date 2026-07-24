@@ -7,8 +7,8 @@ path = Path(__file__).parents[3]
 print(path)
 sys.path.insert(0, str(path))
 
-from trilogy import Dialects, Executor, __version__  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects, Executor, __version__
+from trilogy.core.models.environment import Environment
 
 perf_logger = getLogger("trilogy.parse.performance")
 

@@ -7,8 +7,8 @@ print(path)
 sys.path.insert(0, str(path))
 
 
-from trilogy import Dialects, Executor, __version__  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects, Executor, __version__
+from trilogy.core.models.environment import Environment
 
 assert __version__ == "0.0.3.34", __version__
 

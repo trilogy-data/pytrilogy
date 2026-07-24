@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
@@ -99,7 +98,7 @@ def append_existence_check(
 
 
 def search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     history: History,
     environment: BuildEnvironment,
     depth: int,
@@ -138,7 +137,7 @@ def search_concepts(
 
 @dataclass
 class LoopContext:
-    mandatory_list: List[BuildConcept]
+    mandatory_list: list[BuildConcept]
     environment: BuildEnvironment
     depth: int
     g: ReferenceGraph
@@ -147,9 +146,9 @@ class LoopContext:
     found: set[str]
     skip: set[str]
     all_mandatory: set[str]
-    original_mandatory: List[BuildConcept]
-    completion_mandatory: List[BuildConcept]
-    stack: List[StrategyNode]
+    original_mandatory: list[BuildConcept]
+    completion_mandatory: list[BuildConcept]
+    stack: list[StrategyNode]
     complete: ValidationResult = ValidationResult.INCOMPLETE
     accept_partial: bool = False
     must_evaluate_condition_on_this_level_not_push_down: bool = False
@@ -161,7 +160,7 @@ class LoopContext:
 
 
 def initialize_loop_context(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -353,7 +352,7 @@ def check_for_early_exit(
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Node {node} has conditions {node.preexisting_conditions} and {node.conditions}"
             )
-        raise SyntaxError(f"Have {cond_dict} and need {str(context.conditions)}")
+        raise SyntaxError(f"Have {cond_dict} and need {context.conditions!s}")
     # early exit if we have a complete stack with one node
     # we can only early exit if we have a complete stack
     # and we are not looking for more non-partial sources
@@ -491,11 +490,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     non_virtual_difference_values = set(
         [x.address for x in context.completion_mandatory]
     ).difference(set([x.address for x in context.original_mandatory]))
-    if not context.conditions:
-        condition_required = False
-        non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
-
-    elif _stack_exempt_or_implies(context.stack, context.conditions.conditional):
+    if not context.conditions or _stack_exempt_or_implies(context.stack, context.conditions.conditional):
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
@@ -602,7 +597,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
 
 
 def _search_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
@@ -666,7 +661,7 @@ def _search_concepts(
                 break
             raise
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {priority_concept!s} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         logger.info(
@@ -755,11 +750,11 @@ def _search_concepts(
 
 
 def source_query_concepts(
-    output_concepts: List[BuildConcept],
+    output_concepts: list[BuildConcept],
     history: History,
     environment: BuildEnvironment,
-    g: Optional[ReferenceGraph] = None,
-    conditions: Optional[BuildWhereClause] = None,
+    g: ReferenceGraph | None = None,
+    conditions: BuildWhereClause | None = None,
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")

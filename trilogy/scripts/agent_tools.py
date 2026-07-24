@@ -13,9 +13,9 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from trilogy.ai.models import LLMToolDefinition
 from trilogy.scripts.display_core import _pretty, print_info

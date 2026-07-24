@@ -16,7 +16,7 @@ by the v3 generators (`gen_group_node`, `gen_filter_node`,
 `gen_window_node`, `gen_subselect_node`).
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT

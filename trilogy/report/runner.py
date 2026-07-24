@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from trilogy.core.enums import ChartType
 from trilogy.core.statements.execute import ProcessedQuery
@@ -27,7 +27,7 @@ def _chart_type(result: ChartResult) -> ChartType | None:
     return layers[0].layer_type if layers else None
 
 
-def _column_types(processed: Any, columns: List[str]) -> List[Any]:
+def _column_types(processed: Any, columns: list[str]) -> list[Any]:
     """Datatypes for each output column, taken from the processed query."""
     if not isinstance(processed, ProcessedQuery):
         return [None] * len(columns)
@@ -61,9 +61,9 @@ def _to_element(
     )
 
 
-def run_block(executor: Any, block: TrilogyBlock) -> List[RenderedElement]:
+def run_block(executor: Any, block: TrilogyBlock) -> list[RenderedElement]:
     """Execute one trilogy block; surface any failure as an inline ErrorBox."""
-    elements: List[RenderedElement] = []
+    elements: list[RenderedElement] = []
     try:
         for processed in executor.parse_text_generator(block.code):
             element = _to_element(processed, executor.execute_statement(processed))
@@ -74,24 +74,24 @@ def run_block(executor: Any, block: TrilogyBlock) -> List[RenderedElement]:
     return elements
 
 
-def _run_segment(executor: Any, segment: Segment) -> List[RenderedElement]:
+def _run_segment(executor: Any, segment: Segment) -> list[RenderedElement]:
     if isinstance(segment, TrilogyBlock):
         return run_block(executor, segment)
     if isinstance(segment, RowBlock):
-        children: List[RenderedElement] = []
+        children: list[RenderedElement] = []
         for child in segment.segments:
             children.extend(_run_segment(executor, child))
         return [RenderedRow(children)]
-    rendered: List[RenderedElement] = [segment]  # Prose passes through
+    rendered: list[RenderedElement] = [segment]  # Prose passes through
     return rendered
 
 
 def run_document(
-    segments: List[Segment],
+    segments: list[Segment],
     working_path: Path,
     executor: Any | None = None,
     chart_theme: str | None = None,
-) -> List[RenderedElement]:
+) -> list[RenderedElement]:
     """Run every trilogy block against one shared executor so declarations persist.
 
     Defaults to an in-memory DuckDB executor; callers may pass a pre-built
@@ -105,7 +105,7 @@ def run_document(
         executor.chart_theme = chart_theme
     if not executor.connected:
         executor.connect()
-    elements: List[RenderedElement] = []
+    elements: list[RenderedElement] = []
     for segment in segments:
         elements.extend(_run_segment(executor, segment))
     return elements

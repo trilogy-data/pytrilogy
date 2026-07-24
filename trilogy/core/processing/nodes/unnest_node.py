@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction
@@ -15,12 +14,12 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concepts: List[BuildConcept],
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        unnest_concepts: list[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
     ):
         super().__init__(

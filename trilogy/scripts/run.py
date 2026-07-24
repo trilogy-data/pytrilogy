@@ -51,8 +51,7 @@ def _normalize_import(value: str) -> str:
     trilogy expects (``flight``, ``root.flight``).
     """
     stripped = value.strip()
-    if stripped.endswith(".preql"):
-        stripped = stripped[: -len(".preql")]
+    stripped = stripped.removesuffix(".preql")
     stripped = stripped.replace("\\", "/").strip("/")
     while stripped.startswith("./"):
         stripped = stripped[2:]

@@ -169,7 +169,7 @@ merge p2.lastname  into p1.lastname;
     assert ("p2.lastname", "p1.lastname", JoinType.FULL) in base.merges
     base_size = base.to_dict()
 
-    for x in range(0, 10):
+    for x in range(10):
         merge = base.add_merge_join(
             base.concepts["p2.firstname"],
             base.concepts["p1.firstname"],

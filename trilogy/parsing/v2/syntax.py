@@ -716,7 +716,7 @@ class SyntaxToken:
         return self.name
 
     @property
-    def meta(self) -> "SyntaxToken":
+    def meta(self) -> SyntaxToken:
         return self
 
     def __str__(self) -> str:
@@ -729,7 +729,7 @@ class SyntaxNode:
     # list rather than tuple so the pest fused walker (and any future
     # post-pass) can append late-attached children (e.g. trailing comments
     # appended to a gobbler ancestor after its recursive build returns).
-    children: list["SyntaxNode | SyntaxToken"]
+    children: list[SyntaxNode | SyntaxToken]
     line: int | None = None
     column: int | None = None
     end_line: int | None = None
@@ -739,22 +739,22 @@ class SyntaxNode:
     kind: SyntaxNodeKind | None = None
 
     @property
-    def meta(self) -> "SyntaxNode":
+    def meta(self) -> SyntaxNode:
         return self
 
-    def child_nodes(self, kind: SyntaxNodeKind | None = None) -> list["SyntaxNode"]:
+    def child_nodes(self, kind: SyntaxNodeKind | None = None) -> list[SyntaxNode]:
         nodes = [child for child in self.children if isinstance(child, SyntaxNode)]
         if kind is None:
             return nodes
         return [child for child in nodes if child.kind == kind]
 
-    def child_tokens(self, kind: SyntaxTokenKind | None = None) -> list["SyntaxToken"]:
+    def child_tokens(self, kind: SyntaxTokenKind | None = None) -> list[SyntaxToken]:
         tokens = [child for child in self.children if isinstance(child, SyntaxToken)]
         if kind is None:
             return tokens
         return [child for child in tokens if child.kind == kind]
 
-    def only_child_node(self, kind: SyntaxNodeKind | None = None) -> "SyntaxNode":
+    def only_child_node(self, kind: SyntaxNodeKind | None = None) -> SyntaxNode:
         nodes = self.child_nodes(kind)
         if len(nodes) != 1:
             expected = kind.value if kind else "node"
@@ -763,20 +763,20 @@ class SyntaxNode:
             )
         return nodes[0]
 
-    def first_child_node(self, kind: SyntaxNodeKind | None = None) -> "SyntaxNode":
+    def first_child_node(self, kind: SyntaxNodeKind | None = None) -> SyntaxNode:
         nodes = self.child_nodes(kind)
         if not nodes:
             expected = kind.value if kind else "node"
             raise _syntax_error(self, f"Expected child '{expected}' node")
         return nodes[0]
 
-    def optional_node(self, kind: SyntaxNodeKind) -> "SyntaxNode | None":
+    def optional_node(self, kind: SyntaxNodeKind) -> SyntaxNode | None:
         found = self.child_nodes(kind)
         if len(found) > 1:
             raise _syntax_error(found[1], f"Expected at most one '{kind.value}' node")
         return found[0] if found else None
 
-    def optional_token(self, kind: SyntaxTokenKind) -> "SyntaxToken | None":
+    def optional_token(self, kind: SyntaxTokenKind) -> SyntaxToken | None:
         found = self.child_tokens(kind)
         if len(found) > 1:
             raise _syntax_error(found[1], f"Expected at most one '{kind.value}' token")

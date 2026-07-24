@@ -24,7 +24,7 @@ class FunctionBindingSyntax:
     name: SyntaxToken
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "FunctionBindingSyntax":
+    def from_node(cls, node: SyntaxNode) -> FunctionBindingSyntax:
         require_node(node, SyntaxNodeKind.FUNCTION_BINDING_ITEM)
         for child in node.child_tokens(SyntaxTokenKind.IDENTIFIER):
             return cls(name=child)
@@ -40,7 +40,7 @@ class FunctionDefinitionSyntax:
     node: SyntaxNode
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "FunctionDefinitionSyntax":
+    def from_node(cls, node: SyntaxNode) -> FunctionDefinitionSyntax:
         if (
             not isinstance(node, SyntaxNode)
             or node.kind not in FUNCTION_DEFINITION_KINDS

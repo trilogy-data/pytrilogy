@@ -82,7 +82,7 @@ class ValidationProgressContext:
         self._inner.__enter__()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self._inner.__exit__(*args)
 
     def set_label(self, label: str) -> None:
@@ -172,9 +172,9 @@ def show_validation_success(
 __all__ = [
     "ValidationFailure",
     "ValidationProgressContext",
+    "_FdStderrCapture",
     "show_validation_failures",
     "show_validation_success",
     "show_validation_targets",
     "validation_progress",
-    "_FdStderrCapture",
 ]

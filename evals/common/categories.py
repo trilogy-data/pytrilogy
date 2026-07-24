@@ -17,9 +17,9 @@ to show the cumulative value each layer adds.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from . import agent_runner, prompts, schema_md
 from .spec import BenchmarkSpec

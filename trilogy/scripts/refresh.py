@@ -438,54 +438,52 @@ def _preview_directory_refresh(
 
     all_root_watermarks: dict[str, DatasourceWatermark] = {}
     if root_probe_plan:
-        with root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress:
-            with ThreadPoolExecutor(max_workers=parallelism) as pool:
-                root_futures = {
-                    pool.submit(
-                        _collect_root_watermarks,
-                        node,
-                        set(root_probe_plan[node]),
-                        address_map,
-                        set().union(*root_probe_plan[node].values()),
-                        cli_params,
-                        edialect,
-                        config,
-                    ): node
-                    for node in root_probe_plan
-                }
-                _root_progress.register_futures(root_futures)
-                for root_future in as_completed(root_futures):
-                    all_root_watermarks.update(root_future.result())
-                    node = root_futures[root_future]
-                    for _ in root_probe_plan[node]:
-                        _root_progress.advance()
+        with root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
+            root_futures = {
+                pool.submit(
+                    _collect_root_watermarks,
+                    node,
+                    set(root_probe_plan[node]),
+                    address_map,
+                    set().union(*root_probe_plan[node].values()),
+                    cli_params,
+                    edialect,
+                    config,
+                ): node
+                for node in root_probe_plan
+            }
+            _root_progress.register_futures(root_futures)
+            for root_future in as_completed(root_futures):
+                all_root_watermarks.update(root_future.result())
+                node = root_futures[root_future]
+                for _ in root_probe_plan[node]:
+                    _root_progress.advance()
 
     # Phase 2b: probe each managed asset exactly once via its owner script (parallel)
     # Root watermarks are pre-injected so each root is only queried once across all scripts.
     initial_watermarks = all_root_watermarks or None
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]] = []
-    with probe_progress(total_physical) as _progress:
-        with ThreadPoolExecutor(max_workers=parallelism) as pool:
-            futures = {
-                pool.submit(
-                    _probe_owner_node,
-                    node,
-                    address_map,
-                    addr_to_owner,
-                    force_sources,
-                    cli_params,
-                    edialect,
-                    config,
-                    initial_watermarks,
-                ): node
-                for node in ordered_nodes
-            }
-            _progress.register_futures(futures)
-            for future in as_completed(futures):
-                owner_node, plan = future.result()
-                plans_by_node.append((owner_node, plan))
-                for _ in owner_to_addrs[owner_node] & probe_addrs:
-                    _progress.advance()
+    with probe_progress(total_physical) as _progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
+        futures = {
+            pool.submit(
+                _probe_owner_node,
+                node,
+                address_map,
+                addr_to_owner,
+                force_sources,
+                cli_params,
+                edialect,
+                config,
+                initial_watermarks,
+            ): node
+            for node in ordered_nodes
+        }
+        _progress.register_futures(futures)
+        for future in as_completed(futures):
+            owner_node, plan = future.result()
+            plans_by_node.append((owner_node, plan))
+            for _ in owner_to_addrs[owner_node] & probe_addrs:
+                _progress.advance()
 
     refreshable_root_addrs = {
         address_map[ds_id]

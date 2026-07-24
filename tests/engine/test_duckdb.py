@@ -2396,7 +2396,7 @@ LIMIT 10;"""
     )
     if lineage.operator == FunctionType.CONSTANT:  # type: ignore
         raise ValueError(
-            "prime_cubed_plus_one should not be constant {}".format(c.lineage)
+            f"prime_cubed_plus_one should not be constant {c.lineage}"
         )
     results = executor.execute_text(test)[-1].fetchall()
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, List, Union
+from typing import Any, Union
 
 from trilogy.core.enums import ChartType
 
@@ -27,7 +27,7 @@ class TrilogyBlock:
 class RowBlock:
     """A `:::row ... :::` container; children render side by side."""
 
-    segments: List["Segment"]
+    segments: list[Segment]
 
 
 @dataclass
@@ -38,9 +38,9 @@ class Table:
     datatype (which may be a rich/trait type) or None when unknown.
     """
 
-    columns: List[str]
-    rows: List[List[Any]]
-    column_types: List[Any] = field(default_factory=list)
+    columns: list[str]
+    rows: list[list[Any]]
+    column_types: list[Any] = field(default_factory=list)
 
 
 @dataclass
@@ -65,7 +65,7 @@ class ErrorBox:
 class RenderedRow:
     """An executed RowBlock; elements render side by side."""
 
-    elements: List["RenderedElement"]
+    elements: list[RenderedElement]
 
 
 # Segments are the raw parse output; elements are what backends render.
@@ -87,17 +87,17 @@ def _is_trilogy(info: str) -> bool:
     return bool(tokens) and tokens[0].lower() == "trilogy"
 
 
-def parse_markdown(text: str) -> List[Segment]:
+def parse_markdown(text: str) -> list[Segment]:
     """Split markdown into prose, fenced ```trilogy blocks, and :::row containers.
 
     Non-trilogy fenced blocks (```python, etc.) are preserved verbatim as prose.
     """
-    segments: List[Segment] = []
-    row: List[Segment] | None = None
-    prose: List[str] = []
+    segments: list[Segment] = []
+    row: list[Segment] | None = None
+    prose: list[str] = []
     fence: str | None = None
     info = ""
-    body: List[str] = []
+    body: list[str] = []
 
     def flush_prose() -> None:
         if any(line.strip() for line in prose):

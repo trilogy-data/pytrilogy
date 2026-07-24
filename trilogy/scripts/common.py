@@ -1,11 +1,12 @@
 """Common helper functions used across all CLI commands."""
 
 import traceback
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path as PathlibPath
-from typing import Any, Callable, Iterable, Mapping, Sequence, Union
+from typing import Any
 
 from click.exceptions import Exit
 
@@ -317,7 +318,7 @@ def get_dialect_config(
     edialect: Dialects, conn_dict: dict[str, Any], runtime_config: RuntimeConfig
 ) -> Any:
     """Get dialect configuration based on dialect type."""
-    conf: Union[Any, None] = None
+    conf: Any | None = None
 
     if edialect == Dialects.DUCK_DB:
         from trilogy.dialect.config import DuckDBConfig

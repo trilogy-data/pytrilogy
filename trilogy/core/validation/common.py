@@ -162,5 +162,5 @@ def easy_query(
         output_columns=[ConceptRef(address=concept.address) for concept in concepts],
         ctes=[cte, filter_cte],
         base=cte,
-        local_concepts=EnvironmentConceptDict(**{}),
+        local_concepts=EnvironmentConceptDict(),
     )

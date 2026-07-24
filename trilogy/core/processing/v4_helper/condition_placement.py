@@ -217,9 +217,7 @@ def _post_aggregation_producers(
         for gid, b in buckets.items():
             if addr not in set(b.primary_members):
                 continue
-            if b.derivation in _EMITS_GROUP_BY and _is_global(gid):
-                producer = gid
-            elif (
+            if b.derivation in _EMITS_GROUP_BY and _is_global(gid) or (
                 b.derivation not in _EMITS_GROUP_BY
                 and _is_global(gid)
                 and gid in lineage_only

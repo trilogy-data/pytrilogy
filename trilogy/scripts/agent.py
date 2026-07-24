@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import os
 import textwrap
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 from click import argument, option, pass_context

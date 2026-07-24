@@ -24,10 +24,11 @@ import sys
 import time
 import traceback
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 import duckdb
 import tomllib
@@ -58,7 +59,7 @@ def _time(fn: Callable[[], _T]) -> tuple[float, _T]:
 # Make `discovery_v4` importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from discovery_v4 import TPCDS_DIR  # noqa: E402
+from discovery_v4 import TPCDS_DIR
 
 OUT_DIR = Path(__file__).parent / "v4_compare"
 DATASET_DIR = TPCDS_DIR / "memory"
@@ -82,15 +83,15 @@ def load_test_set() -> list[str]:
 @dataclass
 class QueryResult:
     query_id: str
-    v4_sql: Optional[str] = None
-    v4_gen_error: Optional[str] = None
-    v4_exec_error: Optional[str] = None
-    v4_rows: Optional[list[tuple]] = None
-    v4_exec_seconds: Optional[float] = None
-    ref_sql: Optional[str] = None
-    ref_exec_error: Optional[str] = None
-    ref_rows: Optional[list[tuple]] = None
-    ref_exec_seconds: Optional[float] = None
+    v4_sql: str | None = None
+    v4_gen_error: str | None = None
+    v4_exec_error: str | None = None
+    v4_rows: list[tuple] | None = None
+    v4_exec_seconds: float | None = None
+    ref_sql: str | None = None
+    ref_exec_error: str | None = None
+    ref_rows: list[tuple] | None = None
+    ref_exec_seconds: float | None = None
     diff: list[str] = field(default_factory=list)
 
     @property
@@ -122,7 +123,7 @@ def get_duckdb_connection() -> duckdb.DuckDBPyConnection:
     return con
 
 
-def load_reference_sql(query_id: str) -> Optional[str]:
+def load_reference_sql(query_id: str) -> str | None:
     """A zquery log is only a valid v3 reference if it was written by a v3 run
     — the test harness overwrites these logs with whichever generator last ran,
     so an untagged (pre-`generator`-field) or v4-tagged log is stale and may
@@ -139,7 +140,7 @@ def load_reference_sql(query_id: str) -> Optional[str]:
     return sql.strip()
 
 
-def generate_v3_reference_sql(query_id: str) -> Optional[str]:
+def generate_v3_reference_sql(query_id: str) -> str | None:
     """Live v3 reference for queries with no zquery log — the negative-id
     standalone branch probes. Mirrors the executor path the logs were captured
     from, so the comparison is the same v3-vs-v4 parity check, just unlogged."""
@@ -221,7 +222,7 @@ def _round_cell(v: Any) -> Any:
 def execute(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    params: Optional[dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
 ) -> list[tuple]:
     """Return rows normalized to (sorted_by_column_name) tuples so two SQLs
     that produce the same data with different SELECT column ordering compare
@@ -237,7 +238,7 @@ def execute(
     return [tuple(_round_cell(row[i]) for i in order) for row in rows]
 
 
-def parse_env(query_id: str) -> Optional[Environment]:
+def parse_env(query_id: str) -> Environment | None:
     preql_path = TPCDS_DIR / f"query{query_id}.preql"
     if not preql_path.exists():
         return None
@@ -246,7 +247,7 @@ def parse_env(query_id: str) -> Optional[Environment]:
     return env
 
 
-def generate_v4_sql(query_id: str) -> tuple[Optional[str], Optional[str]]:
+def generate_v4_sql(query_id: str) -> tuple[str | None, str | None]:
     """Generate v4 SQL through the production entrypoint (the real Executor
     path with CONFIG.use_v4_discovery on) rather than a hand-rolled compile, so
     the comparison validates the shipped wiring. Returns (sql, error)."""
@@ -308,7 +309,7 @@ def run_one(
     # Bypasses the trilogy executor — we run raw duckdb here — so we mirror its
     # _hydrate_param logic locally. Failing to parse just means no params bound,
     # which is fine for queries that don't use them.
-    env: Optional[Environment] = None
+    env: Environment | None = None
     try:
         env = parse_env(query_id)
     except Exception:
@@ -364,7 +365,7 @@ def run_one(
     return result
 
 
-def _sql_size(sql: Optional[str]) -> tuple[int, int]:
+def _sql_size(sql: str | None) -> tuple[int, int]:
     if not sql:
         return 0, 0
     return len(sql), sql.count("\n") + 1
@@ -418,7 +419,7 @@ def write_query_report(result: QueryResult, preql_text: str) -> Path:
     v4_chars, v4_lines = _sql_size(result.v4_sql)
     ref_chars, ref_lines = _sql_size(result.ref_sql)
 
-    def _fmt_seconds(s: Optional[float]) -> str:
+    def _fmt_seconds(s: float | None) -> str:
         if s is None:
             return "—"
         if s < 1e-3:

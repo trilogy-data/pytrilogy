@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import Template
 
@@ -228,8 +228,8 @@ class ClickhouseDialect(BaseDialect):
     def render_map_literal(
         self,
         e: "MapWrapper[Any, Any]",
-        cte: "Optional[CTE | UnionCTE]" = None,
-        cte_map: "Optional[Dict[str, CTE | UnionCTE]]" = None,
+        cte: "CTE | UnionCTE | None" = None,
+        cte_map: "dict[str, CTE | UnionCTE] | None" = None,
         raise_invalid: bool = False,
     ) -> str:
         # CH uses map(k1, v1, k2, v2, ...). Avoids the `key:value` syntax that

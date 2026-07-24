@@ -1,6 +1,6 @@
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose

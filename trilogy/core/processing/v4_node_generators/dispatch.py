@@ -2,7 +2,7 @@
 explicit parent StrategyNodes (decided by stage 2, the group graph) instead of
 a `source_concepts` callback."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph

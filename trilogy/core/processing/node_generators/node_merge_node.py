@@ -1,4 +1,4 @@
-from typing import List, Optional, cast
+from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -248,7 +248,7 @@ def determine_induced_minimal_nodes(
         paths = nx.multi_source_dijkstra_path(H, nodelist, weight="weight")
         # logger.debug(f"Paths found for {nodelist} {paths}")
     except nx.exception.NodeNotFound as e:
-        logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
+        logger.debug(f"Unable to find paths for {nodelist}- {e!s}")
         return None
     path_removals = list(x for x in H.nodes if x not in paths)
     if path_removals:
@@ -368,9 +368,9 @@ def filter_relevant_subgraphs(
 
 
 def inject_property_key_terminals(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """Force the key of each requested property into the resolution as a mandatory
     terminal, but only when that key is itself a foreign key bound at a finer grain
     (i.e. the key has its own keys). Without it the minimal-tree search can bridge
@@ -381,7 +381,7 @@ def inject_property_key_terminals(
     only materialized keys can anchor a join."""
     existing = {c.address for c in all_concepts}
     grain_keys = environment.domain_graph.sole_grain_keys()
-    additions: List[BuildConcept] = []
+    additions: list[BuildConcept] = []
     for c in all_concepts:
         # A concept that is itself a 1:1 dimension grain key is directly
         # sourceable at its own grain; its declared `keys` are an FK-path
@@ -409,7 +409,7 @@ def inject_property_key_terminals(
 
 
 def resolve_weak_components(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
     environment_graph: ReferenceGraph,
     filter_downstream: bool = True,
@@ -558,19 +558,19 @@ def resolve_weak_components(
 def subgraphs_to_merge_node(
     concept_subgraphs: list[list[BuildConcept]],
     depth: int,
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     environment,
     g,
     source_concepts,
     history,
     conditions,
-    output_concepts: List[BuildConcept],
+    output_concepts: list[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
     filter_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
 
-    parents: List[StrategyNode] = []
+    parents: list[StrategyNode] = []
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
     )
@@ -610,9 +610,7 @@ def subgraphs_to_merge_node(
     for x in parents:
         for y in x.usable_outputs:
             input_c.append(y)
-            if y in output_concepts:
-                output_c.append(y)
-            elif any(y.address in c.pseudonyms for c in output_concepts) or any(
+            if y in output_concepts or any(y.address in c.pseudonyms for c in output_concepts) or any(
                 c.address in y.pseudonyms for c in output_concepts
             ):
                 output_c.append(y)
@@ -658,7 +656,7 @@ def _conditions_for_subgraph(
 
 
 def gen_merge_node(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
@@ -667,7 +665,7 @@ def gen_merge_node(
     history: History | None = None,
     conditions: BuildConditional | None = None,
     search_conditions: BuildWhereClause | None = None,
-) -> Optional[MergeNode]:
+) -> MergeNode | None:
 
     # we do not actually APPLY these conditions anywhere
     # though we could look at doing that as an optimization

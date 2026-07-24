@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from contextlib import nullcontext
-from typing import Callable
 
 from trilogy import Environment, Executor
 from trilogy.authoring import DataType, Function

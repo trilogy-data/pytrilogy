@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
@@ -41,7 +40,7 @@ def is_equivalent_basic_function_lineage(
 
 def gen_basic_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

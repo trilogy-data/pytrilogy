@@ -1,7 +1,6 @@
 from enum import Enum
 from logging import DEBUG, StreamHandler
 from pathlib import Path
-from typing import Union
 from uuid import uuid4
 
 from trilogy.constants import logger
@@ -60,7 +59,7 @@ class DebuggingHook(BaseHook):
 
     def process_select_info(self, select: SelectStatement):
         if self.process_datasources != PrintMode.OFF:
-            self.print(f"grain: {str(select.grain)}")
+            self.print(f"grain: {select.grain!s}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
         if self.process_datasources != PrintMode.OFF:
@@ -83,7 +82,7 @@ class DebuggingHook(BaseHook):
 
     def print_recursive_resolved(
         self,
-        input: Union[QueryDatasource, BuildDatasource],
+        input: QueryDatasource | BuildDatasource,
         mode: PrintMode,
         depth: int = 0,
     ):

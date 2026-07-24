@@ -28,8 +28,8 @@ from typing import Any, cast
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import networkx as nx  # noqa: E402
+import matplotlib.pyplot as plt
+import networkx as nx
 
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator

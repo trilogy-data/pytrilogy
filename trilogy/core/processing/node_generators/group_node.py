@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, Derivation, FunctionType
@@ -43,16 +42,16 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 @dataclass
 class GroupOutputPlan:
-    parent_concepts: List[BuildConcept]
-    output_concepts: List[BuildConcept]
-    grain_components: List[BuildConcept]
+    parent_concepts: list[BuildConcept]
+    output_concepts: list[BuildConcept]
+    grain_components: list[BuildConcept]
 
 
 @dataclass
 class ParentResolution:
-    parent_concepts: List[BuildConcept]
-    parent_input_concepts: List[BuildConcept]
-    parents: List[StrategyNode]
+    parent_concepts: list[BuildConcept]
+    parent_input_concepts: list[BuildConcept]
+    parents: list[StrategyNode]
     parent_source: StrategyNode | None
     parent_output_addr: set[str]
     can_reuse_parent_for_enrichment: bool
@@ -94,14 +93,14 @@ def _has_concrete_grain(concept: BuildConcept) -> bool:
     )
 
 
-def _concept_addresses(concepts: List[BuildConcept]) -> set[str]:
+def _concept_addresses(concepts: list[BuildConcept]) -> set[str]:
     return {x.address for x in concepts}
 
 
 def _extra_parent_concepts(
-    aggregate_parents: List[BuildConcept],
-    parent_concepts: List[BuildConcept],
-) -> List[BuildConcept]:
+    aggregate_parents: list[BuildConcept],
+    parent_concepts: list[BuildConcept],
+) -> list[BuildConcept]:
     parent_addresses = _concept_addresses(parent_concepts)
     return [x for x in aggregate_parents if x.address not in parent_addresses]
 
@@ -109,10 +108,10 @@ def _extra_parent_concepts(
 def get_aggregate_grain(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> BuildGrain:
-    raw_parents: List[BuildConcept] = resolve_function_parent_concepts(
+    raw_parents: list[BuildConcept] = resolve_function_parent_concepts(
         concept, environment=environment
     )
-    expanded: List[BuildConcept] = []
+    expanded: list[BuildConcept] = []
     for p in raw_parents:
         if isinstance(p.lineage, BuildAggregateWrapper):
             expanded.extend(p.lineage.by)
@@ -128,7 +127,7 @@ def get_aggregate_grain(
 
 def _union_bag_siblings(
     concept: BuildConcept, environment: BuildEnvironment
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """The full set of outputs of the `union(...)` bag `concept` is one output of.
 
     A `union(...)` (SQL UNION ALL) is a bag: its outputs are all bare KEY grain
@@ -152,9 +151,9 @@ def _union_bag_siblings(
 
 
 def get_group_parent_inputs(
-    parent_concepts: List[BuildConcept], environment: BuildEnvironment
-) -> List[BuildConcept]:
-    preserved: List[BuildConcept] = []
+    parent_concepts: list[BuildConcept], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    preserved: list[BuildConcept] = []
     for parent in parent_concepts:
         if not parent.is_aggregate or parent.grain.abstract:
             continue
@@ -163,7 +162,7 @@ def get_group_parent_inputs(
             for c in parent.grain.components
             if c in environment.concepts
         ]
-    bag_siblings: List[BuildConcept] = []
+    bag_siblings: list[BuildConcept] = []
     for parent in parent_concepts:
         bag_siblings += _union_bag_siblings(parent, environment)
     return unique(parent_concepts + preserved + bag_siblings, "address")
@@ -172,13 +171,13 @@ def get_group_parent_inputs(
 def _can_include_optional_aggregate(
     concept: BuildConcept,
     possible_agg: BuildConcept,
-    parent_concepts: List[BuildConcept],
+    parent_concepts: list[BuildConcept],
     target_parent_grain: BuildGrain,
     environment: BuildEnvironment,
     depth: int,
     allow_parent_subset: bool,
-) -> tuple[bool, List[BuildConcept]]:
-    aggregate_parents: List[BuildConcept] = resolve_function_parent_concepts(
+) -> tuple[bool, list[BuildConcept]]:
+    aggregate_parents: list[BuildConcept] = resolve_function_parent_concepts(
         possible_agg,
         environment=environment,
     )
@@ -205,14 +204,14 @@ def _can_include_optional_aggregate(
 
 def _add_optional_aggregate_outputs(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
-    parent_concepts: List[BuildConcept],
-    output_concepts: List[BuildConcept],
+    local_optional: list[BuildConcept],
+    parent_concepts: list[BuildConcept],
+    output_concepts: list[BuildConcept],
     target_parent_grain: BuildGrain,
     environment: BuildEnvironment,
     depth: int,
     concrete_grain: bool,
-) -> tuple[List[BuildConcept], List[BuildConcept]]:
+) -> tuple[list[BuildConcept], list[BuildConcept]]:
     for possible_agg in local_optional:
         if not _is_optional_group_output(possible_agg):
             continue
@@ -258,7 +257,7 @@ def _nonstandard_grouping_by_addresses(concept: BuildConcept) -> set[str]:
     return set()
 
 
-def _pseudonym_linked(concept: BuildConcept, outputs: List[BuildConcept]) -> bool:
+def _pseudonym_linked(concept: BuildConcept, outputs: list[BuildConcept]) -> bool:
     return any(
         concept.address in out.pseudonyms or out.address in concept.pseudonyms
         for out in outputs
@@ -267,7 +266,7 @@ def _pseudonym_linked(concept: BuildConcept, outputs: List[BuildConcept]) -> boo
 
 def _wrap_grouping_passthrough(
     group_node: GroupNode,
-    extra: List[BuildConcept],
+    extra: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
 ) -> SelectNode:
@@ -300,7 +299,7 @@ def _wrap_grouping_passthrough(
 
 def _matching_by_concept(
     address: str,
-    by_concepts: List[BuildConcept],
+    by_concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> BuildConcept | None:
     for by_concept in by_concepts:
@@ -316,9 +315,9 @@ def _matching_by_concept(
 
 def _resolve_grain_components(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     """Resolve the aggregate's grain components, preferring local_optional
     equivalents so downstream consumers get the addresses they asked for.
 
@@ -330,13 +329,13 @@ def _resolve_grain_components(
     pseudonym) to that member's authored address; downstream consumers reach
     the other addresses through pseudonyms."""
     lineage = concept.lineage
-    by_concepts: List[BuildConcept] = (
+    by_concepts: list[BuildConcept] = (
         list(lineage.by)
         if isinstance(lineage, BuildAggregateWrapper)
         and lineage.grouping != AggregateGroupingMode.STANDARD
         else []
     )
-    resolved: List[BuildConcept] = []
+    resolved: list[BuildConcept] = []
     for address in concept.grain.components:
         by_match = (
             _matching_by_concept(address, by_concepts, environment)
@@ -356,11 +355,11 @@ def _resolve_grain_components(
 
 def _plan_group_outputs(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
 ) -> GroupOutputPlan:
-    parent_concepts: List[BuildConcept] = unique(
+    parent_concepts: list[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
@@ -406,7 +405,7 @@ def _plan_group_outputs(
 
 
 def _try_materialized_group_source(
-    output_concepts: List[BuildConcept],
+    output_concepts: list[BuildConcept],
     concept: BuildConcept,
     environment: BuildEnvironment,
     g,
@@ -430,10 +429,10 @@ def _try_materialized_group_source(
 
 
 def _remaining_optional_outputs(
-    local_optional: List[BuildConcept],
-    parent_input_concepts: List[BuildConcept],
-    output_concepts: List[BuildConcept],
-) -> List[BuildConcept]:
+    local_optional: list[BuildConcept],
+    parent_input_concepts: list[BuildConcept],
+    output_concepts: list[BuildConcept],
+) -> list[BuildConcept]:
     grouped_addresses = _concept_addresses(
         unique(parent_input_concepts + output_concepts, "address")
     )
@@ -441,8 +440,8 @@ def _remaining_optional_outputs(
 
 
 def _can_try_wide_parent(
-    remaining_optional: List[BuildConcept],
-    parent_input_concepts: List[BuildConcept],
+    remaining_optional: list[BuildConcept],
+    parent_input_concepts: list[BuildConcept],
     conditions: BuildWhereClause | None,
 ) -> bool:
     return (
@@ -458,7 +457,7 @@ def _can_try_wide_parent(
 
 
 def _source_parent_concepts(
-    mandatory_list: List[BuildConcept],
+    mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -478,10 +477,10 @@ def _source_parent_concepts(
 
 def _resolve_parent_sources(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
-    parent_concepts: List[BuildConcept],
-    output_concepts: List[BuildConcept],
-    grain_components: List[BuildConcept],
+    local_optional: list[BuildConcept],
+    parent_concepts: list[BuildConcept],
+    output_concepts: list[BuildConcept],
+    grain_components: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -624,7 +623,7 @@ def _empty_parent_resolution() -> ParentResolution:
 
 
 def _group_conditions_to_apply(
-    parents: List[StrategyNode],
+    parents: list[StrategyNode],
     conditions: BuildWhereClause | None,
 ) -> BoolExpr | None:
     if conditions is None:
@@ -638,7 +637,7 @@ def _group_conditions_to_apply(
 
 def _build_group_node(
     concept: BuildConcept,
-    output_concepts: List[BuildConcept],
+    output_concepts: list[BuildConcept],
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
@@ -668,9 +667,9 @@ def _build_group_node(
 def _reuse_wide_parent_for_enrichment(
     concept: BuildConcept,
     group_node: StrategyNode,
-    output_concepts: List[BuildConcept],
-    missing_optional: List[BuildConcept],
-    grain_components: List[BuildConcept],
+    output_concepts: list[BuildConcept],
+    missing_optional: list[BuildConcept],
+    grain_components: list[BuildConcept],
     parent_resolution: ParentResolution,
     environment: BuildEnvironment,
     depth: int,
@@ -726,7 +725,7 @@ def _reuse_wide_parent_for_enrichment(
 
 def gen_group_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

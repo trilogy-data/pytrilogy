@@ -60,9 +60,7 @@ class GraphHook(BaseHook):
             edge_colors = []
             descendents = nx.descendants(graph, target)
             for edge in graph.edges():
-                if edge[0] == target:
-                    edge_colors.append("blue")
-                elif edge[1] == target:
+                if edge[0] == target or edge[1] == target:
                     edge_colors.append("blue")
                 elif edge[1] in descendents:
                     edge_colors.append("green")

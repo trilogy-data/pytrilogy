@@ -936,9 +936,8 @@ incremental by src.ev_ts;
     cli_params = _make_cli_params(tmp_path)
     with set_rich_mode(False), patch(
         "trilogy.scripts.refresh._collect_root_watermarks", return_value={}
-    ):
-        with pytest.raises(Exit) as exc_info:
-            _preview_directory_refresh(cli_params, tmp_path)
+    ), pytest.raises(Exit) as exc_info:
+        _preview_directory_refresh(cli_params, tmp_path)
 
     assert exc_info.value.exit_code == 1
     captured = capsys.readouterr()
@@ -1003,9 +1002,8 @@ def test_refresh_asset_error_includes_datasource_context():
     with patch(
         "trilogy.executor.Executor.update_datasource",
         new=raising,
-    ):
-        with pytest.raises(RefreshAssetError) as info:
-            execute_refresh_plan(executor, plan, dry_run=True)
+    ), pytest.raises(RefreshAssetError) as info:
+        execute_refresh_plan(executor, plan, dry_run=True)
 
     err = info.value
     assert err.datasource_id == "target_items"

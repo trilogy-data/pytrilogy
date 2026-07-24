@@ -72,9 +72,7 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
     for col in order_ds.columns:
         if col.alias == "order_id":
             assert col.is_complete
-        elif col.alias == "store_id":
-            assert not col.is_complete
-        elif col.alias == "product_id":
+        elif col.alias == "store_id" or col.alias == "product_id":
             assert not col.is_complete
 
     x = [

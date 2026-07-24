@@ -1,15 +1,11 @@
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Union,
     cast,
 )
 
@@ -731,7 +727,7 @@ def safe_get_cte_value(
     quote_char: str,
     render_expr: Callable,
     use_map: dict[str, set[str]],
-) -> Optional[str]:
+) -> str | None:
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -865,7 +861,7 @@ class BaseDialect:
         self,
         e: "MapWrapper[Any, Any]",
         cte: Optional["CTE | UnionCTE"] = None,
-        cte_map: Optional[Dict[str, "CTE | UnionCTE"]] = None,
+        cte_map: dict[str, "CTE | UnionCTE"] | None = None,
         raise_invalid: bool = False,
     ) -> str:
         # Default DuckDB-style; CH and others override.
@@ -1610,7 +1606,7 @@ class BaseDialect:
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
@@ -1621,7 +1617,7 @@ class BaseDialect:
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -1633,7 +1629,7 @@ class BaseDialect:
         self,
         rc: BuildConcept,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
     ) -> tuple[str, str]:
         """Resolve a right-hand membership concept to (from_clause, column_ref)
@@ -1685,7 +1681,7 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -1809,7 +1805,7 @@ class BaseDialect:
         right: "ListWrapper[Any] | TupleWrapper[Any]",
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
         materialized_addresses: set[str] | None,
     ) -> str:
@@ -1879,7 +1875,7 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]],
+        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
     ) -> str | None:
         """Render an expression-typed membership RHS (`... in (rs.col::string)`,
@@ -1923,45 +1919,9 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: Union[
-            BuildConcept,
-            BuildFunction,
-            BuildConditional,
-            BuildBetween,
-            BuildAggregateWrapper,
-            BuildComparison,
-            BuildCaseWhen,
-            BuildCaseSimpleWhen,
-            BuildCaseElse,
-            BuildSubselectComparison,
-            BuildSubselectItem,
-            BuildWindowItem,
-            BuildFilterItem,
-            BuildParenthetical,
-            BuildParamaterizedConceptReference,
-            BuildMultiSelectLineage,
-            BuildRowsetItem,
-            str,
-            int,
-            list,
-            bool,
-            float,
-            date,
-            datetime,
-            DataType,
-            TraitDataType,
-            MagicConstants,
-            MapWrapper[Any, Any],
-            MapType,
-            NumericType,
-            StructType,
-            ArrayType,
-            ListWrapper[Any],
-            TupleWrapper[Any],
-            DatePart,
-        ],
-        cte: Optional[CTE | UnionCTE] = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        e: BuildConcept | BuildFunction | BuildConditional | BuildBetween | BuildAggregateWrapper | BuildComparison | BuildCaseWhen | BuildCaseSimpleWhen | BuildCaseElse | BuildSubselectComparison | BuildSubselectItem | BuildWindowItem | BuildFilterItem | BuildParenthetical | BuildParamaterizedConceptReference | BuildMultiSelectLineage | BuildRowsetItem | str | list | bool | float | date | datetime | DataType | TraitDataType | MagicConstants | MapWrapper[Any, Any] | MapType | NumericType | StructType | ArrayType | ListWrapper[Any] | TupleWrapper[Any] | DatePart,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -2286,9 +2246,7 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
-        elif isinstance(e, ValidatedType):
-            return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
-        elif isinstance(e, TraitDataType):
+        elif isinstance(e, ValidatedType) or isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):
             return e.name
@@ -2497,7 +2455,7 @@ class BaseDialect:
 
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_index: dict[str, int]
-    ) -> Optional[list[str]]:
+    ) -> list[str] | None:
 
         if not cte.group_to_grain:
             return None
@@ -2785,7 +2743,7 @@ class BaseDialect:
     def generate_ctes(
         self,
         query: ProcessedQuery,
-    ) -> List[CompiledCTE]:
+    ) -> list[CompiledCTE]:
         return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
             # last CTE needs to respect the user output order
             self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
@@ -2851,9 +2809,9 @@ class BaseDialect:
             | MockStatement
             | ChartStatement
         ],
-        hooks: Optional[List[BaseHook]] = None,
-    ) -> List[PROCESSED_STATEMENT_TYPES]:
-        output: List[PROCESSED_STATEMENT_TYPES] = []
+        hooks: list[BaseHook] | None = None,
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
+        output: list[PROCESSED_STATEMENT_TYPES] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:

@@ -22,8 +22,8 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 
-from trilogy import Dialects, parse  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects, parse
+from trilogy.core.models.environment import Environment
 
 TPC_DS_ROOT = root / "tests" / "modeling" / "tpc_ds"
 

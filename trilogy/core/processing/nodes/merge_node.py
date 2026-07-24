@@ -1,4 +1,3 @@
-from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
@@ -143,11 +142,11 @@ def deduplicate_nodes(
 
 
 def deduplicate_nodes_and_joins(
-    joins: List[NodeJoin] | None,
+    joins: list[NodeJoin] | None,
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
     environment: BuildEnvironment,
-) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
+) -> tuple[list[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
@@ -171,25 +170,25 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
-        node_joins: List[NodeJoin] | None = None,
-        join_concepts: Optional[List] = None,
-        force_join_type: Optional[JoinType] = None,
-        partial_concepts: Optional[List[BuildConcept]] = None,
-        rollup_concepts: Optional[List[BuildConcept]] = None,
-        nullable_concepts: Optional[List[BuildConcept]] = None,
+        parents: list["StrategyNode"] | None = None,
+        node_joins: list[NodeJoin] | None = None,
+        join_concepts: list | None = None,
+        force_join_type: JoinType | None = None,
+        partial_concepts: list[BuildConcept] | None = None,
+        rollup_concepts: list[BuildConcept] | None = None,
+        nullable_concepts: list[BuildConcept] | None = None,
         force_group: bool | None = None,
         depth: int = 0,
         grain: BuildGrain | None = None,
         conditions: BoolExpr | None = None,
         preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
-        virtual_output_concepts: List[BuildConcept] | None = None,
-        existence_concepts: List[BuildConcept] | None = None,
+        virtual_output_concepts: list[BuildConcept] | None = None,
+        existence_concepts: list[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
     ):
@@ -214,14 +213,14 @@ class MergeNode(StrategyNode):
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
-        self.node_joins: List[NodeJoin] | None = node_joins
+        self.node_joins: list[NodeJoin] | None = node_joins
         # A deliberately-assembled multi-side merge (coalescing axis, presence
         # probe): every parent is a distinct SIDE of a declared relation, so
         # the single-parent/duplicate collapse shortcuts must not fire — same
         # addresses across sides are different domains, not redundancy.
         self.preserve_parents = preserve_parents
 
-        final_joins: List[NodeJoin] = []
+        final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
             for join in self.node_joins:
                 if join.left_node.resolve().name == join.right_node.resolve().name:
@@ -229,7 +228,7 @@ class MergeNode(StrategyNode):
                 final_joins.append(join)
             self.node_joins = final_joins
 
-    def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
+    def translate_node_joins(self, node_joins: list[NodeJoin]) -> list[BaseJoin]:
         joins = []
         for join in node_joins:
             left = join.left_node.resolve()
@@ -258,7 +257,7 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_full_joins(self, dataset_list: List[QueryDatasource | BuildDatasource]):
+    def create_full_joins(self, dataset_list: list[QueryDatasource | BuildDatasource]):
         joins = []
         seen = set()
         for left_value in dataset_list:
@@ -282,13 +281,13 @@ class MergeNode(StrategyNode):
     def generate_joins(
         self,
         final_datasets,
-        final_joins: List[NodeJoin] | None,
+        final_joins: list[NodeJoin] | None,
         pregrain: BuildGrain,
         grain: BuildGrain,
         environment: BuildEnvironment,
-    ) -> List[BaseJoin | UnnestJoin]:
+    ) -> list[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource | BuildDatasource] = sorted(
+        dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
             key=lambda x: (-len(x.grain.components), x.identifier),
         )
@@ -304,7 +303,7 @@ class MergeNode(StrategyNode):
                 joins = self.create_full_joins(dataset_list)
             else:
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {grain!s}"
                 )
                 joins = get_node_joins(dataset_list, environment=environment)
         elif final_joins:
@@ -366,11 +365,11 @@ class MergeNode(StrategyNode):
 
     def _resolve(self) -> QueryDatasource:
         self._inject_scoped_join_key_exposure()
-        parent_sources: List[QueryDatasource | BuildDatasource] = [
+        parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
         merged: dict[str, QueryDatasource | BuildDatasource] = {}
-        final_joins: List[NodeJoin] | None = self.node_joins
+        final_joins: list[NodeJoin] | None = self.node_joins
         for source in parent_sources:
             if source.identifier in merged:
                 logger.info(
@@ -388,7 +387,7 @@ class MergeNode(StrategyNode):
                 final_joins, merged, self.logging_prefix, self.environment
             )
         # early exit if we can just return the parent
-        final_datasets: List[QueryDatasource | BuildDatasource] = sorted(
+        final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
         )
 
@@ -516,7 +515,7 @@ class MergeNode(StrategyNode):
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
         if len(join_candidates) > 1:
-            joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
+            joins: list[BaseJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, raw_pregrain, grain, self.environment
             )
         else:
@@ -623,7 +622,7 @@ class MergeNode(StrategyNode):
         else:
             force_group = None
 
-        qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
+        qd_joins: list[BaseJoin | UnnestJoin] = [*joins]
 
         # Preserved sides first — first-wins inside ``resolve_concept_map``
         # naturally picks the always-non-NULL source when multiple datasources

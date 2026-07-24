@@ -4,6 +4,7 @@ import copy
 import difflib
 import os
 from collections import UserDict, defaultdict
+from collections.abc import ItemsView, Iterator, Mapping, ValuesView
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,16 +12,8 @@ from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    ItemsView,
-    Iterator,
-    List,
-    Mapping,
     Never,
-    Optional,
     Self,
-    Tuple,
-    ValuesView,
 )
 
 from pydantic import TypeAdapter as _TypeAdapter
@@ -92,12 +85,12 @@ class FileSystemImportResolver(BaseImportResolver):
 
 @dataclass
 class DictImportResolver(BaseImportResolver):
-    content: Dict[str, str] = field(default_factory=dict)
+    content: dict[str, str] = field(default_factory=dict)
     # Virtual data files (csv, parquet, ...) keyed by the path as written in
     # trilogy source or the resolved absolute form. A datasource that points at
     # a key in this map is treated as published even when there is no real file
     # on disk — useful for server / sandboxed environments.
-    data_files: Dict[str, bytes] = field(default_factory=dict)
+    data_files: dict[str, bytes] = field(default_factory=dict)
 
     def has_data_file(self, *paths: str) -> bool:
         return any(p in self.data_files for p in paths)
@@ -110,7 +103,7 @@ class EnvironmentConfig:
         default_factory=FileSystemImportResolver
     )
 
-    def copy_for_root(self, root: str | None) -> "EnvironmentConfig":
+    def copy_for_root(self, root: str | None) -> EnvironmentConfig:
         new = copy.deepcopy(self)
         if isinstance(new.import_resolver, DictImportResolver) and root:
             new.import_resolver = DictImportResolver(
@@ -169,7 +162,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
 
-    def duplicate(self) -> "EnvironmentConceptDict":
+    def duplicate(self) -> EnvironmentConceptDict:
         new = EnvironmentConceptDict()
         # include hidden items via raw iteration
         new.update({k: v.duplicate() for k, v in self.data.items()})
@@ -550,9 +543,9 @@ class Environment:
     datasources: EnvironmentDatasourceDict = field(
         default_factory=EnvironmentDatasourceDict
     )
-    functions: Dict[str, CustomFunctionFactory] = field(default_factory=dict)
-    data_types: Dict[str, CustomType] = field(default_factory=dict)
-    named_statements: Dict[str, SelectLineage] = field(default_factory=dict)
+    functions: dict[str, CustomFunctionFactory] = field(default_factory=dict)
+    data_types: dict[str, CustomType] = field(default_factory=dict)
+    named_statements: dict[str, SelectLineage] = field(default_factory=dict)
     imports: defaultdict[str, list[Import]] = field(
         default_factory=lambda: defaultdict(list)
     )
@@ -564,13 +557,13 @@ class Environment:
     # conformed-dimension dedup) can tell that two role-played namespaces came
     # from the same file. Kept separate from `imports` so renderer logic that
     # keys on `concept.namespace in imports` is unaffected.
-    namespace_source: Dict[str, Path] = field(default_factory=dict)
+    namespace_source: dict[str, Path] = field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = field(default_factory=os.getcwd)
     config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     version: str = field(default_factory=get_version)
-    cte_name_map: Dict[str, str] = field(default_factory=dict)
-    alias_origin_lookup: Dict[str, Concept] = field(default_factory=dict)
+    cte_name_map: dict[str, str] = field(default_factory=dict)
+    alias_origin_lookup: dict[str, Concept] = field(default_factory=dict)
     # Global `merge` statements as build-time join pairs. These are evaluated
     # alongside query-scoped joins by Factory.scoped_merge_map instead of
     # rewriting the author environment during parse.
@@ -578,7 +571,7 @@ class Environment:
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
@@ -593,14 +586,14 @@ class Environment:
 
     def materialize_for_select(
         self,
-        local_concepts: dict[str, "BuildConcept"] | None = None,
+        local_concepts: dict[str, BuildConcept] | None = None,
         build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
-    ) -> "BuildEnvironment":
+    ) -> BuildEnvironment:
         """helper method"""
         from trilogy.core.models.build import Factory
 
@@ -727,7 +720,7 @@ class Environment:
         self._add_path_concepts()
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "Environment":
+    def from_file(cls, path: str | Path) -> Environment:
         if isinstance(path, str):
             path = Path(path)
         with safe_open(path) as f:
@@ -737,12 +730,12 @@ class Environment:
     @classmethod
     def from_string(
         cls, input: str, config: EnvironmentConfig | None = None
-    ) -> "Environment":
+    ) -> Environment:
         config = config or EnvironmentConfig()
         return Environment(config=config).parse(input)[0]
 
     @classmethod
-    def from_cache(cls, path) -> Optional["Environment"]:
+    def from_cache(cls, path) -> Environment | None:
         import json
 
         data = json.loads(Path(path).read_text())
@@ -807,7 +800,7 @@ class Environment:
             ],
         }
 
-    def to_cache(self, path: Optional[str | Path] = None) -> Path:
+    def to_cache(self, path: str | Path | None = None) -> Path:
         import json
 
         if not path:
@@ -829,7 +822,7 @@ class Environment:
 
         def handle_currently_bound_sources():
             if str(existing.lineage) == str(new_concept.lineage):
-                return None
+                return
 
             invalidated = False
             for k, datasource in self.datasources.items():
@@ -847,9 +840,9 @@ class Environment:
                     invalidated = len(datasource.columns) < clen
             if invalidated:
                 logger.warning(
-                    f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidated current bound datasource."
+                    f"Persisted concept {existing.address} lineage {existing.lineage!s} did not match redeclaration {new_concept.lineage!s}, invalidated current bound datasource."
                 )
-            return None
+            return
 
         if existing and self.config.allow_duplicate_declaration:
             if (
@@ -1002,7 +995,7 @@ class Environment:
         return self
 
     def add_file_import(
-        self, path: str | Path, alias: str, env: "Environment" | None = None
+        self, path: str | Path, alias: str, env: Environment | None = None
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -1036,7 +1029,7 @@ class Environment:
 
     def parse(
         self, input: str, namespace: str | None = None, persist: bool = False
-    ) -> Tuple["Environment", list]:
+    ) -> tuple[Environment, list]:
         from trilogy import parse
         from trilogy.core.query_processor import process_persist
         from trilogy.core.statements.author import (
@@ -1161,7 +1154,7 @@ class Environment:
 
     # LSP/Editor introspection helpers
 
-    def user_concepts(self) -> List[Concept]:
+    def user_concepts(self) -> list[Concept]:
         """Return all user-defined concepts, filtering out internal concepts."""
         return [
             c
@@ -1170,7 +1163,7 @@ class Environment:
             and not c.name.startswith("_")
         ]
 
-    def concepts_at_line(self, line_number: int) -> List[Concept]:
+    def concepts_at_line(self, line_number: int) -> list[Concept]:
         """Find all concepts defined on a specific line number."""
         return [
             c

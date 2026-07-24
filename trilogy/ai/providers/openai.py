@@ -1,5 +1,4 @@
 from os import environ
-from typing import List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
@@ -21,7 +20,7 @@ class OpenAIProvider(LLMProvider):
         name: str,
         model: str,
         api_key: str | None = None,
-        retry_options: Optional[RetryOptions] = None,
+        retry_options: RetryOptions | None = None,
     ):
         api_key = api_key or environ.get("OPENAI_API_KEY")
         if not api_key:
@@ -31,7 +30,7 @@ class OpenAIProvider(LLMProvider):
         super().__init__(name, api_key, model, Provider.OPENAI)
         self.base_completion_url = "https://api.openai.com/v1/chat/completions"
         self.base_model_url = "https://api.openai.com/v1/models"
-        self.models: List[str] = []
+        self.models: list[str] = []
         self.type = Provider.OPENAI
 
         self.retry_options = retry_options or RetryOptions(
@@ -39,12 +38,12 @@ class OpenAIProvider(LLMProvider):
             initial_delay_ms=1000,
             retry_status_codes=RETRYABLE_CODES,
             on_retry=lambda attempt, delay_ms, error: logger.info(
-                f"Retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
+                f"Retry attempt {attempt} after {delay_ms}ms delay due to error: {error!s}"
             ),
         )
 
     def generate_completion(
-        self, options: LLMRequestOptions, history: List[LLMMessage]
+        self, options: LLMRequestOptions, history: list[LLMMessage]
     ) -> LLMResponse:
         try:
             import httpx
@@ -118,4 +117,4 @@ class OpenAIProvider(LLMProvider):
             )
 
         except Exception as error:
-            raise Exception(f"OpenAI API error: {str(error)}")
+            raise Exception(f"OpenAI API error: {error!s}")

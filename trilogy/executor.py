@@ -1,9 +1,10 @@
 import uuid
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
 from functools import singledispatchmethod
 from pathlib import Path
-from typing import Any, Generator, List, Mapping, Optional, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
@@ -158,14 +159,14 @@ def _chart_copy_options(
     return size_props, save_kwargs, options.get("theme"), options.get("background")
 
 
-class Executor(object):
+class Executor:
     def __init__(
         self,
         dialect: Dialects,
         engine: ExecutionEngine,
-        environment: Optional[Environment] = None,
+        environment: Environment | None = None,
         rendering: Rendering | None = None,
-        hooks: List[BaseHook] | None = None,
+        hooks: list[BaseHook] | None = None,
         config: DialectConfig | None = None,
         staging: StagingConfig | None = None,
         chart_theme: str | None = None,
@@ -379,7 +380,7 @@ class Executor(object):
     def execute_statement(
         self,
         statement: PROCESSED_STATEMENT_TYPES | STATEMENT_TYPES,
-    ) -> Optional[ResultProtocol]:
+    ) -> ResultProtocol | None:
         if isinstance(statement, STATEMENT_TYPES):
             generate = self.generator.generate_queries(
                 self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
@@ -395,7 +396,7 @@ class Executor(object):
 
     @singledispatchmethod
     def execute_query(self, query) -> ResultProtocol | None:
-        raise NotImplementedError("Cannot execute type {}".format(type(query)))
+        raise NotImplementedError(f"Cannot execute type {type(query)}")
 
     @execute_query.register
     def _(self, query: Comment) -> ResultProtocol | None:
@@ -653,7 +654,7 @@ class Executor(object):
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:
         raise NotImplementedError(
-            "Cannot generate sql for type {}".format(type(command))
+            f"Cannot generate sql for type {type(command)}"
         )
 
     @generate_sql.register  # type: ignore
@@ -772,12 +773,12 @@ class Executor(object):
 
     def parse_text(
         self, command: str, persist: bool = False, root: Path | None = None
-    ) -> List[PROCESSED_STATEMENT_TYPES]:
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_text_generator(command, persist=persist, root=root))
 
     def parse_text_with_definitions(
         self, command: str, persist: bool = False, root: Path | None = None
-    ) -> tuple[List[PROCESSED_STATEMENT_TYPES], List[Any]]:
+    ) -> tuple[list[PROCESSED_STATEMENT_TYPES], list[Any]]:
         """Parse, returning both the executable queries and the non-executable
         definition statements (rowsets, concepts, imports, datasources, ...).
         Lets callers warn when a file parses cleanly but has no statement that
@@ -789,7 +790,7 @@ class Executor(object):
             if not isinstance(x, GENERATABLE_STATEMENT_TYPES)
             and not isinstance(x, Comment)
         ]
-        queries: List[PROCESSED_STATEMENT_TYPES] = []
+        queries: list[PROCESSED_STATEMENT_TYPES] = []
         for t in parsed:
             if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
                 continue
@@ -975,7 +976,7 @@ class Executor(object):
 
     def execute_text(
         self, command: str, non_interactive: bool = False
-    ) -> List[ResultProtocol]:
+    ) -> list[ResultProtocol]:
         if not self.connected:
             self.connect()
 
@@ -1022,7 +1023,7 @@ class Executor(object):
 
     def execute_file(
         self, file: str | Path, non_interactive: bool = False
-    ) -> List[ResultProtocol]:
+    ) -> list[ResultProtocol]:
         file = Path(file)
         candidates = [file, self.environment.working_path / file]
         err = None
@@ -1042,7 +1043,7 @@ class Executor(object):
     def validate_environment(
         self,
         scope: ValidationScope = ValidationScope.ALL,
-        targets: Optional[list[str]] = None,
+        targets: list[str] | None = None,
         generate_only: bool = False,
     ) -> list[ValidationTest]:
         from trilogy.core.validation.environment import validate_environment

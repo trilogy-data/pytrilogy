@@ -19,7 +19,7 @@ _HARNESS_DIR = Path(__file__).resolve().parents[3] / "local_scripts" / "v4_evals
 if str(_HARNESS_DIR) not in sys.path:
     sys.path.insert(0, str(_HARNESS_DIR))
 
-from run_parity import CASES_DIR, run_case  # noqa: E402
+from run_parity import CASES_DIR, run_case
 
 CASES = sorted(CASES_DIR.glob("*.preql"))
 FAILING_DIR = CASES_DIR.parent / "failing_cases"

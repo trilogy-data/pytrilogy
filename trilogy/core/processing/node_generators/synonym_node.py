@@ -1,6 +1,5 @@
 import itertools
 from collections import defaultdict
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
@@ -13,7 +12,7 @@ LOGGER_PREFIX = "[GEN_SYNONYM_NODE]"
 
 
 def gen_synonym_node(
-    all_concepts: List[BuildConcept],
+    all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

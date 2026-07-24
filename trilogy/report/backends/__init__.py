@@ -8,7 +8,7 @@ from trilogy.report.backends.base import ReportBackend
 from trilogy.report.backends.html import HtmlBackend
 from trilogy.report.backends.png import PngBackend
 
-_BACKENDS: Dict[str, Type[ReportBackend]] = {
+_BACKENDS: dict[str, type[ReportBackend]] = {
     "html": HtmlBackend,
     "png": PngBackend,
 }
@@ -23,8 +23,8 @@ def get_backend(name: str) -> ReportBackend:
         )
 
 
-def available_formats() -> List[str]:
+def available_formats() -> list[str]:
     return sorted(_BACKENDS)
 
 
-__all__ = ["ReportBackend", "get_backend", "available_formats"]
+__all__ = ["ReportBackend", "available_formats", "get_backend"]

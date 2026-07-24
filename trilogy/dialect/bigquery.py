@@ -1,5 +1,4 @@
 import uuid
-from typing import Dict, Optional
 
 from jinja2 import Template
 
@@ -317,7 +316,7 @@ class BigqueryDialect(BaseDialect):
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"

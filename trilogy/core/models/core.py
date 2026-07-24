@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import re
 from collections import UserDict, UserList
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import (
     Any,
-    Callable,
-    Dict,
     Generic,
-    List,
-    Sequence,
-    Tuple,
     TypeVar,
     Union,
     get_args,
@@ -224,7 +220,7 @@ class ValidatedType:
     (numeric/date/datetime bases) or a full-match regex (string base).
     Compares equal to its bare base type, mirroring EnumType/TraitDataType."""
 
-    type: Union[DataType, "NumericType"]
+    type: DataType | NumericType
     ranges: tuple[ValueRange, ...] = ()
     pattern: str | None = None
 
@@ -356,7 +352,7 @@ class StructComponent:
 @dataclass
 class StructType:
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
-    fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
+    fields_map: dict[str, DataTyped | int | float | str | StructComponent]
 
     @classmethod
     def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
@@ -365,7 +361,7 @@ class StructType:
     def __repr__(self):
         return "struct<{}>".format(
             ", ".join(
-                f"{f.name}:{str(f.type)}"
+                f"{f.name}:{f.type!s}"
                 for f in self.fields
                 if isinstance(f, StructComponent)
             )
@@ -383,8 +379,8 @@ class StructType:
         return self.data_type.value
 
     @property
-    def field_types(self) -> Dict[str, CONCRETE_TYPES]:
-        out: Dict[str, CONCRETE_TYPES] = {}
+    def field_types(self) -> dict[str, CONCRETE_TYPES]:
+        out: dict[str, CONCRETE_TYPES] = {}
         keys = list(self.fields_map.keys())
         for idx, f in enumerate(self.fields):
             if isinstance(f, StructComponent):
@@ -413,9 +409,9 @@ class ListWrapper(Generic[VT], UserList):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(List[args])  # type: ignore
+            schema = handler(list[args])  # type: ignore
         else:
-            schema = handler(List)
+            schema = handler(list)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod
@@ -437,9 +433,9 @@ class MapWrapper(Generic[KT, VT], UserDict):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(Dict[args])  # type: ignore
+            schema = handler(dict[args])  # type: ignore
         else:
-            schema = handler(Dict)
+            schema = handler(dict)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod
@@ -473,9 +469,9 @@ class TupleWrapper(Generic[VT], tuple):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(Tuple[args])  # type: ignore
+            schema = handler(tuple[args])  # type: ignore
         else:
-            schema = handler(Tuple)
+            schema = handler(tuple)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
 
     @classmethod

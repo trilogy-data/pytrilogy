@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
@@ -32,12 +31,12 @@ def gen_group_to_node(
             f"Group to should have function lineage, is {type(concept.lineage)}"
         )
 
-    parent_concepts: List[BuildConcept] = concept.lineage.concept_arguments
+    parent_concepts: list[BuildConcept] = concept.lineage.concept_arguments
     root = parent_concepts[0]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
     )
-    parents: List[StrategyNode] = [
+    parents: list[StrategyNode] = [
         source_concepts(
             mandatory_list=parent_concepts,
             environment=environment,

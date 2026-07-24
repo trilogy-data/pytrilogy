@@ -268,10 +268,7 @@ def remove_related_concepts(concept: Concept, environment: Environment):
     # Remove datatype-specific concepts
     if concept.datatype == DataType.DATE:
         remove_date_concepts(concept, environment)
-    elif concept.datatype == DataType.DATETIME:
-        remove_date_concepts(concept, environment)
-        remove_datetime_concepts(concept, environment)
-    elif concept.datatype == DataType.TIMESTAMP:
+    elif concept.datatype == DataType.DATETIME or concept.datatype == DataType.TIMESTAMP:
         remove_date_concepts(concept, environment)
         remove_datetime_concepts(concept, environment)
 

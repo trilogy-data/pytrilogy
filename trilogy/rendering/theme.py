@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Dict, Optional, Tuple
 
 
 class Appearance(str, Enum):
@@ -26,7 +25,7 @@ class Theme:
 
     name: str
     font_stack: str
-    webfont_url: Optional[str]
+    webfont_url: str | None
     # text
     text_primary: str
     text_secondary: str
@@ -42,11 +41,11 @@ class Theme:
     accent_secondary: str
     accent_warning: str
     # desaturated, slightly pastel chart palette
-    chart_palette: Tuple[str, ...]
+    chart_palette: tuple[str, ...]
     # drives derived chart chrome (grid/label contrast); themes are not
     # required to have an opposite-appearance sibling
     appearance: Appearance = Appearance.LIGHT
-    counterpart: Optional[str] = None
+    counterpart: str | None = None
 
 
 @dataclass(frozen=True)
@@ -101,7 +100,7 @@ class Layout:
         """Plot width for a static chart, leaving room for axis labels."""
         return self.inner_width - self.chart_axis_allowance
 
-    def chart_box(self, columns: int = 1) -> Tuple[int, int]:
+    def chart_box(self, columns: int = 1) -> tuple[int, int]:
         """Pixel (width, height) for a static chart in an N-column row."""
         columns = max(columns, 1)
         if columns == 1:
@@ -188,7 +187,7 @@ EDITORIAL_DARK_THEME = replace(
 
 DEFAULT_THEME = INTER_THEME
 
-THEMES: Dict[str, Theme] = {
+THEMES: dict[str, Theme] = {
     INTER_THEME.name: INTER_THEME,
     INTER_DARK_THEME.name: INTER_DARK_THEME,
     EDITORIAL_THEME.name: EDITORIAL_THEME,

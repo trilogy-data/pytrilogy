@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 from collections import namedtuple
+from collections.abc import Callable, Generator
 from datetime import date, datetime
-from typing import Any, Callable, Generator, List, Optional
+from typing import Any
 
 from sqlalchemy import bindparam
 from sqlalchemy import text as sa_text
@@ -65,7 +66,7 @@ def _row_class_for(columns: tuple[str, ...]) -> type:
 
 
 class ChdbResult(ResultProtocol):
-    def __init__(self, columns: List[str], rows: List[tuple]):
+    def __init__(self, columns: list[str], rows: list[tuple]):
         self._columns = columns
         if columns:
             row_cls = _row_class_for(tuple(columns))
@@ -74,25 +75,25 @@ class ChdbResult(ResultProtocol):
             self._rows = list(rows)
         self._cursor = 0
 
-    def fetchall(self) -> List[Any]:
+    def fetchall(self) -> list[Any]:
         remaining = self._rows[self._cursor :]
         self._cursor = len(self._rows)
         return remaining
 
-    def fetchone(self) -> Optional[Any]:
+    def fetchone(self) -> Any | None:
         if self._cursor >= len(self._rows):
             return None
         row = self._rows[self._cursor]
         self._cursor += 1
         return row
 
-    def fetchmany(self, size: int) -> List[Any]:
+    def fetchmany(self, size: int) -> list[Any]:
         end = min(self._cursor + size, len(self._rows))
         chunk = self._rows[self._cursor : end]
         self._cursor = end
         return chunk
 
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         return list(self._columns)
 
     def __iter__(self) -> Generator[Any, None, None]:

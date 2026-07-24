@@ -26,7 +26,6 @@ join key (`_enrich_via_derived_join_key`) and cross-rowset WHERE handling
 this one.
 """
 
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType
@@ -124,7 +123,7 @@ def _scoped_joins_for_rowset(
 
 
 def _pseudonym_bridge_keys(
-    outputs: List[BuildConcept], environment: BuildEnvironment
+    outputs: list[BuildConcept], environment: BuildEnvironment
 ) -> list[tuple[BuildConcept, BuildConcept]]:
     """Pair each rowset-derived FK output with the non-rowset (dim) key it was
     merged/joined onto. A query-scoped `join`/`merge` collapses the FK's address
@@ -365,7 +364,7 @@ def _collect_advertised_outputs(
     select: SelectLineage | MultiSelectLineage,
     environment: BuildEnvironment,
     base_node: StrategyNode,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
 ) -> tuple[list[BuildConcept], list[BuildConcept], list[BuildConcept]]:
     """Resolve the rowset's advertised outputs from its derived concepts.
 
@@ -621,7 +620,7 @@ def _build_translation_node(
 
 def _apply_cross_rowset_where(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -698,9 +697,9 @@ def _apply_cross_rowset_where(
 
 
 def _enrich_via_derived_join_key(
-    derived_keys: List[tuple[BuildConcept, str]],
-    enrich_remaining: List[BuildConcept],
-    local_optional: List[BuildConcept],
+    derived_keys: list[tuple[BuildConcept, str]],
+    enrich_remaining: list[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -851,7 +850,7 @@ def _relation_key_group_mates(
 
 def _relation_keys_fully_covered(
     environment: BuildEnvironment,
-    remaining: List[BuildConcept],
+    remaining: list[BuildConcept],
     mates_map: dict[str, set[str]],
 ) -> bool:
     """The local enrichment merge must carry EVERY authored key group binding
@@ -886,8 +885,8 @@ def _relation_keys_fully_covered(
 
 
 def _enrich_via_group_mate_keys(
-    enrich_remaining: List[BuildConcept],
-    local_optional: List[BuildConcept],
+    enrich_remaining: list[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -1007,7 +1006,7 @@ def _enrich_via_group_mate_keys(
 
 def _enrich_rowset_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -1222,7 +1221,7 @@ def _enrich_rowset_node(
 
 def gen_rowset_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

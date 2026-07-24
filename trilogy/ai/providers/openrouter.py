@@ -2,7 +2,7 @@ import dataclasses
 import json
 import time
 from os import environ
-from typing import Any, List, Optional
+from typing import Any
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
@@ -26,7 +26,7 @@ _BODY_RETRY_ATTEMPTS = 3
 _BODY_RETRY_INITIAL_DELAY_S = 2.0
 
 
-def _interpret_body(data: Any) -> tuple[Optional[dict], Optional[str]]:
+def _interpret_body(data: Any) -> tuple[dict | None, str | None]:
     """Inspect a 200-OK response body. Returns ``(data, None)`` when usable,
     ``(None, reason)`` when the response should be retried.
 
@@ -61,7 +61,7 @@ def _env_flag(name: str) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _load_provider_routing() -> Optional[dict]:
+def _load_provider_routing() -> dict | None:
     """OpenRouter provider-selection preferences from the OPENROUTER_PROVIDER
     env var (a JSON object, e.g. {"ignore": ["AtlasCloud"]}). OpenRouter
     multiplexes a model across providers and some reject otherwise-valid tool
@@ -87,9 +87,9 @@ class OpenRouterProvider(LLMProvider):
         name: str,
         model: str,
         api_key: str | None = None,
-        retry_options: Optional[RetryOptions] = None,
-        provider_routing: Optional[dict] = None,
-        sanitize_html_escapes: Optional[bool] = None,
+        retry_options: RetryOptions | None = None,
+        provider_routing: dict | None = None,
+        sanitize_html_escapes: bool | None = None,
     ):
         api_key = api_key or environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -132,7 +132,7 @@ class OpenRouterProvider(LLMProvider):
         )
 
     def generate_completion(
-        self, options: LLMRequestOptions, history: List[LLMMessage]
+        self, options: LLMRequestOptions, history: list[LLMMessage]
     ) -> LLMResponse:
         try:
             import httpx
@@ -188,8 +188,8 @@ class OpenRouterProvider(LLMProvider):
                     response.raise_for_status()
                     return response.json()
 
-            data: Optional[dict] = None
-            last_problem: Optional[str] = None
+            data: dict | None = None
+            last_problem: str | None = None
             for attempt in range(_BODY_RETRY_ATTEMPTS):
                 raw = fetch_with_retry(make_request, self.retry_options)
                 data, problem = _interpret_body(raw)
@@ -264,4 +264,4 @@ class OpenRouterProvider(LLMProvider):
                 f"OpenRouter API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"OpenRouter API error: {str(error)}")
+            raise Exception(f"OpenRouter API error: {error!s}")

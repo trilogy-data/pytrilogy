@@ -7,10 +7,10 @@ from trilogy.parser import parse
 __version__ = "0.3.298"
 
 __all__ = [
-    "parse",
-    "Executor",
+    "CONFIG",
     "Dialects",
     "Environment",
     "EnvironmentConfig",
-    "CONFIG",
+    "Executor",
+    "parse",
 ]

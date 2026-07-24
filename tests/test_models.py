@@ -194,7 +194,6 @@ def test_base_join(test_environment: Environment):
         )
     except Exception as exc2:
         exc = exc2
-        pass
     assert isinstance(exc, SyntaxError)
 
     x = BaseJoin(

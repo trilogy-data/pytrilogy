@@ -1,6 +1,5 @@
 from collections import defaultdict
 from enum import Enum
-from typing import List
 
 from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.models.build import (
@@ -87,7 +86,7 @@ def _node_condition_implies(
     )
 
 
-def _stack_exempt_or_implies(stack: List[StrategyNode], condition: BoolExpr) -> bool:
+def _stack_exempt_or_implies(stack: list[StrategyNode], condition: BoolExpr) -> bool:
     """Every node either implies the condition or is exempt from carrying it
     (scalar-only / independent scope). Sufficient for a FRAGMENT search: the
     consuming level re-validates with its full sibling stack, where an actual
@@ -100,7 +99,7 @@ def _stack_exempt_or_implies(stack: List[StrategyNode], condition: BoolExpr) -> 
     )
 
 
-def _stack_applies_condition(stack: List[StrategyNode], condition: BoolExpr) -> bool:
+def _stack_applies_condition(stack: list[StrategyNode], condition: BoolExpr) -> bool:
     """A condition counts as already applied only when at least one node's own
     conditions imply it and every other node either implies it or is exempt.
     Exemptions let a node opt OUT of carrying a condition another node
@@ -113,7 +112,7 @@ def _stack_applies_condition(stack: List[StrategyNode], condition: BoolExpr) -> 
 
 
 def _condition_atom_met(
-    stack: List[StrategyNode],
+    stack: list[StrategyNode],
     found_addresses: set[str],
     condition: BoolExpr,
     require_applier: bool,
@@ -126,9 +125,9 @@ def _condition_atom_met(
 
 
 def _conditions_met(
-    stack: List[StrategyNode],
+    stack: list[StrategyNode],
     found_addresses: set[str],
-    mandatory_with_filter: List[BuildConcept],
+    mandatory_with_filter: list[BuildConcept],
     conditions: BuildWhereClause | None,
     require_applier: bool,
 ) -> bool:
@@ -200,7 +199,7 @@ def validate_concept(
             virtual_addresses.remove(concept.address)
     if concept in node.partial_concepts:
         if concept.address in non_partial_addresses:
-            return None
+            return
         partial_addresses.add(concept.address)
         if accept_partial:
             found_addresses.add(concept.address)
@@ -258,9 +257,9 @@ def validate_concept(
 
 def validate_stack(
     environment: BuildEnvironment,
-    stack: List[StrategyNode],
-    concepts: List[BuildConcept],
-    mandatory_with_filter: List[BuildConcept],
+    stack: list[StrategyNode],
+    concepts: list[BuildConcept],
+    mandatory_with_filter: list[BuildConcept],
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
     require_condition_applier: bool = False,

@@ -243,7 +243,7 @@ def validate_declared_domains(
             error = DatasourceModelValidationError(
                 f"Datasource {datasource.name} failed validation. Values for "
                 f"{concept.address} violate declared domain "
-                f"{str(concept.datatype)}: {[row_to_dict(r) for r in rows]}"
+                f"{concept.datatype!s}: {[row_to_dict(r) for r in rows]}"
             )
         results.append(
             ValidationTest(

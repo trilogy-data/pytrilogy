@@ -13,7 +13,7 @@ from trilogy.dialect.config import DuckDBConfig
 
 CONFIG.use_v4_discovery = True
 
-import trilogy.core.query_processor as qp  # noqa: E402
+import trilogy.core.query_processor as qp
 
 TPCDS = Path(__file__).parent.parent / "tests" / "modeling" / "tpc_ds_duckdb"
 

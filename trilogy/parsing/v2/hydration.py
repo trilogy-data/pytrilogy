@@ -58,12 +58,12 @@ from trilogy.parsing.v2.syntax import (
 
 __all__ = [
     "MAX_PARSE_DEPTH",
+    "ConceptStatementPlan",
     "HydrationContext",
     "HydrationPhase",
     "NativeHydrator",
     "StatementPlan",
     "StatementPlanBase",
-    "ConceptStatementPlan",
     "UnsupportedSyntaxError",
     "extract_concept_name_from_literal",
     "extract_dependencies",

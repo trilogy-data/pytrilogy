@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from dataclasses import replace as dc_replace
@@ -10,16 +11,7 @@ from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
-    Iterable,
-    List,
-    Mapping,
-    Optional,
     Self,
-    Sequence,
-    Set,
-    Tuple,
-    Type,
-    Union,
     cast,
 )
 
@@ -85,15 +77,15 @@ class ReferenceReplaceable:
 
 class ConceptArgs:
     @property
-    def concept_arguments(self) -> Sequence["ConceptRef"]:
+    def concept_arguments(self) -> Sequence[ConceptRef]:
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> Sequence[tuple[ConceptRef, ...]]:
         return []
 
     @property
-    def row_arguments(self) -> Sequence["ConceptRef"]:
+    def row_arguments(self) -> Sequence[ConceptRef]:
         return self.concept_arguments
 
 
@@ -115,7 +107,7 @@ def compute_safe_address(namespace: str, name: str) -> str:
 class ConceptRef(Addressable, Namespaced, DataTyped, ReferenceReplaceable):
     address: str
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
-    metadata: Optional["Metadata"] = None
+    metadata: Metadata | None = None
 
     @property
     def reference(self):
@@ -231,13 +223,13 @@ class Parenthetical(
     ReferenceReplaceable,
     Namespaced,
 ):
-    content: "Expr"
+    content: Expr
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
             self.content = self.content.reference
 
-    def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
+    def __add__(self, other) -> Parenthetical | Conditional:
         if other is None:
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
@@ -248,7 +240,7 @@ class Parenthetical(
         return self.__repr__()
 
     def __repr__(self):
-        return f"({str(self.content)})"
+        return f"({self.content!s})"
 
     def with_namespace(self, namespace: str) -> Parenthetical:
         return Parenthetical(
@@ -270,7 +262,7 @@ class Parenthetical(
 
     @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
-        base: List[ConceptRef] = []
+        base: list[ConceptRef] = []
         x = self.content
         if isinstance(x, ConceptRef):
             base += [x]
@@ -285,7 +277,7 @@ class Parenthetical(
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> Sequence[tuple[ConceptRef, ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return []
@@ -309,10 +301,8 @@ class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
         if not isinstance(self.operator, BooleanOperator):
             self.operator = BooleanOperator(str(self.operator))
 
-    def __add__(self, other) -> "Conditional":
-        if other is None:
-            return self
-        elif str(other) == str(self):
+    def __add__(self, other) -> Conditional:
+        if other is None or str(other) == str(self):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -322,7 +312,7 @@ class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
         return self.__repr__()
 
     def __repr__(self):
-        return f"{str(self.left)} {self.operator.value} {str(self.right)}"
+        return f"{self.left!s} {self.operator.value} {self.right!s}"
 
     def __eq__(self, other):
         if not isinstance(other, Conditional):
@@ -336,7 +326,7 @@ class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
     def __hash__(self):
         return hash(repr(self))
 
-    def with_namespace(self, namespace: str) -> "Conditional":
+    def with_namespace(self, namespace: str) -> Conditional:
         return Conditional(
             left=(
                 self.left.with_namespace(namespace)
@@ -409,9 +399,7 @@ class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
 
 @dataclass
 class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
-    conditional: Union[
-        SubselectComparison, Comparison, Conditional, Parenthetical, Between
-    ]
+    conditional: SubselectComparison | Comparison | Conditional | Parenthetical | Between
 
     def __repr__(self):
         return str(self.conditional)
@@ -428,7 +416,7 @@ class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> Sequence[tuple[ConceptRef, ...]]:
         return self.conditional.existence_arguments
 
     def with_namespace(self, namespace: str) -> Self:
@@ -448,9 +436,9 @@ class HavingClause(WhereClause):
 @dataclass
 class Grain(Namespaced):
     components: set[str] = dc_field(default_factory=set)
-    where_clause: Optional["WhereClause"] = None
+    where_clause: WhereClause | None = None
     component_order: list[str] = dc_field(default_factory=list)
-    _str: Optional[str] = dc_field(default=None, init=False, repr=False, compare=False)
+    _str: str | None = dc_field(default=None, init=False, repr=False, compare=False)
     _abstract: bool = dc_field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -504,7 +492,7 @@ class Grain(Namespaced):
             where_clause=where_clause,
         )
 
-    def with_namespace(self, namespace: str) -> "Grain":
+    def with_namespace(self, namespace: str) -> Grain:
         order = [address_with_namespace(c, namespace) for c in self.component_order]
         return Grain(
             components=set(order),
@@ -516,7 +504,7 @@ class Grain(Namespaced):
             ),
         )
 
-    def __add__(self, other: "Grain") -> "Grain":
+    def __add__(self, other: Grain) -> Grain:
         if not other:
             return self
         where = self.where_clause
@@ -540,7 +528,7 @@ class Grain(Namespaced):
             component_order=order,
         )
 
-    def __sub__(self, other: "Grain") -> "Grain":
+    def __sub__(self, other: Grain) -> Grain:
         return Grain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
@@ -574,10 +562,10 @@ class Grain(Namespaced):
     def __hash__(self):
         return hash(frozenset(self.components))
 
-    def issubset(self, other: "Grain"):
+    def issubset(self, other: Grain):
         return self.components.issubset(other.components)
 
-    def union(self, other: "Grain"):
+    def union(self, other: Grain):
         addresses = self.components.union(other.components)
         order = self.component_order + [
             item for item in other.component_order if item not in self.components
@@ -588,10 +576,10 @@ class Grain(Namespaced):
             component_order=order,
         )
 
-    def isdisjoint(self, other: "Grain"):
+    def isdisjoint(self, other: Grain):
         return self.components.isdisjoint(other.components)
 
-    def intersection(self, other: "Grain") -> "Grain":
+    def intersection(self, other: Grain) -> Grain:
         intersection = self.components.intersection(other.components)
         return Grain(
             components=intersection,
@@ -606,7 +594,7 @@ class Grain(Namespaced):
         else:
             base = "Grain<" + ",".join(sorted(self.components)) + ">"
         if self.where_clause:
-            base += f"|{str(self.where_clause)}"
+            base += f"|{self.where_clause!s}"
         return base
 
     def __str__(self):
@@ -614,7 +602,7 @@ class Grain(Namespaced):
             self._str = self._gen_str()
         return self._str
 
-    def __radd__(self, other) -> "Grain":
+    def __radd__(self, other) -> Grain:
         if other == 0:
             return self
         else:
@@ -642,46 +630,8 @@ def _mirror_operator(operator: ComparisonOperator) -> ComparisonOperator:
 
 @dataclass
 class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
-    left: Union[
-        int,
-        str,
-        float,
-        bool,
-        datetime,
-        date,
-        Function,
-        ConceptRef,
-        Conditional,
-        DataType,
-        Comparison,
-        FunctionCallWrapper,
-        Parenthetical,
-        MagicConstants,
-        WindowItem,
-        AggregateWrapper,
-        FilterItem,
-    ]
-    right: Union[
-        int,
-        str,
-        float,
-        bool,
-        date,
-        datetime,
-        ConceptRef,
-        Function,
-        Conditional,
-        DataType,
-        Comparison,
-        FunctionCallWrapper,
-        Parenthetical,
-        MagicConstants,
-        WindowItem,
-        AggregateWrapper,
-        ListWrapper,
-        TupleWrapper,
-        FilterItem,
-    ]
+    left: int | str | float | bool | datetime | date | Function | ConceptRef | Conditional | DataType | Comparison | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
+    right: int | str | float | bool | date | datetime | ConceptRef | Function | Conditional | DataType | Comparison | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | ListWrapper | TupleWrapper | FilterItem
     operator: ComparisonOperator
 
     def __post_init__(self):
@@ -712,14 +662,14 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                 if len(left_elems) != len(right_elems):
                     raise SyntaxError(
                         f"Composite membership requires matching arity, got "
-                        f"{len(left_elems)} and {len(right_elems)} in {str(self)}"
+                        f"{len(left_elems)} and {len(right_elems)} in {self!s}"
                     )
                 for le, re in zip(left_elems, right_elems):
                     lt, rt = arg_to_datatype(le), arg_to_datatype(re)
                     if not is_compatible_datatype(lt, rt):
                         raise SyntaxError(
                             f"Cannot compare composite-membership elements {le} ({lt}) "
-                            f"and {re} ({rt}) of different types in {str(self)}"
+                            f"and {re} ({rt}) of different types in {self!s}"
                         )
             elif isinstance(self.right, TupleWrapper):
                 # value-list membership: each element must be comparable to the
@@ -729,7 +679,7 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                     if not is_compatible_datatype(left_type, et):
                         raise SyntaxError(
                             f"Cannot compare {left_name} and value-list element "
-                            f"{elem} ({et}) with operator {self.operator} in {str(self)}"
+                            f"{elem} ({et}) with operator {self.operator} in {self!s}"
                         )
                     if self.operator == ComparisonOperator.IN:
                         violation = constant_domain_violation(
@@ -737,24 +687,24 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                         )
                         if violation:
                             raise SyntaxError(
-                                f"Impossible comparison in {str(self)}: {violation}"
+                                f"Impossible comparison in {self!s}: {violation}"
                             )
             elif isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {left_type} and {right_type} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_type} and {right_type} with operator {self.operator} in {self!s}"
                 )
             elif isinstance(self.right, Concept) and not is_compatible_datatype(
                 left_type, right_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {left_name} and {right_name} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_name} and {right_name} with operator {self.operator} in {self!s}"
                 )
         else:
             if not is_compatible_datatype(left_type, right_type):
                 raise SyntaxError(
-                    f"Cannot compare {left_name} ({self.left}) and {right_name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
+                    f"Cannot compare {left_name} ({self.left}) and {right_name} ({self.right}) of different types with operator {self.operator.value} in {self!s}"
                 )
             violation = constant_domain_violation(left_type, self.operator, self.right)
             if violation is None:
@@ -762,7 +712,7 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
                     right_type, _mirror_operator(self.operator), self.left
                 )
             if violation:
-                raise SyntaxError(f"Impossible comparison in {str(self)}: {violation}")
+                raise SyntaxError(f"Impossible comparison in {self!s}: {violation}")
 
     def __add__(self, other):
         if other is None:
@@ -831,7 +781,7 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         )
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
@@ -839,16 +789,16 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         return output
 
     @property
-    def row_arguments(self) -> List[ConceptRef]:
+    def row_arguments(self) -> list[ConceptRef]:
         output = []
         output += get_concept_row_arguments(self.left)
         output += get_concept_row_arguments(self.right)
         return output
 
     @property
-    def existence_arguments(self) -> List[Tuple[ConceptRef, ...]]:
+    def existence_arguments(self) -> list[tuple[ConceptRef, ...]]:
         """Return concepts directly referenced in where clause"""
-        output: List[Tuple[ConceptRef, ...]] = []
+        output: list[tuple[ConceptRef, ...]] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -863,57 +813,9 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
 
 @dataclass
 class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
-    left: Union[
-        int,
-        str,
-        float,
-        bool,
-        datetime,
-        date,
-        Function,
-        ConceptRef,
-        DataType,
-        FunctionCallWrapper,
-        Parenthetical,
-        MagicConstants,
-        WindowItem,
-        AggregateWrapper,
-        FilterItem,
-    ]
-    low: Union[
-        int,
-        str,
-        float,
-        bool,
-        date,
-        datetime,
-        ConceptRef,
-        Function,
-        DataType,
-        FunctionCallWrapper,
-        Parenthetical,
-        MagicConstants,
-        WindowItem,
-        AggregateWrapper,
-        FilterItem,
-    ]
-    high: Union[
-        int,
-        str,
-        float,
-        bool,
-        date,
-        datetime,
-        ConceptRef,
-        Function,
-        DataType,
-        FunctionCallWrapper,
-        Parenthetical,
-        MagicConstants,
-        WindowItem,
-        AggregateWrapper,
-        FilterItem,
-    ]
+    left: int | str | float | bool | datetime | date | Function | ConceptRef | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
+    low: int | str | float | bool | date | datetime | ConceptRef | Function | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
+    high: int | str | float | bool | date | datetime | ConceptRef | Function | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
 
     def __post_init__(self):
         if isinstance(self.left, Concept):
@@ -950,9 +852,9 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         ):
             violation = constant_domain_violation(left_type, op, bound)
             if violation:
-                raise SyntaxError(f"Impossible comparison in {str(self)}: {violation}")
+                raise SyntaxError(f"Impossible comparison in {self!s}: {violation}")
 
-    def __add__(self, other) -> "Conditional | Between":
+    def __add__(self, other) -> Conditional | Between:
         if other is None:
             return self
         if not isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
@@ -979,7 +881,7 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
     def __hash__(self):
         return hash(repr(self))
 
-    def with_namespace(self, namespace: str) -> "Between":
+    def with_namespace(self, namespace: str) -> Between:
         return self.__class__(
             left=(
                 self.left.with_namespace(namespace)
@@ -1000,7 +902,7 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
 
     def with_reference_replacement(
         self, replacements: ReferenceReplacements
-    ) -> "Between":
+    ) -> Between:
         return self.__class__(
             left=(
                 self.left.with_reference_replacement(replacements)
@@ -1020,7 +922,7 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         )
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         return (
             get_concept_arguments(self.left)
             + get_concept_arguments(self.low)
@@ -1028,7 +930,7 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         )
 
     @property
-    def row_arguments(self) -> List[ConceptRef]:
+    def row_arguments(self) -> list[ConceptRef]:
         return (
             get_concept_row_arguments(self.left)
             + get_concept_row_arguments(self.low)
@@ -1036,8 +938,8 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         )
 
     @property
-    def existence_arguments(self) -> List[Tuple[ConceptRef, ...]]:
-        output: List[Tuple[ConceptRef, ...]] = []
+    def existence_arguments(self) -> list[tuple[ConceptRef, ...]]:
+        output: list[tuple[ConceptRef, ...]] = []
         for child in (self.left, self.low, self.high):
             if isinstance(child, ConceptArgs):
                 output += child.existence_arguments
@@ -1065,11 +967,11 @@ class SubselectComparison(Comparison):
         return hash(repr(self))
 
     @property
-    def row_arguments(self) -> List[ConceptRef]:
+    def row_arguments(self) -> list[ConceptRef]:
         return get_concept_row_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> list[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> list[tuple[ConceptRef, ...]]:
         return [tuple(get_concept_arguments(self.right))]
 
 
@@ -1083,25 +985,11 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
     metadata: Metadata = dc_field(
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
-    lineage: Optional[
-        Union[
-            Function,
-            WindowItem,
-            FilterItem,
-            AggregateWrapper,
-            RowsetItem,
-            SubselectItem,
-            MultiSelectLineage,
-            Comparison,
-            Conditional,
-            Between,
-            "FunctionCallWrapper",
-        ]
-    ] = None
+    lineage: Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | Conditional | Between | FunctionCallWrapper | None = None
     namespace: str = dc_field(default=DEFAULT_NAMESPACE)
-    keys: Optional[set[str]] = None
-    grain: "Grain" = dc_field(default=None)  # type: ignore
-    modifiers: List[Modifier] = dc_field(default_factory=list)
+    keys: set[str] | None = None
+    grain: Grain = dc_field(default=None)  # type: ignore
+    modifiers: list[Modifier] = dc_field(default_factory=list)
     pseudonyms: set[str] = dc_field(default_factory=set)
     address: str = dc_field(init=False, repr=False, compare=False)
 
@@ -1161,7 +1049,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
     def __hash__(self):
         return hash(
-            f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
+            f"{self.name}+{self.datatype}+ {self.purpose} + {self.lineage!s} + {self.namespace} + {self.grain!s} + {self.keys!s}"
         )
 
     def __repr__(self):
@@ -1229,7 +1117,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         return {self.address, *self.pseudonyms}
 
     @property
-    def output(self) -> "Concept":
+    def output(self) -> Concept:
         return self
 
     @property
@@ -1266,7 +1154,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
-    ) -> Tuple[
+    ) -> tuple[
         Function
         | WindowItem
         | FilterItem
@@ -1283,18 +1171,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         # inlined body. The build phase will strip the wrapper via
         # `_build_function_call_wrapper`, so we can unwrap here too.
         new_lineage = cast(
-            Optional[
-                Union[
-                    Function,
-                    WindowItem,
-                    FilterItem,
-                    AggregateWrapper,
-                    RowsetItem,
-                    SubselectItem,
-                    MultiSelectLineage,
-                    Comparison,
-                ]
-            ],
+            Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | None,
             (
                 self.lineage.content
                 if isinstance(self.lineage, FunctionCallWrapper)
@@ -1317,7 +1194,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             return new_lineage, self.grain, keys
         if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
             aggregate_grain_components = cast(
-                List[ConceptRef | Concept],
+                list[ConceptRef | Concept],
                 _aggregate_pinnable_grain_refs(grain, environment),
             )
             new_lineage = AggregateWrapper(
@@ -1330,7 +1207,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
             if pin_bare_aggregates:
                 wrapper_grain_components = cast(
-                    List[ConceptRef | Concept],
+                    list[ConceptRef | Concept],
                     _aggregate_pinnable_grain_refs(grain, environment),
                 )
                 new_lineage = AggregateWrapper(
@@ -1402,7 +1279,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             pseudonyms=self.pseudonyms,
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
+    def with_grain(self, grain: Grain | None = None) -> Self:
 
         return self.__class__(
             name=self.name,
@@ -1420,25 +1297,13 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         )
 
     @cached_property
-    def sources(self) -> List["ConceptRef"]:
+    def sources(self) -> list[ConceptRef]:
         if self.lineage:
-            output: List[ConceptRef] = []
+            output: list[ConceptRef] = []
 
             def get_sources(
-                expr: Union[
-                    Function,
-                    WindowItem,
-                    FilterItem,
-                    AggregateWrapper,
-                    RowsetItem,
-                    SubselectItem,
-                    MultiSelectLineage,
-                    Comparison,
-                    Conditional,
-                    Between,
-                    "FunctionCallWrapper",
-                ],
-                output: List[ConceptRef],
+                expr: Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | Conditional | Between | FunctionCallWrapper,
+                output: list[ConceptRef],
             ):
 
                 for item in expr.concept_arguments:
@@ -1456,7 +1321,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         return []
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         return list(self.lineage.concept_arguments) if self.lineage else []
 
     @classmethod
@@ -1559,9 +1424,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             return Derivation.CONSTANT
 
         elif lineage and isinstance(lineage, BuildFunction):
-            if not lineage.concept_arguments:
-                return Derivation.CONSTANT
-            elif all(
+            if not lineage.concept_arguments or all(
                 [x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments]
             ):
                 return Derivation.CONSTANT
@@ -1630,7 +1493,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         self,
         condition: Conditional | Comparison | Parenthetical | Between,
         environment: Environment | None = None,
-    ) -> "Concept":
+    ) -> Concept:
         from trilogy.utility import string_to_hash
 
         if self.lineage and isinstance(self.lineage, FilterItem):
@@ -1682,7 +1545,7 @@ class OrderItem(ReferenceReplaceable, ConceptArgs, Namespaced):
         if not isinstance(self.order, Ordering):
             self.order = Ordering(self.order)
 
-    def with_namespace(self, namespace: str) -> "OrderItem":
+    def with_namespace(self, namespace: str) -> OrderItem:
         return OrderItem(
             expr=(
                 self.expr.with_namespace(namespace)
@@ -1713,7 +1576,7 @@ class OrderItem(ReferenceReplaceable, ConceptArgs, Namespaced):
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> Sequence[tuple[ConceptRef, ...]]:
         if isinstance(self.expr, ConceptArgs):
             return self.expr.existence_arguments
         return []
@@ -1726,13 +1589,13 @@ class OrderItem(ReferenceReplaceable, ConceptArgs, Namespaced):
 @dataclass
 class NumberingWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     type: WindowType
-    arguments: List["ConceptRef"]
-    order_by: List["OrderItem"]
+    arguments: list[ConceptRef]
+    order_by: list[OrderItem]
     # `over` accepts both bare references (`ConceptRef`) and arbitrary
     # expressions (`Function`, `AggregateWrapper`, ...). Expressions are
     # materialized into factory-local concepts at build time; we deliberately
     # keep them un-materialized at parse time so the environment isn't mutated.
-    over: List[Any] = dc_field(default_factory=list)
+    over: list[Any] = dc_field(default_factory=list)
 
     def __post_init__(self):
         assert (
@@ -1762,7 +1625,7 @@ class NumberingWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespac
             ],
         )
 
-    def with_namespace(self, namespace: str) -> "NumberingWindowItem":
+    def with_namespace(self, namespace: str) -> NumberingWindowItem:
         return NumberingWindowItem(
             type=self.type,
             arguments=[x.with_namespace(namespace) for x in self.arguments],
@@ -1771,8 +1634,8 @@ class NumberingWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespac
         )
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
-        output: List[ConceptRef] = []
+    def concept_arguments(self) -> list[ConceptRef]:
+        output: list[ConceptRef] = []
         for arg in self.arguments:
             output += get_concept_arguments(arg)
         for order in self.order_by:
@@ -1790,11 +1653,11 @@ class NumberingWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespac
 class NavigationWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     type: WindowType
     content: FuncArgs
-    order_by: List["OrderItem"]
+    order_by: list[OrderItem]
     # `over` accepts both bare references (`ConceptRef`) and arbitrary
     # expressions; expressions are materialized at build time, not parse time.
-    over: List[Any] = dc_field(default_factory=list)
-    offset: Optional[int] = None
+    over: list[Any] = dc_field(default_factory=list)
+    offset: int | None = None
 
     def __post_init__(self):
         assert (
@@ -1830,7 +1693,7 @@ class NavigationWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             offset=self.offset,
         )
 
-    def with_namespace(self, namespace: str) -> "NavigationWindowItem":
+    def with_namespace(self, namespace: str) -> NavigationWindowItem:
         return NavigationWindowItem(
             type=self.type,
             content=(
@@ -1844,8 +1707,8 @@ class NavigationWindowItem(DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         )
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
-        output: List[ConceptRef] = []
+    def concept_arguments(self) -> list[ConceptRef]:
+        output: list[ConceptRef] = []
         output += get_concept_arguments(self.content)
         for order in self.order_by:
             output += get_concept_arguments(order)
@@ -1891,8 +1754,8 @@ def get_basic_type(
 
 @dataclass
 class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
-    value_expr: "Expr"
-    expr: "Expr"
+    value_expr: Expr
+    expr: Expr
 
     def __post_init__(self):
         if isinstance(self.expr, Concept):
@@ -1906,7 +1769,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
         return self.__repr__()
 
     def __repr__(self):
-        return f"WHEN {str(self.value_expr)} {str(self.expr)}"
+        return f"WHEN {self.value_expr!s} {self.expr!s}"
 
     @property
     def concept_arguments(self):
@@ -1953,7 +1816,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
 @dataclass
 class CaseWhen(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
     comparison: Conditional | SubselectComparison | Comparison | Between
-    expr: "Expr"
+    expr: Expr
 
     def __post_init__(self):
         if isinstance(self.expr, Concept):
@@ -1967,7 +1830,7 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
         return self.__repr__()
 
     def __repr__(self):
-        return f"WHEN {str(self.comparison)} THEN {str(self.expr)}"
+        return f"WHEN {self.comparison!s} THEN {self.expr!s}"
 
     @property
     def concept_arguments(self):
@@ -2005,7 +1868,7 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
 
 @dataclass
 class CaseElse(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
-    expr: "Expr"
+    expr: Expr
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = dc_field(
         default_factory=lambda: ComparisonOperator.ELSE
@@ -2021,7 +1884,7 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
         return self.__repr__()
 
     def __repr__(self):
-        return f"ELSE {str(self.expr)}"
+        return f"ELSE {self.expr!s}"
 
     @property
     def output_datatype(self):
@@ -2055,7 +1918,7 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
         )
 
 
-def get_concept_row_arguments(expr) -> List["ConceptRef"]:
+def get_concept_row_arguments(expr) -> list[ConceptRef]:
     output = []
     if isinstance(expr, ConceptRef):
         output += [expr]
@@ -2065,7 +1928,7 @@ def get_concept_row_arguments(expr) -> List["ConceptRef"]:
     return output
 
 
-def get_concept_arguments(expr) -> List["ConceptRef"]:
+def get_concept_arguments(expr) -> list[ConceptRef]:
     output = []
     if isinstance(expr, ConceptRef):
         output += [expr]
@@ -2110,12 +1973,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     output_purpose: Purpose
     arguments: Sequence[FuncArgs]
     arg_count: int = 1
-    valid_inputs: Optional[
-        Union[
-            Set[DataType | ArrayType | MapType],
-            List[Set[DataType | ArrayType | MapType]],
-        ]
-    ] = None
+    valid_inputs: set[DataType | ArrayType | MapType] | list[set[DataType | ArrayType | MapType]] | None = None
 
     def __post_init__(self):
         from trilogy.core.models.build import BuildConcept
@@ -2134,7 +1992,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
 
         schema = handler(source_type)
 
-        def _validate(v: "Function") -> "Function":
+        def _validate(v: Function) -> Function:
             v.validate_arguments()
             return v
 
@@ -2180,7 +2038,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                         f"Invalid argument type {arg.output_datatype}' passed into"
                         f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
                     )
-            comparisons: List[Tuple[Type, DataType]] = [
+            comparisons: list[tuple[type, DataType]] = [
                 (str, DataType.STRING),
                 (int, DataType.INTEGER),
                 (float, DataType.FLOAT),
@@ -2246,7 +2104,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
             arg_count=self.arg_count,
         )
 
-    def with_namespace(self, namespace: str) -> "Function":
+    def with_namespace(self, namespace: str) -> Function:
         return Function(
             operator=self.operator,
             arguments=[
@@ -2267,7 +2125,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
         )
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         base = []
         for arg in self.arguments:
             base += get_concept_arguments(arg)
@@ -2283,12 +2141,12 @@ class FunctionCallWrapper(
 ):
     content: Expr
     name: str
-    args: List[Expr]
+    args: list[Expr]
 
     def __str__(self):
         return f'@{self.name}({",".join([str(x) for x in self.args])})'
 
-    def with_namespace(self, namespace) -> "FunctionCallWrapper":
+    def with_namespace(self, namespace) -> FunctionCallWrapper:
         return FunctionCallWrapper(
             content=(
                 self.content.with_namespace(namespace)
@@ -2322,7 +2180,7 @@ class FunctionCallWrapper(
 
     @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
-        base: List[ConceptRef] = []
+        base: list[ConceptRef] = []
         x = self.content
         if isinstance(x, ConceptRef):
             base += [x]
@@ -2362,7 +2220,7 @@ def _by_item_with_reference_replacement(item, replacements):
     return item
 
 
-def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[ConceptRef]:
+def _grain_concept_refs(grain: Grain, environment: Environment) -> list[ConceptRef]:
     out: list[ConceptRef] = []
     for address in grain.component_order:
         concept = environment.concepts.get(address)
@@ -2376,7 +2234,7 @@ def _grain_concept_refs(grain: "Grain", environment: Environment) -> list[Concep
 
 
 def _aggregate_pinnable_grain_refs(
-    grain: "Grain", environment: Environment
+    grain: Grain, environment: Environment
 ) -> list[ConceptRef]:
     """Grain components usable as a bare aggregate's pinned ``by`` dims.
 
@@ -2400,7 +2258,7 @@ def _aggregate_pinnable_grain_refs(
     return out
 
 
-def _row_grain_concept_refs(expr) -> list["ConceptRef"]:
+def _row_grain_concept_refs(expr) -> list[ConceptRef]:
     """Concept arguments that determine a row-wise expression's grain.
 
     Unlike the flat ``.concept_arguments`` property, a navigation window's
@@ -2483,8 +2341,8 @@ def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str],
 @dataclass
 class AggregateGrouping:
     mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
-    by: List[Any] = dc_field(default_factory=list)
-    grouping_sets: List[List[Any]] = dc_field(default_factory=list)
+    by: list[Any] = dc_field(default_factory=list)
+    grouping_sets: list[list[Any]] = dc_field(default_factory=list)
 
     def __post_init__(self):
         self.by = [_by_item_normalize(item) for item in self.by]
@@ -2493,7 +2351,7 @@ class AggregateGrouping:
             for grouping_set in self.grouping_sets
         ]
 
-    def with_namespace(self, namespace: str) -> "AggregateGrouping":
+    def with_namespace(self, namespace: str) -> AggregateGrouping:
         return AggregateGrouping(
             mode=self.mode,
             by=[x.with_namespace(namespace) for x in self.by],
@@ -2507,9 +2365,9 @@ class AggregateGrouping:
 @dataclass
 class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     function: Function
-    by: List[Any] = dc_field(default_factory=list)
+    by: list[Any] = dc_field(default_factory=list)
     grouping: AggregateGroupingMode = AggregateGroupingMode.STANDARD
-    grouping_sets: List[List[Any]] = dc_field(default_factory=list)
+    grouping_sets: list[list[Any]] = dc_field(default_factory=list)
     # Set when `by` was filled from the enclosing select's grain because the
     # author pinned none (`sum(x)` not `sum(x) by ...`). Diagnostic metadata
     # only — excluded from equality so it never changes computation identity.
@@ -2527,15 +2385,15 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
             grain_str = [[str(c) for c in group] for group in self.grouping_sets]
         else:
             grain_str = [str(c) for c in self.by] if self.by else "abstract"
-        return f"{str(self.function)}<{grain_str}>"
+        return f"{self.function!s}<{grain_str}>"
 
     @property
     def datatype(self):
         return self.function.datatype
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
-        out: List[ConceptRef] = list(self.function.concept_arguments)
+    def concept_arguments(self) -> list[ConceptRef]:
+        out: list[ConceptRef] = list(self.function.concept_arguments)
         for x in self.by:
             out.extend(get_concept_arguments(x))
         return out
@@ -2563,7 +2421,7 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
             grain_inherited=self.grain_inherited,
         )
 
-    def with_namespace(self, namespace: str) -> "AggregateWrapper":
+    def with_namespace(self, namespace: str) -> AggregateWrapper:
         return AggregateWrapper(
             function=self.function.with_namespace(namespace),
             by=[_by_item_with_namespace(c, namespace) for c in self.by],
@@ -2579,7 +2437,7 @@ class AggregateWrapper(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced)
 @dataclass
 class FilterItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
     content: FuncArgs
-    where: "WhereClause"
+    where: WhereClause
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
@@ -2588,9 +2446,9 @@ class FilterItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
             )
 
     def __str__(self):
-        return f"<Filter: {str(self.content)} where {str(self.where)}>"
+        return f"<Filter: {self.content!s} where {self.where!s}>"
 
-    def with_namespace(self, namespace: str) -> "FilterItem":
+    def with_namespace(self, namespace: str) -> FilterItem:
         return FilterItem(
             content=(
                 self.content.with_namespace(namespace)
@@ -2626,10 +2484,10 @@ class FilterItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
 @dataclass
 class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
     content: ConceptRef
-    where: Optional["WhereClause"] = None
-    order_by: List["OrderItem"] = dc_field(default_factory=list)
-    limit: Optional[int] = None
-    outer_arguments: List[ConceptRef] = dc_field(default_factory=list)
+    where: WhereClause | None = None
+    order_by: list[OrderItem] = dc_field(default_factory=list)
+    limit: int | None = None
+    outer_arguments: list[ConceptRef] = dc_field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
@@ -2676,7 +2534,7 @@ class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
             ],
         )
 
-    def with_namespace(self, namespace: str) -> "SubselectItem":
+    def with_namespace(self, namespace: str) -> SubselectItem:
         return SubselectItem(
             content=(
                 self.content.with_namespace(namespace)
@@ -2694,12 +2552,12 @@ class SubselectItem(ReferenceReplaceable, DataTyped, Namespaced, ConceptArgs):
         return ArrayType(type=self.content.datatype)
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         # When outer_arguments exist, only expose those to the main query.
         # Inner concepts are resolved separately in gen_subselect_node.
         if self.outer_arguments:
             return list(self.outer_arguments)
-        args: List[ConceptRef] = [self.content]
+        args: list[ConceptRef] = [self.content]
         if self.where:
             args += self.where.concept_arguments
         for item in self.order_by:
@@ -2724,7 +2582,7 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     content: ConceptRef
     select: Any
     name: str = ""
-    contents: List[ConceptRef] = dc_field(default_factory=list)
+    contents: list[ConceptRef] = dc_field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.content, Concept):
@@ -2737,7 +2595,7 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     def __repr__(self):
         if self.is_row:
             return f"<Subquery: ({', '.join(str(c) for c in self.contents)})>"
-        return f"<Subquery: {str(self.content)}>"
+        return f"<Subquery: {self.content!s}>"
 
     def __str__(self):
         return self.__repr__()
@@ -2765,7 +2623,7 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
             ],
         )
 
-    def with_namespace(self, namespace: str) -> "SubqueryItem":
+    def with_namespace(self, namespace: str) -> SubqueryItem:
         return SubqueryItem(
             content=(
                 self.content.with_namespace(namespace)
@@ -2789,14 +2647,14 @@ class SubqueryItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
         return self.content.datatype
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> list[ConceptRef]:
         return list(self.contents)
 
 
 @dataclass
 class RowsetLineage(Namespaced, ReferenceReplaceable):
     name: str
-    derived_concepts: List[ConceptRef]
+    derived_concepts: list[ConceptRef]
     select: SelectLineage | MultiSelectLineage
 
     def with_namespace(self, namespace: str):
@@ -2815,12 +2673,12 @@ class RowsetItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
     rowset: RowsetLineage
 
     def __repr__(self):
-        return f"<Rowset<{self.rowset.name}>: {str(self.content)}>"
+        return f"<Rowset<{self.rowset.name}>: {self.content!s}>"
 
     def __str__(self):
         return self.__repr__()
 
-    def with_namespace(self, namespace: str) -> "RowsetItem":
+    def with_namespace(self, namespace: str) -> RowsetItem:
         return RowsetItem(
             content=self.content.with_namespace(namespace),
             rowset=self.rowset.with_namespace(namespace),
@@ -2841,9 +2699,9 @@ class RowsetItem(ReferenceReplaceable, DataTyped, ConceptArgs, Namespaced):
 
 @dataclass
 class OrderBy(ReferenceReplaceable, Namespaced):
-    items: List[OrderItem]
+    items: list[OrderItem]
 
-    def with_namespace(self, namespace: str) -> "OrderBy":
+    def with_namespace(self, namespace: str) -> OrderBy:
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
     @property
@@ -2856,9 +2714,9 @@ class OrderBy(ReferenceReplaceable, Namespaced):
 
 @dataclass
 class AlignClause(Namespaced):
-    items: List[AlignItem]
+    items: list[AlignItem]
 
-    def with_namespace(self, namespace: str) -> "AlignClause":
+    def with_namespace(self, namespace: str) -> AlignClause:
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
@@ -2897,9 +2755,9 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
 
 @dataclass
 class DeriveClause(ReferenceReplaceable, Namespaced):
-    items: List[DeriveItem]
+    items: list[DeriveItem]
 
-    def with_namespace(self, namespace: str) -> "DeriveClause":
+    def with_namespace(self, namespace: str) -> DeriveClause:
         return DeriveClause(
             items=[
                 x.with_namespace(namespace) if isinstance(x, Namespaced) else x
@@ -2922,28 +2780,28 @@ class DeriveClause(ReferenceReplaceable, Namespaced):
 
 @dataclass
 class SelectLineage(ReferenceReplaceable, Namespaced):
-    selection: List[ConceptRef]
+    selection: list[ConceptRef]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
+    order_by: OrderBy | None = None
+    limit: int | None = None
     meta: Metadata = dc_field(default_factory=lambda: Metadata())
     grain: Grain = dc_field(default_factory=Grain)
-    where_clause: Optional[WhereClause] = None
-    having_clause: Optional[HavingClause] = None
+    where_clause: WhereClause | None = None
+    having_clause: HavingClause | None = None
     # Query-scoped JOINs declared on this select (`subset|union join a = b`).
     # Carried through to discovery so a select built as a sub-node (e.g. a union
     # arm) applies its own joins — the top-level build reads these off the
     # statement, but a nested arm only sees its lineage.
-    scoped_joins: List[tuple[str, str, JoinType]] = dc_field(default_factory=list)
+    scoped_joins: list[tuple[str, str, JoinType]] = dc_field(default_factory=list)
     # SELECT-level multi-level grouping (`by rollup (a, b)` etc.). A select
     # property, not a concept property: the build factory applies it to every
     # un-pinned aggregate materialized in this select's projection scope, so no
     # shared authoring object ever carries the spec.
-    grouping: Optional[AggregateGrouping] = None
+    grouping: AggregateGrouping | None = None
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> list[ConceptRef]:
         return self.selection
 
     def with_namespace(self, namespace):
@@ -2981,14 +2839,14 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
 
 @dataclass
 class MultiSelectLineage(ReferenceReplaceable, ConceptArgs, Namespaced):
-    selects: List[SelectLineage]
+    selects: list[SelectLineage]
     align: AlignClause
     namespace: str
     hidden_components: set[str]
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
-    where_clause: Optional[WhereClause] = None
-    having_clause: Optional[HavingClause] = None
+    order_by: OrderBy | None = None
+    limit: int | None = None
+    where_clause: WhereClause | None = None
+    having_clause: HavingClause | None = None
     derive: DeriveClause | None = None
 
     @property
@@ -3013,7 +2871,7 @@ class MultiSelectLineage(ReferenceReplaceable, ConceptArgs, Namespaced):
             output += select.output_components
         return [x for x in output if x.address not in select_hidden]
 
-    def with_namespace(self, namespace: str) -> "MultiSelectLineage":
+    def with_namespace(self, namespace: str) -> MultiSelectLineage:
         return type(self)(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
@@ -3067,7 +2925,7 @@ class UnionSelectLineage(MultiSelectLineage):
 
     operator: SetOperator = SetOperator.UNION_ALL
 
-    def with_namespace(self, namespace: str) -> "UnionSelectLineage":
+    def with_namespace(self, namespace: str) -> UnionSelectLineage:
         base = super().with_namespace(namespace)
         assert isinstance(base, UnionSelectLineage)
         base.operator = self.operator
@@ -3096,11 +2954,11 @@ class LooseConceptList:
         return cls(v)
 
     @cached_property
-    def sorted_addresses(self) -> List[str]:
+    def sorted_addresses(self) -> list[str]:
         return sorted(list(self.addresses))
 
     def __str__(self) -> str:
-        return f"lcl{str(self.sorted_addresses)}"
+        return f"lcl{self.sorted_addresses!s}"
 
     def __iter__(self):
         return iter(self.concepts)
@@ -3136,7 +2994,7 @@ class LooseConceptList:
 @dataclass
 class AlignItem(Namespaced):
     alias: str
-    concepts: List[ConceptRef]
+    concepts: list[ConceptRef]
     namespace: str = DEFAULT_NAMESPACE
     hidden: bool = False
 
@@ -3157,7 +3015,7 @@ class AlignItem(Namespaced):
     def aligned_concept(self) -> str:
         return f"{self.namespace}.{self.alias}"
 
-    def with_namespace(self, namespace: str) -> "AlignItem":
+    def with_namespace(self, namespace: str) -> AlignItem:
         return AlignItem(
             alias=self.alias,
             concepts=[c.with_namespace(namespace) for c in self.concepts],
@@ -3206,7 +3064,7 @@ class CustomFunctionFactory:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "CustomFunctionFactory":
+    def from_dict(cls, data: dict) -> CustomFunctionFactory:
         from pydantic import TypeAdapter
 
         expr_adapter: TypeAdapter[Expr] = TypeAdapter(Expr)
@@ -3293,11 +3151,11 @@ class Metadata:
     """Metadata container object.
     TODO: support arbitrary tags"""
 
-    description: Optional[str] = None
-    line_number: Optional[int] = None
-    column: Optional[int] = None
-    end_line: Optional[int] = None
-    end_column: Optional[int] = None
+    description: str | None = None
+    line_number: int | None = None
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
     concept_source: ConceptSource = dc_field(default=ConceptSource.MANUAL)
     # Hidden concepts stay fully queryable but are omitted from explore/metadata
     # listings (the `--` declaration prefix, mirroring select-output hiding).
@@ -3315,12 +3173,12 @@ class Window:
 
 @dataclass
 class WindowItemOver:
-    contents: List[ConceptRef]
+    contents: list[ConceptRef]
 
 
 @dataclass
 class WindowItemOrder:
-    contents: List["OrderItem"]
+    contents: list[OrderItem]
 
 
 @dataclass
@@ -3358,7 +3216,7 @@ class CustomType:
     drop_on: list[FunctionType] = dc_field(default_factory=list)
     add_on: list[FunctionType] = dc_field(default_factory=list)
 
-    def with_namespace(self, namespace: str) -> "CustomType":
+    def with_namespace(self, namespace: str) -> CustomType:
         return CustomType(
             name=address_with_namespace(self.name, namespace),
             type=self.type,
@@ -3394,7 +3252,7 @@ Expr = (
 )
 
 # (source-address, replacement-value) pairs applied in one tree traversal
-ReferenceReplacements = Sequence[Tuple[str, Expr | ArgBinding]]
+ReferenceReplacements = Sequence[tuple[str, Expr | ArgBinding]]
 
 FuncArgs = (
     ConceptRef

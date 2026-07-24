@@ -1,7 +1,8 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
+from typing import TYPE_CHECKING, Any
 
 from trilogy.constants import MagicConstants
 
@@ -59,7 +60,7 @@ CUSTOM_PLACEHOLDER = CustomType(
 
 
 VALID_INPUT_ITEM = DataType | ArrayType | MapType
-VALID_INPUTS_TYPE = Set[VALID_INPUT_ITEM] | List[Set[VALID_INPUT_ITEM]]
+VALID_INPUTS_TYPE = set[VALID_INPUT_ITEM] | list[set[VALID_INPUT_ITEM]]
 
 
 @dataclass
@@ -70,7 +71,7 @@ class FunctionConfig:
     output_type: (
         DataType | ArrayType | MapType | StructType | NumericType | TraitDataType | None
     ) = None
-    output_type_function: Optional[Callable] = None
+    output_type_function: Callable | None = None
 
 
 def get_unnest_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -100,7 +101,7 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
         if any(not is_compatible_datatype(a, b) for b in reps[i + 1 :]):
             raise InvalidSyntaxException(
                 f"All arguments to coalesce must be of compatible types, have "
-                f"{set(arg_to_datatype(x) for x in args)} for {str(args)}"
+                f"{set(arg_to_datatype(x) for x in args)} for {args!s}"
             )
     return merge_datatypes(reps)
 
@@ -114,9 +115,7 @@ def get_index_output_type(
 ) -> CONCRETE_TYPES:
     arg = args[0]
     datatype = arg_to_datatype(arg)
-    if isinstance(datatype, ArrayType):
-        return datatype.value_data_type
-    elif isinstance(datatype, MapType):
+    if isinstance(datatype, ArrayType) or isinstance(datatype, MapType):
         return datatype.value_data_type
     return datatype
 
@@ -272,21 +271,11 @@ def get_date_trunc_output(
     args: list[Any],
 ):
     target: DatePart = args[1]
-    if target == DatePart.YEAR:
+    if target == DatePart.YEAR or target == DatePart.MONTH or target == DatePart.DAY:
         return DataType.DATE
-    elif target == DatePart.MONTH:
-        return DataType.DATE
-    elif target == DatePart.DAY:
-        return DataType.DATE
-    elif target == DatePart.HOUR:
+    elif target == DatePart.HOUR or target == DatePart.MINUTE or target == DatePart.SECOND:
         return DataType.DATETIME
-    elif target == DatePart.MINUTE:
-        return DataType.DATETIME
-    elif target == DatePart.SECOND:
-        return DataType.DATETIME
-    elif target == DatePart.WEEK:
-        return DataType.DATE
-    elif target == DatePart.QUARTER:
+    elif target == DatePart.WEEK or target == DatePart.QUARTER:
         return DataType.DATE
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
@@ -308,7 +297,7 @@ def get_map_value_type(arg):
 
 # Numeric argument types accepted by math / aggregate functions. SQL backends
 # coerce freely across this family, so a function that accepts one accepts all.
-NUMERIC_INPUT_TYPES: Set[VALID_INPUT_ITEM] = {
+NUMERIC_INPUT_TYPES: set[VALID_INPUT_ITEM] = {
     DataType.INTEGER,
     DataType.BIGINT,
     DataType.FLOAT,
@@ -1501,8 +1490,8 @@ def create_function_derived_concept(
     operator: FunctionType,
     arguments: list[Concept],
     environment: Environment,
-    output_type: Optional[CONCRETE_TYPES] = None,
-    output_purpose: Optional[Purpose] = None,
+    output_type: CONCRETE_TYPES | None = None,
+    output_purpose: Purpose | None = None,
 ) -> Concept:
     purpose = (
         function_args_to_output_purpose(arguments, environment=environment)

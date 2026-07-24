@@ -23,8 +23,8 @@ in ``group_graph._compute_concept_sets`` is the only consumer."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation

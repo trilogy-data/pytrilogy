@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, logger
 from trilogy.core.models.build import (
@@ -32,7 +31,7 @@ GATING_CONCEPT = BuildConcept(
 
 def gen_recursive_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     history: History,
     environment: BuildEnvironment,
     g,

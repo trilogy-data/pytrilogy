@@ -95,7 +95,7 @@ def rowset_output_namespace(
 def _rowset_concept(
     orig_address: ConceptRef,
     rowset: RowsetDerivationStatement,
-    context: "RuleContext",
+    context: RuleContext,
     pre_output: list[Concept],
     orig: dict[str, Concept],
     orig_map: dict[str, Concept],
@@ -152,7 +152,7 @@ def _rowset_concept(
 
 def rowset_to_concepts_v2(
     rowset: RowsetDerivationStatement,
-    context: "RuleContext",
+    context: RuleContext,
 ) -> RowsetConceptResult:
     """Derive rowset output concepts via ``context.concepts``.
 

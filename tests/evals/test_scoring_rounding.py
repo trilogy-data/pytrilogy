@@ -27,7 +27,7 @@ def test_float32_drift_matches_reference():
 def test_integer_counts_stay_exact():
     # Distinct row counts must NOT be merged by the tolerance.
     assert _round_cell(45689) != _round_cell(45690)
-    assert _round_cell(107) == _round_cell(Decimal("107"))
+    assert _round_cell(107) == _round_cell(Decimal(107))
     assert _round_cell(2521) != _round_cell(2522)
 
 

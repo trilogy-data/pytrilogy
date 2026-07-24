@@ -113,7 +113,7 @@ class InferredFK:
         base = f"{self.to_table}.{self.to_column}"
         return f"{base}@{self.role_alias}" if self.role_alias else base
 
-    def binding(self) -> "FKBinding":
+    def binding(self) -> FKBinding:
         return FKBinding(target_ref=self.target_ref, partial=self.partial)
 
 
@@ -471,7 +471,7 @@ def infer_foreign_keys(
 
 
 def build_table_fk_info(
-    name: str, datasource: "Datasource", dialect: Any
+    name: str, datasource: Datasource, dialect: Any
 ) -> TableFKInfo:
     """Derive a TableFKInfo from an ingested datasource (before FK wiring)."""
     raw_columns = [c.alias for c in datasource.columns if isinstance(c.alias, str)]

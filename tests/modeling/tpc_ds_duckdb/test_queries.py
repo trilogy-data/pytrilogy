@@ -2,8 +2,9 @@ import os
 import platform
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 import tomli_w
 import tomllib

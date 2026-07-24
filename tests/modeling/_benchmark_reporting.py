@@ -13,10 +13,10 @@ from __future__ import annotations
 import os
 import platform
 import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from os import environ
 from pathlib import Path
-from typing import Callable, Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np

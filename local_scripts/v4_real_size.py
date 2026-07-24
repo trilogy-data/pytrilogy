@@ -53,7 +53,7 @@ def main() -> None:
         CONFIG.use_v4_discovery = True
         v4 = _measure(engine, fname)
         flag = "OVER" if isinstance(v4, int) and v4 >= ceiling else ""
-        print(f"{label:>7} {ceiling:>6} {str(v3):>6} {str(v4):>6} {flag:>6}")
+        print(f"{label:>7} {ceiling:>6} {v3!s:>6} {v4!s:>6} {flag:>6}")
 
 
 if __name__ == "__main__":

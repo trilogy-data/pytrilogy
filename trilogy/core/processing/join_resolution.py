@@ -524,7 +524,7 @@ def reduce_concept_pairs(
     pairs: list[ConceptPair],
     right_source: DataSource,
     join_type: JoinType = JoinType.INNER,
-    domain_graph: "DomainGraph | None" = None,
+    domain_graph: DomainGraph | None = None,
 ) -> list[ConceptPair]:
     from trilogy.core.enums import Purpose
 

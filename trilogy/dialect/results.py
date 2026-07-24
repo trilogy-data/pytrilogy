@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from trilogy.core.models.author import ConceptRef
 from trilogy.engine import ResultProtocol
@@ -104,7 +104,7 @@ class ChartResult(ResultProtocol):
 
 
 def generate_result_set(
-    columns: List[ConceptRef], output_data: list[Any]
+    columns: list[ConceptRef], output_data: list[Any]
 ) -> MockResult:
     """Generate a mock result set from columns and output data."""
     names = [x.address.replace(".", "_") for x in columns]

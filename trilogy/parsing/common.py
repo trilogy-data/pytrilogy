@@ -1,5 +1,6 @@
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
-from typing import Any, Callable, Iterable, List, Mapping, Tuple
+from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
@@ -107,9 +108,7 @@ def unwrap_transformation(
     | Parenthetical
     | SubselectItem
 ):
-    if isinstance(input, Function):
-        return input
-    elif isinstance(input, AggregateWrapper):
+    if isinstance(input, Function) or isinstance(input, AggregateWrapper):
         return input
     elif isinstance(input, ConceptRef):
         concept = environment.concepts[input.address]
@@ -119,15 +118,7 @@ def unwrap_transformation(
             output_purpose=concept.purpose,
             arguments=[input],
         )
-    elif isinstance(input, FilterItem):
-        return input
-    elif isinstance(input, WindowItem):
-        return input
-    elif isinstance(input, FunctionCallWrapper):
-        return input
-    elif isinstance(input, Parenthetical):
-        return input
-    elif isinstance(input, SubselectItem):
+    elif isinstance(input, FilterItem) or isinstance(input, WindowItem) or isinstance(input, FunctionCallWrapper) or isinstance(input, Parenthetical) or isinstance(input, SubselectItem):
         return input
     elif isinstance(input, Comparison):
         # A comparison / membership (`x > 5`, `x in other`) references real
@@ -222,8 +213,8 @@ def process_function_args(
     args,
     meta: Meta | None,
     environment: Environment,
-) -> List[ConceptRef | Function | str | int | float | date | datetime]:
-    final: List[ConceptRef | Function | str | int | float | date | datetime] = []
+) -> list[ConceptRef | Function | str | int | float | date | datetime]:
+    final: list[ConceptRef | Function | str | int | float | date | datetime] = []
     for arg in args:
         final.append(process_function_arg(arg, meta, environment))
     return final
@@ -465,9 +456,9 @@ def get_lineage_modifiers(lineage: Any, environment: Environment) -> list[Modifi
 
 def get_purpose_and_keys(
     purpose: Purpose | None,
-    args: Tuple[ConceptRef | Concept, ...] | None,
+    args: tuple[ConceptRef | Concept, ...] | None,
     environment: Environment,
-) -> Tuple[Purpose, set[str] | None]:
+) -> tuple[Purpose, set[str] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args, environment)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args, environment)
@@ -477,9 +468,9 @@ def get_purpose_and_keys(
 
 
 def concept_list_to_keys(
-    concepts: Tuple[Concept | ConceptRef, ...], environment: Environment
+    concepts: tuple[Concept | ConceptRef, ...], environment: Environment
 ) -> set[str]:
-    final_keys: List[str] = []
+    final_keys: list[str] = []
     for concept in concepts:
 
         if isinstance(concept, ConceptRef):
@@ -532,7 +523,7 @@ def rewrite_composite_membership(left: Any, right: Any, operator: ComparisonOper
     return row_tuple_function(list(left.val)), row_tuple_function(list(right.val))
 
 
-def resolve_subquery_membership(left: Any, right: Any) -> Tuple[Any, Any]:
+def resolve_subquery_membership(left: Any, right: Any) -> tuple[Any, Any]:
     """Reconcile a `(select ...)` subquery RHS with the membership left side.
 
     A single-output subquery is a scalar membership set (`x in (select rs.x)`).
@@ -561,7 +552,7 @@ def resolve_subquery_membership(left: Any, right: Any) -> Tuple[Any, Any]:
 
 def constant_to_concept(
     parent: (
-        ListWrapper | TupleWrapper | MapWrapper | int | float | str | date | datetime
+        ListWrapper | TupleWrapper | MapWrapper | float | str | date | datetime
     ),
     name: str,
     namespace: str,
@@ -628,11 +619,7 @@ def atom_is_relevant(
         return rval
     elif isinstance(atom, SubselectComparison):
         return atom_is_relevant(atom.left, others, environment)
-    elif isinstance(atom, Comparison):
-        return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
-            atom.right, others, environment
-        )
-    elif isinstance(atom, Conditional):
+    elif isinstance(atom, Comparison) or isinstance(atom, Conditional):
         return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
             atom.right, others, environment
         )
@@ -840,9 +827,7 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [], True
     elif isinstance(arg, AggregateWrapper) and arg.by:
         return [x.reference for x in arg.by], True
-    elif isinstance(arg, FunctionCallWrapper):
-        return get_relevant_parent_concepts(arg.content)
-    elif isinstance(arg, Parenthetical):
+    elif isinstance(arg, FunctionCallWrapper) or isinstance(arg, Parenthetical):
         return get_relevant_parent_concepts(arg.content)
     elif isinstance(arg, NavigationWindowItem):
         # A navigation window (lead/lag/...) emits one value per operand row, so
@@ -884,7 +869,7 @@ def group_function_to_concept(
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ):
-    pkeys: List[Concept] = []
+    pkeys: list[Concept] = []
     namespace = namespace or environment.namespace
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
@@ -993,7 +978,7 @@ def function_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
 
-    pkeys: List[Concept] = []
+    pkeys: list[Concept] = []
     namespace = namespace or environment.namespace
     if parent.operator == FunctionType.ALIAS:
         source = parent.arguments[0]
@@ -1076,10 +1061,7 @@ def function_to_concept(
     elif parent.operator == FunctionType.RECURSE_EDGE:
         derivation = Derivation.RECURSIVE
         granularity = Granularity.MULTI_ROW
-    elif parent.operator in FunctionClass.SINGLE_ROW.value:
-        derivation = Derivation.CONSTANT
-        granularity = Granularity.SINGLE_ROW
-    elif concrete_args and all(
+    elif parent.operator in FunctionClass.SINGLE_ROW.value or concrete_args and all(
         x.derivation == Derivation.CONSTANT for x in concrete_args
     ):
         derivation = Derivation.CONSTANT
@@ -1811,7 +1793,7 @@ def comparison_to_concept(
 ):
     fmetadata = metadata or Metadata()
 
-    pkeys: List[Concept] = []
+    pkeys: list[Concept] = []
     namespace = namespace or environment.namespace
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)

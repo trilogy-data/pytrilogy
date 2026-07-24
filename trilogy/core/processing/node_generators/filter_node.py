@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
@@ -130,7 +129,7 @@ def _resolve_parent_row_outputs(
 def pushdown_filter_to_parent(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     conditions: BuildWhereClause | None,
     filter_where: BuildWhereClause,
     same_filter_optional: list[BuildConcept],
@@ -224,7 +223,7 @@ def _can_pushdown_as_grouped_filter(
 def build_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
 ) -> FilterParentPlan:
@@ -355,7 +354,7 @@ def add_existence_sources(
 
 def gen_filter_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

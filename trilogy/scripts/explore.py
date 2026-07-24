@@ -11,9 +11,9 @@ from __future__ import annotations
 import re
 import textwrap
 from collections import defaultdict
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator, Sequence
 
 import click
 
@@ -205,7 +205,7 @@ def _grain_display(addr: str) -> str:
     implicit ``local.`` prefix so a property bound to a local key reads as
     ``@customer_id`` rather than ``@local.customer_id``; cross-namespace
     addresses keep their full dotted path so the agent can find the key."""
-    return addr[len(_LOCAL_PREFIX) :] if addr.startswith(_LOCAL_PREFIX) else addr
+    return addr.removeprefix(_LOCAL_PREFIX)
 
 
 def _grain_suffix(key_addrs: tuple[str, ...]) -> str:
@@ -364,7 +364,7 @@ def _emit_imported_summary(
         leaves = sorted(
             leaf
             for addr in by_ns[ns]
-            for leaf in [addr[len(prefix) :] if addr.startswith(prefix) else addr]
+            for leaf in [addr.removeprefix(prefix)]
         )
         if not leaves:
             continue
@@ -445,7 +445,7 @@ def _keyset_label(key_addrs: tuple[str, ...]) -> str:
 
 
 def _strip_prefix(decl: str, prefix: str) -> str:
-    return decl[len(prefix) :] if decl.startswith(prefix) else decl
+    return decl.removeprefix(prefix)
 
 
 def _grain_grouped(
@@ -588,7 +588,7 @@ def _conformed_signature(concepts: list[Concept]) -> tuple:
     sig = []
     for c in concepts:
         prefix = f"{c.namespace}."
-        leaf = c.address[len(prefix) :] if c.address.startswith(prefix) else c.address
+        leaf = c.address.removeprefix(prefix)
         sig.append(
             (
                 leaf,

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from types import SimpleNamespace
-from typing import Iterable, TypeVar
+from typing import TypeVar
 
 import networkx as nx
 

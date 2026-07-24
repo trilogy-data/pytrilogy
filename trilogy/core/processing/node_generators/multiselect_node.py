@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import JoinType, Modifier, Purpose
@@ -35,8 +34,8 @@ LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 def extra_align_joins(
     base: BuildMultiSelectLineage,
     environment: BuildEnvironment,
-    parents: List[StrategyNode],
-) -> List[NodeJoin]:
+    parents: list[StrategyNode],
+) -> list[NodeJoin]:
     """Build the FULL-JOIN chain that aligns multiselect rowset CTEs.
 
     For N parent CTEs, emit N-1 joins anchored on the first parent. The Nth
@@ -100,7 +99,7 @@ def extra_align_joins(
 
 def gen_multiselect_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -132,7 +131,7 @@ def gen_multiselect_node(
         for ditem in lineage.derive.items:
             internal_needed.update(a.address for a in get_concept_arguments(ditem.expr))
 
-    base_parents: List[StrategyNode] = []
+    base_parents: list[StrategyNode] = []
     partial = []
     for select in lineage.selects:
 

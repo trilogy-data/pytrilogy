@@ -1,6 +1,6 @@
 import traceback
 from datetime import datetime
-from typing import Any, Union
+from typing import Any
 
 from trilogy import Executor
 from trilogy.core.statements.author import ImportStatement
@@ -55,7 +55,7 @@ def execute_single_statement(
     total_queries: int,
     use_progress=False,
     row_limit: int | None = None,
-) -> tuple[bool, ResultSet | ChartResult | None, Any, Union[Exception, None]]:
+) -> tuple[bool, ResultSet | ChartResult | None, Any, Exception | None]:
     """Execute a single statement and handle results/errors consistently.
 
     ``row_limit`` caps how many rows are fetched from the cursor for display.

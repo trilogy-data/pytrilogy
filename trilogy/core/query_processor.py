@@ -1,7 +1,6 @@
 from collections import defaultdict
 from dataclasses import replace
 from math import ceil
-from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
@@ -122,7 +121,7 @@ def _extract_params(*concept_dicts) -> dict:
 
 
 def base_join_to_join(
-    base_join: BaseJoin | UnnestJoin, ctes: List[CTE | UnionCTE]
+    base_join: BaseJoin | UnnestJoin, ctes: list[CTE | UnionCTE]
 ) -> Join | InstantiatedUnnestJoin:
     """This function converts joins at the datasource level
     to joins at the CTE level"""
@@ -197,12 +196,12 @@ def base_join_to_join(
     )
 
 
-def _pseudonym_closure(address: str, ctes: List[CTE | UnionCTE]) -> set[str]:
+def _pseudonym_closure(address: str, ctes: list[CTE | UnionCTE]) -> set[str]:
     """Addresses transitively pseudonym-equivalent to ``address`` across the
     child CTEs' output columns. Pseudonym sets on chained merged keys
     (`a=b=c`) are pairwise, not closed — a↔b and b↔c without a↔c — so a
     one-hop test misses the far member."""
-    edges: Dict[str, set[str]] = defaultdict(set)
+    edges: dict[str, set[str]] = defaultdict(set)
     for cte in ctes:
         for column in cte.output_columns:
             for pseudonym in column.pseudonyms:
@@ -219,9 +218,9 @@ def _pseudonym_closure(address: str, ctes: List[CTE | UnionCTE]) -> set[str]:
 
 
 def generate_source_map(
-    query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
-) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
-    source_map: Dict[str, list[str]] = defaultdict(list)
+    query_datasource: QueryDatasource, all_new_ctes: list[CTE | UnionCTE]
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    source_map: dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
     for qdk, qdv in query_datasource.source_map.items():
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
@@ -283,7 +282,7 @@ def generate_source_map(
 
     # existence lookups use a separate map
     # as they cannot be referenced in row resolution
-    existence_source_map: Dict[str, list[str]] = defaultdict(list)
+    existence_source_map: dict[str, list[str]] = defaultdict(list)
     for ek, ev in query_datasource.existence_source_map.items():
         ids = set([x.safe_identifier for x in ev])
         ematches = [
@@ -296,7 +295,7 @@ def generate_source_map(
 
 
 def datasource_to_query_datasource(datasource: BuildDatasource) -> QueryDatasource:
-    sub_select: Dict[str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]] = {
+    sub_select: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
         **{c.address: {datasource} for c in datasource.concepts},
     }
     concepts = [c for c in datasource.concepts]
@@ -336,16 +335,16 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
 def resolve_cte_base_name_and_alias_v2(
     name: str,
     source: QueryDatasource,
-    source_map: Dict[str, list[str]],
-    raw_joins: List[Join | InstantiatedUnnestJoin],
-) -> Tuple[Address | str | None, str | None]:
+    source_map: dict[str, list[str]],
+    raw_joins: list[Join | InstantiatedUnnestJoin],
+) -> tuple[Address | str | None, str | None]:
     if not source.datasources:
         return None, None
     base = source.base_datasource
     if isinstance(base, BuildDatasource) and base.name != CONSTANT_DATASET:
         return base.address, base.safe_identifier
 
-    joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
+    joins: list[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:
         candidates = [x.left_cte.name for x in joins if x.left_cte]
         for join in joins:
@@ -411,7 +410,7 @@ def datasource_to_cte(
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
-        all_new_ctes: List[CTE | UnionCTE] = []
+        all_new_ctes: list[CTE | UnionCTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
@@ -991,7 +990,7 @@ def get_query_node(
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
-    hooks: Optional[List[BaseHook]] = None,
+    hooks: list[BaseHook] | None = None,
     build_lineage_sink: (
         list[BuildSelectLineage | BuildMultiSelectLineage] | None
     ) = None,
@@ -1105,7 +1104,7 @@ def _collect_unreachable_union_arms(
 def process_auto(
     environment: Environment,
     statement: PersistStatement | SelectStatement,
-    hooks: List[BaseHook] | None = None,
+    hooks: list[BaseHook] | None = None,
 ):
     if isinstance(statement, PersistStatement):
         return process_persist(environment, statement, hooks)
@@ -1119,7 +1118,7 @@ def process_auto(
 def process_persist(
     environment: Environment,
     statement: PersistStatement,
-    hooks: List[BaseHook] | None = None,
+    hooks: list[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
     ds: Datasource = environment.datasources.get(
         statement.datasource.identifier, statement.datasource
@@ -1180,7 +1179,7 @@ def process_persist(
 def process_copy(
     environment: Environment,
     statement: CopyStatement,
-    hooks: List[BaseHook] | None = None,
+    hooks: list[BaseHook] | None = None,
 ) -> ProcessedCopyStatement | ProcessedChartCopyStatement:
     if isinstance(statement.select, ChartStatement):
         chart = process_chart(
@@ -1223,14 +1222,14 @@ def _binding_safe_address(binding, environment: Environment) -> str:
 def _process_chart_layer(
     environment: Environment,
     layer: ChartLayer,
-    hooks: List[BaseHook] | None,
+    hooks: list[BaseHook] | None,
 ) -> ProcessedChartLayer:
     if layer.select is None:
         raise ValueError("Chart layer is missing a resolved select statement")
     select = process_query(environment=environment, statement=layer.select, hooks=hooks)
     output_fields = {c.safe_address for c in layer.select.output_components}
 
-    role_map: Dict[str, str] = {}
+    role_map: dict[str, str] = {}
     for binding in layer.bindings:
         safe = _binding_safe_address(binding, environment)
         if safe not in output_fields:
@@ -1263,7 +1262,7 @@ def _process_chart_layer(
 def process_chart(
     environment: Environment,
     statement: ChartStatement,
-    hooks: List[BaseHook] | None = None,
+    hooks: list[BaseHook] | None = None,
 ) -> ProcessedChartStatement:
     layers = [
         _process_chart_layer(environment, layer, hooks) for layer in statement.layers
@@ -1308,7 +1307,7 @@ def _collect_rowset_scoped_joins(
 def process_query(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
-    hooks: List[BaseHook] | None = None,
+    hooks: list[BaseHook] | None = None,
     having_alias: bool = False,
 ) -> ProcessedQuery:
     hooks = hooks or []
@@ -1329,7 +1328,7 @@ def process_query(
         hook.process_root_cte(root_cte)
     flattened = flatten_ctes(root_cte)
     flattened = _collect_unreachable_union_arms(flattened) + flattened
-    raw_ctes: List[CTE | UnionCTE] = list(reversed(flattened))
+    raw_ctes: list[CTE | UnionCTE] = list(reversed(flattened))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
@@ -1341,7 +1340,7 @@ def process_query(
             seen[cte.name] = seen[cte.name] + cte
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
-    deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
+    deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
 
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components

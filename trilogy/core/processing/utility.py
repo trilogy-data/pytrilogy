@@ -220,7 +220,7 @@ def find_nullable_concepts(
         if nullable_datasources:
             if set(v).issubset(all_ds):
                 final_nullable.add(k)
-    return list(sorted(final_nullable))
+    return sorted(final_nullable)
 
 
 def concept_to_relevant_joins(concepts: list[BuildConcept]) -> list[BuildConcept]:

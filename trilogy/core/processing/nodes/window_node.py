@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
@@ -15,15 +14,15 @@ class WindowNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[BuildConcept],
-        output_concepts: List[BuildConcept],
+        input_concepts: list[BuildConcept],
+        output_concepts: list[BuildConcept],
         environment,
         whole_grain: bool = False,
-        parents: List["StrategyNode"] | None = None,
+        parents: list["StrategyNode"] | None = None,
         depth: int = 0,
         ordering: BuildOrderBy | None = None,
         preexisting_conditions: BoolExpr | None = None,
-        nullable_concepts: List[BuildConcept] | None = None,
+        nullable_concepts: list[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,

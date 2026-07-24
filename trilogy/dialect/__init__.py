@@ -10,21 +10,21 @@ from .config import (
 )
 
 __all__ = [
+    "BigQueryConfig",
     "BigqueryDialect",
-    "PrestoDialect",
-    "DuckDBDialect",
-    "SQLiteDialect",
-    "SnowflakeDialect",
-    "PostgresDialect",
-    "SqlServerDialect",
-    "SQLServerConfig",
     "DialectConfig",
     "DuckDBConfig",
-    "SQLiteConfig",
-    "BigQueryConfig",
-    "SnowflakeConfig",
-    "PrestoConfig",
+    "DuckDBDialect",
     "PostgresConfig",
+    "PostgresDialect",
+    "PrestoConfig",
+    "PrestoDialect",
+    "SQLServerConfig",
+    "SQLiteConfig",
+    "SQLiteDialect",
+    "SnowflakeConfig",
+    "SnowflakeDialect",
+    "SqlServerDialect",
 ]
 
 _dialect_imports: dict[str, tuple[str, str]] = {

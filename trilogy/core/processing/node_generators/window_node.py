@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
@@ -33,7 +32,7 @@ WINDOW_TYPES = (BuildWindowItem,)
 
 def resolve_window_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment, depth: int
-) -> List[BuildConcept]:
+) -> list[BuildConcept]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = list(concept.lineage.concept_arguments)

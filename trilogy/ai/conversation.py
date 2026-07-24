@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Union
+from typing import Literal
 
 from trilogy import Environment
 from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMResponse
@@ -40,7 +40,7 @@ class Conversation:
 
     def add_message(
         self,
-        message: Union[LLMMessage, str],
+        message: LLMMessage | str,
         role: Literal["user", "assistant"] = "user",
     ) -> None:
         """

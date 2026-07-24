@@ -1,4 +1,4 @@
-from typing import Iterable
+from collections.abc import Iterable
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx

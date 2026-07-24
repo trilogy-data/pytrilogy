@@ -30,9 +30,10 @@ still performs alias substitution and user-facing validation.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
-from typing import Any, Callable, Iterator, Mapping, cast
+from typing import Any, cast
 
 from trilogy.core.enums import (
     AggregateGroupingMode,
@@ -79,7 +80,7 @@ _GROUPING_FNS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
 
 
 def _strip_local_namespace(address: str) -> str:
-    return address[len("local.") :] if address.startswith("local.") else address
+    return address.removeprefix("local.")
 
 
 def _macro_inner_aggregate(node: Any) -> Any | None:
@@ -186,10 +187,7 @@ def _collect_condition_aggregates(node: Any) -> list[Any]:
     ):
         found.append(node)
         return found
-    if isinstance(node, Comparison):
-        found.extend(_collect_condition_aggregates(node.left))
-        found.extend(_collect_condition_aggregates(node.right))
-    elif isinstance(node, Conditional):
+    if isinstance(node, Comparison) or isinstance(node, Conditional):
         found.extend(_collect_condition_aggregates(node.left))
         found.extend(_collect_condition_aggregates(node.right))
     elif isinstance(node, Parenthetical):
@@ -365,9 +363,7 @@ def _child_exprs(node: Any) -> Iterator[Any]:
         # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
         yield node.content
         yield from node.args
-    elif isinstance(node, FilterItem):
-        yield node.content
-    elif isinstance(node, NavigationWindowItem):
+    elif isinstance(node, FilterItem) or isinstance(node, NavigationWindowItem):
         yield node.content
     elif isinstance(node, NumberingWindowItem):
         yield from node.arguments

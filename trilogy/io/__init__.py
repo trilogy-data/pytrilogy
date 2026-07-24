@@ -1,6 +1,6 @@
 import inspect
-from collections.abc import Iterator
-from typing import Callable, get_type_hints
+from collections.abc import Callable, Iterator
+from typing import get_type_hints
 
 import pyarrow as pa
 

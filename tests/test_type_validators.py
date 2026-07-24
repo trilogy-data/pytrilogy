@@ -1,6 +1,6 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
-from typing import Iterator
 
 import pytest
 
@@ -470,9 +470,8 @@ def test_validated_type_trait_round_trip(backend: ParserBackend):
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_validated_type_union_type_declaration_rejected(backend: ParserBackend):
-    with _using_backend(backend):
-        with pytest.raises(Exception, match="union type declarations"):
-            Environment().parse("type weird int[0..100] | string;")
+    with _using_backend(backend), pytest.raises(Exception, match="union type declarations"):
+        Environment().parse("type weird int[0..100] | string;")
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

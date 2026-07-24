@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Iterator, Never
+from typing import TYPE_CHECKING, Any, Never
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
@@ -370,12 +371,12 @@ class ConceptLookup:
     via :meth:`SemanticState.stage_placeholder` and never commit.
     """
 
-    __slots__ = ("_state", "_env", "_symbol_table")
+    __slots__ = ("_env", "_state", "_symbol_table")
 
     def __init__(
         self,
         state: SemanticState,
-        symbol_table: "SymbolTable | None" = None,
+        symbol_table: SymbolTable | None = None,
     ) -> None:
         self._state = state
         self._env = state.environment
@@ -397,7 +398,7 @@ class ConceptLookup:
         # (so dotted refs and genuine top-level concepts are unaffected).
         rowset_name = self._state.current_rowset_name
         if rowset_name is not None:
-            bare = address[len(prefix) :] if address.startswith(prefix) else address
+            bare = address.removeprefix(prefix)
             if "." not in bare:
                 mangled = self._state.mangle_rowset_alias(rowset_name, bare)
                 candidates.append(f"{prefix}{mangled}")
@@ -753,7 +754,7 @@ class TypeLookup:
     into the environment before a parse successfully commits.
     """
 
-    __slots__ = ("_state", "_env")
+    __slots__ = ("_env", "_state")
 
     def __init__(self, state: SemanticState) -> None:
         self._state = state

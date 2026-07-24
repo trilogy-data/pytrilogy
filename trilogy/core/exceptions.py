@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, List, Sequence
+from typing import Any
 
 from trilogy.core.enums import Modifier
 from trilogy.core.models.core import (
@@ -15,7 +16,7 @@ class ConfigurationException(Exception):
 
 
 class UndefinedConceptException(Exception):
-    def __init__(self, message, suggestions: List[str]):
+    def __init__(self, message, suggestions: list[str]):
         super().__init__(self, message)
         self.message = message
         self.suggestions = suggestions
@@ -35,7 +36,6 @@ class FunctionArgumentException(TypeError):
     keep catching it, while letting the harness report a clean type error rather
     than an internal crash."""
 
-    pass
 
 
 class MissingParameterException(InvalidSyntaxException):
@@ -46,7 +46,6 @@ class InvalidComparison(InvalidSyntaxException):
     """A comparison/filter that can never produce a meaningful result, e.g. a
     predicate against an enum field that is tautologically true or false."""
 
-    pass
 
 
 class UnresolvableQueryException(Exception):
@@ -108,9 +107,9 @@ class DatasourceColumnBindingData:
     address: str
     value: Any
     value_type: CONCRETE_TYPES
-    value_modifiers: List[Modifier]
+    value_modifiers: list[Modifier]
     actual_type: CONCRETE_TYPES
-    actual_modifiers: List[Modifier]
+    actual_modifiers: list[Modifier]
 
     def format_failure(self):
         value_mods = (
@@ -131,8 +130,8 @@ class DatasourceColumnBindingData:
             and self.value is not None
             and is_compatible_datatype(self.value_type, self.actual_type)
         ):
-            return f"Value '{self.value}' for concept {self.address} violates declared domain {str(self.actual_type)}{actual_mods}"
-        return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {str(self.actual_type)}{actual_mods}"
+            return f"Value '{self.value}' for concept {self.address} violates declared domain {self.actual_type!s}{actual_mods}"
+        return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {self.actual_type!s}{actual_mods}"
 
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(
@@ -162,7 +161,7 @@ class ConceptModelValidationError(ModelValidationError):
 
 
 class AmbiguousRelationshipResolutionException(UnresolvableQueryException):
-    def __init__(self, message, parents: List[set[str]]):
+    def __init__(self, message, parents: list[set[str]]):
         super().__init__(self, message)
         self.message = message
         self.parents = parents

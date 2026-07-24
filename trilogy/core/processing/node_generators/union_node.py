@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType
@@ -52,7 +51,7 @@ def build_layers(
 
 def gen_union_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment,
     g,
     depth: int,

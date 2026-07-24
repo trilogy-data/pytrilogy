@@ -74,14 +74,10 @@ def _predicate_safe_past_null_extension(
             sides.append(join.left_cte.name)
         if parent_cte.name not in sides:
             continue
-        if join.jointype is JoinType.FULL:
-            null_extended = True
-        elif (
+        if join.jointype is JoinType.FULL or (
             join.jointype is JoinType.LEFT_OUTER
             and join.right_cte.name == parent_cte.name
-        ):
-            null_extended = True
-        elif (
+        ) or (
             join.jointype is JoinType.RIGHT_OUTER
             and join.left_cte is not None
             and join.left_cte.name == parent_cte.name

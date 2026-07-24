@@ -1,8 +1,9 @@
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from tomllib import loads
 
@@ -147,9 +148,9 @@ def interpolate_env_refs(
 
 @dataclass
 class AgentConfig:
-    provider: Optional[Provider] = None
-    model: Optional[str] = None
-    api_key_env: Optional[str] = None
+    provider: Provider | None = None
+    model: str | None = None
+    api_key_env: str | None = None
     max_iterations: int = 50
     tool_output_limit: int = 8192
     # Drop ``show_message`` from the tool list (and its discipline rule from

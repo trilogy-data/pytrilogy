@@ -17,12 +17,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import analyze_run, scoring  # noqa: E402
-from common import main as eval_main  # noqa: E402
-from common.report import render_markdown  # noqa: E402
+from common import analyze_run, scoring
+from common import main as eval_main
+from common.report import render_markdown
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from spec import SPEC  # noqa: E402
+from spec import SPEC
 
 
 def regen(run_dir: Path) -> None:

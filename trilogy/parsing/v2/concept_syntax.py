@@ -44,7 +44,7 @@ class ParameterDeclarationSyntax:
     nullable: SyntaxNode | None
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "ParameterDeclarationSyntax":
+    def from_node(cls, node: SyntaxNode) -> ParameterDeclarationSyntax:
         require_node(node, SyntaxNodeKind.PARAMETER_DECLARATION)
         identifiers = node.child_tokens(SyntaxTokenKind.IDENTIFIER)
         if len(identifiers) != 1:
@@ -84,7 +84,7 @@ class ConceptDeclarationSyntax:
     hidden: bool = False
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "ConceptDeclarationSyntax":
+    def from_node(cls, node: SyntaxNode) -> ConceptDeclarationSyntax:
         require_node(node, SyntaxNodeKind.CONCEPT_DECLARATION)
         # An optional leading `--` hide modifier shifts positions, so resolve
         # the purpose/name tokens by kind rather than by index.
@@ -113,7 +113,7 @@ class ConceptPropertyDeclarationSyntax:
     hidden: bool = False
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "ConceptPropertyDeclarationSyntax":
+    def from_node(cls, node: SyntaxNode) -> ConceptPropertyDeclarationSyntax:
         require_node(node, SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION)
         property_token = node.optional_token(SyntaxTokenKind.PROPERTY)
         if property_token is None:
@@ -144,7 +144,7 @@ class ConceptDerivationSyntax:
     hidden: bool = False
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "ConceptDerivationSyntax":
+    def from_node(cls, node: SyntaxNode) -> ConceptDerivationSyntax:
         require_node(node, SyntaxNodeKind.CONCEPT_DERIVATION)
         # Drop an optional leading `--` hide modifier before positional reads.
         children = [
@@ -177,7 +177,7 @@ class ConstantDerivationSyntax:
     metadata: SyntaxNode | None
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "ConstantDerivationSyntax":
+    def from_node(cls, node: SyntaxNode) -> ConstantDerivationSyntax:
         require_node(node, SyntaxNodeKind.CONSTANT_DERIVATION)
         children = node.children
         if len(children) < 3:
@@ -197,7 +197,7 @@ class PropertyIdentifierSyntax:
     name: SyntaxToken
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "PropertyIdentifierSyntax":
+    def from_node(cls, node: SyntaxNode) -> PropertyIdentifierSyntax:
         require_node(node, SyntaxNodeKind.PROPERTY_IDENTIFIER)
         identifiers = node.child_tokens(SyntaxTokenKind.IDENTIFIER)
         if len(identifiers) < 2:
@@ -210,7 +210,7 @@ class PropertyWildcardSyntax:
     name: SyntaxToken
 
     @classmethod
-    def from_node(cls, node: SyntaxNode) -> "PropertyWildcardSyntax":
+    def from_node(cls, node: SyntaxNode) -> PropertyWildcardSyntax:
         require_node(node, SyntaxNodeKind.PROPERTY_IDENTIFIER_WILDCARD)
         identifiers = node.child_tokens(SyntaxTokenKind.IDENTIFIER)
         if len(identifiers) != 1:

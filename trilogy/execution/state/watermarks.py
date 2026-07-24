@@ -47,7 +47,7 @@ class StaleAsset:
 
 
 def _compare_watermark_values(
-    a: str | int | float | date, b: str | int | float | date
+    a: str | float | date, b: str | float | date
 ) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 

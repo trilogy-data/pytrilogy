@@ -260,7 +260,7 @@ class ParallelProgressTracker:
             self._stderr_cap.__enter__()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         if self._progress is not None:
             self._stderr_cap.__exit__(*args)
             self._progress.__exit__(*args)

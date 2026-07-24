@@ -131,7 +131,7 @@ class ImportHydrationService:
     # UndefinedConceptFull placeholders for datasource columns referencing
     # concepts in that in-flight namespace. Optional for back-compat with
     # direct ImportHydrationService construction in tests.
-    semantic_state: "SemanticState | None" = None
+    semantic_state: SemanticState | None = None
 
     def set_text(self, key: Path | str, text: str) -> None:
         self.text_lookup[key] = text

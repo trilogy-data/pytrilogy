@@ -9,9 +9,10 @@ register themselves via :func:`register_backend`.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable, Protocol
+from typing import Protocol
 from urllib.parse import urlparse
 
 # Hard cap on entries a single `list` returns. A recursive listing of a large
@@ -26,7 +27,7 @@ class FileOperationError(Exception):
 
 class FileNotFoundError(
     FileOperationError
-):  # noqa: A001 - intentional shadow for API clarity
+):
     """Raised when a backend cannot locate the requested path."""
 
 

@@ -11,7 +11,7 @@ One registry per shape concern, lookup by derivation, fallback to a default.
 """
 
 from collections import defaultdict
-from typing import Callable
+from collections.abc import Callable
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose

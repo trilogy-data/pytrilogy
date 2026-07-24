@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -10,7 +9,7 @@ LOGGER_PREFIX = "[GEN_CONSTANT_NODE]"
 
 def gen_constant_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,

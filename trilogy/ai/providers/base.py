@@ -1,6 +1,7 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Iterator, List, Optional
+from collections.abc import Iterator
+from typing import Any
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import (
@@ -16,16 +17,16 @@ RETRYABLE_CODES = [429, 500, 502, 503, 504]
 class LLMProvider(ABC):
     def __init__(self, name: str, api_key: str, model: str, provider: Provider):
         self.api_key = api_key
-        self.models: List[str] = []
+        self.models: list[str] = []
         self.name = name
         self.model = model
         self.type = provider
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
     # Abstract method to be implemented by specific providers
     @abstractmethod
     def generate_completion(
-        self, options: LLMRequestOptions, history: List[LLMMessage]
+        self, options: LLMRequestOptions, history: list[LLMMessage]
     ) -> LLMResponse:
         pass
 
@@ -61,7 +62,7 @@ def build_tool_call(
 
 
 def iter_history_turns(
-    history: List[LLMMessage],
+    history: list[LLMMessage],
 ) -> Iterator[tuple[LLMMessage, list[dict] | None, list[LLMMessage]]]:
     """Walk conversation history yielding ``(message, tool_calls, results)``.
 
@@ -90,7 +91,7 @@ def iter_history_turns(
             i += 1
 
 
-def to_openai_messages(history: List[LLMMessage]) -> list[dict]:
+def to_openai_messages(history: list[LLMMessage]) -> list[dict]:
     """OpenAI / OpenRouter chat-format message list, threading assistant tool
     calls back as real ``tool_calls`` and their results as ``role:"tool"``
     replies. Without this the model never sees its own prior tool calls."""

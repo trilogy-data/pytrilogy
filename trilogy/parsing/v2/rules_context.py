@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose

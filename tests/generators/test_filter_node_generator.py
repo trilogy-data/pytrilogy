@@ -103,7 +103,7 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     )
     assert (
         node.conditions == build_conditional
-    ), f"{str(node.conditions)} vs {str(conditional)}"
+    ), f"{node.conditions!s} vs {conditional!s}"
 
 
 def test_gen_filter_node_includes_equivalent_optional(

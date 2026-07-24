@@ -1,4 +1,5 @@
-from typing import Any, Generator, List, Optional
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from pytest import raises
@@ -17,19 +18,19 @@ def test_error_not_provided():
 
 
 class _MockResult(ResultProtocol):
-    def fetchall(self) -> List[Any]:
+    def fetchall(self) -> list[Any]:
         return []
 
-    def keys(self) -> List[str]:
+    def keys(self) -> list[str]:
         return []
 
-    def fetchone(self) -> Optional[Any]:
+    def fetchone(self) -> Any | None:
         return None
 
-    def fetchmany(self, size: int) -> List[Any]:
+    def fetchmany(self, size: int) -> list[Any]:
         return []
 
-    def __iter__(self) -> Generator[Any, None, None]:
+    def __iter__(self) -> Iterator[Any]:
         return iter([])
 
 

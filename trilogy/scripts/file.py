@@ -89,7 +89,7 @@ def _fetch_url(url: str, timeout: float = 30.0) -> bytes:
         raise click.exceptions.Exit(2)
     req = Request(url, headers={"User-Agent": "trilogy-cli"})
     try:
-        with urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme gated above
+        with urlopen(req, timeout=timeout) as resp:
             return resp.read()
     except (HTTPError, URLError, TimeoutError) as exc:
         print_error(f"Failed to fetch {url}: {exc}")

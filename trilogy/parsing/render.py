@@ -422,7 +422,7 @@ class Renderer:
 
     @singledispatchmethod
     def to_string(self, arg):
-        raise NotImplementedError("Cannot render type {}".format(type(arg)))
+        raise NotImplementedError(f"Cannot render type {type(arg)}")
 
     @to_string.register
     def _(self, arg: Environment):
@@ -970,8 +970,7 @@ class Renderer:
         if isinstance(content, ShowCategory):
             return f"show {content.value};"
         body = self.to_string(content)
-        if body.endswith(";"):
-            body = body[:-1]
+        body = body.removesuffix(";")
         return f"show {body};"
 
     @to_string.register
@@ -1284,8 +1283,7 @@ class Renderer:
         path = str(raw_path).replace("\\", ".").replace("/", ".")
         if path.endswith(".preql"):
             path = path.rsplit(".", 1)[0]
-        if path.startswith("."):
-            path = path[1:]
+        path = path.removeprefix(".")
         return path
 
     @to_string.register

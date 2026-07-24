@@ -1,6 +1,7 @@
 import random
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, ConceptRef

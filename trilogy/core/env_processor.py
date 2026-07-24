@@ -1,5 +1,5 @@
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from typing import Iterator, Sequence
 
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.graph_models import (

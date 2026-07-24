@@ -1,7 +1,7 @@
 """Display helpers for single-script execution output."""
 
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from trilogy.core.statements.execute import ProcessedChartStatement
@@ -49,7 +49,7 @@ def show_execution_info(
     input_name: str,
     dialect: str,
     debug: bool,
-    config_path: Optional[str] = None,
+    config_path: str | None = None,
     debug_file: str | None = None,
 ) -> None:
     """Display execution information in a clean format."""
@@ -385,8 +385,8 @@ def _emit_results_json(
     # available — they describe the whole result, not the displayed prefix. Else
     # fall back to prefix stats (+ the LIMIT-bias caveat) only when rows elided.
     if results.full_column_stats is not None:
-        col_stats: "list[dict] | None" = results.full_column_stats
-        stats_note: "str | None" = (
+        col_stats: list[dict] | None = results.full_column_stats
+        stats_note: str | None = (
             "column_stats are computed over the FULL result "
             f"({results.full_row_count} rows, without limit applied)."
         )

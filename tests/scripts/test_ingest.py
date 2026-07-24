@@ -1853,7 +1853,6 @@ class TestMaybeLoadHttpfs:
         class Recorder:
             def execute_raw_sql(self, sql: str):
                 calls.append(sql)
-                return None
 
         _maybe_load_httpfs(Recorder(), "https://example.com/x.csv")  # type: ignore[arg-type]
         assert any("httpfs" in s.lower() for s in calls)

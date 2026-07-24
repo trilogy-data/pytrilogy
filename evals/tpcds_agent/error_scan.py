@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from spec import SPEC  # noqa: E402
+from spec import SPEC
 
 
 def _latest_run(results_dir: Path) -> Path:

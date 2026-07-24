@@ -182,31 +182,7 @@ def flatten_conditions(
 
 def is_scalar_condition(
     element: (
-        int
-        | str
-        | float
-        | date
-        | datetime
-        | list[Any]
-        | BuildConcept
-        | BuildWindowItem
-        | BuildFilterItem
-        | BoolExpr
-        | BuildFunction
-        | BuildAggregateWrapper
-        | BuildCaseWhen
-        | BuildCaseElse
-        | BuildSubselectComparison
-        | MagicConstants
-        | TraitDataType
-        | DataType
-        | MapWrapper[Any, Any]
-        | ArrayType
-        | MapType
-        | NumericType
-        | DatePart
-        | ListWrapper[Any]
-        | TupleWrapper[Any]
+        str | float | date | datetime | list[Any] | BuildConcept | BuildWindowItem | BuildFilterItem | BoolExpr | BuildFunction | BuildAggregateWrapper | BuildCaseWhen | BuildCaseElse | BuildSubselectComparison | MagicConstants | TraitDataType | DataType | MapWrapper[Any, Any] | ArrayType | MapType | NumericType | DatePart | ListWrapper[Any] | TupleWrapper[Any]
     ),
     materialized: set[str] | None = None,
 ) -> bool:
@@ -456,7 +432,7 @@ def is_fully_covered(
     start: _T,
     end: _T,
     ranges: list[tuple[_T, _T]],
-    increment: int | timedelta | float,
+    increment: timedelta | float,
 ) -> bool:
     if isinstance(start, bool) and isinstance(end, bool):
         bool_ranges = [(bool(r_start), bool(r_end)) for r_start, r_end in ranges]
@@ -797,8 +773,8 @@ def merge_conditions(
 
 
 def preserved_non_partial_conditions(
-    conditions: "BuildWhereClause", environment: "BuildEnvironment"
-) -> "BuildWhereClause | None":
+    conditions: BuildWhereClause, environment: BuildEnvironment
+) -> BuildWhereClause | None:
     """Return the subset of `conditions`' atoms owned by a non-partial datasource.
 
     When the full conditions imply some datasource's `non_partial_for`, those

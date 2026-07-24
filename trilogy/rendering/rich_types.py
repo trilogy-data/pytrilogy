@@ -7,12 +7,12 @@ money with the right symbol, numeric columns right-align, and so on.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from trilogy.core.models.core import DataType, TraitDataType
 
 # Currency trait -> display symbol/prefix. Unlisted currencies render plain.
-CURRENCY_SYMBOLS: Dict[str, str] = {
+CURRENCY_SYMBOLS: dict[str, str] = {
     "usd": "$",
     "cad": "$",
     "aud": "$",
@@ -51,7 +51,7 @@ _NUMERIC_BASE_TYPES = {
 }
 
 
-def _traits(datatype: Any) -> List[str]:
+def _traits(datatype: Any) -> list[str]:
     return list(datatype.traits) if isinstance(datatype, TraitDataType) else []
 
 
@@ -63,7 +63,7 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
 
 
-def currency_symbol(datatype: Any) -> Optional[str]:
+def currency_symbol(datatype: Any) -> str | None:
     """Symbol for a datatype carrying a known currency trait, else None."""
     for trait in _traits(datatype):
         symbol = CURRENCY_SYMBOLS.get(trait)
@@ -136,7 +136,7 @@ def field_datatype(layer: Any, field_name: str) -> Any:
     return None
 
 
-def axis_label_expr(datatype: Any) -> Optional[str]:
+def axis_label_expr(datatype: Any) -> str | None:
     """A Vega-Lite `labelExpr` that formats a currency axis, else None."""
     symbol = currency_symbol(datatype)
     if symbol is None:

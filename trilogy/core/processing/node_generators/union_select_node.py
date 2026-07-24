@@ -1,4 +1,3 @@
-from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.build import (
@@ -26,7 +25,7 @@ LOGGER_PREFIX = "[GEN_UNION_SELECT_NODE]"
 
 def gen_union_select_node(
     concept: BuildConcept,
-    local_optional: List[BuildConcept],
+    local_optional: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -62,7 +61,7 @@ def gen_union_select_node(
     caches = history.build_caches
     prior_scoped = list(caches.scoped_joins)
 
-    arm_nodes: List[StrategyNode] = []
+    arm_nodes: list[StrategyNode] = []
     for select in lineage.selects:
         arm_scoped = prior_scoped + list(select.scoped_joins)
         snode: StrategyNode = get_query_node(

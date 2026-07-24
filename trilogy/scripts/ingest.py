@@ -1,11 +1,11 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables or files."""
 
 from collections import defaultdict
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path as PathlibPath
-from typing import Iterator
 
 from click import UNPROCESSED, Choice, Path, argument, option, pass_context
 from click.exceptions import Exit

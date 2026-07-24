@@ -491,10 +491,9 @@ class TestPendingOverlayScope:
         env = Environment()
         state = SemanticState(environment=env)
         state.add(_make_probe("boom"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
-        with pytest.raises(RuntimeError):
-            with state.pending_overlay_scope():
-                assert env.concepts["local.boom"].name == "boom"
-                raise RuntimeError("parse failure")
+        with pytest.raises(RuntimeError), state.pending_overlay_scope():
+            assert env.concepts["local.boom"].name == "boom"
+            raise RuntimeError("parse failure")
         assert env.concepts._overlay_stack == []
         with pytest.raises(Exception):
             env.concepts["local.boom"]

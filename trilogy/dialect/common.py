@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import JoinType, Modifier, UnnestMode

@@ -5,7 +5,8 @@ import json
 import os
 import sys
 import threading
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from click import echo, style
 
@@ -62,8 +63,8 @@ try:
     from rich.console import Console
 
     RICH_AVAILABLE = True
-    console: Optional[Console] = _make_console()
-    error_console: Optional[Console] = _make_error_console()
+    console: Console | None = _make_console()
+    error_console: Console | None = _make_error_console()
 except ImportError:
     RICH_AVAILABLE = False
     console = None
@@ -243,8 +244,8 @@ class RichModeContext:
     def __init__(self, enabled: bool, current: bool):
         self.enabled = enabled
         self.old_rich_available = current
-        self.old_console: Optional["Console"] = None
-        self.old_error_console: Optional["Console"] = None
+        self.old_console: Console | None = None
+        self.old_error_console: Console | None = None
 
     def __enter__(self) -> "RichModeContext":
         global RICH_AVAILABLE, console, error_console
@@ -358,7 +359,7 @@ class _DummyContext:
     def __enter__(self) -> "_DummyContext":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         pass
 
 
@@ -420,7 +421,7 @@ class _FdStderrCapture:
         except OSError:
             pass
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         if self._orig_fd is None:
             return
         # Restoring fd 2 closes the pipe write end → EOF on read end → thread exits

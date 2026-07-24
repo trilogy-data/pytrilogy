@@ -16,8 +16,8 @@ local_pytrilogy_path = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(local_pytrilogy_path))
 
 
-from trilogy import Dialects  # noqa: E402
-from trilogy.core.models.environment import Environment  # noqa: E402
+from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 
 
 def setup_environment():
