@@ -46,6 +46,7 @@ class Dialects(Enum):
     PRESTO = "presto"
     TRINO = "trino"
     POSTGRES = "postgres"
+    MYSQL = "mysql"
     SNOWFLAKE = "snowflake"
     DATAFRAME = "dataframe"
     CLICKHOUSE = "clickhouse"
@@ -115,6 +116,18 @@ class Dialects(Enum):
             from trilogy.dialect.config import PostgresConfig
 
             return _engine_factory(conf, PostgresConfig)
+        elif self == Dialects.MYSQL:
+            import importlib
+
+            if conf is None:
+                raise ValueError("MySQLConfig must be provided for MySQL dialect")
+            if importlib.util.find_spec("pymysql") is None:
+                raise ImportError(
+                    "MySQL driver not installed. python -m pip install pypreql[mysql]"
+                )
+            from trilogy.dialect.config import MySQLConfig
+
+            return _engine_factory(conf, MySQLConfig)
         elif self == Dialects.PRESTO:
             from trilogy.dialect.config import PrestoConfig
 

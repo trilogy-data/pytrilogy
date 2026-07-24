@@ -45,6 +45,10 @@ def get_dialect_generator(
         from trilogy.dialect.postgres import PostgresDialect
 
         return PostgresDialect(rendering=rendering, config=config)
+    elif dialect == Dialects.MYSQL:
+        from trilogy.dialect.mysql import MySQLDialect
+
+        return MySQLDialect(rendering=rendering, config=config)
     elif dialect == Dialects.SNOWFLAKE:
         from trilogy.dialect.snowflake import SnowflakeDialect
 
