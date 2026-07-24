@@ -1635,5 +1635,5 @@ def finalize_select_tree(
     elif isinstance(output, MultiSelectStatement):
         for sel in output.selects:
             finalize_select_statement(sel, context)
-    elif isinstance(output, PersistStatement) or isinstance(output, RowsetDerivationStatement):
+    elif isinstance(output, (PersistStatement, RowsetDerivationStatement)):
         finalize_select_tree(output.select, context)

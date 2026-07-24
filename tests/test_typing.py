@@ -123,12 +123,10 @@ signup_date.year::int::dtypes.year as signup_year_two;""")
 
     assert "dtypes.year" in env.environment.data_types
 
-    assert set(env.environment.concepts["signup_year_two"].datatype.traits) == set(
-        [
-            "year",
-            "dtypes.year",
-        ]
-    )
+    assert set(env.environment.concepts["signup_year_two"].datatype.traits) == {
+        "year",
+        "dtypes.year",
+    }
 
 
 def test_typing_aggregate():

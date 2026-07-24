@@ -53,7 +53,7 @@ SELECT
     count(aspen_store) ->aspen_count
 ;"""
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     assert test_environment.concepts["aspen_store"].grain == Grain(
         components=[test_environment.concepts["stores.id"]]
     )

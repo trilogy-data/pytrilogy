@@ -292,11 +292,7 @@ def type_check(
     if target_type in (DataType.FLOAT, DataType.DOUBLE) or isinstance(
         target_type, NumericType
     ):
-        return (
-            isinstance(input, float)
-            or isinstance(input, int)
-            or isinstance(input, Decimal)
-        )
+        return isinstance(input, (float, int, Decimal))
     if target_type == DataType.NUMBER:
         return isinstance(input, (int, float, Decimal))
     if target_type == DataType.NUMERIC:
@@ -327,9 +323,7 @@ def type_check(
         return isinstance(input, dict)
     if target_type == DataType.NULL:
         return input is None
-    if target_type == DataType.UNKNOWN:
-        return True
-    return False
+    return target_type == DataType.UNKNOWN
 
 
 def inferred_type_check(

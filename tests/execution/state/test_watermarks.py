@@ -1336,7 +1336,9 @@ def test_get_stale_assets_timezone_mismatch_incremental():
         "trilogy.execution.state.state_store.has_schema_mismatch", return_value=False
     ), patch(
         "trilogy.execution.state.state_store.is_missing_local_file", return_value=False
-    ), pytest.raises(TypeError) as exc_info:
+    ), pytest.raises(
+        TypeError
+    ) as exc_info:
         state_store.get_stale_assets(
             mock_env,
             MagicMock(),

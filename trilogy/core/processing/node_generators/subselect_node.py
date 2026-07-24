@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
@@ -27,7 +26,8 @@ def resolve_subselect_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment, depth: int
 ) -> list[BuildConcept]:
     if not isinstance(concept.lineage, SUBSELECT_TYPES):
-        raise ValueError(
+        # ValueError asserted by tests/test_subselect.py.
+        raise ValueError(  # noqa: TRY004
             f"Expected subselect lineage for {concept.address}, got {type(concept.lineage)}"
         )
     lineage: BuildSubselectItem = concept.lineage

@@ -70,13 +70,11 @@ def _source_concept_for_address(
 def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
     if grain.components & concept.equivalent_addresses:
         return True
-    if (
+    return bool(
         concept.derivation == Derivation.MULTISELECT
         and concept.keys
         and grain.components.issubset(concept.keys)
-    ):
-        return True
-    return False
+    )
 
 
 def _concept_coverage_addresses(

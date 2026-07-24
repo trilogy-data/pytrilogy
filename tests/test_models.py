@@ -41,7 +41,7 @@ from trilogy.core.statements.author import SelectStatement
 
 def test_cte_merge(test_environment, test_environment_graph):
     test_environment = test_environment.materialize_for_select()
-    datasource = list(test_environment.datasources.values())[0]
+    datasource = next(iter(test_environment.datasources.values()))
     outputs = [c.concept for c in datasource.columns]
     output_map = {
         c.address: {
@@ -85,7 +85,7 @@ def test_cte_merge(test_environment, test_environment_graph):
 
 
 def test_concept(test_environment, test_environment_graph):
-    test_concept: Concept = list(test_environment.concepts.values())[0]
+    test_concept: Concept = next(iter(test_environment.concepts.values()))
     new = test_concept.with_namespace("test")
     assert (
         new.namespace == ("test" + "." + test_concept.namespace)
@@ -95,7 +95,7 @@ def test_concept(test_environment, test_environment_graph):
 
 
 def test_concept_filter(test_environment, test_environment_graph):
-    test_concept: Concept = list(test_environment.concepts.values())[0]
+    test_concept: Concept = next(iter(test_environment.concepts.values()))
     new = test_concept.with_filter(
         Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
@@ -232,7 +232,7 @@ def test_comparison_invalid_type():
 
 def test_join(test_environment: Environment):
     test_environment = test_environment.materialize_for_select()
-    datasource = list(test_environment.datasources.values())[0]
+    datasource = next(iter(test_environment.datasources.values()))
     outputs = [c.concept for c in datasource.columns]
     output_map = {
         c.address: {
@@ -299,7 +299,7 @@ def test_concept_address_in_check():
 
 
 def test_rowset_with_filter_derivation():
-    env, statements = parse("""
+    env, _statements = parse("""
 key x int;
 
 datasource test (
@@ -359,7 +359,7 @@ def test_parenthetical(test_environment: Environment):
 
 
 def test_datasource_grain_application():
-    env, statements = parse("""
+    env, _statements = parse("""
 key x string;
 property x.part_1 string;
 property x.part_2 string;

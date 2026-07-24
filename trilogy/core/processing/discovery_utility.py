@@ -83,7 +83,7 @@ def calculate_effective_parent_grain(
         seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
-                grain += BuildGrain(components=set([x.address for x in join.concepts]))
+                grain += BuildGrain(components={x.address for x in join.concepts})
                 continue
             pairs = join.concept_pairs or []
             for key in pairs:
@@ -109,11 +109,9 @@ def calculate_effective_parent_grain(
                 qds.condition
                 and qds.condition.existence_arguments
                 and any(
-                    [
-                        c.address in block
-                        for c in x.output_concepts
-                        for block in qds.condition.existence_arguments
-                    ]
+                    c.address in block
+                    for c in x.output_concepts
+                    for block in qds.condition.existence_arguments
                 )
             ):
                 logger.debug(f"adding unjoined grain {x.grain} for datasource {x.name}")
@@ -190,28 +188,22 @@ def check_if_group_required(
     # if the difference is all unique properties whose keys are in the source grain
     # we can also suppress the group
     if difference and all(
-        [
-            x.keys
-            and all(
-                environment.concepts[z].address in comp_grain.components for z in x.keys
-            )
-            for x in difference
-        ]
+        x.keys
+        and all(
+            environment.concepts[z].address in comp_grain.components for z in x.keys
+        )
+        for x in difference
     ):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
-    if difference and all([x.purpose == Purpose.KEY for x in difference]):
+    if difference and all(x.purpose == Purpose.KEY for x in difference):
         logger.info(
             f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
         )
         replaced_grain_raw: list[set[str]] = [
-            (
-                x.keys or set()
-                if x.purpose == Purpose.UNIQUE_PROPERTY
-                else set([x.address])
-            )
+            (x.keys or set() if x.purpose == Purpose.UNIQUE_PROPERTY else {x.address})
             for x in downstream_concepts
             if x.address in target_grain.components
         ]
@@ -298,9 +290,7 @@ def group_if_required_v2(
             # we need to group this one more time
             pass
         elif isinstance(root, GroupNode):
-            if set(x.address for x in final) != set(
-                x.address for x in root.output_concepts
-            ):
+            if {x.address for x in final} != {x.address for x in root.output_concepts}:
                 allowed_outputs = [
                     x
                     for x in root.output_concepts
@@ -387,13 +377,11 @@ def evaluate_loop_condition_pushdown(
     # (forcing local condition evaluation)
     # only if all condition inputs are here and we only have roots
     should_evaluate_filter_on_this_level_not_push_down = all(
-        [x.address in mandatory for x in conditions.row_arguments]
+        x.address in mandatory for x in conditions.row_arguments
     ) and not any(
-        [
-            x.derivation not in (ROOT_DERIVATIONS)
-            for x in mandatory
-            if x.address not in conditions.row_arguments
-        ]
+        x.derivation not in (ROOT_DERIVATIONS)
+        for x in mandatory
+        if x.address not in conditions.row_arguments
     )
 
     if (

@@ -401,8 +401,8 @@ EQUIVALENT_QUERIES = [
     "SELECT order_date, total_amount;",
     "SELECT customer_id, total_amount;",
     # Filter pushdown.
-    "WHERE order_date >= '2024-01-16'::date " "SELECT order_date, order_count;",
-    "WHERE order_date >= '2024-01-16'::date " "SELECT customer_id, order_count;",
+    "WHERE order_date >= '2024-01-16'::date SELECT order_date, order_count;",
+    "WHERE order_date >= '2024-01-16'::date SELECT customer_id, order_count;",
     # Property-of-key rollup via dim join.
     "SELECT region, order_count;",
     "WHERE region = 'east' SELECT region, order_count;",

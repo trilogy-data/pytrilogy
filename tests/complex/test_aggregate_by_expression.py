@@ -67,7 +67,7 @@ def test_aggregate_by_paren_multi_expression() -> None:
 
 def test_aggregate_by_bare_identifier_list_still_works() -> None:
     script = _customer_env() + "select avg(acctbal) by id as a;"
-    env, parsed = parse(script)
+    _env, parsed = parse(script)
     assert parsed[-1] is not None
 
 

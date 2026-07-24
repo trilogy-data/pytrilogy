@@ -31,7 +31,7 @@ property store_by_warehouse <- group(store_id) by wh_id;
 property store_by_order <- group(store_id) by order_id;
 """
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     grouped = test_environment.concepts["store_by_warehouse"]
     assert grouped.purpose == Purpose.PROPERTY
     assert grouped.lineage.concept_arguments == [
@@ -46,7 +46,7 @@ SELECT
     product_id,
 ;"""
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 
@@ -62,7 +62,7 @@ property store_by_warehouse <- group(store_id) by wh_id;
 property store_by_order <- group(store_id) by order_id;
 """
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
     grouped = test_environment.concepts["store_by_order"]
     assert grouped.purpose == Purpose.PROPERTY
     target_grain = Grain(
@@ -82,7 +82,7 @@ SELECT
     product_id,
 ;"""
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 

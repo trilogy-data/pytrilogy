@@ -105,7 +105,7 @@ def test_alias_for_computed_expression():
     chart
       layer bar ( x_axis <- x, y_axis <- y, color <- y * 2 as scaled_y );
     """)
-    color = [b for b in chart.layers[0].bindings if b.role == "color"][0]
+    color = next(b for b in chart.layers[0].bindings if b.role == "color")
     assert color.alias == "scaled_y"
 
 

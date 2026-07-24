@@ -95,7 +95,6 @@ select 1 as customer_id
         source_map=source_map, datasources=[order_qds, product_qds], joins=[join]
     )
     assert nullable == [product_id.address, product_name.address], nullable
-    order_qds
 
     # now check for straight inheritance
     source_map = {

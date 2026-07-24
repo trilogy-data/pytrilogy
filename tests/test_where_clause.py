@@ -59,7 +59,7 @@ select
 
 
     """
-    env, parsed = parse(
+    _env, parsed = parse(
         declarations,
         environment=test_environment,
     )
@@ -80,7 +80,7 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     final = BaseDialect().compile_statement(process_query(test_environment, select))
@@ -123,7 +123,7 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     compiled = BaseDialect().compile_statement(process_query(test_environment, select))
@@ -145,7 +145,7 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
@@ -167,20 +167,18 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     left = select.where_clause.conditional.left
 
     assert isinstance(left, Parenthetical)
 
-    address = set([x.address for x in left.concept_arguments])
+    address = {x.address for x in left.concept_arguments}
 
-    assert address == set(
-        [
-            "local.order_id",
-        ]
-    )
+    assert address == {
+        "local.order_id",
+    }
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     assert "`order_id` = 1" in query
@@ -224,7 +222,7 @@ where
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, _parsed = parse(declarations, environment=test_environment)
 
 
 def test_where_scalar(test_environment):
@@ -235,7 +233,7 @@ where
     count(order_id) > 1
 ;
 """
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     factory = Factory(environment=test_environment)
     assert (
@@ -266,7 +264,7 @@ where
     category_name like '%abc%' and category_id not in order_even_class_filter
     and category_id = test
 ;"""
-    env, parsed = parse(declarations, environment=test_environment)
+    _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
     query = BaseDialect().compile_statement(

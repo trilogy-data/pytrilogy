@@ -8,6 +8,7 @@ canonical query dir, prompt params — come from the suite's ``BenchmarkSpec``.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -48,11 +49,9 @@ def _result_ok(output: str) -> bool:
     low = output.lower()
     if "exit_code: 0" in low:
         return True
-    if any(
+    return not any(
         k in low for k in ("error", "traceback", "exit_code: 1", '"event": "error"')
-    ):
-        return False
-    return True
+    )
 
 
 def _reviewer_input(e: dict) -> str:
@@ -86,7 +85,7 @@ def _attribute_tool_tokens(timeline: list[dict]) -> None:
     in between added. Split proportionally by output size when a turn made several
     calls (exact when it made one); skip non-positive deltas (history compaction)."""
     turns = [i for i, e in enumerate(timeline) if e["role"] == "assistant"]
-    for a, b in zip(turns, turns[1:]):
+    for a, b in itertools.pairwise(turns):
         u, nxt = timeline[a]["usage"], timeline[b]["usage"]
         delta = nxt.get("prompt_tokens", 0) - (
             u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)

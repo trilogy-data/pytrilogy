@@ -182,7 +182,30 @@ def flatten_conditions(
 
 def is_scalar_condition(
     element: (
-        str | float | date | datetime | list[Any] | BuildConcept | BuildWindowItem | BuildFilterItem | BoolExpr | BuildFunction | BuildAggregateWrapper | BuildCaseWhen | BuildCaseElse | BuildSubselectComparison | MagicConstants | TraitDataType | DataType | MapWrapper[Any, Any] | ArrayType | MapType | NumericType | DatePart | ListWrapper[Any] | TupleWrapper[Any]
+        str
+        | float
+        | date
+        | datetime
+        | list[Any]
+        | BuildConcept
+        | BuildWindowItem
+        | BuildFilterItem
+        | BoolExpr
+        | BuildFunction
+        | BuildAggregateWrapper
+        | BuildCaseWhen
+        | BuildCaseElse
+        | BuildSubselectComparison
+        | MagicConstants
+        | TraitDataType
+        | DataType
+        | MapWrapper[Any, Any]
+        | ArrayType
+        | MapType
+        | NumericType
+        | DatePart
+        | ListWrapper[Any]
+        | TupleWrapper[Any]
     ),
     materialized: set[str] | None = None,
 ) -> bool:

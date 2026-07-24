@@ -1336,7 +1336,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["first_name"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1351,7 +1351,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["email"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1366,7 +1366,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1381,7 +1381,7 @@ class TestProcessColumn:
         sample_rows = [("Alice",), (None,), ("Bob",)]
         concept_mapping = _make_concept_mapping(["name"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1395,7 +1395,7 @@ class TestProcessColumn:
         sample_rows = [("Alice",), ("Bob",), ("Charlie",)]
         concept_mapping = _make_concept_mapping(["name"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1411,7 +1411,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1426,7 +1426,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1440,7 +1440,7 @@ class TestProcessColumn:
         sample_rows = [("a@x.com",), ("b@y.org",)]
         concept_mapping = _make_concept_mapping(["user_email"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1456,7 +1456,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["location_lat"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1472,7 +1472,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["UserFirstName"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1488,7 +1488,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["User-ID"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1504,7 +1504,7 @@ class TestProcessColumn:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, _column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1669,7 +1669,7 @@ class TestProcessColumnWithPrefixStripping:
         sample_rows = []
         prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, prefix_mapping
         )
 
@@ -1685,7 +1685,7 @@ class TestProcessColumnWithPrefixStripping:
         sample_rows = []
         concept_mapping = _make_concept_mapping(["user_id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, concept_mapping
         )
 
@@ -1700,7 +1700,7 @@ class TestProcessColumnWithPrefixStripping:
         sample_rows = []
         prefix_mapping = _make_concept_mapping(["user_id"])
 
-        concept, column_assignment, rich_import = _process_column(
+        concept, column_assignment, _rich_import = _process_column(
             0, col, grain_components, sample_rows, prefix_mapping
         )
 
@@ -2318,7 +2318,7 @@ def test_ingest_file_round_trips_through_parser():
 
         content = (out_dir / "round.preql").read_text()
         # Must reparse without error - guards the renderer fix.
-        env, stmts = parse_text(content)
+        _env, stmts = parse_text(content)
         from trilogy.core.models.datasource import Address as ParsedAddress
         from trilogy.core.models.datasource import Datasource as ParsedDatasource
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Type
-
 from trilogy.report.backends.base import ReportBackend
 from trilogy.report.backends.html import HtmlBackend
 from trilogy.report.backends.png import PngBackend

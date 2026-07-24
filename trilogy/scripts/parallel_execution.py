@@ -12,6 +12,7 @@ from typing import Any, Protocol
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
@@ -326,8 +327,9 @@ def _create_worker(
                     if on_script_complete:
                         try:
                             on_script_complete(result)
-                        except Exception:
-                            pass  # display errors must not kill the worker or skip _mark_node_complete
+                        except Exception as e:
+                            # display errors must not kill the worker or skip _mark_node_complete
+                            logger.debug("on_script_complete callback failed: %s", e)
 
                     _mark_node_complete(
                         node_key,

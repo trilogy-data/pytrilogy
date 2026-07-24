@@ -12,14 +12,14 @@ def test_one():
     env = Environment(working_path=working_path)
     with open(test) as f:
         text = f.read()
-        env, queries = parse(text, env)
+        env, _queries = parse(text, env)
     exec = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
     )
 
-    env, queries = parse("""import store_returns as returns;""", env)
+    env, _queries = parse("""import store_returns as returns;""", env)
 
-    for k, c in env.concepts.items():
+    for c in env.concepts.values():
         if c.namespace == "local":
             continue
         if c.address not in env.concepts:
@@ -39,11 +39,7 @@ def test_one():
     assert len(env.datasources["returns.store_returns"].concepts) == 7
     assert (
         len(
-            list(
-                set(
-                    x.address for x in env.datasources["returns.store_returns"].concepts
-                )
-            )
+            list({x.address for x in env.datasources["returns.store_returns"].concepts})
         )
         == 7
     )

@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.enums import AggregateGroupingMode, SourceType
 from trilogy.core.models.build import (
@@ -260,9 +259,9 @@ class GroupNode(StrategyNode):
                 "address",
             )
             # re-visible any hidden concepts
-            base.hidden_concepts = set(
-                [x for x in base.hidden_concepts if x not in base.output_concepts]
-            )
+            base.hidden_concepts = {
+                x for x in base.hidden_concepts if x not in base.output_concepts
+            }
             source_map = resolve_concept_map(
                 [base],
                 targets=self.output_concepts,

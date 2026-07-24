@@ -74,11 +74,9 @@ def _shared_nonstandard_grouping(a: BuildConcept, b: BuildConcept) -> bool:
         return False
     if [c.address for c in a.lineage.by] != [c.address for c in b.lineage.by]:
         return False
-    if [[c.address for c in gs] for gs in a.lineage.grouping_sets] != [
+    return [[c.address for c in gs] for gs in a.lineage.grouping_sets] == [
         [c.address for c in gs] for gs in b.lineage.grouping_sets
-    ]:
-        return False
-    return True
+    ]
 
 
 def _is_optional_group_output(concept: BuildConcept) -> bool:
@@ -489,7 +487,7 @@ def _resolve_parent_sources(
     conditions: BuildWhereClause | None,
 ) -> ParentResolution | None:
     parent_concepts = unique(
-        [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
+        [x for x in parent_concepts if x.name != ALL_ROWS_CONCEPT], "address"
     )
     parent_input_concepts = get_group_parent_inputs(parent_concepts, environment)
     remaining_optional = _remaining_optional_outputs(

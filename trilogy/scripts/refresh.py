@@ -438,7 +438,9 @@ def _preview_directory_refresh(
 
     all_root_watermarks: dict[str, DatasourceWatermark] = {}
     if root_probe_plan:
-        with root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
+        with root_probe_progress(
+            len(root_addr_to_needed_concepts)
+        ) as _root_progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
             root_futures = {
                 pool.submit(
                     _collect_root_watermarks,
@@ -463,7 +465,9 @@ def _preview_directory_refresh(
     # Root watermarks are pre-injected so each root is only queried once across all scripts.
     initial_watermarks = all_root_watermarks or None
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]] = []
-    with probe_progress(total_physical) as _progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
+    with probe_progress(total_physical) as _progress, ThreadPoolExecutor(
+        max_workers=parallelism
+    ) as pool:
         futures = {
             pool.submit(
                 _probe_owner_node,

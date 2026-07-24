@@ -437,7 +437,7 @@ def resolve_join_order_v2(
             else:
                 output.append(
                     JoinOrderOutput(
-                        left=sorted(eligible_left)[0],
+                        left=min(eligible_left),
                         right=ds,
                         type=JoinType.FULL,
                         keys={},

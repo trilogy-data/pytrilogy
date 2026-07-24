@@ -123,7 +123,7 @@ def _is_private_address(address: str) -> bool:
     with a single underscore. The ``__``/``local._env_`` builtin markers are
     governed by the separate ``--include-builtins`` gate and are exempt so that
     flag keeps working independently."""
-    if address.startswith("__") or address.startswith("local._env_"):
+    if address.startswith(("__", "local._env_")):
         return False
     return _display_address(address).rpartition(".")[2].startswith("_")
 
@@ -362,9 +362,7 @@ def _emit_imported_summary(
         # Private ``_``-leaves are already stripped upstream by ``filter_hidden``
         # (unless --include-hidden), so no visibility filter is needed here.
         leaves = sorted(
-            leaf
-            for addr in by_ns[ns]
-            for leaf in [addr.removeprefix(prefix)]
+            leaf for addr in by_ns[ns] for leaf in [addr.removeprefix(prefix)]
         )
         if not leaves:
             continue
@@ -608,7 +606,7 @@ def _pick_canonical(names: list[str], source: Path) -> str:
     re-reads of one explore output."""
     stem = source.stem
     preferred = [n for n in names if n.rsplit(".", 1)[-1] == stem]
-    return sorted(preferred or names, key=lambda n: (n.count("."), len(n), n))[0]
+    return min(preferred or names, key=lambda n: (n.count("."), len(n), n))
 
 
 _ROLE_DELIM = ", "

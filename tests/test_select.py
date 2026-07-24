@@ -37,7 +37,7 @@ datasource users (
     auto post_count <- count(post_id);
 
     """
-    env, parsed = parse(declarations)
+    env, _parsed = parse(declarations)
 
     q1 = """select
     # a comment
@@ -152,7 +152,7 @@ def test_modifiers():
     ;"""
     env, parsed = parse(q1)
     select: SelectStatement = parsed[-1]
-    assert select.hidden_components == set([env.concepts["b"].address])
+    assert select.hidden_components == {env.concepts["b"].address}
     assert select.output_components == [env.concepts["a"], env.concepts["b"]]
     query = process_query(statement=select, environment=env)
 
@@ -203,7 +203,7 @@ select id + 2 as three;
 
 """
 
-    env, parsed = parse(q1)
+    env, _parsed = parse(q1)
 
     result = Dialects.DUCK_DB.default_executor(environment=env).execute_text(q1)[-1]
     assert result.fetchone().three == 3

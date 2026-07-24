@@ -6,7 +6,7 @@ select statements become tables and chart statements become charts. The
 """
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from trilogy.rendering.theme import DEFAULT_THEME, Theme, get_theme
 from trilogy.report.backends import get_backend

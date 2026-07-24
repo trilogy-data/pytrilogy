@@ -389,7 +389,10 @@ class FunctionType(Enum):
 
 
 class FunctionClass(Enum):
-    AGGREGATE_FUNCTIONS = [
+    # These lists ARE the enum member values (not mutable class-attribute
+    # defaults) — annotating with ClassVar would turn them into plain class
+    # attributes and silently empty out list(FunctionClass).
+    AGGREGATE_FUNCTIONS = [  # noqa: RUF012
         FunctionType.MAX,
         FunctionType.MIN,
         FunctionType.SUM,
@@ -405,15 +408,15 @@ class FunctionClass(Enum):
         FunctionType.BOOL_OR,
         FunctionType.BOOL_AND,
     ]
-    SINGLE_ROW = [
+    SINGLE_ROW = [  # noqa: RUF012
         FunctionType.CONSTANT,
         FunctionType.CURRENT_DATE,
         FunctionType.CURRENT_DATETIME,
     ]
 
-    ONE_TO_MANY = [FunctionType.UNNEST, FunctionType.DATE_SPINE]
+    ONE_TO_MANY = [FunctionType.UNNEST, FunctionType.DATE_SPINE]  # noqa: RUF012
 
-    RECURSIVE = [FunctionType.RECURSE_EDGE]
+    RECURSIVE = [FunctionType.RECURSE_EDGE]  # noqa: RUF012
 
 
 class Boolean(Enum):

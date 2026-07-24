@@ -12,6 +12,7 @@ from .base import (
     RETRYABLE_CODES,
     LLMProvider,
     LLMRequestOptions,
+    ProviderError,
     build_tool_call,
     to_openai_messages,
 )
@@ -77,7 +78,8 @@ def _load_provider_routing() -> dict | None:
     except json.JSONDecodeError as exc:
         raise ValueError(f"OPENROUTER_PROVIDER must be valid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
-        raise ValueError("OPENROUTER_PROVIDER must be a JSON object")
+        # ValueError is asserted by test_load_openrouter_provider_routing_from_env.
+        raise ValueError("OPENROUTER_PROVIDER must be a JSON object")  # noqa: TRY004
     return parsed
 
 
@@ -214,7 +216,7 @@ class OpenRouterProvider(LLMProvider):
                     _BODY_RETRY_ATTEMPTS,
                     last_problem,
                 )
-                raise Exception(f"OpenRouter API error: {last_problem}")
+                raise ProviderError(f"OpenRouter API error: {last_problem}")
 
             choice = data["choices"][0]
             message = choice.get("message") or {}
@@ -260,8 +262,8 @@ class OpenRouterProvider(LLMProvider):
             )
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"OpenRouter API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"OpenRouter API error: {error!s}")
+            raise ProviderError(f"OpenRouter API error: {error!s}")

@@ -175,9 +175,7 @@ class CTE:
         base += "\n"
         return base
 
-    def inline_parent_datasource(
-        self, parent: CTE, force_group: bool = False
-    ) -> bool:
+    def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         """Fold a single-datasource parent into this consumer.
 
         Structurally identical to the historical inline (so every downstream
@@ -253,15 +251,16 @@ class CTE:
 
     def __add__(self, other: CTE | UnionCTE):
         if isinstance(other, UnionCTE):
-            raise ValueError("cannot merge CTE and union CTE")
+            # ValueError asserted by tests/test_execute_models.py.
+            raise ValueError("cannot merge CTE and union CTE")  # noqa: TRY004
         logger.info('Merging two copies of CTE "%s"', self.name)
-        if not self.grain == other.grain:
+        if self.grain != other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
                 f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
-        if not self.condition == other.condition:
+        if self.condition != other.condition:
             error = (
                 "Attempting to merge two ctes with different conditions"
                 f" {self.name} {other.name} conditions {self.condition} {other.condition}"
@@ -620,22 +619,15 @@ class CTE:
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
                 if all(
-                    [
-                        check_is_not_in_group(x)
-                        for x in c.lineage.rendered_concept_arguments
-                    ]
+                    check_is_not_in_group(x)
+                    for x in c.lineage.rendered_concept_arguments
                 ):
                     return True
                 # a basic expression mixing a group key with a locally-computed
                 # aggregate (e.g. a ratio `a / sum(x)`) contains an aggregate and
                 # cannot appear in GROUP BY
-                if has_local_aggregate(c):
-                    return True
-                return False
-            if c.purpose == Purpose.METRIC:
-                return True
-
-            return False
+                return bool(has_local_aggregate(c))
+            return c.purpose == Purpose.METRIC
 
         return (
             unique(
@@ -657,7 +649,7 @@ class CTE:
     @property
     def render_from_clause(self) -> bool:
         if (
-            all([c.derivation == Derivation.CONSTANT for c in self.output_columns])
+            all(c.derivation == Derivation.CONSTANT for c in self.output_columns)
             and not self.parent_ctes
             and not self.group_to_grain
         ):
@@ -665,12 +657,10 @@ class CTE:
         # if we don't need to source any concepts from anywhere
         # render without from
         # most likely to happen from inlining constants
-        if not any([v for v in self.source_map.values()]):
+        if not any(v for v in self.source_map.values()):
             return False
         base = self.source.base_datasource
-        if isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET:
-            return False
-        return True
+        return not (isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET)
 
     @property
     def sourced_concepts(self) -> list[BuildConcept]:
@@ -1025,8 +1015,8 @@ class QueryDatasource:
     nullable_concepts: list[BuildConcept] = field(default_factory=list)
     join_derived_concepts: list[BuildConcept] = field(default_factory=list)
     force_group: bool | None = None
-    existence_source_map: dict[str, set[BuildDatasource | QueryDatasource]] = (
-        field(default_factory=dict)
+    existence_source_map: dict[str, set[BuildDatasource | QueryDatasource]] = field(
+        default_factory=dict
     )
     ordering: BuildOrderBy | None = None
     # Explicit FROM-clause source. Set when this QDS represents a SELECT with a
@@ -1169,7 +1159,7 @@ class QueryDatasource:
     def __add__(self, other) -> QueryDatasource:
         # these are syntax errors to avoid being caught by current
         if not isinstance(other, QueryDatasource):
-            raise SyntaxError("Can only merge two query datasources")
+            raise SyntaxError("Can only merge two query datasources")  # noqa: TRY004
         if not other.grain == self.grain:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
@@ -1225,13 +1215,11 @@ class QueryDatasource:
         # if a ds was merged (to combine columns), we need to update the source map
         # to use the merged item
         for k, v in final_source_map.items():
-            final_source_map[k] = set(
+            final_source_map[k] = {
                 merged_datasources.get(x.safe_identifier, x) for x in list(v)
-            )
+            }
         for ex_key, ex_sources in final_existence_source_map.items():
-            updated_existence_sources: set[BuildDatasource | QueryDatasource] = (
-                set()
-            )
+            updated_existence_sources: set[BuildDatasource | QueryDatasource] = set()
             for source in ex_sources:
                 updated_existence_sources.add(
                     merged_datasources.get(source.safe_identifier, source)
@@ -1465,11 +1453,11 @@ class RecursiveCTE(CTE):
         filtered_output = [
             x for x in self.output_columns if x.name != RECURSIVE_GATING_CONCEPT
         ]
-        recursive_derived = [
+        recursive_derived = next(
             x for x in self.output_columns if x.derivation == Derivation.RECURSIVE
-        ][0]
+        )
         if not isinstance(recursive_derived.lineage, BuildFunction):
-            raise SyntaxError(
+            raise SyntaxError(  # noqa: TRY004
                 "Recursive CTEs must have a function lineage, found"
                 f" {recursive_derived.lineage}"
             )
@@ -1778,9 +1766,7 @@ class Join:
     left_is_local: bool = False
 
     @staticmethod
-    def authoritative(
-        consumer: CTE | UnionCTE, node: CTE | UnionCTE
-    ) -> CTE | UnionCTE:
+    def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
         """The consumer's own parent instance for ``node``.
 
         Joins keep their own node references, which are *not* the same

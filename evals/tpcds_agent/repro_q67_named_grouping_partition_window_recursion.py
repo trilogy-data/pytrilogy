@@ -64,7 +64,7 @@ def main() -> None:
                 print(f"  OK         {name}")
             except RecursionError:
                 print(f"  RECURSION  {name}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"  {type(exc).__name__:<10} {name}: {str(exc)[:80]}")
 
 

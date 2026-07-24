@@ -262,11 +262,11 @@ class BuildEnvironment:
                 if column.is_complete:
                     non_partial_concrete_concepts.append(column.concept)
                 concrete_concepts.append(column.concept)
-        concrete_addresses = set([x.address for x in concrete_concepts])
-        canonical_addresses = set([x.canonical_address for x in concrete_concepts])
-        non_partial_canonical_addresses = set(
-            [x.canonical_address for x in non_partial_concrete_concepts]
-        )
+        concrete_addresses = {x.address for x in concrete_concepts}
+        canonical_addresses = {x.canonical_address for x in concrete_concepts}
+        non_partial_canonical_addresses = {
+            x.canonical_address for x in non_partial_concrete_concepts
+        }
         self.materialized_concepts = set()
         self.materialized_canonical_concepts = set()
         self.non_partial_materialized_canonical_concepts = set()

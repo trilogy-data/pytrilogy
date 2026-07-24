@@ -4,7 +4,13 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    ProviderError,
+    iter_history_turns,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 DEFAULT_MAX_TOKENS = 10000
@@ -180,8 +186,8 @@ class AnthropicProvider(LLMProvider):
 
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"Anthropic API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"Anthropic API error: {error!s}")
+            raise ProviderError(f"Anthropic API error: {error!s}")

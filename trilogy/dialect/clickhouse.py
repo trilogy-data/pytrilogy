@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from jinja2 import Template
 
@@ -208,13 +209,22 @@ LIMIT {{ limit }}{% endif %}{% endif %}
 
 
 class ClickhouseDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
-    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
-    DB_COLUMN_TYPE_MAP = {**BaseDialect.DB_COLUMN_TYPE_MAP, **DB_COLUMN_TYPE_MAP}
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        **DATATYPE_MAP,
+    }
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
+        **BaseDialect.DB_COLUMN_TYPE_MAP,
+        **DB_COLUMN_TYPE_MAP,
+    }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = CLICKHOUSE_SQL_TEMPLATE
     SUPPORTS_QUALIFY = True

@@ -6,7 +6,13 @@ from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, iter_history_turns
+from .base import (
+    RETRYABLE_CODES,
+    LLMProvider,
+    LLMRequestOptions,
+    ProviderError,
+    iter_history_turns,
+)
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -22,8 +28,8 @@ def _extract_google_retry_delay_ms(error: Exception) -> int | None:
             if "RetryInfo" in detail.get("@type", "") and "retryDelay" in detail:
                 delay_str = detail["retryDelay"].rstrip("s")
                 return int(float(delay_str) * 1000)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to parse Google retryDelay from error body: %s", e)
     return None
 
 
@@ -212,13 +218,13 @@ class GoogleProvider(LLMProvider):
             # Extract text from response
             candidates = data.get("candidates", [])
             if not candidates:
-                raise Exception("No candidates returned from Google API")
+                raise ProviderError("No candidates returned from Google API")
 
             content = candidates[0].get("content", {})
             parts = content.get("parts", [])
 
             if not parts:
-                raise Exception("No parts in response content")
+                raise ProviderError("No parts in response content")
 
             # Parts flagged `thought: true` are reasoning summaries, not answer
             # text — keep them out of the response text and surface separately.
@@ -260,8 +266,8 @@ class GoogleProvider(LLMProvider):
             )
         except httpx.HTTPStatusError as error:
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"Google API error ({error.response.status_code}): {error_detail}"
             )
         except Exception as error:
-            raise Exception(f"Google API error: {error!s}")
+            raise ProviderError(f"Google API error: {error!s}")

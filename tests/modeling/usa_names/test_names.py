@@ -42,7 +42,7 @@ order by
 
     sql = exec.generate_sql(query)[0]
 
-    assert env.concepts["name_rank"].keys == set(["names.name"]), env.concepts[
+    assert env.concepts["name_rank"].keys == {"names.name"}, env.concepts[
         "name_rank"
     ].keys
     # Structural match: CTE names depend on a content hash and may shuffle.
@@ -271,9 +271,10 @@ order by names.state asc, total_births desc;
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    assert env.concepts["rank_by_births"].keys == set(
-        ["names.state", "names.name"]
-    ), env.concepts["rank_by_births"].keys
+    assert env.concepts["rank_by_births"].keys == {
+        "names.state",
+        "names.name",
+    }, env.concepts["rank_by_births"].keys
 
     pattern = r'INNER JOIN "(\w+)" on "(\w+)"\."names_name" = "\1"\."names_name" AND "\2"\."names_state" = "\1"\."names_state"'
     assert re.search(pattern, sql, re.DOTALL) is not None, sql

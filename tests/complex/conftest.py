@@ -53,5 +53,5 @@ select
 
 @fixture(scope="session")
 def stackoverflow_environment():
-    env, parsed = parse(DECLARATIONS)
+    env, _parsed = parse(DECLARATIONS)
     yield env

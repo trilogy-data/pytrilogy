@@ -131,7 +131,7 @@ def base_join_to_join(
             object_to_unnest,
             (BuildConcept | BuildParamaterizedConceptReference | BuildFunction),
         ):
-            raise ValueError(f"Unnest join must be a concept; got {object_to_unnest}")
+            raise TypeError(f"Unnest join must be a concept; got {object_to_unnest}")
         return InstantiatedUnnestJoin(
             object_to_unnest=object_to_unnest,
             alias=base_join.alias,
@@ -229,7 +229,7 @@ def generate_source_map(
         if (
             qdk not in source_map
             and len(qdv) == 1
-            and isinstance(list(qdv)[0], UnnestJoin)
+            and isinstance(next(iter(qdv)), UnnestJoin)
         ):
             source_map[qdk] = []
         basic = [x for x in qdv if isinstance(x, BuildDatasource)]
@@ -238,7 +238,7 @@ def generate_source_map(
 
         ctes = [x for x in qdv if isinstance(x, QueryDatasource)]
         if ctes:
-            names = set([x.safe_identifier for x in ctes])
+            names = {x.safe_identifier for x in ctes}
             matches = [
                 cte for cte in all_new_ctes if cte.source.safe_identifier in names
             ]
@@ -284,7 +284,7 @@ def generate_source_map(
     # as they cannot be referenced in row resolution
     existence_source_map: dict[str, list[str]] = defaultdict(list)
     for ek, ev in query_datasource.existence_source_map.items():
-        ids = set([x.safe_identifier for x in ev])
+        ids = {x.safe_identifier for x in ev}
         ematches = [
             cte.name for cte in all_new_ctes if cte.source.safe_identifier in ids
         ]
@@ -352,7 +352,7 @@ def resolve_cte_base_name_and_alias_v2(
                 candidates += [x.cte.name for x in join.joinkey_pairs if x.cte]
         disallowed = [x.right_cte.name for x in joins]
         try:
-            cte = [y for y in candidates if y not in disallowed][0]
+            cte = next(y for y in candidates if y not in disallowed)
             return cte, cte
         except IndexError:
             raise SyntaxError(
@@ -408,7 +408,7 @@ def datasource_to_cte(
     leaf_datasource: BuildDatasource | None = None
 
     if len(query_datasource.datasources) > 1 or any(
-        [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
+        isinstance(x, QueryDatasource) for x in query_datasource.datasources
     ):
         all_new_ctes: list[CTE | UnionCTE] = []
         for datasource in query_datasource.datasources:
@@ -1151,8 +1151,6 @@ def process_persist(
         select = process_query(
             environment=environment, statement=select_stmt, hooks=hooks
         )
-    except:
-        raise
     finally:
         ds.status = original_status
 
@@ -1329,7 +1327,7 @@ def process_query(
     flattened = flatten_ctes(root_cte)
     flattened = _collect_unreachable_union_arms(flattened) + flattened
     raw_ctes: list[CTE | UnionCTE] = list(reversed(flattened))
-    seen = dict()
+    seen = {}
     # we can have duplicate CTEs at this point
     # so merge them together
     for cte in raw_ctes:
@@ -1407,7 +1405,7 @@ def process_query(
         output_columns=statement.output_components,
         ctes=final_ctes,
         base=root_cte,
-        hidden_columns=set([x for x in statement.hidden_components]),
+        hidden_columns={x for x in statement.hidden_components},
         local_concepts=statement.local_concepts,
         locally_derived=statement.locally_derived,
         parameters=_extract_params(environment.concepts, statement.local_concepts),

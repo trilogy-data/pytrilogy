@@ -34,7 +34,5 @@ def test_randomize_cte_name():
             final_names.add(name)
         # should be more than 1
         assert len(list(final_names)) > 100
-    except Exception as e:
-        raise e
     finally:
         CONFIG.randomize_cte_names = False

@@ -140,7 +140,13 @@ class ProcessedStaticValueOutput:
 class ProcessedShowStatement:
     output_columns: list[ConceptRef]
     output_values: list[
-        BuildConcept | BuildDatasource | ProcessedQuery | ProcessedQueryPersist | ProcessedCopyStatement | ProcessedValidateStatement | ProcessedStaticValueOutput
+        BuildConcept
+        | BuildDatasource
+        | ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedCopyStatement
+        | ProcessedValidateStatement
+        | ProcessedStaticValueOutput
     ]
 
 

@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -27,7 +26,7 @@ def gen_group_to_node(
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, BuildFunction):
-        raise SyntaxError(
+        raise SyntaxError(  # noqa: TRY004
             f"Group to should have function lineage, is {type(concept.lineage)}"
         )
 
@@ -54,15 +53,13 @@ def gen_group_to_node(
         parents=parents,
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
-        hidden_concepts=set(
-            [
-                x.address
-                for x in outputs
-                if x.address not in local_optional
-                and x.address != concept.address
-                and x.address != root.address
-            ]
-        ),
+        hidden_concepts={
+            x.address
+            for x in outputs
+            if x.address not in local_optional
+            and x.address != concept.address
+            and x.address != root.address
+        },
     )
 
     # early exit if no optional

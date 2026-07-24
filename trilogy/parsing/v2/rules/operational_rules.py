@@ -191,7 +191,10 @@ def copy_statement(
             if not isinstance(hydrated, dict):
                 raise fail(child, "Copy options failed to hydrate")
             options = hydrated
-        elif child.kind == SyntaxNodeKind.SELECT_STATEMENT or child.kind == SyntaxNodeKind.CHART_STATEMENT:
+        elif (
+            child.kind == SyntaxNodeKind.SELECT_STATEMENT
+            or child.kind == SyntaxNodeKind.CHART_STATEMENT
+        ):
             source = hydrate(child)
     if target_type is None or target is None or source is None:
         raise fail(node, "Malformed copy statement: missing type/target/source")

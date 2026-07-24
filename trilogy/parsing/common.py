@@ -108,7 +108,7 @@ def unwrap_transformation(
     | Parenthetical
     | SubselectItem
 ):
-    if isinstance(input, Function) or isinstance(input, AggregateWrapper):
+    if isinstance(input, (Function, AggregateWrapper)):
         return input
     elif isinstance(input, ConceptRef):
         concept = environment.concepts[input.address]
@@ -118,7 +118,10 @@ def unwrap_transformation(
             output_purpose=concept.purpose,
             arguments=[input],
         )
-    elif isinstance(input, FilterItem) or isinstance(input, WindowItem) or isinstance(input, FunctionCallWrapper) or isinstance(input, Parenthetical) or isinstance(input, SubselectItem):
+    elif isinstance(
+        input,
+        (FilterItem, WindowItem, FunctionCallWrapper, Parenthetical, SubselectItem),
+    ):
         return input
     elif isinstance(input, Comparison):
         # A comparison / membership (`x > 5`, `x in other`) references real
@@ -551,9 +554,7 @@ def resolve_subquery_membership(left: Any, right: Any) -> tuple[Any, Any]:
 
 
 def constant_to_concept(
-    parent: (
-        ListWrapper | TupleWrapper | MapWrapper | float | str | date | datetime
-    ),
+    parent: ListWrapper | TupleWrapper | MapWrapper | float | str | date | datetime,
     name: str,
     namespace: str,
     metadata: Metadata | None = None,
@@ -619,7 +620,7 @@ def atom_is_relevant(
         return rval
     elif isinstance(atom, SubselectComparison):
         return atom_is_relevant(atom.left, others, environment)
-    elif isinstance(atom, Comparison) or isinstance(atom, Conditional):
+    elif isinstance(atom, (Comparison, Conditional)):
         return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
             atom.right, others, environment
         )
@@ -628,7 +629,7 @@ def atom_is_relevant(
     elif isinstance(atom, ConceptArgs):
         # use atom is relevant here to trigger the early exit behavior for concepts in set
         return any(
-            [atom_is_relevant(x, others, environment) for x in atom.concept_arguments]
+            atom_is_relevant(x, others, environment) for x in atom.concept_arguments
         )
 
     return False
@@ -671,18 +672,22 @@ def concept_is_relevant(
     ):
 
         return False
-    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if all([c in other_addresses for c in concept.keys]):
-            return False
+    if (
+        concept.purpose in (Purpose.PROPERTY, Purpose.METRIC)
+        and concept.keys
+        and all(c in other_addresses for c in concept.keys)
+    ):
+        return False
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in other_addresses for c in concept.keys])
+        and all(c in other_addresses for c in concept.keys)
     ):
         return False
-    if concept.purpose in (Purpose.METRIC,):
-        if all([c in other_addresses for c in concept.grain.components]):
-            return False
+    if concept.purpose in (Purpose.METRIC,) and all(
+        c in other_addresses for c in concept.grain.components
+    ):
+        return False
     if (
         concept.derivation in (Derivation.BASIC,)
         and isinstance(concept.lineage, Function)
@@ -701,9 +706,7 @@ def concept_is_relevant(
     ):
         return atom_is_relevant(concept.lineage.content, others, environment)
 
-    if concept.granularity == Granularity.SINGLE_ROW:
-        return False
-    return True
+    return concept.granularity != Granularity.SINGLE_ROW
 
 
 def _grain_contribution(
@@ -827,7 +830,7 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [], True
     elif isinstance(arg, AggregateWrapper) and arg.by:
         return [x.reference for x in arg.by], True
-    elif isinstance(arg, FunctionCallWrapper) or isinstance(arg, Parenthetical):
+    elif isinstance(arg, (FunctionCallWrapper, Parenthetical)):
         return get_relevant_parent_concepts(arg.content)
     elif isinstance(arg, NavigationWindowItem):
         # A navigation window (lead/lag/...) emits one value per operand row, so
@@ -874,7 +877,7 @@ def group_function_to_concept(
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
     concrete_args = [environment.concepts[c.address] for c in ref_args]
-    pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
+    pkeys += [x for x in concrete_args if x.derivation != Derivation.CONSTANT]
     modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
@@ -1005,7 +1008,7 @@ def function_to_concept(
     pkeys += [
         x
         for x in concrete_args
-        if not x.derivation == Derivation.CONSTANT
+        if x.derivation != Derivation.CONSTANT
         and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
     ]
     grain: Grain | None = Grain()
@@ -1061,8 +1064,10 @@ def function_to_concept(
     elif parent.operator == FunctionType.RECURSE_EDGE:
         derivation = Derivation.RECURSIVE
         granularity = Granularity.MULTI_ROW
-    elif parent.operator in FunctionClass.SINGLE_ROW.value or concrete_args and all(
-        x.derivation == Derivation.CONSTANT for x in concrete_args
+    elif (
+        parent.operator in FunctionClass.SINGLE_ROW.value
+        or concrete_args
+        and all(x.derivation == Derivation.CONSTANT for x in concrete_args)
     ):
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
@@ -1126,7 +1131,7 @@ def filter_item_to_concept(
     fallback_keys = set()
     if isinstance(parent.content, ConceptRef):
         cparent = environment.concepts[parent.content.address]
-        fallback_keys = set([cparent.address])
+        fallback_keys = {cparent.address}
     elif isinstance(
         parent.content,
         (
@@ -1519,7 +1524,7 @@ def agg_wrapper_to_concept(
         lineage=parent,
         grain=grain,
         namespace=namespace,
-        keys=set([x.address for x in by_refs]) if by_refs else keys,
+        keys={x.address for x in by_refs} if by_refs else keys,
         modifiers=modifiers,
         derivation=Derivation.AGGREGATE,
         granularity=granularity,
@@ -1571,7 +1576,7 @@ def align_item_to_concept(
         where_clause=where,
         having_clause=having,
         limit=limit,
-        hidden_components=set(y for x in new_selects for y in x.hidden_components),
+        hidden_components={y for x in new_selects for y in x.hidden_components},
     )
     grain = Grain()
     new = Concept(
@@ -1583,7 +1588,7 @@ def align_item_to_concept(
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.MULTISELECT,
-        keys=set(x.address for x in align.concepts),
+        keys={x.address for x in align.concepts},
     )
     return new
 
@@ -1639,7 +1644,7 @@ def union_item_to_concept(
         selects=new_selects,
         align=align_clause,
         namespace=align.namespace,
-        hidden_components=set(y for x in new_selects for y in x.hidden_components),
+        hidden_components={y for x in new_selects for y in x.hidden_components},
     )
     new = Concept(
         name=align.alias,
@@ -1677,7 +1682,7 @@ def derive_item_to_concept(
         # aligned concepts. Without this it has no keys and gets treated as a
         # grain component itself, forcing a spurious top-level GROUP BY over the
         # derived metric columns.
-        keys=set(item.aligned_concept for item in lineage.align.items),
+        keys={item.aligned_concept for item in lineage.align.items},
     )
     return new
 
@@ -1801,7 +1806,7 @@ def comparison_to_concept(
     pkeys += [
         x
         for x in concrete_args
-        if not x.derivation == Derivation.CONSTANT
+        if x.derivation != Derivation.CONSTANT
         and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
     ]
     grain: Grain | None = Grain()

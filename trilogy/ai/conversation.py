@@ -10,7 +10,7 @@ from trilogy.ai.prompts import (
     create_query_prompt,
     create_query_request_options,
 )
-from trilogy.ai.providers.base import LLMProvider
+from trilogy.ai.providers.base import LLMProvider, ProviderError
 from trilogy.core.exceptions import (
     InvalidSyntaxException,
     NoDatasourceException,
@@ -159,6 +159,6 @@ class Conversation:
                     f"Unknown tool call: {tool_call.name}. Use only {TRILOGY_CREATE_QUERY_TOOL.name} and {TRILOGY_QUERY_TOOL.name}.",
                     role="user",
                 )
-        raise Exception(
+        raise ProviderError(
             f"Failed to generate a valid query after {attempts} attempts. Last error: {last_error}. Full conversation: {self.messages}"
         )

@@ -118,10 +118,12 @@ def add_concept(
     concept_mapping: dict[str, BuildConcept],
     default_concept_graph: dict[str, BuildConcept],
     seen: set[str],
-    node_stash: dict[str, str] = {},
+    node_stash: dict[str, str] | None = None,
 ):
 
     # if we have sources, recursively add them
+    if node_stash is None:
+        node_stash = {}
     node_name = concept_to_node(concept, node_stash)
     if node_name in seen:
         return
@@ -142,7 +144,7 @@ def add_concept(
     if sources:
         for source in sources:
             if not isinstance(source, BuildConcept):
-                raise ValueError(
+                raise TypeError(
                     f"Invalid non-build concept {source} passed into graph generation from {concept}"
                 )
             generic = get_default_grain_concept(source, default_concept_graph)
@@ -196,7 +198,7 @@ def generate_adhoc_graph(
     seen: set[str] = set()
     for concept in concepts:
         if not isinstance(concept, BuildConcept):
-            raise ValueError(f"Invalid non-build concept {concept}")
+            raise TypeError(f"Invalid non-build concept {concept}")
 
     # add all parsed concepts
     for concept in concepts:
@@ -241,10 +243,10 @@ def generate_adhoc_graph(
         g.datasources[node] = dataset
         g.add_datasource_node(node, dataset)
         eligible = dataset.concepts
-        already_present = set(x.canonical_address for x in eligible)
-        complete_contains = set(
+        already_present = {x.canonical_address for x in eligible}
+        complete_contains = {
             c.concept.canonical_address for c in dataset.columns if c.is_complete
-        )
+        }
         for derived in get_derivable_concepts(
             basic_graph, complete_contains, already_present
         ):

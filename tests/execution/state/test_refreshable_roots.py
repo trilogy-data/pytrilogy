@@ -131,7 +131,9 @@ def test_refresh_hard_errors_when_probe_still_false_after_script():
 
     with patch(
         "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
-    ), patch("trilogy.execution.state.state_store.run_refresh_script"), pytest.raises(RefreshAssetError) as exc_info:
+    ), patch("trilogy.execution.state.state_store.run_refresh_script"), pytest.raises(
+        RefreshAssetError
+    ) as exc_info:
         refresh_stale_assets(e)
 
     assert "still returned false" in str(exc_info.value)
@@ -147,7 +149,9 @@ def test_refresh_propagates_script_error():
     ), patch(
         "trilogy.execution.state.state_store.run_refresh_script",
         side_effect=RuntimeError("bad script"),
-    ), pytest.raises(RefreshAssetError) as exc_info:
+    ), pytest.raises(
+        RefreshAssetError
+    ) as exc_info:
         refresh_stale_assets(e)
 
     assert exc_info.value.datasource_id == "raw"

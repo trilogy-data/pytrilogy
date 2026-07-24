@@ -275,13 +275,14 @@ class BaseStateStore:
         if ds_id not in self.watermarks:
             self.watermark_asset(ds, executor)
 
-        if ds.freshness_probe:
-            if not self._run_freshness_probe_cached(ds.freshness_probe):
-                return StaleAsset(
-                    datasource_id=ds_id,
-                    reason=f"freshness probe '{ds.freshness_probe}' returned false",
-                    filters=UpdateKeys(),
-                )
+        if ds.freshness_probe and not self._run_freshness_probe_cached(
+            ds.freshness_probe
+        ):
+            return StaleAsset(
+                datasource_id=ds_id,
+                reason=f"freshness probe '{ds.freshness_probe}' returned false",
+                filters=UpdateKeys(),
+            )
 
         if has_schema_mismatch(ds, executor, cache=self._cache):
             return StaleAsset(
@@ -749,14 +750,17 @@ def refresh_stale_assets(
     if on_stale_found:
         on_stale_found(plan.stale_count, plan.root_assets, plan.all_assets)
 
-    if on_approval and plan.refresh_assets:
-        if not on_approval(plan.refresh_assets, plan.watermarks):
-            return RefreshResult(
-                stale_count=plan.stale_count,
-                refreshed_count=0,
-                root_assets=plan.root_assets,
-                all_assets=plan.all_assets,
-            )
+    if (
+        on_approval
+        and plan.refresh_assets
+        and not on_approval(plan.refresh_assets, plan.watermarks)
+    ):
+        return RefreshResult(
+            stale_count=plan.stale_count,
+            refreshed_count=0,
+            root_assets=plan.root_assets,
+            all_assets=plan.all_assets,
+        )
 
     return execute_refresh_plan(
         executor,

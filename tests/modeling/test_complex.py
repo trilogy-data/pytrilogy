@@ -18,7 +18,7 @@ def test_rowset(test_environment: Environment, test_executor: Executor):
         even_orders.store_id
     order by even_orders.order_id asc
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     # assert len(results) == 3
@@ -36,7 +36,7 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
         even_orders.store_id
     order by order_id asc
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     # assert len(results) == 3
@@ -63,7 +63,7 @@ def test_rowset_with_aggregation(
         even_orders.store_id asc
     ;"""
 
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     group = factory.build(test_environment.concepts["even_order_store_revenue"])
 
@@ -117,7 +117,7 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
         order_id in filtered
     order by filtered asc, order_id asc
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
@@ -136,7 +136,7 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
     where
         filtered = 1
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1

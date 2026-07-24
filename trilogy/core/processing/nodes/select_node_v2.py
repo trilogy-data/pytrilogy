@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
@@ -189,16 +188,14 @@ class SelectNode(StrategyNode):
         # if we have parent nodes, we do not need to go to a datasource
         resolution: QueryDatasource | None = None
         if all(
-            [
-                (
-                    c.derivation == Derivation.CONSTANT
-                    or (
-                        c.purpose == Purpose.CONSTANT
-                        and c.derivation == Derivation.MULTISELECT
-                    )
+            (
+                c.derivation == Derivation.CONSTANT
+                or (
+                    c.purpose == Purpose.CONSTANT
+                    and c.derivation == Derivation.MULTISELECT
                 )
-                for c in self.all_concepts
-            ]
+            )
+            for c in self.all_concepts
         ):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"

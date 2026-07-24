@@ -46,7 +46,7 @@ def split_markdown(md: str, depth: int) -> list[tuple[str, str]]:
     before the first such header is the 'preamble' block. A header line is
     `^#{2,depth} ` - single `#` is skipped so `#`-comments inside code examples
     are not mistaken for headings."""
-    pat = re.compile(r"^(#{2,%d})\s+(.*)$" % max(2, depth), re.MULTILINE)
+    pat = re.compile(rf"^(#{{2,{max(2, depth)}}})\s+(.*)$", re.MULTILINE)
     blocks: list[tuple[str, str]] = []
     marks = list(pat.finditer(md))
     if not marks or marks[0].start() > 0:

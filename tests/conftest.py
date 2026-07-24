@@ -110,7 +110,7 @@ def test_environment():
         name="order_timestamp",
         datatype=DataType.TIMESTAMP,
         purpose=Purpose.PROPERTY,
-        keys=set(["local.order_id"]),
+        keys={"local.order_id"},
     )
 
     order_count = Concept(

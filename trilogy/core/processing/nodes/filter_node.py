@@ -1,4 +1,3 @@
-
 from trilogy.core.enums import (
     SourceType,
 )

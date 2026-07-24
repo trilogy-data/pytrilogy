@@ -1,4 +1,3 @@
-
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode

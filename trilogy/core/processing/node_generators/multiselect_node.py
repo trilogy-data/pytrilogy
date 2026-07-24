@@ -166,8 +166,7 @@ def gen_multiselect_node(
             ), f"missing {mc} in {snode.resolve().output_concepts}"
         base_parents.append(snode)
         if select.where_clause:
-            for item in select.output_components:
-                partial.append(item)
+            partial.extend(select.output_components)
         logger.info(snode.hidden_concepts)
 
     node_joins = extra_align_joins(lineage, environment, base_parents)
@@ -195,7 +194,7 @@ def gen_multiselect_node(
         whole_grain=True,
     )
 
-    enrichment = set([x.address for x in local_optional])
+    enrichment = {x.address for x in local_optional}
 
     multiselect_relevant = [
         environment.concepts[x]

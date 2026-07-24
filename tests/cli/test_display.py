@@ -112,7 +112,7 @@ def capture_rich_console_output():
             display_core.error_console = original_error_console
     else:
         # If Rich isn't available, just use regular output capture
-        with capture_all_output() as (stdout, stderr):
+        with capture_all_output() as (stdout, _stderr):
             yield stdout
 
 
@@ -639,7 +639,9 @@ class TestContextManagers:
     def test_with_status_context_manager(self, rich_mode):
         """Test with_status as context manager."""
         if rich_mode and RICH_AVAILABLE:
-            with capture_rich_console_output(), display.with_status("Testing operation"):
+            with capture_rich_console_output(), display.with_status(
+                "Testing operation"
+            ):
                 pass
                 # Rich status doesn't write to output until completion
                 # But we can test it doesn't crash

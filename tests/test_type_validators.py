@@ -470,7 +470,9 @@ def test_validated_type_trait_round_trip(backend: ParserBackend):
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_validated_type_union_type_declaration_rejected(backend: ParserBackend):
-    with _using_backend(backend), pytest.raises(Exception, match="union type declarations"):
+    with _using_backend(backend), pytest.raises(
+        Exception, match="union type declarations"
+    ):
         Environment().parse("type weird int[0..100] | string;")
 
 

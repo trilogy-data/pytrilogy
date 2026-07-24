@@ -38,7 +38,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
             rendered = generator.render_concept_sql(
                 factory.build(avg_user_post_count), cte
             )
-            '"post_length") as "user_avg_post_length"' in rendered
+            assert '"post_length") as "user_avg_post_length"' in rendered
             found = True
         if found:
             break
@@ -96,9 +96,11 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     assert posts.grain == post_grain
 
-    assert set(expected_parent.source_map.keys()) == set(
-        ["local.user_post_count", "local.user_id", "local.post_id"]
-    )
+    assert set(expected_parent.source_map.keys()) == {
+        "local.user_post_count",
+        "local.user_id",
+        "local.post_id",
+    }
 
     assert user_post_count in expected_parent.output_concepts
 
@@ -121,9 +123,10 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(parent, QueryDatasource)
     assert user_post_count in parent.output_concepts
 
-    assert set([x.address for x in parent.output_concepts]) == set(
-        ["local.user_post_count", "local.user_id"]
-    )
+    assert {x.address for x in parent.output_concepts} == {
+        "local.user_post_count",
+        "local.user_id",
+    }
 
     root = parent.datasources[0].datasources[0]
     assert isinstance(root, BuildDatasource)

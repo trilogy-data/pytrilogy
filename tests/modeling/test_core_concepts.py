@@ -47,9 +47,9 @@ def test_auto_property_assignments(test_environment: Environment):
         assert candidate.keys == {
             store_id.address,
         }, f"keys for {candidate.address}: {candidate.keys} should be store_id"
-        assert {x for x in candidate.grain.components} == set(
-            [store_id.address]
-        ), f"grain for {candidate.address}: {candidate.keys} should be store_id"
+        assert {x for x in candidate.grain.components} == {
+            store_id.address
+        }, f"grain for {candidate.address}: {candidate.keys} should be store_id"
 
 
 def test_metric_assignments(test_environment: Environment):
@@ -75,17 +75,18 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
         elif col.alias == "store_id" or col.alias == "product_id":
             assert not col.is_complete
 
-    x = [
-        x
-        for x in gen_select_node(
-            [test_environment.concepts["store_id"]]
-            + [test_environment.concepts["order_id"]],
-            environment=test_environment,
-            g=generate_graph(test_environment),
-            depth=0,
-            accept_partial=True,
-        ).parents
-    ][0]
+    x = next(
+        iter(
+            gen_select_node(
+                [test_environment.concepts["store_id"]]
+                + [test_environment.concepts["order_id"]],
+                environment=test_environment,
+                g=generate_graph(test_environment),
+                depth=0,
+                accept_partial=True,
+            ).parents
+        )
+    )
 
     found = False
     for con in x.partial_concepts:
@@ -129,14 +130,12 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set(statement.grain.components) == set(
-        [
-            # these are removed as they are implicit on the order grain
-            # test_environment.concepts["store_id"].address,
-            # test_environment.concepts["product_id"].address,
-            test_environment.concepts["order_id"].address,
-        ]
-    )
+    assert set(statement.grain.components) == {
+        # these are removed as they are implicit on the order grain
+        # test_environment.concepts["store_id"].address,
+        # test_environment.concepts["product_id"].address,
+        test_environment.concepts["order_id"].address,
+    }
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 5
@@ -196,7 +195,7 @@ def test_filter_grain_different(test_environment: Environment, test_executor: Ex
         order_id,
         even_order_store_id
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[-1].fetchall())
     assert len(results) == 5
@@ -211,7 +210,7 @@ def test_inline_source_derivation(
         order_year,
         count(order_id) as order_count
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
@@ -225,7 +224,7 @@ def test_filtered_project(test_environment: Environment, test_executor: Executor
     SELECT
         even_product_name
     ;"""
-    _, statements = parse(test_select, test_environment)
+    _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1

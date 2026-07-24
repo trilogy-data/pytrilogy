@@ -1079,9 +1079,13 @@ def build_concept_graph(
         # whichever exists; the atom's host bucket consumes from there.
         for candidate_label in ("", _condition_label("")):
             row_nid = node_id(candidate_label, row_addr)
-            if existence_nid in graph and row_nid in graph and existence_nid != row_nid:
-                if not graph.has_edge(existence_nid, row_nid):
-                    add_edge(graph, edges, existence_nid, row_nid, EdgeKind.EXISTENCE)
+            if (
+                existence_nid in graph
+                and row_nid in graph
+                and existence_nid != row_nid
+                and not graph.has_edge(existence_nid, row_nid)
+            ):
+                add_edge(graph, edges, existence_nid, row_nid, EdgeKind.EXISTENCE)
 
     # Backfill: if a condition-phase node has no successor (no d0 barrier
     # consumed it), wire a constraint from it to the matching blank-phase

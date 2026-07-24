@@ -103,8 +103,7 @@ def format_event(event: dict, state: ProgressState) -> list[str]:
         duration = _call_duration(state.pending_ts, str(event.get("ts", "")))
         status = "ERR" if err else "ok"
         return [
-            f"{RESULT_INDENT}`- {status:<3} {duration:>6}  "
-            f"{_result_preview(name, result)}"
+            f"{RESULT_INDENT}`- {status:<3} {duration:>6}  {_result_preview(name, result)}"
         ]
     return []
 

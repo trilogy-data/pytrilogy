@@ -122,7 +122,9 @@ def test_sync_version_missing_version(tmp_path):
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
-    with patch.object(sync_version, "__file__", str(fake_scripts / "sync_version.py")), raises(ValueError, match="Could not find __version__"):
+    with patch.object(
+        sync_version, "__file__", str(fake_scripts / "sync_version.py")
+    ), raises(ValueError, match="Could not find __version__"):
         build_backend._sync_version()
 
 
@@ -215,7 +217,9 @@ def test_patch_metadata_missing_file(tmp_path):
 
 def test_build_wheel_syncs_version():
     """Test build_wheel calls _sync_version"""
-    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch("build_backend.maturin.build_wheel", return_value="wheel.whl"):
+    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch(
+        "build_backend.maturin.build_wheel", return_value="wheel.whl"
+    ):
         result = build_backend.build_wheel("/fake/wheel_dir")
 
     mock_sync.assert_called_once()
@@ -224,7 +228,9 @@ def test_build_wheel_syncs_version():
 
 def test_build_sdist_syncs_version():
     """Test build_sdist calls _sync_version"""
-    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch("build_backend.maturin.build_sdist", return_value="source.tar.gz"):
+    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch(
+        "build_backend.maturin.build_sdist", return_value="source.tar.gz"
+    ):
         result = build_backend.build_sdist("/fake/sdist_dir")
 
     mock_sync.assert_called_once()
@@ -237,9 +243,7 @@ def test_prepare_metadata_for_build_wheel():
         "build_backend.maturin.prepare_metadata_for_build_wheel",
         return_value="pytrilogy-1.0.0.dist-info",
     ), patch("build_backend._patch_metadata") as mock_patch:
-        result = build_backend.prepare_metadata_for_build_wheel(
-            "/fake/metadata_dir"
-        )
+        result = build_backend.prepare_metadata_for_build_wheel("/fake/metadata_dir")
 
     assert result == "pytrilogy-1.0.0.dist-info"
     mock_patch.assert_called_once()
@@ -251,9 +255,7 @@ def test_prepare_metadata_for_build_editable():
         "build_backend.maturin.prepare_metadata_for_build_editable",
         return_value="pytrilogy-1.0.0.dist-info",
     ), patch("build_backend._patch_metadata") as mock_patch:
-        result = build_backend.prepare_metadata_for_build_editable(
-            "/fake/metadata_dir"
-        )
+        result = build_backend.prepare_metadata_for_build_editable("/fake/metadata_dir")
 
     assert result == "pytrilogy-1.0.0.dist-info"
     mock_patch.assert_called_once()
@@ -261,7 +263,9 @@ def test_prepare_metadata_for_build_editable():
 
 def test_build_editable_syncs_version():
     """Test build_editable calls _sync_version"""
-    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch("build_backend.maturin.build_editable", return_value="editable.whl"):
+    with patch("build_backend._sync_version", return_value="1.0.0") as mock_sync, patch(
+        "build_backend.maturin.build_editable", return_value="editable.whl"
+    ):
         result = build_backend.build_editable("/fake/wheel_dir")
 
     mock_sync.assert_called_once()

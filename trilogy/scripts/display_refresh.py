@@ -3,6 +3,7 @@
 from typing import Any
 
 from click import echo, style
+from typing_extensions import Self
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, print_info
@@ -47,7 +48,7 @@ class _ProbeProgressContext:
         self._task: Any = None
         self._stderr_cap = _FdStderrCapture()
 
-    def __enter__(self) -> "_ProbeProgressContext":
+    def __enter__(self) -> Self:
         if _core.RICH_AVAILABLE and _core.console is not None:
             self._progress = Progress(
                 SpinnerColumn(),

@@ -54,8 +54,8 @@ def filter_pseudonyms_for_source(
                 except nx.NetworkXNoPath:
                     lengths[n] = 999
             to_remove.add(max(lengths, key=lambda x: lengths.get(x, 0)))
-    for node in to_remove:
-        ds_graph.remove_node(node)
+    for removal in to_remove:
+        ds_graph.remove_node(removal)
 
 
 def extract_concept(node: str, env: BuildEnvironment):
@@ -151,10 +151,12 @@ def determine_induced_minimal_nodes(
     environment: BuildEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
-    synonyms: dict[str, str] = {},
+    synonyms: dict[str, str] | None = None,
 ) -> nx.DiGraph | None:
     # to_undirected already returns a fresh graph with independent rust core
     # and attrs; the extra .copy() is double work.
+    if synonyms is None:
+        synonyms = {}
     H: nx.Graph = nx.to_undirected(G)
     nodelist_set = set(nodelist)
 
@@ -250,7 +252,7 @@ def determine_induced_minimal_nodes(
     except nx.exception.NodeNotFound as e:
         logger.debug(f"Unable to find paths for {nodelist}- {e!s}")
         return None
-    path_removals = list(x for x in H.nodes if x not in paths)
+    path_removals = [x for x in H.nodes if x not in paths]
     if path_removals:
         # logger.debug(f"Removing paths {path_removals} from graph")
         H.remove_nodes_from(path_removals)
@@ -280,11 +282,9 @@ def determine_induced_minimal_nodes(
 
     # all concept nodes must have a parent
     if not all(
-        [
-            final.in_degree(node) > 0
-            for node in final.nodes
-            if node.startswith("c~") and node in nodelist
-        ]
+        final.in_degree(node) > 0
+        for node in final.nodes
+        if node.startswith("c~") and node in nodelist
     ):
         missing = [
             node
@@ -294,7 +294,7 @@ def determine_induced_minimal_nodes(
         logger.debug(f"Skipping graph for {nodelist} as no in_degree {missing}")
         return None
 
-    if not all([node in final.nodes for node in nodelist]):
+    if not all(node in final.nodes for node in nodelist):
         missing = [node for node in nodelist if node not in final.nodes]
         logger.debug(
             f"Skipping graph for initial list {nodelist} as missing nodes {missing} from final graph {final.nodes}"
@@ -313,10 +313,10 @@ def canonicalize_addresses(
     This is necessary to ensure that we can compare concepts correctly,
     especially when dealing with aliases or pseudonyms.
     """
-    return set(
+    return {
         environment.concepts[x].address if x in environment.concepts else x
         for x in reduced_concept_set
-    )
+    }
 
 
 def detect_ambiguity_and_raise(
@@ -494,7 +494,7 @@ def resolve_weak_components(
             # from trilogy.hooks.graph_hook import GraphHook
             # GraphHook().query_graph_built(g, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
             found.append(g)
-            new_addresses = set([x.address for x in new if x.address not in synonyms])
+            new_addresses = {x.address for x in new if x.address not in synonyms}
             reduced_concept_sets.append(new_addresses)
 
         except nx.exception.NetworkXNoPath:
@@ -610,8 +610,10 @@ def subgraphs_to_merge_node(
     for x in parents:
         for y in x.usable_outputs:
             input_c.append(y)
-            if y in output_concepts or any(y.address in c.pseudonyms for c in output_concepts) or any(
-                c.address in y.pseudonyms for c in output_concepts
+            if (
+                y in output_concepts
+                or any(y.address in c.pseudonyms for c in output_concepts)
+                or any(c.address in y.pseudonyms for c in output_concepts)
             ):
                 output_c.append(y)
 
@@ -697,7 +699,7 @@ def gen_merge_node(
     if not searchable_concepts:
         # pure-constant requests are the root merge's job
         return None
-    break_set = set([x.address for x in searchable_concepts])
+    break_set = {x.address for x in searchable_concepts}
     # Skip condition pruning only when conditions are "owned" by a partial datasource;
     # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
     base_search_conditions = (

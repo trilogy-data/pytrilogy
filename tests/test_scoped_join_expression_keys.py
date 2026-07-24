@@ -259,7 +259,9 @@ def test_scoped_inner_join_rejected(models: Path, backend: ParserBackend) -> Non
         "import orders as orders;\nimport customers as customers;\n"
         "INNER JOIN orders.ckey = customers.cid SELECT customers.region;"
     )
-    with _using_backend(backend), pytest.raises(HydrationError, match="inner` join is not supported"):
+    with _using_backend(backend), pytest.raises(
+        HydrationError, match="inner` join is not supported"
+    ):
         parse_text(text, root=models)
 
 

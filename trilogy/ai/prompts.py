@@ -118,7 +118,18 @@ TRILOGY_LEAD_IN = get_trilogy_prompt(
 
 def datatype_to_field_prompt(
     datatype: (
-        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType | ValidatedType | DataTyped | StructComponent | float | str
+        DataType
+        | TraitDataType
+        | ArrayType
+        | StructType
+        | MapType
+        | NumericType
+        | EnumType
+        | ValidatedType
+        | DataTyped
+        | StructComponent
+        | float
+        | str
     ),
 ) -> str:
     if isinstance(datatype, EnumType):

@@ -12,9 +12,9 @@ from trilogy.core.processing.node_generators.node_merge_node import (
 def test_demo_merge(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
-    concepts = set(list(normalized_engine.environment.concepts.keys()))
+    concepts = set(normalized_engine.environment.concepts.keys())
     assert "passenger.last_name" in concepts
-    assert "rich_info.last_name" in set([x for x in concepts if x.startswith("r")])
+    assert "rich_info.last_name" in {x for x in concepts if x.startswith("r")}
 
     test = """SELECT
 passenger.last_name,
@@ -38,9 +38,9 @@ and passenger.last_name is not null;
 def test_demo_merge_rowset(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
-    concepts = set(list(normalized_engine.environment.concepts.keys()))
+    concepts = set(normalized_engine.environment.concepts.keys())
     assert "passenger.last_name" in concepts
-    assert "rich_info.last_name" in set([x for x in concepts if x.startswith("r")])
+    assert "rich_info.last_name" in {x for x in concepts if x.startswith("r")}
 
     test = """rowset test <-SELECT
 passenger.last_name,
@@ -138,14 +138,14 @@ merge x2 into x;
 def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
-    concepts = set(list(normalized_engine.environment.concepts.keys()))
+    concepts = set(normalized_engine.environment.concepts.keys())
     assert normalized_engine.environment.namespace == "local"
     assert "passenger.last_name" in concepts
 
-    assert "rich_info.last_name" in set([x for x in concepts if x.startswith("r")])
-    assert "rich_info.net_worth_1918_dollars" in set(
-        [x for x in concepts if x.startswith("r")]
-    )
+    assert "rich_info.last_name" in {x for x in concepts if x.startswith("r")}
+    assert "rich_info.net_worth_1918_dollars" in {
+        x for x in concepts if x.startswith("r")
+    }
 
     test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)

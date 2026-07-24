@@ -321,7 +321,7 @@ select
 ;
 """)
 
-    row = list(results[-1].fetchall())[0]
+    row = next(iter(results[-1].fetchall()))
     assert row.total_revenue == 877.30
     assert row.max_revenue == 300.00
     assert row.min_revenue == 75.25

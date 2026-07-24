@@ -84,7 +84,7 @@ def get_unnest_output_type(args: list[Any]) -> CONCRETE_TYPES:
 
 
 def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
-    non_null = [x for x in args if not x == MagicConstants.NULL]
+    non_null = [x for x in args if x != MagicConstants.NULL]
     processed = [arg_to_datatype(x) for x in non_null if x]
     if not processed:
         return DataType.UNKNOWN
@@ -101,7 +101,7 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
         if any(not is_compatible_datatype(a, b) for b in reps[i + 1 :]):
             raise InvalidSyntaxException(
                 f"All arguments to coalesce must be of compatible types, have "
-                f"{set(arg_to_datatype(x) for x in args)} for {args!s}"
+                f"{ {arg_to_datatype(x) for x in args} } for {args!s}"
             )
     return merge_datatypes(reps)
 
@@ -115,7 +115,7 @@ def get_index_output_type(
 ) -> CONCRETE_TYPES:
     arg = args[0]
     datatype = arg_to_datatype(arg)
-    if isinstance(datatype, ArrayType) or isinstance(datatype, MapType):
+    if isinstance(datatype, (ArrayType, MapType)):
         return datatype.value_data_type
     return datatype
 
@@ -273,7 +273,11 @@ def get_date_trunc_output(
     target: DatePart = args[1]
     if target == DatePart.YEAR or target == DatePart.MONTH or target == DatePart.DAY:
         return DataType.DATE
-    elif target == DatePart.HOUR or target == DatePart.MINUTE or target == DatePart.SECOND:
+    elif (
+        target == DatePart.HOUR
+        or target == DatePart.MINUTE
+        or target == DatePart.SECOND
+    ):
         return DataType.DATETIME
     elif target == DatePart.WEEK or target == DatePart.QUARTER:
         return DataType.DATE
@@ -1663,5 +1667,5 @@ def try_create_auto_derived(
         lineage=func,
         grain=parent.grain,
         namespace=parent.namespace,
-        keys=set([parent.address]),
+        keys={parent.address},
     )

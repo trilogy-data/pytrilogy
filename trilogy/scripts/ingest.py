@@ -18,7 +18,7 @@ from trilogy.authoring import (
     ImportStatement,
     PropertiesDeclarationStatement,
 )
-from trilogy.constants import REMOTE_PREFIXES
+from trilogy.constants import REMOTE_PREFIXES, logger
 from trilogy.core.enums import AddressType, Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain, Metadata
 from trilogy.core.models.core import EnumType, TraitDataType, ValidatedType
@@ -122,8 +122,8 @@ def _rollback_on_error(exec: Executor) -> Iterator[None]:
     except Exception:
         try:
             exec.connection.rollback()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Rollback after failed introspection also failed: %s", e)
         raise
 
 
@@ -987,8 +987,12 @@ def ingest(
                 # subsequent sources don't all fail with "transaction aborted".
                 try:
                     exec.connection.rollback()
-                except Exception:
-                    pass
+                except Exception as rollback_err:
+                    logger.debug(
+                        "Rollback after failed ingest of %s also failed: %s",
+                        source,
+                        rollback_err,
+                    )
                 summary_rows.append(
                     IngestSummaryRow(
                         source=source,

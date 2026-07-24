@@ -1,4 +1,3 @@
-
 from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, logger
 from trilogy.core.models.build import (
     BuildComparison,

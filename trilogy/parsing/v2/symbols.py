@@ -356,7 +356,7 @@ def topological_sort_plans(
             if in_deg[dependent] == 0:
                 queue.append(dependent)
 
-    seen = set(id(p) for p in ordered)
+    seen = {id(p) for p in ordered}
     for plan in concept_plans:
         if id(plan) not in seen:
             ordered.append(plan)

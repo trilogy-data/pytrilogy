@@ -593,7 +593,13 @@ SELECT
 order by launch_count desc limit 15;
 """)
     build_env = base.environment.materialize_for_select()
-    validation_components = ["local.launch_tag", "vehicle.name", "vehicle.stage.engine.name", "vehicle.stage.name", "vehicle.variant"]
+    validation_components = [
+        "local.launch_tag",
+        "vehicle.name",
+        "vehicle.stage.engine.name",
+        "vehicle.stage.name",
+        "vehicle.variant",
+    ]
     pregrain = BuildGrain.from_concepts(validation_components, environment=build_env)
     assert "vehicle.stage.engine.name" not in pregrain.components, pregrain
     base.generate_sql(queries[-1])

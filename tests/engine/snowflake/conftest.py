@@ -31,7 +31,7 @@ def snowflake_model(environment):
     text = """
 const pi <-3.14;
 """
-    environment, statements = parse(text, environment=environment)
+    environment, _statements = parse(text, environment=environment)
     yield environment
 
 

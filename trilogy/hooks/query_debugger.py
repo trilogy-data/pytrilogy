@@ -33,7 +33,7 @@ class DebuggingHook(BaseHook):
         process_other: bool = True,
         output_file: Path | None = None,
     ):
-        if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
+        if not any(isinstance(x, StreamHandler) for x in logger.handlers):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)
 

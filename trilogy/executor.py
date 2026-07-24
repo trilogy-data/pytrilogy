@@ -284,8 +284,10 @@ class Executor:
                     self.execute_raw_sql(
                         f"DROP TABLE IF EXISTS {quote}{table_name}{quote}"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.debug(
+                        "Failed to drop validation temp table %s: %s", table_name, e
+                    )
             self._validation_datasource_cache = None
             self._validation_temp_tables = []
 
@@ -566,7 +568,7 @@ class Executor:
         target = self._resolve_copy_target(query.target)
         if self.dialect == Dialects.DUCK_DB:
             # Check for GCS write credentials if target is a GCS path
-            if target.startswith("gcs://") or target.startswith("gs://"):
+            if target.startswith(("gcs://", "gs://")):
                 from trilogy.dialect.duckdb import check_gcs_write_credentials
 
                 check_gcs_write_credentials()
@@ -653,9 +655,7 @@ class Executor:
 
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:
-        raise NotImplementedError(
-            f"Cannot generate sql for type {type(command)}"
-        )
+        raise NotImplementedError(f"Cannot generate sql for type {type(command)}")
 
     @generate_sql.register  # type: ignore
     def _(self, command: ProcessedQuery) -> list[str]:
@@ -1004,18 +1004,17 @@ class Executor:
                 if validate_result:
                     output.append(validate_result)
                 continue
-            if non_interactive:
-                if not isinstance(
-                    statement,
-                    (
-                        ProcessedCopyStatement,
-                        ProcessedQueryPersist,
-                        ProcessedValidateStatement,
-                        ProcessedRawSQLStatement,
-                        ProcessedPublishStatement,
-                    ),
-                ):
-                    continue
+            if non_interactive and not isinstance(
+                statement,
+                (
+                    ProcessedCopyStatement,
+                    ProcessedQueryPersist,
+                    ProcessedValidateStatement,
+                    ProcessedRawSQLStatement,
+                    ProcessedPublishStatement,
+                ),
+            ):
+                continue
             result = self.execute_statement(statement)
             if result:
                 output.append(result)

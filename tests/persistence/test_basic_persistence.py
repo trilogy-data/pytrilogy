@@ -231,7 +231,7 @@ def test_derivations_reparse_new():
                 # force add since we didn't run it
                 if isinstance(processed, ProcessedQueryPersist):
                     env.add_datasource(processed.datasource)
-        env, parsed2 = parse(
+        env, _parsed2 = parse(
             """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then False else True END;
     select 
     test_upper_case_2;""",

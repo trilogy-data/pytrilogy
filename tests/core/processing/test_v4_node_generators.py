@@ -1027,7 +1027,7 @@ class TestDispatchGuard:
 
 class TestGeneratorGuards:
     def test_gen_recursive_without_recursive_output_returns_none(self):
-        env, benv = _build(UNNEST_MODEL)
+        _env, benv = _build(UNNEST_MODEL)
         assert gen_recursive([benv.concepts["local.id"]], [], benv) is None
 
     def test_gen_rowset_empty_outputs_returns_none(self):

@@ -404,19 +404,22 @@ def collect_failures(events: list[dict]) -> list[dict]:
     for e in events:
         if e.get("type") == "tool_call" and e.get("name") == "trilogy":
             pending = (e.get("arguments") or {}).get("args") or []
-        elif e.get("type") == "tool_result" and e.get("name") == "trilogy":
-            if pending is not None:
-                result = str(e.get("result") or "")
-                head = result.splitlines()[0].strip() if result.strip() else ""
-                if head != "exit_code: 0":
-                    failures.append(
-                        {
-                            "args": [str(a) for a in pending],
-                            "category": categorize_failure(result),
-                            "error": _error_snippet(result),
-                        }
-                    )
-                pending = None
+        elif (
+            e.get("type") == "tool_result"
+            and e.get("name") == "trilogy"
+            and pending is not None
+        ):
+            result = str(e.get("result") or "")
+            head = result.splitlines()[0].strip() if result.strip() else ""
+            if head != "exit_code: 0":
+                failures.append(
+                    {
+                        "args": [str(a) for a in pending],
+                        "category": categorize_failure(result),
+                        "error": _error_snippet(result),
+                    }
+                )
+            pending = None
     return failures
 
 
@@ -432,8 +435,7 @@ def write_failures_report(
     lines = [
         f"# Trilogy failure analysis — {meta['timestamp']}",
         "",
-        f"- Run `{run_dir.name}` | `{meta['provider']}/{meta['model']}` "
-        f"| sf={meta['scale_factor']:g}",
+        f"- Run `{run_dir.name}` | `{meta['provider']}/{meta['model']}` | sf={meta['scale_factor']:g}",
         f"- `trilogy` calls: {trilogy_calls} | failed: {n}{rate}",
         "",
         "## Categories",

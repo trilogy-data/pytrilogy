@@ -128,7 +128,7 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             "exec_time": exec_time.total_seconds(),
             "comp_time": comp_time.total_seconds(),
         }
-        final = {x: current[x] for x in sorted(list(current.keys()))}
+        final = {x: current[x] for x in sorted(current.keys())}
         # dump it all back
         f.seek(0)
         f.write(

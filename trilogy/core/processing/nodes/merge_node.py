@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
@@ -239,12 +238,15 @@ class MergeNode(StrategyNode):
             # here like inferred joins do (get_modifiers), else a nullable join
             # key silently drops its NULL matches through the plain equality
             modifiers = list(join.modifiers)
-            if Modifier.NULLABLE not in modifiers and join.concepts:
-                if all(
+            if (
+                Modifier.NULLABLE not in modifiers
+                and join.concepts
+                and all(
                     side_nullable(concept, left) and side_nullable(concept, right)
                     for concept in join.concepts
-                ):
-                    modifiers.append(Modifier.NULLABLE)
+                )
+            ):
+                modifiers.append(Modifier.NULLABLE)
             joins.append(
                 BaseJoin(
                     left_datasource=left,
@@ -444,10 +446,10 @@ class MergeNode(StrategyNode):
         # is one side's domain, never "good enough" for the unified axis.
         can_drop_merge = self.force_group is not True and not self.preserve_parents
         if can_drop_merge and len(merged.keys()) == 1:
-            final: QueryDatasource | BuildDatasource = list(merged.values())[0]
+            final: QueryDatasource | BuildDatasource = next(iter(merged.values()))
             if (
-                set([c.address for c in final.output_concepts])
-                == set([c.address for c in self.output_concepts])
+                {c.address for c in final.output_concepts}
+                == {c.address for c in self.output_concepts}
                 and not self.conditions
                 and not self.force_group
                 and isinstance(final, QueryDatasource)
@@ -467,15 +469,13 @@ class MergeNode(StrategyNode):
                 for other in final_datasets
             ):
                 continue
-            output_set = set(
-                [
-                    c.address
-                    for c in dataset.output_concepts
-                    if c.address not in [x.address for x in dataset.partial_concepts]
-                ]
-            )
+            output_set = {
+                c.address
+                for c in dataset.output_concepts
+                if c.address not in [x.address for x in dataset.partial_concepts]
+            }
             if (
-                all([c.address in output_set for c in self.all_concepts])
+                all(c.address in output_set for c in self.all_concepts)
                 and not self.conditions
                 and not self.force_group
                 and isinstance(dataset, QueryDatasource)
@@ -494,7 +494,7 @@ class MergeNode(StrategyNode):
         raw_pregrain_components: set[str] = set()
         for source in final_datasets:
             if all(
-                [x.address in self.existence_concepts for x in source.output_concepts]
+                x.address in self.existence_concepts for x in source.output_concepts
             ):
                 logger.debug(
                     f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence-only source {source.identifier}"

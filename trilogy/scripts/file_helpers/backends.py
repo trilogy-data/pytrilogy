@@ -25,9 +25,7 @@ class FileOperationError(Exception):
     """Base error for file backend operations."""
 
 
-class FileNotFoundError(
-    FileOperationError
-):
+class FileNotFoundError(FileOperationError):
     """Raised when a backend cannot locate the requested path."""
 
 

@@ -15,7 +15,7 @@ from trilogy.core.processing.node_generators.group_node import gen_group_node
 
 
 def address_set(concepts):
-    return set([c.address for c in concepts])
+    return {c.address for c in concepts}
 
 
 def _transitive_property_environment() -> Environment:

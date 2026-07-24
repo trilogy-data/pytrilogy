@@ -364,7 +364,7 @@ order by r asc limit 15;
 
 
 def test_copy_perf():
-    env, imports = Environment(working_path=working_path).parse("""
+    env, _imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_sales as catalog_sales;
 import customer_demographic as pos_customer_demographic;
@@ -472,7 +472,7 @@ def _has_nested_aggregate(sql: str) -> bool:
     — e.g. `sum(CASE WHEN ... THEN sum(x) END)`. DuckDB rejects this with
     'aggregate function calls cannot be nested'."""
     low = sql.lower()
-    agg_open = re.compile(r"\b(?:%s)\(" % "|".join(_AGG_FNS))
+    agg_open = re.compile(r"\b(?:{})\(".format("|".join(_AGG_FNS)))
     for m in agg_open.finditer(low):
         depth, i = 1, m.end()
         while i < len(low) and depth > 0:

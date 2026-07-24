@@ -127,11 +127,8 @@ def test_environment_invalid():
     assert x.name == "abc"
 
     env.concepts.fail_on_missing = True
-    try:
-        x = env.concepts["abc"]
-        assert 1 == 0
-    except Exception as e:
-        assert isinstance(e, UndefinedConceptException)
+    with raises(UndefinedConceptException):
+        env.concepts["abc"]
 
 
 def test_environment_merge():

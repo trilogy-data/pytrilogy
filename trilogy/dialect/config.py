@@ -157,9 +157,12 @@ class SQLiteConfig(DialectConfig):
 
     @staticmethod
     def _download_remote(url: str, staging_path: str | None = None) -> str:
-        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False, dir=staging_path)
-        urllib.request.urlretrieve(url, tmp.name)
-        return tmp.name
+        with tempfile.NamedTemporaryFile(
+            suffix=".db", delete=False, dir=staging_path
+        ) as tmp:
+            path = tmp.name
+        urllib.request.urlretrieve(url, path)
+        return path
 
     def connection_string(self) -> str:
         if not self.path:

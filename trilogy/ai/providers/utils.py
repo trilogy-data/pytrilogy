@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from typing import Any, TypeVar
 
+from .base import ProviderError
+
 T = TypeVar("T")
 
 
@@ -112,4 +114,4 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
 
     if last_error:
         raise last_error
-    raise Exception("Retry logic failed unexpectedly")
+    raise ProviderError("Retry logic failed unexpectedly")

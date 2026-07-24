@@ -1692,7 +1692,7 @@ def test_truncate_json_events_passthrough_under_limit():
 
 
 def test_truncate_json_events_keeps_whole_events_and_appends_note():
-    text = "\n".join('{"event": %d}' % i for i in range(20))
+    text = "\n".join(f'{{"event": {i}}}' for i in range(20))
     out = agent_tools_mod.truncate_json_events(text, 40)
     # Only whole leading events survive, then a synthetic truncation event.
     assert '{"event": 0}' in out
@@ -1703,7 +1703,7 @@ def test_truncate_json_events_keeps_whole_events_and_appends_note():
 
 
 def test_truncate_json_events_handles_trailing_whitespace():
-    text = "\n".join('{"event": %d}' % i for i in range(20)) + "\n  \n"
+    text = "\n".join(f'{{"event": {i}}}' for i in range(20)) + "\n  \n"
     out = agent_tools_mod.truncate_json_events(text, 40)
     assert '{"event": 0}' in out
     assert "output_truncated" in out

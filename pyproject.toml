@@ -9,10 +9,15 @@ log_cli_level="INFO"
 # Allow lines to be as long as 200 characters.
 line-length = 200
 lint.extend-select = ["I"]
+# BLE001: broad excepts are deliberate at CLI/eval/optimizer-fallback boundaries.
+# DTZ: naive local datetimes are the project convention; tz-aware would change behavior.
+lint.ignore = ["BLE001", "DTZ001", "DTZ005", "DTZ006", "DTZ011", "DTZ901"]
 
 [tool.ruff.lint.per-file-ignores]
 # E402: Module level import not at top of file - needed for warning filter before imports
 "trilogy/__init__.py" = ["E402"]
+# N999: dot-prefixed dir is required by the custom build backend (backend-path)
+".scripts/__init__.py" = ["N999"]
 
 [project]
 name = "pytrilogy"

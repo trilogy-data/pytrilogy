@@ -676,7 +676,7 @@ def datasource_node(
                     eligible = False
             if not eligible:
                 continue
-            target_c.keys = set(k.address for k in resolved_keys)  # type: ignore[union-attr]
+            target_c.keys = {k.address for k in resolved_keys}  # type: ignore[union-attr]
     return datasource
 
 

@@ -98,7 +98,7 @@ def easy_query(
         joins=[],
         source_map={
             concept.address: (
-                set([datasource]) if concept.address in datasource_outputs else set()
+                {datasource} if concept.address in datasource_outputs else set()
             )
             # include all base datasource conepts for convenience
             for concept in first_qds_concepts
@@ -130,7 +130,7 @@ def easy_query(
             input_concepts=cte.output_columns,
             output_concepts=cte.output_columns,
             joins=[],
-            source_map={concept.address: (set([root_qds])) for concept in concepts},
+            source_map={concept.address: ({root_qds}) for concept in concepts},
             grain=cte.grain,
             base_datasource=root_qds,
         ),

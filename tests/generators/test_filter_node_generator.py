@@ -22,7 +22,7 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
     assert comp.lineage
     assert test_environment.concepts["product_id"] in comp.lineage.concept_arguments
     # assert test_environment.concepts["total_revenue"] in comp.lineage.concept_arguments
-    row_parents, existence_parents = resolve_filter_parent_concepts(
+    row_parents, _existence_parents = resolve_filter_parent_concepts(
         comp, environment=test_environment
     )
     # parents should be both the value and the category

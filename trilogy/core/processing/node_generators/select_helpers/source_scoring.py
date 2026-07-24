@@ -200,18 +200,14 @@ def _ds_mat_score(
     if isinstance(ds, BuildDatasource):
         return (
             partial_count,
-            get_materialization_score(
-                ds.address, True if ds.non_partial_for else False
-            ),
+            get_materialization_score(ds.address, bool(ds.non_partial_for)),
             ds_name,
         )
     if isinstance(ds, BuildUnionDatasource):
         return (
             partial_count,
             max(
-                get_materialization_score(
-                    child.address, True if ds.non_partial_for else False
-                )
+                get_materialization_score(child.address, bool(ds.non_partial_for))
                 + 0.11
                 for child in ds.children
             ),
@@ -429,11 +425,14 @@ def subgraph_is_complete(
     for node in nodes:
         if node.startswith("c~"):
             mapped_node = mapping.get(node, node)
-            if mapped_node in targets and not has_ds_edge[mapped_node]:
-                if any(
+            if (
+                mapped_node in targets
+                and not has_ds_edge[mapped_node]
+                and any(
                     neighbor.startswith("ds~") for neighbor in nx.neighbors(g, node)
-                ):
-                    has_ds_edge[mapped_node] = True
+                )
+            ):
+                has_ds_edge[mapped_node] = True
 
     return all(has_ds_edge.values())
 
@@ -473,13 +472,11 @@ def resolve_subgraphs(
     subgraphs: dict[str, list[str]] = {
         ds: sorted(set(nx.all_neighbors(g, ds))) for ds in datasources
     }
-    for ds in subgraphs:
-        ds_concepts = [concepts[n] for n in subgraphs[ds] if n in concepts]
+    for ds, nodes in subgraphs.items():
+        ds_concepts = [concepts[n] for n in nodes if n in concepts]
         filtered = filter_pseudonym_duplicates(ds_concepts, relevant)
         filtered_nodes = {concept_to_node(c) for c in filtered}
-        subgraphs[ds] = [
-            n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
-        ]
+        subgraphs[ds] = [n for n in nodes if n not in concepts or n in filtered_nodes]
 
     partial_canonical = get_graph_partial_canonical(g, conditions)
     exact_map = get_graph_exact_match(

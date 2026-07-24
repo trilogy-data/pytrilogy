@@ -46,6 +46,7 @@ def test_q04_generation_deterministic_and_binds():
                 "PYTHONHASHSEED": seed,
                 "PYTHONIOENCODING": "utf-8",
             },
+            check=False,
         )
         assert proc.returncode == 0, f"seed {seed} generation failed: {proc.stderr}"
         results[seed] = proc.stdout

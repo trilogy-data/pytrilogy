@@ -187,7 +187,7 @@ def _collect_condition_aggregates(node: Any) -> list[Any]:
     ):
         found.append(node)
         return found
-    if isinstance(node, Comparison) or isinstance(node, Conditional):
+    if isinstance(node, (Comparison, Conditional)):
         found.extend(_collect_condition_aggregates(node.left))
         found.extend(_collect_condition_aggregates(node.right))
     elif isinstance(node, Parenthetical):
@@ -363,7 +363,7 @@ def _child_exprs(node: Any) -> Iterator[Any]:
         # `def` macro expansion (`@rollup_agg(x)`): body in `content`, call args.
         yield node.content
         yield from node.args
-    elif isinstance(node, FilterItem) or isinstance(node, NavigationWindowItem):
+    elif isinstance(node, (FilterItem, NavigationWindowItem)):
         yield node.content
     elif isinstance(node, NumberingWindowItem):
         yield from node.arguments

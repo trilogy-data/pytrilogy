@@ -830,7 +830,7 @@ having value = 2;
 """
     default_duckdb_engine.parse_text(test)
     env = default_duckdb_engine.environment
-    graph_count, graphs = get_disconnected_components(
+    _graph_count, _graphs = get_disconnected_components(
         concept_map={
             "example": [env.concepts["value"]],
             "other": [env.concepts["dim"], env.concepts["x"]],

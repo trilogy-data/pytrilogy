@@ -254,7 +254,7 @@ def resolve_function_parent_concepts(
             BuildBetween,
         ),
     ):
-        raise ValueError(
+        raise TypeError(
             f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"
         )
     if concept.derivation == Derivation.AGGREGATE:
@@ -288,11 +288,9 @@ def resolve_function_parent_concepts(
 def resolve_condition_parent_concepts(
     condition: BuildWhereClause,
 ) -> tuple[list[BuildConcept], list[tuple[BuildConcept, ...]]]:
-    base_existence = []
     base_rows: list[BuildConcept] = []
     base_rows += condition.row_arguments
-    for ctuple in condition.existence_arguments:
-        base_existence.append(ctuple)
+    base_existence = list(condition.existence_arguments)
     return unique(base_rows, "address"), base_existence
 
 
@@ -301,7 +299,7 @@ def resolve_filter_parent_concepts(
     environment: BuildEnvironment,
 ) -> tuple[list[BuildConcept], list[tuple[BuildConcept, ...]]]:
     if not isinstance(concept.lineage, (BuildFilterItem,)):
-        raise ValueError(
+        raise TypeError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
     direct_parent = concept.lineage.content

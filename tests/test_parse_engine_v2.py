@@ -105,7 +105,7 @@ def test_parse_text_v2_type_declaration_propagates_to_concepts() -> None:
 
 def test_parse_text_v2_type_declaration_rolls_back_on_failure() -> None:
     env = Environment()
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         parse_text(
             "type money float;\nkey revenue float::missing_trait;",
             env,
@@ -349,12 +349,12 @@ select id, sum(val) as total
 having other in big_ids
 ;
 """
-    env, parsed = parse_text(model, Environment())
+    _env, parsed = parse_text(model, Environment())
     assert parsed
 
 
 def test_parse_text_v2_allows_function_parameter_dotted_access() -> None:
-    env, output = parse_text("def get_a(x)-> x.a;", Environment())
+    env, _output = parse_text("def get_a(x)-> x.a;", Environment())
     assert "get_a" in env.functions
 
 
@@ -543,7 +543,9 @@ def test_parse_text_v2_align_comma_between_groups_actionable(
         "SELECT label, count(one) as c, MERGE SELECT label2, count(two) as c2,"
         " ALIGN k: label, label2, k2: c, c2 ORDER BY c desc;"
     )
-    with _using_backend(backend), pytest.raises(InvalidSyntaxException, match=r"separated by `and`"):
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match=r"separated by `and`"
+    ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
 
@@ -568,7 +570,9 @@ def test_parse_text_v2_multiselect_duplicate_arm_outputs_raise(
         "SELECT label as g, count(one) as c, MERGE SELECT label2 as g, count(two) as c,"
         " ALIGN grp: g, g ORDER BY grp;"
     )
-    with _using_backend(backend), pytest.raises(InvalidSyntaxException, match="distinct output names"):
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="distinct output names"
+    ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
 
@@ -583,7 +587,9 @@ def test_parse_text_v2_multiselect_align_reuses_arm_name_raise(
         "SELECT label as g, count(one) as c, MERGE SELECT label2 as g2, count(two) as c2,"
         " ALIGN g: g, g2 DERIVE coalesce(c, 0) as t ORDER BY g;"
     )
-    with _using_backend(backend), pytest.raises(InvalidSyntaxException, match="reuses an arm output name"):
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="reuses an arm output name"
+    ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
 
@@ -774,7 +780,9 @@ def test_lark_parse_error_keeps_rich_error_codes() -> None:
     # The lark backend should still produce the numbered syntax hints even
     # after the pest decoupling. Regression guard: if parse_text starts
     # swallowing lark's UnexpectedToken again, these codes disappear.
-    with _using_backend(ParserBackend.LARK), pytest.raises(InvalidSyntaxException, match=r"Syntax \[201\]"):
+    with _using_backend(ParserBackend.LARK), pytest.raises(
+        InvalidSyntaxException, match=r"Syntax \[201\]"
+    ):
         parse_text("key revenue float;\nSELECT revenue + 1 total;", Environment())
 
 
@@ -803,7 +811,7 @@ def test_lark_pest_corpus_parity() -> None:
         try:
             with _using_backend(ParserBackend.LARK):
                 env_lark, _ = parse_text(text, Environment(working_path=path.parent))
-        except Exception:
+        except Exception:  # noqa: S112 -- only compare when lark succeeds
             continue
         try:
             with _using_backend(ParserBackend.PEST):

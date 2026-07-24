@@ -66,7 +66,7 @@ select
     concat_ws('-', nm, '_s') as ws_c
 order by id asc;
 """
-    env, parsed = parse(text)
+    _env, parsed = parse(text)
     rendered = render_query(parsed[-1])
     assert "|| '_s'" in rendered
     assert "concat(" in rendered

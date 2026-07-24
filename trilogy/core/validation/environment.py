@@ -99,12 +99,11 @@ def validate_environment(
 
     # raise a nicely formatted union of all exceptions
     exceptions: list[ModelValidationError] = [e.result for e in results if e.result]
-    if exceptions:
-        if not generate_only:
-            messages = "\n".join([str(e) for e in exceptions])
-            raise ModelValidationError(
-                f"Environment validation failed with the following errors:\n{messages}",
-                children=exceptions,
-            )
+    if exceptions and not generate_only:
+        messages = "\n".join([str(e) for e in exceptions])
+        raise ModelValidationError(
+            f"Environment validation failed with the following errors:\n{messages}",
+            children=exceptions,
+        )
 
     return results

@@ -37,7 +37,6 @@ class FunctionArgumentException(TypeError):
     than an internal crash."""
 
 
-
 class MissingParameterException(InvalidSyntaxException):
     pass
 
@@ -45,7 +44,6 @@ class MissingParameterException(InvalidSyntaxException):
 class InvalidComparison(InvalidSyntaxException):
     """A comparison/filter that can never produce a meaningful result, e.g. a
     predicate against an enum field that is tautologically true or false."""
-
 
 
 class UnresolvableQueryException(Exception):
@@ -135,7 +133,7 @@ class DatasourceColumnBindingData:
 
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(
-            [x not in self.actual_modifiers for x in self.value_modifiers]
+            x not in self.actual_modifiers for x in self.value_modifiers
         )
 
     def is_type_issue(self) -> bool:

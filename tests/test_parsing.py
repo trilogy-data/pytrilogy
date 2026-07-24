@@ -84,7 +84,7 @@ def test_parenthetical_bare_concept_alias():
 
 
 def test_datetime_lit_rendering():
-    env, parsed = parse_text("const order_id <- 4;")
+    env, _parsed = parse_text("const order_id <- 4;")
 
     from datetime import datetime
 
@@ -124,14 +124,14 @@ def test_is_not_null():
 
 
 def test_sort():
-    _, parsed = parse_text(
+    _, _parsed = parse_text(
         "const order_id <- 4; SELECT order_id  ORDER BY order_id desc;"
     )
 
-    _, parsed = parse_text(
+    _, _parsed = parse_text(
         "const order_id <- 4; SELECT order_id  ORDER BY order_id DESC;"
     )
-    _, parsed = parse_text(
+    _, _parsed = parse_text(
         "const order_id <- 4; SELECT order_id  ORDER BY order_id DesC;"
     )
 
@@ -178,7 +178,7 @@ def test_argument_to_purpose(test_environment: Environment):
         )
         == Purpose.PROPERTY
     )
-    unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
+    unnest_env, _parsed = parse_text("const random <- unnest([1,2,3,4]);")
     assert (
         function_args_to_output_purpose(
             [unnest_env.concepts["random"]], test_environment
@@ -279,7 +279,7 @@ address `preqldata.analytics_411641820.events_*`
 
 
 def test_purpose_and_keys():
-    env, parsed = parse_text("""key id int;
+    env, _parsed = parse_text("""key id int;
 property id.name string;
 
 auto name_alphabetical <- row_number id order by name asc;
@@ -301,7 +301,7 @@ select
 
 
 def test_purpose_and_derivation():
-    env, parsed = parse_text("""key id int;
+    env, _parsed = parse_text("""key id int;
 key other_id int;
 property <id, other_id>.join_id <- id*10+other_id;
 
@@ -320,7 +320,7 @@ select
 
 
 def test_output_purpose():
-    env, parsed = parse_text("""key id int;
+    env, _parsed = parse_text("""key id int;
 property id.name string;
 
 auto name_alphabetical <- row_number id order by name asc;
@@ -400,7 +400,7 @@ def test_the_comment_multiline():
 
 def test_the_comment_multiline_enter():
     # we should not associate it as a description if there is a newline
-    env, parsed = parse_text("""const
+    env, _parsed = parse_text("""const
          # comment here?
            order_id <- 4;  
         # this is the order id
@@ -421,7 +421,7 @@ def test_the_comment_multiline_enter():
 
 
 def test_purpose_nesting():
-    env, parsed = parse_text("""key year int;
+    env, _parsed = parse_text("""key year int;
 """)
 
     env2: Environment = Environment()
@@ -452,7 +452,7 @@ CASE WHEN dates.year BETWEEN 1883 AND 1900 THEN 'Lost Generation'
 
 
 def test_rawsql():
-    env, parsed = parse_text("""
+    _env, parsed = parse_text("""
 raw_sql('''select 1''');
 
 select 1 as test;
@@ -548,7 +548,7 @@ select composite_id;
 
 
 def test_map_definition():
-    env, parsed = parse_text("""
+    env, _parsed = parse_text("""
 key id int;
 property id.labels map<string, int>;
 
@@ -558,7 +558,7 @@ property id.labels map<string, int>;
 
 
 def test_map_concept_definition():
-    env, parsed = parse_text("""
+    env, _parsed = parse_text("""
 key id int;
 property id.label string;
 key map_store map<id, string>;
@@ -569,7 +569,7 @@ key map_store map<id, string>;
 
 
 def test_map_string_access():
-    env, parsed = parse_text("""
+    env, _parsed = parse_text("""
 const labels <- { 'a': 1, 'b': 2, 'c': 3 };
 
 
@@ -583,7 +583,7 @@ select
 
 
 def test_empty_string():
-    env, parsed = parse_text("""
+    env, _parsed = parse_text("""
 const labels <- '';
 
 
@@ -602,7 +602,7 @@ select
 ;
 
 """
-    env, parsed = parse_text(text)
+    env, _parsed = parse_text(text)
     assert env.concepts["labels"].datatype.fields_map["a"] == 1
 
     assert env.concepts["labels.a"].concept_arguments[0].name == "labels"
@@ -630,7 +630,7 @@ address `abc:def`
 
 select x;
 """
-    env, parsed = parse_text(text)
+    _env, _parsed = parse_text(text)
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
@@ -650,7 +650,7 @@ address abcdef
 
 select x;
 """
-    env, parsed = parse_text(text)
+    _env, _parsed = parse_text(text)
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
@@ -670,7 +670,7 @@ address abcdef
 
 select x;
 """
-    env, parsed = parse_text(text)
+    _env, _parsed = parse_text(text)
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
@@ -692,7 +692,7 @@ address `abc:def`
 
 
 """
-    env, parsed = parse_text(text)
+    _env, parsed = parse_text(text)
 
     ds = parsed[-1]
     assert ds.non_partial_for.conditional.right == 10
@@ -713,7 +713,7 @@ address `abc:def`
 
 
 """
-    env, parsed = parse_text(text)
+    _env, parsed = parse_text(text)
 
     ds = parsed[-1]
     assert ds.columns[0].alias == "x 2"
@@ -740,7 +740,7 @@ where y>10;
 
 
 """
-    env, parsed = parse_text(text)
+    _env, parsed = parse_text(text)
 
     ds: Datasource = parsed[-1].datasource
     assert ds.non_partial_for.conditional.right == 10
@@ -763,7 +763,7 @@ auto filtered_test <- x ? y > 10;
 
 select filtered_test;
 """
-    env, parsed = parse_text(text)
+    _env, _parsed = parse_text(text)
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
@@ -792,7 +792,7 @@ auto cast_filtered <- sum(cast(return_amount as float) ? y > 10) by x;
 
 select x, total_returns, case_filtered, cast_filtered;
 """
-    env, parsed = parse_text(text)
+    _env, _parsed = parse_text(text)
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
@@ -818,7 +818,7 @@ select [1,2,3,4] as int_array, 2 as scalar
 )''';
 """
 
-    env, parsed = parse_text(x)
+    env, _parsed = parse_text(x)
     assert env.concepts["split"].datatype == DataType.INTEGER
 
 
@@ -1019,7 +1019,7 @@ def test_param_address_interpolation():
 
 
 def test_geography_type():
-    env, parsed = parse_text("""
+    env, _parsed = parse_text("""
 key id int;
 property id.geo geography;
 

@@ -3,6 +3,8 @@
 import threading
 from typing import TYPE_CHECKING, Any
 
+from typing_extensions import Self
+
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, emit_event, is_json_mode
 
@@ -246,7 +248,7 @@ class ParallelProgressTracker:
             get_context=lambda: " | ".join(sorted(self._in_progress_labels.values()))
         )
 
-    def __enter__(self) -> "ParallelProgressTracker":
+    def __enter__(self) -> Self:
         if not is_json_mode() and _core.RICH_AVAILABLE and _core.console is not None:
             self._progress = Progress(
                 SpinnerColumn(),

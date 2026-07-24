@@ -76,9 +76,7 @@ class UnsupportedSyntaxError(NotImplementedError):
         super().__init__(message)
 
     @classmethod
-    def from_syntax(
-        cls, message: str, syntax: SyntaxElement
-    ) -> UnsupportedSyntaxError:
+    def from_syntax(cls, message: str, syntax: SyntaxElement) -> UnsupportedSyntaxError:
         return cls(message, HydrationDiagnostic.from_syntax(message, syntax))
 
 
@@ -280,9 +278,7 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
         if parse_config and parse_config.strict_name_shadow_enforcement:
             self._check_name_shadow(pre_keys, hydrator)
 
-    def _check_name_shadow(
-        self, pre_keys: set[str], hydrator: NativeHydrator
-    ) -> None:
+    def _check_name_shadow(self, pre_keys: set[str], hydrator: NativeHydrator) -> None:
         selects: list[SelectStatement] = []
         if isinstance(self.output, SelectStatement):
             selects.append(self.output)

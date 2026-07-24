@@ -248,6 +248,7 @@ def run_pre_ingest(workspace: Path, timeout: int = 600) -> dict:
         encoding="utf-8",
         errors="replace",
         timeout=timeout,
+        check=False,
     )
     return {
         "exit_code": proc.returncode,

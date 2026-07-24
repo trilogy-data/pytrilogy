@@ -160,6 +160,7 @@ def _run_pytest(node: str) -> str:
         capture_output=True,
         text=True,
         timeout=TIMEOUT,
+        check=False,
     )
     return r.stdout + r.stderr
 

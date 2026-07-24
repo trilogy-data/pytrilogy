@@ -25,7 +25,7 @@ def test_numeric():
 def test_cast_error():
     found = False
     try:
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
     const x <- 1;
     const y <- 'fun';
 
@@ -45,7 +45,7 @@ def test_cast_error():
 def test_is_error():
     found = False
     try:
-        env, _ = parse_text("""
+        _env, _ = parse_text("""
     const x <- 1;
     const y <- 'fun';
 

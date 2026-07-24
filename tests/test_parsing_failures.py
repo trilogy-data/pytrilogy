@@ -47,7 +47,7 @@ key x int;
                 
     """)
         assert "TYPO" in str(e.value)
-        assert 1 == 0
+        raise AssertionError("unreachable: env.parse should have raised")
 
 
 def test_concept_shadow_warning():
@@ -74,7 +74,7 @@ SELECT
 ;
 """
     with raises(NameShadowError) as e:
-        env, parsed = parse_text(
+        _env, _parsed = parse_text(
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
         assert "abc" in str(e)
@@ -101,7 +101,7 @@ SELECT
 ;
 """
     with raises(InvalidSyntaxException):
-        env, parsed = parse_text(
+        _env, _parsed = parse_text(
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
 
@@ -133,7 +133,7 @@ order
 """
     with raises(InvalidSyntaxException) as e:
 
-        env, parsed = parse_text(
+        _env, _parsed = parse_text(
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
         assert "^" in str(e)

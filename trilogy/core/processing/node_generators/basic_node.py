@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, FunctionType, SourceType
 from trilogy.core.models.build import (
@@ -30,12 +29,10 @@ def is_equivalent_basic_function_lineage(
         return x.lineage.concept_arguments == y.lineage.concept_arguments
     if x.lineage.operator == y.lineage.operator:
         return True
-    if (
+    return not (
         y.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         or y.lineage.operator in FunctionClass.ONE_TO_MANY.value
-    ):
-        return False
-    return True
+    )
 
 
 def gen_basic_node(

@@ -121,7 +121,7 @@ file `{glob_path}`
 partition by country;
 """)
 
-    ds = list(executor.environment.datasources.values())[0]
+    ds = next(iter(executor.environment.datasources.values()))
     assert ds.address.partition_columns == ["country"]
     assert ds.address.exists is True
 
@@ -168,7 +168,9 @@ grain (id)
 file URLS;
 """)
 
-    ds = [d for d in executor.environment.datasources.values() if d.name == "things"][0]
+    ds = next(
+        d for d in executor.environment.datasources.values() if d.name == "things"
+    )
     assert len(ds.address.all_locations) == 2
     assert ds.address.additional_locations
     rows = executor.execute_query("select id, name order by id asc;").fetchall()
@@ -189,9 +191,9 @@ datasource things (
 grain (id)
 file ONE_URL;
 """)
-    ds2 = [d for d in executor2.environment.datasources.values() if d.name == "things"][
-        0
-    ]
+    ds2 = next(
+        d for d in executor2.environment.datasources.values() if d.name == "things"
+    )
     assert ds2.address.location.endswith("a.parquet")
     assert ds2.address.additional_locations == []
 
@@ -221,7 +223,7 @@ grain (id)
 file [`{a.as_posix()}`, `{b.as_posix()}`];
 """)
 
-    ds = list(executor.environment.datasources.values())[0]
+    ds = next(iter(executor.environment.datasources.values()))
     assert len(ds.address.all_locations) == 2
     assert ds.address.additional_locations  # array form active
 

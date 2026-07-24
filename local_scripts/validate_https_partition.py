@@ -64,7 +64,9 @@ def main() -> None:
     executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     executor.parse_text(TRILOGY)
 
-    ds = [d for d in executor.environment.datasources.values() if d.name == "flight"][0]
+    ds = next(
+        d for d in executor.environment.datasources.values() if d.name == "flight"
+    )
     assert ds.address.type.value == "parquet"
     assert len(ds.address.all_locations) == 29
 

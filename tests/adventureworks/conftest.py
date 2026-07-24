@@ -84,7 +84,7 @@ def adventureworks_engine(db_must):
     else:
         raise TestDependencyError("Unknown DB configuration")
     params = quote_plus(connection_string)
-    engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, future=True)
+    engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}", future=True)
     # validate connection
     with engine.connect() as connection:
         results = connection.execute(text("select 1")).one_or_none()

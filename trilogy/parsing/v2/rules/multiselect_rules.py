@@ -185,7 +185,7 @@ def multi_select_statement(
     derive: DeriveClause | None = hydrate(derive_node) if derive_node else None
 
     new_selects = [x.as_lineage(context.environment) for x in selects]
-    multi_hidden: set[str] = set(y for x in new_selects for y in x.hidden_components)
+    multi_hidden: set[str] = {y for x in new_selects for y in x.hidden_components}
     for item in align_c.items:
         if item.hidden:
             multi_hidden.add(item.aligned_concept)

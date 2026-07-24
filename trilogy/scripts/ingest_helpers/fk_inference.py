@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from trilogy.constants import logger
 from trilogy.scripts.display import print_info, print_warning
 from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
@@ -250,8 +251,8 @@ def _rollback(executor: Any) -> None:
     """Clear an aborted transaction so later sniff queries still run."""
     try:
         executor.connection.rollback()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Rollback after failed FK sniff query also failed: %s", e)
 
 
 def _containment_sql(
@@ -470,9 +471,7 @@ def infer_foreign_keys(
     return _resolve_target_conflicts(accepted, by_name)
 
 
-def build_table_fk_info(
-    name: str, datasource: Datasource, dialect: Any
-) -> TableFKInfo:
+def build_table_fk_info(name: str, datasource: Datasource, dialect: Any) -> TableFKInfo:
     """Derive a TableFKInfo from an ingested datasource (before FK wiring)."""
     raw_columns = [c.alias for c in datasource.columns if isinstance(c.alias, str)]
     raw_to_canonical = canonicalize_names(raw_columns)

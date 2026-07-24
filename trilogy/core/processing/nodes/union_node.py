@@ -1,4 +1,3 @@
-
 from trilogy.core.enums import SetOperator, SourceType
 from trilogy.core.models.build import (
     BoolExpr,

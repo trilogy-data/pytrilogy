@@ -174,8 +174,8 @@ def initialize_loop_context(
     original_mandatory = [*mandatory_list]
     for x in mandatory_list:
         if isinstance(x, UndefinedConcept):
-            raise SyntaxError(f"Undefined concept {x.address}")
-    all_mandatory = set(c.address for c in mandatory_list)
+            raise SyntaxError(f"Undefined concept {x.address}")  # noqa: TRY004
+    all_mandatory = {c.address for c in mandatory_list}
 
     must_evaluate_condition_on_this_level_not_push_down = False
 
@@ -255,7 +255,7 @@ def initialize_loop_context(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "
             )
             mandatory_list = completion_mandatory
-            all_mandatory = set(c.address for c in completion_mandatory)
+            all_mandatory = {c.address for c in completion_mandatory}
             must_evaluate_condition_on_this_level_not_push_down = True
             # NOTE: this deliberately withholds even the non-self-referential
             # row atoms from the computed values' sourcing. An aggregate
@@ -370,10 +370,8 @@ def check_for_early_exit(
             )
             return True
         elif all(
-            [
-                x.address in found and x.address not in partial
-                for x in context.mandatory_list
-            ]
+            x.address in found and x.address not in partial
+            for x in context.mandatory_list
         ):
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as we have found all mandatory nodes without partials"
@@ -390,7 +388,7 @@ def check_for_early_exit(
     # unless it's a single row property, in which case we can keep looking
     if (
         priority_concept.derivation == Derivation.ROOT
-        and not priority_concept.granularity == Granularity.SINGLE_ROW
+        and priority_concept.granularity != Granularity.SINGLE_ROW
     ):
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
@@ -487,10 +485,12 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     non_virtual_different = len(context.completion_mandatory) != len(
         context.original_mandatory
     )
-    non_virtual_difference_values = set(
-        [x.address for x in context.completion_mandatory]
-    ).difference(set([x.address for x in context.original_mandatory]))
-    if not context.conditions or _stack_exempt_or_implies(context.stack, context.conditions.conditional):
+    non_virtual_difference_values = {
+        x.address for x in context.completion_mandatory
+    }.difference({x.address for x in context.original_mandatory})
+    if not context.conditions or _stack_exempt_or_implies(
+        context.stack, context.conditions.conditional
+    ):
         condition_required = False
         non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
 
@@ -516,8 +516,8 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             context.stack,
             {x.address for x in context.original_mandatory},
         )
-        non_virtual_difference_values = set(x.address for x in non_virtual).difference(
-            set(x.address for x in context.original_mandatory)
+        non_virtual_difference_values = {x.address for x in non_virtual}.difference(
+            {x.address for x in context.original_mandatory}
         )
 
     if len(context.stack) == 1:

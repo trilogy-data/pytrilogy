@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
@@ -109,7 +108,7 @@ def gen_unnest_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} unnest node has no parents but conditions inputs {conditions.row_arguments} vs expected output {expected_outputs}"
         )
-        if all([x.address in expected_outputs for x in conditions.row_arguments]):
+        if all(x.address in expected_outputs for x in conditions.row_arguments):
             local_conditions = True
         else:
             parent = source_concepts(

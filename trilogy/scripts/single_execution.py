@@ -233,7 +233,7 @@ def execute_queries_simple(
         if len(queries) > 1:
             print_info(f"Executing statement {idx+1} of {len(queries)}...")
 
-        success, results, duration, error = execute_single_statement(
+        success, results, _duration, error = execute_single_statement(
             exec,
             query,
             idx,

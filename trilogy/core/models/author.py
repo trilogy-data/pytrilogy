@@ -399,7 +399,9 @@ class Conditional(ReferenceReplaceable, ConceptArgs, Namespaced, DataTyped):
 
 @dataclass
 class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
-    conditional: SubselectComparison | Comparison | Conditional | Parenthetical | Between
+    conditional: (
+        SubselectComparison | Comparison | Conditional | Parenthetical | Between
+    )
 
     def __repr__(self):
         return str(self.conditional)
@@ -511,7 +513,7 @@ class Grain(Namespaced):
         if other.where_clause:
             if not self.where_clause:
                 where = other.where_clause
-            elif not other.where_clause == self.where_clause:
+            elif other.where_clause != self.where_clause:
                 where = WhereClause(
                     conditional=Conditional(
                         left=self.where_clause.conditional,
@@ -539,7 +541,7 @@ class Grain(Namespaced):
 
     def _gen_abstract(self) -> bool:
         return not self.components or all(
-            [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
+            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
         )
 
     @property
@@ -550,14 +552,12 @@ class Grain(Namespaced):
 
     def __eq__(self, other: object):
         if isinstance(other, list):
-            if all([isinstance(c, Concept) for c in other]):
-                return self.components == set([c.address for c in other])
+            if all(isinstance(c, Concept) for c in other):
+                return self.components == {c.address for c in other}
             return False
         if not isinstance(other, Grain):
             return False
-        if self.components == other.components:
-            return True
-        return False
+        return self.components == other.components
 
     def __hash__(self):
         return hash(frozenset(self.components))
@@ -630,8 +630,46 @@ def _mirror_operator(operator: ComparisonOperator) -> ComparisonOperator:
 
 @dataclass
 class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
-    left: int | str | float | bool | datetime | date | Function | ConceptRef | Conditional | DataType | Comparison | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
-    right: int | str | float | bool | date | datetime | ConceptRef | Function | Conditional | DataType | Comparison | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | ListWrapper | TupleWrapper | FilterItem
+    left: (
+        int
+        | str
+        | float
+        | bool
+        | datetime
+        | date
+        | Function
+        | ConceptRef
+        | Conditional
+        | DataType
+        | Comparison
+        | FunctionCallWrapper
+        | Parenthetical
+        | MagicConstants
+        | WindowItem
+        | AggregateWrapper
+        | FilterItem
+    )
+    right: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | ConceptRef
+        | Function
+        | Conditional
+        | DataType
+        | Comparison
+        | FunctionCallWrapper
+        | Parenthetical
+        | MagicConstants
+        | WindowItem
+        | AggregateWrapper
+        | ListWrapper
+        | TupleWrapper
+        | FilterItem
+    )
     operator: ComparisonOperator
 
     def __post_init__(self):
@@ -718,7 +756,8 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         if other is None:
             return self
         if not isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
-            raise ValueError("Cannot add Comparison to non-Comparison")
+            # ValueError asserted by tests/core/test_between.py.
+            raise ValueError("Cannot add Comparison to non-Comparison")  # noqa: TRY004
         if other == self:
             return self
         return Conditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -813,9 +852,57 @@ class Comparison(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
 
 @dataclass
 class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
-    left: int | str | float | bool | datetime | date | Function | ConceptRef | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
-    low: int | str | float | bool | date | datetime | ConceptRef | Function | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
-    high: int | str | float | bool | date | datetime | ConceptRef | Function | DataType | FunctionCallWrapper | Parenthetical | MagicConstants | WindowItem | AggregateWrapper | FilterItem
+    left: (
+        int
+        | str
+        | float
+        | bool
+        | datetime
+        | date
+        | Function
+        | ConceptRef
+        | DataType
+        | FunctionCallWrapper
+        | Parenthetical
+        | MagicConstants
+        | WindowItem
+        | AggregateWrapper
+        | FilterItem
+    )
+    low: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | ConceptRef
+        | Function
+        | DataType
+        | FunctionCallWrapper
+        | Parenthetical
+        | MagicConstants
+        | WindowItem
+        | AggregateWrapper
+        | FilterItem
+    )
+    high: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | ConceptRef
+        | Function
+        | DataType
+        | FunctionCallWrapper
+        | Parenthetical
+        | MagicConstants
+        | WindowItem
+        | AggregateWrapper
+        | FilterItem
+    )
 
     def __post_init__(self):
         if isinstance(self.left, Concept):
@@ -858,7 +945,8 @@ class Between(ConceptArgs, ReferenceReplaceable, DataTyped, Namespaced):
         if other is None:
             return self
         if not isinstance(other, (Comparison, Conditional, Parenthetical, Between)):
-            raise ValueError(f"Cannot add Between to {type(other)}")
+            # ValueError asserted by tests/core/test_between.py.
+            raise ValueError(f"Cannot add Between to {type(other)}")  # noqa: TRY004
         if other == self:
             return self
         return Conditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -985,7 +1073,20 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
     metadata: Metadata = dc_field(
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
-    lineage: Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | Conditional | Between | FunctionCallWrapper | None = None
+    lineage: (
+        Function
+        | WindowItem
+        | FilterItem
+        | AggregateWrapper
+        | RowsetItem
+        | SubselectItem
+        | MultiSelectLineage
+        | Comparison
+        | Conditional
+        | Between
+        | FunctionCallWrapper
+        | None
+    ) = None
     namespace: str = dc_field(default=DEFAULT_NAMESPACE)
     keys: set[str] | None = None
     grain: Grain = dc_field(default=None)  # type: ignore
@@ -1074,25 +1175,25 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
     @classmethod
     def calculate_is_aggregate(cls, lineage):
-        if lineage and isinstance(lineage, Function):
-            if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                return True
         if (
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return True
+        return bool(
             lineage
             and isinstance(lineage, AggregateWrapper)
             and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
-            return True
-        return False
+        )
 
     @cached_property
     def is_aggregate(self):
         return self.calculate_is_aggregate(self.lineage)
 
     def __eq__(self, other: object):
-        if isinstance(other, str):
-            if self.address == other:
-                return True
+        if isinstance(other, str) and self.address == other:
+            return True
         if isinstance(other, ConceptRef):
             return self.address == other.address
         if not isinstance(other, Concept):
@@ -1144,7 +1245,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 else namespace
             ),
             keys=(
-                set([address_with_namespace(x, namespace) for x in self.keys])
+                {address_with_namespace(x, namespace) for x in self.keys}
                 if self.keys
                 else None
             ),
@@ -1171,7 +1272,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         # inlined body. The build phase will strip the wrapper via
         # `_build_function_call_wrapper`, so we can unwrap here too.
         new_lineage = cast(
-            Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | None,
+            Function
+            | WindowItem
+            | FilterItem
+            | AggregateWrapper
+            | RowsetItem
+            | SubselectItem
+            | MultiSelectLineage
+            | Comparison
+            | None,
             (
                 self.lineage.content
                 if isinstance(self.lineage, FunctionCallWrapper)
@@ -1302,7 +1411,19 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             output: list[ConceptRef] = []
 
             def get_sources(
-                expr: Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | SubselectItem | MultiSelectLineage | Comparison | Conditional | Between | FunctionCallWrapper,
+                expr: (
+                    Function
+                    | WindowItem
+                    | FilterItem
+                    | AggregateWrapper
+                    | RowsetItem
+                    | SubselectItem
+                    | MultiSelectLineage
+                    | Comparison
+                    | Conditional
+                    | Between
+                    | FunctionCallWrapper
+                ),
                 output: list[ConceptRef],
             ):
 
@@ -1425,7 +1546,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
         elif lineage and isinstance(lineage, BuildFunction):
             if not lineage.concept_arguments or all(
-                [x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments]
+                x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments
             ):
                 return Derivation.CONSTANT
             return Derivation.BASIC
@@ -1455,7 +1576,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
-            if all([x.endswith(ALL_ROWS_CONCEPT) for x in grain.components]):
+            if all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
                 return Granularity.SINGLE_ROW
         elif derivation == Derivation.FILTER and isinstance(lineage, BuildFilterItem):
             # Filtering rows never changes single-row-ness; inherit the filtered
@@ -1473,7 +1594,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
         ):
             return Granularity.MULTI_ROW
         elif lineage and all(
-            [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
+            x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments
         ):
             return Granularity.SINGLE_ROW
         elif grain.abstract and cls._lineage_has_inline_aggregate(lineage):
@@ -1496,9 +1617,12 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
     ) -> Concept:
         from trilogy.utility import string_to_hash
 
-        if self.lineage and isinstance(self.lineage, FilterItem):
-            if self.lineage.where.conditional == condition:
-                return self
+        if (
+            self.lineage
+            and isinstance(self.lineage, FilterItem)
+            and self.lineage.where.conditional == condition
+        ):
+            return self
         hash = string_to_hash(self.name + str(condition))
         new_lineage = FilterItem(
             content=self.reference, where=WhereClause(conditional=condition)
@@ -1973,7 +2097,11 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
     output_purpose: Purpose
     arguments: Sequence[FuncArgs]
     arg_count: int = 1
-    valid_inputs: set[DataType | ArrayType | MapType] | list[set[DataType | ArrayType | MapType]] | None = None
+    valid_inputs: (
+        set[DataType | ArrayType | MapType]
+        | list[set[DataType | ArrayType | MapType]]
+        | None
+    ) = None
 
     def __post_init__(self):
         from trilogy.core.models.build import BuildConcept
@@ -2011,12 +2139,14 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
         if valid_inputs is None:
             return
 
-        if not arg_count <= target_arg_count:
-            if target_arg_count != InfiniteFunctionArgs:
-                raise ParseError(
-                    f"Incorrect argument count to {operator_name} function, expects"
-                    f" {target_arg_count}, got {arg_count}"
-                )
+        if (
+            not arg_count <= target_arg_count
+            and target_arg_count != InfiniteFunctionArgs
+        ):
+            raise ParseError(
+                f"Incorrect argument count to {operator_name} function, expects"
+                f" {target_arg_count}, got {arg_count}"
+            )
         if isinstance(valid_inputs, set):
             valid_inputs = [valid_inputs for _ in self.arguments]
         elif not valid_inputs:
@@ -2030,14 +2160,15 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                         f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
                         f" from concept: {arg.address}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
-            if isinstance(arg, Function):
-                if arg.output_datatype != DataType.UNKNOWN and not _matches_valid_type(
-                    arg.output_datatype, valid_inputs[idx]
-                ):
-                    raise FunctionArgumentException(
-                        f"Invalid argument type {arg.output_datatype}' passed into"
-                        f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
-                    )
+            if (
+                isinstance(arg, Function)
+                and arg.output_datatype != DataType.UNKNOWN
+                and not _matches_valid_type(arg.output_datatype, valid_inputs[idx])
+            ):
+                raise FunctionArgumentException(
+                    f"Invalid argument type {arg.output_datatype}' passed into"
+                    f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
+                )
             comparisons: list[tuple[type, DataType]] = [
                 (str, DataType.STRING),
                 (int, DataType.INTEGER),
@@ -2085,9 +2216,10 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
         if self.output_datatype == DataType.UNKNOWN:
             new_output = merge_datatypes([arg_to_datatype(x) for x in nargs])
 
-            if self.operator == FunctionType.ATTR_ACCESS:
-                if isinstance(new_output, StructType):
-                    new_output = new_output.field_types[str(nargs[1])]
+            if self.operator == FunctionType.ATTR_ACCESS and isinstance(
+                new_output, StructType
+            ):
+                new_output = new_output.field_types[str(nargs[1])]
         else:
             new_output = self.output_datatype
         # this is not ideal - see hacky logic for datatypes above
@@ -2955,7 +3087,7 @@ class LooseConceptList:
 
     @cached_property
     def sorted_addresses(self) -> list[str]:
-        return sorted(list(self.addresses))
+        return sorted(self.addresses)
 
     def __str__(self) -> str:
         return f"lcl{self.sorted_addresses!s}"
@@ -3105,14 +3237,13 @@ class CustomFunctionFactory:
                 raise FunctionArgumentException(
                     f"Invalid type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected {arg.datatype}, got {comparison}"
                 )
-            if isinstance(arg.datatype, TraitDataType):
-                if not (
-                    isinstance(comparison, TraitDataType)
-                    and all(x in comparison.traits for x in arg.datatype.traits)
-                ):
-                    raise FunctionArgumentException(
-                        f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
-                    )
+            if isinstance(arg.datatype, TraitDataType) and not (
+                isinstance(comparison, TraitDataType)
+                and all(x in comparison.traits for x in arg.datatype.traits)
+            ):
+                raise FunctionArgumentException(
+                    f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
+                )
             violation = constant_domain_violation(
                 arg.datatype, ComparisonOperator.EQ, creation_arg_list[arg_idx]
             )

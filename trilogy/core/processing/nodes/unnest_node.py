@@ -1,4 +1,3 @@
-
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -37,7 +36,7 @@ class UnnestNode(StrategyNode):
         base = super()._resolve()
         lineage = self.unnest_concepts[0].lineage
         assert isinstance(lineage, BuildFunction)
-        final = "_".join(set([c.address for c in self.unnest_concepts]))
+        final = "_".join({c.address for c in self.unnest_concepts})
         unnest = UnnestJoin(
             concepts=self.unnest_concepts,
             parent=lineage,

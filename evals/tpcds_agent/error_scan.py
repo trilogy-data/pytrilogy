@@ -141,8 +141,7 @@ def build_report(
         logs = [p for p in logs if p.name in wanted]
     out = [
         f"# Execute-trilogy error scan — run {run.name}\n",
-        "Each `trilogy` error per query, the query that produced it, and the "
-        "agent's next thought.\n",
+        "Each `trilogy` error per query, the query that produced it, and the agent's next thought.\n",
     ]
     total = 0
     for jsonl in logs:

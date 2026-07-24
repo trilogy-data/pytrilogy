@@ -408,8 +408,7 @@ def _section(title: str, frame: pd.DataFrame) -> list[str]:
         "",
         f"Queries: {total}",
         "",
-        f"PreQL is shorter than the reference SQL for {length_wins}/{total} queries. "
-        f"Total PreQL length is {preql_total:,} chars vs {reference_total:,} reference SQL chars.",
+        f"PreQL is shorter than the reference SQL for {length_wins}/{total} queries. Total PreQL length is {preql_total:,} chars vs {reference_total:,} reference SQL chars.",
         "",
         "| Length metric | P10 | P50 | P90 |",
         "| --- | ---: | ---: | ---: |",
@@ -433,8 +432,10 @@ def _section(title: str, frame: pd.DataFrame) -> list[str]:
     )
     lines.extend(
         [
-            f"Trilogy execution is faster than the reference SQL for {exec_wins}/{total} queries. "
-            f"Total Trilogy execution time is {trilogy_total:.3f}s vs {reference_exec_total:.3f}s reference SQL time.",
+            (
+                f"Trilogy execution is faster than the reference SQL for {exec_wins}/{total} queries. "
+                f"Total Trilogy execution time is {trilogy_total:.3f}s vs {reference_exec_total:.3f}s reference SQL time."
+            ),
             "",
             "| Performance metric | P10 | P50 | P90 |",
             "| --- | ---: | ---: | ---: |",
@@ -471,9 +472,7 @@ def build_summary(
         "",
         f"Timing fingerprint: `{fingerprint()}`",
         "",
-        "Signed deltas are `PreQL - Reference SQL` for size and "
-        "`Trilogy execution - Reference SQL execution` for performance. "
-        "Negative values mean PreQL is shorter or Trilogy is faster.",
+        "Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Reference SQL execution` for performance. Negative values mean PreQL is shorter or Trilogy is faster.",
         "",
     ]
     lines.extend(_section("Suggested Queries", main_frame))

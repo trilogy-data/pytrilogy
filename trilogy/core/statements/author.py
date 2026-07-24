@@ -101,7 +101,7 @@ class SelectItem:
 
     @property
     def is_undefined(self) -> bool:
-        return True if isinstance(self.content, UndefinedConcept) else False
+        return bool(isinstance(self.content, UndefinedConcept))
 
 
 def _row_grain_arguments(node: Any) -> list[ConceptRef]:
@@ -377,22 +377,20 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                     and isinstance(concept_lineage, Function)
                     and concept_lineage.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
+                ) and concept.address in self.locally_derived:
+                    raise SyntaxError(
+                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                    )
 
                 if (
                     concept_lineage
                     and isinstance(concept_lineage, AggregateWrapper)
                     and concept_lineage.function.operator
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
+                ) and concept.address in self.locally_derived:
+                    raise SyntaxError(
+                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                    )
         output_addresses = {x.address for x in self.output_components}
         alias_sources = self.alias_source_addresses
         allowed_addresses = output_addresses | alias_sources
@@ -447,9 +445,9 @@ class SelectStatement(HasUUID, SelectTypeMixin):
 
     @property
     def hidden_components(self) -> set[str]:
-        return set(
+        return {
             x.concept.address for x in self.selection if Modifier.HIDDEN in x.modifiers
-        )
+        }
 
     def to_datasource(
         self,
@@ -577,7 +575,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
 
     @property
     def locally_derived(self) -> set[str]:
-        locally_derived: set[str] = set([x.address for x in self.derived_concepts])
+        locally_derived: set[str] = {x.address for x in self.derived_concepts}
         for select in self.selects:
             locally_derived = locally_derived.union(select.locally_derived)
         return locally_derived
@@ -605,7 +603,7 @@ class UnionSelectStatement(MultiSelectStatement):
             order_by=self.order_by,
             where_clause=self.where_clause,
             having_clause=self.having_clause,
-            hidden_components=set(y for x in new_selects for y in x.hidden_components),
+            hidden_components={y for x in new_selects for y in x.hidden_components},
             operator=self.operator,
         )
 

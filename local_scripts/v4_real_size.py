@@ -40,7 +40,7 @@ def _measure(engine: Executor, fname: str) -> int | str:
     text = (working_path / fname).read_text()
     try:
         return len(engine.generate_sql(text)[-1])
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return f"ERR {type(e).__name__}"
 
 

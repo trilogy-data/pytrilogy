@@ -10,6 +10,7 @@ from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Self,
 )
 
@@ -341,17 +342,20 @@ def _concept_is_relevant(
         and any(c in other_addresses for c in concept.keys)
     ):
         return False
-    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if all([c in other_addresses for c in concept.keys]):
-            return False
+    if (
+        concept.purpose in (Purpose.PROPERTY, Purpose.METRIC)
+        and concept.keys
+        and all(c in other_addresses for c in concept.keys)
+    ):
+        return False
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in other_addresses and c != concept.address for c in concept.keys])
+        and all(c in other_addresses and c != concept.address for c in concept.keys)
     ):
         return False
     if concept.purpose in (Purpose.METRIC,):
-        if all([c in other_addresses for c in concept.grain.components]):
+        if all(c in other_addresses for c in concept.grain.components):
             return False
         if (
             isinstance(concept.lineage, BuildAggregateWrapper)
@@ -370,14 +374,12 @@ def _concept_is_relevant(
             _concept_is_relevant(c, other_addresses) for c in concept.concept_arguments
         )
     if concept.derivation == Derivation.WINDOW:
-        if all([c in other_addresses for c in concept.grain.components]):
+        if all(c in other_addresses for c in concept.grain.components):
             return False
         return any(
             _concept_is_relevant(c, other_addresses) for c in concept.concept_arguments
         )
-    if concept.granularity == Granularity.SINGLE_ROW:
-        return False
-    return True
+    return concept.granularity != Granularity.SINGLE_ROW
 
 
 def concept_collection_equivalent_addresses(
@@ -689,7 +691,7 @@ class BuildGrain:
         if other.where_clause:
             if not self.where_clause:
                 where = other.where_clause
-            elif not other.where_clause == self.where_clause:
+            elif other.where_clause != self.where_clause:
                 where = BuildWhereClause(
                     conditional=BuildConditional(
                         left=self.where_clause.conditional,
@@ -715,9 +717,7 @@ class BuildGrain:
             return False
         if self.components == other.components:
             return True
-        if self.abstract is True and other.abstract is True:
-            return True
-        return False
+        return bool(self.abstract is True and other.abstract is True)
 
     def issubset(self, other: BuildGrain):
         return self.components.issubset(other.components)
@@ -827,8 +827,38 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
 @dataclass(slots=True)
 class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
-    left: int | str | float | list | bool | MagicConstants | BuildConcept | BuildComparison | BuildConditional | BuildParenthetical | BuildSubselectComparison | BuildBetween | BuildFunction | BuildFilterItem
-    right: int | str | float | list | bool | MagicConstants | BuildConcept | BuildComparison | BuildConditional | BuildParenthetical | BuildSubselectComparison | BuildBetween | BuildFunction | BuildFilterItem
+    left: (
+        int
+        | str
+        | float
+        | list
+        | bool
+        | MagicConstants
+        | BuildConcept
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+        | BuildSubselectComparison
+        | BuildBetween
+        | BuildFunction
+        | BuildFilterItem
+    )
+    right: (
+        int
+        | str
+        | float
+        | list
+        | bool
+        | MagicConstants
+        | BuildConcept
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+        | BuildSubselectComparison
+        | BuildBetween
+        | BuildFunction
+        | BuildFilterItem
+    )
     operator: BooleanOperator
 
     def __add__(self, other) -> BuildConditional:
@@ -933,7 +963,13 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
 
 @dataclass(slots=True)
 class BuildWhereClause(BuildConceptArgs):
-    conditional: BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical | BuildBetween
+    conditional: (
+        BuildSubselectComparison
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+        | BuildBetween
+    )
 
     def __eq__(self, other):
         if not isinstance(other, (BuildWhereClause, WhereClause)):
@@ -966,8 +1002,44 @@ class BuildHavingClause(BuildWhereClause):
 @dataclass(slots=True)
 class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
 
-    left: int | str | float | bool | datetime | date | BuildFunction | BuildConcept | BuildConditional | DataType | BuildComparison | BuildParenthetical | MagicConstants | BuildWindowItem | BuildAggregateWrapper | ListWrapper | TupleWrapper
-    right: int | str | float | bool | date | datetime | BuildConcept | BuildFunction | BuildConditional | DataType | BuildComparison | BuildParenthetical | MagicConstants | BuildWindowItem | BuildAggregateWrapper | TupleWrapper | ListWrapper
+    left: (
+        int
+        | str
+        | float
+        | bool
+        | datetime
+        | date
+        | BuildFunction
+        | BuildConcept
+        | BuildConditional
+        | DataType
+        | BuildComparison
+        | BuildParenthetical
+        | MagicConstants
+        | BuildWindowItem
+        | BuildAggregateWrapper
+        | ListWrapper
+        | TupleWrapper
+    )
+    right: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | BuildConcept
+        | BuildFunction
+        | BuildConditional
+        | DataType
+        | BuildComparison
+        | BuildParenthetical
+        | MagicConstants
+        | BuildWindowItem
+        | BuildAggregateWrapper
+        | TupleWrapper
+        | ListWrapper
+    )
     operator: ComparisonOperator
 
     def __add__(self, other):
@@ -977,7 +1049,8 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             other,
             BoolExpr,
         ):
-            raise ValueError(f"Cannot add {type(other)} to {__class__}")
+            # ValueError asserted by tests/core/test_between.py.
+            raise ValueError(f"Cannot add {type(other)} to {__class__}")  # noqa: TRY004
         if other == self:
             return self
         return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -1088,9 +1161,51 @@ class BuildSubselectComparison(BuildComparison):
 
 @dataclass(slots=True)
 class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
-    left: int | str | float | bool | datetime | date | BuildFunction | BuildConcept | DataType | BuildParenthetical | MagicConstants | BuildWindowItem | BuildAggregateWrapper
-    low: int | str | float | bool | date | datetime | BuildConcept | BuildFunction | DataType | BuildParenthetical | MagicConstants | BuildWindowItem | BuildAggregateWrapper
-    high: int | str | float | bool | date | datetime | BuildConcept | BuildFunction | DataType | BuildParenthetical | MagicConstants | BuildWindowItem | BuildAggregateWrapper
+    left: (
+        int
+        | str
+        | float
+        | bool
+        | datetime
+        | date
+        | BuildFunction
+        | BuildConcept
+        | DataType
+        | BuildParenthetical
+        | MagicConstants
+        | BuildWindowItem
+        | BuildAggregateWrapper
+    )
+    low: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | BuildConcept
+        | BuildFunction
+        | DataType
+        | BuildParenthetical
+        | MagicConstants
+        | BuildWindowItem
+        | BuildAggregateWrapper
+    )
+    high: (
+        int
+        | str
+        | float
+        | bool
+        | date
+        | datetime
+        | BuildConcept
+        | BuildFunction
+        | DataType
+        | BuildParenthetical
+        | MagicConstants
+        | BuildWindowItem
+        | BuildAggregateWrapper
+    )
 
     def __add__(self, other):
         if other is None:
@@ -1099,7 +1214,8 @@ class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
             other,
             BoolExpr,
         ):
-            raise ValueError(f"Cannot add {type(other)} to {__class__}")
+            # ValueError asserted by tests/core/test_between.py.
+            raise ValueError(f"Cannot add {type(other)} to {__class__}")  # noqa: TRY004
         if other == self:
             return self
         return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -1181,7 +1297,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     metadata: Metadata = field(
         default_factory=lambda: Metadata(description=None, line_number=None),
     )
-    lineage: BuildFunction | BuildWindowItem | BuildFilterItem | BuildAggregateWrapper | BuildRowsetItem | BuildSubselectItem | BuildMultiSelectLineage | None = None
+    lineage: (
+        BuildFunction
+        | BuildWindowItem
+        | BuildFilterItem
+        | BuildAggregateWrapper
+        | BuildRowsetItem
+        | BuildSubselectItem
+        | BuildMultiSelectLineage
+        | None
+    ) = None
     keys: set[str] | None = None
     grain: BuildGrain = field(default=None)  # type: ignore
     modifiers: list[Modifier] = field(default_factory=list)  # type: ignore
@@ -1318,7 +1443,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                     components += [x.address for x in item.sources]
             # TODO: set synonyms
             grain = BuildGrain(
-                components=set([x for x in components]),
+                components={x for x in components},
             )  # synonym_set=generate_BuildConcept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
             grain = DEFAULT_GRAIN
@@ -1358,7 +1483,15 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             output: list[BuildConcept] = []
 
             def get_sources(
-                expr: BuildFunction | BuildWindowItem | BuildFilterItem | BuildAggregateWrapper | BuildRowsetItem | BuildSubselectItem | BuildMultiSelectLineage,
+                expr: (
+                    BuildFunction
+                    | BuildWindowItem
+                    | BuildFilterItem
+                    | BuildAggregateWrapper
+                    | BuildRowsetItem
+                    | BuildSubselectItem
+                    | BuildMultiSelectLineage
+                ),
                 output: list[BuildConcept],
             ):
                 if isinstance(expr, BuildMultiSelectLineage):
@@ -1566,12 +1699,36 @@ class BuildCaseElse(DataTyped, BuildConceptArgs):
 class BuildFunction(DataTyped, BuildConceptArgs):
     operator: FunctionType
     arguments: Sequence[
-        int | float | str | date | datetime | MapWrapper[Any, Any] | TraitDataType | DataType | ArrayType | MapType | NumericType | DatePart | BuildConcept | BuildAggregateWrapper | BuildFunction | BuildWindowItem | BuildParenthetical | BuildCaseWhen | BuildCaseElse | list | ListWrapper[Any]
+        int
+        | float
+        | str
+        | date
+        | datetime
+        | MapWrapper[Any, Any]
+        | TraitDataType
+        | DataType
+        | ArrayType
+        | MapType
+        | NumericType
+        | DatePart
+        | BuildConcept
+        | BuildAggregateWrapper
+        | BuildFunction
+        | BuildWindowItem
+        | BuildParenthetical
+        | BuildCaseWhen
+        | BuildCaseElse
+        | list
+        | ListWrapper[Any]
     ]
     output_data_type: CONCRETE_TYPES
     output_purpose: Purpose = field(default=Purpose.KEY)
     arg_count: int = field(default=1)
-    valid_inputs: set[DataType | ArrayType | MapType] | list[set[DataType | ArrayType | MapType]] | None = None
+    valid_inputs: (
+        set[DataType | ArrayType | MapType]
+        | list[set[DataType | ArrayType | MapType]]
+        | None
+    ) = None
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1636,9 +1793,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def is_abstract(self):
         if not self.by:
             return True
-        if all(x.name == ALL_ROWS_CONCEPT for x in self.by):
-            return True
-        return False
+        return bool(all(x.name == ALL_ROWS_CONCEPT for x in self.by))
 
     def with_abstract_by(self) -> BuildAggregateWrapper:
         return BuildAggregateWrapper(function=self.function, by=[])
@@ -2022,11 +2177,10 @@ class BuildDatasource:
 
     @property
     def can_be_inlined(self) -> bool:
-        if isinstance(self.address, Address) and (
-            self.address.is_query or self.address.is_file
-        ):
-            return False
-        return True
+        return not (
+            isinstance(self.address, Address)
+            and (self.address.is_query or self.address.is_file)
+        )
 
     @property
     def identifier(self) -> str:
@@ -2221,7 +2375,7 @@ class BuildUnionDatasource:
         # branch and break the "common output" contract enum unions rely on.
         if not self.children:
             return []
-        common = set(c.concept.address for c in self.children[0].columns)
+        common = {c.concept.address for c in self.children[0].columns}
         for child in self.children[1:]:
             common &= {c.concept.address for c in child.columns}
         return [c for c in self.children[0].columns if c.concept.address in common]
@@ -2651,7 +2805,16 @@ class Factory:
     def instantiate_concept(
         self,
         arg: (
-            AggregateWrapper | FunctionCallWrapper | WindowItem | FilterItem | Function | ListWrapper | MapWrapper | float | str | date
+            AggregateWrapper
+            | FunctionCallWrapper
+            | WindowItem
+            | FilterItem
+            | Function
+            | ListWrapper
+            | MapWrapper
+            | float
+            | str
+            | date
         ),
     ) -> tuple[Concept, BuildConcept]:
         from trilogy.parsing.common import arbitrary_to_concept, generate_concept_name
@@ -2678,7 +2841,7 @@ class Factory:
     # its __get__ rebuilds a wrapper (via update_wrapper) on every access, and
     # dispatch() does a weakref-cache lookup. We keep singledispatch only for
     # registration/MRO resolution and cache the result on first sight.
-    _build_impl_cache: dict[type, Any] = {}
+    _build_impl_cache: ClassVar[dict[type, Any]] = {}
 
     def build(self, base):
         impl = Factory._build_impl_cache.get(base.__class__)
@@ -2697,7 +2860,21 @@ class Factory:
     def _(
         self,
         base: (
-            str | float | Decimal | list | date | TupleWrapper | ListWrapper | MagicConstants | MapWrapper | DataType | DatePart | NumericType
+            # int is NOT redundant with float here: singledispatch reads this
+            # union at runtime to register the int handler (bool via subclass)
+            int  # noqa: PYI041
+            | str
+            | float
+            | Decimal
+            | list
+            | date
+            | TupleWrapper
+            | ListWrapper
+            | MagicConstants
+            | MapWrapper
+            | DataType
+            | DatePart
+            | NumericType
         ),
     ) -> (
         int
@@ -2751,11 +2928,14 @@ class Factory:
         if base.operator == FunctionType.GROUP:
             group_base = raw_args[0]
             final_args: list[Concept | ConceptRef] = []
-            if isinstance(group_base, ConceptRef):
-                if group_base.address in self.environment.concepts and not isinstance(
+            if (
+                isinstance(group_base, ConceptRef)
+                and group_base.address in self.environment.concepts
+                and not isinstance(
                     self.environment.concepts[group_base.address], UndefinedConcept
-                ):
-                    group_base = self.environment.concepts[group_base.address]
+                )
+            ):
+                group_base = self.environment.concepts[group_base.address]
             if (
                 isinstance(group_base, Concept)
                 and isinstance(group_base.lineage, AggregateWrapper)
@@ -3081,13 +3261,15 @@ class Factory:
 
         def calculate_is_aggregate(lineage):
             ltype = type(lineage)
-            if ltype is BuildFunction:
-                if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                    return True
-            if ltype is BuildAggregateWrapper:
-                if lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                    return True
-            return False
+            if (
+                ltype is BuildFunction
+                and lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            ):
+                return True
+            return bool(
+                ltype is BuildAggregateWrapper
+                and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            )
 
         is_aggregate = calculate_is_aggregate(build_lineage) if build_lineage else False
         # if this is a pseudonym, we need to look up the base address

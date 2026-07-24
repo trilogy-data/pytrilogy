@@ -4,7 +4,7 @@ import re
 import sys
 from os import environ
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -360,12 +360,18 @@ DUCKDB_SAMPLE_SEED = 42
 
 
 class DuckDBDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
-    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        **DATATYPE_MAP,
+    }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     SUPPORTS_QUALIFY = True
@@ -475,7 +481,7 @@ class DuckDBDialect(BaseDialect):
 
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
     # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").
-    DB_COLUMN_TYPE_MAP = {
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "integer": DataType.INTEGER,
         "int4": DataType.INTEGER,

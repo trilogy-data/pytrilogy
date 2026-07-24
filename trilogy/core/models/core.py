@@ -176,7 +176,7 @@ class EnumType:
         return self.type.value
 
 
-RANGE_BOUND_TYPES = Union[int, float, date, datetime, None]
+RANGE_BOUND_TYPES = int | float | date | datetime | None
 
 
 def _render_bound(value: RANGE_BOUND_TYPES) -> str:
@@ -395,7 +395,7 @@ class StructType:
         return hash(str(self))
 
 
-class ListWrapper(Generic[VT], UserList):
+class ListWrapper(UserList, Generic[VT]):
     """Used to distinguish parsed list objects from other lists"""
 
     def __init__(self, *args, type: DataType, nullable: bool = False, **kwargs):
@@ -419,7 +419,7 @@ class ListWrapper(Generic[VT], UserList):
         return cls(v, type=arg_to_datatype(v[0]))
 
 
-class MapWrapper(Generic[KT, VT], UserDict):
+class MapWrapper(UserDict, Generic[KT, VT]):
     """Used to distinguish parsed map objects from other dicts"""
 
     def __init__(self, *args, key_type: DataType, value_type: DataType, **kwargs):
@@ -447,7 +447,7 @@ class MapWrapper(Generic[KT, VT], UserDict):
         )
 
 
-class TupleWrapper(Generic[VT], tuple):
+class TupleWrapper(tuple, Generic[VT]):
     """Used to distinguish parsed tuple objects from other tuples"""
 
     def __init__(self, val, type: CONCRETE_TYPES, nullable: bool = False, **kwargs):
@@ -498,7 +498,7 @@ def tuple_to_wrapper(args):
 
 
 def dict_to_map_wrapper(arg):
-    key_types = [arg_to_datatype(arg) for arg in arg.keys()]
+    key_types = [arg_to_datatype(arg) for arg in arg]
 
     value_types = [arg_to_datatype(arg) for arg in arg.values()]
     assert len(set(key_types)) == 1
@@ -609,9 +609,7 @@ def is_compatible_datatype(left, right):
 
     if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
         return True
-    if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
-        return True
-    return False
+    return {left, right} == {DataType.FLOAT, DataType.INTEGER}
 
 
 def _envelope_violation(
@@ -633,11 +631,12 @@ def _envelope_violation(
         elif operator == ComparisonOperator.LT:
             if global_min is not None and global_min >= value:
                 return f"declared domain {domain} has no value < {_render_bound(value)}"
-        elif operator == ComparisonOperator.LTE:
-            if global_min is not None and global_min > value:
-                return (
-                    f"declared domain {domain} has no value <= {_render_bound(value)}"
-                )
+        elif (
+            operator == ComparisonOperator.LTE
+            and global_min is not None
+            and global_min > value
+        ):
+            return f"declared domain {domain} has no value <= {_render_bound(value)}"
     except TypeError:
         return None
     return None

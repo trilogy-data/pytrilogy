@@ -6,9 +6,11 @@ import os
 import sys
 import threading
 from collections.abc import Callable
+from types import TracebackType
 from typing import Any
 
 from click import echo, style
+from typing_extensions import Self
 
 
 def _needs_safe_wrapping(encoding: "str | None") -> bool:
@@ -247,15 +249,18 @@ class RichModeContext:
         self.old_console: Console | None = None
         self.old_error_console: Console | None = None
 
-    def __enter__(self) -> "RichModeContext":
-        global RICH_AVAILABLE, console, error_console
-
+    def __enter__(self) -> Self:
         self.old_console = console
         self.old_error_console = error_console
         # The mode was already set by __call__, so we're good
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         global RICH_AVAILABLE, console, error_console
 
         # Restore previous state
@@ -356,7 +361,7 @@ def with_status(message: str) -> Any:
 class _DummyContext:
     """Dummy context manager for fallback."""
 
-    def __enter__(self) -> "_DummyContext":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -376,7 +381,7 @@ class _FdStderrCapture:
         self._thread: threading.Thread | None = None
         self.get_context = get_context
 
-    def __enter__(self) -> "_FdStderrCapture":
+    def __enter__(self) -> Self:
         if not (RICH_AVAILABLE and console is not None):
             return self
         self._orig_fd = os.dup(2)

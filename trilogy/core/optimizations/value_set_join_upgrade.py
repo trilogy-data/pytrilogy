@@ -951,7 +951,12 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 target = JoinType.LEFT_OUTER
             elif left_matches_right():
                 target = JoinType.RIGHT_OUTER
-        elif join.jointype == JoinType.LEFT_OUTER and left_matches_right() or join.jointype == JoinType.RIGHT_OUTER and right_matches_left():
+        elif (
+            join.jointype == JoinType.LEFT_OUTER
+            and left_matches_right()
+            or join.jointype == JoinType.RIGHT_OUTER
+            and right_matches_left()
+        ):
             target = JoinType.INNER
         if target is None:
             return False

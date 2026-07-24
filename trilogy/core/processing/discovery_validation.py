@@ -193,10 +193,8 @@ def validate_concept(
         found_addresses.add(concept.address)
         non_partial_addresses.add(concept.address)
         # remove it from our partial tracking
-        if concept.address in partial_addresses:
-            partial_addresses.remove(concept.address)
-        if concept.address in virtual_addresses:
-            virtual_addresses.remove(concept.address)
+        partial_addresses.discard(concept.address)
+        virtual_addresses.discard(concept.address)
     if concept in node.partial_concepts:
         if concept.address in non_partial_addresses:
             return
@@ -307,8 +305,8 @@ def validate_stack(
         require_condition_applier,
     )
     # zip in those we know we found
-    if not all([c.address in found_addresses for c in concepts]) or not conditions_met:
-        if not all([c.address in found_addresses for c in concepts]):
+    if not all(c.address in found_addresses for c in concepts) or not conditions_met:
+        if not all(c.address in found_addresses for c in concepts):
             return (
                 ValidationResult.INCOMPLETE,
                 found_addresses,

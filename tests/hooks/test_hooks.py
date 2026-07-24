@@ -44,7 +44,7 @@ select
 
 
     """
-    env, parsed = parse(declarations)
+    _env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
     BaseHook().process_rowset_info(
         RowsetDerivationStatement(name="test", select=select, namespace="test")

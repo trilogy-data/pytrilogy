@@ -45,7 +45,7 @@ import so_concepts.circular_dep as c2;"""
 
 
 def test_select():
-    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, _parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     rendered = render_environment(env)
     assert rendered.startswith("import concepts.core as core;")
 
@@ -77,7 +77,7 @@ def test_circular_base():
     assert env.concepts["c1.c2.id"]
     validated = False
     assert len(env.datasources) >= 2
-    for n, datasource in env.datasources.items():
+    for datasource in env.datasources.values():
         for z in datasource.columns:
             self = z.concept
             if z.concept.namespace != datasource.namespace:
@@ -94,7 +94,7 @@ def test_circular_base():
 
 
 def test_circular():
-    env, parsed = parse(
+    env, _parsed = parse(
         CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
     from trilogy.hooks.query_debugger import DebuggingHook
@@ -103,7 +103,7 @@ def test_circular():
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
     validated = False
-    for n, datasource in env.datasources.items():
+    for datasource in env.datasources.values():
         for z in datasource.columns:
             self = z.concept
             if z.concept.namespace != datasource.namespace:
@@ -120,7 +120,7 @@ def test_circular():
 
 
 def test_partial():
-    env, parsed = parse(
+    env, _parsed = parse(
         CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
     # raise ValueError(env.concepts.keys())

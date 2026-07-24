@@ -351,13 +351,13 @@ def run_one(
                 try:
                     t, _ = _time(lambda: _exec(v4_sql))
                     result.v4_exec_seconds = min(result.v4_exec_seconds, t)
-                except Exception:
+                except Exception:  # noqa: S110 -- best-effort, first pass stands
                     pass
             if ref_sql and result.ref_rows is not None:
                 try:
                     t, _ = _time(lambda: _exec(ref_sql))
                     result.ref_exec_seconds = min(result.ref_exec_seconds, t)
-                except Exception:
+                except Exception:  # noqa: S110 -- best-effort, first pass stands
                     pass
 
     if result.v4_rows is not None and result.ref_rows is not None:
@@ -406,8 +406,7 @@ def write_query_report(result: QueryResult, preql_text: str) -> Path:
     lines.append("## Result comparison")
     lines.append("")
     if result.diff:
-        for line in result.diff:
-            lines.append(line)
+        lines.extend(result.diff)
     elif result.v4_rows is None or result.ref_rows is None:
         lines.append("_at least one side did not produce rows._")
     else:

@@ -384,17 +384,13 @@ MULTI_LEFT_CASES: dict[str, tuple[str, str, list[tuple]]] = {
         [(10, 8, 1), (20, 2, 2), (40, 4, 4), (50, 5, 5)],
     ),
     "3way": (
-        "where b.b_id is not null and c.c_id is not null\n"
-        "subset join kb = ka\nsubset join kc = ka",
-        "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
-        "sum(c.c_id) as nc order by ka asc;",
+        "where b.b_id is not null and c.c_id is not null\nsubset join kb = ka\nsubset join kc = ka",
+        "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, sum(c.c_id) as nc order by ka asc;",
         [(10, 8, 1, 1), (20, 2, 2, 2), (50, 5, 5, 5)],
     ),
     "4way": (
-        "where b.b_id is not null and c.c_id is not null and d.d_id is not null\n"
-        "subset join kb = ka\nsubset join kc = ka\nsubset join kd = ka",
-        "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, "
-        "sum(c.c_id) as nc, sum(d.d_id) as nd order by ka asc;",
+        "where b.b_id is not null and c.c_id is not null and d.d_id is not null\nsubset join kb = ka\nsubset join kc = ka\nsubset join kd = ka",
+        "select ka, sum(a.a_id) as na, sum(b.b_id) as nb, sum(c.c_id) as nc, sum(d.d_id) as nd order by ka asc;",
         [(10, 8, 1, 1, 1), (20, 2, 2, 2, 2)],
     ),
 }

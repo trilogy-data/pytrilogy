@@ -26,7 +26,7 @@ def run_query(engine: Executor, start, idx: int):
     with open(working_path / f"adhoc{idx:02d}.preql") as f:
         text = f.read()
 
-    _, query = engine.environment.parse(text)
+    _, _query = engine.environment.parse(text)
     print("parsed files", datetime.now() - start)
     # _ = engine.generate_sql(query[-1])
 

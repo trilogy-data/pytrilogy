@@ -146,7 +146,7 @@ def test_adhoc02_error():
     with open(working_path / "adhoc02.preql") as f:
         text = f.read()
         with raises(InvalidSyntaxException):
-            env, queries = parse(text, env)
+            env, _queries = parse(text, env)
 
 
 def test_adhoc03(engine: Executor):

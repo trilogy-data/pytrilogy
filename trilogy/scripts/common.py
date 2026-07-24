@@ -11,7 +11,7 @@ from typing import Any
 from click.exceptions import Exit
 
 from trilogy import Executor
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, logger
 from trilogy.core.exceptions import ConfigurationException, ModelValidationError
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import (
@@ -251,9 +251,7 @@ def _looks_like_path(input: str) -> bool:
     if "/" in input or "\\" in input:
         return True
     # Has a file extension commonly used
-    if input.endswith((".preql", ".sql", ".toml")):
-        return True
-    return False
+    return bool(input.endswith((".preql", ".sql", ".toml")))
 
 
 def resolve_input_information(
@@ -537,8 +535,8 @@ def _emit_progress_label(label: str) -> None:
     if cb is not None:
         try:
             cb(label)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Progress label callback failed: %s", e)
 
 
 def validate_environment(

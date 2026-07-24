@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from trilogy.constants import logger
 from trilogy.execution.config import load_config_file
 from trilogy.scripts.common import TRILOGY_CONFIG_NAME
 from trilogy.scripts.serve_helpers.file_discovery import (
@@ -58,8 +59,8 @@ def _get_model_description(directory_path: Path, trilogy_files: list[Path]) -> s
                             break
                     if first_line:
                         return first_line
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to read README.md at %s: %s", readme_path, e)
 
     # Fall back to first file's description
     if trilogy_files:
@@ -114,8 +115,8 @@ def find_model_by_name(
         try:
             config = load_config_file(config_path)
             setup_scripts = config.startup_sql + config.startup_trilogy
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load config at %s: %s", config_path, e)
 
     # Find all trilogy files (preql and sql)
     trilogy_files = find_trilogy_files(directory_path)

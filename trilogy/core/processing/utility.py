@@ -217,9 +217,8 @@ def find_nullable_concepts(
         if all(nullable_matches) and len(nullable_matches) > 0:
             final_nullable.add(k)
         all_ds = set(local_nullable).union(nullable_datasources)
-        if nullable_datasources:
-            if set(v).issubset(all_ds):
-                final_nullable.add(k)
+        if nullable_datasources and set(v).issubset(all_ds):
+            final_nullable.add(k)
     return sorted(final_nullable)
 
 

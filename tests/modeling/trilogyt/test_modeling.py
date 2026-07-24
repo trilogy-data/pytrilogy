@@ -6,11 +6,12 @@ parent = Path(__file__).parent
 
 
 def test_infinite_parsing():
-    text = open(parent / "order.preql").read()
+    with open(parent / "order.preql") as f:
+        text = f.read()
     env = Environment(working_path=parent)
     try:
         env.parse(text)
-    except Exception:
+    except Exception:  # noqa: S110 -- only testing for hang/recursion, not parse result
         pass
 
 

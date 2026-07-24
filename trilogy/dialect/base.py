@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Optional,
     cast,
 )
@@ -811,23 +812,31 @@ def get_grouped_aggregate_wrapper(
 
 
 class BaseDialect:
-    NUMBERING_WINDOW_FUNCTION_MAP = NUMBERING_WINDOW_FUNCTION_MAP
-    NAVIGATION_WINDOW_FUNCTION_MAP = NAVIGATION_WINDOW_FUNCTION_MAP
-    FUNCTION_MAP = FUNCTION_MAP
-    FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
+    NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
+        dict[WindowType, Callable[[str, str], str]]
+    ] = NUMBERING_WINDOW_FUNCTION_MAP
+    NAVIGATION_WINDOW_FUNCTION_MAP: ClassVar[
+        dict[WindowType, Callable[[str, str, str, int | None], str]]
+    ] = NAVIGATION_WINDOW_FUNCTION_MAP
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = FUNCTION_MAP
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = (
+        FUNCTION_GRAIN_MATCH_MAP
+    )
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
-    DATATYPE_MAP = DATATYPE_MAP
-    COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
-    DB_COLUMN_TYPE_MAP = DB_COLUMN_TYPE_MAP
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
+    COMPLEX_DATATYPE_MAP: ClassVar[dict[DataType, Callable[[str], str]]] = (
+        COMPLEX_DATATYPE_MAP
+    )
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = DB_COLUMN_TYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     SUPPORTS_AGGREGATE_GROUPING_MODES = False
     # Per-dialect spelling of set-operation combinators between UnionCTE arms.
     # Keys are SetOperator values; dialects with non-standard spellings (e.g.
     # BigQuery's EXCEPT DISTINCT) override entries.
-    SET_OPERATOR_MAP: dict[str, str] = {
+    SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         "UNION ALL": "UNION ALL",
         "EXCEPT": "EXCEPT",
         "INTERSECT": "INTERSECT",
@@ -1214,7 +1223,9 @@ class BaseDialect:
     ) -> str:
         result = None
         if not isinstance(c, BuildConcept):
-            raise SyntaxError(f"Expected BuildConcept, got {type(c)} {c}")
+            raise SyntaxError(  # noqa: TRY004
+                f"Expected BuildConcept, got {type(c)} {c}"
+            )
         candidates: list[BuildConcept] = []
         if c.pseudonyms:
             candidates += [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
@@ -1919,7 +1930,42 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: BuildConcept | BuildFunction | BuildConditional | BuildBetween | BuildAggregateWrapper | BuildComparison | BuildCaseWhen | BuildCaseSimpleWhen | BuildCaseElse | BuildSubselectComparison | BuildSubselectItem | BuildWindowItem | BuildFilterItem | BuildParenthetical | BuildParamaterizedConceptReference | BuildMultiSelectLineage | BuildRowsetItem | str | list | bool | float | date | datetime | DataType | TraitDataType | MagicConstants | MapWrapper[Any, Any] | MapType | NumericType | StructType | ArrayType | ListWrapper[Any] | TupleWrapper[Any] | DatePart,
+        e: (
+            BuildConcept
+            | BuildFunction
+            | BuildConditional
+            | BuildBetween
+            | BuildAggregateWrapper
+            | BuildComparison
+            | BuildCaseWhen
+            | BuildCaseSimpleWhen
+            | BuildCaseElse
+            | BuildSubselectComparison
+            | BuildSubselectItem
+            | BuildWindowItem
+            | BuildFilterItem
+            | BuildParenthetical
+            | BuildParamaterizedConceptReference
+            | BuildMultiSelectLineage
+            | BuildRowsetItem
+            | str
+            | list
+            | bool
+            | float
+            | date
+            | datetime
+            | DataType
+            | TraitDataType
+            | MagicConstants
+            | MapWrapper[Any, Any]
+            | MapType
+            | NumericType
+            | StructType
+            | ArrayType
+            | ListWrapper[Any]
+            | TupleWrapper[Any]
+            | DatePart
+        ),
         cte: CTE | UnionCTE | None = None,
         cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
@@ -2246,7 +2292,7 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
-        elif isinstance(e, ValidatedType) or isinstance(e, TraitDataType):
+        elif isinstance(e, (ValidatedType, TraitDataType)):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):
             return e.name
@@ -2267,7 +2313,7 @@ class BaseDialect:
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
 
         else:
-            raise ValueError(f"Unable to render type {type(e)} {e}")
+            raise TypeError(f"Unable to render type {type(e)} {e}")
 
     @staticmethod
     def _grouped_output_is_parent_passthrough(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import (
     BooleanOperator,
@@ -258,7 +260,7 @@ def _resolve_join_group(
                 )
             seen_roots[root] = label
     joins: list[SelectJoin] = []
-    for (la, ll), (ra, rl) in zip(resolved, resolved[1:]):
+    for (la, ll), (ra, rl) in itertools.pairwise(resolved):
         if la == ra:
             raise fail(
                 node,

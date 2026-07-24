@@ -301,9 +301,7 @@ class UnionDimPushdown(OptimizationRule):
             return False
         if any(isinstance(j, BaseJoin) for j in cte.source.joins):
             return False
-        if len(cte.source.datasources) > 1:
-            return False
-        return True
+        return not len(cte.source.datasources) > 1
 
     def _expand_pass_through_consumers(
         self,

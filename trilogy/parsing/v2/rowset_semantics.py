@@ -201,7 +201,7 @@ def rowset_to_concepts_v2(
     for x in pre_output:
         if x.keys:
             if all(k in orig for k in x.keys):
-                x.keys = set([orig[k].address if k in orig else k for k in x.keys])
+                x.keys = {orig[k].address if k in orig else k for k in x.keys}
             else:
                 x.keys = set()
         orig_lineage = orig_map[x.address].lineage

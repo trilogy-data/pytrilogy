@@ -75,6 +75,7 @@ def run_file(p: Path, timeout: int) -> dict:
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return {"file": rel, "status": "timeout", "failures": []}

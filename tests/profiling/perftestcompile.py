@@ -252,7 +252,7 @@ def date_functions():
     
     
         """
-    env, parsed = parse(declarations, environment=environment)
+    _env, parsed = parse(declarations, environment=environment)
     select: SelectStatement = parsed[-1]
 
     BigqueryDialect().compile_statement(process_query(environment, select))

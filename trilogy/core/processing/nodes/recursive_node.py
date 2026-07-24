@@ -1,4 +1,3 @@
-
 from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment

@@ -1,4 +1,6 @@
 import uuid
+from collections.abc import Callable
+from typing import ClassVar
 
 from jinja2 import Template
 
@@ -228,8 +230,11 @@ def parse_bigquery_table_name(
 
 
 class BigqueryDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
@@ -241,7 +246,7 @@ class BigqueryDialect(BaseDialect):
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
     # BigQuery requires an explicit DISTINCT on set operators.
-    SET_OPERATOR_MAP: dict[str, str] = {
+    SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         **BaseDialect.SET_OPERATOR_MAP,
         "EXCEPT": "EXCEPT DISTINCT",
         "INTERSECT": "INTERSECT DISTINCT",
@@ -260,7 +265,7 @@ class BigqueryDialect(BaseDialect):
 
     # BQ DATATYPE_MAP uses canonical names (INT64, STRING, FLOAT64, …) that match
     # information_schema exactly; extend base with legacy aliases BQ also accepts.
-    DB_COLUMN_TYPE_MAP = {
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "int64": DataType.INTEGER,
         "float64": DataType.FLOAT,

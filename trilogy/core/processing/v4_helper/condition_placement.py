@@ -217,15 +217,19 @@ def _post_aggregation_producers(
         for gid, b in buckets.items():
             if addr not in set(b.primary_members):
                 continue
-            if b.derivation in _EMITS_GROUP_BY and _is_global(gid) or (
-                b.derivation not in _EMITS_GROUP_BY
+            if (
+                b.derivation in _EMITS_GROUP_BY
                 and _is_global(gid)
-                and gid in lineage_only
-                and any(
-                    anc in buckets
-                    and buckets[anc].derivation in _EMITS_GROUP_BY
-                    and _is_global(anc)
-                    for anc in nx.ancestors(lineage_only, gid)
+                or (
+                    b.derivation not in _EMITS_GROUP_BY
+                    and _is_global(gid)
+                    and gid in lineage_only
+                    and any(
+                        anc in buckets
+                        and buckets[anc].derivation in _EMITS_GROUP_BY
+                        and _is_global(anc)
+                        for anc in nx.ancestors(lineage_only, gid)
+                    )
                 )
             ):
                 producer = gid

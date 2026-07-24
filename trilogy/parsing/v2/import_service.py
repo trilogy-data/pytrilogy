@@ -56,9 +56,7 @@ def _suggest_import_paths(
             # Skip hidden / dunder / venv-ish dirs so the suggestion isn't
             # polluted by `__pycache__`, `.git`, eval worker copies, etc.
             if any(
-                part.startswith(".")
-                or part.startswith("_")
-                or part in ("node_modules", "venv")
+                part.startswith((".", "_")) or part in ("node_modules", "venv")
                 for part in rel.parts
             ):
                 continue

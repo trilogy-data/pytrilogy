@@ -40,7 +40,7 @@ def resolve_concept_map(
         defaultdict(set)
     )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
-    inherited = set([t.address for t in inherited_inputs])
+    inherited = {t.address for t in inherited_inputs}
     for input in inputs:
         # ``full_concepts`` is a property that rebuilds an address set each
         # call; bind it once instead of rescanning per output concept.
@@ -424,9 +424,9 @@ class StrategyNode:
             return self
         self.output_concepts = concepts
         if self.hidden_concepts and change_visibility:
-            self.hidden_concepts = set(
+            self.hidden_concepts = {
                 x for x in self.hidden_concepts if x not in concepts
-            )
+            }
 
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
@@ -452,7 +452,7 @@ class StrategyNode:
     def unhide_output_concepts(
         self, concepts: list[BuildConcept], rebuild: bool = True
     ):
-        self.hidden_concepts = set(x for x in self.hidden_concepts if x not in concepts)
+        self.hidden_concepts = {x for x in self.hidden_concepts if x not in concepts}
         if rebuild:
             self.rebuild_cache()
         return self
@@ -605,7 +605,7 @@ class NodeJoin:
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_node, self.right_node]:
-                if all([c.derivation == Derivation.CONSTANT for c in ds.all_concepts]):
+                if all(c.derivation == Derivation.CONSTANT for c in ds.all_concepts):
                     self.concepts = []
                     return
 

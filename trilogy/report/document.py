@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Any
 
 from trilogy.core.enums import ChartType
 
@@ -69,8 +69,8 @@ class RenderedRow:
 
 
 # Segments are the raw parse output; elements are what backends render.
-Segment = Union[Prose, TrilogyBlock, RowBlock]
-RenderedElement = Union[Prose, Table, Chart, ErrorBox, RenderedRow]
+Segment = Prose | TrilogyBlock | RowBlock
+RenderedElement = Prose | Table | Chart | ErrorBox | RenderedRow
 
 _FENCE_OPEN = re.compile(r"^\s*(`{3,}|~{3,})\s*([^`]*)$")
 _ROW_OPEN = {":::row", "::: row"}

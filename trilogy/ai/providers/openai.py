@@ -8,6 +8,7 @@ from .base import (
     RETRYABLE_CODES,
     LLMProvider,
     LLMRequestOptions,
+    ProviderError,
     build_tool_call,
     to_openai_messages,
 )
@@ -112,9 +113,9 @@ class OpenAIProvider(LLMProvider):
         except httpx.HTTPStatusError as error:
             # Capture the response body text
             error_detail = error.response.text
-            raise Exception(
+            raise ProviderError(
                 f"OpenAI API error ({error.response.status_code}): {error_detail}"
             )
 
         except Exception as error:
-            raise Exception(f"OpenAI API error: {error!s}")
+            raise ProviderError(f"OpenAI API error: {error!s}")

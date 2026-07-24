@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
@@ -44,7 +43,7 @@ def build_layers(
                     sourced.add(value.address)
         built_layers.append(layer)
     complete = [
-        x for x in concepts if all([x.address in sourced for x in sources[x.address]])
+        x for x in concepts if all(x.address in sourced for x in sources[x.address])
     ]
     return built_layers, complete
 

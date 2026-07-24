@@ -37,7 +37,7 @@ def test_union_node():
     datasource = union[0]
     build_env = factory.build(env)
 
-    bcandidate, group = create_union_datasource(
+    bcandidate, _group = create_union_datasource(
         datasource=BuildUnionDatasource(children=datasource),
         all_concepts=[team_name],
         accept_partial=False,
@@ -109,7 +109,7 @@ def test_adhoc04():
         text = f.read()
 
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
 
     assert '"game_tall_is_home" = False THEN 1 ELSE NULL END' in generated, generated
@@ -139,7 +139,7 @@ def test_adhoc06():
         text = f.read()
 
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     with raises(NotImplementedError):
         engine.generate_sql(text)[0]
 
@@ -150,7 +150,7 @@ def test_adhoc07():
     with open(working_path / "adhoc07.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     assert env.concepts["scoring_criteria"].grain.components == {
         "player.full_name"
     }, env.concepts["scoring_criteria"].grain.components
@@ -186,7 +186,7 @@ def test_adhoc08():
     with open(working_path / "adhoc08.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
     # The planner used to construct a FULL JOIN between a "dimensions" branch
     # and a "counts" branch, joining on shot_display (nullable) with plain `=`,
@@ -202,7 +202,7 @@ def test_adhoc9():
     with open(working_path / "adhoc09.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
     pattern = r'"wakeful"."_virt_agg_sum_1889332829440409" as "_virt_agg_sum_1889332829440409"'
 
@@ -215,7 +215,7 @@ def test_adhoc10():
     with open(working_path / "adhoc10.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     engine.generate_sql(text)[0]
 
 
@@ -225,7 +225,7 @@ def test_adhoc11():
     with open(working_path / "adhoc11.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    env, queries = env.parse(text)
+    env, _queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
 
     assert "UNION ALL" in generated, generated

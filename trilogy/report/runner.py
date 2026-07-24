@@ -52,7 +52,7 @@ def _to_element(
                 "Chart rendering requires altair; install pytrilogy[report]."
             )
         return Chart(result.chart, chart_type=_chart_type(result))
-    columns = [str(key) for key in result.keys()]
+    columns = [str(key) for key in result]
     rows = [list(row) for row in result.fetchall()]
     return Table(
         columns=columns,

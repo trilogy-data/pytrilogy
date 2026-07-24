@@ -96,7 +96,7 @@ def _best_enum_union(
         by_value[val].append(ds)
 
     # All enum values must have at least one candidate source
-    if set(str(v) for v in by_value) < set(enum_type.values):
+    if {str(v) for v in by_value} < set(enum_type.values):
         return None
 
     values = list(by_value.keys())

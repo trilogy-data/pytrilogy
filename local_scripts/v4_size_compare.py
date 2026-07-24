@@ -60,12 +60,12 @@ def main() -> None:
     for label, pf, ceil in QUERIES:
         try:
             v3_len, v3_ctes, _ = gen(label, pf, v4=False)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             v3_len, v3_ctes = -1, -1
             print(f"{label}: v3 ERROR {type(e).__name__}: {e}")
         try:
             v4_len, v4_ctes, v4_sql = gen(label, pf, v4=True)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             v4_len, v4_ctes = -1, -1
             print(f"{label}: v4 ERROR {type(e).__name__}: {e}")
             continue

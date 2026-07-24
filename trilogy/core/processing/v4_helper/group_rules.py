@@ -335,16 +335,16 @@ def partition_roots(
             n = len(main_items)
             parent = list(range(n))
 
-            def find(x: int) -> int:
-                while parent[x] != x:
-                    parent[x] = parent[parent[x]]
-                    x = parent[x]
+            def find(x: int, _parent=parent) -> int:
+                while _parent[x] != x:
+                    _parent[x] = _parent[_parent[x]]
+                    x = _parent[x]
                 return x
 
-            def union(a: int, b: int) -> None:
-                ra, rb = find(a), find(b)
+            def union(a: int, b: int, _parent=parent) -> None:
+                ra, rb = find(a, _parent), find(b, _parent)
                 if ra != rb:
-                    parent[rb] = ra
+                    _parent[rb] = ra
 
             for i in range(n):
                 for j in range(i + 1, n):

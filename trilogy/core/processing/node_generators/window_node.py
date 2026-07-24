@@ -1,4 +1,3 @@
-
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
@@ -34,7 +33,9 @@ def resolve_window_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment, depth: int
 ) -> list[BuildConcept]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
-        raise ValueError
+        raise TypeError(
+            f"Expected window lineage for {concept.address}, got {type(concept.lineage)}"
+        )
     base = list(concept.lineage.concept_arguments)
     # An aggregate argument (e.g. `order by sum(x) by a, b`) lives at its own
     # group grain. A window preserves that grain row-for-row, so we must carry
@@ -205,10 +206,8 @@ def gen_window_node(
         return None
     parent_resolution = parent_node.resolve()
     if not all(
-        [
-            x.address in [y.address for y in parent_node.output_concepts]
-            for x in parent_concepts
-        ]
+        x.address in [y.address for y in parent_node.output_concepts]
+        for x in parent_concepts
     ):
         missing = [
             x

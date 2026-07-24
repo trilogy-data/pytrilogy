@@ -14,6 +14,10 @@ from trilogy.ai.models import (
 RETRYABLE_CODES = [429, 500, 502, 503, 504]
 
 
+class ProviderError(Exception):
+    """Raised when an LLM provider call fails or returns an unusable response."""
+
+
 class LLMProvider(ABC):
     def __init__(self, name: str, api_key: str, model: str, provider: Provider):
         self.api_key = api_key
@@ -45,7 +49,11 @@ def parse_tool_arguments(arguments: str | dict[str, Any] | None) -> dict[str, An
     # tool call was getting bounced back as a parse error and wasting a turn.
     parsed = json.loads(arguments, strict=False)
     if not isinstance(parsed, dict):
-        raise ValueError(f"Tool arguments must decode to an object, got {type(parsed)}")
+        # ValueError is an asserted public contract (see
+        # test_parse_tool_arguments_variants); keep it, not TypeError.
+        raise ValueError(  # noqa: TRY004
+            f"Tool arguments must decode to an object, got {type(parsed)}"
+        )
     return parsed
 
 

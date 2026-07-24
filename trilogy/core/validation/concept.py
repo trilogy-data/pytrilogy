@@ -38,9 +38,9 @@ def validate_multi_datasource_concept(
 
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
-            assignment = [
+            assignment = next(
                 x for x in datasource.columns if x.concept.address == concept.address
-            ][0]
+            )
             if not assignment.is_complete:
                 continue
             type_query = easy_query(
@@ -72,9 +72,9 @@ def validate_multi_datasource_concept(
     max_seen: int = max([v for v in seen.values() if v is not None], default=0)
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
-            assignment = [
+            assignment = next(
                 x for x in datasource.columns if x.concept.address == concept.address
-            ][0]
+            )
             err = None
             datasource_count: int = seen.get(datasource.name, 0)
             if datasource_count < max_seen and assignment.is_complete:
@@ -112,7 +112,7 @@ def validate_datasources(
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             return []
-    if not concept.derivation == Derivation.ROOT:
+    if concept.derivation != Derivation.ROOT:
         return []
     if concept.name.startswith("__") or (
         concept.namespace and concept.namespace.startswith("__")

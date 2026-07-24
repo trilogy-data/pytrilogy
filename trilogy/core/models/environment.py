@@ -242,10 +242,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             return True
         if key in self.data and key not in self.hidden:
             return True
-        if isinstance(key, str):
-            if DEFAULT_NAMESPACE + "." + key in self.data:
-                return True
-        return False
+        return bool(isinstance(key, str) and DEFAULT_NAMESPACE + "." + key in self.data)
 
     def __iter__(self):
         return (k for k in self.data if k not in self.hidden)
@@ -886,7 +883,7 @@ class Environment:
         existing = self.imports[alias]
         if imp_stm:
             if any(
-                [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
+                x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing
             ):
                 exists = True
             if concepts is None:
@@ -898,9 +895,7 @@ class Environment:
             # ``namespace_source`` already prefers) rather than masquerading as
             # the import path — keeps the value re-parseable and host-portable.
             working_path = Path(source.working_path)
-            if any(
-                [x.input_path == working_path and x.alias == alias for x in existing]
-            ):
+            if any(x.input_path == working_path and x.alias == alias for x in existing):
                 exists = True
             imp_stm = Import(alias=alias, path=Path(alias), input_path=working_path)
         same_namespace = alias == DEFAULT_NAMESPACE
@@ -1207,9 +1202,9 @@ class LazyEnvironment(Environment):
             env, _ = parse(f.read(), env)
         if self.setup_path.exists():
             with safe_open(self.setup_path) as f2:
-                env, q = parse(f2.read(), env)
-                for q in q:
-                    self.setup_queries.append(q)
+                env, queries = parse(f2.read(), env)
+                for query in queries:
+                    self.setup_queries.append(query)
         self.loaded = True
         self.datasources = env.datasources
         self.concepts = env.concepts

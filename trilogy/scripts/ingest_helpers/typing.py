@@ -192,8 +192,8 @@ def detect_rich_type(
     column_lower = column_name.lower()
 
     matches = []
-    for _, types in RICH_TYPE_PATTERNS.items():
-        for _, config in types.items():
+    for types in RICH_TYPE_PATTERNS.values():
+        for config in types.values():
             allowed = config["base_type"]
             allowed_set = allowed if isinstance(allowed, frozenset) else {allowed}
             if base_datatype not in allowed_set:

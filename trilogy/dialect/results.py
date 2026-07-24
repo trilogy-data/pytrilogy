@@ -18,9 +18,7 @@ class MockResult(ResultProtocol):
             elif isinstance(x, MockResultRow):
                 processed.append(x)
             else:
-                raise ValueError(
-                    f"Cannot process value of type {type(x)} in MockResult"
-                )
+                raise TypeError(f"Cannot process value of type {type(x)} in MockResult")
         self.columns = columns
         self.values = processed
 

@@ -642,7 +642,7 @@ def test_decomposition_function():
 
 def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     test_environment = test_environment.materialize_for_select()
-    datasource = list(test_environment.datasources.values())[0]
+    datasource = next(iter(test_environment.datasources.values()))
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
     parent = CTE(
@@ -694,7 +694,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
 
 def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
     test_environment = test_environment.materialize_for_select()
-    datasource = list(test_environment.datasources.values())[0]
+    datasource = next(iter(test_environment.datasources.values()))
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
     parent = CTE(
@@ -760,7 +760,7 @@ def test_invalid_aggregate_pushdown(
     test_environment: Environment, test_environment_graph
 ):
     test_environment = test_environment.materialize_for_select()
-    datasource = list(test_environment.datasources.values())[0]
+    datasource = next(iter(test_environment.datasources.values()))
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
     parent = CTE(

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import ClassVar
+
 from jinja2 import Template
 
 from trilogy.core.enums import DatePart, FunctionType
@@ -72,8 +75,11 @@ MAX_IDENTIFIER_LENGTH = 50
 
 
 class PostgresDialect(BaseDialect):
-    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
-    FUNCTION_GRAIN_MATCH_MAP = {
+    FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
+        **BaseDialect.FUNCTION_MAP,
+        **FUNCTION_MAP,
+    }
+    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }

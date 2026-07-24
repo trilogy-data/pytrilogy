@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Union
 
 
 @dataclass(frozen=True)
@@ -25,7 +24,7 @@ class Break:
     flat: str = " "  # what to emit when this break is NOT activated
 
 
-DocPart = Union[str, Break]
+DocPart = str | Break
 
 
 def _flat(parts: Iterable[DocPart]) -> str:
