@@ -11,12 +11,31 @@ from trilogy.core.enums import QueryComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     NaturalSelectStatement,
+    SelectStatement,
     ValidateNaturalStatement,
 )
+from trilogy.core.statements.execute import (
+    ProcessedNaturalSelectStatement,
+    ProcessedValidateNaturalStatement,
+)
+from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.lark_backend import parse_lark
+from trilogy.parsing.v2.model import HydrationError
 from trilogy.parsing.v2.pest_backend import parse_pest
+from trilogy.parsing.v2.rules.operational_rules import (
+    natural_select_statement,
+    validate_query_config,
+    validate_query_option,
+    validate_statement,
+)
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 _MODEL = """key order_id int;
 property order_id.amount float;
@@ -81,6 +100,12 @@ def test_hydration_full_config():
     assert statement.timeout == 60
 
 
+def test_comparison_enum_accepts_mixed_case():
+    assert QueryComparison("ORDERED") is QueryComparison.ORDERED
+    with pytest.raises(ValueError):
+        QueryComparison("fuzzy")
+
+
 def test_standalone_natural_select_hydrates():
     env = Environment()
     _, parsed = parse_text(_MODEL + "select natural 'how many?';", env)
@@ -97,8 +122,12 @@ def test_standalone_natural_select_hydrates():
         ("target = 'high'", "must be a number"),
         ("repetitions = 0", "must be >= 1"),
         ("comparison = fuzzy", "Unknown comparison"),
+        ("comparison = 5", "must be one of"),
         ("tags = 'smoke'", "must be a list of strings"),
+        ("tags = [1, 2]", "must be a list of strings"),
         ("repetitions = 2, repetitions = 3", "Duplicate validation option"),
+        ("repetitions = 1.5", "must be an integer"),
+        ("timeout = 0", "must be >= 1"),
     ],
 )
 def test_config_errors(config, message):
@@ -144,12 +173,191 @@ def test_show_paths_execute_without_llm():
         assert results[-1].fetchall(), statement
 
 
+def _node(kind, children=()):
+    return SyntaxNode(name=kind.value, children=list(children), kind=kind)
+
+
+def _token(kind, value):
+    return SyntaxToken(name=kind.value, value=value, kind=kind)
+
+
+def _natural_node():
+    return _node(SyntaxNodeKind.NATURAL_SELECT_STATEMENT)
+
+
+@pytest.mark.parametrize(
+    "node, hydrate, rule, message",
+    [
+        (
+            _node(SyntaxNodeKind.NATURAL_SELECT_STATEMENT),
+            lambda n: n,
+            natural_select_statement,
+            "missing its question string",
+        ),
+        (
+            _node(SyntaxNodeKind.VALIDATE_QUERY_OPTION),
+            lambda n: n,
+            validate_query_option,
+            "missing name",
+        ),
+        (
+            _node(
+                SyntaxNodeKind.VALIDATE_QUERY_OPTION,
+                [_token(SyntaxTokenKind.IDENTIFIER, "target")],
+            ),
+            lambda n: n,
+            validate_query_option,
+            "missing value",
+        ),
+        (
+            _node(
+                SyntaxNodeKind.VALIDATE_QUERY_CONFIG,
+                [_node(SyntaxNodeKind.VALIDATE_QUERY_OPTION)],
+            ),
+            lambda n: "not-a-tuple",
+            validate_query_config,
+            "failed to hydrate",
+        ),
+        (
+            _node(SyntaxNodeKind.VALIDATE_STATEMENT, [_natural_node()]),
+            lambda n: "not-a-natural-select",
+            validate_statement,
+            "Natural select failed to hydrate",
+        ),
+        (
+            _node(SyntaxNodeKind.VALIDATE_STATEMENT, [_natural_node()]),
+            lambda n: NaturalSelectStatement(question="q"),
+            validate_statement,
+            "missing its expected select",
+        ),
+        (
+            _node(
+                SyntaxNodeKind.VALIDATE_STATEMENT,
+                [_natural_node(), _node(SyntaxNodeKind.SELECT_STATEMENT)],
+            ),
+            lambda n: (
+                NaturalSelectStatement(question="q")
+                if n.kind is SyntaxNodeKind.NATURAL_SELECT_STATEMENT
+                else "not-a-select"
+            ),
+            validate_statement,
+            "Expected select failed to hydrate",
+        ),
+    ],
+)
+def test_malformed_syntax_tree_fails_loudly(node, hydrate, rule, message):
+    """Hydration guards for trees the grammar cannot currently produce: they
+    must raise a located error, never silently build a half-formed statement."""
+    with pytest.raises(HydrationError, match=message):
+        rule(node, None, hydrate)
+
+
+def test_malformed_config_node_fails_loudly():
+    node = _node(
+        SyntaxNodeKind.VALIDATE_STATEMENT,
+        [
+            _natural_node(),
+            _node(SyntaxNodeKind.SELECT_STATEMENT),
+            _node(SyntaxNodeKind.VALIDATE_QUERY_CONFIG),
+        ],
+    )
+
+    def hydrate(child):
+        if child.kind is SyntaxNodeKind.NATURAL_SELECT_STATEMENT:
+            return NaturalSelectStatement(question="q")
+        if child.kind is SyntaxNodeKind.SELECT_STATEMENT:
+            return SelectStatement(selection=[])
+        return "not-a-dict"
+
+    with pytest.raises(HydrationError, match="Validation config failed to hydrate"):
+        validate_statement(node, None, hydrate)
+
+
+def test_processed_statements_compile_to_inert_sql():
+    """Neither statement has a static SQL form; both compile to a self-describing
+    `select 1` so `trilogy render`-style surfaces stay runnable."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parsed = executor.parse_text(
+        _MODEL + "select natural 'how many orders?';\n"
+        "validate b select natural 'q' matches ( select max(amount) -> m );"
+    )
+    compiled = {
+        type(s).__name__: executor.generator.compile_statement(s)
+        for s in parsed
+        if isinstance(
+            s, (ProcessedNaturalSelectStatement, ProcessedValidateNaturalStatement)
+        )
+    }
+    assert (
+        "natural selects are answered by an agent"
+        in compiled["ProcessedNaturalSelectStatement"]
+    )
+    assert "--include-type agent" in compiled["ProcessedValidateNaturalStatement"]
+    assert all("select 1" in sql for sql in compiled.values())
+
+
+def test_expected_select_reaches_hooks():
+    seen = []
+
+    class _Hook(BaseHook):
+        def process_select_info(self, select):
+            seen.append(select)
+
+    executor = Dialects.DUCK_DB.default_executor(hooks=[_Hook()])
+    executor.parse_text(
+        _MODEL + "validate b select natural 'q' matches ( select max(amount) -> m );"
+    )
+    assert seen
+
+
+def test_author_statements_execute_via_dispatch(monkeypatch):
+    """`execute_query` on the un-processed author statements routes through
+    generation to the processed handlers."""
+    asked = []
+    monkeypatch.setattr(
+        "trilogy.scripts.validate_agent.execute_natural_select",
+        lambda exec_, question: asked.append(question),
+    )
+    env = Environment()
+    _, parsed = parse_text(
+        _MODEL + "validate b select natural 'q' matches ( select max(amount) -> m );\n"
+        "select natural 'q2';",
+        env,
+    )
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    validate_natural = next(
+        s for s in parsed if isinstance(s, ValidateNaturalStatement)
+    )
+    natural = next(s for s in parsed if isinstance(s, NaturalSelectStatement))
+    assert "skipped" in executor.execute_query(validate_natural).fetchall()[0]["status"]
+    executor.execute_query(natural)
+    assert asked == ["q2"]
+
+
+def test_processed_natural_select_calls_the_agent(monkeypatch):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(_MODEL)
+    asked = []
+
+    def fake(exec_, question):
+        asked.append(question)
+        return exec_.execute_raw_sql("select 1 as answer")
+
+    monkeypatch.setattr("trilogy.scripts.validate_agent.execute_natural_select", fake)
+    result = executor.execute_query(
+        ProcessedNaturalSelectStatement(question="how many orders?")
+    )
+    assert asked == ["how many orders?"]
+    assert result.fetchall()
+
+
 def test_render_round_trip():
     env = Environment()
     src = (
         _MODEL + "validate biggest select natural 'largest order?' matches (\n"
         "select max(amount) -> m\n"
-        ") with (repetitions = 2, target = 0.5, tags = ['smoke']);\n"
+        ") with (repetitions = 2, target = 0.5, comparison = ordered, "
+        "tags = ['smoke'], timeout = 30);\n"
         "select natural 'count?';\n"
     )
     _, parsed = parse_text(src, env)
@@ -164,5 +372,17 @@ def test_render_round_trip():
     assert validates[0].name == "biggest"
     assert validates[0].repetitions == 2
     assert validates[0].target == 0.5
+    assert validates[0].comparison is QueryComparison.ORDERED
     assert validates[0].tags == ["smoke"]
+    assert validates[0].timeout == 30
     assert naturals[0].question == "count?"
+
+
+def test_render_omits_default_options():
+    env = Environment()
+    _, parsed = parse_text(
+        _MODEL + "validate select natural 'q' matches ( select amount );", env
+    )
+    rendered = Renderer().to_string(parsed[-1])
+    assert " with (" not in rendered
+    assert rendered.startswith("validate select natural 'q'")

@@ -1019,7 +1019,9 @@ class Environment:
             try:
                 with safe_open(target) as f:
                     text = f.read()
-                nenv = Environment(working_path=target.parent)
+                nenv = Environment(
+                    working_path=target.parent, import_paths=list(self.import_paths)
+                )
                 nenv.concepts.fail_on_missing = False
                 nenv, _ = parse_text(text, environment=nenv, root=target.parent)
             except Exception as e:

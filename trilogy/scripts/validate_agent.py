@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass, field
 from hashlib import blake2s
 from pathlib import Path
+from typing import Literal
 
 from trilogy.core.enums import QueryComparison
 from trilogy.core.validation.rows import rows_equal
@@ -59,10 +60,14 @@ _SEED_GLOBS = ("**/*.preql", "**/schema.md")
 _ENGINE_PATH_RE = re.compile(r"""^(\s*path\s*=\s*)(["'])(.+?)\2""", re.MULTILINE)
 
 
+RepetitionStatus = Literal[
+    "pass", "fail", "error", "missing", "timeout", "exhausted", "crashed"
+]
+
+
 @dataclass
 class RepetitionResult:
-    # pass | fail | error | missing | timeout | exhausted | crashed
-    status: str
+    status: RepetitionStatus
     detail: str = ""
     duration: float = 0.0
     tokens: int = 0
@@ -98,12 +103,6 @@ class QuestionResult:
     @property
     def total_tokens(self) -> int:
         return sum(r.tokens for r in self.repetitions)
-
-    @property
-    def avg_tokens(self) -> float:
-        if not self.repetitions:
-            return 0.0
-        return self.total_tokens / len(self.repetitions)
 
 
 def check_agent_ready(model_dir: Path) -> None:

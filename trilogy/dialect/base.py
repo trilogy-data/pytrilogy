@@ -3143,8 +3143,6 @@ class BaseDialect:
         elif isinstance(query, ProcessedValidateStatement):
             return "--Trilogy validate statements do not have a generic SQL representation;\nselect 1;"
         elif isinstance(query, ProcessedValidateNaturalStatement):
-            # The compiled expected select, as a comment-prefixed reference: the
-            # statement itself only executes via the agent validation loop.
             return (
                 "--Trilogy natural-query validation executes via trilogy "
                 "unit/integration --include-type agent;\nselect 1;"

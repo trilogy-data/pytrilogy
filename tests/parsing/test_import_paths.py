@@ -26,6 +26,15 @@ def roots(tmp_path):
     return work, model
 
 
+@pytest.fixture
+def model_subdir(roots):
+    _, model = roots
+    nested = model / "nested"
+    nested.mkdir()
+    (nested / "deep.preql").write_text("key deep_key int;\n", encoding="utf-8")
+    return nested
+
+
 def test_fallback_resolution(roots):
     work, model = roots
     env = Environment(working_path=work, import_paths=[model])
@@ -74,17 +83,52 @@ def test_nested_imports_inherit_roots(roots, tmp_path):
     assert "e.c.shared_key" in env.concepts
 
 
+@pytest.mark.parametrize("target", ["orders", "orders.preql"])
+def test_add_file_import_uses_fallback_roots(roots, target):
+    work, model = roots
+    env = Environment(working_path=work, import_paths=[model])
+    env.add_file_import(target, "o")
+    assert "o.amount" in env.concepts
+
+
+def test_add_file_import_dotted_path_uses_fallback_roots(roots, model_subdir):
+    work, model = roots
+    env = Environment(working_path=work, import_paths=[model])
+    env.add_file_import("nested.deep", "d")
+    assert "d.deep_key" in env.concepts
+
+
+def test_add_file_import_prefers_working_path(roots):
+    work, model = roots
+    (work / "orders.preql").write_text("key local_only int;\n", encoding="utf-8")
+    env = Environment(working_path=work, import_paths=[model])
+    env.add_file_import("orders", "o")
+    assert "o.local_only" in env.concepts
+
+
+def test_add_file_import_propagates_roots_to_nested_imports(roots, tmp_path):
+    work, model = roots
+    shared = tmp_path / "shared2"
+    shared.mkdir()
+    (shared / "common.preql").write_text("key shared_key int;\n", encoding="utf-8")
+    (model / "entry.preql").write_text("import common as c;\n", encoding="utf-8")
+    env = Environment(working_path=work, import_paths=[model, shared])
+    env.add_file_import("entry", "e")
+    assert "e.c.shared_key" in env.concepts
+
+
 def test_duplicate_carries_import_paths(roots):
     work, model = roots
     env = Environment(working_path=work, import_paths=[model])
     assert env.duplicate().import_paths == [model]
 
 
-def test_toml_import_paths_load_and_audit(roots):
+@pytest.mark.parametrize("entry", ['["../model"]', '"../model"'])
+def test_toml_import_paths_load_and_audit(roots, entry):
     work, model = roots
     toml = work / "trilogy.toml"
     toml.write_text(
-        'import_paths = ["../model"]\n\n[engine]\ndialect = "duck_db"\n',
+        f'import_paths = {entry}\n\n[engine]\ndialect = "duck_db"\n',
         encoding="utf-8",
     )
     config = load_config_file(toml)

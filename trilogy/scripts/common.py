@@ -12,6 +12,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.constants import DEFAULT_NAMESPACE, logger
+from trilogy.core.enums import ValidationScope
 from trilogy.core.exceptions import ConfigurationException, ModelValidationError
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import (
@@ -561,7 +562,7 @@ def validate_environment(
     executor: Executor,
     mock: bool = False,
     quiet: bool = False,
-    scope: "Any | None" = None,
+    scope: ValidationScope = ValidationScope.ALL,
 ) -> None:
     """Validate the executor's environment (datasources + concepts) with consistent error handling.
 
@@ -569,19 +570,14 @@ def validate_environment(
         exec: The executor instance
         mock: If True, mock datasources before validation (for unit tests)
         quiet: If True, suppress informational messages (for parallel execution)
-        scope: Optional ValidationScope restricting what is validated
-            (defaults to ALL; used by the unit/integration test-type flags)
+        scope: What to validate; narrowed by the unit/integration test-type flags
 
     Raises:
         Exit: If validation fails
     """
-    from trilogy.core.enums import ValidationScope
     from trilogy.core.validation.environment import (
         validate_environment as core_validate_environment,
     )
-
-    if scope is None:
-        scope = ValidationScope.ALL
     from trilogy.scripts.display import (
         ValidationFailure,
         ValidationProgressContext,

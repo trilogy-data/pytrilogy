@@ -316,6 +316,56 @@ def test_integration_unchanged_without_refresh_flag(tmp_path, monkeypatch):
     assert run_parallel_execution.call_count == 1
 
 
+def _invoke_with_mocked_execution(monkeypatch, tmp_path, command, *flags):
+    test_file = tmp_path / "model.preql"
+    test_file.write_text("select 1;")
+    run_parallel_execution = Mock(side_effect=[_make_summary([])])
+    monkeypatch.setattr(testing, "run_parallel_execution", run_parallel_execution)
+    args = [command, str(test_file)]
+    if command == "integration":
+        args.append("duckdb")
+    result = CliRunner().invoke(cli, [*args, *flags])
+    return result, run_parallel_execution
+
+
+def test_unit_defaults_to_datasource_and_concept_types(tmp_path, monkeypatch):
+    result, run = _invoke_with_mocked_execution(monkeypatch, tmp_path, "unit")
+
+    assert result.exit_code == 0
+    execution_fn = run.call_args.kwargs["execution_fn"]
+    assert execution_fn.func is testing.execute_script_for_unit
+    assert execution_fn.keywords["test_types"] == testing.DEFAULT_TEST_TYPES
+    assert execution_fn.keywords["agent_report"] is True
+
+
+def test_test_type_flags_reach_the_execution_fn(tmp_path, monkeypatch):
+    result, run = _invoke_with_mocked_execution(
+        monkeypatch,
+        tmp_path,
+        "integration",
+        "--include-type",
+        "agent",
+        "--skip-type",
+        "concepts",
+        "--no-report",
+    )
+
+    assert result.exit_code == 0
+    execution_fn = run.call_args.kwargs["execution_fn"]
+    assert execution_fn.func is testing.execute_script_for_integration
+    assert execution_fn.keywords["test_types"] == frozenset({"datasources", "agent"})
+    assert execution_fn.keywords["agent_report"] is False
+
+
+def test_unknown_test_type_is_rejected(tmp_path, monkeypatch):
+    result, run = _invoke_with_mocked_execution(
+        monkeypatch, tmp_path, "unit", "--include-type", "bogus"
+    )
+
+    assert result.exit_code != 0
+    assert run.call_count == 0
+
+
 def test_refresh_derived_skips_refresh_when_initial_integration_passes(
     tmp_path, monkeypatch
 ):

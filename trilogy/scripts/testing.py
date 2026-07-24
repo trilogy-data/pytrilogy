@@ -102,7 +102,6 @@ def _run_agent_questions(
     # Expected SQL, one per question in source order. Unit tier recompiles it
     # against the repointed mock image (so both sides read mock tables); the
     # integration tier uses the precompiled query against the real backend.
-    expected_sqls = [exec.generator.compile_statement(q.expected) for q in questions]
     if mock_source_env is not None:
         run_dir.mkdir(parents=True, exist_ok=True)
         image_dir = run_dir / "mock_model"
@@ -116,6 +115,10 @@ def _run_agent_questions(
         expected_sqls = va.compile_expected_against_image(
             image_dir, node.path.read_text(encoding="utf-8")
         )
+    else:
+        expected_sqls = [
+            exec.generator.compile_statement(q.expected) for q in questions
+        ]
     results: list[va.QuestionResult] = []
     for index, question in enumerate(questions):
         name = question.name or f"{node.path.stem}_{index + 1}"
@@ -169,57 +172,30 @@ def _warn_unknown_config_fields(
         print_warning(warning)
 
 
-def execute_script_for_integration(
+def _execute_script_for_test(
     exec: Executor,
     node: ScriptNode,
-    quiet: bool = False,
-    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
-    agent_report: bool = True,
+    *,
+    mock: bool,
+    quiet: bool,
+    test_types: frozenset[str],
+    agent_report: bool,
 ) -> ExecutionStats:
-    """Execute a script for the 'integration' command (parse + validate)."""
+    """Shared unit/integration body: parse, validate the environment for the
+    selected scope, then run any embedded agent questions. ``mock`` selects the
+    unit tier (mocked datasources + a mock DB for the agent workspace)."""
     with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
     questions = [q for q in queries if isinstance(q, ProcessedValidateNaturalStatement)]
-    scope = _environment_scope(test_types)
-    if scope is not None:
-        validate_environment(exec, mock=False, quiet=quiet, scope=scope)
-        stats.validate_count = len(exec.environment.datasources)
-    if "agent" in test_types and questions:
-        _run_agent_questions(
-            exec,
-            node,
-            questions,
-            stats,
-            mock_source_env=None,
-            quiet=quiet,
-            write_report=agent_report,
-        )
-    else:
-        stats.agent_skipped = len(questions)
-    return stats
-
-
-def execute_script_for_unit(
-    exec: Executor,
-    node: ScriptNode,
-    quiet: bool = False,
-    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
-    agent_report: bool = True,
-) -> ExecutionStats:
-    """Execute a script for the 'unit' command (parse + mock validate)."""
-    with safe_open(node.path) as f:
-        queries = exec.parse_text(f.read())
-    stats = count_statement_stats(queries)
-    questions = [q for q in queries if isinstance(q, ProcessedValidateNaturalStatement)]
+    agent_enabled = "agent" in test_types and bool(questions)
     # Snapshot the env before validate_environment: its mock phase rewrites
     # datasource addresses in the live env, and the agent tier's mock DB needs
     # tables under the ORIGINAL addresses the workspace model files reference.
-    agent_enabled = "agent" in test_types and bool(questions)
-    pristine_env = exec.environment.duplicate() if agent_enabled else None
+    pristine_env = exec.environment.duplicate() if mock and agent_enabled else None
     scope = _environment_scope(test_types)
     if scope is not None:
-        validate_environment(exec, mock=True, quiet=quiet, scope=scope)
+        validate_environment(exec, mock=mock, quiet=quiet, scope=scope)
         stats.validate_count = len(exec.environment.datasources)
     if agent_enabled:
         _run_agent_questions(
@@ -234,6 +210,42 @@ def execute_script_for_unit(
     else:
         stats.agent_skipped = len(questions)
     return stats
+
+
+def execute_script_for_integration(
+    exec: Executor,
+    node: ScriptNode,
+    quiet: bool = False,
+    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
+    agent_report: bool = True,
+) -> ExecutionStats:
+    """Execute a script for the 'integration' command (parse + validate)."""
+    return _execute_script_for_test(
+        exec,
+        node,
+        mock=False,
+        quiet=quiet,
+        test_types=test_types,
+        agent_report=agent_report,
+    )
+
+
+def execute_script_for_unit(
+    exec: Executor,
+    node: ScriptNode,
+    quiet: bool = False,
+    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
+    agent_report: bool = True,
+) -> ExecutionStats:
+    """Execute a script for the 'unit' command (parse + mock validate)."""
+    return _execute_script_for_test(
+        exec,
+        node,
+        mock=True,
+        quiet=quiet,
+        test_types=test_types,
+        agent_report=agent_report,
+    )
 
 
 def _is_dependency_skipped_result(result: ExecutionResult) -> bool:

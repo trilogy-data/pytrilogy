@@ -64,6 +64,28 @@ def _numeric_rows_close(left: tuple[float, ...], right: tuple[float, ...]) -> bo
     )
 
 
+def _assign(
+    candidate: list[tuple[float, ...]],
+    reference: list[tuple[float, ...]],
+    matched: dict[int, int],
+    reference_idx: int,
+    seen: set[int],
+) -> bool:
+    """Augmenting-path step: claim a candidate row for ``reference_idx``,
+    displacing an earlier claim only if that one can be rehomed."""
+    for candidate_idx, candidate_row in enumerate(candidate):
+        if candidate_idx in seen or not _numeric_rows_close(
+            candidate_row, reference[reference_idx]
+        ):
+            continue
+        seen.add(candidate_idx)
+        previous = matched.get(candidate_idx)
+        if previous is None or _assign(candidate, reference, matched, previous, seen):
+            matched[candidate_idx] = reference_idx
+            return True
+    return False
+
+
 def _bucket_matches(
     candidate: list[tuple[float, ...]],
     reference: list[tuple[float, ...]],
@@ -71,22 +93,11 @@ def _bucket_matches(
     """Maximum-match one exact-value bucket under tolerant numeric equality."""
     if len(candidate) != len(reference):
         return False
-    matched_candidate: dict[int, int] = {}
-
-    def assign(reference_idx: int, seen: set[int]) -> bool:
-        for candidate_idx, candidate_row in enumerate(candidate):
-            if candidate_idx in seen or not _numeric_rows_close(
-                candidate_row, reference[reference_idx]
-            ):
-                continue
-            seen.add(candidate_idx)
-            previous = matched_candidate.get(candidate_idx)
-            if previous is None or assign(previous, seen):
-                matched_candidate[candidate_idx] = reference_idx
-                return True
-        return False
-
-    return all(assign(idx, set()) for idx in range(len(reference)))
+    matched: dict[int, int] = {}
+    return all(
+        _assign(candidate, reference, matched, idx, set())
+        for idx in range(len(reference))
+    )
 
 
 def rows_equal_tolerant(candidate: list, reference: list) -> bool:

@@ -50,6 +50,35 @@ def test_bool_never_merges_with_numeric():
 def test_non_finite_compares_exactly():
     assert _results_equal([[float("inf")]], [[float("inf")]])
     assert not _results_equal([[float("inf")]], [[1.0]])
+    assert _results_equal([[Decimal("NaN")]], [[Decimal("NaN")]])
+    assert not _results_equal([[Decimal("Infinity")]], [[1.0]])
+
+
+def test_differing_numeric_cell_counts_never_match():
+    # same exact cells, different numeric arity -> not a match in any mode
+    assert not _results_equal([["a", 1.5]], [["a", 1.5, 2.5]])
+    assert not rows_equal_ordered([("a", 1.5)], [("a", 1.5, 2.5)])
+
+
+def test_same_keys_different_bucket_sizes_never_match():
+    # equal row counts and identical bucket keys, but the per-key cardinality
+    # differs — the multiset still has to match
+    assert not _results_equal(
+        [["a", 1.0], ["a", 2.0], ["b", 3.0]],
+        [["a", 1.0], ["b", 2.0], ["b", 3.0]],
+    )
+
+
+def test_bucket_matching_rehomes_an_earlier_claim():
+    # reference[0] and reference[1] both match candidate 0 first; completing the
+    # match requires displacing that claim onto candidate 1
+    assert _results_equal([["a", 1.0], ["a", 2.0]], [["a", 1.0], ["a", 2.0]])
+
+
+def test_bucket_requires_a_full_matching():
+    # both rows bucket under "a"; the candidate's two 1.5s cannot cover a
+    # reference needing a 1.5 and a 9.5, so no complete assignment exists
+    assert not _results_equal([["a", 1.5], ["a", 1.5]], [["a", 1.5], ["a", 9.5]])
 
 
 def test_tolerant_comparison_has_no_rounding_bucket_boundary():
@@ -77,6 +106,8 @@ def test_tolerant_comparison_rejects_row_count_mismatch():
 def test_ordered_mode_enforces_row_order():
     assert rows_equal_ordered([(1, "a"), (2, "b")], [(1, "a"), (2, "b")])
     assert not rows_equal_ordered([(2, "b"), (1, "a")], [(1, "a"), (2, "b")])
+    assert not rows_equal_ordered([(1, "a")], [(1, "a"), (2, "b")])
+    assert not rows_equal_ordered([(1, "a")], [(2, "a")])
 
 
 def test_ordered_mode_keeps_numeric_tolerance():

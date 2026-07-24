@@ -829,6 +829,7 @@ STATEMENT_TYPES = (
     | ValidateStatement
     | ValidateNaturalStatement
     | NaturalSelectStatement
+    | MockStatement
     | PublishStatement
     | CreateStatement
     | ShowStatement
