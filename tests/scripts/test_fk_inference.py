@@ -1,5 +1,7 @@
 import tempfile
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import Mock
 
 from click.testing import CliRunner
 
@@ -223,6 +225,21 @@ class TestValueOverlap:
         target = _info("dim", ["id"], ["id"])
         candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
         assert measure_overlap(exec, src, candidate, target) is None
+
+    def test_decimal_result_is_normalized_to_float(self):
+        exec = Mock()
+        exec.generator.safe_quote.side_effect = lambda value: f"`{value}`"
+        exec.execute_raw_sql.return_value.fetchall.return_value = [
+            (Decimal("4"), Decimal("1"))
+        ]
+        src = _info("fact", ["dim_id"], [])
+        target = _info("dim", ["id"], ["id"])
+        candidate = FKCandidate("fact", "dim_id", "dim", "id", "exact")
+
+        overlap = measure_overlap(exec, src, candidate, target)
+
+        assert overlap == 0.75
+        assert isinstance(overlap, float)
 
 
 class TestInferForeignKeys:

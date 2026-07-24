@@ -308,7 +308,7 @@ def measure_overlap(
         return None
     total = rows[0][0]
     unmatched = rows[0][1] or 0
-    return (total - unmatched) / total
+    return float((total - unmatched) / total)
 
 
 def _reverse_coverage(
