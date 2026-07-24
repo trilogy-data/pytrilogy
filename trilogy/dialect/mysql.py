@@ -45,6 +45,14 @@ def concat_ignore_nulls(args: list[str]) -> str:
     return f"CONCAT({values})"
 
 
+def render_cast(args: list[str]) -> str:
+    # TEXT is a valid column type but not a valid MySQL CAST target. Trilogy's
+    # string datatype renders as TEXT for DDL, so translate it at the function
+    # boundary where MySQL requires CHAR instead.
+    target = "CHAR" if args[1].upper() == "TEXT" else args[1]
+    return f"CAST({args[0]} AS {target})"
+
+
 FUNCTION_MAP = {
     FunctionType.IS_NOT_DISTINCT: lambda x, types: f"({x[0]} <=> {x[1]})",
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
@@ -55,6 +63,7 @@ FUNCTION_MAP = {
     FunctionType.CONTAINS: lambda x, types: f"(LOCATE({x[1]}, {x[0]}) > 0)",
     FunctionType.CONCAT: lambda x, types: concat_ignore_nulls(x),
     FunctionType.CONCAT_STRICT: lambda x, types: f"CONCAT({', '.join(x)})",
+    FunctionType.CAST: lambda x, types: render_cast(x),
     FunctionType.DATE_LITERAL: lambda x, types: f"DATE('{x}')",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"TIMESTAMP('{x}')",
     FunctionType.DATE_TRUNCATE: lambda x, types: date_truncate(x[0], x[1]),

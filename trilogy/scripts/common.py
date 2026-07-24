@@ -392,6 +392,22 @@ def get_dialect_config(
     elif edialect == Dialects.MYSQL:
         from trilogy.dialect.config import MySQLConfig
 
+        if isinstance(runtime_config.engine_config, MySQLConfig):
+            configured = {
+                key: value
+                for key in (
+                    "host",
+                    "port",
+                    "username",
+                    "password",
+                    "database",
+                    "charset",
+                )
+                if (value := getattr(runtime_config.engine_config, key, None))
+                is not None
+            }
+            configured.update(conn_dict)
+            conn_dict = configured
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "username", "password", "database"],

@@ -40,6 +40,10 @@ class LLMResponse:
     # Thought-summary text, when the provider returns reasoning (e.g. Gemini
     # parts flagged `thought: true`). Surfaced into the conversation trace.
     reasoning: str | None = None
+    # DeepSeek thinking-mode continuation state. Unlike a displayable thought
+    # summary, this exact value must be echoed as `reasoning_content` on the
+    # assistant history message in the next API request.
+    reasoning_content: str | None = None
 
 
 @dataclass

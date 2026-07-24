@@ -141,6 +141,21 @@ def test_get_dialect_config_mysql_validates_arguments():
         )
 
 
+def test_get_dialect_config_mysql_uses_file_config():
+    runtime = _runtime_config()
+    runtime.engine_config = MySQLConfig(
+        host="localhost",
+        username="user",
+        password="password",
+        database="analytics",
+    )
+
+    conf = get_dialect_config(Dialects.MYSQL, {}, runtime_config=runtime)
+
+    assert isinstance(conf, MySQLConfig)
+    assert conf.database == "analytics"
+
+
 def test_get_dialect_config_unsupported_dialect_with_args_errors():
     with raises(ConfigurationException, match="does not accept connection parameters"):
         get_dialect_config(

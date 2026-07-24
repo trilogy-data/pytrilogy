@@ -14,6 +14,7 @@ from trilogy.dialect import (
     BigQueryConfig,
     DialectConfig,
     DuckDBConfig,
+    MySQLConfig,
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
@@ -352,6 +353,10 @@ def load_config_file(
         elif engine == Dialects.POSTGRES:
             engine_config = (
                 PostgresConfig(**engine_config_raw) if engine_config_raw else None
+            )
+        elif engine == Dialects.MYSQL:
+            engine_config = (
+                MySQLConfig(**engine_config_raw) if engine_config_raw else None
             )
         elif engine == Dialects.PRESTO:
             engine_config = (

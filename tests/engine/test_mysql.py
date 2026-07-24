@@ -86,6 +86,9 @@ def test_mysql_function_overrides():
     assert functions[FunctionType.IS_NOT_DISTINCT](["left", "right"], []) == (
         "(left <=> right)"
     )
+    assert functions[FunctionType.CAST](["item_id", "TEXT"], []) == (
+        "CAST(item_id AS CHAR)"
+    )
 
 
 def test_mysql_string_literal_escaping():

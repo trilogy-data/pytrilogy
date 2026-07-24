@@ -10,6 +10,7 @@ from trilogy.ai.enums import Provider
 from trilogy.dialect.config import (
     BigQueryConfig,
     DuckDBConfig,
+    MySQLConfig,
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
@@ -322,6 +323,28 @@ database = "testdb"
             {
                 "host": "localhost",
                 "port": 5432,
+                "username": "user",
+                "password": "pass",
+                "database": "testdb",
+            },
+        ),
+        (
+            Dialects.MYSQL,
+            """
+[engine]
+dialect = "mysql"
+
+[engine.config]
+host = "localhost"
+port = 3306
+username = "user"
+password = "pass"
+database = "testdb"
+""",
+            MySQLConfig,
+            {
+                "host": "localhost",
+                "port": 3306,
                 "username": "user",
                 "password": "pass",
                 "database": "testdb",
