@@ -253,6 +253,9 @@ class SyntaxNodeKind(str, Enum):
     COPY_OPTION = "copy_option"
     RAWSQL_STATEMENT = "rawsql_statement"
     VALIDATE_STATEMENT = "validate_statement"
+    VALIDATE_QUERY_OPTION = "validate_query_option"
+    VALIDATE_QUERY_CONFIG = "validate_query_config"
+    NATURAL_SELECT_STATEMENT = "natural_select_statement"
     MOCK_STATEMENT = "mock_statement"
     PUBLISH_STATEMENT = "publish_statement"
     CREATE_STATEMENT = "create_statement"
@@ -607,6 +610,9 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "copy_option": SyntaxNodeKind.COPY_OPTION,
     "rawsql_statement": SyntaxNodeKind.RAWSQL_STATEMENT,
     "validate_statement": SyntaxNodeKind.VALIDATE_STATEMENT,
+    "validate_query_option": SyntaxNodeKind.VALIDATE_QUERY_OPTION,
+    "validate_query_config": SyntaxNodeKind.VALIDATE_QUERY_CONFIG,
+    "natural_select_statement": SyntaxNodeKind.NATURAL_SELECT_STATEMENT,
     "mock_statement": SyntaxNodeKind.MOCK_STATEMENT,
     "publish_statement": SyntaxNodeKind.PUBLISH_STATEMENT,
     "create_statement": SyntaxNodeKind.CREATE_STATEMENT,

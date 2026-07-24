@@ -62,6 +62,7 @@ from trilogy.core.statements.author import (
     HasUUID,
     ImportStatement,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PropertiesDeclarationStatement,
     RawSQLStatement,
@@ -70,6 +71,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowCategory,
     ShowStatement,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.parsing.common import arbitrary_to_concept, arg_to_datatype
@@ -124,6 +126,7 @@ __all__ = [
     "Metadata",
     "MultiSelectLineage",
     "MultiSelectStatement",
+    "NaturalSelectStatement",
     "NavigationWindowItem",
     "NumberingWindowItem",
     "NumericType",
@@ -145,6 +148,7 @@ __all__ = [
     "StructType",
     "SubselectComparison",
     "TraitDataType",
+    "ValidateNaturalStatement",
     "ValidateStatement",
     "ValidatedType",
     "ValueRange",

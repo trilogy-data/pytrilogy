@@ -188,6 +188,7 @@ class ImportHydrationService:
                 document = parse_syntax(text)
                 new_env = Environment(
                     working_path=dirname(request.target),
+                    import_paths=list(environment.import_paths),
                     env_file_path=request.token_lookup,
                     config=environment.config.copy_for_root(root=root),
                     parameters=environment.parameters,

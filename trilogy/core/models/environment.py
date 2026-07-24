@@ -557,6 +557,11 @@ class Environment:
     namespace_source: dict[str, Path] = field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = field(default_factory=os.getcwd)
+    # Fallback roots for import resolution: an import that does not resolve
+    # under working_path is tried against each of these in order. Set from
+    # trilogy.toml `import_paths` so a script can import a model that lives
+    # outside its own directory.
+    import_paths: list[Path] = field(default_factory=list)
     config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     version: str = field(default_factory=get_version)
     cte_name_map: dict[str, str] = field(default_factory=dict)
@@ -686,6 +691,7 @@ class Environment:
             namespace_source=dict(self.namespace_source),
             namespace=self.namespace,
             working_path=self.working_path,
+            import_paths=list(self.import_paths),
             config=copy.deepcopy(self.config),
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
@@ -999,18 +1005,23 @@ class Environment:
         if isinstance(path, str):
             if path.endswith(".preql"):
                 path = path.rsplit(".", 1)[0]
-            if "." not in path:
-                target = Path(self.working_path, path)
-            else:
-                target = Path(self.working_path, *path.split("."))
-            target = target.with_suffix(".preql")
+            parts = [path] if "." not in path else path.split(".")
+            target = Path(self.working_path, *parts).with_suffix(".preql")
+            if not target.exists():
+                for root in self.import_paths:
+                    candidate = Path(root, *parts).with_suffix(".preql")
+                    if candidate.exists():
+                        target = candidate
+                        break
         else:
             target = path
         if not env:
             try:
                 with safe_open(target) as f:
                     text = f.read()
-                nenv = Environment(working_path=target.parent)
+                nenv = Environment(
+                    working_path=target.parent, import_paths=list(self.import_paths)
+                )
                 nenv.concepts.fail_on_missing = False
                 nenv, _ = parse_text(text, environment=nenv, root=target.parent)
             except Exception as e:

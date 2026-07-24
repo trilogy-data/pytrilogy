@@ -213,6 +213,8 @@ class RuntimeConfig:
     agent: AgentConfig = field(default_factory=AgentConfig)
     # default visual theme for report rendering and chart copy output
     report_theme: str | None = None
+    # fallback roots for import resolution (see Environment.import_paths)
+    import_paths: list[Path] = field(default_factory=list)
 
 
 # Schema of known fields. `[engine.config]` is intentionally omitted (validated
@@ -229,6 +231,7 @@ _KNOWN_TOP_LEVEL: set[str] = {
     "project",
     "agent",
     "report",
+    "import_paths",
 }
 _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "engine": {"dialect", "config", "env_file", "parallelism"},
@@ -427,6 +430,13 @@ def load_config_file(
         )
     )
 
+    # Fallback roots for import resolution; relative entries resolve against
+    # the toml's directory.
+    import_paths_raw = config_data.get("import_paths", [])
+    if isinstance(import_paths_raw, str):
+        import_paths_raw = [import_paths_raw]
+    import_paths = [(path.parent / p).resolve() for p in import_paths_raw]
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -441,4 +451,5 @@ def load_config_file(
         project_name=project_name,
         agent=agent,
         report_theme=report_theme,
+        import_paths=import_paths,
     )

@@ -115,12 +115,14 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
@@ -130,12 +132,14 @@ from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedCreateStatement,
     ProcessedMockStatement,
+    ProcessedNaturalSelectStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
+    ProcessedValidateNaturalStatement,
     ProcessedValidateStatement,
 )
 from trilogy.core.table_processor import (
@@ -857,9 +861,13 @@ class BaseDialect:
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
-    TABLE_NOT_FOUND_PATTERN: str | None = None  # Dialect-specific pattern to match
-    HTTP_NOT_FOUND_PATTERN: str | None = None  # Pattern for HTTP 404 errors (e.g., GCS)
-    COLUMN_NOT_FOUND_PATTERN: str | None = None  # Pattern for column-not-found errors
+    # Case-insensitive regexes matched against driver error text. Keep them
+    # permissive - driver wording shifts between versions (duckdb reworded its
+    # 404 in 1.5), and a missed match turns a recoverable "source is missing"
+    # into a hard failure.
+    TABLE_NOT_FOUND_PATTERN: str | None = None
+    HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
+    COLUMN_NOT_FOUND_PATTERN: str | None = None
 
     def render_string_literal(self, value: str) -> str:
         # Standard SQL: backslash is a plain character; only the quote needs
@@ -2850,6 +2858,8 @@ class BaseDialect:
             | MergeStatementV2
             | CopyStatement
             | ValidateStatement
+            | ValidateNaturalStatement
+            | NaturalSelectStatement
             | CreateStatement
             | PublishStatement
             | MockStatement
@@ -2959,6 +2969,68 @@ class BaseDialect:
                             ],
                         )
                     )
+                elif isinstance(statement.content, ValidateNaturalStatement):
+                    processed_expected = process_query(
+                        environment,
+                        statement.content.expected,
+                        hooks=hooks,
+                        having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                    )
+                    output.append(
+                        ProcessedShowStatement(
+                            output_columns=[
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["label"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["expected"].address
+                                ].reference,
+                            ],
+                            output_values=[
+                                ProcessedStaticValueOutput(
+                                    values=[
+                                        {
+                                            DEFAULT_CONCEPTS["label"].address: (
+                                                statement.content.name or ""
+                                            ),
+                                            DEFAULT_CONCEPTS["query_text"].address: (
+                                                statement.content.query.question
+                                            ),
+                                            DEFAULT_CONCEPTS["expected"].address: (
+                                                self.compile_statement(
+                                                    processed_expected
+                                                )
+                                            ),
+                                        }
+                                    ]
+                                )
+                            ],
+                        )
+                    )
+                elif isinstance(statement.content, NaturalSelectStatement):
+                    output.append(
+                        ProcessedShowStatement(
+                            output_columns=[
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference,
+                            ],
+                            output_values=[
+                                ProcessedStaticValueOutput(
+                                    values=[
+                                        {
+                                            DEFAULT_CONCEPTS["query_text"].address: (
+                                                statement.content.question
+                                            )
+                                        }
+                                    ]
+                                )
+                            ],
+                        )
+                    )
                 else:
                     raise NotImplementedError(type(statement.content))
             elif isinstance(statement, RawSQLStatement):
@@ -2969,6 +3041,33 @@ class BaseDialect:
                         scope=statement.scope,
                         targets=statement.targets,
                     )
+                )
+            elif isinstance(statement, ValidateNaturalStatement):
+                # Compiling the expected select here IS the free tier: authored
+                # answers that no longer build fail at parse/generate time.
+                if hooks:
+                    for hook in hooks:
+                        hook.process_select_info(statement.expected)
+                output.append(
+                    ProcessedValidateNaturalStatement(
+                        question=statement.query.question,
+                        expected=process_query(
+                            environment,
+                            statement.expected,
+                            hooks=hooks,
+                            having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                        ),
+                        name=statement.name,
+                        repetitions=statement.repetitions,
+                        target=statement.target,
+                        comparison=statement.comparison,
+                        tags=statement.tags,
+                        timeout=statement.timeout,
+                    )
+                )
+            elif isinstance(statement, NaturalSelectStatement):
+                output.append(
+                    ProcessedNaturalSelectStatement(question=statement.question)
                 )
             elif isinstance(statement, MockStatement):
                 output.append(
@@ -3047,6 +3146,16 @@ class BaseDialect:
 
         elif isinstance(query, ProcessedValidateStatement):
             return "--Trilogy validate statements do not have a generic SQL representation;\nselect 1;"
+        elif isinstance(query, ProcessedValidateNaturalStatement):
+            return (
+                "--Trilogy natural-query validation executes via trilogy "
+                "unit/integration --include-type agent;\nselect 1;"
+            )
+        elif isinstance(query, ProcessedNaturalSelectStatement):
+            return (
+                "--Trilogy natural selects are answered by an agent at execution "
+                "time and have no static SQL representation;\nselect 1;"
+            )
         elif isinstance(query, ProcessedMockStatement):
             return "--Trilogy mock statements do not have a generic SQL representation;\nselect 1;"
         elif isinstance(query, ProcessedPublishStatement):

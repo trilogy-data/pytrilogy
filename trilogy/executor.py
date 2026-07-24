@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Generator, Mapping
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
 from functools import singledispatchmethod
@@ -35,6 +35,7 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PropertiesDeclarationStatement,
     PublishStatement,
@@ -43,6 +44,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
@@ -52,11 +54,13 @@ from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedCreateStatement,
     ProcessedMockStatement,
+    ProcessedNaturalSelectStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
+    ProcessedValidateNaturalStatement,
     ProcessedValidateStatement,
 )
 from trilogy.core.validation.common import (
@@ -102,6 +106,8 @@ GENERATABLE_STATEMENT_TYPES = (
     RawSQLStatement,
     CopyStatement,
     ValidateStatement,
+    ValidateNaturalStatement,
+    NaturalSelectStatement,
     CreateStatement,
     PublishStatement,
     MockStatement,
@@ -367,9 +373,7 @@ class Executor:
             select=select_stmt,
             persist_mode=persist_mode,
         )
-        generated = self.generator.generate_queries(
-            self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
-        )
+        generated = self._generate([statement])
         if not generated:
             return None
         processed = generated[0]
@@ -379,14 +383,24 @@ class Executor:
             return self.generator.compile_statement(processed)
         return None
 
+    def _generate(
+        self, statements: Sequence[STATEMENT_TYPES]
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
+        """Process author statements against this executor's environment/hooks.
+        Non-generatable members of the union are rejected by the generator."""
+        return self.generator.generate_queries(
+            self.environment, statements, hooks=self.hooks  # type: ignore[arg-type]
+        )
+
+    def _generate_sql(self, statements: Sequence[STATEMENT_TYPES]) -> list[str]:
+        return [self.generator.compile_statement(x) for x in self._generate(statements)]
+
     def execute_statement(
         self,
         statement: PROCESSED_STATEMENT_TYPES | STATEMENT_TYPES,
     ) -> ResultProtocol | None:
         if isinstance(statement, STATEMENT_TYPES):
-            generate = self.generator.generate_queries(
-                self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
-            )
+            generate = self._generate([statement])
             if not generate:
                 return None
             statement = generate[0]
@@ -419,30 +433,28 @@ class Executor:
             return results[-1]
         return None
 
-    @execute_query.register
-    def _(self, query: SelectStatement) -> ResultProtocol | None:
-        sql = self.generator.generate_queries(
-            self.environment, [query], hooks=self.hooks
-        )
-        return self.execute_query(sql[0])
-
-    @execute_query.register
-    def _(self, query: PersistStatement) -> ResultProtocol | None:
-        sql = self.generator.generate_queries(
-            self.environment, [query], hooks=self.hooks
-        )
-        return self.execute_query(sql[0])
+    # Author statements with a SQL form: generate, then execute the processed
+    # statement the generator produced.
+    @execute_query.register(SelectStatement)
+    @execute_query.register(PersistStatement)
+    @execute_query.register(ShowStatement)
+    @execute_query.register(ValidateNaturalStatement)
+    @execute_query.register(NaturalSelectStatement)
+    def _(
+        self,
+        query: (
+            SelectStatement
+            | PersistStatement
+            | ShowStatement
+            | ValidateNaturalStatement
+            | NaturalSelectStatement
+        ),
+    ) -> ResultProtocol | None:
+        return self.execute_query(self._generate([query])[0])
 
     @execute_query.register
     def _(self, query: RawSQLStatement) -> ResultProtocol | None:
         return self.execute_raw_sql(query.text)
-
-    @execute_query.register
-    def _(self, query: ShowStatement) -> ResultProtocol | None:
-        sql = self.generator.generate_queries(
-            self.environment, [query], hooks=self.hooks
-        )
-        return self.execute_query(sql[0])
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> ResultProtocol | None:
@@ -460,6 +472,31 @@ class Executor:
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
+
+    @execute_query.register
+    def _(self, query: ProcessedValidateNaturalStatement) -> ResultProtocol | None:
+        # The expected select was compiled at generate time (the free tier);
+        # the LLM loop only runs under `trilogy unit/integration --include-type
+        # agent`, never during normal execution.
+        return MockResult(
+            values=[
+                {
+                    "label": query.name or "",
+                    "question": query.question,
+                    "status": (
+                        "skipped - agent validation runs under trilogy "
+                        "unit/integration --include-type agent"
+                    ),
+                }
+            ],
+            columns=["label", "question", "status"],
+        )
+
+    @execute_query.register
+    def _(self, query: ProcessedNaturalSelectStatement) -> ResultProtocol | None:
+        from trilogy.scripts.validate_agent import execute_natural_select
+
+        return execute_natural_select(self, query.question)
 
     @execute_query.register
     def _(self, query: ProcessedMockStatement) -> ResultProtocol | None:
@@ -657,19 +694,21 @@ class Executor:
     def generate_sql(self, command) -> list[str]:
         raise NotImplementedError(f"Cannot generate sql for type {type(command)}")
 
-    @generate_sql.register  # type: ignore
-    def _(self, command: ProcessedQuery) -> list[str]:
-        output = []
-        compiled_sql = self.generator.compile_statement(command)
-        output.append(compiled_sql)
-        return output
-
-    @generate_sql.register  # type: ignore
-    def _(self, command: ProcessedCopyStatement) -> list[str]:
-        output = []
-        compiled_sql = self.generator.compile_statement(command)
-        output.append(compiled_sql)
-        return output
+    # Already-processed statements: compiling is all that's left.
+    @generate_sql.register(ProcessedQuery)
+    @generate_sql.register(ProcessedCopyStatement)
+    @generate_sql.register(ProcessedCreateStatement)
+    @generate_sql.register(ProcessedPublishStatement)
+    def _(
+        self,
+        command: (
+            ProcessedQuery
+            | ProcessedCopyStatement
+            | ProcessedCreateStatement
+            | ProcessedPublishStatement
+        ),
+    ) -> list[str]:
+        return [self.generator.compile_statement(command)]
 
     @generate_sql.register
     def _(self, command: ProcessedShowStatement) -> list[str]:
@@ -680,41 +719,10 @@ class Executor:
                 output.append(compiled_sql)
         return output
 
-    @generate_sql.register  # type: ignore
-    def _(self, command: MultiSelectStatement) -> list[str]:
-        output = []
-        sql = self.generator.generate_queries(
-            self.environment, [command], hooks=self.hooks
-        )
-        for statement in sql:
-            compiled_sql = self.generator.compile_statement(statement)
-            output.append(compiled_sql)
-        return output
-
-    @generate_sql.register
-    def _(self, command: SelectStatement) -> list[str]:
-        output = []
-        sql = self.generator.generate_queries(
-            self.environment, [command], hooks=self.hooks
-        )
-        for statement in sql:
-            compiled_sql = self.generator.compile_statement(statement)
-            output.append(compiled_sql)
-        return output
-
-    @generate_sql.register
-    def _(self, command: ProcessedCreateStatement) -> list[str]:
-        output = []
-        compiled_sql = self.generator.compile_statement(command)
-        output.append(compiled_sql)
-        return output
-
-    @generate_sql.register
-    def _(self, command: ProcessedPublishStatement) -> list[str]:
-        output = []
-        compiled_sql = self.generator.compile_statement(command)
-        output.append(compiled_sql)
-        return output
+    @generate_sql.register(SelectStatement)
+    @generate_sql.register(MultiSelectStatement)
+    def _(self, command: SelectStatement | MultiSelectStatement) -> list[str]:
+        return self._generate_sql([command])
 
     @generate_sql.register
     def _(self, command: str) -> list[str]:
@@ -732,14 +740,7 @@ class Executor:
                 ),
             )
         ]
-        sql = self.generator.generate_queries(
-            self.environment, generatable, hooks=self.hooks
-        )
-        output = []
-        for statement in sql:
-            compiled_sql = self.generator.compile_statement(statement)
-            output.append(compiled_sql)
-        return output
+        return self._generate_sql(generatable)
 
     def parse_file(
         self, file: str | Path, persist: bool = False
@@ -794,9 +795,7 @@ class Executor:
         for t in parsed:
             if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
                 continue
-            x = self.generator.generate_queries(
-                self.environment, [t], hooks=self.hooks
-            )[0]
+            x = self._generate([t])[0]
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
             queries.append(x)
@@ -814,9 +813,7 @@ class Executor:
         generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
-            x = self.generator.generate_queries(
-                self.environment, [t], hooks=self.hooks
-            )[0]
+            x = self._generate([t])[0]
 
             yield x
 

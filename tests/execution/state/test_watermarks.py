@@ -141,6 +141,37 @@ class TestIsMissingSourceError:
         assert is_missing_source_error(exc2, self.MockDialectNoPatterns()) is False
 
 
+class TestDuckDBMissingSourcePatterns:
+    """Driver wording for a remote 404 changed in duckdb 1.5; both must match."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            'HTTP Error: Unable to connect to URL "https://x/y.parquet": 404 (Not Found)',
+            "HTTP Error: HTTP GET error on 'https://x/y.parquet' (HTTP 404 Not Found)",
+        ],
+    )
+    def test_http_404_wordings(self, message: str) -> None:
+        dialect = Dialects.DUCK_DB.default_renderer()
+        assert is_missing_source_error(Exception(message), dialect) is True
+        assert (
+            is_missing_source_error(ProgrammingError("stmt", {}, Exception(message)), dialect)
+            is True
+        )
+
+    def test_other_http_status_not_suppressed(self) -> None:
+        exc = Exception(
+            "HTTP Error: HTTP GET error on 'https://x/404/y.parquet' (HTTP 403 Forbidden)"
+        )
+        assert is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is False
+
+    def test_table_not_found(self) -> None:
+        exc = ProgrammingError(
+            "stmt", {}, Exception("Catalog Error: Table with name foo does not exist!")
+        )
+        assert is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is True
+
+
 def test_last_update_time_watermarks(duckdb_engine: Executor):
     duckdb_engine.execute_text("""
         key user_id int;

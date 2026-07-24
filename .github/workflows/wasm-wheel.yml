@@ -2,12 +2,8 @@
 # Standalone while we validate the toolchain; fold into pythonpublish.yml once stable.
 name: WASM wheel (experimental)
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - '.github/workflows/wasm-wheel.yml'
-      - 'trilogy/scripts/dependency/**'
-      - 'pyproject.toml'
+    branches: [main]
 
 jobs:
   build-pyemscripten:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace as dataclass_replace
+from datetime import datetime
+from functools import partial
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Choice, Path, argument, option, pass_context
@@ -10,8 +12,10 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.core import graph as nx
-from trilogy.core.enums import AddressType
+from trilogy.core.enums import AddressType, ValidationScope
+from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.statements.execute import ProcessedValidateNaturalStatement
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import audit_config_file
 from trilogy.scripts.common import (
@@ -39,6 +43,119 @@ from trilogy.utility import safe_open
 
 FAILED_DEPENDENCY_ERROR = "Skipped due to failed dependency"
 
+# Test types selectable via --skip-type/--include-type. `datasources` and
+# `concepts` are on by default (today's behavior); `agent` costs LLM tokens and
+# is strictly opt-in.
+TEST_TYPES = ("datasources", "concepts", "agent")
+DEFAULT_TEST_TYPES = frozenset({"datasources", "concepts"})
+
+
+def resolve_test_types(
+    skip: tuple[str, ...], include: tuple[str, ...]
+) -> frozenset[str]:
+    return frozenset((DEFAULT_TEST_TYPES | set(include)) - set(skip))
+
+
+def _environment_scope(test_types: frozenset[str]) -> ValidationScope | None:
+    """ValidationScope for the env-validation phase, or None to skip it."""
+    datasources = "datasources" in test_types
+    concepts = "concepts" in test_types
+    if datasources and concepts:
+        return ValidationScope.ALL
+    if datasources:
+        return ValidationScope.DATASOURCES
+    if concepts:
+        return ValidationScope.CONCEPTS
+    return None
+
+
+def _run_agent_questions(
+    exec: Executor,
+    node: ScriptNode,
+    questions: list[ProcessedValidateNaturalStatement],
+    stats: ExecutionStats,
+    *,
+    mock_source_env,
+    quiet: bool,
+    write_report: bool,
+) -> None:
+    """Run the embedded agent-validation questions for one script and fail the
+    node (ModelValidationError) when any question misses its target.
+
+    ``mock_source_env`` (unit tier) is a pristine environment snapshot used to
+    materialize the mock DB; None means integration tier (live backend)."""
+    from trilogy.scripts import validate_agent as va
+    from trilogy.scripts.display import print_info
+
+    model_dir = node.path.parent
+    va.check_agent_ready(model_dir)
+    run_dir = (
+        model_dir
+        / ".trilogy"
+        / "validate_runs"
+        / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{node.path.stem}"
+    )
+    # The validations file holds the expected answers — keep it out of every
+    # workspace so the agent can't read them.
+    exclude = {node.path.resolve()}
+    image_dir: PathlibPath | None = None
+    # Expected SQL, one per question in source order. Unit tier recompiles it
+    # against the repointed mock image (so both sides read mock tables); the
+    # integration tier uses the precompiled query against the real backend.
+    if mock_source_env is not None:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        image_dir = run_dir / "mock_model"
+        va.build_mock_image(
+            model_dir,
+            image_dir,
+            run_dir / va.MOCK_DB_FILENAME,
+            mock_source_env,
+            exclude,
+        )
+        expected_sqls = va.compile_expected_against_image(
+            image_dir, node.path.read_text(encoding="utf-8")
+        )
+    else:
+        expected_sqls = [
+            exec.generator.compile_statement(q.expected) for q in questions
+        ]
+    results: list[va.QuestionResult] = []
+    for index, question in enumerate(questions):
+        name = question.name or f"{node.path.stem}_{index + 1}"
+        result = va.run_validation_question(
+            name=name,
+            question=question.question,
+            expected_sql=expected_sqls[index],
+            comparison=question.comparison,
+            repetitions=question.repetitions,
+            target=question.target,
+            timeout=question.timeout,
+            tags=question.tags,
+            model_dir=model_dir,
+            run_dir=run_dir,
+            exclude=exclude,
+            image_dir=image_dir,
+        )
+        results.append(result)
+        stats.agent_question_count += 1
+        if result.passed:
+            stats.agent_passed += 1
+    if write_report:
+        report_path = va.write_report(run_dir, node.path, results)
+        if not quiet:
+            print_info(f"Agent validation report: {report_path}")
+    failures = [r for r in results if not r.passed]
+    if failures:
+        summary = "\n".join(
+            f"[agent] {r.name}: pass rate {r.pass_rate:.2f} < target "
+            f"{r.target:.2f} ({'; '.join(rep.status for rep in r.repetitions)})"
+            for r in failures
+        )
+        raise ModelValidationError(
+            f"Agent validation failed ({len(failures)}/{len(results)} "
+            f"questions below target):\n{summary}"
+        )
+
 
 def _warn_unknown_config_fields(
     input_path: str, config_override: PathlibPath | None
@@ -55,30 +172,80 @@ def _warn_unknown_config_fields(
         print_warning(warning)
 
 
-def execute_script_for_integration(
-    exec: Executor, node: ScriptNode, quiet: bool = False
+def _execute_script_for_test(
+    exec: Executor,
+    node: ScriptNode,
+    *,
+    mock: bool,
+    quiet: bool,
+    test_types: frozenset[str],
+    agent_report: bool,
 ) -> ExecutionStats:
-    """Execute a script for the 'integration' command (parse + validate)."""
+    """Shared unit/integration body: parse, validate the environment for the
+    selected scope, then run any embedded agent questions. ``mock`` selects the
+    unit tier (mocked datasources + a mock DB for the agent workspace)."""
     with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
-    validate_environment(exec, mock=False, quiet=quiet)
-    # Count datasources validated
-    stats.validate_count = len(exec.environment.datasources)
+    questions = [q for q in queries if isinstance(q, ProcessedValidateNaturalStatement)]
+    agent_enabled = "agent" in test_types and bool(questions)
+    # Snapshot the env before validate_environment: its mock phase rewrites
+    # datasource addresses in the live env, and the agent tier's mock DB needs
+    # tables under the ORIGINAL addresses the workspace model files reference.
+    pristine_env = exec.environment.duplicate() if mock and agent_enabled else None
+    scope = _environment_scope(test_types)
+    if scope is not None:
+        validate_environment(exec, mock=mock, quiet=quiet, scope=scope)
+        stats.validate_count = len(exec.environment.datasources)
+    if agent_enabled:
+        _run_agent_questions(
+            exec,
+            node,
+            questions,
+            stats,
+            mock_source_env=pristine_env,
+            quiet=quiet,
+            write_report=agent_report,
+        )
+    else:
+        stats.agent_skipped = len(questions)
     return stats
+
+
+def execute_script_for_integration(
+    exec: Executor,
+    node: ScriptNode,
+    quiet: bool = False,
+    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
+    agent_report: bool = True,
+) -> ExecutionStats:
+    """Execute a script for the 'integration' command (parse + validate)."""
+    return _execute_script_for_test(
+        exec,
+        node,
+        mock=False,
+        quiet=quiet,
+        test_types=test_types,
+        agent_report=agent_report,
+    )
 
 
 def execute_script_for_unit(
-    exec: Executor, node: ScriptNode, quiet: bool = False
+    exec: Executor,
+    node: ScriptNode,
+    quiet: bool = False,
+    test_types: frozenset[str] = DEFAULT_TEST_TYPES,
+    agent_report: bool = True,
 ) -> ExecutionStats:
     """Execute a script for the 'unit' command (parse + mock validate)."""
-    with safe_open(node.path) as f:
-        queries = exec.parse_text(f.read())
-    stats = count_statement_stats(queries)
-    validate_environment(exec, mock=True, quiet=quiet)
-    # Count datasources validated
-    stats.validate_count = len(exec.environment.datasources)
-    return stats
+    return _execute_script_for_test(
+        exec,
+        node,
+        mock=True,
+        quiet=quiet,
+        test_types=test_types,
+        agent_report=agent_report,
+    )
 
 
 def _is_dependency_skipped_result(result: ExecutionResult) -> bool:
@@ -176,15 +343,45 @@ def _build_initial_integration_graph(input_path: PathlibPath) -> nx.DiGraph | No
 
 
 def _run_integration_with_summary(
-    cli_params: CLIRuntimeParams, graph: nx.DiGraph | None = None
+    cli_params: CLIRuntimeParams,
+    graph: nx.DiGraph | None = None,
+    execution_fn=execute_script_for_integration,
 ) -> ParallelExecutionSummary:
     return run_parallel_execution(
         cli_params=cli_params,
-        execution_fn=execute_script_for_integration,
+        execution_fn=execution_fn,
         execution_mode=ExecutionMode.INTEGRATION,
         graph=graph,
         fail_on_error=False,
     )
+
+
+def _test_type_options(fn):
+    fn = option(
+        "--skip-type",
+        "skip_types",
+        multiple=True,
+        type=Choice(TEST_TYPES),
+        help="Test types to skip (repeatable).",
+    )(fn)
+    fn = option(
+        "--include-type",
+        "include_types",
+        multiple=True,
+        type=Choice(TEST_TYPES),
+        help="Test types to include beyond the defaults (repeatable). The "
+        "'agent' type runs embedded `validate ... matches` LLM questions and "
+        "is off by default because it spends provider tokens.",
+    )(fn)
+    fn = option(
+        "--report/--no-report",
+        "agent_report",
+        default=True,
+        help="Write an agent-validation report.json under "
+        ".trilogy/validate_runs/ (default on; only applies with "
+        "--include-type agent).",
+    )(fn)
+    return fn
 
 
 def _run_refresh_for_derived_datasources(
@@ -222,6 +419,7 @@ def _run_refresh_for_derived_datasources(
     default=None,
     help="Attempt a targeted derived datasource refresh when integration fails.",
 )
+@_test_type_options
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def integration(
@@ -233,6 +431,9 @@ def integration(
     config,
     env,
     refresh_derived: str | None,
+    skip_types: tuple[str, ...],
+    include_types: tuple[str, ...],
+    agent_report: bool,
     conn_args,
 ):
     """Run integration tests on Trilogy scripts."""
@@ -249,12 +450,17 @@ def integration(
         execution_strategy="eager_bfs",
         env=env,
     )
+    execution_fn = partial(
+        execute_script_for_integration,
+        test_types=resolve_test_types(skip_types, include_types),
+        agent_report=agent_report,
+    )
 
     try:
         if refresh_derived is None:
             run_parallel_execution(
                 cli_params=cli_params,
-                execution_fn=execute_script_for_integration,
+                execution_fn=execution_fn,
                 execution_mode=ExecutionMode.INTEGRATION,
             )
             return
@@ -264,6 +470,7 @@ def integration(
         initial_summary = _run_integration_with_summary(
             cli_params,
             graph=_build_initial_integration_graph(input_path),
+            execution_fn=execution_fn,
         )
         if initial_summary.all_succeeded:
             return
@@ -310,6 +517,7 @@ def integration(
         rerun_summary = _run_integration_with_summary(
             cli_params,
             graph=_build_selected_script_graph(input_path, affected_scripts),
+            execution_fn=execution_fn,
         )
         if not rerun_summary.all_succeeded:
             raise Exit(1)
@@ -337,6 +545,7 @@ def integration(
     multiple=True,
     help="Set env vars as KEY=VALUE or pass an env file path",
 )
+@_test_type_options
 @pass_context
 def unit(
     ctx,
@@ -345,6 +554,9 @@ def unit(
     parallelism: int | None,
     config,
     env,
+    skip_types: tuple[str, ...],
+    include_types: tuple[str, ...],
+    agent_report: bool,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
@@ -365,7 +577,11 @@ def unit(
     try:
         run_parallel_execution(
             cli_params=cli_params,
-            execution_fn=execute_script_for_unit,
+            execution_fn=partial(
+                execute_script_for_unit,
+                test_types=resolve_test_types(skip_types, include_types),
+                agent_report=agent_report,
+            ),
             execution_mode=ExecutionMode.UNIT,
         )
     except Exit:

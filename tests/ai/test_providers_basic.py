@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -96,22 +97,64 @@ def _computes_flight_count(node, env: Environment) -> bool:
     return False
 
 
-def _has_year_equals(
+def _date_value(value: object) -> date | None:
+    if (
+        isinstance(value, Function)
+        and value.operator == FunctionType.CONSTANT
+        and value.arguments
+    ):
+        value = value.arguments[0]
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _mirror_operator(operator: ComparisonOperator) -> ComparisonOperator:
+    if operator == ComparisonOperator.GT:
+        return ComparisonOperator.LT
+    if operator == ComparisonOperator.GTE:
+        return ComparisonOperator.LTE
+    if operator == ComparisonOperator.LT:
+        return ComparisonOperator.GT
+    if operator == ComparisonOperator.LTE:
+        return ComparisonOperator.GTE
+    return operator
+
+
+def _has_year_filter(
     where: WhereClause, env: Environment, address: str, value: int
 ) -> bool:
-    """Logical-equivalence check: a `year(address) = value` comparison exists."""
+    """True for a year equality or an equivalent half-open calendar-year range."""
+    lower_bound = False
+    upper_bound = False
+    start = date(value, 1, 1)
+    end = date(value + 1, 1, 1)
+
     for comp in _iter_comparisons(where):
-        if comp.operator != ComparisonOperator.EQ:
-            continue
         for operand, other in ((comp.left, comp.right), (comp.right, comp.left)):
             if (
-                isinstance(other, int)
+                comp.operator == ComparisonOperator.EQ
+                and isinstance(other, int)
                 and not isinstance(other, bool)
                 and other == value
                 and _extracts_year_of(operand, env, address)
             ):
                 return True
-    return False
+
+        if _matches_address_expr(comp.left, env, address):
+            operator, other = comp.operator, comp.right
+        elif _matches_address_expr(comp.right, env, address):
+            operator, other = _mirror_operator(comp.operator), comp.left
+        else:
+            continue
+
+        bound = _date_value(other)
+        lower_bound |= operator == ComparisonOperator.GTE and bound == start
+        upper_bound |= operator == ComparisonOperator.LT and bound == end
+
+    return lower_bound and upper_bound
 
 
 def _counts_flights(concept, env: Environment, flight_key: str) -> bool:
@@ -161,9 +204,9 @@ def validate_response(
         return f"{reason}, got {response}\n\nLLM conversation:\n{transcript}"
 
     assert parsed.where_clause is not None, detail("Expected a where clause")
-    assert _has_year_equals(
+    assert _has_year_filter(
         parsed.where_clause, env, env.concepts["local.dep_time"].address, 2020
-    ), detail("Expected a year(local.dep_time) = 2020 filter")
+    ), detail("Expected a calendar-year 2020 filter on local.dep_time")
 
     flight_key = env.concepts["local.id2"].address
     found_count = any(
@@ -191,6 +234,44 @@ def run_provider_test(secret_name: str, provider: Provider, model: str):
     _, parsed = environment.parse(response)
     validate_response(
         response, parsed[-1], environment, _format_conversation(conversation)
+    )
+
+
+@pytest.mark.parametrize(
+    ("where", "expected"),
+    [
+        ("year(dep_time) = 2020", True),
+        (
+            (
+                "dep_time >= '2020-01-01'::datetime and dep_time < "
+                "'2021-01-01'::datetime"
+            ),
+            True,
+        ),
+        (
+            (
+                "'2020-01-01'::datetime <= dep_time and "
+                "'2021-01-01'::datetime > dep_time"
+            ),
+            True,
+        ),
+        ("dep_time >= '2020-01-01'::datetime", False),
+    ],
+)
+def test_has_year_filter(where: str, expected: bool) -> None:
+    environment, _ = Environment(working_path=env_path).parse("import flight;")
+    _, statements = environment.parse(f"where {where} select dep_time;")
+    statement = statements[-1]
+
+    assert statement.where_clause is not None
+    assert (
+        _has_year_filter(
+            statement.where_clause,
+            environment,
+            environment.concepts["local.dep_time"].address,
+            2020,
+        )
+        is expected
     )
 
 

@@ -16,6 +16,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     PublishAction,
+    QueryComparison,
     ScaleType,
     SetOperator,
     ShowCategory,
@@ -683,6 +684,29 @@ class ValidateStatement:
 
 
 @dataclass
+class NaturalSelectStatement:
+    """`select natural '<question>'` — an agent answers the question with a
+    generated query at execution time."""
+
+    question: str
+
+
+@dataclass
+class ValidateNaturalStatement:
+    """`validate [name] select natural '...' matches ( select ... ) with (...)` —
+    an embedded LLM eval question with an authored expected answer."""
+
+    query: NaturalSelectStatement
+    expected: SelectStatement
+    name: str | None = None
+    repetitions: int = 1
+    target: float = 1.0
+    comparison: QueryComparison = QueryComparison.TOLERANT
+    tags: list[str] = field(default_factory=list)
+    timeout: int | None = None
+
+
+@dataclass
 class MockStatement:
     scope: ValidationScope
     targets: list[str]
@@ -704,7 +728,14 @@ class CreateStatement:
 
 @dataclass
 class ShowStatement:
-    content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory
+    content: (
+        SelectStatement
+        | PersistStatement
+        | ValidateStatement
+        | ValidateNaturalStatement
+        | NaturalSelectStatement
+        | ShowCategory
+    )
 
 
 @dataclass
@@ -796,6 +827,9 @@ STATEMENT_TYPES = (
     | ImportStatement
     | PersistStatement
     | ValidateStatement
+    | ValidateNaturalStatement
+    | NaturalSelectStatement
+    | MockStatement
     | PublishStatement
     | CreateStatement
     | ShowStatement

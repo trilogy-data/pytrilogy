@@ -16,6 +16,7 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
     MockStatement,
     MultiSelectStatement,
+    NaturalSelectStatement,
     PersistStatement,
     PropertiesDeclarationStatement,
     PublishStatement,
@@ -24,6 +25,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateNaturalStatement,
     ValidateStatement,
 )
 from trilogy.parsing.exceptions import NameShadowError
@@ -187,6 +189,8 @@ class ShowStatementPlan(StatementPlanBase):
         content = self.output.content
         if isinstance(content, (SelectStatement, PersistStatement)):
             finalize_select_tree(content, hydrator)
+        elif isinstance(content, ValidateNaturalStatement):
+            finalize_select_tree(content.expected, hydrator)
 
     def commit(self, hydrator: NativeHydrator) -> ShowStatement | None:
         return self.output
@@ -590,7 +594,18 @@ class CreateStatementPlan(SimpleOperationalStatementPlan):
 
 @dataclass
 class ValidateStatementPlan(SimpleOperationalStatementPlan):
-    output: ValidateStatement | None = None
+    output: ValidateStatement | ValidateNaturalStatement | None = None
+
+    def validate(self, hydrator: NativeHydrator) -> None:
+        # The natural branch embeds an expected select that needs the same
+        # finalize pass any select tree gets.
+        if isinstance(self.output, ValidateNaturalStatement):
+            finalize_select_tree(self.output.expected, hydrator)
+
+
+@dataclass
+class NaturalSelectStatementPlan(SimpleOperationalStatementPlan):
+    output: NaturalSelectStatement | None = None
 
 
 @dataclass

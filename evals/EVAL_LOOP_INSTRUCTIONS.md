@@ -4,6 +4,14 @@ Goal: improve our CLI + tooling for general use cases by evaluating on curated d
 
 Our eval harness uses a deepseek agent to answer questions.
 
+> Related but distinct: model repos can embed their own LLM eval questions as
+> `validate ... select natural '...' matches ( select ... )` statements, run via
+> `trilogy unit/integration --include-type agent`. That surface compares
+> trilogy-vs-trilogy (framework bugs cancel; measures model curation + agent
+> guidance only) — THIS harness stays the trilogy-vs-SQL surface for sniffing
+> out framework bugs. Design: `docs/llm_query_validation_design.md`. The row
+> comparison is shared (`trilogy/core/validation/rows.py`).
+
 ### The four eval cases
 
 The same business question is asked four ways, in increasing order of scaffolding

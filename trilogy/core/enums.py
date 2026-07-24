@@ -565,6 +565,20 @@ class ValidationScope(Enum):
         return super()._missing_(value)
 
 
+class QueryComparison(Enum):
+    """Row-comparison mode for `validate ... matches` statements."""
+
+    TOLERANT = "tolerant"
+    EXACT = "exact"
+    ORDERED = "ordered"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return QueryComparison(value.lower())
+        return super()._missing_(value)
+
+
 class ChartType(Enum):
     LINE = "line"
     BAR = "bar"
