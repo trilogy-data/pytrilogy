@@ -3,8 +3,10 @@ from typing import Any, ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import ComparisonOperator, DatePart, FunctionType, JoinType
+from trilogy.core.enums import ComparisonOperator, CreateMode, DatePart, FunctionType
 from trilogy.core.models.core import DataType
+from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
 
 
@@ -146,29 +148,18 @@ class MySQLDialect(BaseDialect):
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = MYSQL_SQL_TEMPLATE
     SUPPORTS_ALIAS_IN_HAVING = True
+    SUPPORTS_FULL_JOIN = False
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
-
-    def render_join(self, join: Any, cte: Any) -> str | None:
-        rendered = super().render_join(join, cte)
-        if (
-            rendered
-            and getattr(join, "jointype", None) == JoinType.FULL
-            and not getattr(join, "joinkey_pairs", None)
-            and getattr(join, "condition", None) is None
-        ):
-            # MySQL has no FULL JOIN. Trilogy uses a keyless FULL JOIN to
-            # combine independent scalar aggregate CTEs; both sides contain
-            # exactly one row, so an inner Cartesian join is equivalent.
-            return rendered.replace("FULL JOIN", "INNER JOIN", 1)
-        return rendered
 
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-    def compile_create_table_statement(self, target: Any, create_mode: Any) -> str:
+    def compile_create_table_statement(
+        self, target: CreateTableInfo, create_mode: CreateMode
+    ) -> str:
         statement = super().compile_create_table_statement(target, create_mode)
-        if create_mode.value == "create_or_replace":
+        if create_mode == CreateMode.CREATE_OR_REPLACE:
             return (
                 f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};\n"
                 f"{statement.replace('CREATE OR REPLACE TABLE', 'CREATE TABLE', 1)}"
@@ -177,11 +168,11 @@ class MySQLDialect(BaseDialect):
 
     def render_comparison(
         self,
-        left: Any,
-        right: Any,
+        left,
+        right,
         operator: ComparisonOperator,
-        cte: Any = None,
-        cte_map: Any = None,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:

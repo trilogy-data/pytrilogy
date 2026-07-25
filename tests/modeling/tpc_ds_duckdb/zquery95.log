@@ -1,6 +1,6 @@
 query_id = "95"
 generator = "v3"
-gen_length = 3795
+gen_length = 3796
 preql_size = 720
 comp_size = 1010
 generated_sql = """
@@ -72,7 +72,7 @@ SELECT
     \"concerned\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
-    FULL JOIN \"concerned\" on 1=1
+    INNER JOIN \"concerned\" on 1=1
 ORDER BY 
     coalesce(\"vacuous\".\"order_count\",0) desc
 LIMIT (100)"""

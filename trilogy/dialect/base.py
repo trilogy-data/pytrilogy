@@ -68,6 +68,7 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildSubselectItem,
     BuildWindowItem,
+    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -805,19 +806,6 @@ def safe_get_cte_value(
     )
 
 
-def get_grouped_aggregate_wrapper(
-    concept: BuildConcept,
-) -> BuildAggregateWrapper | None:
-    lineage = concept.lineage
-    if isinstance(lineage, BuildAggregateWrapper):
-        return lineage
-    if isinstance(lineage, BuildRowsetItem) and isinstance(
-        lineage.content.lineage, BuildAggregateWrapper
-    ):
-        return lineage.content.lineage
-    return None
-
-
 class BaseDialect:
     NUMBERING_WINDOW_FUNCTION_MAP: ClassVar[
         dict[WindowType, Callable[[str, str], str]]
@@ -861,6 +849,11 @@ class BaseDialect:
     # `run` returns it. Dialects that set it True must override
     # ``summarize_result``.
     SUPPORTS_RESULT_SUMMARY = False
+    # Whether the dialect has FULL OUTER JOIN. Join resolution renders
+    # row-preserving by default, so FULL is the natural form for a partial or
+    # UNION-declared key; dialects without it (MySQL, MariaDB) get those joins
+    # lowered to a UNION key spine by the optimizer instead.
+    SUPPORTS_FULL_JOIN = True
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -2910,6 +2903,7 @@ class BaseDialect:
                         statement,
                         hooks=hooks,
                         having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                        supports_full_join=self.SUPPORTS_FULL_JOIN,
                     )
                 )
             elif isinstance(statement, MultiSelectStatement):
@@ -2922,6 +2916,7 @@ class BaseDialect:
                         statement,
                         hooks=hooks,
                         having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                        supports_full_join=self.SUPPORTS_FULL_JOIN,
                     )
                 )
             elif isinstance(statement, RowsetDerivationStatement):
@@ -2981,6 +2976,7 @@ class BaseDialect:
                         statement.content.expected,
                         hooks=hooks,
                         having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                        supports_full_join=self.SUPPORTS_FULL_JOIN,
                     )
                     output.append(
                         ProcessedShowStatement(
@@ -3062,6 +3058,7 @@ class BaseDialect:
                             statement.expected,
                             hooks=hooks,
                             having_alias=self.SUPPORTS_ALIAS_IN_HAVING,
+                            supports_full_join=self.SUPPORTS_FULL_JOIN,
                         ),
                         name=statement.name,
                         repetitions=statement.repetitions,

@@ -8,6 +8,7 @@ from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
 from .null_safe_join import SimplifyNullSafeJoins
 from .order_inner_joins import OrderInnerJoinsFirst
 from .predicate_pushdown import PredicatePushdown, PredicatePushdownRemove
+from .single_row_full_join import NarrowSingleRowFullJoins
 from .strip_redundant_not_null import StripRedundantNotNull
 from .union_dim_pushdown import UnionDimPushdown
 from .value_set_join_upgrade import UpgradeOuterFromKeySetEquivalence
@@ -19,6 +20,7 @@ __all__ = [
     "JoinHoist",
     "MergeIrrelevantGroupBy",
     "MergedCTEMap",
+    "NarrowSingleRowFullJoins",
     "OptimizationRule",
     "OrderInnerJoinsFirst",
     "PredicatePushdown",
