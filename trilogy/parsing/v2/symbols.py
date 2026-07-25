@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE
@@ -176,32 +177,60 @@ def _make_address(name: str, namespace: str) -> str:
     return f"{namespace}.{name}"
 
 
-def property_address(path: str, environment: Environment) -> str:
-    """Address of a property declared as ``<parent_key_path>.<name>``.
+@dataclass(frozen=True)
+class ConceptAddress:
+    """Where a concept block's address comes from.
 
-    A property lands in its PARENT KEY's namespace, not the declaring file's:
-    ``sold_date.id.year`` -> ``sold_date.year``, but ``col_id.year`` ->
-    ``<file>.year``. This is the lexical mirror of
-    :func:`parse_concept_reference`'s ``Purpose.PROPERTY`` branch, which
-    resolves the parent concept and reads its namespace. Symbol collection runs
-    before that parent exists, so it has to predict the same answer — a
-    prediction that misses declares a symbol at an address no concept ever
-    occupies, which authorizes a scoped placeholder for a name that does not
-    exist. ``ConceptStatementPlan.verify_symbol_addresses`` enforces the match.
+    Most forms know their namespace outright. The property forms written as
+    ``<parent_key_path>.<name>`` inherit their PARENT KEY's namespace
+    (``sold_date.id.year`` -> ``sold_date.year``), so their address is not
+    knowable until the parent's is — those carry ``parent_path`` instead and are
+    resolved in parent-before-child order by
+    :meth:`NativeHydrator._resolve_concept_addresses`.
     """
+
+    name: str
+    namespace: str | None = None
+    parent_path: str | None = None
+
+    def resolve(self, namespace: str) -> str:
+        return _make_address(self.name, self.namespace or namespace)
+
+
+def _property_declaration(path: str, environment: Environment) -> ConceptAddress:
     parent, _, name = path.rpartition(".")
     if not parent:
-        return _make_address(path, environment.namespace or DEFAULT_NAMESPACE)
-    grandparent = parent.rpartition(".")[0]
-    return _make_address(
-        name, grandparent or environment.namespace or DEFAULT_NAMESPACE
-    )
+        return ConceptAddress(
+            name=path, namespace=environment.namespace or DEFAULT_NAMESPACE
+        )
+    return ConceptAddress(name=name, parent_path=parent)
 
 
-def collect_concept_address(block: SyntaxNode, environment: Environment) -> str | None:
-    """Extract the concept address from a block without modifying the environment.
+def parent_namespace(
+    parent_path: str, environment: Environment, resolved: set[str]
+) -> str | None:
+    """Namespace of an already-resolved parent key, or None if not yet known.
 
-    Returns the concept address, or None for parameter/properties declarations.
+    Reads the parent's real namespace from concepts resolved earlier in this
+    pass or already committed by an import — the same source
+    ``concept_property_declaration`` reads at hydration.
+    """
+    for candidate in (parent_path, f"{DEFAULT_NAMESPACE}.{parent_path}"):
+        if candidate in resolved:
+            return candidate.rpartition(".")[0] or DEFAULT_NAMESPACE
+        existing = environment.concepts.data.get(candidate)
+        if existing is not None:
+            return existing.namespace or DEFAULT_NAMESPACE
+    return None
+
+
+def collect_concept_address(
+    block: SyntaxNode, environment: Environment
+) -> ConceptAddress | None:
+    """Extract a concept block's address without modifying the environment.
+
+    Returns None for parameter/properties declarations, which provide their
+    addresses through :func:`collect_properties_addresses` instead.
     """
     inner = _get_concept_inner_node(block)
     kind = inner.kind
@@ -211,7 +240,7 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
         _, namespace, name, _ = parse_concept_reference(
             decl_syntax.name.value, environment
         )
-        return _make_address(name, namespace)
+        return ConceptAddress(name=name, namespace=namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_DERIVATION:
         derivation_syntax = ConceptDerivationSyntax.from_node(inner)
@@ -222,16 +251,16 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
                 derivation_syntax.purpose.value.lower() == "property"
                 and "." in name_value
             ):
-                return property_address(name_value, environment)
+                return _property_declaration(name_value, environment)
             _, namespace, name_str, _ = parse_concept_reference(name_value, environment)
-            return _make_address(name_str, namespace)
+            return ConceptAddress(name=name_str, namespace=namespace)
         if (
             isinstance(raw_name, SyntaxNode)
             and raw_name.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER
         ):
             property_id = PropertyIdentifierSyntax.from_node(raw_name)
             namespace = environment.namespace or DEFAULT_NAMESPACE
-            return _make_address(property_id.name.value, namespace)
+            return ConceptAddress(name=property_id.name.value, namespace=namespace)
         raise HydrationError(
             HydrationDiagnostic.from_syntax(
                 "Concept derivation name must be an identifier or property identifier",
@@ -244,7 +273,7 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
         _, namespace, name_str, _ = parse_concept_reference(
             const_syntax.name.value, environment
         )
-        return _make_address(name_str, namespace)
+        return ConceptAddress(name=name_str, namespace=namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION:
         property_syntax = ConceptPropertyDeclarationSyntax.from_node(inner)
@@ -255,15 +284,15 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
             and decl.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER
         ):
             property_id = PropertyIdentifierSyntax.from_node(decl)
-            return _make_address(property_id.name.value, namespace)
+            return ConceptAddress(name=property_id.name.value, namespace=namespace)
         if (
             isinstance(decl, SyntaxNode)
             and decl.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER_WILDCARD
         ):
             wildcard = PropertyWildcardSyntax.from_node(decl)
-            return _make_address(wildcard.name.value, namespace)
+            return ConceptAddress(name=wildcard.name.value, namespace=namespace)
         if isinstance(decl, SyntaxToken):
-            return property_address(decl.value, environment)
+            return _property_declaration(decl.value, environment)
         raise HydrationError(
             HydrationDiagnostic.from_syntax(
                 "Property declaration target must be a property identifier or token",
