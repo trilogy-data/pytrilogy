@@ -88,6 +88,8 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
     CompiledCTE,
+    InstantiatedUnnestJoin,
+    Join,
     RecursiveCTE,
     UnionCTE,
 )
@@ -148,7 +150,8 @@ from trilogy.core.table_processor import (
     process_create_statement,
 )
 from trilogy.core.utility import safe_quote
-from trilogy.dialect.common import render_join, render_unnest
+from trilogy.dialect.common import render_join as render_join_clause
+from trilogy.dialect.common import render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import safe_open
 
@@ -2576,6 +2579,17 @@ class BaseDialect:
     def quote(self, name: str) -> str:
         return f"{self.QUOTE_CHARACTER}{name}{self.QUOTE_CHARACTER}"
 
+    def render_join(self, join: Join | InstantiatedUnnestJoin, cte: CTE) -> str | None:
+        return render_join_clause(
+            join,
+            self.QUOTE_CHARACTER,
+            self.render_expr,
+            cte,
+            use_map=self.used_map,
+            unnest_mode=self.UNNEST_MODE,
+            null_wrapper=self.NULL_WRAPPER,
+        )
+
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             operator = self.SET_OPERATOR_MAP.get(cte.operator, cte.operator)
@@ -2769,15 +2783,7 @@ class BaseDialect:
                 joins=[
                     j
                     for j in [
-                        render_join(
-                            join,
-                            self.QUOTE_CHARACTER,
-                            self.render_expr,
-                            cte,
-                            use_map=self.used_map,
-                            unnest_mode=self.UNNEST_MODE,
-                            null_wrapper=self.NULL_WRAPPER,
-                        )
+                        self.render_join(join, cte)
                         for join in final_joins
                     ]
                     if j

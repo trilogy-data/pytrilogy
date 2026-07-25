@@ -123,7 +123,7 @@ def to_openai_messages(history: list[LLMMessage]) -> list[dict]:
                 ],
             }
             reasoning_content = (msg.model_info or {}).get("reasoning_content")
-            if reasoning_content:
+            if reasoning_content is not None:
                 assistant_message["reasoning_content"] = reasoning_content
             messages.append(assistant_message)
             for j, res in enumerate(results):
@@ -137,7 +137,7 @@ def to_openai_messages(history: list[LLMMessage]) -> list[dict]:
         else:
             message = {"role": msg.role, "content": msg.content}
             reasoning_content = (msg.model_info or {}).get("reasoning_content")
-            if msg.role == "assistant" and reasoning_content:
+            if msg.role == "assistant" and reasoning_content is not None:
                 message["reasoning_content"] = reasoning_content
             messages.append(message)
     return messages

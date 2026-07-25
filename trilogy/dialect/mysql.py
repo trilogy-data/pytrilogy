@@ -3,7 +3,7 @@ from typing import Any, ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import ComparisonOperator, DatePart, FunctionType
+from trilogy.core.enums import ComparisonOperator, DatePart, FunctionType, JoinType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
 
@@ -148,6 +148,20 @@ class MySQLDialect(BaseDialect):
     SUPPORTS_ALIAS_IN_HAVING = True
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
+
+    def render_join(self, join: Any, cte: Any) -> str | None:
+        rendered = super().render_join(join, cte)
+        if (
+            rendered
+            and getattr(join, "jointype", None) == JoinType.FULL
+            and not getattr(join, "joinkey_pairs", None)
+            and getattr(join, "condition", None) is None
+        ):
+            # MySQL has no FULL JOIN. Trilogy uses a keyless FULL JOIN to
+            # combine independent scalar aggregate CTEs; both sides contain
+            # exactly one row, so an inner Cartesian join is equivalent.
+            return rendered.replace("FULL JOIN", "INNER JOIN", 1)
+        return rendered
 
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"

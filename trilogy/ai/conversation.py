@@ -66,7 +66,7 @@ class Conversation:
             ]
         if response.reasoning:
             model_info["reasoning"] = response.reasoning
-        if response.reasoning_content:
+        if response.reasoning_content is not None:
             model_info["reasoning_content"] = response.reasoning_content
         if response.usage.reasoning_tokens:
             model_info["reasoning_tokens"] = response.usage.reasoning_tokens

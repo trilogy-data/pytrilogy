@@ -160,6 +160,27 @@ def test_to_openai_messages_preserves_deepseek_reasoning_content():
     assert messages[0]["reasoning_content"] == "opaque continuation state"
 
 
+def test_to_openai_messages_preserves_empty_deepseek_reasoning_content():
+    from trilogy.ai.providers.base import to_openai_messages
+
+    messages = to_openai_messages(
+        [
+            LLMMessage(
+                role="assistant",
+                content="",
+                model_info={
+                    "reasoning_content": "",
+                    "tool_calls": [{"name": "run", "arguments": {}}],
+                },
+            ),
+            LLMMessage(role="user", content="tool result"),
+        ]
+    )
+
+    assert "reasoning_content" in messages[0]
+    assert messages[0]["reasoning_content"] == ""
+
+
 def test_to_openai_messages_plain_when_no_tool_calls():
     from trilogy.ai.models import LLMMessage
     from trilogy.ai.providers.base import to_openai_messages
