@@ -298,6 +298,7 @@ class NativeHydrator:
         with self.semantic_state.pending_overlay_scope():
             for plan in sorted_concepts:
                 plan.output = self.hydrate_concept_block(plan.syntax)
+                plan.verify_symbol_addresses()
 
     def block_statement(self, block: SyntaxNode) -> SyntaxNode:
         return require_block_statement(block)

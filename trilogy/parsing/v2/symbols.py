@@ -176,6 +176,28 @@ def _make_address(name: str, namespace: str) -> str:
     return f"{namespace}.{name}"
 
 
+def property_address(path: str, environment: Environment) -> str:
+    """Address of a property declared as ``<parent_key_path>.<name>``.
+
+    A property lands in its PARENT KEY's namespace, not the declaring file's:
+    ``sold_date.id.year`` -> ``sold_date.year``, but ``col_id.year`` ->
+    ``<file>.year``. This is the lexical mirror of
+    :func:`parse_concept_reference`'s ``Purpose.PROPERTY`` branch, which
+    resolves the parent concept and reads its namespace. Symbol collection runs
+    before that parent exists, so it has to predict the same answer — a
+    prediction that misses declares a symbol at an address no concept ever
+    occupies, which authorizes a scoped placeholder for a name that does not
+    exist. ``ConceptStatementPlan.verify_symbol_addresses`` enforces the match.
+    """
+    parent, _, name = path.rpartition(".")
+    if not parent:
+        return _make_address(path, environment.namespace or DEFAULT_NAMESPACE)
+    grandparent = parent.rpartition(".")[0]
+    return _make_address(
+        name, grandparent or environment.namespace or DEFAULT_NAMESPACE
+    )
+
+
 def collect_concept_address(block: SyntaxNode, environment: Environment) -> str | None:
     """Extract the concept address from a block without modifying the environment.
 
@@ -200,12 +222,7 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
                 derivation_syntax.purpose.value.lower() == "property"
                 and "." in name_value
             ):
-                parent, short_name = name_value.rsplit(".", 1)
-                if "." in parent:
-                    namespace = parent.rsplit(".", 1)[0]
-                else:
-                    namespace = environment.namespace or DEFAULT_NAMESPACE
-                return _make_address(short_name, namespace)
+                return property_address(name_value, environment)
             _, namespace, name_str, _ = parse_concept_reference(name_value, environment)
             return _make_address(name_str, namespace)
         if (
@@ -246,9 +263,7 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
             wildcard = PropertyWildcardSyntax.from_node(decl)
             return _make_address(wildcard.name.value, namespace)
         if isinstance(decl, SyntaxToken):
-            raw = decl.value
-            short = raw.rsplit(".", 1)[-1] if "." in raw else raw
-            return _make_address(short, namespace)
+            return property_address(decl.value, environment)
         raise HydrationError(
             HydrationDiagnostic.from_syntax(
                 "Property declaration target must be a property identifier or token",

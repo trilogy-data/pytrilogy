@@ -31,7 +31,7 @@ from trilogy.core.statements.author import (
 from trilogy.parsing.exceptions import NameShadowError
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_service import ImportRequest
-from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.rowset_semantics import (
     apply_alias_updates,
     rowset_output_namespace,
@@ -163,6 +163,35 @@ class ConceptStatementPlan(StatementPlanBase):
         # for wholly undeclared identifiers and silently accept broken
         # concept declarations — strict v2 parsing must raise instead.
         self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
+
+    def verify_symbol_addresses(self) -> None:
+        """Assert collect_symbols predicted the addresses hydration created.
+
+        ``collect_symbols`` derives each address lexically, before the concepts
+        it names exist; hydration derives it again from resolved parents. When
+        the two disagree, the symbol table holds an address no concept ever
+        occupies — and ``_scoped_placeholder`` treats any declared symbol as
+        license to manufacture a placeholder, so a reference to the bogus
+        address binds a dangling concept instead of raising. That surfaces far
+        downstream as NoDatasourceException. Fail here, where the drift is.
+        """
+        if isinstance(self.output, PropertiesDeclarationStatement):
+            hydrated = [c.address for c in self.output.concepts]
+        elif isinstance(self.output, ConceptDeclarationStatement):
+            hydrated = [self.output.concept.address]
+        else:
+            return
+        declared = set(self.provided_addresses)
+        missing = [a for a in hydrated if a not in declared]
+        if missing:
+            raise HydrationError(
+                HydrationDiagnostic.from_syntax(
+                    f"Concept address drift: hydration created {missing} but symbol "
+                    f"collection declared {self.provided_addresses}. The symbol table "
+                    "would authorize references to an address no concept occupies.",
+                    self.syntax,
+                )
+            )
 
     def hydrate(self, hydrator: NativeHydrator) -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
