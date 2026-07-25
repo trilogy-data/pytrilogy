@@ -32,7 +32,7 @@ from trilogy.core.statements.author import (
 from trilogy.parsing.exceptions import NameShadowError
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_service import ImportRequest
-from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.rowset_semantics import (
     apply_alias_updates,
     rowset_output_namespace,
