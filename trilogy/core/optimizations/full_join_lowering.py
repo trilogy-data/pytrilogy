@@ -56,6 +56,33 @@ class UnsupportedFullJoinError(UnresolvableQueryException):
     whose shape the key-spine rewrite cannot express."""
 
 
+# Levers an author can actually pull. Each one removes the *reason* the planner
+# chose a preserving join, so the query re-plans as INNER/LEFT and never reaches
+# this pass — they are not ways to make the spine work harder.
+NULL_REJECT_LEVER = (
+    "add `where {key} is not null`: with no NULL keys the join narrows and the "
+    "ambiguity disappears"
+)
+COMPLETE_BINDING_LEVER = (
+    "if a `~partial` binding made this key preserving, bind it complete (drop "
+    "the `~`) on any datasource that really carries the key's full domain"
+)
+SPLIT_LEVER = (
+    "align the joins on one key, or move one of them into its own rowset so "
+    "each spine covers a single key"
+)
+NATIVE_LEVER = "run this statement on a dialect with native FULL JOIN support"
+
+
+def _unsupported(reason: str, *levers: str) -> UnsupportedFullJoinError:
+    """One consistent error shape: what happened, then how to fix it."""
+    remediation = "\n".join(f"  - {lever}" for lever in (*levers, NATIVE_LEVER))
+    return UnsupportedFullJoinError(
+        f"{reason}\n\nThis dialect has no FULL OUTER JOIN. To resolve:\n"
+        f"{remediation}"
+    )
+
+
 def _log(message: str) -> None:
     logger.info(optimization_log(COMPONENT, message))
 
@@ -68,6 +95,36 @@ def _full_joins(cte: CTE) -> list[Join]:
     ]
 
 
+def _slots(cte: CTE, join: Join) -> list[BuildConcept]:
+    """The spine's key columns, taken from the first FULL join's left concepts.
+
+    One left concept bound to two different right concepts (q97 joins both
+    sales channels' item keys through one ``item.sk``) needs two spine columns
+    that would carry the same name, and the arms could not be lined up
+    positionally. That is a distinct shape, not a key mismatch, so it gets its
+    own diagnosis before ``_pairs_by_slot`` sees a duplicated slot list.
+    """
+    pairs = join.joinkey_pairs or []
+    slots = [pair.left for pair in pairs]
+    seen = {c.address for c in slots}
+    if len(seen) != len(slots):
+        repeated = sorted(
+            {
+                c.address
+                for c in slots
+                if [x.address for x in slots].count(c.address) > 1
+            }
+        )
+        raise _unsupported(
+            f"Cannot lower the FULL JOIN in {cte.name}: {repeated} each bind more "
+            "than one key on the same join, so a single key spine cannot "
+            "represent them as distinct columns.",
+            SPLIT_LEVER,
+            COMPLETE_BINDING_LEVER,
+        )
+    return slots
+
+
 def _pairs_by_slot(
     join: Join, slots: list[BuildConcept], cte_name: str
 ) -> list[CTEConceptPair]:
@@ -77,12 +134,13 @@ def _pairs_by_slot(
     pairs = join.joinkey_pairs or []
     by_address = {pair.left.address: pair for pair in pairs}
     if len(by_address) != len(pairs) or set(by_address) != {s.address for s in slots}:
-        raise UnsupportedFullJoinError(
-            f"Cannot lower FULL JOIN in {cte_name} for this dialect: its FULL "
-            f"joins key off different concepts "
-            f"({sorted(by_address)} vs {sorted(s.address for s in slots)}), so no "
-            "single key spine covers them. Rewrite the query to align the joins "
-            "on one key, or use a dialect with native FULL JOIN support."
+        raise _unsupported(
+            f"Cannot lower the FULL JOINs in {cte_name}: they key off different "
+            f"concepts ({sorted(by_address)} vs "
+            f"{sorted(s.address for s in slots)}), so no single key spine covers "
+            "them.",
+            SPLIT_LEVER,
+            COMPLETE_BINDING_LEVER,
         )
     return [by_address[slot.address] for slot in slots]
 
@@ -90,18 +148,21 @@ def _pairs_by_slot(
 def _validate(cte: CTE, joins: list[Join]) -> None:
     for join in joins:
         if not join.joinkey_pairs:
-            raise UnsupportedFullJoinError(
-                f"Cannot lower keyless FULL JOIN between {cte.base_alias} and "
-                f"{join.right_cte.name} in {cte.name} for this dialect: with no "
-                "join key there is no spine to build, and neither side is a "
-                "single-row aggregate that would make it a plain cross join."
+            raise _unsupported(
+                f"Cannot lower the keyless FULL JOIN between {cte.base_alias} and "
+                f"{join.right_cte.name} in {cte.name}: with no join key there is "
+                "no spine to build, and neither side is a single-row aggregate "
+                "that would make it a plain cross join.",
+                "give the two sides a shared key to join on, or aggregate one of "
+                "them to a grand total (no `by`), which makes the cartesian exact",
             )
         if join.condition is not None:
-            raise UnsupportedFullJoinError(
-                f"Cannot lower FULL JOIN to {join.right_cte.name} in {cte.name} "
-                "for this dialect: it carries an extra ON predicate, which "
-                "changes which rows match and cannot be reproduced by a key "
-                "spine."
+            raise _unsupported(
+                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"{cte.name}: it carries an extra ON predicate, which changes "
+                "which rows match and cannot be reproduced by a key spine.",
+                "move the extra predicate into a `where` so the join matches on "
+                "keys alone",
             )
 
 
@@ -132,10 +193,12 @@ def _spine_participants(
         if existing is not None and [c.address for c in existing[1]] != [
             c.address for c in concepts
         ]:
-            raise UnsupportedFullJoinError(
-                f"Cannot lower FULL JOIN in {cte.name} for this dialect: "
-                f"{node.name} binds inconsistent key concepts across the FULL "
-                "joins it participates in."
+            raise _unsupported(
+                f"Cannot lower the FULL JOINs in {cte.name}: {node.name} binds "
+                "inconsistent key concepts across the FULL joins it participates "
+                "in, so one spine cannot serve them both.",
+                SPLIT_LEVER,
+                COMPLETE_BINDING_LEVER,
             )
         providers[node.name] = (node, concepts)
 
@@ -143,10 +206,13 @@ def _spine_participants(
         ordered = _pairs_by_slot(join, slots, cte.name)
         left_nodes = {pair.cte.name for pair in ordered}
         if len(left_nodes) != 1:
-            raise UnsupportedFullJoinError(
-                f"Cannot lower FULL JOIN to {join.right_cte.name} in {cte.name} "
-                "for this dialect: its key pairs read the left side from more "
-                f"than one relation ({sorted(left_nodes)})."
+            raise _unsupported(
+                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"{cte.name}: its key pairs read the left side from more than "
+                f"one relation ({sorted(left_nodes)}), so there is no single "
+                "relation for the spine to replace.",
+                SPLIT_LEVER,
+                COMPLETE_BINDING_LEVER,
             )
         # Resolve to the consumer's own instance: a folded parent lives on
         # ``inlined_parents``, and only that instance carries the datasource
@@ -159,10 +225,13 @@ def _spine_participants(
     if not any(
         render_alias(cte, node) == cte.base_alias for node, _ in providers.values()
     ):
-        raise UnsupportedFullJoinError(
-            f"Cannot lower FULL JOIN in {cte.name} for this dialect: its FROM "
-            f"base {cte.base_alias} does not participate in the FULL join keys, "
-            "so replacing the base with a key spine would strand it."
+        raise _unsupported(
+            f"Cannot lower the FULL JOIN in {cte.name}: its FROM base "
+            f"{cte.base_alias} does not participate in the FULL join keys, so "
+            "replacing the base with a key spine would strand it.",
+            "move the preserving join into its own rowset so it is the only "
+            "relation in its scope",
+            COMPLETE_BINDING_LEVER,
         )
     return providers
 
@@ -207,14 +276,14 @@ def _check_null_keys(
             if not proven_non_null(concepts[index], node)
         ]
         if unproven:
-            raise UnsupportedFullJoinError(
-                f"Cannot lower FULL JOIN in {cte.name} for this dialect: join "
-                f"key {slot.address} is compared with plain equality but may be "
-                f"NULL in {sorted(unproven)}. A native FULL JOIN keeps every "
-                "NULL-key row from both sides as a separate unmatched row, "
-                "which a key spine cannot reproduce. Declare the key non-null, "
-                "filter its NULLs upstream, or use a dialect with native FULL "
-                "JOIN support."
+            raise _unsupported(
+                f"Cannot lower the FULL JOIN in {cte.name}: join key "
+                f"{slot.address} is compared with plain equality but may be NULL "
+                f"in {sorted(unproven)}. A native FULL JOIN keeps every NULL-key "
+                "row from both sides as its own unmatched row; a key spine folds "
+                "them into one, so the row counts would differ.",
+                NULL_REJECT_LEVER.format(key=slot.address),
+                COMPLETE_BINDING_LEVER,
             )
 
 
@@ -308,8 +377,7 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
     if not joins:
         return None
     _validate(cte, joins)
-    first_pairs = joins[0].joinkey_pairs or []
-    slots = [pair.left for pair in first_pairs]
+    slots = _slots(cte, joins[0])
     providers = _spine_participants(cte, joins, slots)
 
     # The FROM base leads so the union's first arm names the spine's columns.

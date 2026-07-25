@@ -45,8 +45,16 @@ def test_shared_key_full_join_lowers_to_spine():
     assert "`_spine" in sql, sql
 
 
-def test_mismatched_key_full_joins_raise_typed_error():
+def test_unlowerable_shape_raises_with_remediation():
+    # q97 joins both channels' item keys through one `item.sk`, so the spine
+    # would need two columns of the same name.
     env, statements = _statements("query97-one.preql")
 
-    with pytest.raises(UnsupportedFullJoinError, match="key off different concepts"):
+    with pytest.raises(UnsupportedFullJoinError) as excinfo:
         _sql(MySQLDialect(), env, statements)
+
+    message = str(excinfo.value)
+    assert "item.sk" in message, message
+    assert "bind more than one key" in message, message
+    assert "To resolve:" in message, message
+    assert "native FULL JOIN support" in message, message

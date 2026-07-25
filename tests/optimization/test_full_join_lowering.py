@@ -165,3 +165,62 @@ def test_refusal_names_the_dialect_limitation():
     from trilogy.core.exceptions import UnresolvableQueryException
 
     assert issubclass(UnsupportedFullJoinError, UnresolvableQueryException)
+
+
+# A `~partial` binding plans a nested FULL, whose coalesced key reads as
+# nullable; under plain `=` a spine would change the NULL-key row count.
+PARTIAL_MODEL = """
+key cid int;
+property cid.cname string;
+key oid int;
+property oid.ocust int;
+property oid.amt float;
+datasource customers (cid:cid, cname:cname) grain (cid)
+  query '''select * from (values (1,'a'),(2,'b')) as t(cid, cname)''';
+datasource orders (oid:oid, ocust:~ocust, amt:amt) grain (oid)
+  query '''select * from (values (10,2,5.0),(11,4,7.0)) as t(oid, ocust, amt)''';
+"""
+PARTIAL_QUERY = "select cid, cname, sum(amt) as total union join ocust = cid;"
+
+
+def test_nullable_plain_equality_key_is_refused_with_remediation():
+    executor = _executor(PARTIAL_MODEL)
+    _, statements = parse_text(PARTIAL_QUERY, executor.environment)
+
+    with pytest.raises(UnsupportedFullJoinError) as excinfo:
+        NoFullJoinDuckDB().generate_queries(executor.environment, statements)
+
+    message = str(excinfo.value)
+    assert "may be NULL" in message, message
+    # The error must hand back a route out, not just a diagnosis.
+    assert "is not null" in message, message
+    assert "`~partial`" in message, message
+    assert "native FULL JOIN support" in message, message
+
+
+def test_suggested_null_reject_actually_unblocks_lowering():
+    # The remediation the error prints has to work -- otherwise it is advice
+    # that sends the author in circles.
+    executor = _executor(PARTIAL_MODEL)
+    _, statements = parse_text(
+        "where cid is not null " + PARTIAL_QUERY, executor.environment
+    )
+
+    sql = NoFullJoinDuckDB().compile_statement(
+        NoFullJoinDuckDB().generate_queries(executor.environment, statements)[0]
+    )
+
+    assert "FULL JOIN" not in sql.upper(), sql
+    assert '"_spine' in sql, sql
+
+
+def test_suggested_complete_binding_actually_unblocks_lowering():
+    executor = _executor(PARTIAL_MODEL.replace("ocust:~ocust", "ocust:ocust"))
+    _, statements = parse_text(PARTIAL_QUERY, executor.environment)
+
+    sql = NoFullJoinDuckDB().compile_statement(
+        NoFullJoinDuckDB().generate_queries(executor.environment, statements)[0]
+    )
+
+    assert "FULL JOIN" not in sql.upper(), sql
+    assert '"_spine' in sql, sql
