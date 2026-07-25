@@ -40,6 +40,7 @@ from trilogy.core.models.execute import (
     CTE,
     CTEConceptPair,
     DatasourceCTE,
+    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -104,6 +105,18 @@ def _validate(cte: CTE, joins: list[Join]) -> None:
             )
 
 
+def render_alias(cte: CTE, node: CTE | UnionCTE) -> str:
+    """The alias ``cte`` references ``node``'s columns by.
+
+    Mirrors the renderer: a folded ``DatasourceCTE`` is referenced by its raw
+    table alias, not by the CTE name it had before inlining. ``base_alias`` is
+    one of these, so participants must be matched against it in alias space.
+    """
+    if isinstance(node, DatasourceCTE) and cte.renders_inline(node):
+        return cte.source_key_for(node)
+    return cte.source_key_for(node.name)
+
+
 def _spine_participants(
     cte: CTE, joins: list[Join], slots: list[BuildConcept]
 ) -> dict[str, tuple[CTE | UnionCTE, list[BuildConcept]]]:
@@ -138,14 +151,14 @@ def _spine_participants(
         # Resolve to the consumer's own instance: a folded parent lives on
         # ``inlined_parents``, and only that instance carries the datasource
         # the spine arm has to read from.
-        record(
-            Join.authoritative(cte, ordered[0].cte), [pair.left for pair in ordered]
-        )
+        record(Join.authoritative(cte, ordered[0].cte), [pair.left for pair in ordered])
         record(
             Join.authoritative(cte, join.right_cte), [pair.right for pair in ordered]
         )
 
-    if cte.base_alias not in providers:
+    if not any(
+        render_alias(cte, node) == cte.base_alias for node, _ in providers.values()
+    ):
         raise UnsupportedFullJoinError(
             f"Cannot lower FULL JOIN in {cte.name} for this dialect: its FROM "
             f"base {cte.base_alias} does not participate in the FULL join keys, "
@@ -206,7 +219,10 @@ def _check_null_keys(
 
 
 def _branch_cte(
-    name: str, node: CTE | UnionCTE, concepts: list[BuildConcept], inlined: bool
+    name: str,
+    node: CTE | UnionCTE,
+    concepts: list[BuildConcept],
+    inlined: DatasourceCTE | None,
 ) -> CTE:
     """A ``SELECT <keys> FROM <node>`` arm of the spine union.
 
@@ -215,9 +231,8 @@ def _branch_cte(
     shape a leaf ``DatasourceCTE`` renders.
     """
     grain = BuildGrain.from_concepts(concepts)
-    if inlined:
-        assert isinstance(node, DatasourceCTE)
-        datasource = node.datasource
+    if inlined is not None:
+        datasource = inlined.datasource
         return DatasourceCTE(
             name=name,
             source=QueryDatasource(
@@ -257,10 +272,10 @@ def _build_spine(
     name: str,
     slots: list[BuildConcept],
     participants: list[tuple[CTE | UnionCTE, list[BuildConcept]]],
-    inlined: set[str],
+    inlined: dict[str, DatasourceCTE],
 ) -> UnionCTE:
     branches = [
-        _branch_cte(f"{name}_{index}", node, concepts, node.name in inlined)
+        _branch_cte(f"{name}_{index}", node, concepts, inlined.get(node.name))
         for index, (node, concepts) in enumerate(participants)
     ]
     grain = BuildGrain.from_concepts(slots)
@@ -298,12 +313,20 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
     providers = _spine_participants(cte, joins, slots)
 
     # The FROM base leads so the union's first arm names the spine's columns.
-    base_entry = providers.pop(cte.base_alias)
-    participants = [base_entry, *providers.values()]
+    base_name = next(
+        name
+        for name, (node, _) in providers.items()
+        if render_alias(cte, node) == cte.base_alias
+    )
+    participants = [providers.pop(base_name), *providers.values()]
     nullable = _nullable_slots(joins, slots)
     _check_null_keys(cte, slots, nullable, participants)
 
-    inlined = {node.name for node, _ in participants if cte.renders_inline(node)}
+    inlined = {
+        node.name: folded
+        for node, _ in participants
+        if (folded := cte.inlined_parent_for_source(node.name)) is not None
+    }
     spine = _build_spine(f"_spine_{index}_{cte.name}", slots, participants, inlined)
     spine_joins: list[Join] = [
         Join(
@@ -324,7 +347,12 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
         for node, concepts in participants
     ]
 
-    cte.joins = spine_joins + [join for join in cte.joins if join not in joins]
+    # Spine joins lead: every other join in the chain reads a participant's
+    # alias, which now only exists once that participant has been joined on.
+    remaining: list[Join | InstantiatedUnnestJoin] = [
+        join for join in cte.joins if join not in joins
+    ]
+    cte.joins = [*spine_joins, *remaining]
     cte.parent_ctes = [spine, *cte.parent_ctes]
     cte.base_name_override = spine.name
     cte.base_alias_override = spine.name

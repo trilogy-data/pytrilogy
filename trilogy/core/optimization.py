@@ -11,7 +11,7 @@ from trilogy.core.optimizations import (
     InlineDatasource,
     JoinHoist,
     MergeIrrelevantGroupBy,
-    NarrowSingleRowFullJoins,
+    NarrowKeylessFullJoins,
     OptimizationRule,
     OrderInnerJoinsFirst,
     PredicatePushdown,
@@ -663,11 +663,11 @@ def build_optimization_rule_plan(
                 ),
             )
         )
-    if opts.narrow_single_row_full_joins:
+    if opts.narrow_keyless_full_joins:
         plan.append(
             OptimizationRulePlan(
-                name="narrow_single_row_full_joins",
-                rule_factory=NarrowSingleRowFullJoins,
+                name="narrow_keyless_full_joins",
+                rule_factory=NarrowKeylessFullJoins,
                 depends_on=_enabled_dependencies(
                     ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
                     (

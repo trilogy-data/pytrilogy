@@ -2775,10 +2775,7 @@ class BaseDialect:
                 # some joins may not need to be rendered
                 joins=[
                     j
-                    for j in [
-                        self.render_join(join, cte)
-                        for join in final_joins
-                    ]
+                    for j in [self.render_join(join, cte) for join in final_joins]
                     if j
                 ],
                 where=rendered_where,

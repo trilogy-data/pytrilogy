@@ -1,6 +1,6 @@
 query_id = "54"
 generator = "v3"
-gen_length = 4052
+gen_length = 4058
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
@@ -90,7 +90,7 @@ SELECT
     \"macho\".\"segment_base\" as \"segment_base\"
 FROM
     \"late\"
-    FULL JOIN \"macho\" on 1=1
+    LEFT OUTER JOIN \"macho\" on 1=1
 ORDER BY 
     \"macho\".\"segment\" asc nulls first,
     coalesce(\"late\".\"num_customers\",0) asc nulls first,

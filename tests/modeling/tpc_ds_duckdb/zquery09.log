@@ -1,6 +1,6 @@
 query_id = "09"
 generator = "v3"
-gen_length = 2990
+gen_length = 2994
 preql_size = 1109
 comp_size = 2446
 generated_sql = """
@@ -109,7 +109,7 @@ SELECT
     \"cooperative\".\"bucket5\" as \"bucket5\"
 FROM
     \"highfalutin\"
-    FULL JOIN \"wakeful\" on 1=1
-    FULL JOIN \"cheerful\" on 1=1
-    FULL JOIN \"thoughtful\" on 1=1
-    FULL JOIN \"cooperative\" on 1=1"""
+    INNER JOIN \"wakeful\" on 1=1
+    INNER JOIN \"cheerful\" on 1=1
+    INNER JOIN \"thoughtful\" on 1=1
+    INNER JOIN \"cooperative\" on 1=1"""

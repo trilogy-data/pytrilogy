@@ -3,7 +3,13 @@ from typing import Any, ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import ComparisonOperator, CreateMode, DatePart, FunctionType
+from trilogy.core.enums import (
+    ComparisonOperator,
+    CreateMode,
+    DatePart,
+    FunctionType,
+    Modifier,
+)
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.execute import CreateTableInfo
@@ -53,6 +59,15 @@ def render_cast(args: list[str]) -> str:
     # boundary where MySQL requires CHAR instead.
     target = "CHAR" if args[1].upper() == "TEXT" else args[1]
     return f"CAST({args[0]} AS {target})"
+
+
+def null_safe_join_key(lval: str, rval: str, modifiers: list[Modifier]) -> str:
+    # `<=>` is MySQL's null-safe equality. The base dialect's OR-expansion is
+    # equivalent but never index-assisted, and every lowered FULL join emits one
+    # of these per key.
+    if Modifier.NULLABLE in modifiers:
+        return f"({lval} <=> {rval})"
+    return f"{lval} = {rval}"
 
 
 FUNCTION_MAP = {
@@ -149,6 +164,7 @@ class MySQLDialect(BaseDialect):
     SQL_TEMPLATE = MYSQL_SQL_TEMPLATE
     SUPPORTS_ALIAS_IN_HAVING = True
     SUPPORTS_FULL_JOIN = False
+    NULL_WRAPPER = staticmethod(null_safe_join_key)
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
 
