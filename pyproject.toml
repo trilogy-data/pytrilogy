@@ -41,6 +41,7 @@ trilogy = "trilogy.scripts.trilogy:cli"
 [project.optional-dependencies]
 odbc = ["pyodbc"]
 postgres = ["psycopg2-binary"]
+mysql = ["pymysql"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]

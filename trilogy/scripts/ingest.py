@@ -834,6 +834,19 @@ def ingest(
     tables.
     """
     source_list = [s.strip() for s in sources.split(",") if s.strip()]
+    # With optional SOURCES and DIALECT positionals followed by variadic
+    # connection arguments, Click cannot know that `mysql` in
+    # `ingest --all mysql host=...` is the dialect. Normalize that shape here.
+    if all_tables and len(source_list) == 1:
+        try:
+            all_tables_dialect = Dialects(source_list[0])
+        except ValueError:
+            all_tables_dialect = None
+        if all_tables_dialect is not None:
+            if dialect:
+                conn_args = (dialect, *conn_args)
+            dialect = all_tables_dialect.value
+            source_list = []
     if all_tables and source_list:
         print_error("Pass either explicit SOURCES or --all, not both.")
         raise Exit(1)

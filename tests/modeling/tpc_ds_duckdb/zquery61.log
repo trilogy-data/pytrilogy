@@ -1,6 +1,6 @@
 query_id = "61"
 generator = "v3"
-gen_length = 3530
+gen_length = 3532
 preql_size = 628
 comp_size = 1279
 generated_sql = """
@@ -58,8 +58,8 @@ SELECT
     \"juicy\".\"ratio\" as \"ratio\"
 FROM
     \"yummy\"
-    FULL JOIN \"juicy\" on 1=1
-    FULL JOIN \"vacuous\" on 1=1
+    INNER JOIN \"juicy\" on 1=1
+    INNER JOIN \"vacuous\" on 1=1
 ORDER BY 
     \"yummy\".\"promotions\" asc nulls first,
     \"vacuous\".\"total\" asc nulls first

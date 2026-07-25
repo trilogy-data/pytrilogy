@@ -107,23 +107,25 @@ def to_openai_messages(history: list[LLMMessage]) -> list[dict]:
     for idx, (msg, tool_calls, results) in enumerate(iter_history_turns(history)):
         if tool_calls:
             ids = [f"call_{idx}_{j}" for j in range(len(tool_calls))]
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content or None,
-                    "tool_calls": [
-                        {
-                            "id": ids[j],
-                            "type": "function",
-                            "function": {
-                                "name": tc.get("name", ""),
-                                "arguments": json.dumps(tc.get("arguments") or {}),
-                            },
-                        }
-                        for j, tc in enumerate(tool_calls)
-                    ],
-                }
-            )
+            assistant_message = {
+                "role": "assistant",
+                "content": msg.content or None,
+                "tool_calls": [
+                    {
+                        "id": ids[j],
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", ""),
+                            "arguments": json.dumps(tc.get("arguments") or {}),
+                        },
+                    }
+                    for j, tc in enumerate(tool_calls)
+                ],
+            }
+            reasoning_content = (msg.model_info or {}).get("reasoning_content")
+            if reasoning_content is not None:
+                assistant_message["reasoning_content"] = reasoning_content
+            messages.append(assistant_message)
             for j, res in enumerate(results):
                 messages.append(
                     {
@@ -133,5 +135,9 @@ def to_openai_messages(history: list[LLMMessage]) -> list[dict]:
                     }
                 )
         else:
-            messages.append({"role": msg.role, "content": msg.content})
+            message = {"role": msg.role, "content": msg.content}
+            reasoning_content = (msg.model_info or {}).get("reasoning_content")
+            if msg.role == "assistant" and reasoning_content is not None:
+                message["reasoning_content"] = reasoning_content
+            messages.append(message)
     return messages

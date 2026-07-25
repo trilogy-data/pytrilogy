@@ -389,6 +389,29 @@ def get_dialect_config(
             "Postgres",
         )
         conf = PostgresConfig(**conn_dict)
+    elif edialect == Dialects.MYSQL:
+        from trilogy.dialect.config import MySQLConfig
+
+        existing = runtime_config.engine_config
+        if isinstance(existing, MySQLConfig):
+            # CLI-supplied params win over the ones already on the config.
+            configured: dict[str, Any] = {
+                "host": existing.host,
+                "port": existing.port,
+                "username": existing.username,
+                "password": existing.password,
+                "database": existing.database,
+                "charset": existing.charset,
+            }
+            configured.update(conn_dict)
+            conn_dict = {k: v for k, v in configured.items() if v is not None}
+        conn_dict = validate_required_connection_params(
+            conn_dict,
+            ["host", "username", "password", "database"],
+            ["port", "charset"],
+            "MySQL",
+        )
+        conf = MySQLConfig(**conn_dict)
     elif edialect == Dialects.BIGQUERY:
         from trilogy.dialect.config import BigQueryConfig
 

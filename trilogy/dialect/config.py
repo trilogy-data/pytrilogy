@@ -206,6 +206,39 @@ class PostgresConfig(DialectConfig):
         return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
 
 
+class MySQLConfig(DialectConfig):
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str,
+        database: str,
+        port: int = 3306,
+        charset: str = "utf8mb4",
+        retry_config: RetryConfig | None = None,
+    ):
+        super().__init__(retry_config=retry_config)
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+        self.charset = charset
+
+    def connection_string(self) -> str:
+        from sqlalchemy import URL
+
+        return URL.create(
+            "mysql+pymysql",
+            username=self.username,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            query={"charset": self.charset},
+        ).render_as_string(hide_password=False)
+
+
 class SQLServerConfig(DialectConfig):
     def __init__(
         self,

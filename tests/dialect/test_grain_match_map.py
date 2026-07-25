@@ -15,6 +15,7 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.clickhouse import ClickhouseDialect
 from trilogy.dialect.duckdb import DuckDBDialect
+from trilogy.dialect.mysql import MySQLDialect
 from trilogy.dialect.postgres import PostgresDialect
 from trilogy.dialect.presto import PrestoDialect, TrinoDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
@@ -26,6 +27,7 @@ DIALECTS = [
     BigqueryDialect,
     ClickhouseDialect,
     DuckDBDialect,
+    MySQLDialect,
     PostgresDialect,
     PrestoDialect,
     TrinoDialect,

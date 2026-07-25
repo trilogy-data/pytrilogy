@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from pytest import raises
 
 from trilogy.core.exceptions import ConfigurationException
-from trilogy.dialect.config import DuckDBConfig
+from trilogy.dialect.config import DuckDBConfig, MySQLConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.scripts.common import (
@@ -96,6 +96,64 @@ def test_get_dialect_config_duckdb_unknown_key_errors():
         get_dialect_config(
             Dialects.DUCK_DB, {"bogus": 1}, runtime_config=_runtime_config()
         )
+
+
+def test_get_dialect_config_mysql():
+    conf = get_dialect_config(
+        Dialects.MYSQL,
+        {
+            "host": "localhost",
+            "port": 3307,
+            "username": "user",
+            "password": "password",
+            "database": "analytics",
+        },
+        runtime_config=_runtime_config(),
+    )
+    assert isinstance(conf, MySQLConfig)
+    assert conf.host == "localhost"
+    assert conf.port == 3307
+    assert conf.database == "analytics"
+
+
+def test_get_dialect_config_mysql_validates_arguments():
+    with raises(ConfigurationException, match="Missing required MySQL.*database"):
+        get_dialect_config(
+            Dialects.MYSQL,
+            {
+                "host": "localhost",
+                "username": "user",
+                "password": "password",
+            },
+            runtime_config=_runtime_config(),
+        )
+    with raises(ConfigurationException, match="Unknown MySQL.*bogus"):
+        get_dialect_config(
+            Dialects.MYSQL,
+            {
+                "host": "localhost",
+                "username": "user",
+                "password": "password",
+                "database": "analytics",
+                "bogus": "value",
+            },
+            runtime_config=_runtime_config(),
+        )
+
+
+def test_get_dialect_config_mysql_uses_file_config():
+    runtime = _runtime_config()
+    runtime.engine_config = MySQLConfig(
+        host="localhost",
+        username="user",
+        password="password",
+        database="analytics",
+    )
+
+    conf = get_dialect_config(Dialects.MYSQL, {}, runtime_config=runtime)
+
+    assert isinstance(conf, MySQLConfig)
+    assert conf.database == "analytics"
 
 
 def test_get_dialect_config_unsupported_dialect_with_args_errors():

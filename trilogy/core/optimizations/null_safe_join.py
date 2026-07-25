@@ -43,7 +43,7 @@ def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
     """True when one of ``cte``'s own outer joins NULL-pads any address in
     ``addrs``.
 
-    Used by the parent-walk in ``_proven_non_null`` to refuse a recursive
+    Used by the parent-walk in ``proven_non_null`` to refuse a recursive
     proof when a column that's non-null in some upstream producer is
     re-introduced as nullable by ``cte``'s own join. The build-time
     ``nullable_concepts`` already reflects this, so we only have to recurse
@@ -87,7 +87,7 @@ def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
     return not addrs.isdisjoint(_equivalent_addrs(list(cte.nullable_concepts)))
 
 
-def _proven_non_null(
+def proven_non_null(
     concept: BuildConcept,
     cte: CTE | UnionCTE,
     _visited: frozenset[str] = frozenset(),
@@ -115,7 +115,7 @@ def _proven_non_null(
         branches = list(cte.internal_ctes)
         if not branches:
             return False
-        return all(_proven_non_null(concept, branch, _visited) for branch in branches)
+        return all(proven_non_null(concept, branch, _visited) for branch in branches)
     if not isinstance(cte, CTE):
         return False
     output = _equivalent_addrs(list(cte.output_columns))
@@ -147,7 +147,7 @@ def _proven_non_null(
     if not contributing:
         return False
     return all(
-        _proven_non_null(concept, parent, next_visited) for parent in contributing
+        proven_non_null(concept, parent, next_visited) for parent in contributing
     )
 
 
@@ -193,8 +193,8 @@ class SimplifyNullSafeJoins(OptimizationRule):
                 safe = (
                     not pair.left.equivalent_addresses.isdisjoint(local_proofs)
                     or not pair.right.equivalent_addresses.isdisjoint(local_proofs)
-                    or _proven_non_null(pair.left, pair.cte)
-                    or _proven_non_null(pair.right, join.right_cte)
+                    or proven_non_null(pair.left, pair.cte)
+                    or proven_non_null(pair.right, join.right_cte)
                 )
                 all_pairs_safe = all_pairs_safe and safe
                 if safe and Modifier.NULLABLE in pair.modifiers:

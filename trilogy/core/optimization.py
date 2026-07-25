@@ -11,6 +11,7 @@ from trilogy.core.optimizations import (
     InlineDatasource,
     JoinHoist,
     MergeIrrelevantGroupBy,
+    NarrowKeylessFullJoins,
     OptimizationRule,
     OrderInnerJoinsFirst,
     PredicatePushdown,
@@ -22,6 +23,7 @@ from trilogy.core.optimizations import (
     UpgradeOuterFromKeySetEquivalence,
     optimization_log,
 )
+from trilogy.core.optimizations.full_join_lowering import lower_full_joins
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
@@ -661,6 +663,24 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.narrow_keyless_full_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="narrow_keyless_full_joins",
+                rule_factory=NarrowKeylessFullJoins,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "runs once the key-based narrowing passes have settled, so "
+                    "only genuinely keyless FULL joins are left to inspect"
+                ),
+            )
+        )
     if opts.simplify_null_safe_joins:
         plan.append(
             OptimizationRulePlan(
@@ -744,6 +764,7 @@ def optimize_ctes(
     select: SelectStatement | MultiSelectStatement,
     having_alias: bool = False,
     domain_graph: DomainGraph | None = None,
+    supports_full_join: bool = True,
 ) -> list[CTE | UnionCTE]:
     direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -819,5 +840,10 @@ def optimize_ctes(
                 f"after {loops} loop(s); changed={phase_changed}",
             )
         )
+
+    if not supports_full_join:
+        # Last: the rewrite adds CTEs and repoints FROM bases, so every
+        # join-type and placement decision must already be final.
+        input = lower_full_joins(input, root_cte)
 
     return reorder_ctes(filter_irrelevant_ctes(input, root_cte))

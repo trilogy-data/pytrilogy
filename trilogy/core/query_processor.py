@@ -1307,6 +1307,7 @@ def process_query(
     statement: SelectStatement | MultiSelectStatement,
     hooks: list[BaseHook] | None = None,
     having_alias: bool = False,
+    supports_full_join: bool = True,
 ) -> ProcessedQuery:
     hooks = hooks or []
 
@@ -1388,6 +1389,7 @@ def process_query(
         statement,
         having_alias=having_alias,
         domain_graph=domain_graph,
+        supports_full_join=supports_full_join,
     )
     _expose_downstream_referenced_columns(final_ctes, root_cte)
     # Observational only — a diagnostics failure must never block the query.

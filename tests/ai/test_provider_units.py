@@ -139,6 +139,48 @@ def test_to_openai_messages_threads_tool_calls():
     assert msgs[3]["content"] == "todo result"
 
 
+def test_to_openai_messages_preserves_deepseek_reasoning_content():
+    from trilogy.ai.models import LLMMessage
+    from trilogy.ai.providers.base import to_openai_messages
+
+    history = [
+        LLMMessage(
+            role="assistant",
+            content="",
+            model_info={
+                "reasoning_content": "opaque continuation state",
+                "tool_calls": [{"name": "todo", "arguments": {"action": "list"}}],
+            },
+        ),
+        LLMMessage(role="user", content="todo result"),
+    ]
+
+    messages = to_openai_messages(history)
+
+    assert messages[0]["reasoning_content"] == "opaque continuation state"
+
+
+def test_to_openai_messages_preserves_empty_deepseek_reasoning_content():
+    from trilogy.ai.providers.base import to_openai_messages
+
+    messages = to_openai_messages(
+        [
+            LLMMessage(
+                role="assistant",
+                content="",
+                model_info={
+                    "reasoning_content": "",
+                    "tool_calls": [{"name": "run", "arguments": {}}],
+                },
+            ),
+            LLMMessage(role="user", content="tool result"),
+        ]
+    )
+
+    assert "reasoning_content" in messages[0]
+    assert messages[0]["reasoning_content"] == ""
+
+
 def test_to_openai_messages_plain_when_no_tool_calls():
     from trilogy.ai.models import LLMMessage
     from trilogy.ai.providers.base import to_openai_messages
@@ -187,6 +229,7 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
             {
                 "message": {
                     "content": "",
+                    "reasoning_content": "opaque continuation state",
                     "tool_calls": [
                         {
                             "function": {
@@ -218,6 +261,7 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
 
     assert sink["json"]["tool_choice"] == "required"
     assert result.tool_calls[0].arguments["query"] == "select 1"
+    assert result.reasoning_content == "opaque continuation state"
 
 
 def test_openai_provider_prefers_named_tool_choice(monkeypatch):

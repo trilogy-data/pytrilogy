@@ -97,6 +97,7 @@ class OpenAIProvider(LLMProvider):
             message = data["choices"][0]["message"]
             return LLMResponse(
                 text=message.get("content") or "",
+                reasoning_content=message.get("reasoning_content"),
                 tool_calls=[
                     build_tool_call(
                         tc["function"]["name"], tc["function"].get("arguments")

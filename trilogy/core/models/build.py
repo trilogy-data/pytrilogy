@@ -1882,6 +1882,19 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs):
         return [self.content]
 
 
+def get_grouped_aggregate_wrapper(
+    concept: BuildConcept,
+) -> BuildAggregateWrapper | None:
+    lineage = concept.lineage
+    if isinstance(lineage, BuildAggregateWrapper):
+        return lineage
+    if isinstance(lineage, BuildRowsetItem) and isinstance(
+        lineage.content.lineage, BuildAggregateWrapper
+    ):
+        return lineage.content.lineage
+    return None
+
+
 @dataclass(slots=True)
 class BuildSubselectItem(DataTyped, BuildConceptArgs):
     content: BuildConcept

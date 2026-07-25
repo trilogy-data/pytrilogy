@@ -17,7 +17,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.null_safe_join import (
     SimplifyNullSafeJoins,
-    _proven_non_null,
+    proven_non_null,
 )
 
 
@@ -73,15 +73,15 @@ def _root_with_join(jointype: JoinType, left_nullable, right_nullable):
     return root, key
 
 
-def test_proven_non_null_helper():
+def testproven_non_null_helper():
     key = _build_concept("KEY")
     clean = _build_cte("clean", [key])
     dirty = _build_cte("dirty", [key], nullable=[key])
     missing = _build_cte("missing", [_build_concept("OTHER")])
-    assert _proven_non_null(key, clean) is True
-    assert _proven_non_null(key, dirty) is False
+    assert proven_non_null(key, clean) is True
+    assert proven_non_null(key, dirty) is False
     # not sourced from the cte → cannot prove
-    assert _proven_non_null(key, missing) is False
+    assert proven_non_null(key, missing) is False
 
 
 def test_inner_join_stripped_when_a_side_non_null():
@@ -147,7 +147,7 @@ def test_full_join_ignores_local_condition_proof():
     assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
 
 
-def test_proven_non_null_via_cte_condition():
+def testproven_non_null_via_cte_condition():
     """A nullable column becomes non-null when the CTE's own WHERE rejects NULLs.
 
     Mirrors what predicate-pushdown leaves behind on a producing CTE."""
@@ -156,7 +156,7 @@ def test_proven_non_null_via_cte_condition():
     cte.condition = BuildComparison(
         left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
     )
-    assert _proven_non_null(key, cte) is True
+    assert proven_non_null(key, cte) is True
 
 
 def _union_cte(name: str, branches):
@@ -178,12 +178,12 @@ def _union_cte(name: str, branches):
     )
 
 
-def test_union_cte_proven_non_null_when_every_branch_clean():
+def test_union_cteproven_non_null_when_every_branch_clean():
     key = _build_concept("KEY")
     branch_a = _build_cte("branch_a", [key])
     branch_b = _build_cte("branch_b", [key])
     union = _union_cte("union", [branch_a, branch_b])
-    assert _proven_non_null(key, union) is True
+    assert proven_non_null(key, union) is True
 
 
 def test_union_cte_not_proven_when_one_branch_nullable():
@@ -191,7 +191,7 @@ def test_union_cte_not_proven_when_one_branch_nullable():
     branch_a = _build_cte("branch_a", [key])
     branch_b = _build_cte("branch_b", [key], nullable=[key])
     union = _union_cte("union", [branch_a, branch_b])
-    assert _proven_non_null(key, union) is False
+    assert proven_non_null(key, union) is False
 
 
 def test_union_cte_proven_via_branch_conditions():
@@ -206,4 +206,4 @@ def test_union_cte_proven_via_branch_conditions():
     branch_b = _build_cte("branch_b", [key], nullable=[key])
     branch_b.condition = cond
     union = _union_cte("union", [branch_a, branch_b])
-    assert _proven_non_null(key, union) is True
+    assert proven_non_null(key, union) is True
