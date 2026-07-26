@@ -1,9 +1,21 @@
 from trilogy.execution.state.cache import ColumnStatsCache, InMemoryColumnStatsCache
+from trilogy.execution.state.snapshot import (
+    SNAPSHOT_SCHEMA_VERSION,
+    ColumnMapping,
+    DatasourceState,
+    PhysicalAssetState,
+    StateSnapshot,
+    StateSnapshotSummary,
+    WatermarkValue,
+    build_datasource_state,
+    merge_into_snapshot,
+)
 from trilogy.execution.state.state_store import (
     BaseStateStore,
     RefreshAssetError,
     RefreshPlan,
     RefreshResult,
+    StateStore,
     create_refresh_plan,
     execute_refresh_plan,
     refresh_stale_assets,
@@ -23,15 +35,25 @@ from trilogy.execution.state.watermarks import (
 )
 
 __all__ = [
+    "SNAPSHOT_SCHEMA_VERSION",
     "BaseStateStore",
+    "ColumnMapping",
     "ColumnStatsCache",
+    "DatasourceState",
     "DatasourceWatermark",
     "InMemoryColumnStatsCache",
+    "PhysicalAssetState",
     "RefreshAssetError",
     "RefreshKind",
     "RefreshPlan",
     "RefreshResult",
     "StaleAsset",
+    "StateSnapshot",
+    "StateSnapshotSummary",
+    "StateStore",
+    "WatermarkValue",
+    "build_datasource_state",
+    "merge_into_snapshot",
     "create_refresh_plan",
     "execute_refresh_plan",
     "get_concept_max_watermark_abstract",

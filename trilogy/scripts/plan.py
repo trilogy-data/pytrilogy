@@ -145,9 +145,63 @@ def format_plan_text(
     type=Path(exists=True),
     help="Path to trilogy.toml configuration file",
 )
+@option(
+    "--report-file",
+    "report_file",
+    type=Path(),
+    default=None,
+    help=(
+        "Append a machine-readable JSONL execution report to this path "
+        "(env: TRILOGY_REPORT_FILE)."
+    ),
+)
+@option(
+    "--run-id",
+    "run_id",
+    default=None,
+    help=(
+        "Correlation id stamped on every report record "
+        "(env: TRILOGY_RUN_ID; default: generated)."
+    ),
+)
 @pass_context
-def plan(ctx, input: str, output: str | None, json_format: bool, config: str | None):
+def plan(
+    ctx,
+    input: str,
+    output: str | None,
+    json_format: bool,
+    config: str | None,
+    report_file: str | None,
+    run_id: str | None,
+):
     """Show execution plan without running scripts."""
+    from trilogy.execution.report import emit_report, report_run
+
+    try:
+        with report_run(
+            "plan",
+            report_file,
+            run_id,
+            target=str(input)[:200],
+            config_path=config,
+        ):
+            _plan_body(
+                ctx, input, output, json_format, config, emit_report
+            )
+    except Exit:
+        raise
+    except Exception as e:
+        handle_execution_exception(e, debug=ctx.obj.get("DEBUG", False))
+
+
+def _plan_body(
+    ctx,
+    input: str,
+    output: str | None,
+    json_format: bool,
+    config: str | None,
+    emit_report,
+) -> None:
     try:
         pathlib_input = PathlibPath(input)
         config_path = PathlibPath(config) if config else None
@@ -177,6 +231,13 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
         else:
             print_error(f"Input path '{input}' is not a file or directory.")
             raise Exit(1)
+
+        graph_json = graph_to_json(graph, root)
+        emit_report(
+            "plan_graph",
+            nodes=graph_json["nodes"],
+            edges=graph_json["edges"],
+        )
 
         if json_format:
             plan_data = graph_to_json(graph, root)

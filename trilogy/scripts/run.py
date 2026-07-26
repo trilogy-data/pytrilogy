@@ -134,6 +134,38 @@ def _format_import(value: str) -> str:
         "on by default (disable with TRILOGY_AGENT_SCOPE_WARNINGS=0)."
     ),
 )
+@option(
+    "--report-file",
+    "report_file",
+    type=Path(),
+    default=None,
+    help=(
+        "Append a machine-readable JSONL execution report to this path "
+        "(env: TRILOGY_REPORT_FILE). One JSON object per line; see "
+        "trilogy.execution.report for the record contract."
+    ),
+)
+@option(
+    "--run-id",
+    "run_id",
+    default=None,
+    help=(
+        "Correlation id stamped on every report record "
+        "(env: TRILOGY_RUN_ID; default: generated)."
+    ),
+)
+@option(
+    "--state-file",
+    "state_file",
+    type=Path(),
+    default=None,
+    help=(
+        "Write a post-run state snapshot (watermarks, staleness, column "
+        "mappings) as JSON to this path (env: TRILOGY_STATE_FILE). Runs a "
+        "full state probe after execution; failures warn but never change "
+        "the exit code."
+    ),
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -148,6 +180,9 @@ def run(
     displayed_rows: int,
     all_rows: bool,
     scope: bool,
+    report_file: str | None,
+    run_id: str | None,
+    state_file: str | None,
     conn_args,
 ):
     """Execute a Trilogy script or query."""
@@ -158,36 +193,6 @@ def run(
     # validate that the imports parse without running any query body.
     if input == "-":
         input = sys.stdin.read()
-
-    # Empty input (from `-` with empty stdin) is always inline — without this
-    # guard, Path("").exists() returns True on most platforms (it resolves to
-    # the cwd), causing the --import check below to reject the call.
-    is_inline = not input or not PathlibPath(input).exists()
-    # If the input clearly looks like a file path (.preql/.sql extension or
-    # contains a path separator) but does not exist, fail explicitly instead of
-    # falling through to inline-query mode and reporting a confusing "No
-    # dialect specified" error from the parser.
-    if is_inline and _looks_like_missing_path(input):
-        from trilogy.scripts.display import print_error
-
-        print_error(f"Input '{input}' does not exist.")
-        raise Exit(2)
-
-    if imports:
-        if not is_inline:
-            from trilogy.scripts.display import print_error
-
-            print_error(
-                "--import only applies to inline queries, not file/directory inputs."
-            )
-            raise Exit(2)
-        input = "".join(_format_import(v) for v in imports) + input
-
-    if is_inline:
-        # Inline queries may omit the trailing terminator; the parser needs it.
-        stripped = input.rstrip()
-        if stripped and not stripped.endswith(";"):
-            input = stripped + ";"
 
     if dialect:
         try:
@@ -201,28 +206,81 @@ def run(
             raise click.UsageError(msg) from exc
     else:
         dialect_enum = None
-    cli_params = CLIRuntimeParams(
-        input=input,
-        dialect=dialect_enum,
-        parallelism=parallelism,
-        param=param,
-        conn_args=conn_args,
-        debug=ctx.obj["DEBUG"],
-        debug_file=ctx.obj.get("DEBUG_FILE"),
-        config_path=PathlibPath(config) if config else None,
-        execution_strategy="eager_bfs",
-        env=env,
-        row_limit=None if all_rows else displayed_rows,
-        show_scopes=scope,
-    )
+
+    from trilogy.execution.report import report_run
 
     try:
-        run_parallel_execution(
-            cli_params=cli_params,
-            execution_fn=execute_script_for_run,
-            execution_mode=ExecutionMode.RUN,
-        )
+        # Input validation lives INSIDE report_run so a --report-file consumer
+        # gets the guaranteed fallback summary even for config errors (missing
+        # path, misused --import) that die before the file loop.
+        with report_run(
+            "run",
+            report_file,
+            run_id,
+            target=str(input)[:200],
+            dialect=dialect,
+            parallelism=parallelism,
+            config_path=str(config) if config else None,
+        ):
+            # Empty input (from `-` with empty stdin) is always inline — without
+            # this guard, Path("").exists() returns True on most platforms (it
+            # resolves to the cwd), causing the --import check below to reject
+            # the call.
+            is_inline = not input or not PathlibPath(input).exists()
+            # If the input clearly looks like a file path (.preql/.sql extension
+            # or contains a path separator) but does not exist, fail explicitly
+            # instead of falling through to inline-query mode and reporting a
+            # confusing "No dialect specified" error from the parser.
+            if is_inline and _looks_like_missing_path(input):
+                from trilogy.scripts.display import print_error
+
+                print_error(f"Input '{input}' does not exist.")
+                raise Exit(2)
+
+            if imports:
+                if not is_inline:
+                    from trilogy.scripts.display import print_error
+
+                    print_error(
+                        "--import only applies to inline queries, not "
+                        "file/directory inputs."
+                    )
+                    raise Exit(2)
+                input = "".join(_format_import(v) for v in imports) + input
+
+            if is_inline:
+                # Inline queries may omit the trailing terminator; the parser
+                # needs it.
+                stripped = input.rstrip()
+                if stripped and not stripped.endswith(";"):
+                    input = stripped + ";"
+
+            cli_params = CLIRuntimeParams(
+                input=input,
+                dialect=dialect_enum,
+                parallelism=parallelism,
+                param=param,
+                conn_args=conn_args,
+                debug=ctx.obj["DEBUG"],
+                debug_file=ctx.obj.get("DEBUG_FILE"),
+                config_path=PathlibPath(config) if config else None,
+                execution_strategy="eager_bfs",
+                env=env,
+                row_limit=None if all_rows else displayed_rows,
+                show_scopes=scope,
+            )
+            try:
+                run_parallel_execution(
+                    cli_params=cli_params,
+                    execution_fn=execute_script_for_run,
+                    execution_mode=ExecutionMode.RUN,
+                )
+            finally:
+                # Snapshot regardless of outcome; never alters the exit code.
+                from trilogy.scripts.state import maybe_write_state_snapshot
+
+                maybe_write_state_snapshot(cli_params, state_file)
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=cli_params.debug)
+        handle_execution_exception(e, debug=ctx.obj["DEBUG"])

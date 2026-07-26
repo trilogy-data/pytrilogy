@@ -1,6 +1,7 @@
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
@@ -23,6 +24,58 @@ from trilogy.execution.state.watermarks import (
     run_freshness_probe,
     run_refresh_script,
 )
+
+
+@runtime_checkable
+class StateStore(Protocol):
+    """The contract the refresh planner/executor requires of a state store.
+
+    ``BaseStateStore`` (in-memory, re-derives from the warehouse) is the
+    default implementation; alternate backends (file, sqlite, remote/orchestrator
+    -managed) implement this Protocol and are injected via the ``state_store``
+    parameters on :func:`create_refresh_plan` / :func:`execute_refresh_plan` /
+    :func:`refresh_stale_assets`. Mirrors the ``ColumnStatsCache`` pattern in
+    ``cache.py``.
+    """
+
+    watermarks: dict[str, DatasourceWatermark]
+    concept_max_watermarks: dict[str, UpdateKey]
+
+    def invalidate(self, ds_id: str) -> None: ...
+
+    def invalidate_address(self, env: Environment, address: str) -> None: ...
+
+    def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark: ...
+
+    def get_datasource_watermarks(self, datasource) -> DatasourceWatermark | None: ...
+
+    def check_datasource_state(self, datasource) -> bool: ...
+
+    def watermark_all_assets(
+        self,
+        env: Environment,
+        executor: Executor,
+        skip_datasources: set[str] | None = None,
+    ) -> dict[str, DatasourceWatermark]: ...
+
+    def is_stale(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds_id: str,
+        root_assets: set[str] | None = None,
+        force: bool = False,
+    ) -> StaleAsset | None: ...
+
+    def get_stale_assets(
+        self,
+        env: Environment,
+        executor: Executor,
+        root_assets: set[str] | None = None,
+        skip_datasources: set[str] | None = None,
+    ) -> list[StaleAsset]: ...
+
+    def _run_freshness_probe_cached(self, probe_path: str) -> bool: ...
 
 
 class BaseStateStore:
@@ -432,13 +485,18 @@ def create_refresh_plan(
     cache: ColumnStatsCache | None = None,
     skip_datasources: set[str] | None = None,
     initial_watermarks: dict[str, DatasourceWatermark] | None = None,
+    state_store: StateStore | None = None,
 ) -> RefreshPlan:
     """Compute which assets would be refreshed without executing updates.
 
     skip_datasources: ds_ids to completely ignore (already covered by another owner script).
     initial_watermarks: pre-collected watermarks (e.g. root watermarks from a prior phase).
+    state_store: alternate StateStore backend; defaults to a fresh in-memory
+        BaseStateStore. Pre-seeded watermarks on the store are respected
+        (watermark_all_assets skips already-present ds_ids).
     """
-    state_store = BaseStateStore(cache=cache)
+    if state_store is None:
+        state_store = BaseStateStore(cache=cache)
     if initial_watermarks:
         state_store.watermarks.update(initial_watermarks)
     force_sources = force_sources or set()
@@ -600,7 +658,7 @@ def execute_refresh_plan(
     on_refresh: Callable[[str, str], None] | None = None,
     on_refresh_query: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
-    state_store: BaseStateStore | None = None,
+    state_store: "StateStore | None" = None,
     cascade: bool = True,
 ) -> RefreshResult:
     """Execute a refresh plan with deferred staleness for cross-script cascade.
@@ -725,6 +783,7 @@ def refresh_stale_assets(
     on_refresh_query: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
     cache: ColumnStatsCache | None = None,
+    state_store: "StateStore | None" = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -742,6 +801,7 @@ def refresh_stale_assets(
         executor,
         force_sources=force_sources,
         cache=cache,
+        state_store=state_store,
     )
 
     if on_watermarks:
@@ -768,4 +828,5 @@ def refresh_stale_assets(
         on_refresh=on_refresh,
         on_refresh_query=on_refresh_query,
         dry_run=dry_run,
+        state_store=state_store,
     )
