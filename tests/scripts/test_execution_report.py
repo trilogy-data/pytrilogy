@@ -143,13 +143,11 @@ def _refresh_workspace(tmp_path: Path) -> None:
     src = (tmp_path / "src_events.parquet").as_posix()
     target = (tmp_path / "target_events.parquet").as_posix()
     con = duckdb.connect()
-    con.execute(
-        f"""COPY (
+    con.execute(f"""COPY (
             SELECT 1 AS ev_id, TIMESTAMP '2024-01-10 12:00:00' AS ev_ts
             UNION ALL
             SELECT 2, TIMESTAMP '2024-01-15 12:00:00'
-        ) TO '{src}' (FORMAT PARQUET)"""
-    )
+        ) TO '{src}' (FORMAT PARQUET)""")
     con.close()
     (tmp_path / "source.preql").write_text(
         SOURCE_PREQL.format(src=src), encoding="utf-8"
@@ -297,18 +295,14 @@ def test_run_id_precedence(runner, tmp_path, monkeypatch):
 
     # Env beats generated.
     report = tmp_path / "env.jsonl"
-    result = runner.invoke(
-        cli, ["run", query, "duck_db", "--report-file", str(report)]
-    )
+    result = runner.invoke(cli, ["run", query, "duck_db", "--report-file", str(report)])
     assert result.exit_code == 0, result.output
     assert {r["run_id"] for r in read_report(report)} == {"from-env"}
 
     # Neither: a generated uuid4 hex (32 hex chars).
     monkeypatch.delenv("TRILOGY_RUN_ID")
     report = tmp_path / "generated.jsonl"
-    result = runner.invoke(
-        cli, ["run", query, "duck_db", "--report-file", str(report)]
-    )
+    result = runner.invoke(cli, ["run", query, "duck_db", "--report-file", str(report)])
     assert result.exit_code == 0, result.output
     run_ids = {r["run_id"] for r in read_report(report)}
     assert len(run_ids) == 1
@@ -477,9 +471,7 @@ def test_record_vocabulary_pins(runner, tmp_path):
     plan_target = tmp_path / "planme.preql"
     plan_target.write_text("select 1 -> x;\n", encoding="utf-8")
     r4 = tmp_path / "r4.jsonl"
-    result = runner.invoke(
-        cli, ["plan", str(plan_target), "--report-file", str(r4)]
-    )
+    result = runner.invoke(cli, ["plan", str(plan_target), "--report-file", str(r4)])
     assert result.exit_code == 0, result.output
     reports.append(r4)
 

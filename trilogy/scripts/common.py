@@ -810,40 +810,31 @@ def execute_script_with_stats(
     """Parse and optionally execute a script, returning execution stats."""
     from datetime import datetime
 
-    from trilogy.execution.report import emit_report
+    from trilogy.execution.report import emit_statement_end
 
     with safe_open(script_path) as f:
         queries = exec.parse_text(f.read())
     stats = ExecutionStats()
-    if run_statements:
-        total = len(queries)
-        for idx, query in enumerate(queries):
-            start = datetime.now()
-            try:
-                exec.execute_query(query)
-            except Exception as e:
-                emit_report(
-                    "statement_end",
-                    file=str(script_path),
-                    index=idx,
-                    total=total,
-                    statement_type=type(query).__name__,
-                    duration_s=round(
-                        (datetime.now() - start).total_seconds(), 6
-                    ),
-                    success=False,
-                    error_type=type(e).__name__,
-                    error=str(e) or None,
-                )
-                raise
-            emit_report(
-                "statement_end",
+    if not run_statements:
+        return stats
+    total = len(queries)
+    for idx, query in enumerate(queries):
+        start = datetime.now()
+        error: Exception | None = None
+        try:
+            exec.execute_query(query)
+        except Exception as e:
+            error = e
+            raise
+        finally:
+            emit_statement_end(
+                idx,
+                total,
+                type(query).__name__,
+                (datetime.now() - start).total_seconds(),
+                error is None,
+                error=error,
                 file=str(script_path),
-                index=idx,
-                total=total,
-                statement_type=type(query).__name__,
-                duration_s=round((datetime.now() - start).total_seconds(), 6),
-                success=True,
             )
-            stats = count_statement_stats([query], stats)
+        stats = count_statement_stats([query], stats)
     return stats

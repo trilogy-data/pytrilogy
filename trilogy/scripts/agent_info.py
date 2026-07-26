@@ -303,7 +303,81 @@ Call for more info.
   `[agent]`) and en-vars Only needed when
   editing the workspace config.
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
-  from trilogy-public-models) and `trilogy serve` (interactive debugging UI). 
+  from trilogy-public-models) and `trilogy serve` (interactive debugging UI).
+- `trilogy agent-info state` — persisting asset state to a file and reading it
+  back (`trilogy state`, `--state-file`, `--state-input`, `--report-file`).
+  Only needed when an external system, not the warehouse, holds refresh state.
+"""
+
+
+STATE_DOC = """# Trilogy Persisted State - AI Agent Reference
+
+Trilogy normally re-derives asset state (watermarks, staleness) from the
+warehouse on every invocation. This reference covers the alternative: writing
+that state to a **file** and reading it back on a later run, so a system outside
+trilogy — an orchestrator, a CI job, a cloud UI — owns it across processes and
+machines. Skip this unless you are wiring trilogy into such a system.
+
+## The state file
+
+`trilogy state <input> [dialect] -o state.json` probes and writes a snapshot
+WITHOUT touching warehouse state (read-only; safe to run any time). `trilogy run`
+and `trilogy refresh` write the same snapshot post-execution with
+`--state-file state.json`.
+
+The snapshot's unit of identity is the **physical address** — the table or file
+a datasource points at, not its logical name. Each address carries the
+datasources defined over it, their observed watermarks, the expected (root-
+derived) values, the staleness reason, and the physical column -> logical
+concept bindings.
+
+```bash
+# Probe only — never writes warehouse state
+trilogy state . duckdb -o state.json
+
+# Refresh, then record the resulting state
+trilogy refresh . duckdb --state-file state.json
+```
+
+## Reading it back
+
+`--state-input state.json` on `run`/`refresh` seeds the run from a previously
+written snapshot. Two rules make this safe:
+
+- **Managed (non-root) observations are adopted; roots are always re-probed.**
+  A root is the *expected* side of every staleness comparison — reusing a
+  recorded one would hide an upstream that has since moved.
+- **Matching is by physical address, then by physical column.** A model that
+  renamed its concepts or datasources still lines up, because the recorded
+  concept is bridged back through the column it was bound to. Assets absent
+  from the snapshot fall back to a normal warehouse probe.
+
+```bash
+# Plan against recorded state instead of re-probing managed assets
+trilogy refresh . duckdb --state-input state.json --state-file state.json
+```
+
+## Execution reports
+
+`--report-file run.jsonl` appends a strict JSONL execution report (one JSON
+object per line, safe to tail): `run_start`, `file_start`/`file_end`,
+`statement_end`, `refresh_plan`, `asset_refresh`, `state_snapshot`, and a
+terminal `summary`. `--run-id` stamps a correlation id on every record.
+Consumers must ignore unknown record types and fields.
+
+## Environment variables
+
+Every flag has an env-var form, for when the orchestrator controls the process
+environment rather than the argv:
+
+- `TRILOGY_STATE_FILE` — where to write the post-execution snapshot
+- `TRILOGY_STATE_INPUT` — snapshot to seed from
+- `TRILOGY_REPORT_FILE` — where to append the JSONL report
+- `TRILOGY_RUN_ID` — correlation id
+
+Flags win over env vars. Writing the state file is best-effort by contract: a
+failure warns and emits an `error` report record but never changes the exit
+code — the run's own outcome stands.
 """
 
 
@@ -1038,6 +1112,12 @@ def agent_info_config() -> None:
 def agent_info_serve() -> None:
     """Print the distribution/hosting reference (`trilogy public`, `trilogy serve`)."""
     print(SERVE_DOC)
+
+
+@agent_info.command("state")
+def agent_info_state() -> None:
+    """Print the persisted-state reference (state files, --state-input, reports)."""
+    print(STATE_DOC)
 
 
 @agent_info.group("syntax", invoke_without_command=True)

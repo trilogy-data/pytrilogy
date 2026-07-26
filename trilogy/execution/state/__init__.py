@@ -1,4 +1,12 @@
 from trilogy.execution.state.cache import ColumnStatsCache, InMemoryColumnStatsCache
+from trilogy.execution.state.persistence import (
+    ENV_STATE_FILE,
+    ENV_STATE_INPUT,
+    SnapshotStateStore,
+    read_state_snapshot,
+    resolve_state_input,
+    snapshot_store_factory,
+)
 from trilogy.execution.state.snapshot import (
     SNAPSHOT_SCHEMA_VERSION,
     ColumnMapping,
@@ -8,7 +16,10 @@ from trilogy.execution.state.snapshot import (
     StateSnapshotSummary,
     WatermarkValue,
     build_datasource_state,
+    managed_states_by_address,
     merge_into_snapshot,
+    restore_watermark_value,
+    watermarks_for_datasource,
 )
 from trilogy.execution.state.state_store import (
     BaseStateStore,
@@ -16,9 +27,14 @@ from trilogy.execution.state.state_store import (
     RefreshPlan,
     RefreshResult,
     StateStore,
+    StateStoreFactory,
     create_refresh_plan,
     execute_refresh_plan,
+    get_state_store_factory,
+    new_state_store,
     refresh_stale_assets,
+    set_state_store_factory,
+    state_store_factory,
 )
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
@@ -35,6 +51,8 @@ from trilogy.execution.state.watermarks import (
 )
 
 __all__ = [
+    "ENV_STATE_FILE",
+    "ENV_STATE_INPUT",
     "SNAPSHOT_SCHEMA_VERSION",
     "BaseStateStore",
     "ColumnMapping",
@@ -47,13 +65,25 @@ __all__ = [
     "RefreshKind",
     "RefreshPlan",
     "RefreshResult",
+    "SnapshotStateStore",
     "StaleAsset",
     "StateSnapshot",
     "StateSnapshotSummary",
     "StateStore",
+    "StateStoreFactory",
     "WatermarkValue",
     "build_datasource_state",
+    "get_state_store_factory",
+    "managed_states_by_address",
     "merge_into_snapshot",
+    "new_state_store",
+    "read_state_snapshot",
+    "resolve_state_input",
+    "restore_watermark_value",
+    "set_state_store_factory",
+    "snapshot_store_factory",
+    "state_store_factory",
+    "watermarks_for_datasource",
     "create_refresh_plan",
     "execute_refresh_plan",
     "get_concept_max_watermark_abstract",

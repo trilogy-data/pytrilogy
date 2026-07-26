@@ -10,6 +10,7 @@ from click import Path, argument, option, pass_context
 from click.exceptions import Exit
 
 from trilogy.core import graph as nx
+from trilogy.scripts.click_utils import report_options
 from trilogy.scripts.common import (
     handle_execution_exception,
     resolve_input_information,
@@ -145,25 +146,7 @@ def format_plan_text(
     type=Path(exists=True),
     help="Path to trilogy.toml configuration file",
 )
-@option(
-    "--report-file",
-    "report_file",
-    type=Path(),
-    default=None,
-    help=(
-        "Append a machine-readable JSONL execution report to this path "
-        "(env: TRILOGY_REPORT_FILE)."
-    ),
-)
-@option(
-    "--run-id",
-    "run_id",
-    default=None,
-    help=(
-        "Correlation id stamped on every report record "
-        "(env: TRILOGY_RUN_ID; default: generated)."
-    ),
-)
+@report_options
 @pass_context
 def plan(
     ctx,
@@ -175,7 +158,7 @@ def plan(
     run_id: str | None,
 ):
     """Show execution plan without running scripts."""
-    from trilogy.execution.report import emit_report, report_run
+    from trilogy.execution.report import report_run
 
     try:
         with report_run(
@@ -185,9 +168,7 @@ def plan(
             target=str(input)[:200],
             config_path=config,
         ):
-            _plan_body(
-                ctx, input, output, json_format, config, emit_report
-            )
+            _plan_body(ctx, input, output, json_format, config)
     except Exit:
         raise
     except Exception as e:
@@ -200,8 +181,9 @@ def _plan_body(
     output: str | None,
     json_format: bool,
     config: str | None,
-    emit_report,
 ) -> None:
+    from trilogy.execution.report import emit_report
+
     try:
         pathlib_input = PathlibPath(input)
         config_path = PathlibPath(config) if config else None
@@ -240,7 +222,7 @@ def _plan_body(
         )
 
         if json_format:
-            plan_data = graph_to_json(graph, root)
+            plan_data = graph_json
             levels = get_execution_levels(graph)
             plan_data["execution_order"] = [
                 [safe_relative_path(node.path, root) for node in level]

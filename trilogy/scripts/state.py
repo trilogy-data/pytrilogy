@@ -12,6 +12,8 @@ The same snapshot is produced post-execution by ``run``/``refresh``
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, argument, option, pass_context
@@ -20,13 +22,21 @@ from click.exceptions import Exit
 
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.report import emit_report, get_report_sink, report_run
+from trilogy.execution.state.persistence import (
+    ENV_STATE_FILE,
+    read_state_snapshot,
+    resolve_state_input,
+    snapshot_store_factory,
+)
 from trilogy.execution.state.snapshot import (
     DatasourceState,
     StateSnapshot,
     build_datasource_state,
     merge_into_snapshot,
 )
-from trilogy.scripts.click_utils import validate_dialect
+from trilogy.execution.state.state_store import state_store_factory
+from trilogy.execution.state.watermarks import StaleAsset
+from trilogy.scripts.click_utils import report_options, validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     handle_execution_exception,
@@ -49,7 +59,7 @@ def _snapshot_from_directory(
 
     probe = probe_directory_state(cli_params, input_path)
 
-    stale_map = {}
+    stale_map: dict[str, StaleAsset] = {}
     for _, plan in probe.plans_by_node:
         for asset in plan.refresh_assets:
             stale_map.setdefault(asset.datasource_id, asset)
@@ -92,7 +102,7 @@ def _snapshot_from_file(
     cli_params: CLIRuntimeParams, input_path: PathlibPath, run_id: str | None
 ) -> StateSnapshot:
     """Single-file snapshot: parse, watermark, and classify in one executor."""
-    from trilogy.execution.state import BaseStateStore
+    from trilogy.execution.state import new_state_store
     from trilogy.scripts.common import (
         create_executor_for_script,
         merge_runtime_config,
@@ -121,7 +131,7 @@ def _snapshot_from_file(
         with safe_open(node.path) as f:
             executor.parse_text(f.read(), root=node.path)
 
-        store = BaseStateStore()
+        store = new_state_store()
         watermarks = store.watermark_all_assets(executor.environment, executor)
         stale_assets = store.get_stale_assets(executor.environment, executor)
         stale_map = {a.datasource_id: a for a in stale_assets}
@@ -171,14 +181,33 @@ def compute_state_snapshot(
     )
 
 
-def write_state_snapshot(
-    cli_params: CLIRuntimeParams, path: PathlibPath
-) -> StateSnapshot:
-    """Compute a snapshot, write it as JSON, and record it in the report."""
-    sink = get_report_sink()
-    snapshot = compute_state_snapshot(
-        cli_params, run_id=sink.run_id if sink else None
+@contextmanager
+def state_input_scope(state_input: str | None) -> Iterator[None]:
+    """Seed the invocation's state stores from a persisted snapshot.
+
+    The other half of ``--state-file``: an orchestrator that kept the snapshot
+    from the last run hands it back here, and every store built inside the block
+    trusts the recorded managed-asset observations instead of re-probing the
+    warehouse for them. A no-op when no snapshot is configured."""
+    path = resolve_state_input(state_input)
+    if path is None:
+        yield
+        return
+    from trilogy.scripts.display import print_info
+
+    snapshot = read_state_snapshot(path)
+    print_info(
+        f"Seeding asset state from {path} "
+        f"({snapshot.summary.total} asset(s), run_id={snapshot.run_id})"
     )
+    with state_store_factory(snapshot_store_factory(snapshot)):
+        yield
+
+
+def write_state_snapshot(snapshot: StateSnapshot, path: PathlibPath) -> None:
+    """Write a snapshot as JSON and record its location in the report."""
+    from trilogy.scripts.display import print_info
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
     emit_report(
@@ -186,7 +215,7 @@ def write_state_snapshot(
         path=str(path),
         summary=snapshot.summary.model_dump(),
     )
-    return snapshot
+    print_info(f"State snapshot written to {path}")
 
 
 def maybe_write_state_snapshot(
@@ -195,28 +224,24 @@ def maybe_write_state_snapshot(
     """Post-execution snapshot hook for run/refresh (--state-file /
     TRILOGY_STATE_FILE). Best-effort by contract: failures warn and emit an
     ``error`` report record but never raise — the run's own exit code stands."""
-    path_str = (
-        state_file or os.environ.get("TRILOGY_STATE_FILE", "").strip() or None
-    )
+    path_str = state_file or os.environ.get(ENV_STATE_FILE, "").strip() or None
     if not path_str:
         return
     try:
-        write_state_snapshot(cli_params, PathlibPath(path_str))
-        from trilogy.scripts.display import print_info
-
-        print_info(f"State snapshot written to {path_str}")
+        sink = get_report_sink()
+        snapshot = compute_state_snapshot(
+            cli_params, run_id=sink.run_id if sink else None
+        )
+        write_state_snapshot(snapshot, PathlibPath(path_str))
     except Exception as e:
+        from trilogy.scripts.display import print_warning
+
         emit_report(
             "error",
             error_type=type(e).__name__,
             message=f"state snapshot failed: {e}",
         )
-        try:
-            from trilogy.scripts.display import print_warning
-
-            print_warning(f"State snapshot failed: {e}")
-        except Exception:
-            pass
+        print_warning(f"State snapshot failed: {e}")
 
 
 def _show_snapshot(snapshot: StateSnapshot) -> None:
@@ -269,25 +294,7 @@ def _show_snapshot(snapshot: StateSnapshot) -> None:
     default=None,
     help="Write the state snapshot as JSON to this path",
 )
-@option(
-    "--report-file",
-    "report_file",
-    type=ClickPath(),
-    default=None,
-    help=(
-        "Append a machine-readable JSONL execution report to this path "
-        "(env: TRILOGY_REPORT_FILE)."
-    ),
-)
-@option(
-    "--run-id",
-    "run_id",
-    default=None,
-    help=(
-        "Correlation id stamped on every report record "
-        "(env: TRILOGY_RUN_ID; default: generated)."
-    ),
-)
+@report_options
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def state(
@@ -337,19 +344,7 @@ def state(
                 cli_params, run_id=sink.run_id if sink else None
             )
             if output:
-                output_path = PathlibPath(output)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(
-                    snapshot.model_dump_json(indent=2), encoding="utf-8"
-                )
-                from trilogy.scripts.display import print_info
-
-                print_info(f"State snapshot written to {output_path}")
-                emit_report(
-                    "state_snapshot",
-                    path=str(output_path),
-                    summary=snapshot.summary.model_dump(),
-                )
+                write_state_snapshot(snapshot, PathlibPath(output))
             else:
                 emit_report("state_snapshot", **snapshot.model_dump())
             _show_snapshot(snapshot)

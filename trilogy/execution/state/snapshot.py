@@ -23,12 +23,12 @@ fields/values are added without a bump. Consumers must ignore unknown fields.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from trilogy.core.models.datasource import Datasource, UpdateKey
+from trilogy.core.models.datasource import Datasource, UpdateKey, UpdateKeyType
 from trilogy.execution.state.watermarks import DatasourceWatermark, StaleAsset
 
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -45,6 +45,9 @@ class WatermarkValue(BaseModel):
     value: str | None = None  # always-stringified rendering
     value_type: str | None = None  # python type name of the original value
     concept_address: str | None = None  # best-effort logical mapping
+    # Physical column the concept was bound to. The stable bridge when a reader
+    # renamed its concepts — see ``_rekey_for``.
+    column: str | None = None
 
 
 class ColumnMapping(BaseModel):
@@ -102,34 +105,123 @@ def _watermark_value(
     key: str, update_key: UpdateKey, ds: Datasource | None
 ) -> WatermarkValue:
     value = update_key.value
-    if isinstance(value, bool) or isinstance(value, (int, float, str)):
-        raw: str | int | float | bool | None = value
-    else:
-        raw = None
+    raw: str | int | float | bool | None = (
+        value if isinstance(value, (bool, int, float, str)) else None
+    )
+    concept_address, column = _match_column_binding(key, ds)
     return WatermarkValue(
         key=key,
         type=update_key.type.value,
         value_raw=raw,
         value=str(value) if value is not None else None,
         value_type=type(value).__name__ if value is not None else None,
-        concept_address=_match_concept_address(key, ds),
+        concept_address=concept_address,
+        column=column,
     )
 
 
-def _match_concept_address(key: str, ds: Datasource | None) -> str | None:
-    """Best-effort mapping of an as-emitted watermark key back to a logical
-    concept address via the datasource's column bindings. Full-address keys
-    match exactly; bare-name keys match on the trailing name component;
-    ``update_time`` has no concept."""
-    if ds is None or key == "update_time":
+def restore_watermark_value(
+    entry: WatermarkValue,
+) -> str | int | float | datetime | date | None:
+    """Inverse of :func:`_watermark_value` — rebuild the comparable python value.
+
+    ``value_raw`` covers the JSON-native cases. Temporal values survive only as
+    their ``str()`` rendering, so ``value_type`` drives the parse back; anything
+    unrecognized (or unparseable) degrades to the string, which
+    ``_compare_watermark_values`` still orders consistently."""
+    if entry.value_raw is not None:
+        return entry.value_raw
+    if entry.value is None:
         return None
+    try:
+        if entry.value_type == "datetime":
+            return datetime.fromisoformat(entry.value)
+        if entry.value_type == "date":
+            return date.fromisoformat(entry.value)
+    except ValueError:
+        pass
+    return entry.value
+
+
+def managed_states_by_address(snapshot: StateSnapshot) -> dict[str, DatasourceState]:
+    """Managed (non-root) datasource states from a snapshot, keyed by PHYSICAL
+    ADDRESS.
+
+    Root entries are excluded on purpose: a root's watermark is the *expected*
+    side of every staleness comparison and must always be re-read live, or a
+    moved upstream would never mark its dependents stale.
+
+    Physical-address keying is what makes a snapshot reusable by a *different*
+    model file: logical concept addresses are namespaced per script and never
+    reconciled across scripts, but the table a datasource points at is stable.
+    """
+    by_address: dict[str, DatasourceState] = {}
+    for asset in snapshot.assets:
+        for ds_state in asset.datasources:
+            if ds_state.is_root or not ds_state.observed_watermarks:
+                continue
+            by_address.setdefault(asset.address, ds_state)
+    return by_address
+
+
+def _rekey_for(entry: WatermarkValue, ds: Datasource) -> str:
+    """Translate a recorded watermark key into the key ``ds`` would emit.
+
+    Watermark keys are logical concept names, so a model that renamed its
+    concepts cannot match the writer's keys directly. The physical column is the
+    stable bridge: the snapshot records which column each concept was bound to,
+    and ``ds`` binds that same column to its own concept. Key conventions mirror
+    ``watermarks.py`` — full address for KEY_HASH, bare name otherwise, and the
+    literal ``update_time`` (no concept) passes through.
+    """
+    if entry.key == "update_time" or entry.column is None:
+        return entry.key
+    for col in ds.columns:
+        if col.alias == entry.column:
+            if entry.type == UpdateKeyType.KEY_HASH.value:
+                return col.concept.address
+            return col.concept.address.rsplit(".", 1)[-1]
+    return entry.key
+
+
+def watermarks_for_datasource(
+    ds_state: DatasourceState, ds: Datasource
+) -> DatasourceWatermark:
+    """Rehydrate a recorded datasource's observations for ``ds``, re-keyed onto
+    its concept names."""
+    return DatasourceWatermark(
+        keys={
+            # concept_name mirrors the dict key, as every producer in
+            # watermarks.py emits it.
+            key: UpdateKey(
+                concept_name=key,
+                type=UpdateKeyType(entry.type),
+                value=restore_watermark_value(entry),
+            )
+            for entry, key in (
+                (entry, _rekey_for(entry, ds)) for entry in ds_state.observed_watermarks
+            )
+        }
+    )
+
+
+def _match_column_binding(
+    key: str, ds: Datasource | None
+) -> tuple[str | None, str | None]:
+    """Best-effort mapping of an as-emitted watermark key back to its
+    ``(concept_address, physical column)`` binding on the datasource.
+
+    Full-address keys match exactly; bare-name keys match on the trailing name
+    component; ``update_time`` is a table-level watermark with no concept. The
+    column is reported only when it is a real column name — a raw expression
+    binding is not a stable identifier for a reader to match on."""
+    if ds is None or key == "update_time":
+        return None, None
     for col in ds.columns:
         address = col.concept.address
-        if key == address:
-            return address
-        if "." not in key and address.rsplit(".", 1)[-1] == key:
-            return address
-    return None
+        if key == address or ("." not in key and address.rsplit(".", 1)[-1] == key):
+            return address, col.alias if isinstance(col.alias, str) else None
+    return None, None
 
 
 def _column_mappings(ds: Datasource) -> list[ColumnMapping]:
@@ -263,4 +355,7 @@ __all__ = [
     "StateSnapshot",
     "build_datasource_state",
     "merge_into_snapshot",
+    "managed_states_by_address",
+    "restore_watermark_value",
+    "watermarks_for_datasource",
 ]

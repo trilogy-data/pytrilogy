@@ -75,13 +75,11 @@ def _workspace(tmp_path: Path, build_target: bool = True) -> tuple[Path, Path]:
     src = tmp_path / "src_events.parquet"
     target = tmp_path / "target_events.parquet"
     con = duckdb.connect()
-    con.execute(
-        f"""COPY (
+    con.execute(f"""COPY (
             SELECT 1 AS ev_id, TIMESTAMP '2024-01-10 12:00:00' AS ev_ts
             UNION ALL
             SELECT 2, TIMESTAMP '2024-01-15 12:00:00'
-        ) TO '{src.as_posix()}' (FORMAT PARQUET)"""
-    )
+        ) TO '{src.as_posix()}' (FORMAT PARQUET)""")
     if build_target:
         # Derived asset matches the root exactly -> fresh.
         con.execute(
@@ -101,13 +99,11 @@ def _workspace(tmp_path: Path, build_target: bool = True) -> tuple[Path, Path]:
 def _make_root_ahead(src: Path) -> None:
     """Advance the root source past the derived asset's watermark."""
     con = duckdb.connect()
-    con.execute(
-        f"""COPY (
+    con.execute(f"""COPY (
             SELECT * FROM read_parquet('{src.as_posix()}')
             UNION ALL
             SELECT 3, TIMESTAMP '2024-02-01 12:00:00'
-        ) TO '{src.as_posix()}' (FORMAT PARQUET)"""
-    )
+        ) TO '{src.as_posix()}' (FORMAT PARQUET)""")
     con.close()
 
 
@@ -167,8 +163,7 @@ def test_state_snapshot_directory(runner, tmp_path):
 
     # The report records the snapshot write and a terminal summary.
     records = [
-        json.loads(line)
-        for line in report.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in report.read_text(encoding="utf-8").splitlines()
     ]
     snapshot_records = [r for r in records if r["type"] == "state_snapshot"]
     assert snapshot_records and snapshot_records[0]["path"] == str(snap)
@@ -255,9 +250,7 @@ def test_state_single_file(runner, tmp_path):
     script = tmp_path / "single.preql"
     script.write_text(SINGLE_FILE_PREQL, encoding="utf-8")
     snap = tmp_path / "snap.json"
-    result = runner.invoke(
-        cli, ["state", str(script), "duckdb", "--output", str(snap)]
-    )
+    result = runner.invoke(cli, ["state", str(script), "duckdb", "--output", str(snap)])
     assert result.exit_code == 0, result.output
 
     snapshot = _load_snapshot(snap)

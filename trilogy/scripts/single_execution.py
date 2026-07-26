@@ -10,6 +10,12 @@ from trilogy.core.statements.execute import (
     ProcessedValidateStatement,
 )
 from trilogy.dialect.results import ChartResult
+from trilogy.execution.report import (
+    emit_asset_refresh,
+    emit_asset_refresh_query,
+    emit_refresh_plan,
+    emit_statement_end,
+)
 from trilogy.execution.state import RefreshPlan
 from trilogy.execution.state import RefreshResult as StateRefreshResult
 from trilogy.scripts.common import (
@@ -46,31 +52,6 @@ from trilogy.utility import safe_open
 def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
     """Get the type/class name of a statement."""
     return type(statement).__name__
-
-
-def _report_statement_end(
-    idx: int,
-    total: int,
-    statement_type: str,
-    duration: Any,
-    success: bool,
-    error: Exception | None = None,
-) -> None:
-    """Emit a ``statement_end`` report record for the single-file execution
-    path. File attribution is omitted here: this path runs exactly one file,
-    identified by the surrounding ``file_start`` record."""
-    from trilogy.execution.report import emit_report
-
-    emit_report(
-        "statement_end",
-        index=idx,
-        total=total,
-        statement_type=statement_type,
-        duration_s=round(duration.total_seconds(), 6),
-        success=success,
-        error_type=type(error).__name__ if error else None,
-        error=(str(error) or None) if error else None,
-    )
 
 
 def execute_single_statement(
@@ -111,7 +92,9 @@ def execute_single_statement(
             duration = datetime.now() - start_time
             if not use_progress:
                 show_statement_result(idx, total_queries, duration, True)
-            _report_statement_end(idx, total_queries, statement_type, duration, True)
+            emit_statement_end(
+                idx, total_queries, statement_type, duration.total_seconds(), True
+            )
             return True, raw_results, duration, None
 
         results = (
@@ -146,7 +129,9 @@ def execute_single_statement(
         if not use_progress:
             show_statement_result(idx, total_queries, duration, bool(results))
 
-        _report_statement_end(idx, total_queries, statement_type, duration, True)
+        emit_statement_end(
+            idx, total_queries, statement_type, duration.total_seconds(), True
+        )
         return True, results, duration, None
 
     except Exception as e:
@@ -155,8 +140,13 @@ def execute_single_statement(
         if not use_progress:
             show_statement_result(idx, total_queries, duration, False, str(e), type(e))
 
-        _report_statement_end(
-            idx, total_queries, statement_type, duration, False, error=e
+        emit_statement_end(
+            idx,
+            total_queries,
+            statement_type,
+            duration.total_seconds(),
+            False,
+            error=e,
         )
         return False, None, duration, e
 
@@ -376,26 +366,16 @@ def _plan_and_execute_refresh(
     name: str,
     stats: ExecutionStats | None = None,
 ) -> StateRefreshResult:
-    from trilogy.execution.report import emit_report
     from trilogy.execution.state import execute_refresh_plan
 
-    emit_report(
-        "refresh_plan",
+    emit_refresh_plan(
         scope=name or None,
+        assets=plan.refresh_assets,
+        addr_lookup=addr_map.get,
         stale_count=len(plan.stale_assets),
         forced_count=len(plan.forced_assets),
         root_assets=plan.root_assets,
         all_assets=plan.all_assets,
-        assets=[
-            {
-                "datasource_id": asset.datasource_id,
-                "address": addr_map.get(asset.datasource_id),
-                "reason": asset.reason,
-                "kind": asset.kind.value,
-            }
-            for asset in plan.refresh_assets
-        ]
-        or None,
     )
 
     if plan.stale_count == 0 and not quiet:
@@ -435,25 +415,14 @@ def _plan_and_execute_refresh(
     else:
 
         def on_refresh(asset_id: str, reason: str) -> None:
-            emit_report(
-                "asset_refresh",
-                datasource_id=asset_id,
-                address=addr_map.get(asset_id),
-                reason=reason,
-                dry_run=dry_run or None,
-            )
+            emit_asset_refresh(asset_id, addr_map.get(asset_id), reason, dry_run)
             if quiet:
                 return
             label = "Would refresh" if dry_run else "Refreshing"
             print_info(f"  {label} {asset_id}: {reason}")
 
         def on_refresh_query(ds_id: str, sql: str) -> None:
-            emit_report(
-                "asset_refresh_query",
-                datasource_id=ds_id,
-                sql_bytes=len(sql),
-                dry_run=dry_run or None,
-            )
+            emit_asset_refresh_query(ds_id, sql, dry_run)
             if stats is not None:
                 stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
             if dry_run and not quiet:

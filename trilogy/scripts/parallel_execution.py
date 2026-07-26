@@ -14,7 +14,7 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.execution.report import emit_report
+from trilogy.execution.report import emit_report, exit_code_for
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
     DependencyResolver,
@@ -658,7 +658,7 @@ def _dispatch_single_script_execution(
     return 0
 
 
-def _report_node_fields(node: Any) -> dict[str, Any]:
+def _report_node_fields(node: ExecutionNode) -> dict[str, Any]:
     """Attribution fields for report records: file for scripts, physical
     address + owner script for managed refresh nodes."""
     if isinstance(node, ManagedRefreshNode):
@@ -667,14 +667,13 @@ def _report_node_fields(node: Any) -> dict[str, Any]:
             "owner_script": str(node.owner_script.path),
             "node_kind": "managed_address",
         }
-    path = getattr(node, "path", None)
     return {
-        "file": str(path) if path is not None else str(node),
+        "file": str(node.path) if isinstance(node, ScriptNode) else str(node),
         "node_kind": "script",
     }
 
 
-def _report_file_start(node: Any) -> None:
+def _report_file_start(node: ExecutionNode) -> None:
     emit_report("file_start", **_report_node_fields(node))
 
 
@@ -696,6 +695,44 @@ def _report_file_end(result: ExecutionResult) -> None:
                 "refresh_query_count": len(stats.refresh_queries),
             }
             if stats
+            else None
+        ),
+    )
+
+
+def _report_single_script_outcome(
+    label: str,
+    duration: float,
+    execution_mode: "ExecutionMode",
+    succeeded: int = 0,
+    skipped: int = 0,
+    refresh_count: int = 0,
+    error: BaseException | None = None,
+) -> None:
+    """Emit the terminal ``file_end`` + ``summary`` pair for the inline /
+    single-script path, which bypasses the parallel executor's own reporting."""
+    emit_report(
+        "file_end",
+        file=label,
+        node_kind="script",
+        success=error is None,
+        duration_s=round(duration, 6),
+        error_type=type(error).__name__ if error else None,
+        error=(str(error) or None) if error else None,
+    )
+    emit_report(
+        "summary",
+        success=error is None,
+        exit_code=exit_code_for(error) if error else None,
+        total=1,
+        succeeded=succeeded,
+        failed=1 if error else 0,
+        skipped=skipped,
+        partial_failure=False,
+        total_duration_s=round(duration, 6),
+        refreshed_assets=(
+            refresh_count
+            if error is None and execution_mode == ExecutionMode.REFRESH
             else None
         ),
     )
@@ -788,37 +825,14 @@ def run_parallel_execution(
                 show_scopes=cli_params.show_scopes,
             )
         except BaseException as e:
-            duration = (datetime.now() - single_start).total_seconds()
-            exit_code = getattr(e, "exit_code", None)
-            emit_report(
-                "file_end",
-                file=single_label,
-                node_kind="script",
-                success=False,
-                duration_s=round(duration, 6),
-                error_type=type(e).__name__,
-                error=str(e) or None,
-            )
-            emit_report(
-                "summary",
-                success=False,
-                exit_code=exit_code if isinstance(exit_code, int) else 1,
-                total=1,
-                succeeded=0,
-                failed=1,
-                skipped=0,
-                partial_failure=False,
-                total_duration_s=round(duration, 6),
+            _report_single_script_outcome(
+                single_label,
+                (datetime.now() - single_start).total_seconds(),
+                execution_mode,
+                error=e,
             )
             raise
         duration = (datetime.now() - single_start).total_seconds()
-        emit_report(
-            "file_end",
-            file=single_label,
-            node_kind="script",
-            success=True,
-            duration_s=round(duration, 6),
-        )
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:
             skipped = 1 if refresh_count == 0 else 0
@@ -826,18 +840,13 @@ def run_parallel_execution(
         else:
             skipped = 0
             successful = 1
-        emit_report(
-            "summary",
-            success=True,
-            total=1,
+        _report_single_script_outcome(
+            single_label,
+            duration,
+            execution_mode,
             succeeded=successful,
-            failed=0,
             skipped=skipped,
-            partial_failure=False,
-            total_duration_s=round(duration, 6),
-            refreshed_assets=(
-                refresh_count if execution_mode == ExecutionMode.REFRESH else None
-            ),
+            refresh_count=refresh_count,
         )
         return ParallelExecutionSummary(
             total_scripts=1,

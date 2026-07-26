@@ -51,13 +51,16 @@ import json
 import os
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from trilogy.constants import logger
+
+if TYPE_CHECKING:
+    from trilogy.execution.state.watermarks import StaleAsset
 
 REPORT_SCHEMA_VERSION = 1
 
@@ -130,6 +133,94 @@ def emit_report(record_type: str, **fields: Any) -> None:
         sink.emit(record_type, **fields)
 
 
+def exit_code_for(error: BaseException) -> int:
+    """Best-effort process exit code for an in-flight exception. Click's ``Exit``
+    and ``SystemExit`` carry one; everything else is a generic failure."""
+    from click.exceptions import Exit as ClickExit
+
+    if isinstance(error, ClickExit):
+        return error.exit_code
+    if isinstance(error, SystemExit) and isinstance(error.code, int):
+        return error.code
+    return 1
+
+
+def emit_statement_end(
+    index: int,
+    total: int,
+    statement_type: str,
+    duration_s: float,
+    success: bool,
+    error: BaseException | None = None,
+    file: str | None = None,
+) -> None:
+    """Emit a ``statement_end`` record. ``file`` is omitted on paths that run a
+    single known script — the surrounding ``file_start`` already attributes it."""
+    emit_report(
+        "statement_end",
+        file=file,
+        index=index,
+        total=total,
+        statement_type=statement_type,
+        duration_s=round(duration_s, 6),
+        success=success,
+        error_type=type(error).__name__ if error else None,
+        error=(str(error) or None) if error else None,
+    )
+
+
+def emit_refresh_plan(
+    scope: str | None,
+    assets: Sequence["StaleAsset"],
+    addr_lookup: Callable[[str], str | None],
+    stale_count: int,
+    forced_count: int,
+    root_assets: int | None = None,
+    all_assets: int | None = None,
+) -> None:
+    """Emit a ``refresh_plan`` record. Shared by the single-file and directory
+    paths, which arrive at the same asset list from different plan shapes."""
+    emit_report(
+        "refresh_plan",
+        scope=scope,
+        stale_count=stale_count,
+        forced_count=forced_count,
+        root_assets=root_assets,
+        all_assets=all_assets,
+        assets=[
+            {
+                "datasource_id": asset.datasource_id,
+                "address": addr_lookup(asset.datasource_id),
+                "reason": asset.reason,
+                "kind": asset.kind.value,
+            }
+            for asset in assets
+        ]
+        or None,
+    )
+
+
+def emit_asset_refresh(
+    datasource_id: str, address: str | None, reason: str, dry_run: bool
+) -> None:
+    emit_report(
+        "asset_refresh",
+        datasource_id=datasource_id,
+        address=address,
+        reason=reason,
+        dry_run=dry_run or None,
+    )
+
+
+def emit_asset_refresh_query(datasource_id: str, sql: str, dry_run: bool) -> None:
+    emit_report(
+        "asset_refresh_query",
+        datasource_id=datasource_id,
+        sql_bytes=len(sql),
+        dry_run=dry_run or None,
+    )
+
+
 def resolve_run_id(run_id: str | None) -> str:
     """Flag > TRILOGY_RUN_ID env > generated uuid4 hex."""
     if run_id:
@@ -184,11 +275,10 @@ def report_run(
         yield sink
     except BaseException as e:
         if not sink.summary_emitted:
-            exit_code = getattr(e, "exit_code", None)
             sink.emit(
                 "summary",
                 success=False,
-                exit_code=exit_code if isinstance(exit_code, int) else 1,
+                exit_code=exit_code_for(e),
                 error_type=type(e).__name__,
                 error=str(e) or None,
             )

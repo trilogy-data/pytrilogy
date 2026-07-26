@@ -18,9 +18,14 @@ from trilogy.core import graph as nx
 from trilogy.core.models.datasource import Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
-from trilogy.execution.report import emit_report, report_run
+from trilogy.execution.report import (
+    emit_asset_refresh,
+    emit_asset_refresh_query,
+    emit_refresh_plan,
+    emit_report,
+    report_run,
+)
 from trilogy.execution.state import (
-    BaseStateStore,
     DatasourceWatermark,
     RefreshKind,
     RefreshPlan,
@@ -29,8 +34,13 @@ from trilogy.execution.state import (
     StateStore,
     create_refresh_plan,
     execute_refresh_plan,
+    new_state_store,
 )
-from trilogy.scripts.click_utils import validate_dialect
+from trilogy.scripts.click_utils import (
+    report_options,
+    state_file_option,
+    validate_dialect,
+)
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -576,22 +586,13 @@ def _preview_directory_refresh(
         a.kind == RefreshKind.SCRIPT for a in refresh_assets
     )
 
-    emit_report(
-        "refresh_plan",
+    emit_refresh_plan(
         scope=str(input_path),
+        assets=refresh_assets,
+        addr_lookup=address_map.get,
         stale_count=sum(len(plan.stale_assets) for _, plan in plans_by_node),
         forced_count=sum(len(plan.forced_assets) for _, plan in plans_by_node),
         all_assets=total_physical,
-        assets=[
-            {
-                "datasource_id": asset.datasource_id,
-                "address": address_map.get(asset.datasource_id),
-                "reason": asset.reason,
-                "kind": asset.kind.value,
-            }
-            for asset in refresh_assets
-        ]
-        or None,
     )
 
     if not refresh_assets:
@@ -726,25 +727,14 @@ def _run_refresh_plan(
         return ds.safe_address if ds is not None else None
 
     def on_refresh(asset_id: str, reason: str) -> None:
-        emit_report(
-            "asset_refresh",
-            datasource_id=asset_id,
-            address=_addr(asset_id),
-            reason=reason,
-            dry_run=dry_run or None,
-        )
+        emit_asset_refresh(asset_id, _addr(asset_id), reason, dry_run)
         if quiet:
             return
         label = "Would refresh" if dry_run else "Refreshing"
         print_info(f"  {label} {asset_id}: {reason}")
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
-        emit_report(
-            "asset_refresh_query",
-            datasource_id=ds_id,
-            sql_bytes=len(sql),
-            dry_run=dry_run or None,
-        )
+        emit_asset_refresh_query(ds_id, sql, dry_run)
         stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
         if dry_run and not quiet:
             print_info(f"\n-- {ds_id}\n{sql}")
@@ -776,7 +766,7 @@ def execute_managed_node_for_refresh(
     cascade dependents that probed fresh at preview will now probe stale.
     """
     stats = ExecutionStats()
-    store = state_store if state_store is not None else BaseStateStore()
+    store = state_store if state_store is not None else new_state_store()
 
     # Resolve which datasources at this address to evaluate. Prefer the explicit
     # list set at preview time; if absent (legacy nodes), fall back to scanning
@@ -975,37 +965,8 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     default=False,
     help="Show SQL that would be executed without running it",
 )
-@option(
-    "--report-file",
-    "report_file",
-    type=ClickPath(),
-    default=None,
-    help=(
-        "Append a machine-readable JSONL execution report to this path "
-        "(env: TRILOGY_REPORT_FILE)."
-    ),
-)
-@option(
-    "--run-id",
-    "run_id",
-    default=None,
-    help=(
-        "Correlation id stamped on every report record "
-        "(env: TRILOGY_RUN_ID; default: generated)."
-    ),
-)
-@option(
-    "--state-file",
-    "state_file",
-    type=ClickPath(),
-    default=None,
-    help=(
-        "Write a post-refresh state snapshot (watermarks, staleness, column "
-        "mappings) as JSON to this path (env: TRILOGY_STATE_FILE). Runs a "
-        "full state probe after execution; failures warn but never change "
-        "the exit code."
-    ),
-)
+@report_options
+@state_file_option
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -1022,6 +983,7 @@ def refresh(
     dry_run,
     report_file: str | None,
     run_id: str | None,
+    state_input: str | None,
     state_file: str | None,
     conn_args,
 ):
@@ -1065,15 +1027,19 @@ def refresh(
             parallelism=parallelism,
             config_path=str(config) if config else None,
         ):
+            from trilogy.scripts.state import (
+                maybe_write_state_snapshot,
+                state_input_scope,
+            )
+
             up_to_date = False
             try:
-                summary = run_refresh_command(cli_params)
+                with state_input_scope(state_input):
+                    summary = run_refresh_command(cli_params)
                 up_to_date = summary.successful == 0 and summary.skipped > 0
             finally:
                 # Snapshot regardless of outcome: post-failure state is still
                 # the current truth, and this never alters the exit code.
-                from trilogy.scripts.state import maybe_write_state_snapshot
-
                 maybe_write_state_snapshot(cli_params, state_file)
             if up_to_date:
                 raise Exit(2)
