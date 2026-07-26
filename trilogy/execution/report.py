@@ -171,7 +171,7 @@ def emit_statement_end(
 
 def emit_refresh_plan(
     scope: str | None,
-    assets: Sequence["StaleAsset"],
+    assets: Sequence[StaleAsset],
     addr_lookup: Callable[[str], str | None],
     stale_count: int,
     forced_count: int,

@@ -703,7 +703,7 @@ def _report_file_end(result: ExecutionResult) -> None:
 def _report_single_script_outcome(
     label: str,
     duration: float,
-    execution_mode: "ExecutionMode",
+    execution_mode: ExecutionMode,
     succeeded: int = 0,
     skipped: int = 0,
     refresh_count: int = 0,

@@ -266,7 +266,7 @@ class DirectoryProbeResult:
     addr_to_owner: dict[str, ScriptNode]
     probe_addrs: set[str]  # managed physical addresses
     total_physical: int
-    ds_objects: dict[str, "Datasource"]  # ds_id -> parsed Datasource (first seen)
+    ds_objects: dict[str, Datasource]  # ds_id -> parsed Datasource (first seen)
     ds_to_scripts: dict[str, list[ScriptNode]]
     ds_is_root: dict[str, bool]
     ds_is_refreshable_root: dict[str, bool]
@@ -756,7 +756,7 @@ def execute_managed_node_for_refresh(
     print_watermarks: bool,
     interactive: bool,
     dry_run: bool,
-    state_store: "StateStore | None" = None,
+    state_store: StateStore | None = None,
 ) -> ExecutionStats:
     """Refresh one managed physical address.
 

@@ -347,15 +347,15 @@ def merge_into_snapshot(
 __all__ = [
     "SNAPSHOT_SCHEMA_VERSION",
     "AssetStatus",
-    "WatermarkValue",
     "ColumnMapping",
     "DatasourceState",
     "PhysicalAssetState",
-    "StateSnapshotSummary",
     "StateSnapshot",
+    "StateSnapshotSummary",
+    "WatermarkValue",
     "build_datasource_state",
-    "merge_into_snapshot",
     "managed_states_by_address",
+    "merge_into_snapshot",
     "restore_watermark_value",
     "watermarks_for_datasource",
 ]
