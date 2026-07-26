@@ -276,9 +276,44 @@ class NativeHydrator:
         output = []
         for plan in self.plans:
             output.append(getattr(plan, phase.value)(self))
+        if phase == HydrationPhase.COLLECT_SYMBOLS:
+            self._resolve_concept_addresses()
         if phase == HydrationPhase.BIND:
             self._sort_and_create_concepts()
         return output
+
+    def _resolve_concept_addresses(self) -> None:
+        """Fix every concept address, parents before the children that inherit
+        from them, then publish the results to the symbol table.
+
+        A property declared ``<parent_key_path>.<name>`` takes its parent key's
+        namespace, so its address is not knowable until the parent's is.
+        Resolving in that order lets each property read the parent's real
+        namespace — the same lookup ``concept_property_declaration`` performs at
+        hydration — instead of predicting one. Whatever a prediction got wrong
+        would be declared at an address no concept occupies, and
+        ``_scoped_placeholder`` reads any declared symbol as license to
+        manufacture a placeholder, so the bogus address would bind a dangling
+        concept rather than raise.
+
+        Plans whose parent never resolves keep no address at all; they take one
+        from the concept hydration builds (``declare_hydrated_symbols``).
+        """
+        plans = [p for p in self.plans if isinstance(p, ConceptStatementPlan)]
+        resolved: set[str] = set()
+        pending = plans
+        while pending:
+            waiting = []
+            for plan in pending:
+                if plan.resolve_address(self.environment, resolved):
+                    resolved.update(plan.provided_addresses)
+                else:
+                    waiting.append(plan)
+            if len(waiting) == len(pending):
+                break
+            pending = waiting
+        for plan in plans:
+            plan.declare_symbols(self)
 
     def _sort_and_create_concepts(self) -> None:
         concept_plans = [p for p in self.plans if isinstance(p, ConceptStatementPlan)]
@@ -298,6 +333,7 @@ class NativeHydrator:
         with self.semantic_state.pending_overlay_scope():
             for plan in sorted_concepts:
                 plan.output = self.hydrate_concept_block(plan.syntax)
+                plan.declare_hydrated_symbols(self)
 
     def block_statement(self, block: SyntaxNode) -> SyntaxNode:
         return require_block_statement(block)

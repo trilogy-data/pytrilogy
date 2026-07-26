@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Comment, CustomFunctionFactory
 from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ChartStatement,
     ConceptDeclarationStatement,
@@ -45,6 +46,7 @@ from trilogy.parsing.v2.select_finalize import (
     finalize_select_tree as _v2_finalize_select_tree,
 )
 from trilogy.parsing.v2.symbols import (
+    ConceptAddress,
     collect_concept_address,
     collect_inline_concept_addresses,
     collect_properties_addresses,
@@ -54,6 +56,7 @@ from trilogy.parsing.v2.symbols import (
     find_join_clause_literals,
     find_select_transform_targets,
     find_tvf_output_names,
+    parent_namespace,
 )
 from trilogy.parsing.v2.syntax import (
     SyntaxElement,
@@ -140,20 +143,18 @@ class ConceptStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ConceptDeclarationStatement | PropertiesDeclarationStatement | None = None
     address: str | None = None
+    declaration: ConceptAddress | None = None
     provided_addresses: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
 
     def collect_symbols(self, hydrator: NativeHydrator) -> None:
-        self.address = collect_concept_address(self.syntax, hydrator.environment)
-        if self.address:
-            self.provided_addresses = [self.address]
-        else:
+        self.declaration = collect_concept_address(self.syntax, hydrator.environment)
+        if self.declaration is None:
+            # A grouped `properties k (...)` block names its properties in the
+            # declaring file's namespace, so it needs no parent to resolve.
             self.provided_addresses = collect_properties_addresses(
                 self.syntax, hydrator.environment
             )
-        for addr in self.provided_addresses:
-            namespace, _, name = addr.rpartition(".")
-            hydrator.symbol_table.declare(addr, name or addr, namespace or "")
         # Dependency addresses are extracted for the topological sort only.
         # They are NOT declared into the symbol table: a concept body may
         # only reference identifiers that have a real source (already in
@@ -163,6 +164,57 @@ class ConceptStatementPlan(StatementPlanBase):
         # for wholly undeclared identifiers and silently accept broken
         # concept declarations — strict v2 parsing must raise instead.
         self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
+
+    def resolve_address(self, environment: Environment, resolved: set[str]) -> bool:
+        """Fix this plan's address, returning False while its parent is unknown.
+
+        A property inherits its parent key's namespace, so it can only resolve
+        once that parent has.
+        """
+        if self.declaration is None:
+            return True
+        parent_path = self.declaration.parent_path
+        if parent_path is None:
+            namespace = ""
+        else:
+            found = parent_namespace(parent_path, environment, resolved)
+            if found is None:
+                return False
+            namespace = found
+        self.address = self.declaration.resolve(namespace)
+        self.provided_addresses = [self.address]
+        return True
+
+    def declare_symbols(self, hydrator: NativeHydrator) -> None:
+        """Publish resolved addresses. A plan whose parent never resolved has
+        none yet — see :meth:`declare_hydrated_symbols`."""
+        for addr in self.provided_addresses:
+            namespace, _, name = addr.rpartition(".")
+            hydrator.symbol_table.declare(addr, name or addr, namespace or "")
+
+    def declare_hydrated_symbols(self, hydrator: NativeHydrator) -> None:
+        """Publish the address hydration actually built, for a plan whose parent
+        could not be resolved ahead of it.
+
+        A parent that only exists once hydration derives it (``order.date.month``
+        off a date property declared in this same file) has no datatype yet at
+        symbol collection, so its namespace is genuinely unknowable there.
+        Predicting one risks declaring a symbol at an address no concept
+        occupies, and ``_scoped_placeholder`` reads any declared symbol as
+        license to manufacture a placeholder — so a reference to the bogus
+        address would bind a dangling concept instead of raising. Taking the
+        address from the built concept cannot be wrong; the cost is that the
+        symbol lands after BIND, so a datasource naming it raises rather than
+        binding a phantom.
+        """
+        if self.provided_addresses:
+            return
+        if isinstance(self.output, PropertiesDeclarationStatement):
+            self.provided_addresses = [c.address for c in self.output.concepts]
+        elif isinstance(self.output, ConceptDeclarationStatement):
+            self.address = self.output.concept.address
+            self.provided_addresses = [self.address]
+        self.declare_symbols(hydrator)
 
     def hydrate(self, hydrator: NativeHydrator) -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
