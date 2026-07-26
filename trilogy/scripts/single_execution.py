@@ -10,6 +10,12 @@ from trilogy.core.statements.execute import (
     ProcessedValidateStatement,
 )
 from trilogy.dialect.results import ChartResult
+from trilogy.execution.report import (
+    emit_asset_refresh,
+    emit_asset_refresh_query,
+    emit_refresh_plan,
+    emit_statement_end,
+)
 from trilogy.execution.state import RefreshPlan
 from trilogy.execution.state import RefreshResult as StateRefreshResult
 from trilogy.scripts.common import (
@@ -86,6 +92,9 @@ def execute_single_statement(
             duration = datetime.now() - start_time
             if not use_progress:
                 show_statement_result(idx, total_queries, duration, True)
+            emit_statement_end(
+                idx, total_queries, statement_type, duration.total_seconds(), True
+            )
             return True, raw_results, duration, None
 
         results = (
@@ -120,6 +129,9 @@ def execute_single_statement(
         if not use_progress:
             show_statement_result(idx, total_queries, duration, bool(results))
 
+        emit_statement_end(
+            idx, total_queries, statement_type, duration.total_seconds(), True
+        )
         return True, results, duration, None
 
     except Exception as e:
@@ -128,6 +140,14 @@ def execute_single_statement(
         if not use_progress:
             show_statement_result(idx, total_queries, duration, False, str(e), type(e))
 
+        emit_statement_end(
+            idx,
+            total_queries,
+            statement_type,
+            duration.total_seconds(),
+            False,
+            error=e,
+        )
         return False, None, duration, e
 
 
@@ -348,6 +368,16 @@ def _plan_and_execute_refresh(
 ) -> StateRefreshResult:
     from trilogy.execution.state import execute_refresh_plan
 
+    emit_refresh_plan(
+        scope=name or None,
+        assets=plan.refresh_assets,
+        addr_lookup=addr_map.get,
+        stale_count=len(plan.stale_assets),
+        forced_count=len(plan.forced_assets),
+        root_assets=plan.root_assets,
+        all_assets=plan.all_assets,
+    )
+
     if plan.stale_count == 0 and not quiet:
         suffix = f" in {name}" if name else ""
         print_info(
@@ -385,12 +415,14 @@ def _plan_and_execute_refresh(
     else:
 
         def on_refresh(asset_id: str, reason: str) -> None:
+            emit_asset_refresh(asset_id, addr_map.get(asset_id), reason, dry_run)
             if quiet:
                 return
             label = "Would refresh" if dry_run else "Refreshing"
             print_info(f"  {label} {asset_id}: {reason}")
 
         def on_refresh_query(ds_id: str, sql: str) -> None:
+            emit_asset_refresh_query(ds_id, sql, dry_run)
             if stats is not None:
                 stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
             if dry_run and not quiet:

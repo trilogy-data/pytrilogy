@@ -14,11 +14,13 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.execution.report import emit_report, exit_code_for
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
     ExecutionNode,
+    ManagedRefreshNode,
     ScriptNode,
     create_script_nodes,
 )
@@ -43,6 +45,9 @@ class ExecutionResult:
     error: Exception | None = None
     duration: float = 0.0  # seconds
     stats: ExecutionStats | None = None
+    # True when the node never ran because a dependency failed. Kept distinct
+    # from success=False so telemetry can separate real failures from skips.
+    skipped: bool = False
 
 
 @dataclass
@@ -125,6 +130,7 @@ def _propagate_failure(
                 success=False,
                 error=RuntimeError("Skipped due to failed dependency"),
                 duration=0.0,
+                skipped=True,
             )
             results.append(skip_result)
             completed.add(dependent)
@@ -188,6 +194,7 @@ def _mark_node_complete(
                         success=False,
                         error=RuntimeError("Skipped due to failed dependency"),
                         duration=0.0,
+                        skipped=True,
                     )
                     results.append(skip_result)
                     completed.add(dependent)
@@ -215,6 +222,7 @@ def _mark_node_complete(
                     success=False,
                     error=RuntimeError("Skipped due to failed dependency"),
                     duration=0.0,
+                    skipped=True,
                 )
                 results.append(skip_result)
                 completed.add(dependent)
@@ -650,6 +658,86 @@ def _dispatch_single_script_execution(
     return 0
 
 
+def _report_node_fields(node: ExecutionNode) -> dict[str, Any]:
+    """Attribution fields for report records: file for scripts, physical
+    address + owner script for managed refresh nodes."""
+    if isinstance(node, ManagedRefreshNode):
+        return {
+            "address": node.address,
+            "owner_script": str(node.owner_script.path),
+            "node_kind": "managed_address",
+        }
+    return {
+        "file": str(node.path) if isinstance(node, ScriptNode) else str(node),
+        "node_kind": "script",
+    }
+
+
+def _report_file_start(node: ExecutionNode) -> None:
+    emit_report("file_start", **_report_node_fields(node))
+
+
+def _report_file_end(result: ExecutionResult) -> None:
+    stats = result.stats
+    emit_report(
+        "file_end",
+        **_report_node_fields(result.node),
+        success=result.success,
+        skipped=result.skipped or None,
+        duration_s=round(result.duration, 6),
+        error_type=type(result.error).__name__ if result.error else None,
+        error=(str(result.error) or None) if result.error else None,
+        stats=(
+            {
+                "persist_count": stats.persist_count,
+                "update_count": stats.update_count,
+                "validate_count": stats.validate_count,
+                "refresh_query_count": len(stats.refresh_queries),
+            }
+            if stats
+            else None
+        ),
+    )
+
+
+def _report_single_script_outcome(
+    label: str,
+    duration: float,
+    execution_mode: ExecutionMode,
+    succeeded: int = 0,
+    skipped: int = 0,
+    refresh_count: int = 0,
+    error: BaseException | None = None,
+) -> None:
+    """Emit the terminal ``file_end`` + ``summary`` pair for the inline /
+    single-script path, which bypasses the parallel executor's own reporting."""
+    emit_report(
+        "file_end",
+        file=label,
+        node_kind="script",
+        success=error is None,
+        duration_s=round(duration, 6),
+        error_type=type(error).__name__ if error else None,
+        error=(str(error) or None) if error else None,
+    )
+    emit_report(
+        "summary",
+        success=error is None,
+        exit_code=exit_code_for(error) if error else None,
+        total=1,
+        succeeded=succeeded,
+        failed=1 if error else 0,
+        skipped=skipped,
+        partial_failure=False,
+        total_duration_s=round(duration, 6),
+        refreshed_assets=(
+            refresh_count
+            if error is None and execution_mode == ExecutionMode.REFRESH
+            else None
+        ),
+    )
+
+
 def get_execution_strategy(strategy_name: str):
     """Get execution strategy by name."""
     strategies = {
@@ -714,23 +802,37 @@ def run_parallel_execution(
     edialect, parallelism = merge_runtime_config(cli_params, config)
     if not (pathlib_input.exists() or graph) or (len(files) == 1 and not graph):
         # Inline query - use polished single-script execution
-
-        refresh_count = run_single_script_execution(
-            files=files,
-            directory=directory,
-            input_type=input_type,
-            input_name=input_name,
-            edialect=edialect,
-            param=cli_params.param,
-            conn_args=cli_params.conn_args,
-            debug=cli_params.debug,
-            execution_mode=execution_mode,
-            config=config,
-            refresh_params=cli_params.refresh_params,
-            debug_file=cli_params.debug_file,
-            row_limit=cli_params.row_limit,
-            show_scopes=cli_params.show_scopes,
+        single_label = (
+            str(files[0]) if files and isinstance(files[0], Path) else "inline"
         )
+        emit_report("file_start", file=single_label, node_kind="script")
+        single_start = datetime.now()
+        try:
+            refresh_count = run_single_script_execution(
+                files=files,
+                directory=directory,
+                input_type=input_type,
+                input_name=input_name,
+                edialect=edialect,
+                param=cli_params.param,
+                conn_args=cli_params.conn_args,
+                debug=cli_params.debug,
+                execution_mode=execution_mode,
+                config=config,
+                refresh_params=cli_params.refresh_params,
+                debug_file=cli_params.debug_file,
+                row_limit=cli_params.row_limit,
+                show_scopes=cli_params.show_scopes,
+            )
+        except BaseException as e:
+            _report_single_script_outcome(
+                single_label,
+                (datetime.now() - single_start).total_seconds(),
+                execution_mode,
+                error=e,
+            )
+            raise
+        duration = (datetime.now() - single_start).total_seconds()
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:
             skipped = 1 if refresh_count == 0 else 0
@@ -738,12 +840,20 @@ def run_parallel_execution(
         else:
             skipped = 0
             successful = 1
+        _report_single_script_outcome(
+            single_label,
+            duration,
+            execution_mode,
+            succeeded=successful,
+            skipped=skipped,
+            refresh_count=refresh_count,
+        )
         return ParallelExecutionSummary(
             total_scripts=1,
             successful=successful,
             skipped=skipped,
             failed=0,
-            total_duration=0.0,
+            total_duration=duration,
             results=[],
         )
     # Multiple files or physical graph - use parallel execution
@@ -817,13 +927,21 @@ def run_parallel_execution(
         finally:
             reset_progress_label_callback(token)
 
+    def on_start(node: Any) -> None:
+        _report_file_start(node)
+        tracker.on_start(node)
+
+    def on_complete(result: ExecutionResult) -> None:
+        _report_file_end(result)
+        tracker.on_complete(result)
+
     with tracker:
         summary = parallel_exec.execute(
             root=pathlib_input,
             executor_factory=executor_factory,
             execution_fn=quiet_execution_fn,
-            on_script_start=tracker.on_start,
-            on_script_complete=tracker.on_complete,
+            on_script_start=on_start,
+            on_script_complete=on_complete,
             graph=execution_plan,
         )
 
@@ -851,6 +969,25 @@ def run_parallel_execution(
         )
 
     show_parallel_execution_summary(summary)
+
+    dep_skipped = sum(1 for r in summary.results if r.skipped)
+    real_failed = summary.failed - dep_skipped
+    emit_report(
+        "summary",
+        success=summary.all_succeeded,
+        exit_code=None if summary.all_succeeded else 1,
+        total=summary.total_scripts,
+        succeeded=summary.successful,
+        failed=real_failed,
+        skipped=summary.skipped + dep_skipped,
+        partial_failure=bool(real_failed and summary.successful),
+        total_duration_s=round(summary.total_duration, 6),
+        refreshed_assets=(
+            sum(r.stats.update_count for r in summary.results if r.stats)
+            if execution_mode == ExecutionMode.REFRESH
+            else None
+        ),
+    )
 
     if not summary.all_succeeded:
         print_error("Some scripts failed during execution.")

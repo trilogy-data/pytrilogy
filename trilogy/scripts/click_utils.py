@@ -1,6 +1,7 @@
 """Click utilities and helpers for the CLI."""
 
 import importlib
+from collections.abc import Callable
 
 import click
 
@@ -195,3 +196,58 @@ def misplaced_group_value_hint(
                 f"{subcommand} ...)"
             )
     return None
+
+
+def report_options(fn: Callable) -> Callable:
+    """``--report-file`` / ``--run-id``: the machine-readable execution report
+    contract, shared by every command that can emit one."""
+    fn = click.option(
+        "--run-id",
+        "run_id",
+        default=None,
+        help=(
+            "Correlation id stamped on every report record "
+            "(env: TRILOGY_RUN_ID; default: generated)."
+        ),
+    )(fn)
+    return click.option(
+        "--report-file",
+        "report_file",
+        type=click.Path(),
+        default=None,
+        help=(
+            "Append a machine-readable JSONL execution report to this path "
+            "(env: TRILOGY_REPORT_FILE). One JSON object per line; see "
+            "trilogy.execution.report for the record contract."
+        ),
+    )(fn)
+
+
+def state_file_option(fn: Callable) -> Callable:
+    """``--state-input`` / ``--state-file``: the persisted-state round trip for
+    run/refresh — read recorded asset state in, write the post-execution state
+    back out."""
+    fn = click.option(
+        "--state-input",
+        "state_input",
+        type=click.Path(exists=True),
+        default=None,
+        help=(
+            "Seed asset state from a snapshot written by an earlier "
+            "--state-file / `trilogy state` (env: TRILOGY_STATE_INPUT). "
+            "Managed assets recorded there are trusted instead of re-probed; "
+            "roots are always re-read live. Matched by physical address."
+        ),
+    )(fn)
+    return click.option(
+        "--state-file",
+        "state_file",
+        type=click.Path(),
+        default=None,
+        help=(
+            "Write a post-execution state snapshot (watermarks, staleness, "
+            "column mappings) as JSON to this path (env: TRILOGY_STATE_FILE). "
+            "Runs a full state probe after execution; failures warn but never "
+            "change the exit code."
+        ),
+    )(fn)

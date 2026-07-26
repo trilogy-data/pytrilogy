@@ -1,10 +1,17 @@
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
+from trilogy.core.models.datasource import (
+    Datasource,
+    UpdateKey,
+    UpdateKeys,
+    UpdateKeyType,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.watermarks import (
@@ -25,6 +32,62 @@ from trilogy.execution.state.watermarks import (
 )
 
 
+@runtime_checkable
+class StateStore(Protocol):
+    """The contract the refresh planner/executor requires of a state store.
+
+    ``BaseStateStore`` (in-memory, re-derives from the warehouse) is the
+    default implementation; alternate backends (file, sqlite, remote/orchestrator
+    -managed) implement this Protocol and are injected via the ``state_store``
+    parameters on :func:`create_refresh_plan` / :func:`execute_refresh_plan` /
+    :func:`refresh_stale_assets`. Mirrors the ``ColumnStatsCache`` pattern in
+    ``cache.py``.
+    """
+
+    watermarks: dict[str, DatasourceWatermark]
+    concept_max_watermarks: dict[str, UpdateKey]
+
+    def invalidate(self, ds_id: str) -> None: ...
+
+    def invalidate_address(self, env: Environment, address: str) -> None: ...
+
+    def watermark_asset(
+        self, datasource: Datasource, executor: Executor
+    ) -> DatasourceWatermark: ...
+
+    def get_datasource_watermarks(
+        self, datasource: Datasource
+    ) -> DatasourceWatermark | None: ...
+
+    def check_datasource_state(self, datasource: Datasource) -> bool: ...
+
+    def watermark_all_assets(
+        self,
+        env: Environment,
+        executor: Executor,
+        skip_datasources: set[str] | None = None,
+    ) -> dict[str, DatasourceWatermark]: ...
+
+    def is_stale(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds_id: str,
+        root_assets: set[str] | None = None,
+        force: bool = False,
+    ) -> StaleAsset | None: ...
+
+    def get_stale_assets(
+        self,
+        env: Environment,
+        executor: Executor,
+        root_assets: set[str] | None = None,
+        skip_datasources: set[str] | None = None,
+    ) -> list[StaleAsset]: ...
+
+    def run_freshness_probe_cached(self, probe_path: str) -> bool: ...
+
+
 class BaseStateStore:
 
     def __init__(self, cache: ColumnStatsCache | None = None) -> None:
@@ -38,7 +101,7 @@ class BaseStateStore:
         # serialize them to keep the dicts consistent.
         self._lock = threading.Lock()
 
-    def _run_freshness_probe_cached(self, probe_path: str) -> bool:
+    def run_freshness_probe_cached(self, probe_path: str) -> bool:
         """Memoized wrapper around run_freshness_probe.
 
         Probes are deterministic for the duration of one refresh invocation;
@@ -87,7 +150,9 @@ class BaseStateStore:
                 self._probe_results.pop(probe, None)
             self.concept_max_watermarks.clear()
 
-    def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
+    def watermark_asset(
+        self, datasource: Datasource, executor: Executor
+    ) -> DatasourceWatermark:
         if is_missing_local_file(datasource):
             watermarks = DatasourceWatermark(keys={})
             self.watermarks[datasource.identifier] = watermarks
@@ -111,10 +176,12 @@ class BaseStateStore:
         self.watermarks[datasource.identifier] = watermarks
         return watermarks
 
-    def get_datasource_watermarks(self, datasource) -> DatasourceWatermark | None:
+    def get_datasource_watermarks(
+        self, datasource: Datasource
+    ) -> DatasourceWatermark | None:
         return self.watermarks.get(datasource.identifier)
 
-    def check_datasource_state(self, datasource) -> bool:
+    def check_datasource_state(self, datasource: Datasource) -> bool:
         return datasource.identifier in self.watermarks
 
     def watermark_all_assets(
@@ -258,7 +325,7 @@ class BaseStateStore:
             return StaleAsset(datasource_id=ds_id, reason="forced rebuild", kind=kind)
 
         if is_managed_root:
-            if not self._run_freshness_probe_cached(ds.freshness_probe):  # type: ignore[arg-type]
+            if not self.run_freshness_probe_cached(ds.freshness_probe):  # type: ignore[arg-type]
                 return StaleAsset(
                     datasource_id=ds_id,
                     reason=f"refreshable root probe '{ds.freshness_probe}' returned false",
@@ -275,7 +342,7 @@ class BaseStateStore:
         if ds_id not in self.watermarks:
             self.watermark_asset(ds, executor)
 
-        if ds.freshness_probe and not self._run_freshness_probe_cached(
+        if ds.freshness_probe and not self.run_freshness_probe_cached(
             ds.freshness_probe
         ):
             return StaleAsset(
@@ -387,6 +454,48 @@ class BaseStateStore:
         return stale
 
 
+StateStoreFactory = Callable[[ColumnStatsCache | None], StateStore]
+
+# Ambient factory for the current invocation, letting a caller redirect every
+# implicit store construction at once (e.g. seeding from a persisted snapshot —
+# see ``persistence.py``). A plain global, not a ContextVar, for the same reason
+# as report.py's sink: refresh evaluates managed nodes on worker threads a
+# ContextVar set in the entrypoint would not reach.
+_ACTIVE_FACTORY: StateStoreFactory | None = None
+
+
+def set_state_store_factory(factory: StateStoreFactory | None) -> None:
+    global _ACTIVE_FACTORY
+    _ACTIVE_FACTORY = factory
+
+
+def get_state_store_factory() -> StateStoreFactory | None:
+    return _ACTIVE_FACTORY
+
+
+def new_state_store(cache: ColumnStatsCache | None = None) -> StateStore:
+    """Construct a state store: the installed factory's, else in-memory.
+
+    Every implicit ``BaseStateStore()`` in the refresh pipeline goes through
+    here, so installing a factory redirects the whole pipeline. An explicit
+    ``state_store=`` argument always wins over the ambient factory.
+    """
+    if _ACTIVE_FACTORY is not None:
+        return _ACTIVE_FACTORY(cache)
+    return BaseStateStore(cache=cache)
+
+
+@contextmanager
+def state_store_factory(factory: StateStoreFactory | None) -> Iterator[None]:
+    """Scope an ambient factory to a block, restoring the previous one."""
+    previous = _ACTIVE_FACTORY
+    set_state_store_factory(factory)
+    try:
+        yield
+    finally:
+        set_state_store_factory(previous)
+
+
 @dataclass
 class RefreshResult:
     """Result of refreshing stale assets."""
@@ -432,13 +541,18 @@ def create_refresh_plan(
     cache: ColumnStatsCache | None = None,
     skip_datasources: set[str] | None = None,
     initial_watermarks: dict[str, DatasourceWatermark] | None = None,
+    state_store: StateStore | None = None,
 ) -> RefreshPlan:
     """Compute which assets would be refreshed without executing updates.
 
     skip_datasources: ds_ids to completely ignore (already covered by another owner script).
     initial_watermarks: pre-collected watermarks (e.g. root watermarks from a prior phase).
+    state_store: alternate StateStore backend; defaults to a fresh in-memory
+        BaseStateStore. Pre-seeded watermarks on the store are respected
+        (watermark_all_assets skips already-present ds_ids).
     """
-    state_store = BaseStateStore(cache=cache)
+    if state_store is None:
+        state_store = new_state_store(cache=cache)
     if initial_watermarks:
         state_store.watermarks.update(initial_watermarks)
     force_sources = force_sources or set()
@@ -508,7 +622,7 @@ class RefreshAssetError(RuntimeError):
 
 def _execute_one_asset(
     executor: "Executor",
-    store: BaseStateStore,
+    store: StateStore,
     asset: StaleAsset,
     pending_sql_ds_ids: set[str],
     on_refresh: Callable[[str, str], None] | None,
@@ -551,7 +665,7 @@ def _execute_one_asset(
             raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
         # Invalidate before the post-refresh re-probe so the probe reads fresh.
         store.invalidate_address(executor.environment, datasource.safe_address)
-        if datasource.freshness_probe and not store._run_freshness_probe_cached(
+        if datasource.freshness_probe and not store.run_freshness_probe_cached(
             datasource.freshness_probe
         ):
             raise RefreshAssetError(
@@ -600,7 +714,7 @@ def execute_refresh_plan(
     on_refresh: Callable[[str, str], None] | None = None,
     on_refresh_query: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
-    state_store: BaseStateStore | None = None,
+    state_store: "StateStore | None" = None,
     cascade: bool = True,
 ) -> RefreshResult:
     """Execute a refresh plan with deferred staleness for cross-script cascade.
@@ -622,7 +736,7 @@ def execute_refresh_plan(
 
     store = state_store
     if store is None:
-        store = BaseStateStore()
+        store = new_state_store()
         store.watermarks.update(plan.watermarks)
         if plan.concept_max_watermarks:
             store.concept_max_watermarks = dict(plan.concept_max_watermarks)
@@ -725,6 +839,7 @@ def refresh_stale_assets(
     on_refresh_query: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
     cache: ColumnStatsCache | None = None,
+    state_store: "StateStore | None" = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -742,6 +857,7 @@ def refresh_stale_assets(
         executor,
         force_sources=force_sources,
         cache=cache,
+        state_store=state_store,
     )
 
     if on_watermarks:
@@ -768,4 +884,5 @@ def refresh_stale_assets(
         on_refresh=on_refresh,
         on_refresh_query=on_refresh_query,
         dry_run=dry_run,
+        state_store=state_store,
     )

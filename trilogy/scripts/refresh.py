@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 
@@ -14,19 +15,32 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.core import graph as nx
+from trilogy.core.models.datasource import Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
+from trilogy.execution.report import (
+    emit_asset_refresh,
+    emit_asset_refresh_query,
+    emit_refresh_plan,
+    emit_report,
+    report_run,
+)
 from trilogy.execution.state import (
-    BaseStateStore,
     DatasourceWatermark,
     RefreshKind,
     RefreshPlan,
     RefreshResult,
     StaleAsset,
+    StateStore,
     create_refresh_plan,
     execute_refresh_plan,
+    new_state_store,
 )
-from trilogy.scripts.click_utils import validate_dialect
+from trilogy.scripts.click_utils import (
+    report_options,
+    state_file_option,
+    validate_dialect,
+)
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -239,9 +253,37 @@ def _managed_dependency_edges(
     return edges
 
 
-def _preview_directory_refresh(
-    cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
-) -> tuple[bool, nx.DiGraph | None]:
+@dataclass
+class DirectoryProbeResult:
+    """Read-only result of the directory state probe (refresh phases 1/2a/2b).
+
+    Shared by directory refresh preview and the ``trilogy state`` command:
+    everything here is collected without mutating any warehouse state.
+    """
+
+    plans_by_node: list[tuple[ScriptNode, RefreshPlan]]
+    address_map: dict[str, str]  # ds_id -> physical address
+    addr_to_owner: dict[str, ScriptNode]
+    probe_addrs: set[str]  # managed physical addresses
+    total_physical: int
+    ds_objects: dict[str, Datasource]  # ds_id -> parsed Datasource (first seen)
+    ds_to_scripts: dict[str, list[ScriptNode]]
+    ds_is_root: dict[str, bool]
+    ds_is_refreshable_root: dict[str, bool]
+    refreshable_root_addrs: set[str]
+    all_root_watermarks: dict[str, DatasourceWatermark]
+    addr_line_by_script: dict[tuple[str, str], int]
+    script_graph: nx.DiGraph
+    edialect: Dialects
+
+
+def probe_directory_state(
+    cli_params: CLIRuntimeParams, input_path: Path
+) -> DirectoryProbeResult:
+    """Phases 1 (parse), 2a (root watermark probe), 2b (managed asset probe)
+    of the directory refresh pipeline, extracted so the read-only probe can be
+    reused by ``trilogy state`` and post-run snapshots. No warehouse writes,
+    no prompts, no graph trimming."""
     from trilogy.scripts.common import (
         merge_runtime_config,
         resolve_input_information,
@@ -250,7 +292,6 @@ def _preview_directory_refresh(
         print_error,
         print_info,
         probe_progress,
-        show_asset_status_summary,
     )
     from trilogy.scripts.environment import parse_env_vars
 
@@ -280,6 +321,7 @@ def _preview_directory_refresh(
     available_datasources: set[str] = set()
     # (physical address, owner script path) -> earliest definition line in that script
     addr_line_by_script: dict[tuple[str, str], int] = {}
+    ds_objects: dict[str, Datasource] = {}
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
     ds_is_refreshable_root: dict[str, bool] = {}
@@ -319,6 +361,7 @@ def _preview_directory_refresh(
         needed_in_script: set[str] = set()
         for ds_id, ds in env.datasources.items():
             address_map.setdefault(ds_id, ds.safe_address)
+            ds_objects.setdefault(ds_id, ds)
             line_no = ds.metadata.line_no
             if line_no is not None:
                 line_key = (ds.safe_address, str(node.path))
@@ -503,11 +546,53 @@ def _preview_directory_refresh(
         refreshable_root_addrs=refreshable_root_addrs,
     )
 
+    return DirectoryProbeResult(
+        plans_by_node=plans_by_node,
+        address_map=address_map,
+        addr_to_owner=addr_to_owner,
+        probe_addrs=probe_addrs,
+        total_physical=total_physical,
+        ds_objects=ds_objects,
+        ds_to_scripts=dict(ds_to_scripts),
+        ds_is_root=ds_is_root,
+        ds_is_refreshable_root=ds_is_refreshable_root,
+        refreshable_root_addrs=refreshable_root_addrs,
+        all_root_watermarks=all_root_watermarks,
+        addr_line_by_script=addr_line_by_script,
+        script_graph=script_graph,
+        edialect=edialect,
+    )
+
+
+def _preview_directory_refresh(
+    cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
+) -> tuple[bool, nx.DiGraph | None]:
+    from trilogy.scripts.display import print_info, show_asset_status_summary
+
+    input_path = input_path.resolve()
+    probe = probe_directory_state(cli_params, input_path)
+    plans_by_node = probe.plans_by_node
+    address_map = probe.address_map
+    addr_to_owner = probe.addr_to_owner
+    probe_addrs = probe.probe_addrs
+    total_physical = probe.total_physical
+    addr_line_by_script = probe.addr_line_by_script
+    script_graph = probe.script_graph
+
     refresh_assets = [
         asset for _, plan in plans_by_node for asset in plan.refresh_assets
     ]
     has_refreshable_root_stale = any(
         a.kind == RefreshKind.SCRIPT for a in refresh_assets
+    )
+
+    emit_refresh_plan(
+        scope=str(input_path),
+        assets=refresh_assets,
+        addr_lookup=address_map.get,
+        stale_count=sum(len(plan.stale_assets) for _, plan in plans_by_node),
+        forced_count=sum(len(plan.forced_assets) for _, plan in plans_by_node),
+        all_assets=total_physical,
     )
 
     if not refresh_assets:
@@ -637,13 +722,19 @@ def _run_refresh_plan(
 ) -> RefreshResult:
     from trilogy.scripts.display import print_info
 
+    def _addr(ds_id: str) -> str | None:
+        ds = exec.environment.datasources.get(ds_id)
+        return ds.safe_address if ds is not None else None
+
     def on_refresh(asset_id: str, reason: str) -> None:
+        emit_asset_refresh(asset_id, _addr(asset_id), reason, dry_run)
         if quiet:
             return
         label = "Would refresh" if dry_run else "Refreshing"
         print_info(f"  {label} {asset_id}: {reason}")
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
+        emit_asset_refresh_query(ds_id, sql, dry_run)
         stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
         if dry_run and not quiet:
             print_info(f"\n-- {ds_id}\n{sql}")
@@ -665,6 +756,7 @@ def execute_managed_node_for_refresh(
     print_watermarks: bool,
     interactive: bool,
     dry_run: bool,
+    state_store: StateStore | None = None,
 ) -> ExecutionStats:
     """Refresh one managed physical address.
 
@@ -674,7 +766,7 @@ def execute_managed_node_for_refresh(
     cascade dependents that probed fresh at preview will now probe stale.
     """
     stats = ExecutionStats()
-    store = BaseStateStore()
+    store = state_store if state_store is not None else new_state_store()
 
     # Resolve which datasources at this address to evaluate. Prefer the explicit
     # list set at preview time; if absent (legacy nodes), fall back to scanning
@@ -775,6 +867,19 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
         if not approved:
             raise Exit(2)
         if not phys_graph:
+            # All assets fresh: a successful no-op, not a failure — the exit
+            # code 2 convention distinguishes "nothing to do" from "refreshed".
+            emit_report(
+                "summary",
+                success=True,
+                exit_code=2,
+                total=0,
+                succeeded=0,
+                failed=0,
+                skipped=0,
+                partial_failure=False,
+                refreshed_assets=0,
+            )
             raise Exit(2)
 
         execution_fn = make_managed_refresh_fn(
@@ -860,6 +965,8 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     default=False,
     help="Show SQL that would be executed without running it",
 )
+@report_options
+@state_file_option
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -874,6 +981,10 @@ def refresh(
     force,
     interactive,
     dry_run,
+    report_file: str | None,
+    run_id: str | None,
+    state_input: str | None,
+    state_file: str | None,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -907,83 +1018,31 @@ def refresh(
     )
 
     try:
-        summary = run_refresh_command(cli_params)
-        if summary.successful == 0 and summary.skipped > 0:
-            raise Exit(2)
-        return
-        input_path = Path(input)
-        from trilogy.scripts.common import (
-            merge_runtime_config,
-            resolve_input_information,
-        )
-        from trilogy.scripts.display import show_execution_info
+        with report_run(
+            "refresh",
+            report_file,
+            run_id,
+            target=str(input)[:200],
+            dialect=dialect,
+            parallelism=parallelism,
+            config_path=str(config) if config else None,
+        ):
+            from trilogy.scripts.state import (
+                maybe_write_state_snapshot,
+                state_input_scope,
+            )
 
-        _, _, input_type, input_name, runtime_config = resolve_input_information(
-            input, cli_params.config_path
-        )
-        edialect, _ = merge_runtime_config(cli_params, runtime_config)
-        config_path_str = (
-            str(runtime_config.source_path) if runtime_config.source_path else None
-        )
-        if input_path.is_dir():
-            show_execution_info(
-                input_type,
-                input_name,
-                edialect.value,
-                cli_params.debug,
-                config_path_str,
-                cli_params.debug_file,
-            )
-            approved, phys_graph = _preview_directory_refresh(
-                cli_params, input_path, interactive=refresh_params.interactive
-            )
-            if not approved:
+            up_to_date = False
+            try:
+                with state_input_scope(state_input):
+                    summary = run_refresh_command(cli_params)
+                up_to_date = summary.successful == 0 and summary.skipped > 0
+            finally:
+                # Snapshot regardless of outcome: post-failure state is still
+                # the current truth, and this never alters the exit code.
+                maybe_write_state_snapshot(cli_params, state_file)
+            if up_to_date:
                 raise Exit(2)
-
-            # If we have a physical graph, use it for deduplicated execution
-            if phys_graph:
-                execution_fn = make_managed_refresh_fn(
-                    refresh_params.print_watermarks,
-                    False,  # interactive always False after preview
-                    refresh_params.dry_run,
-                )
-
-                def physical_executor_factory(node: ManagedRefreshNode) -> Executor:
-                    from trilogy.scripts.common import create_executor_for_script
-
-                    executor = create_executor_for_script(
-                        node.owner_script,
-                        cli_params.param,
-                        cli_params.conn_args,
-                        Dialects(dialect) if dialect else edialect,
-                        cli_params.debug,
-                        runtime_config,
-                        cli_params.debug_file,
-                    )
-                    with safe_open(node.owner_script.path) as handle:
-                        executor.parse_text(handle.read(), root=node.owner_script.path)
-                    return executor
-
-                summary = run_parallel_execution(
-                    cli_params=cli_params,
-                    execution_fn=execution_fn,  # type: ignore
-                    execution_mode=ExecutionMode.REFRESH,
-                    graph=phys_graph,
-                    executor_factory_override=physical_executor_factory,
-                )
-            else:
-                # No stale assets found
-                raise Exit(2)
-        else:
-            # Single file refresh — run_parallel_execution routes to run_single_script_execution
-            summary = run_parallel_execution(
-                cli_params=cli_params,
-                execution_mode=ExecutionMode.REFRESH,
-            )
-
-        if summary.successful == 0 and summary.skipped > 0:
-            # if everything was up to date, exit with code 2
-            raise Exit(2)
     except Exit:
         raise
     except Exception as e:

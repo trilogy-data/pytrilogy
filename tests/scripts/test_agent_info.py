@@ -36,6 +36,7 @@ def test_agent_info():
     assert "trilogy agent-info ingest" in result.output
     assert "trilogy agent-info config" in result.output
     assert "trilogy agent-info serve" in result.output
+    assert "trilogy agent-info state" in result.output
 
     # Check configuration section (stub in the main dump; full schema +
     # dialects moved to `agent-info config`).
@@ -44,6 +45,32 @@ def test_agent_info():
 
     # Check common workflows
     assert "## Common Workflows" in result.output
+
+
+def test_agent_info_state_subcommand():
+    """`agent-info state` is the on-demand reference for persisting asset state
+    to a file and reading it back; the main dump only points at it."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "state"])
+
+    assert result.exit_code == 0
+    assert "# Trilogy Persisted State" in result.output
+    for flag in ("--state-file", "--state-input", "--report-file", "--run-id"):
+        assert flag in result.output
+    for env_var in (
+        "TRILOGY_STATE_FILE",
+        "TRILOGY_STATE_INPUT",
+        "TRILOGY_REPORT_FILE",
+        "TRILOGY_RUN_ID",
+    ):
+        assert env_var in result.output
+    # The two load-bearing rules of the read path.
+    assert "physical address" in result.output
+    assert "roots are always re-probed" in result.output.lower()
+
+    # Esoteric: the body lives here, not in the always-loaded main dump.
+    main = runner.invoke(cli, ["agent-info"])
+    assert "# Trilogy Persisted State" not in main.output
 
 
 def test_agent_info_report_subcommand():

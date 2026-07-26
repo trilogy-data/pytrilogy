@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from trilogy.execution.config import RuntimeConfig, load_config_file
-from trilogy.execution.state.state_store import BaseStateStore
+from trilogy.execution.state.state_store import StateStore, new_state_store
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.serve_helpers.models import (
     AssetState,
@@ -19,6 +19,7 @@ def compute_state_sync(
     engine: str,
     config_path: Path | None,
     directory: Path,
+    state_store: "StateStore | None" = None,
 ) -> StateResponse:
     """Parse a trilogy file, watermark its datasources, and return serialized state.
 
@@ -58,7 +59,8 @@ def compute_state_sync(
     with safe_open(target_path) as f:
         exec.parse_text(f.read())
 
-    state_store = BaseStateStore()
+    if state_store is None:
+        state_store = new_state_store()
     watermarks = state_store.watermark_all_assets(exec.environment, exec)
     stale_assets = state_store.get_stale_assets(exec.environment, exec)
     stale_map = {a.datasource_id: a.reason for a in stale_assets}

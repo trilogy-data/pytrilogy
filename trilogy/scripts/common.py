@@ -808,11 +808,33 @@ def execute_script_with_stats(
     exec: Executor, script_path: PathlibPath, run_statements: bool = True
 ) -> ExecutionStats:
     """Parse and optionally execute a script, returning execution stats."""
+    from datetime import datetime
+
+    from trilogy.execution.report import emit_statement_end
+
     with safe_open(script_path) as f:
         queries = exec.parse_text(f.read())
     stats = ExecutionStats()
-    if run_statements:
-        for query in queries:
+    if not run_statements:
+        return stats
+    total = len(queries)
+    for idx, query in enumerate(queries):
+        start = datetime.now()
+        error: Exception | None = None
+        try:
             exec.execute_query(query)
-            stats = count_statement_stats([query], stats)
+        except Exception as e:
+            error = e
+            raise
+        finally:
+            emit_statement_end(
+                idx,
+                total,
+                type(query).__name__,
+                (datetime.now() - start).total_seconds(),
+                error is None,
+                error=error,
+                file=str(script_path),
+            )
+        stats = count_statement_stats([query], stats)
     return stats

@@ -155,7 +155,9 @@ class TestDuckDBMissingSourcePatterns:
         dialect = Dialects.DUCK_DB.default_renderer()
         assert is_missing_source_error(Exception(message), dialect) is True
         assert (
-            is_missing_source_error(ProgrammingError("stmt", {}, Exception(message)), dialect)
+            is_missing_source_error(
+                ProgrammingError("stmt", {}, Exception(message)), dialect
+            )
             is True
         )
 
@@ -163,7 +165,9 @@ class TestDuckDBMissingSourcePatterns:
         exc = Exception(
             "HTTP Error: HTTP GET error on 'https://x/404/y.parquet' (HTTP 403 Forbidden)"
         )
-        assert is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is False
+        assert (
+            is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is False
+        )
 
     def test_table_not_found(self) -> None:
         exc = ProgrammingError(
