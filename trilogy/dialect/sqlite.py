@@ -272,12 +272,14 @@ class SQLiteDialect(BaseDialect):
             materialized_addresses=materialized_addresses,
         )
 
-    def compile_create_table_statement(self, target, create_mode):
-        statement = super().compile_create_table_statement(target, create_mode)
+    def compile_create_table_statements(self, target, create_mode) -> list[str]:
+        statements = super().compile_create_table_statements(target, create_mode)
         if create_mode.value == "create_or_replace":
-            table_name = self.safe_quote(target.name)
-            return f"DROP TABLE IF EXISTS {table_name};\n{statement.replace('CREATE TABLE ', 'CREATE TABLE ', 1)}"
-        return statement
+            return [
+                f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};",
+                *statements,
+            ]
+        return statements
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None

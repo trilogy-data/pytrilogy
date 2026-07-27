@@ -80,7 +80,7 @@ from trilogy.dialect.metadata import (
     handle_show_statement_outputs,
 )
 from trilogy.dialect.mock import handle_processed_mock_statement
-from trilogy.dialect.results import ChartResult, MockResult
+from trilogy.dialect.results import BufferedResult, ChartResult, MockResult
 from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
@@ -190,6 +190,8 @@ class Executor:
         # a per-statement copy (theme=...) overrides it
         self.chart_theme = chart_theme
         self._instance_id = str(uuid.uuid4())
+        # transaction this executor implicitly opened (see _flush_transaction)
+        self._owned_transaction: Any = None
         self.generator = get_dialect_generator(
             self.dialect,
             rendering,
@@ -214,7 +216,27 @@ class Executor:
     def connect(self) -> EngineConnection:
         self.connection = self.engine.connect()
         self.connected = True
+        self._owned_transaction = None
         return self.connection
+
+    def commit(self) -> None:
+        """Commit the open transaction on this executor's connection."""
+        self.connection.commit()
+        self._owned_transaction = None
+
+    def _flush_transaction(self) -> None:
+        """Commit work in a transaction this executor implicitly opened.
+
+        Drivers auto-begin on the first statement and roll back on close, so
+        without this every CREATE/persist would be discarded when the executor
+        closes. A transaction the caller opened themselves is left alone."""
+        owned = self._owned_transaction
+        self._owned_transaction = None
+        if owned is None or not owned.is_active:
+            return
+        if self.connection.get_transaction() is not owned:
+            return
+        self.connection.commit()
 
     def _setup_duckdb_python_datasources(self) -> None:
         """Setup DuckDB macro for Python script datasources."""
@@ -237,7 +259,7 @@ class Executor:
                 enabled, is_windows, self._instance_id, self.staging
             )
         )
-        self.connection.commit()
+        self.commit()
 
     def _setup_duckdb_gcs(self) -> None:
         """Setup DuckDB GCS extension with application default credentials."""
@@ -250,7 +272,7 @@ class Executor:
         sql = get_gcs_setup_sql(enabled)
         if sql:
             self.execute_raw_sql(sql)
-            self.connection.commit()
+            self.commit()
 
     def _setup_duckdb_spatial(self) -> None:
         """Setup DuckDB spatial extension for geospatial functions."""
@@ -261,10 +283,11 @@ class Executor:
             return
         self.execute_raw_sql("INSTALL spatial;")
         self.execute_raw_sql("LOAD spatial;")
-        self.connection.commit()
+        self.commit()
 
     def close(self) -> None:
         if self.connected:
+            self._flush_transaction()
             self.connection.close()
         self.engine.dispose(close=True)
         if self.dialect == Dialects.DUCK_DB:
@@ -454,7 +477,7 @@ class Executor:
 
     @execute_query.register
     def _(self, query: RawSQLStatement) -> ResultProtocol | None:
-        return self.execute_raw_sql(query.text)
+        return self.execute_write_sql(query.text)
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> ResultProtocol | None:
@@ -505,9 +528,7 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedCreateStatement) -> ResultProtocol | None:
-        sql = self.generator.compile_statement(query)
-        output = self.execute_raw_sql(sql)
-        return output
+        return self.execute_write_statements(self.generator.compile_statements(query))
 
     @execute_query.register
     def _(self, query: ProcessedPublishStatement) -> ResultProtocol | None:
@@ -523,7 +544,7 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol | None:
-        return self.execute_raw_sql(query.text)
+        return self.execute_write_sql(query.text)
 
     @execute_query.register
     def _(self, query: ProcessedQuery) -> ResultProtocol | None:
@@ -567,8 +588,10 @@ class Executor:
                 self.environment.add_datasource(query.datasource)
             return None
 
-        sql = self.generator.compile_statement(query)
-        output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
+        output = self.execute_write_statements(
+            self.generator.compile_statements(query),
+            local_concepts=query.local_concepts,
+        )
 
         if query.persist_mode == PersistMode.OVERWRITE:
             self.environment.add_datasource(query.datasource)
@@ -927,11 +950,15 @@ class Executor:
 
         while True:
             attempt += 1
+            implicit = not self.connection.in_transaction()
             try:
                 if final_params:
-                    return self.connection.execute(text(command), final_params)
+                    result = self.connection.execute(text(command), final_params)
                 else:
-                    return self.connection.execute(text(command))
+                    result = self.connection.execute(text(command))
+                if implicit and self.connection.in_transaction():
+                    self._owned_transaction = self.connection.get_transaction()
+                return result
             except Exception as e:
                 policy = self._get_retry_policy(e)
                 if policy is None or attempt >= policy.max_attempts:
@@ -970,6 +997,34 @@ class Executor:
                 }
 
         return self._execute_with_retry(command, final_params)
+
+    def execute_write_statements(
+        self,
+        statements: Sequence[str | Path],
+        local_concepts: Mapping[str, Concept] | None = None,
+    ) -> ResultProtocol:
+        """Run statements that change database state, in order, then commit.
+
+        One driver call per statement: sqlite3 rejects a multi-statement execute,
+        so a persist's DDL and INSERT cannot be sent together. The last result is
+        copied out before committing, which discards an unconsumed cursor on some
+        drivers (duckdb among them)."""
+        buffered = BufferedResult([], [])
+        for statement in statements:
+            result = self.execute_raw_sql(statement, local_concepts=local_concepts)
+            if result.returns_rows:
+                buffered = BufferedResult(list(result.keys()), list(result.fetchall()))
+            else:
+                buffered = BufferedResult([], [])
+        self._flush_transaction()
+        return buffered
+
+    def execute_write_sql(
+        self,
+        command: str | Path,
+        local_concepts: Mapping[str, Concept] | None = None,
+    ) -> ResultProtocol:
+        return self.execute_write_statements([command], local_concepts=local_concepts)
 
     def execute_text(
         self, command: str, non_interactive: bool = False
@@ -1029,7 +1084,7 @@ class Executor:
             with safe_open(file) as f:
                 command = f.read()
             if file.suffix == ".sql":
-                return [self.execute_raw_sql(command)]
+                return [self.execute_write_sql(command)]
             else:
                 return self.execute_text(command, non_interactive=non_interactive)
         if err:

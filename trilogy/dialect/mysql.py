@@ -117,7 +117,9 @@ DATATYPE_MAP = {
     DataType.TIMESTAMP: "TIMESTAMP",
 }
 
-MYSQL_SQL_TEMPLATE = Template("""{%- if ctes %}
+MYSQL_SQL_TEMPLATE = Template("""{%- if output %}
+{{output}}
+{% endif %}{%- if ctes %}
 WITH {% if recursive %}RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} AS (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -171,16 +173,19 @@ class MySQLDialect(BaseDialect):
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-    def compile_create_table_statement(
+    def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
-    ) -> str:
-        statement = super().compile_create_table_statement(target, create_mode)
+    ) -> list[str]:
+        statements = super().compile_create_table_statements(target, create_mode)
         if create_mode == CreateMode.CREATE_OR_REPLACE:
-            return (
-                f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};\n"
-                f"{statement.replace('CREATE OR REPLACE TABLE', 'CREATE TABLE', 1)}"
-            )
-        return statement
+            return [
+                f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};",
+                *[
+                    s.replace("CREATE OR REPLACE TABLE", "CREATE TABLE", 1)
+                    for s in statements
+                ],
+            ]
+        return statements
 
     def render_comparison(
         self,

@@ -3115,19 +3115,28 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
-    def compile_create_table_statement(
+    def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
-    ) -> str:
+    ) -> list[str]:
+        """DDL for one target, split into individually executable statements.
+        Dialects without a native CREATE OR REPLACE emit a separate DROP."""
         type_map = {}
         for c in target.columns:
             type_map[c.name] = self.render_expr(c.type)
-        return self.CREATE_TABLE_SQL_TEMPLATE.render(
-            create_mode=create_mode.value,
-            name=self.safe_quote(target.name),
-            columns=target.columns,
-            type_map=type_map,
-            partition_keys=target.partition_keys,
-        )
+        return [
+            self.CREATE_TABLE_SQL_TEMPLATE.render(
+                create_mode=create_mode.value,
+                name=self.safe_quote(target.name),
+                columns=target.columns,
+                type_map=type_map,
+                partition_keys=target.partition_keys,
+            )
+        ]
+
+    def compile_create_table_statement(
+        self, target: CreateTableInfo, create_mode: CreateMode
+    ) -> str:
+        return "\n".join(self.compile_create_table_statements(target, create_mode))
 
     def compile_statement(
         self,
@@ -3177,26 +3186,58 @@ class BaseDialect:
         elif isinstance(query, ProcessedChartCopyStatement):
             return self.compile_statement(query.chart)
 
-        recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
-
-        compiled_ctes = self.generate_ctes(query)
         output = None
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
                 create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} {self._persist_insert_prefix(query)}"
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
-                        query, recursive, compiled_ctes
+                        query,
+                        any(isinstance(x, RecursiveCTE) for x in query.ctes),
+                        self.generate_ctes(query),
                     )
                 else:
-                    output = f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+                    output = self._persist_insert_prefix(query)
             else:
                 raise NotImplementedError(
                     f"Persist mode {query.persist_mode} not implemented"
                 )
 
+        return self._render_query(query, output)
+
+    def _persist_insert_prefix(self, query: ProcessedQueryPersist) -> str:
+        return f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+
+    def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
+        """The same SQL as ``compile_statement``, split into statements that can
+        be run one per driver call. Some drivers (sqlite3) reject a multi-statement
+        execute, so writers must issue a persist's DDL and INSERT separately."""
+        if isinstance(query, ProcessedCreateStatement):
+            return [
+                statement
+                for target in query.targets
+                for statement in self.compile_create_table_statements(
+                    target, query.create_mode
+                )
+            ]
+        if (
+            isinstance(query, ProcessedQueryPersist)
+            and query.persist_mode == PersistMode.OVERWRITE
+        ):
+            create_table_info = datasource_to_create_table_info(query.datasource)
+            return [
+                *self.compile_create_table_statements(
+                    create_table_info, CreateMode.CREATE_OR_REPLACE
+                ),
+                self._render_query(query, self._persist_insert_prefix(query)),
+            ]
+        return [self.compile_statement(query)]
+
+    def _render_query(self, query, output: str | None) -> str:
+        recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
+        compiled_ctes = self.generate_ctes(query)
         final = self.SQL_TEMPLATE.render(
             recursive=recursive,
             output=output,

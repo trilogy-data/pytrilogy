@@ -253,12 +253,9 @@ def _materialize_mock_tables(flattened_env, db_path: Path) -> None:
             executor.execute_raw_sql(
                 "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
             )
-            executor.execute_raw_sql(
+            executor.execute_write_sql(
                 f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM mock_tbl'
             )
-        # close() discards an open transaction; commit so the file keeps the
-        # mock tables for the (read-only) agent + scoring connections.
-        executor.connection.commit()
     finally:
         executor.close()
 

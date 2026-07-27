@@ -47,6 +47,37 @@ class MockResult(ResultProtocol):
 
 
 @dataclass
+class BufferedResult(ResultProtocol):
+    """A result read fully into memory, so it outlives the cursor that produced
+    it. Rows are kept as the driver returned them."""
+
+    columns: list[str]
+    rows: list[Any]
+
+    def __iter__(self):
+        while self.rows:
+            yield self.rows.pop(0)
+
+    def fetchall(self):
+        rval = self.rows
+        self.rows = []
+        return rval
+
+    def fetchone(self):
+        if self.rows:
+            return self.rows.pop(0)
+        return None
+
+    def fetchmany(self, size: int):
+        rval = self.rows[:size]
+        self.rows = self.rows[size:]
+        return rval
+
+    def keys(self):
+        return self.columns
+
+
+@dataclass
 class MockResultRow:
     _values: dict[str, Any]
 
