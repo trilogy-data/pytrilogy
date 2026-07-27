@@ -116,8 +116,10 @@ def test_lowered_union_join_matches_native_full_join(query: str):
 @pytest.mark.parametrize(
     "tail",
     [
-        "select combined.ik, combined.dt, combined.wt, combined.st "
-        "order by combined.ik asc, combined.dt asc;",
+        (
+            "select combined.ik, combined.dt, combined.wt, combined.st "
+            "order by combined.ik asc, combined.dt asc;"
+        ),
         """select combined.ik, combined.dt,
   sum(combined.wt) over (partition by combined.ik order by combined.dt asc) as wrun,
   sum(combined.st) over (partition by combined.ik order by combined.dt asc) as srun
