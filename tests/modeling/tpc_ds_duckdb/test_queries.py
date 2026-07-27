@@ -9,6 +9,7 @@ from typing import TypeVar
 import tomli_w
 import tomllib
 
+from tests.modeling._row_compare import rows_match
 from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Executor
 from trilogy.constants import CONFIG
@@ -123,8 +124,8 @@ def run_query(
             False
         ), f"Row count mismatch: expected {len(base_results)}, got {len(comp_results)}"
     for qidx, row in enumerate(base_results):
-        assert (
-            row == comp_results[qidx]
+        assert rows_match(
+            row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
     with open(working_path / f"zquery{query_label}.log", "w") as f:
