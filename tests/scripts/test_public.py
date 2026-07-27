@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 from click.testing import CliRunner
@@ -86,8 +86,6 @@ def _fake_urlopen(url_or_req, *_args, **_kwargs):
     else:
         filename = url.rsplit("/", 1)[-1]
         if filename not in FILE_CONTENTS:
-            from urllib.error import HTTPError
-
             raise HTTPError(url, 404, "Not Found", {}, None)
         payload = FILE_CONTENTS[filename]
     response = io.BytesIO(payload)
@@ -179,6 +177,50 @@ def test_public_fetch_force_overwrites(patched_urlopen):
         assert (target / "boulder_data.preql").exists()
 
 
+def test_public_fetch_fails_on_unreachable_component():
+    def _side_effect(url_or_req, *args, **kwargs):
+        url = url_or_req.full_url if hasattr(url_or_req, "full_url") else url_or_req
+        if url.endswith("boulder_data.preql"):
+            raise URLError("simulated network failure")
+        return _fake_urlopen(url_or_req, *args, **kwargs)
+
+    runner = CliRunner()
+    with (
+        patch("trilogy.scripts.public.urlopen", side_effect=_side_effect),
+        patch("trilogy.scripts.public.RETRY_DELAYS", (0.0,)),
+        tempfile.TemporaryDirectory() as tmpdir,
+    ):
+        target = Path(tmpdir) / "out"
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
+        assert result.exit_code == 1, result.output
+        assert "failed to fetch" in result.output
+        assert not (target / "boulder_data.preql").exists()
+
+
+def test_public_fetch_retries_transient_failure():
+    calls = {"n": 0}
+
+    def _side_effect(url_or_req, *args, **kwargs):
+        url = url_or_req.full_url if hasattr(url_or_req, "full_url") else url_or_req
+        if url.endswith("boulder_data.preql"):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise HTTPError(url, 429, "Too Many Requests", {}, None)
+        return _fake_urlopen(url_or_req, *args, **kwargs)
+
+    runner = CliRunner()
+    with (
+        patch("trilogy.scripts.public.urlopen", side_effect=_side_effect),
+        patch("trilogy.scripts.public.RETRY_DELAYS", (0.0,)),
+        tempfile.TemporaryDirectory() as tmpdir,
+    ):
+        target = Path(tmpdir) / "out"
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
+        assert result.exit_code == 0, result.output
+        assert calls["n"] == 2
+        assert (target / "boulder_data.preql").exists()
+
+
 def test_public_fetch_rejects_unsafe_name():
     runner = CliRunner()
     result = runner.invoke(cli, ["public", "fetch", "../evil"])
@@ -190,7 +232,10 @@ def test_public_list_network_failure():
     def _fail(*_args, **_kwargs):
         raise URLError("simulated network failure")
 
-    with patch("trilogy.scripts.public.urlopen", side_effect=_fail):
+    with (
+        patch("trilogy.scripts.public.urlopen", side_effect=_fail),
+        patch("trilogy.scripts.public.RETRY_DELAYS", (0.0,)),
+    ):
         runner = CliRunner()
         result = runner.invoke(cli, ["public", "list"])
     assert result.exit_code == 1

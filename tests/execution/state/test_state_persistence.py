@@ -9,6 +9,7 @@ seeded — they are the expected side of every staleness comparison.
 """
 
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,7 @@ from trilogy.execution.state import (
     DatasourceWatermark,
     SnapshotStateStore,
     StateSnapshot,
+    address_type_of,
     build_datasource_state,
     create_refresh_plan,
     managed_states_by_address,
@@ -28,6 +30,7 @@ from trilogy.execution.state import (
     resolve_state_input,
     restore_watermark_value,
     snapshot_store_factory,
+    stable_asset_key,
     state_store_factory,
     watermarks_for_datasource,
 )
@@ -256,6 +259,113 @@ def test_seeding_does_not_resurrect_after_invalidate():
     assert store.watermarks["target_items"].keys["updated_at"].value == datetime(
         2024, 1, 10, 12, 0
     )
+
+
+FILE_SCRIPT = """
+key ev_id int;
+property ev_id.ev_ts datetime;
+
+datasource target_events (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+file `{target}`
+incremental by ev_ts;
+"""
+
+
+def _file_executor(project_root: Path, target: Path):
+    """A script at the project root binding a file under it — the layout the
+    CLI enforces, where ``env.working_path`` (the script's directory) is the
+    same root the writer relativized against."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.environment.working_path = str(project_root)
+    executor.parse_text(FILE_SCRIPT.format(target=target.as_posix()))
+    return executor
+
+
+def test_file_asset_seeds_from_a_different_checkout(tmp_path):
+    """The writer's key is project-relative, the reader's ds.safe_address is
+    absolute and points somewhere else entirely. Matching happens on the key
+    body recomputed against the reader's own root — the whole reason keys are
+    relative."""
+    writer_root = tmp_path / "checkout_a"
+    (writer_root / "data").mkdir(parents=True)
+    writer_target = writer_root / "data" / "out.parquet"
+    writer = _file_executor(writer_root, writer_target)
+    ds = writer.environment.datasources["target_events"]
+
+    snapshot = merge_into_snapshot(
+        [
+            (
+                stable_asset_key(ds.safe_address, address_type_of(ds), writer_root),
+                build_datasource_state(
+                    ds,
+                    DatasourceWatermark(
+                        keys={
+                            "ev_ts": UpdateKey(
+                                concept_name="ev_ts",
+                                type=UpdateKeyType.INCREMENTAL_KEY,
+                                value=datetime(2024, 1, 15, 12, 0),
+                            )
+                        }
+                    ),
+                    None,
+                ),
+            )
+        ]
+    )
+    assert snapshot.assets[0].address == "data/out.parquet"
+
+    reader_root = tmp_path / "checkout_b"
+    (reader_root / "data").mkdir(parents=True)
+    reader = _file_executor(reader_root, reader_root / "data" / "out.parquet")
+
+    seeded = SnapshotStateStore(snapshot).seeded_watermarks(reader.environment)
+    assert seeded["target_events"].keys["ev_ts"].value == datetime(2024, 1, 15, 12, 0)
+
+
+def test_file_asset_outside_the_project_does_not_cross_match(tmp_path):
+    """A path that can't be relativized keeps its absolute form, so it must NOT
+    match a same-named file in a different checkout — that would seed one
+    project's state onto another's asset."""
+    writer_root = tmp_path / "checkout_a"
+    writer_root.mkdir(parents=True)
+    outside = tmp_path / "shared" / "out.parquet"
+    outside.parent.mkdir(parents=True)
+    writer = _file_executor(writer_root, outside)
+    ds = writer.environment.datasources["target_events"]
+    key = stable_asset_key(ds.safe_address, address_type_of(ds), writer_root)
+    assert key == ds.safe_address  # unrelativizable -> absolute
+
+    snapshot = merge_into_snapshot(
+        [
+            (
+                key,
+                build_datasource_state(
+                    ds,
+                    DatasourceWatermark(
+                        keys={
+                            "ev_ts": UpdateKey(
+                                concept_name="ev_ts",
+                                type=UpdateKeyType.INCREMENTAL_KEY,
+                                value=datetime(2024, 1, 15, 12, 0),
+                            )
+                        }
+                    ),
+                    None,
+                ),
+            )
+        ]
+    )
+
+    elsewhere = tmp_path / "checkout_b" / "data"
+    elsewhere.mkdir(parents=True)
+    reader = _file_executor(elsewhere.parent, elsewhere / "out.parquet")
+
+    seeded = SnapshotStateStore(snapshot).seeded_watermarks(reader.environment)
+    assert seeded == {}
 
 
 def test_read_state_snapshot(tmp_path):

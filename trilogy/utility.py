@@ -1,12 +1,19 @@
 import hashlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from os import PathLike
 from typing import TextIO, TypeVar, cast
 
 from trilogy.constants import DEFAULT_NAMESPACE
 
 INT_HASH_SIZE = 16
+
+
+def utc_now_iso() -> str:
+    """Current UTC time, ISO-8601. The emitting process's own clock — fine for
+    display, never for ordering events across machines."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 @contextmanager

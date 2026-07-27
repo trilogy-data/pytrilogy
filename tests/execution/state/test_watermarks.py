@@ -1356,11 +1356,16 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     src_ds.is_root = True
     src_ds.refresh_script = None
     src_ds.freshness_probe = None
+    # Derived properties auto-mock truthy; state on a bare MagicMock for both.
+    src_ds.is_refreshable_root = False
+    src_ds.is_managed = False
     tgt_ds = MagicMock()
     tgt_ds.identifier = "tz_target"
     tgt_ds.is_root = False
     tgt_ds.refresh_script = None
     tgt_ds.freshness_probe = None
+    tgt_ds.is_refreshable_root = False
+    tgt_ds.is_managed = True
     tgt_ds.freshness_by = []
     tgt_ds.incremental_by = [MagicMock()]
 

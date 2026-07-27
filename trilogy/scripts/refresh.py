@@ -275,6 +275,7 @@ class DirectoryProbeResult:
     addr_line_by_script: dict[tuple[str, str], int]
     script_graph: nx.DiGraph
     edialect: Dialects
+    config: RuntimeConfig
 
 
 def probe_directory_state(
@@ -370,10 +371,7 @@ def probe_directory_state(
                     addr_line_by_script[line_key] = line_no
             ds_to_scripts[ds_id].append(node)
             ds_is_root.setdefault(ds_id, ds.is_root)
-            ds_is_refreshable_root.setdefault(
-                ds_id,
-                bool(ds.is_root and ds.refresh_script and ds.freshness_probe),
-            )
+            ds_is_refreshable_root.setdefault(ds_id, ds.is_refreshable_root)
             if not ds.is_root:
                 for ref in ds.freshness_by:
                     needed_in_script.add(env.concepts[ref.address].address)
@@ -561,6 +559,7 @@ def probe_directory_state(
         addr_line_by_script=addr_line_by_script,
         script_graph=script_graph,
         edialect=edialect,
+        config=config,
     )
 
 
@@ -1027,20 +1026,29 @@ def refresh(
             parallelism=parallelism,
             config_path=str(config) if config else None,
         ):
+            from trilogy.execution.state.phases import phase_recording
             from trilogy.scripts.state import (
                 maybe_write_state_snapshot,
                 state_input_scope,
             )
 
             up_to_date = False
-            try:
-                with state_input_scope(state_input):
-                    summary = run_refresh_command(cli_params)
-                up_to_date = summary.successful == 0 and summary.skipped > 0
-            finally:
-                # Snapshot regardless of outcome: post-failure state is still
-                # the current truth, and this never alters the exit code.
-                maybe_write_state_snapshot(cli_params, state_file)
+            # The recorder captures the planning probes' begin-phase
+            # observations and verdicts for the post-run snapshot.
+            with phase_recording() as recorder:
+                try:
+                    with state_input_scope(state_input, cli_params):
+                        summary = run_refresh_command(cli_params)
+                    up_to_date = summary.successful == 0 and summary.skipped > 0
+                finally:
+                    # Frozen first: the snapshot re-probes, and a datasource
+                    # never probed during execution must not acquire a fake
+                    # begin phase from the end-of-run pass.
+                    recorder.freeze()
+                    # Snapshot regardless of outcome: post-failure state is
+                    # still the current truth, and this never alters the
+                    # exit code.
+                    maybe_write_state_snapshot(cli_params, state_file)
             if up_to_date:
                 raise Exit(2)
     except Exit:

@@ -290,6 +290,20 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return f"{self.namespace}.{self.name}"
 
     @property
+    def is_refreshable_root(self) -> bool:
+        """A root trilogy drives via subprocess rather than SQL persist.
+
+        Needs both halves: the probe decides staleness, the script fixes it.
+        A root with only one of them stays untouchable.
+        """
+        return bool(self.is_root and self.refresh_script and self.freshness_probe)
+
+    @property
+    def is_managed(self) -> bool:
+        """Whether trilogy owns refresh for this datasource."""
+        return not self.is_root or self.is_refreshable_root
+
+    @property
     def safe_identifier(self) -> str:
         return self.identifier.replace(".", "_")
 

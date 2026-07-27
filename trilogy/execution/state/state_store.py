@@ -14,6 +14,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.phases import get_phase_recorder
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
     RefreshKind,
@@ -314,7 +315,7 @@ class BaseStateStore:
         if root_assets is None:
             root_assets = {d.identifier for d in env.datasources.values() if d.is_root}
 
-        is_managed_root = bool(ds.is_root and ds.refresh_script and ds.freshness_probe)
+        is_managed_root = ds.is_refreshable_root
 
         if force:
             kind = (
@@ -595,7 +596,7 @@ def create_refresh_plan(
         if ds_id in root_ds_ids
     }
 
-    return RefreshPlan(
+    plan = RefreshPlan(
         stale_assets=stale_assets,
         forced_assets=forced_assets,
         watermarks=state_store.watermarks,
@@ -604,6 +605,15 @@ def create_refresh_plan(
         all_assets=all_assets,
         root_watermarks=root_watermarks,
     )
+
+    # Begin-phase capture: the planning probe is the last look at state
+    # before anything executes. First-wins inside the recorder, so re-plans
+    # and the post-run snapshot's own probe never overwrite the true begin.
+    recorder = get_phase_recorder()
+    if recorder is not None:
+        recorder.record_plan(executor.environment, plan, skipped=extra_skip)
+
+    return plan
 
 
 class RefreshAssetError(RuntimeError):

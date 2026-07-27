@@ -187,6 +187,159 @@ def test_state_round_trip_across_models(runner, tmp_path):
     assert reobserved["event_time"] and "2024-02-01" in reobserved["event_time"]
 
 
+PORTABLE_SOURCE = """key ev_id int;
+property ev_id.ev_ts datetime;
+
+root datasource src_events (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+file `{src}`;
+"""
+
+PORTABLE_TARGET = """import source;
+
+datasource target_events (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+file `{target}`
+incremental by ev_ts;
+"""
+
+
+def _checkout(root: Path, rows: str) -> tuple[Path, Path]:
+    """A self-contained project: scripts at the root, data under ``data/``.
+    Every absolute path differs between two checkouts; every key must not."""
+    root.mkdir(parents=True)
+    (root / "data").mkdir()
+    src = root / "data" / "src_events.parquet"
+    target = root / "data" / "target_events.parquet"
+    _write_src(src, rows)
+    (root / "source.preql").write_text(
+        PORTABLE_SOURCE.format(src=src.as_posix()), encoding="utf-8"
+    )
+    (root / "base.preql").write_text(
+        PORTABLE_TARGET.format(target=target.as_posix()), encoding="utf-8"
+    )
+    return src, target
+
+
+BASE_ROWS = (
+    "SELECT 1 AS ev_id, TIMESTAMP '2024-01-10 12:00:00' AS ev_ts "
+    "UNION ALL SELECT 2, TIMESTAMP '2024-01-15 12:00:00'"
+)
+AHEAD_ROWS = BASE_ROWS + " UNION ALL SELECT 3, TIMESTAMP '2024-02-01 12:00:00'"
+
+
+def test_state_survives_a_different_checkout(runner, tmp_path):
+    """The point of stable keys: state recorded in one checkout seeds a run in
+    another, where every absolute path is different.
+
+    This is what an orchestrator does — each run materializes the project into
+    a fresh scratch directory — so a key containing the checkout path would
+    match nothing and silently degrade to a live probe.
+    """
+    a = tmp_path / "checkout_a" / "proj"
+    _checkout(a, BASE_ROWS)
+    state_file = tmp_path / "state.json"
+
+    first = runner.invoke(
+        cli, ["refresh", str(a), "duckdb", "--state-file", str(state_file)]
+    )
+    assert first.exit_code == 0, first.output
+
+    snapshot = _snapshot(state_file)
+    keys = {asset.address for asset in snapshot.assets}
+    # Purely physical, project-relative pointers. Neither mentions the checkout.
+    assert keys == {"data/target_events.parquet", "data/src_events.parquet"}
+    owners = {a.address: a.owner_script for a in snapshot.assets}
+    assert owners["data/target_events.parquet"] == "base.preql"
+    assert owners["data/src_events.parquet"] is None  # no script builds it
+
+    # --- checkout B: same project, different paths. Its root is already ahead
+    # and its target was built out of band, so a live probe sees nothing to do.
+    b = tmp_path / "checkout_b" / "proj"
+    src_b, target_b = _checkout(b, AHEAD_ROWS)
+    _copy_parquet(src_b, target_b)
+
+    control = runner.invoke(cli, ["refresh", str(b), "duckdb"])
+    assert control.exit_code == 2, control.output  # 2 == everything up to date
+
+    # Seeded with checkout A's state, the recorded watermark (2024-01-15) is
+    # behind B's root (2024-02-01), so the asset refreshes.
+    seeded = runner.invoke(
+        cli, ["refresh", str(b), "duckdb", "--state-input", str(state_file)]
+    )
+    assert seeded.exit_code == 0, seeded.output
+    assert "Seeding asset state from" in seeded.output
+    assert "target_events" in seeded.output
+
+
+def _nested_checkout(root: Path, rows: str) -> tuple[Path, Path]:
+    """Scripts under ``models/``, data under ``data/``, ``trilogy.toml`` at the
+    root. Keys must anchor on the config's directory — relativizing against the
+    script's own directory cannot express ``../data/...`` and would silently
+    fall back to absolute, unportable paths."""
+    (root / "models").mkdir(parents=True)
+    (root / "data").mkdir(parents=True)
+    (root / "trilogy.toml").write_text(
+        "[engine]\ndialect = 'duck_db'\n", encoding="utf-8"
+    )
+    src = root / "data" / "src_events.parquet"
+    target = root / "data" / "target_events.parquet"
+    _write_src(src, rows)
+    (root / "models" / "source.preql").write_text(
+        PORTABLE_SOURCE.format(src=src.as_posix()), encoding="utf-8"
+    )
+    (root / "models" / "base.preql").write_text(
+        PORTABLE_TARGET.format(target=target.as_posix()), encoding="utf-8"
+    )
+    return src, target
+
+
+def test_subdirectory_scripts_key_against_the_config_root(runner, tmp_path):
+    """``trilogy.toml`` is the project root, so a script in a subdirectory keys
+    its assets exactly like one at the top — and the snapshot stays portable."""
+    a = tmp_path / "checkout_a" / "proj"
+    _nested_checkout(a, BASE_ROWS)
+    state_file = tmp_path / "state.json"
+
+    first = runner.invoke(
+        cli,
+        ["refresh", str(a / "models"), "duckdb", "--state-file", str(state_file)],
+    )
+    assert first.exit_code == 0, first.output
+
+    snapshot = _snapshot(state_file)
+    assert {asset.address for asset in snapshot.assets} == {
+        "data/target_events.parquet",
+        "data/src_events.parquet",
+    }
+    owners = {a.address: a.owner_script for a in snapshot.assets}
+    assert owners["data/target_events.parquet"] == "models/base.preql"
+    # The defining script is recorded project-relative too, not as a basename.
+    scripts = {ds.script for asset in snapshot.assets for ds in asset.datasources}
+    assert scripts == {"models/base.preql"}
+
+    b = tmp_path / "checkout_b" / "proj"
+    src_b, target_b = _nested_checkout(b, AHEAD_ROWS)
+    _copy_parquet(src_b, target_b)
+
+    control = runner.invoke(cli, ["refresh", str(b / "models"), "duckdb"])
+    assert control.exit_code == 2, control.output
+
+    seeded = runner.invoke(
+        cli,
+        ["refresh", str(b / "models"), "duckdb", "--state-input", str(state_file)],
+    )
+    assert seeded.exit_code == 0, seeded.output
+    assert "Seeding asset state from" in seeded.output
+    assert "target_events" in seeded.output
+
+
 def test_state_input_from_environment(runner, tmp_path, monkeypatch):
     """TRILOGY_STATE_INPUT / TRILOGY_STATE_FILE are the flag-free path an
     orchestrator uses when it controls the process environment."""

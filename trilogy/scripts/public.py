@@ -4,6 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from time import sleep
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -43,8 +44,26 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+RETRY_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+RETRY_DELAYS = (0.5, 2.0)
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.code in RETRY_STATUS
+    return isinstance(exc, (URLError, TimeoutError))
+
+
 def _http_get(url: str, timeout: float = 15.0) -> bytes:
     req = Request(_normalize_url(url), headers={"User-Agent": "trilogy-cli"})
+    for delay in RETRY_DELAYS:
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                return resp.read()
+        except (HTTPError, URLError, TimeoutError) as exc:
+            if not _is_transient(exc):
+                raise
+            sleep(delay)
     with urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
@@ -220,8 +239,14 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
         try:
             payload = _http_get(component["url"])
         except (HTTPError, URLError, TimeoutError) as exc:
-            print_warning(f"  skipped {component.get('name')}: {exc}")
-            continue
+            print_error(
+                f"  failed to fetch {component.get('name')} ({dest.name}): {exc}"
+            )
+            click.echo(
+                f"{target_root} is incomplete — re-run with --force once the "
+                "source is reachable."
+            )
+            raise click.exceptions.Exit(1) from exc
         dest.write_bytes(payload)
         written.append(dest)
         rel = dest.relative_to(target_root)
