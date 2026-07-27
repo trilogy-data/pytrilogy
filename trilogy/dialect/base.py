@@ -1035,6 +1035,11 @@ class BaseDialect:
     def aggregate_checksum(self, hash_expr: str) -> str:
         return f"BIT_XOR(hash({hash_expr}))"
 
+    def render_ordering(self, rendered: str, order: Ordering) -> str:
+        """An ORDER BY term (statement, window, or subselect). Dialects without
+        NULLS FIRST/LAST syntax override this to emulate the placement."""
+        return f"{rendered} {order.value}"
+
     def render_order_item(
         self,
         order_item: BuildOrderItem,
@@ -1051,13 +1056,18 @@ class BaseDialect:
         ):
             if cte.source_map.get(order_item.expr.address, []):
                 # if it is sourced from somewhere, we need to reference the alias directly
-                return f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
+                return self.render_ordering(
+                    self.render_expr(order_item.expr, cte=cte), order_item.order
+                )
             # otherwise we've derived it, safe to use alias
-            return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+            return self.render_ordering(
+                f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER}",
+                order_item.order,
+            )
         rendered = self.render_expr(order_item.expr, cte=cte)
         if self._order_expr_needs_group_wrap(order_item.expr, cte, rendered):
             rendered = f"MIN({rendered})"
-        return f"{rendered} {order_item.order.value}"
+        return self.render_ordering(rendered, order_item.order)
 
     @staticmethod
     def _scalar_order_leaves(
@@ -1309,7 +1319,10 @@ class BaseDialect:
             )
             if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
-                    f"{self.render_expr(x.expr, cte, raise_invalid=raise_invalid)} {x.order.value}"
+                    self.render_ordering(
+                        self.render_expr(x.expr, cte, raise_invalid=raise_invalid),
+                        x.order,
+                    )
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
@@ -1601,7 +1614,7 @@ class BaseDialect:
                 rendered = self.render_expr(
                     oi.expr, cte=cte, raise_invalid=raise_invalid
                 )
-                order_parts.append(f"{_to_inner(rendered)} {oi.order.value}")
+                order_parts.append(self.render_ordering(_to_inner(rendered), oi.order))
 
         # Build inner subquery (handles ORDER BY + LIMIT)
         inner_select = f"SELECT {content_col} FROM {source_cte} AS {inner_alias}"
@@ -2144,7 +2157,16 @@ class BaseDialect:
             )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
-                f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {x.order.value}"
+                self.render_ordering(
+                    self.render_expr(
+                        x.expr,
+                        cte,
+                        cte_map=cte_map,
+                        raise_invalid=raise_invalid,
+                        materialized_addresses=materialized_addresses,
+                    ),
+                    x.order,
+                )
                 for x in e.order_by
             ]
             rendered_over_components = [

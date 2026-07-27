@@ -3,11 +3,16 @@ from unittest.mock import Mock
 import pytest
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import CreateMode, FunctionType
+from trilogy.core.enums import CreateMode, FunctionType, Ordering
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import ColumnInfo, CreateTableInfo
 from trilogy.dialect.config import MySQLConfig
-from trilogy.dialect.mysql import MySQLDialect, date_diff, date_truncate
+from trilogy.dialect.mysql import (
+    MySQLDialect,
+    date_diff,
+    date_truncate,
+    render_ordering,
+)
 
 
 def test_mysql_config_connection_string():
@@ -58,6 +63,50 @@ def test_mysql_query_uses_limit_and_backtick_quoting():
     assert "LIMIT 5" in sql
     assert "TOP 5" not in sql
     assert "`items`.`id`" in sql
+
+
+def test_mysql_ordering_avoids_nulls_syntax():
+    assert render_ordering("`x`", Ordering.ASCENDING) == "`x` asc"
+    assert render_ordering("`x`", Ordering.ASC_NULLS_FIRST) == "`x` asc"
+    assert render_ordering("`x`", Ordering.DESC_NULLS_LAST) == "`x` desc"
+    assert render_ordering("`x`", Ordering.DESC_NULLS_AUTO) == "`x` desc"
+    assert render_ordering("`x`", Ordering.ASC_NULLS_LAST) == (
+        "(`x`) IS NULL asc, `x` asc"
+    )
+    assert render_ordering("`x`", Ordering.DESC_NULLS_FIRST) == (
+        "(`x`) IS NULL desc, `x` desc"
+    )
+
+
+def test_mysql_query_order_by_has_no_nulls_clause():
+    env, statements = parse("""
+        key id int;
+        property id.score int;
+        datasource items (id: id, score: score) grain (id) address items;
+        select id, score order by score desc nulls first;
+        """)
+    dialect = MySQLDialect()
+
+    sql = dialect.compile_statement(dialect.generate_queries(env, [statements[-1]])[0])
+
+    assert "nulls" not in sql.lower()
+    assert "IS NULL desc" in sql
+
+
+def test_mysql_window_order_by_has_no_nulls_clause():
+    env, statements = parse("""
+        key id int;
+        property id.score int;
+        datasource items (id: id, score: score) grain (id) address items;
+        auto ranked <- rank id by score asc nulls last;
+        select id, ranked;
+        """)
+    dialect = MySQLDialect()
+
+    sql = dialect.compile_statement(dialect.generate_queries(env, [statements[-1]])[0])
+
+    assert "nulls" not in sql.lower()
+    assert "IS NULL asc" in sql
 
 
 def test_mysql_date_functions():

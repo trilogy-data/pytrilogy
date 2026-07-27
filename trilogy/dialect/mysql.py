@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     DatePart,
     FunctionType,
     Modifier,
+    Ordering,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, UnionCTE
@@ -59,6 +60,17 @@ def render_cast(args: list[str]) -> str:
     # boundary where MySQL requires CHAR instead.
     target = "CHAR" if args[1].upper() == "TEXT" else args[1]
     return f"CAST({args[0]} AS {target})"
+
+
+def render_ordering(rendered: str, order: Ordering) -> str:
+    # MySQL has no NULLS FIRST/LAST; NULLs always sort first ascending and last
+    # descending. The other two placements are emulated with a leading
+    # `<expr> IS NULL` term, which sorts in the same direction either way
+    # (asc puts the null group last, desc puts it first).
+    direction = "desc" if order.value.startswith("desc") else "asc"
+    if order in (Ordering.ASC_NULLS_LAST, Ordering.DESC_NULLS_FIRST):
+        return f"({rendered}) IS NULL {direction}, {rendered} {direction}"
+    return f"{rendered} {direction}"
 
 
 def null_safe_join_key(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -169,6 +181,9 @@ class MySQLDialect(BaseDialect):
     NULL_WRAPPER = staticmethod(null_safe_join_key)
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
+
+    def render_ordering(self, rendered: str, order: Ordering) -> str:
+        return render_ordering(rendered, order)
 
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
