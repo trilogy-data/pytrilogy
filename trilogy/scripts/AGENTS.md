@@ -36,6 +36,14 @@ This is what closes the cross-script cascade gap: by the time a downstream node 
 ### Key deduplication rules
 
 - Deduplication is always by **physical address** (`ds.safe_address`), never by `ds_id` or script.
+- **Snapshot asset keys are stable, not checkout-absolute** (`snapshot.py::stable_asset_key`). They dispatch on `AddressType` — never on the shape of the address string — and contain **nothing logical**: no script, no datasource name. Two scripts writing the same file key to the same asset, because it is the same asset.
+  - `TABLE` and remote URLs (`gs://`, `s3://`, `http://`) pass through verbatim — already stable, and shared by every model pointing at the same object.
+  - Local files (`CSV`/`TSV`/`PARQUET`/`SQL`) are keyed by their **project-relative path**. Note `AddressType.SQL` is a `.sql` *file*; only inline `query '''...'''` is `AddressType.QUERY`.
+  - Two types aren't plain data artifacts and carry a type label: `PYTHON_SCRIPT` → `script::<project-relative path>` (a procedure that emits rows), and `QUERY` → `query::<16-hex digest of whitespace-collapsed SQL>` (no artifact at all; raw inline SQL is multi-line and churns on reformatting).
+- **The project root is `trilogy.toml`'s directory** (`state.py::project_root_for`), falling back to the input directory when there is no config. This is the only anchor every invocation agrees on — a subdirectory script, a single script run directly, and a whole-directory run all key identically. Anchoring on the script's own directory instead cannot express `../data/...` and silently reverts to absolute, unportable paths.
+- **The owning script is attribute data** (`PhysicalAssetState.owner_script`, project-relative), set only where trilogy manages the address — `addr_to_owner` also names the script that merely *declares* an unmanaged root.
+- **Every datasource is an asset, roots included.** Unmanaged is `PhysicalAssetState.managed = False`, never an omission from `assets[]`. Roots are still never *seeded* from a snapshot (`managed_states_by_address` excludes them) — they are the expected side of every staleness comparison and must be re-probed live.
+- `--state-input` seeding recomputes the key from the physical address against the reader's own project root and looks it up directly (`persistence.py::_recorded_state`); the raw address is tried first for snapshots written before stable keys.
 - `addr_to_owner`: maps each physical address to its single most-upstream owner script (lowest topological index).
 - `skip_ids` in `_probe_owner_node`: `addr_to_owner.get(addr) != owner_node` — uniform for both root and non-root.
 - Root watermarks pre-injected via `initial_watermarks` into `create_refresh_plan`; `watermark_all_assets` skips already-populated entries.

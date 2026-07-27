@@ -252,7 +252,7 @@ def run(
             )
 
             try:
-                with state_input_scope(state_input):
+                with state_input_scope(state_input, cli_params):
                     run_parallel_execution(
                         cli_params=cli_params,
                         execution_fn=execute_script_for_run,

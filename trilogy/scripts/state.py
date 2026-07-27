@@ -20,7 +20,9 @@ from click import UNPROCESSED, argument, option, pass_context
 from click import Path as ClickPath
 from click.exceptions import Exit
 
+from trilogy.core.models.datasource import Datasource
 from trilogy.dialect.enums import Dialects
+from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.report import emit_report, get_report_sink, report_run
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
@@ -31,8 +33,11 @@ from trilogy.execution.state.persistence import (
 from trilogy.execution.state.snapshot import (
     DatasourceState,
     StateSnapshot,
+    address_type_of,
     build_datasource_state,
     merge_into_snapshot,
+    project_relative_path,
+    stable_asset_key,
 )
 from trilogy.execution.state.state_store import state_store_factory
 from trilogy.execution.state.watermarks import StaleAsset
@@ -49,6 +54,29 @@ def _merge_dicts(parts: list[dict]) -> dict:
         for key, value in part.items():
             merged.setdefault(key, value)
     return merged
+
+
+def project_root_for(config: RuntimeConfig, fallback: PathlibPath) -> PathlibPath:
+    """The directory asset keys are relativized against.
+
+    ``trilogy.toml`` marks the project root (``find_trilogy_config`` walks up
+    to it), so it is the only anchor every invocation of a project agrees on:
+    scripts run from a subdirectory, a single script run directly, and the
+    whole directory run at once all produce the same keys. Falling back to the
+    input's own directory would key ``<proj>/models/base.preql``'s assets
+    relative to ``models/`` — and anything under ``<proj>/data/`` could not be
+    expressed at all, silently reverting to absolute, unportable paths.
+
+    Without a config file the input directory is the best anchor available.
+    """
+    if config.source_path is not None:
+        return config.source_path.parent.resolve()
+    return fallback.resolve()
+
+
+def _asset_key(ds: Datasource, address: str, project_root: PathlibPath) -> str:
+    """Stable snapshot identity for a physical address."""
+    return stable_asset_key(address, address_type_of(ds), project_root)
 
 
 def _snapshot_from_directory(
@@ -72,26 +100,46 @@ def _snapshot_from_directory(
         [p.concept_max_watermarks for _, p in probe.plans_by_node]
     )
 
+    project_root = project_root_for(probe.config, input_path)
+
+    keys_by_address: dict[str, str] = {}
     entries: list[tuple[str, DatasourceState]] = []
     for ds_id, ds in probe.ds_objects.items():
         address = probe.address_map.get(ds_id, ds.safe_address)
+        key = _asset_key(ds, address, project_root)
+        keys_by_address.setdefault(address, key)
         scripts = probe.ds_to_scripts.get(ds_id) or []
         entries.append(
             (
-                address,
+                key,
                 build_datasource_state(
                     ds,
                     merged_watermarks.get(ds_id),
                     stale_map.get(ds_id),
                     merged_concept_max,
-                    script=str(scripts[0].path) if scripts else None,
+                    script=(
+                        project_relative_path(str(scripts[0].path), project_root)
+                        if scripts
+                        else None
+                    ),
                 ),
             )
         )
 
     return merge_into_snapshot(
         entries,
-        managed_addresses=probe.probe_addrs,
+        managed_addresses={
+            keys_by_address[addr]
+            for addr in probe.probe_addrs
+            if addr in keys_by_address
+        },
+        # Only where trilogy manages the address: addr_to_owner also names the
+        # script that merely *declares* an unmanaged root, which nothing builds.
+        owner_scripts={
+            keys_by_address[addr]: project_relative_path(str(owner.path), project_root)
+            for addr, owner in probe.addr_to_owner.items()
+            if addr in keys_by_address and addr in probe.probe_addrs
+        },
         run_id=run_id,
         target=str(input_path),
         dialect=probe.edialect.value,
@@ -110,10 +158,11 @@ def _snapshot_from_file(
     )
     from trilogy.scripts.dependency import ScriptNode
 
-    _, _, _, _, config = resolve_input_information(
+    _, directory, _, _, config = resolve_input_information(
         str(input_path), cli_params.config_path
     )
     edialect, _ = merge_runtime_config(cli_params, config)
+    project_root = project_root_for(config, PathlibPath(directory))
 
     node = ScriptNode(path=input_path.resolve())
     executor = create_executor_for_script(
@@ -136,29 +185,41 @@ def _snapshot_from_file(
         stale_assets = store.get_stale_assets(executor.environment, executor)
         stale_map = {a.datasource_id: a for a in stale_assets}
 
+        managed = {
+            ds.safe_address
+            for ds in executor.environment.datasources.values()
+            if ds.is_managed
+        }
+
+        script_attr = project_relative_path(str(node.path), project_root)
+        keys_by_address: dict[str, str] = {}
         entries: list[tuple[str, DatasourceState]] = []
         for ds in executor.environment.datasources.values():
+            key = _asset_key(ds, ds.safe_address, project_root)
+            keys_by_address.setdefault(ds.safe_address, key)
             entries.append(
                 (
-                    ds.safe_address,
+                    key,
                     build_datasource_state(
                         ds,
                         watermarks.get(ds.identifier),
                         stale_map.get(ds.identifier),
                         store.concept_max_watermarks,
-                        script=str(node.path),
+                        script=script_attr,
                     ),
                 )
             )
-        managed = {
-            ds.safe_address
-            for ds in executor.environment.datasources.values()
-            if not ds.is_root
-            or (ds.is_root and ds.refresh_script and ds.freshness_probe)
-        }
         return merge_into_snapshot(
             entries,
-            managed_addresses=managed,
+            managed_addresses={
+                keys_by_address[addr] for addr in managed if addr in keys_by_address
+            },
+            # The single script builds every managed address it binds.
+            owner_scripts={
+                keys_by_address[addr]: script_attr
+                for addr in managed
+                if addr in keys_by_address
+            },
             run_id=run_id,
             target=str(input_path),
             dialect=edialect.value,
@@ -182,25 +243,40 @@ def compute_state_snapshot(
 
 
 @contextmanager
-def state_input_scope(state_input: str | None) -> Iterator[None]:
+def state_input_scope(
+    state_input: str | None, cli_params: CLIRuntimeParams | None = None
+) -> Iterator[None]:
     """Seed the invocation's state stores from a persisted snapshot.
 
     The other half of ``--state-file``: an orchestrator that kept the snapshot
     from the last run hands it back here, and every store built inside the block
     trusts the recorded managed-asset observations instead of re-probing the
-    warehouse for them. A no-op when no snapshot is configured."""
+    warehouse for them. A no-op when no snapshot is configured.
+
+    ``cli_params`` supplies the project root recorded keys are relative to —
+    the same anchor the writer used. Without it the store falls back to each
+    environment's working path, which is only the project root when the script
+    sits at the top level."""
     path = resolve_state_input(state_input)
     if path is None:
         yield
         return
+    from trilogy.scripts.common import resolve_input_information
     from trilogy.scripts.display import print_info
+
+    project_root: PathlibPath | None = None
+    if cli_params is not None:
+        _, directory, _, _, config = resolve_input_information(
+            cli_params.input, cli_params.config_path
+        )
+        project_root = project_root_for(config, PathlibPath(directory))
 
     snapshot = read_state_snapshot(path)
     print_info(
         f"Seeding asset state from {path} "
         f"({snapshot.summary.total} asset(s), run_id={snapshot.run_id})"
     )
-    with state_store_factory(snapshot_store_factory(snapshot)):
+    with state_store_factory(snapshot_store_factory(snapshot, project_root)):
         yield
 
 

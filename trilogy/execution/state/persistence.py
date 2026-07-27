@@ -23,11 +23,15 @@ import os
 from pathlib import Path
 
 from trilogy import Executor
+from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.snapshot import (
+    DatasourceState,
     StateSnapshot,
+    address_type_of,
     managed_states_by_address,
+    stable_asset_key,
     watermarks_for_datasource,
 )
 from trilogy.execution.state.state_store import BaseStateStore, StateStoreFactory
@@ -69,23 +73,47 @@ class SnapshotStateStore(BaseStateStore):
     """
 
     def __init__(
-        self, snapshot: StateSnapshot, cache: ColumnStatsCache | None = None
+        self,
+        snapshot: StateSnapshot,
+        cache: ColumnStatsCache | None = None,
+        project_root: Path | None = None,
     ) -> None:
         super().__init__(cache=cache)
         self.snapshot = snapshot
+        # The root recorded keys are relative to (``trilogy.toml``'s directory).
+        # Falls back to each environment's working path, which equals the
+        # project root only for a script at the top level.
+        self.project_root = project_root.resolve() if project_root else None
         self._by_address = managed_states_by_address(snapshot)
         self._seeded = False
+
+    def _recorded_state(
+        self, ds: Datasource, project_root: Path
+    ) -> DatasourceState | None:
+        """The snapshot entry for a datasource, if recorded.
+
+        The key is a pure function of the physical address, so the reader
+        simply recomputes it against its own project root. The raw address is
+        tried first for snapshots written before stable keys existed.
+        """
+        direct = self._by_address.get(ds.safe_address)
+        if direct is not None:
+            return direct
+        key = stable_asset_key(ds.safe_address, address_type_of(ds), project_root)
+        return self._by_address.get(key)
 
     def seeded_watermarks(self, env: Environment) -> dict[str, DatasourceWatermark]:
         """Snapshot observations re-keyed onto this environment's datasource
         ids and concept names."""
-        return {
-            ds.identifier: watermarks_for_datasource(
-                self._by_address[ds.safe_address], ds
-            )
-            for ds in env.datasources.values()
-            if not ds.is_root and ds.safe_address in self._by_address
-        }
+        project_root = self.project_root or Path(env.working_path).resolve()
+        seeded: dict[str, DatasourceWatermark] = {}
+        for ds in env.datasources.values():
+            if ds.is_root:
+                continue
+            recorded = self._recorded_state(ds, project_root)
+            if recorded is not None:
+                seeded[ds.identifier] = watermarks_for_datasource(recorded, ds)
+        return seeded
 
     def _seed(self, env: Environment) -> None:
         if self._seeded:
@@ -121,13 +149,18 @@ class SnapshotStateStore(BaseStateStore):
         )
 
 
-def snapshot_store_factory(snapshot: StateSnapshot) -> StateStoreFactory:
+def snapshot_store_factory(
+    snapshot: StateSnapshot, project_root: Path | None = None
+) -> StateStoreFactory:
     """A factory producing a fresh :class:`SnapshotStateStore` per call.
 
     Each script / managed node gets its own store (they mutate independently on
-    parallel threads) seeded from the same immutable snapshot.
+    parallel threads) seeded from the same immutable snapshot and resolving
+    recorded keys against the same project root.
     """
-    return lambda cache: SnapshotStateStore(snapshot, cache=cache)
+    return lambda cache: SnapshotStateStore(
+        snapshot, cache=cache, project_root=project_root
+    )
 
 
 __all__ = [

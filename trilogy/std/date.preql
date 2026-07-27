@@ -1,6 +1,6 @@
 
 
-type year int[1000..9999];
+type year int;
 type decade int;
 type century int;
 type month int[1..12];
