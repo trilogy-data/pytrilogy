@@ -55,6 +55,12 @@ def unescape_literal_colons(sql: str) -> str:
 
 class ResultProtocol(Protocol):
 
+    @property
+    def returns_rows(self) -> bool:
+        """Whether the statement produced a result set. Mirrors SQLAlchemy's
+        CursorResult attribute; adapters that always return rows report True."""
+        return True
+
     def fetchall(self) -> list[Any]: ...
 
     def keys(self) -> list[str]: ...
@@ -81,6 +87,15 @@ class EngineConnection(Protocol):
 
     def rollback(self):
         raise NotImplementedError()
+
+    def in_transaction(self) -> bool:
+        """Whether a transaction is currently open. Engines with no
+        transactional semantics report False and never need a commit."""
+        return False
+
+    def get_transaction(self) -> Any:
+        """The open transaction, if the engine exposes one as an object."""
+        return None
 
     def close(self) -> None:
         return

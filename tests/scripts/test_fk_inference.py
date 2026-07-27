@@ -230,7 +230,7 @@ class TestValueOverlap:
         exec = Mock()
         exec.generator.safe_quote.side_effect = lambda value: f"`{value}`"
         exec.execute_raw_sql.return_value.fetchall.return_value = [
-            (Decimal("4"), Decimal("1"))
+            (Decimal(4), Decimal(1))
         ]
         src = _info("fact", ["dim_id"], [])
         target = _info("dim", ["id"], ["id"])

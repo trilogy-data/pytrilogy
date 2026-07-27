@@ -267,7 +267,7 @@ def mock_datasource(datasource: Datasource, manager: MockManager, executor):
         "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
     )
     address = safe_name(datasource.safe_address)
-    executor.execute_raw_sql(
+    executor.execute_write_sql(
         f"""CREATE OR REPLACE TABLE {address} AS SELECT * FROM mock_tbl"""
     )
     # overwrite the address since we've mangled the name

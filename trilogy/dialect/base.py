@@ -1035,6 +1035,11 @@ class BaseDialect:
     def aggregate_checksum(self, hash_expr: str) -> str:
         return f"BIT_XOR(hash({hash_expr}))"
 
+    def render_ordering(self, rendered: str, order: Ordering) -> str:
+        """An ORDER BY term (statement, window, or subselect). Dialects without
+        NULLS FIRST/LAST syntax override this to emulate the placement."""
+        return f"{rendered} {order.value}"
+
     def render_order_item(
         self,
         order_item: BuildOrderItem,
@@ -1051,13 +1056,18 @@ class BaseDialect:
         ):
             if cte.source_map.get(order_item.expr.address, []):
                 # if it is sourced from somewhere, we need to reference the alias directly
-                return f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
+                return self.render_ordering(
+                    self.render_expr(order_item.expr, cte=cte), order_item.order
+                )
             # otherwise we've derived it, safe to use alias
-            return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+            return self.render_ordering(
+                f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER}",
+                order_item.order,
+            )
         rendered = self.render_expr(order_item.expr, cte=cte)
         if self._order_expr_needs_group_wrap(order_item.expr, cte, rendered):
             rendered = f"MIN({rendered})"
-        return f"{rendered} {order_item.order.value}"
+        return self.render_ordering(rendered, order_item.order)
 
     @staticmethod
     def _scalar_order_leaves(
@@ -1309,7 +1319,10 @@ class BaseDialect:
             )
             if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
-                    f"{self.render_expr(x.expr, cte, raise_invalid=raise_invalid)} {x.order.value}"
+                    self.render_ordering(
+                        self.render_expr(x.expr, cte, raise_invalid=raise_invalid),
+                        x.order,
+                    )
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
@@ -1601,7 +1614,7 @@ class BaseDialect:
                 rendered = self.render_expr(
                     oi.expr, cte=cte, raise_invalid=raise_invalid
                 )
-                order_parts.append(f"{_to_inner(rendered)} {oi.order.value}")
+                order_parts.append(self.render_ordering(_to_inner(rendered), oi.order))
 
         # Build inner subquery (handles ORDER BY + LIMIT)
         inner_select = f"SELECT {content_col} FROM {source_cte} AS {inner_alias}"
@@ -2144,7 +2157,16 @@ class BaseDialect:
             )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
-                f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {x.order.value}"
+                self.render_ordering(
+                    self.render_expr(
+                        x.expr,
+                        cte,
+                        cte_map=cte_map,
+                        raise_invalid=raise_invalid,
+                        materialized_addresses=materialized_addresses,
+                    ),
+                    x.order,
+                )
                 for x in e.order_by
             ]
             rendered_over_components = [
@@ -3115,19 +3137,28 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
-    def compile_create_table_statement(
+    def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
-    ) -> str:
+    ) -> list[str]:
+        """DDL for one target, split into individually executable statements.
+        Dialects without a native CREATE OR REPLACE emit a separate DROP."""
         type_map = {}
         for c in target.columns:
             type_map[c.name] = self.render_expr(c.type)
-        return self.CREATE_TABLE_SQL_TEMPLATE.render(
-            create_mode=create_mode.value,
-            name=self.safe_quote(target.name),
-            columns=target.columns,
-            type_map=type_map,
-            partition_keys=target.partition_keys,
-        )
+        return [
+            self.CREATE_TABLE_SQL_TEMPLATE.render(
+                create_mode=create_mode.value,
+                name=self.safe_quote(target.name),
+                columns=target.columns,
+                type_map=type_map,
+                partition_keys=target.partition_keys,
+            )
+        ]
+
+    def compile_create_table_statement(
+        self, target: CreateTableInfo, create_mode: CreateMode
+    ) -> str:
+        return "\n".join(self.compile_create_table_statements(target, create_mode))
 
     def compile_statement(
         self,
@@ -3177,26 +3208,58 @@ class BaseDialect:
         elif isinstance(query, ProcessedChartCopyStatement):
             return self.compile_statement(query.chart)
 
-        recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
-
-        compiled_ctes = self.generate_ctes(query)
         output = None
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
                 create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} {self._persist_insert_prefix(query)}"
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
-                        query, recursive, compiled_ctes
+                        query,
+                        any(isinstance(x, RecursiveCTE) for x in query.ctes),
+                        self.generate_ctes(query),
                     )
                 else:
-                    output = f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+                    output = self._persist_insert_prefix(query)
             else:
                 raise NotImplementedError(
                     f"Persist mode {query.persist_mode} not implemented"
                 )
 
+        return self._render_query(query, output)
+
+    def _persist_insert_prefix(self, query: ProcessedQueryPersist) -> str:
+        return f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+
+    def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
+        """The same SQL as ``compile_statement``, split into statements that can
+        be run one per driver call. Some drivers (sqlite3) reject a multi-statement
+        execute, so writers must issue a persist's DDL and INSERT separately."""
+        if isinstance(query, ProcessedCreateStatement):
+            return [
+                statement
+                for target in query.targets
+                for statement in self.compile_create_table_statements(
+                    target, query.create_mode
+                )
+            ]
+        if (
+            isinstance(query, ProcessedQueryPersist)
+            and query.persist_mode == PersistMode.OVERWRITE
+        ):
+            create_table_info = datasource_to_create_table_info(query.datasource)
+            return [
+                *self.compile_create_table_statements(
+                    create_table_info, CreateMode.CREATE_OR_REPLACE
+                ),
+                self._render_query(query, self._persist_insert_prefix(query)),
+            ]
+        return [self.compile_statement(query)]
+
+    def _render_query(self, query, output: str | None) -> str:
+        recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
+        compiled_ctes = self.generate_ctes(query)
         final = self.SQL_TEMPLATE.render(
             recursive=recursive,
             output=output,

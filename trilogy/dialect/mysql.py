@@ -9,6 +9,7 @@ from trilogy.core.enums import (
     DatePart,
     FunctionType,
     Modifier,
+    Ordering,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, UnionCTE
@@ -59,6 +60,17 @@ def render_cast(args: list[str]) -> str:
     # boundary where MySQL requires CHAR instead.
     target = "CHAR" if args[1].upper() == "TEXT" else args[1]
     return f"CAST({args[0]} AS {target})"
+
+
+def render_ordering(rendered: str, order: Ordering) -> str:
+    # MySQL has no NULLS FIRST/LAST; NULLs always sort first ascending and last
+    # descending. The other two placements are emulated with a leading
+    # `<expr> IS NULL` term, which sorts in the same direction either way
+    # (asc puts the null group last, desc puts it first).
+    direction = "desc" if order.value.startswith("desc") else "asc"
+    if order in (Ordering.ASC_NULLS_LAST, Ordering.DESC_NULLS_FIRST):
+        return f"({rendered}) IS NULL {direction}, {rendered} {direction}"
+    return f"{rendered} {direction}"
 
 
 def null_safe_join_key(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -117,7 +129,9 @@ DATATYPE_MAP = {
     DataType.TIMESTAMP: "TIMESTAMP",
 }
 
-MYSQL_SQL_TEMPLATE = Template("""{%- if ctes %}
+MYSQL_SQL_TEMPLATE = Template("""{%- if output %}
+{{output}}
+{% endif %}{%- if ctes %}
 WITH {% if recursive %}RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} AS (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -168,19 +182,25 @@ class MySQLDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
 
+    def render_ordering(self, rendered: str, order: Ordering) -> str:
+        return render_ordering(rendered, order)
+
     def render_string_literal(self, value: str) -> str:
         return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
-    def compile_create_table_statement(
+    def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
-    ) -> str:
-        statement = super().compile_create_table_statement(target, create_mode)
+    ) -> list[str]:
+        statements = super().compile_create_table_statements(target, create_mode)
         if create_mode == CreateMode.CREATE_OR_REPLACE:
-            return (
-                f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};\n"
-                f"{statement.replace('CREATE OR REPLACE TABLE', 'CREATE TABLE', 1)}"
-            )
-        return statement
+            return [
+                f"DROP TABLE IF EXISTS {self.safe_quote(target.name)};",
+                *[
+                    s.replace("CREATE OR REPLACE TABLE", "CREATE TABLE", 1)
+                    for s in statements
+                ],
+            ]
+        return statements
 
     def render_comparison(
         self,
