@@ -25,11 +25,13 @@ from trilogy.core.models.author import (
     Metadata,
     WhereClause,
 )
-from trilogy.core.models.core import ListWrapper
+from trilogy.core.models.core import DataType, ListWrapper
 from trilogy.core.models.datasource import (
+    LAG_UNIT_SECONDS,
     Address,
     ColumnAssignment,
     Datasource,
+    FreshnessLag,
     RawColumnExpr,
 )
 from trilogy.parsing.helpers import comment_body
@@ -483,6 +485,73 @@ def datasource_partition_clause(
     )
 
 
+TEMPORAL_LAG_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
+NUMERIC_LAG_TYPES = {
+    DataType.INTEGER,
+    DataType.BIGINT,
+    DataType.FLOAT,
+    DataType.DOUBLE,
+    DataType.NUMBER,
+    DataType.NUMERIC,
+    DataType.UNIX_SECONDS,
+}
+
+
+def _validate_lag_against_columns(
+    node: SyntaxNode,
+    context: RuleContext,
+    lag: FreshnessLag,
+    columns: list[ConceptRef],
+) -> None:
+    """A unit-bearing lag needs a temporal watermark; a bare number needs a
+    numeric one. Concepts that don't resolve yet are left to runtime."""
+    for ref in columns:
+        concept = context.concepts.get(ref.address)
+        if concept is None:
+            continue
+        datatype = concept.datatype.data_type
+        if datatype == DataType.UNKNOWN:
+            continue
+        if lag.unit is not None and datatype not in TEMPORAL_LAG_TYPES:
+            raise fail(
+                node,
+                f"`within {lag.render()}` needs a temporal watermark, but"
+                f" '{ref.address}' is {datatype.value}. Drop the unit to express"
+                f" the tolerance in the key's own units (e.g. `within {lag.value}`).",
+            )
+        if lag.unit is None and datatype not in NUMERIC_LAG_TYPES:
+            hint = (
+                " Add a unit (e.g. `within 5 minutes`)."
+                if datatype in TEMPORAL_LAG_TYPES
+                else ""
+            )
+            raise fail(
+                node,
+                f"`within {lag.value}` needs a numeric watermark, but"
+                f" '{ref.address}' is {datatype.value}.{hint}",
+            )
+
+
+def datasource_lag_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> FreshnessLag:
+    args = hydrated_children(node, hydrate)
+    value = args[0]
+    unit = args[1] if len(args) > 1 else None
+    if value < 0:
+        raise fail(node, "`within` lag must be non-negative")
+    if unit is not None and unit not in LAG_UNIT_SECONDS:
+        allowed = ", ".join(u.value for u in LAG_UNIT_SECONDS)
+        raise fail(
+            node,
+            f"`within` cannot use '{unit.value}': it is not a fixed-length unit."
+            f" Use one of: {allowed}.",
+        )
+    return FreshnessLag(value=value, unit=unit)
+
+
 def datasource_update_trigger_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -497,7 +566,12 @@ def datasource_update_trigger_clause(
         if not p.is_absolute():
             p = (Path(context.environment.working_path) / p).resolve()
         return DatasourceFreshnessProbeClause(path=str(p))
-    columns = [ConceptRef(address=arg) for arg in args[1]]
+    # Resolve to the namespaced reference where we can — an unqualified address
+    # can't be rendered back out. Unresolvable names stay bare, as before.
+    columns = []
+    for arg in args[1]:
+        resolved = context.concepts.get(arg)
+        columns.append(resolved.reference if resolved else ConceptRef(address=arg))
     return DatasourceUpdateTriggerClause(trigger_type=trigger_type, columns=columns)
 
 
@@ -541,6 +615,7 @@ def datasource_node(
     freshness_by: list[ConceptRef] = []
     freshness_probe: str | None = None
     refresh_script: str | None = None
+    allowed_lag: FreshnessLag | None = None
     ds_status = DatasourceState.PUBLISHED
 
     for val in filtered[1:]:
@@ -573,11 +648,37 @@ def datasource_node(
                 incremental_by = val.columns
             elif val.trigger_type == DatasourceUpdateTrigger.FRESHNESS:
                 freshness_by = val.columns
+        elif isinstance(val, FreshnessLag):
+            allowed_lag = val
         elif isinstance(val, DatasourcePartitionClause):
             partition_by = val.columns
 
     if not addr:
         raise fail(node, "Datasource missing address or query declaration")
+
+    if allowed_lag is not None:
+        if freshness_probe is not None:
+            raise fail(
+                node,
+                "`within` is not supported for probe-based freshness: a probe"
+                " returns a boolean, so there is no lag to measure. Move the"
+                " tolerance into the probe script.",
+            )
+        if is_root:
+            raise fail(
+                node,
+                "`within` is not supported on root datasources: trilogy never"
+                " judges a root's freshness, so there is nothing to measure."
+                " Declare the tolerance on the datasources that read it.",
+            )
+        trigger_columns = freshness_by or incremental_by
+        if not trigger_columns:
+            raise fail(
+                node,
+                "`within` needs a watermark to measure against: add an"
+                " `incremental by` or `freshness by` clause.",
+            )
+        _validate_lag_against_columns(node, context, allowed_lag, trigger_columns)
 
     if refresh_script is not None:
         if not is_root:
@@ -649,6 +750,7 @@ def datasource_node(
         freshness_by=freshness_by,
         freshness_probe=freshness_probe,
         refresh_script=refresh_script,
+        allowed_lag=allowed_lag,
         is_root=is_root,
         is_partial=is_partial,
         column_level_partial_addresses=column_level_partial_addresses,
@@ -702,4 +804,5 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE: datasource_partition_clause,
     SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE: datasource_update_trigger_clause,
     SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE: datasource_refresh_clause,
+    SyntaxNodeKind.DATASOURCE_LAG_CLAUSE: datasource_lag_clause,
 }

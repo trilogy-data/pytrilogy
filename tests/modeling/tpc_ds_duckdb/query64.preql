@@ -31,12 +31,23 @@ and ss.item.current_price between 65 and 74
 and ss.customer.sk is not null
 and ss.store.sk is not null
 and ss.pos_address.sk is not null
-and ss.customer.current_address.sk is not null;
+and ss.customer.current_address.sk is not null
+# d2/d3 in the reference are INNER joins, so a customer with no
+# first_sales/first_shipto date drops out there; without these the nullable
+# join keeps it (5 extra rows at sf=0.01).
+and ss.customer.first_sales_date.sk is not null
+and ss.customer.first_shipto_date.sk is not null;
 
 # Row-grain projection for each year — sk keys only, no descriptive text. Both
 # marital_status columns are selected so the outer aggregate can apply the
 # inequality without dragging the customer_demographics joins into the main
 # aggregate's join planning.
+#
+# BOTH years must carry the same grouping columns (addresses + first
+# sales/shipto years). The reference groups cross_sales by them for cs1 *and*
+# cs2, so dropping them from the 2000 arm coarsens its groups and inflates
+# cnt_00 — which the `cnt_00 <= cnt_99` filter then rejects. That yielded 0
+# rows at sf=0.01 while still matching at sf=1.
 rowset ss_rows_99 <- where
     @year_row_filter(1999) = True
 select
@@ -61,7 +72,11 @@ select
     ss.ticket_number,
     ss.item.sk,
     ss.store.sk,
+    ss.pos_address.sk,
+    ss.customer.current_address.sk,
     ss.sale_date.year,
+    ss.customer.first_sales_date.year,
+    ss.customer.first_shipto_date.year,
     ss.wholesale_cost,
     ss.list_price,
     ss.coupon_amt,
@@ -92,7 +107,11 @@ rowset agg_00 <- where
 select
     ss_rows_00.ss.item.sk as item_sk_00,
     ss_rows_00.ss.store.sk as store_sk_00,
+    ss_rows_00.ss.pos_address.sk as b_addr_00,
+    ss_rows_00.ss.customer.current_address.sk as c_addr_00,
     ss_rows_00.ss.sale_date.year as syear_00,
+    ss_rows_00.ss.customer.first_sales_date.year as fsyear_00,
+    ss_rows_00.ss.customer.first_shipto_date.year as s2year_00,
     count(ss_rows_00.ss.ticket_number) as cnt_00,
     sum(ss_rows_00.ss.wholesale_cost) as s1_00,
     sum(ss_rows_00.ss.list_price) as s2_00,

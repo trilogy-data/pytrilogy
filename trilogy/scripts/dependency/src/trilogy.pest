@@ -90,6 +90,7 @@ datasource = {
     ~ (address | query | file)
     ~ where?
     ~ datasource_update_trigger_clause?
+    ~ datasource_lag_clause?
     ~ datasource_refresh_clause?
     ~ datasource_partition_clause?
     ~ datasource_status_clause?
@@ -112,6 +113,8 @@ datasource_status_clause = { STATE ~ DATASOURCE_STATUS }
 DATASOURCE_STATUS        = @{ ^"published" | ^"unpublished" }
 
 DATASOURCE_UPDATE_TRIGGER = @{ ^"incremental" | ^"freshness" }
+DURATION_UNIT = @{ (^"second" | ^"minute" | ^"hour" | ^"day" | ^"week" | ^"month" | ^"quarter" | ^"year") ~ ^"s"? }
+datasource_lag_clause = { ^"within" ~ int_lit ~ DURATION_UNIT? }
 datasource_update_trigger_clause = { DATASOURCE_UPDATE_TRIGGER ~ ^"by" ~ (column_list | FILE_PATH) }
 datasource_refresh_clause        = { ^"refresh" ~ FILE_PATH }
 datasource_partition_clause      = { ^"partition" ~ ^"by" ~ column_list }

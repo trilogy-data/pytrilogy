@@ -60,24 +60,44 @@ def _load_toml_mapping(path: Path) -> dict[str, object]:
     return {}
 
 
+def _substitute(text: str, subs: list[tuple[str, str]], source: str) -> str:
+    """Apply TPC-DS substitution-parameter swaps, failing loudly on a no-op.
+
+    A silent miss would quietly restore the original constants — which for a
+    query whose small-scale value depends on them means the test passes on an
+    empty result set.
+    """
+    for old, new in subs:
+        assert old in text, f"substitution {old!r} not found in {source}"
+        text = text.replace(old, new)
+    return text
+
+
 def run_query(
     engine: Executor,
     idx: int,
     sql_override: bool = False,
     preql_file: str | None = None,
     label: str | None = None,
+    preql_subs: list[tuple[str, str]] | None = None,
+    sql_subs: list[tuple[str, str]] | None = None,
+    min_rows: int = 0,
 ):
     engine.environment = Environment(working_path=working_path)
     filename = preql_file or f"query{idx:02d}.preql"
     query_label = label or f"{idx:02d}"
     with open(working_path / filename) as f:
         text = f.read()
+    if preql_subs:
+        text = _substitute(text, preql_subs, filename)
     preql_size = query_size(text, "preql")
 
     # Resolve the reference SQL up front so file IO never lands inside a
     # timing window.
     if sql_override:
         rquery = (working_path / f"query{idx:02d}.sql").read_text()
+        if sql_subs:
+            rquery = _substitute(rquery, sql_subs, f"query{idx:02d}.sql")
     else:
         rquery = f"PRAGMA tpcds({idx});"
 
@@ -114,6 +134,13 @@ def run_query(
     sql_path = working_path / f"query{idx:02d}.sql"
     comp_source = sql_path.read_text() if sql_path.exists() else rquery
     comp_size = query_size(comp_source, "sql")
+
+    # Two empty result sets compare equal, so a query whose filters stop
+    # matching anything passes while testing nothing. Callers that know their
+    # data pin a floor.
+    assert (
+        len(base_results) >= min_rows
+    ), f"reference returned {len(base_results)} rows, expected at least {min_rows}"
 
     if len(base_results) > 0:
         assert len(comp_results) > 0, "No results returned"
@@ -591,7 +618,22 @@ def test_sixty_three(engine):
 
 
 def test_sixty_four(engine_sf001):
-    _ = run_query(engine_sf001, 64, sql_override=True)
+    # The sf=1 price window [65,74] selects 0 of the 180 items at sf=0.01, so
+    # the query compared 0 rows against 0 rows. i_current_price's base is a
+    # TPC-DS substitution parameter; shifting 64 -> 74 lands on the two purple
+    # items at ~75.2 and yields 90 rows. Colors are left alone — the canonical
+    # list is well represented at this scale.
+    _ = run_query(
+        engine_sf001,
+        64,
+        sql_override=True,
+        preql_subs=[("between 65 and 74", "between 75 and 84")],
+        sql_subs=[
+            ("BETWEEN 64 AND 64 + 10", "BETWEEN 74 AND 74 + 10"),
+            ("BETWEEN 64 + 1 AND 64 + 15", "BETWEEN 74 + 1 AND 74 + 15"),
+        ],
+        min_rows=90,
+    )
 
 
 def test_sixty_four_no_transitive_key_fanout(engine):
@@ -599,8 +641,8 @@ def test_sixty_four_no_transitive_key_fanout(engine):
     # coalescing full-join boundary. Sourcing that property through the customer
     # grain (customer FULL JOIN customer_address, ~2.3 rows/address) instead of the
     # address grain fans each correct row out by #customers-sharing-the-address.
-    # test_sixty_four runs at sf=0.01 where the filters yield 0 rows, masking it;
-    # at sf=1 the correct 2 rows appear, so any duplication is a pure fan-out.
+    # test_sixty_four covers sf=0.01 (90 rows, shifted price parameter); this one
+    # pins the sf=1 result at exactly 2 rows, so any duplication is a pure fan-out.
     engine.environment = Environment(working_path=working_path)
     text = (working_path / "query64.preql").read_text()
     sql = engine.generate_sql(text)[-1]

@@ -111,6 +111,10 @@ def PARSE_DATE_PART(token: SyntaxToken, context: RuleContext) -> DatePart:
     return DatePart(token.value)
 
 
+def PARSE_DURATION_UNIT(token: SyntaxToken, context: RuleContext) -> DatePart:
+    return DatePart(token.value.lower().rstrip("s"))
+
+
 def PARSE_HASH_TYPE(token: SyntaxToken, context: RuleContext) -> str:
     return token.value
 
@@ -243,6 +247,7 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.CONDITION_NOT: CONDITION_NOT,
     SyntaxTokenKind.IMPORT_DOT: IMPORT_DOT,
     SyntaxTokenKind.DATE_PART: PARSE_DATE_PART,
+    SyntaxTokenKind.DURATION_UNIT: PARSE_DURATION_UNIT,
     SyntaxTokenKind.HASH_TYPE: PARSE_HASH_TYPE,
     SyntaxTokenKind.WINDOW_TYPE_LEGACY: PARSE_WINDOW_TYPE_LEGACY,
     SyntaxTokenKind.WINDOW_TYPE_SQL_NUMBERING: PARSE_WINDOW_TYPE_SQL,

@@ -588,6 +588,8 @@ class Renderer:
             base += f"\nfreshness by {','.join(self.to_string(x) for x in arg.freshness_by)}"
         if arg.freshness_probe:
             base += f"\nfreshness by `{arg.freshness_probe}`"
+        if arg.allowed_lag:
+            base += f"\nwithin {arg.allowed_lag.render()}"
         if arg.refresh_script:
             base += f"\nrefresh `{arg.refresh_script}`"
         # UNPOPULATED is auto-derived by the parser from file non-existence,

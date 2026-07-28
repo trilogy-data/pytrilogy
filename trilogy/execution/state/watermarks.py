@@ -1,7 +1,7 @@
 import glob as glob_module
 import subprocess
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 
 from trilogy import Executor
@@ -13,6 +13,7 @@ from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
+    FreshnessLag,
     RawColumnExpr,
     UpdateKey,
     UpdateKeys,
@@ -70,6 +71,65 @@ def _compare_watermark_values(a: str | float | date, b: str | float | date) -> i
     elif sa > sb:
         return 1
     return 0
+
+
+def _watermark_distance(
+    current: str | float | date, expected: str | float | date
+) -> timedelta | float | None:
+    """How far ``current`` trails ``expected``, or None if not measurable.
+
+    Ordering (``_compare_watermark_values``) is enough to say *whether* an asset
+    is behind; a tolerance needs *how far*, which only exists for temporal and
+    numeric values — not hashes or opaque strings.
+    """
+    if isinstance(current, datetime) and isinstance(expected, datetime):
+        if (current.tzinfo is None) != (expected.tzinfo is None):
+            raise TypeError(
+                f"offset-naive and offset-aware datetimes: {current!r} vs {expected!r}"
+            )
+        return expected - current
+    if isinstance(current, datetime) or isinstance(expected, datetime):
+        return None
+    if isinstance(current, date) and isinstance(expected, date):
+        return expected - current
+    if isinstance(current, bool) or isinstance(expected, bool):
+        return None
+    if isinstance(current, (int, float)) and isinstance(expected, (int, float)):
+        return expected - current
+    return None
+
+
+def within_allowed_lag(
+    current: str | float | date | None,
+    expected: str | float | date,
+    lag: FreshnessLag,
+    key: str,
+) -> bool:
+    """Whether trailing ``expected`` by this much is still fresh.
+
+    A missing value is never lag — an asset with no rows is empty, not behind.
+    A tolerance that can't be applied to these values is a modelling error and
+    raises rather than silently deciding either way.
+    """
+    if current is None:
+        return False
+    distance = _watermark_distance(current, expected)
+    if distance is None:
+        raise TypeError(
+            f"`within` lag is set for '{key}' but its watermark values are not"
+            f" measurable ({type(current).__name__} vs {type(expected).__name__});"
+            " lag requires temporal or numeric watermarks"
+        )
+    tolerance = lag.as_timedelta
+    if isinstance(distance, timedelta) and tolerance is not None:
+        return distance <= tolerance
+    if not isinstance(distance, timedelta) and tolerance is None:
+        return distance <= lag.value
+    raise TypeError(
+        f"`within {lag.render()}` does not fit the watermark for '{key}'"
+        f" ({type(current).__name__});"
+        " use a unit for temporal watermarks and a bare number otherwise"
+    )
 
 
 def _execute_raw_sql_scalar(

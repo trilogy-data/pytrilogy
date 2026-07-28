@@ -69,13 +69,19 @@
 
     DATASOURCE_UPDATE_TRIGGER.2: "incremental"i | "freshness"i
 
+    DURATION_UNIT.3: /(second|minute|hour|day|week|month|quarter|year)s?/i
+
+    // Allowable lag behind upstream. Its own clause, not part of the trigger:
+    // roots can't declare `incremental/freshness by` but do declare tolerance.
+    datasource_lag_clause: "within"i int_lit DURATION_UNIT?
+
     datasource_update_trigger_clause: DATASOURCE_UPDATE_TRIGGER "by"i (column_list | FILE_PATH)
 
     datasource_refresh_clause: "refresh"i FILE_PATH
 
     datasource_partition_clause: "partition"i "by"i column_list
 
-    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_refresh_clause? datasource_partition_clause?  datasource_status_clause?
+    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_lag_clause? datasource_refresh_clause? datasource_partition_clause?  datasource_status_clause?
    
     whole_grain_clause: "complete" where
 
