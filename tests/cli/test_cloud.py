@@ -315,7 +315,11 @@ class TestLoginLoopback:
             status = self._get(port, f"/callback?token=tri_good&state={nonce}")
             assert status == 200
             assert result.token == "tri_good"
-            assert result.event.is_set()
+            # Waited for, not asserted outright: the handler sets the event
+            # after writing the response, so the browser gets a complete page
+            # before browser_login's shutdown() runs. The client can therefore
+            # return before the server thread reaches set().
+            assert result.event.wait(timeout=5)
         finally:
             self._shutdown(server, thread)
 
