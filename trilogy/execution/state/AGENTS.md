@@ -11,6 +11,33 @@ Central class for watermark collection and staleness detection.
 - `run_freshness_probe_cached(path)`: memoized wrapper around `run_freshness_probe`. Same probe path used by N datasources in one refresh invocation = one subprocess call. Memo keyed by path; cleared by `invalidate_address` for any ds whose `freshness_probe` matches.
 - A `threading.Lock` guards cache mutations — managed nodes evaluate in parallel, so reads/writes must serialize.
 
+### Allowable lag (`within`)
+
+A datasource may declare `within <n> [unit]` — how far behind its upstream it
+can run and still count as fresh. Ordering (`_compare_watermark_values`) says
+*whether* an asset is behind; a tolerance needs distance, which is what
+`_watermark_distance` / `within_allowed_lag` add. Only temporal and numeric
+watermarks have a distance: a unit-bearing lag (`within 5 minutes`) requires a
+temporal watermark, a bare number (`within 500`) requires a numeric one, and a
+mismatch raises rather than silently deciding. The parser rejects both
+mismatches up front when the concept's datatype is known.
+
+**Non-roots only.** The tolerance states what the asset being judged may
+tolerate, so it lives on that asset — two consumers of the same realtime feed
+legitimately differ. A root never has its own freshness judged, so `within`
+there is a parse error rather than a silent no-op. Inheriting a tolerance from
+the upstream root was considered and dropped: it makes the verdict depend on a
+value declared elsewhere. Adding it later is additive and non-breaking; a
+model-level default would be the better answer to fan-out repetition.
+
+`within` is its own datasource clause rather than part of the update-trigger
+clause because that keeps it independent of a trigger form it doesn't belong to
+(it still *requires* one — see below).
+
+A missing watermark value is never lag — an asset with no rows is empty, not
+behind, so it stays stale regardless of tolerance. Probe-based freshness can't
+take a lag: a probe returns a bool, so there's nothing to measure.
+
 ### Refreshable roots
 
 A root datasource (`is_root=True`) carrying both `freshness_probe` and `refresh_script` is a **refreshable root**: trilogy doesn't refresh it via SQL persist, but it does drive an opaque subprocess. `is_stale` emits these with `kind=RefreshKind.SCRIPT`; non-root SQL staleness uses `RefreshKind.SQL`. Plain roots without `refresh_script` remain untouchable — `is_stale` returns `None` for them regardless of probe.

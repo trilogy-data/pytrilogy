@@ -1,6 +1,6 @@
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -12,6 +12,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     DatasourceState,
+    DatePart,
     Modifier,
 )
 from trilogy.core.models.author import (
@@ -38,6 +39,41 @@ class UpdateKeyType(Enum):
     INCREMENTAL_KEY = "incremental_key"
     UPDATE_TIME = "update_time"
     KEY_HASH = "key_hash"
+
+
+# Units with a fixed duration. month/quarter/year are deliberately excluded —
+# they aren't fixed-length, so a lag expressed in them would be a lie.
+LAG_UNIT_SECONDS: dict[DatePart, int] = {
+    DatePart.SECOND: 1,
+    DatePart.MINUTE: 60,
+    DatePart.HOUR: 3600,
+    DatePart.DAY: 86400,
+    DatePart.WEEK: 604800,
+}
+
+
+class FreshnessLag(BaseModel):
+    """How far behind its upstream a datasource may be and still count as fresh.
+
+    ``unit`` set means a temporal watermark and a timedelta tolerance; ``unit``
+    unset means the tolerance is in the watermark's own units (e.g. 500 ids
+    behind on a monotonic incremental key).
+    """
+
+    value: int
+    unit: DatePart | None = None
+
+    @property
+    def as_timedelta(self) -> timedelta | None:
+        if self.unit is None:
+            return None
+        return timedelta(seconds=self.value * LAG_UNIT_SECONDS[self.unit])
+
+    def render(self) -> str:
+        if self.unit is None:
+            return str(self.value)
+        plural = "s" if self.value != 1 else ""
+        return f"{self.value} {self.unit.value}{plural}"
 
 
 @dataclass
@@ -233,6 +269,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     freshness_by: list[ConceptRef] = Field(default_factory=list)
     freshness_probe: str | None = None
     refresh_script: str | None = None
+    # Lag this datasource is allowed to run behind its upstream before it
+    # counts as stale. Non-roots only — a root's own freshness is never judged.
+    allowed_lag: FreshnessLag | None = None
     is_root: bool = False
     is_partial: bool = False
     # Addresses of columns that carried Modifier.PARTIAL *before* the
@@ -381,6 +420,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
             freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
+            allowed_lag=self.allowed_lag,
             is_root=self.is_root,
             is_partial=self.is_partial,
             column_level_partial_addresses={

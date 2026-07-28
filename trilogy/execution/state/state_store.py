@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from trilogy import Executor
+from trilogy.constants import logger
 from trilogy.core.enums import Purpose
 from trilogy.core.models.datasource import (
     Datasource,
@@ -30,7 +31,10 @@ from trilogy.execution.state.watermarks import (
     is_missing_local_file,
     run_freshness_probe,
     run_refresh_script,
+    within_allowed_lag,
 )
+
+LOGGER_PREFIX = "[STATE_STORE]"
 
 
 @runtime_checkable
@@ -371,47 +375,54 @@ class BaseStateStore:
         watermark = self.watermarks.get(ds_id)
         if watermark:
             for key, val in watermark.keys.items():
+                if val.type not in (
+                    UpdateKeyType.INCREMENTAL_KEY,
+                    UpdateKeyType.UPDATE_TIME,
+                ):
+                    continue
+                max_val = self.concept_max_watermarks.get(key)
+                if not max_val or max_val.value is None:
+                    continue
+                try:
+                    is_behind = val.value is None or (
+                        _compare_watermark_values(val.value, max_val.value) < 0
+                    )
+                except TypeError as e:
+                    raise TypeError(
+                        f"Cannot compare watermarks for field '{key}'"
+                        f" in datasource '{ds_id}': {e}"
+                    ) from e
+                if not is_behind:
+                    continue
+                lag = ds.allowed_lag
+                if lag is not None:
+                    if within_allowed_lag(val.value, max_val.value, lag, key):
+                        logger.debug(
+                            "%s '%s' behind on '%s' (%s < %s) but within allowed lag %s",
+                            LOGGER_PREFIX,
+                            ds_id,
+                            key,
+                            val.value,
+                            max_val.value,
+                            lag.render(),
+                        )
+                        continue
+                    suffix = f" (exceeds allowed lag {lag.render()})"
+                else:
+                    suffix = ""
                 if val.type == UpdateKeyType.INCREMENTAL_KEY:
-                    max_val = self.concept_max_watermarks.get(key)
-                    if max_val and max_val.value is not None:
-                        try:
-                            is_behind = val.value is None or (
-                                _compare_watermark_values(val.value, max_val.value) < 0
-                            )
-                        except TypeError as e:
-                            raise TypeError(
-                                f"Cannot compare watermarks for field '{key}'"
-                                f" in datasource '{ds_id}': {e}"
-                            ) from e
-                        if is_behind:
-                            filters = (
-                                UpdateKeys(keys={key: val})
-                                if val.value
-                                else UpdateKeys()
-                            )
-                            return StaleAsset(
-                                datasource_id=ds_id,
-                                reason=f"incremental key '{key}' behind: {val.value} < {max_val.value}",
-                                filters=filters,
-                            )
-                elif val.type == UpdateKeyType.UPDATE_TIME:
-                    max_val = self.concept_max_watermarks.get(key)
-                    if max_val and max_val.value is not None:
-                        try:
-                            is_behind = val.value is None or (
-                                _compare_watermark_values(val.value, max_val.value) < 0
-                            )
-                        except TypeError as e:
-                            raise TypeError(
-                                f"Cannot compare watermarks for field '{key}'"
-                                f" in datasource '{ds_id}': {e}"
-                            ) from e
-                        if is_behind:
-                            return StaleAsset(
-                                datasource_id=ds_id,
-                                reason=f"freshness '{key}' behind: {val.value} < {max_val.value}",
-                                filters=UpdateKeys(),
-                            )
+                    return StaleAsset(
+                        datasource_id=ds_id,
+                        reason=f"incremental key '{key}' behind: {val.value} < {max_val.value}{suffix}",
+                        filters=(
+                            UpdateKeys(keys={key: val}) if val.value else UpdateKeys()
+                        ),
+                    )
+                return StaleAsset(
+                    datasource_id=ds_id,
+                    reason=f"freshness '{key}' behind: {val.value} < {max_val.value}{suffix}",
+                    filters=UpdateKeys(),
+                )
 
         return None
 

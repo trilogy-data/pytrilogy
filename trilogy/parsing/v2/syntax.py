@@ -293,6 +293,7 @@ class SyntaxNodeKind(str, Enum):
     DATASOURCE_PARTITION_CLAUSE = "datasource_partition_clause"
     DATASOURCE_UPDATE_TRIGGER_CLAUSE = "datasource_update_trigger_clause"
     DATASOURCE_REFRESH_CLAUSE = "datasource_refresh_clause"
+    DATASOURCE_LAG_CLAUSE = "datasource_lag_clause"
 
 
 class SyntaxTokenKind(str, Enum):
@@ -325,6 +326,7 @@ class SyntaxTokenKind(str, Enum):
     AS = "as"
     ASSIGN = "assign"
     DATE_PART = "date_part"
+    DURATION_UNIT = "duration_unit"
     HASH_TYPE = "hash_type"
     WINDOW_TYPE_LEGACY = "window_type_legacy"
     WINDOW_TYPE_SQL_NUMBERING = "window_type_sql_numbering"
@@ -637,6 +639,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "datasource_partition_clause": SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE,
     "datasource_update_trigger_clause": SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE,
     "datasource_refresh_clause": SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE,
+    "datasource_lag_clause": SyntaxNodeKind.DATASOURCE_LAG_CLAUSE,
 }
 
 
@@ -668,6 +671,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "AS": SyntaxTokenKind.AS,
     "_ASSIGN": SyntaxTokenKind.ASSIGN,
     "DATE_PART": SyntaxTokenKind.DATE_PART,
+    "DURATION_UNIT": SyntaxTokenKind.DURATION_UNIT,
     "HASH_TYPE": SyntaxTokenKind.HASH_TYPE,
     "WINDOW_TYPE_LEGACY": SyntaxTokenKind.WINDOW_TYPE_LEGACY,
     "WINDOW_TYPE_SQL_NUMBERING": SyntaxTokenKind.WINDOW_TYPE_SQL_NUMBERING,
