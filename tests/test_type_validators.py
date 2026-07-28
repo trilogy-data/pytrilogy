@@ -630,6 +630,44 @@ def test_full_table_domain_validation_regex_and_enum():
         validate_environment(executor.environment, exec=executor)
 
 
+def test_domain_violation_message_is_readable():
+    """A domain failure has to be actionable from the CI log alone: the declared
+    domain in authoring syntax (not repr-escaped), the offending value, and the
+    grain key that locates the row."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        import std.net;
+
+        key name string;
+        property name.image string::url_image;
+
+        datasource genus_info (
+            genus: name,
+            image_url: image,
+        )
+        grain (name)
+        query '''
+        SELECT 'Mobula' AS genus, 'https://example.com/m.jpg' AS image_url
+        UNION ALL
+        SELECT 'genus' AS genus, 'image_url' AS image_url
+        ''';
+        """)
+    with pytest.raises(ModelValidationError) as exc:
+        validate_environment(executor.environment, exec=executor)
+    message = str(exc.value)
+
+    # the exception renders as its message, not as a stringified args tuple
+    assert not message.startswith("(")
+    assert "ModelValidationError(...)" not in message
+    # the declared domain reads like the source that declared it
+    assert r"string['\S+://\S+']::url_image" in message
+    assert "Trait<" not in message
+    assert "\\\\" not in message
+    # the offending value and the key that locates its row are both present
+    assert "'image_url'" in message
+    assert "local.name='genus'" in message
+
+
 def test_full_table_domain_validation_passes_clean_data():
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text("""

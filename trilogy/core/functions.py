@@ -106,6 +106,17 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     return merge_datatypes(reps)
 
 
+def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    """AVG of an integer input is fractional — SQL engines return a double —
+    so integer families promote to FLOAT. Fractional inputs (float, numeric)
+    keep their type, matching how engines average decimals."""
+    base = arg_to_datatype(args[0])
+    unwrapped = base.type if isinstance(base, TraitDataType) else base
+    if unwrapped in (DataType.INTEGER, DataType.BIGINT):
+        return DataType.FLOAT
+    return base
+
+
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:
     return ArrayType(type=arg_to_datatype(args[2]))
 
@@ -1106,6 +1117,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.AVG: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.METRIC,
+        output_type_function=get_avg_output_type,
         arg_count=1,
     ),
     FunctionType.STDDEV: FunctionConfig(

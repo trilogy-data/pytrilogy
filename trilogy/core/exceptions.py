@@ -11,13 +11,31 @@ from trilogy.core.models.core import (
 )
 
 
+def render_datatype(datatype: CONCRETE_TYPES) -> str:
+    r"""Render a declared type in authoring syntax (``string['\S+://\S+']::url_image``)
+    rather than via its dataclass __str__ (``Trait<string['\\S+://\\S+'], ['url_image']>``),
+    which repr-escapes the regex and buries the trait name in a list.
+
+    Deliberately renders without an environment: the environment-aware path
+    restores the authored bare alias (``string::url_image``), but an error about
+    a domain violation needs to show the domain that was actually violated.
+    """
+    from trilogy.parsing.render import Renderer
+
+    try:
+        return Renderer().to_string(datatype)
+    except Exception:
+        # rendering is cosmetic - never let it mask the error being reported
+        return str(datatype)
+
+
 class ConfigurationException(Exception):
     pass
 
 
 class UndefinedConceptException(Exception):
     def __init__(self, message, suggestions: list[str]):
-        super().__init__(self, message)
+        super().__init__(message)
         self.message = message
         self.suggestions = suggestions
 
@@ -87,7 +105,11 @@ class ModelValidationError(Exception):
         children: Sequence["ModelValidationError"] | None = None,
         **kwargs,
     ):
-        super().__init__(self, message, **kwargs)
+        # only the message goes to Exception.__init__ — passing `self` too would
+        # make args a 2-tuple, so str(exc) renders as
+        # "(ModelValidationError(...), 'the real message')" with the message
+        # re-escaped by repr, mangling any regex or newline it contains
+        super().__init__(message, **kwargs)
         self.message = message
         self.children = children
 
@@ -123,13 +145,17 @@ class DatasourceColumnBindingData:
         declared = self.actual_type
         if isinstance(declared, TraitDataType):
             declared = declared.type
+        expected = render_datatype(self.actual_type)
         if (
             isinstance(declared, ValidatedType)
             and self.value is not None
             and is_compatible_datatype(self.value_type, self.actual_type)
         ):
-            return f"Value '{self.value}' for concept {self.address} violates declared domain {self.actual_type!s}{actual_mods}"
-        return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {self.actual_type!s}{actual_mods}"
+            return f"value {self.value!r} for concept {self.address} violates declared domain {expected}{actual_mods}"
+        # value_type is what was observed in the data, not authored syntax -- keep
+        # its plain rendering so a nullability-only mismatch stays legible as
+        # "INTEGER(NULLABLE) vs expected type int"
+        return f"value {self.value!r} for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {expected}{actual_mods}"
 
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(
@@ -148,7 +174,13 @@ class DatasourceColumnBindingError(DatasourceModelValidationError):
         message: str | None = None,
     ):
         if not message:
-            message = f"Datasource {address} failed validation. Data type mismatch: {[failure.format_failure() for failure in errors]}"
+            # join the rendered failures rather than interpolating the list --
+            # a list repr would re-escape every message it contains
+            detail = "\n".join(f"  {failure.format_failure()}" for failure in errors)
+            message = (
+                f"Datasource {address} failed validation. "
+                f"Data type mismatch:\n{detail}"
+            )
         super().__init__(message)
         self.errors = errors
         self.dataset_address = address
@@ -160,6 +192,6 @@ class ConceptModelValidationError(ModelValidationError):
 
 class AmbiguousRelationshipResolutionException(UnresolvableQueryException):
     def __init__(self, message, parents: list[set[str]]):
-        super().__init__(self, message)
+        super().__init__(message)
         self.message = message
         self.parents = parents

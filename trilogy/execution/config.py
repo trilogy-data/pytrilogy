@@ -233,6 +233,7 @@ _KNOWN_TOP_LEVEL: set[str] = {
     "agent",
     "report",
     "import_paths",
+    "cloud",
 }
 _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "engine": {"dialect", "config", "env_file", "parallelism"},
@@ -244,6 +245,9 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "serve.connection.options": None,
     "project": {"name"},
     "report": {"theme"},
+    # Consumed by `trilogy cloud` (scripts/cloud.py), not by RuntimeConfig —
+    # listed so the documented [cloud] section doesn't audit as unknown.
+    "cloud": {"api_url", "org"},
     "agent": {
         "provider",
         "model",
