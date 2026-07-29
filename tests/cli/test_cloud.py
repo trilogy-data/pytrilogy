@@ -1,9 +1,13 @@
-"""Tests for the `trilogy cloud` command's plumbing: environment resolution,
-credential storage, project bundling, and response parsing. Network
-interactions are exercised against fakes — the HTTP client itself is a thin
-urllib wrapper."""
+"""Tests for the `trilogy cloud` command: environment resolution, credential
+storage, project bundling, response parsing, and every subcommand end to end.
+
+Commands run in-process against the fake API in ``conftest.py``, which replaces
+the module's ``urlopen`` — so a command test covers request construction, auth
+headers, status handling, model validation, and rendering, rather than only the
+command body."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -15,6 +19,12 @@ from trilogy.scripts.cloud import (
     CloudClient,
     CloudError,
     _find_job,
+    _fmt_job,
+    _fmt_run,
+    _fmt_schedule,
+    _fmt_secret,
+    _fmt_token,
+    _ts,
     apply_rewrites,
     check_bundle_size,
     collect_files,
@@ -24,7 +34,14 @@ from trilogy.scripts.cloud import (
     store_token,
     stored_token,
 )
-from trilogy.scripts.cloud_models import Job, Me, ScheduleExt
+from trilogy.scripts.cloud_models import (
+    Job,
+    JobRunExt,
+    Me,
+    ScheduleExt,
+    SecretMeta,
+    TokenSummary,
+)
 
 TS = "2026-07-28T12:00:00Z"
 
@@ -344,3 +361,766 @@ class TestLoginLoopback:
             assert result.token is None
         finally:
             self._shutdown(server, thread)
+
+
+def _complete_signin(monkeypatch, token: str = "tri_browser", opened: bool = True):
+    """Stand in for the browser: read port and nonce out of the URL the CLI is
+    about to open, and hit the loopback callback with them."""
+    import urllib.request
+    from urllib.parse import parse_qs, urlparse
+
+    def fake_open(url: str) -> bool:
+        redirect = parse_qs(urlparse(url).query)["redirect_to"][0]
+        _, port, nonce = redirect.split(":", 2)
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/callback?token={token}&state={nonce}", timeout=5
+        ):
+            pass
+        return opened
+
+    monkeypatch.setattr(cloud_mod.webbrowser, "open", fake_open)
+
+
+class TestBrowserLogin:
+    def test_the_callback_token_is_returned(self, monkeypatch):
+        _complete_signin(monkeypatch)
+        assert cloud_mod.browser_login("https://api.test") == "tri_browser"
+
+    def test_a_browser_that_will_not_open_still_accepts_a_manual_visit(
+        self, monkeypatch, capsys
+    ):
+        _complete_signin(monkeypatch, opened=False)
+        assert cloud_mod.browser_login("https://api.test") == "tri_browser"
+        assert "visit the URL above manually" in capsys.readouterr().err
+
+    def test_no_redirect_before_the_deadline_is_an_error(self, monkeypatch):
+        monkeypatch.setattr(cloud_mod, "LOGIN_TIMEOUT_SECONDS", 0.05)
+        monkeypatch.setattr(cloud_mod.webbrowser, "open", lambda url: True)
+        with pytest.raises(CloudError, match="Timed out"):
+            cloud_mod.browser_login("https://api.test")
+
+    def test_a_signalled_result_with_no_token_is_an_error(self, monkeypatch):
+        class PreSignalled(cloud_mod._LoginResult):
+            def __init__(self) -> None:
+                super().__init__()
+                self.event.set()
+
+        monkeypatch.setattr(cloud_mod, "_LoginResult", PreSignalled)
+        monkeypatch.setattr(cloud_mod.webbrowser, "open", lambda url: True)
+        with pytest.raises(CloudError, match="without returning a token"):
+            cloud_mod.browser_login("https://api.test")
+
+
+class TestHttpClient:
+    """Exercised through the fake transport, so header construction, status
+    handling, and body decoding are all real code paths."""
+
+    def test_auth_and_content_headers_are_sent(self, cloud_api):
+        CloudClient(cloud_api.url, "tri_abc").post("/auth/tokens", {"name": "ci"})
+        call = cloud_api.call_for("POST", "/auth/tokens")
+        assert call.headers["authorization"] == "Bearer tri_abc"
+        assert call.headers["content-type"] == "application/json"
+        assert call.headers["user-agent"] == "trilogy-cli"
+
+    def test_an_unauthenticated_client_sends_no_bearer(self, cloud_api):
+        CloudClient(cloud_api.url, None).get("/auth/me")
+        assert "authorization" not in cloud_api.call_for("GET", "/auth/me").headers
+
+    def test_a_bodyless_request_declares_no_content_type(self, cloud_api):
+        CloudClient(cloud_api.url, "t").get("/auth/me")
+        assert "content-type" not in cloud_api.call_for("GET", "/auth/me").headers
+
+    def test_pre_encoded_bytes_are_sent_verbatim(self, cloud_api):
+        raw = b'{"name": "spaced   out"}'
+        CloudClient(cloud_api.url, "t").post("/orgs/acme/jobs", raw)
+        assert cloud_api.call_for("POST", "/orgs/acme/jobs").data == raw
+
+    def test_a_401_points_at_the_login_command(self, cloud_api):
+        cloud_api.fail("GET", "/auth/me", 401, "token expired")
+        with pytest.raises(CloudError, match=r"trilogy cloud login"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+
+    def test_an_error_body_is_surfaced(self, cloud_api):
+        cloud_api.fail("GET", "/auth/me", 500, "database is on fire")
+        with pytest.raises(CloudError, match="database is on fire"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+
+    def test_an_empty_error_body_falls_back_to_the_reason(self, cloud_api):
+        cloud_api.fail("GET", "/auth/me", 503, "")
+        with pytest.raises(CloudError, match="503 Error"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+
+    def test_an_unreachable_host_names_the_api(self, cloud_api):
+        cloud_api.offline = True
+        with pytest.raises(CloudError, match="Could not reach https://api.test"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+
+    def test_an_empty_body_decodes_to_none(self, cloud_api):
+        cloud_api.set_raw("GET", "/auth/me", b"")
+        assert CloudClient(cloud_api.url, "t").get("/auth/me") is None
+
+    def test_a_non_json_body_is_a_clean_error(self, cloud_api):
+        cloud_api.set_raw("GET", "/auth/me", b"<html>gateway timeout</html>")
+        with pytest.raises(CloudError, match="was not JSON"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+
+    def test_delete_discards_the_response(self, cloud_api):
+        assert CloudClient(cloud_api.url, "t").delete("/auth/tokens/tok-1") is None
+
+    def test_post_one_validates_the_response(self, cloud_api):
+        cloud_api.set("POST", "/auth/tokens", {"id": "tok-2"})
+        with pytest.raises(CloudError, match="unexpected response"):
+            CloudClient(cloud_api.url, "t").post_one(
+                "/auth/tokens", Job, {"name": "ci"}
+            )
+
+
+class TestCredentialFileEdgeCases:
+    def test_a_corrupt_credentials_file_reads_as_empty(self, tmp_path, monkeypatch):
+        path = tmp_path / "creds.json"
+        path.write_text("{not json", encoding="utf-8")
+        monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", path)
+        assert stored_token("https://api.test") is None
+
+    def test_a_non_dict_entry_is_ignored(self, tmp_path, monkeypatch):
+        path = tmp_path / "creds.json"
+        path.write_text(json.dumps({"https://api.test": "bare"}), encoding="utf-8")
+        monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", path)
+        assert stored_token("https://api.test") is None
+
+    def test_a_platform_without_posix_modes_still_stores(self, tmp_path, monkeypatch):
+        path = tmp_path / "creds.json"
+        monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", path)
+        monkeypatch.setattr(
+            Path, "chmod", lambda *a, **k: (_ for _ in ()).throw(OSError("no modes"))
+        )
+        store_token("https://api.test", "tri_abc", None)
+        assert stored_token("https://api.test") == "tri_abc"
+
+
+class TestBundlingEdgeCases:
+    def test_a_non_utf8_file_is_skipped_with_a_warning(self, tmp_path, capsys):
+        (tmp_path / "keep.preql").write_text("x", encoding="utf-8")
+        (tmp_path / "latin.preql").write_bytes(b"\xff\xfe not utf-8")
+        names = [f["name"] for f in collect_files(tmp_path)]
+        assert names == ["keep.preql"]
+        assert "skip (not utf-8)" in capsys.readouterr().err
+
+    def test_files_outside_the_include_globs_are_dropped(self, tmp_path):
+        (tmp_path / "keep.preql").write_text("x", encoding="utf-8")
+        (tmp_path / "notes.md").write_text("x", encoding="utf-8")
+        assert [f["name"] for f in collect_files(tmp_path)] == ["keep.preql"]
+
+
+class TestFormatters:
+    def test_missing_timestamps_render_as_the_fallback(self):
+        assert _ts(None) == "-"
+        assert _ts(None, "never") == "never"
+        assert _ts(datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)).startswith(
+            "2026-07-28 12:00:00"
+        )
+
+    def test_a_non_expiring_token_says_never(self):
+        row = TokenSummary(
+            id="tok-1", name="laptop", token_prefix="tri_abc", created_at=TS
+        )
+        line = _fmt_token(row)
+        assert "expires: never" in line and "last used: never" in line
+
+    def test_a_job_without_a_timeout_says_default(self):
+        line = _fmt_job(
+            Job(
+                id="j1",
+                org_id="o1",
+                name="nightly",
+                operation="run",
+                created_at=TS,
+                updated_at=TS,
+            )
+        )
+        assert "timeout: default" in line
+
+    def test_a_run_line_carries_status_and_timestamps(self):
+        line = _fmt_run(
+            JobRunExt(
+                id="r1",
+                job_id="j1",
+                job_name="nightly",
+                status="failed",
+                created_at=TS,
+            )
+        )
+        assert "failed" in line and "finished: -" in line
+
+    def test_a_paused_schedule_with_no_jobs_renders_placeholders(self):
+        line = _fmt_schedule(
+            ScheduleExt(
+                id="s1",
+                org_id="o1",
+                name="n",
+                cron_expr="0 3 * * *",
+                is_active=False,
+                next_run_at=TS,
+                created_at=TS,
+                updated_at=TS,
+            )
+        )
+        assert "paused" in line and "jobs: -" in line
+
+    def test_a_secret_line_never_carries_a_value(self):
+        line = _fmt_secret(SecretMeta(name="PGPASSWORD", created_at=TS, updated_at=TS))
+        assert line.startswith("PGPASSWORD") and "updated:" in line
+
+
+class TestAuthCommands:
+    def test_login_stores_the_token_from_a_browser_signin(
+        self, cloud_api, run_cloud, monkeypatch
+    ):
+        _complete_signin(monkeypatch, token="tri_from_browser")
+        result = run_cloud("login")
+        assert result.exit_code == 0
+        assert "dev@example.com" in result.output
+        assert stored_token(cloud_api.url) == "tri_from_browser"
+
+    def test_login_accepts_a_pre_issued_token(self, cloud_api, run_cloud):
+        result = run_cloud("login", "--token", "tri_preissued")
+        assert result.exit_code == 0
+        assert stored_token(cloud_api.url) == "tri_preissued"
+        assert cloud_api.call_for("GET", "/auth/me").headers["authorization"] == (
+            "Bearer tri_preissued"
+        )
+
+    def test_a_group_level_token_is_used_for_login_too(self, cloud_api, run_cloud):
+        assert run_cloud("--token", "tri_group", "login").exit_code == 0
+        assert stored_token(cloud_api.url) == "tri_group"
+
+    def test_login_emits_a_json_event(self, cloud_api, run_cloud, json_mode):
+        result = run_cloud("login", "--token", "tri_x")
+        assert json.loads(result.output)["event"] == "login"
+
+    def test_login_reports_a_user_with_no_orgs(self, cloud_api, run_cloud):
+        cloud_api.set(
+            "GET",
+            "/auth/me",
+            {"id": "u1", "email": "new@example.com", "provider": "google", "orgs": []},
+        )
+        assert "orgs: none" in run_cloud("login", "--token", "tri_x").output
+
+    def test_logout_forgets_a_stored_token(self, logged_in, run_cloud):
+        assert "Logged out" in run_cloud("logout").output
+        assert stored_token(logged_in.url) is None
+
+    def test_logout_without_credentials_says_so(self, cloud_api, run_cloud):
+        assert "No stored credentials" in run_cloud("logout").output
+
+    def test_whoami_lists_the_user_and_orgs(self, logged_in, run_cloud):
+        output = run_cloud("whoami").output
+        assert "dev@example.com" in output and "acme (admin)" in output
+
+    def test_whoami_falls_back_when_the_profile_has_no_name(self, cloud_api, run_cloud):
+        cloud_api.set(
+            "GET",
+            "/auth/me",
+            {"id": "u1", "email": "a@b.co", "provider": "google", "orgs": []},
+        )
+        assert "no name" in run_cloud("--token", "t", "whoami").output
+
+    def test_whoami_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        assert json.loads(run_cloud("whoami").output)["email"] == "dev@example.com"
+
+    def test_an_unauthenticated_command_names_the_fix(self, cloud_api, run_cloud):
+        result = run_cloud("whoami")
+        assert result.exit_code != 0
+        assert "Not logged in to https://api.test" in result.output
+
+
+class TestTokenCommands:
+    def test_list_renders_a_row_per_token(self, logged_in, run_cloud):
+        assert "tri_abc" in run_cloud("tokens", "list").output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", "/auth/tokens", [])
+        assert "No API tokens." in run_cloud("tokens", "list").output
+
+    def test_list_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(run_cloud("tokens", "list").output)
+        assert payload["event"] == "tokens" and payload["tokens"][0]["id"] == "tok-1"
+
+    def test_create_prints_the_value_once(self, logged_in, run_cloud):
+        output = run_cloud("tokens", "create", "ci").output
+        assert "tri_secret_value" in output
+        assert logged_in.body_for("POST", "/auth/tokens") == {"name": "ci"}
+
+    def test_create_forwards_an_expiry(self, logged_in, run_cloud):
+        run_cloud("tokens", "create", "ci", "--expires-in-days", "30")
+        assert logged_in.body_for("POST", "/auth/tokens")["expires_in_days"] == 30
+
+    def test_create_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(run_cloud("tokens", "create", "ci").output)
+        assert payload["event"] == "token_created"
+        assert payload["token"] == "tri_secret_value"
+
+    def test_revoke_deletes_by_id(self, logged_in, run_cloud):
+        assert "Revoked token tok-1" in run_cloud("tokens", "revoke", "tok-1").output
+        assert logged_in.call_for("DELETE", "/auth/tokens/tok-1")
+
+
+class TestOrgResolution:
+    def test_orgs_lists_memberships(self, logged_in, run_cloud):
+        assert "acme" in run_cloud("orgs").output
+
+    def test_orgs_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", "/orgs", [])
+        assert "not a member of any org" in run_cloud("orgs").output
+
+    def test_a_sole_membership_is_used_implicitly(self, logged_in, run_cloud):
+        assert run_cloud("jobs", "list").exit_code == 0
+        assert logged_in.call_for("GET", "/orgs/acme/jobs")
+
+    def test_the_org_flag_skips_the_lookup(self, logged_in, run_cloud):
+        logged_in.set("GET", "/orgs/other/jobs", [])
+        assert run_cloud("--org", "other", "jobs", "list").exit_code == 0
+        assert not any(c.path == "/auth/me" for c in logged_in.calls)
+
+    def test_the_config_org_is_used_when_no_flag_is_given(self, logged_in, run_cloud):
+        Path("trilogy.toml").write_text('[cloud]\norg = "conf"\n', encoding="utf-8")
+        cloud_mod._cloud_table.cache_clear()
+        logged_in.set("GET", "/orgs/conf/jobs", [])
+        assert run_cloud("jobs", "list").exit_code == 0
+        assert logged_in.call_for("GET", "/orgs/conf/jobs")
+
+    def test_no_memberships_is_an_error(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            "/auth/me",
+            {"id": "u1", "email": "a@b.co", "provider": "google", "orgs": []},
+        )
+        result = run_cloud("jobs", "list")
+        assert result.exit_code != 0
+        assert "not a member of any org" in result.output
+
+    def test_several_memberships_require_the_flag(self, logged_in, run_cloud):
+        me = dict(logged_in.routes[("GET", "/auth/me")])
+        me["orgs"] = [
+            {**me["orgs"][0], "slug": "acme"},
+            {**me["orgs"][0], "id": "org-b", "slug": "beta"},
+        ]
+        logged_in.set("GET", "/auth/me", me)
+        result = run_cloud("jobs", "list")
+        assert result.exit_code != 0
+        assert "Multiple orgs (acme, beta)" in result.output
+
+
+class TestJobCommands:
+    def _project(self, tmp_path: Path) -> Path:
+        source = tmp_path / "project"
+        (source / "nested").mkdir(parents=True)
+        (source / "trilogy.toml").write_text("[trilogy]\n", encoding="utf-8")
+        (source / "model.preql").write_text(
+            "datasource x (id:id) address gs://old/x;", encoding="utf-8"
+        )
+        (source / "nested" / "helper.py").write_text("URL = 'gs://old/y'", "utf-8")
+        return source
+
+    def test_list_renders_a_row_per_job(self, logged_in, run_cloud):
+        assert "nightly" in run_cloud("jobs", "list").output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        assert "No jobs in org 'acme'." in run_cloud("jobs", "list").output
+
+    def test_list_emits_a_json_event_tagged_with_the_org(
+        self, logged_in, run_cloud, json_mode
+    ):
+        payload = json.loads(run_cloud("jobs", "list").output)
+        assert payload["event"] == "jobs" and payload["org"] == "acme"
+
+    def test_push_bundles_the_directory_and_sends_what_it_measured(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
+        assert result.exit_code == 0, result.output
+        call = logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs")
+        names = [f["name"] for f in call.body["files"]]
+        assert names == ["model.preql", "nested/helper.py"]
+        assert call.data == json.dumps(call.body).encode("utf-8")
+        assert call.body["config"] == "[trilogy]\n"
+        assert "Created job 'fresh'" in result.output
+
+    def test_push_forwards_the_optional_job_settings(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--description",
+            "nightly refresh",
+            "--operation",
+            "refresh",
+            "--timeout-seconds",
+            "900",
+            "--memory-mb",
+            "2048",
+            "--cpus",
+            "1.5",
+            "--secret-env",
+            "PGPASSWORD",
+        )
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert body["description"] == "nightly refresh"
+        assert body["operation"] == "refresh"
+        assert body["timeout_seconds"] == 900
+        assert body["memory_mb"] == 2048
+        assert body["cpus"] == 1.5
+        assert body["secret_env"] == ["PGPASSWORD"]
+
+    def test_push_applies_rewrites_to_contents_and_the_config(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        (source / "trilogy.toml").write_text("root = 'gs://old'\n", encoding="utf-8")
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--rewrite",
+            "gs://old=gs://new",
+        )
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert body["config"] == "root = 'gs://new'\n"
+        assert all("gs://new" in f["content"] for f in body["files"])
+        assert "Applied rewrites to 2 file(s)" in result.output
+
+    def test_a_rewrite_glob_narrows_which_files_are_touched(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--rewrite",
+            "gs://old=gs://new",
+            "--rewrite-glob",
+            "*.preql",
+        )
+        files = {
+            f["name"]: f["content"]
+            for f in logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")["files"]
+        }
+        assert "gs://new" in files["model.preql"]
+        assert "gs://old" in files["nested/helper.py"]
+
+    def test_push_honours_a_custom_include(self, logged_in, run_cloud, tmp_path):
+        source = self._project(tmp_path)
+        run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--include",
+            "*.preql",
+        )
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert [f["name"] for f in body["files"]] == ["model.preql"]
+
+    def test_push_honours_an_extra_exclude(self, logged_in, run_cloud, tmp_path):
+        source = self._project(tmp_path)
+        run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--exclude",
+            "nested/*",
+        )
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert [f["name"] for f in body["files"]] == ["model.preql"]
+
+    def test_push_accepts_a_config_outside_the_source(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        (source / "trilogy.toml").unlink()
+        external = tmp_path / "other.toml"
+        external.write_text("[trilogy]\nfrom = 'outside'\n", encoding="utf-8")
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--config",
+            str(external),
+            "--name",
+            "fresh",
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert "outside" in body["config"]
+
+    def test_push_without_a_config_is_refused(self, logged_in, run_cloud, tmp_path):
+        source = self._project(tmp_path)
+        (source / "trilogy.toml").unlink()
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
+        assert result.exit_code != 0
+        assert "pass --config" in result.output
+
+    def test_push_with_no_matching_files_is_refused(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = tmp_path / "docs_only"
+        source.mkdir()
+        (source / "README.md").write_text("nothing to bundle", encoding="utf-8")
+        config = tmp_path / "trilogy.toml"
+        config.write_text("[trilogy]\n", encoding="utf-8")
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--config",
+            str(config),
+            "--name",
+            "fresh",
+        )
+        assert result.exit_code != 0
+        assert "No files matched" in result.output
+
+    def test_push_warns_when_the_name_is_already_taken(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
+        assert "already exists" in result.output
+
+    def test_push_with_a_cron_also_creates_a_schedule(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--cron",
+            "0 3 * * *",
+        )
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/schedules")
+        assert body == {
+            "name": "fresh-schedule",
+            "cron_expr": "0 3 * * *",
+            "job_ids": ["job-new"],
+        }
+        assert "Scheduled 'nightly-schedule'" in result.output
+
+    def test_push_emits_json_events(self, logged_in, run_cloud, tmp_path, json_mode):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--cron",
+            "0 3 * * *",
+        )
+        events = [obj["event"] for obj in _json_stream(result.output)]
+        assert events[-2:] == ["job_created", "schedule_created"]
+
+    def test_run_triggers_by_name(self, logged_in, run_cloud):
+        result = run_cloud("jobs", "run", "nightly")
+        assert "Triggered run run-new" in result.output
+        assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs/job-1/run")
+
+    def test_run_rejects_an_unknown_job_before_calling_the_api(
+        self, logged_in, run_cloud
+    ):
+        result = run_cloud("jobs", "run", "missing")
+        assert result.exit_code != 0
+        assert "No job named 'missing'" in result.output
+
+    def test_run_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(run_cloud("jobs", "run", "nightly").output)
+        assert payload["event"] == "run_triggered"
+
+
+def _json_stream(output: str) -> list:
+    """Successive events are newline-separated JSON objects, not JSON lines."""
+    decoder = json.JSONDecoder()
+    objects, index = [], 0
+    while index < len(output):
+        if output[index].isspace():
+            index += 1
+            continue
+        obj, index = decoder.raw_decode(output, index)
+        objects.append(obj)
+    return objects
+
+
+class TestRunCommands:
+    def test_list_renders_recent_runs(self, logged_in, run_cloud):
+        output = run_cloud("runs", "list").output
+        assert "run-1" in output and "run-2" in output
+
+    def test_list_slices_client_side(self, logged_in, run_cloud):
+        output = run_cloud("runs", "list", "--limit", "1").output
+        assert "run-1" in output and "run-2" not in output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/runs", [])
+        assert "No runs in org 'acme'." in run_cloud("runs", "list").output
+
+    def test_show_renders_the_timeline_files_and_logs(self, logged_in, run_cloud):
+        output = run_cloud("runs", "show", "run-1").output
+        assert "Run run-1 of 'nightly': succeeded" in output
+        assert "Exit code: 0" in output
+        assert "started: worker picked up the run" in output
+        assert "succeeded: model.preql" in output
+        assert "--- stdout (tail) ---" in output
+        assert "hello from the worker" in output
+        # stderr was whitespace only — no empty section for it
+        assert "stderr" not in output
+
+    def test_show_tails_a_long_log(self, logged_in, run_cloud, monkeypatch):
+        monkeypatch.setattr(cloud_mod, "RUN_LOG_TAIL_CHARS", 11)
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs/runs/*",
+            {
+                "id": "run-1",
+                "job_id": "job-1",
+                "job_name": "nightly",
+                "status": "failed",
+                "created_at": TS,
+                "stderr": "A" * 50 + "TAIL_MARKER",
+            },
+        )
+        output = run_cloud("runs", "show", "run-1").output
+        assert "TAIL_MARKER" in output
+        assert "AAAAAAAAAAAAAAAAAAAA" not in output
+        assert "Exit code" not in output
+
+    def test_show_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(run_cloud("runs", "show", "run-1").output)
+        assert payload["event"] == "run" and payload["run"]["id"] == "run-1"
+
+
+class TestScheduleCommands:
+    def test_list_renders_a_row_per_schedule(self, logged_in, run_cloud):
+        output = run_cloud("schedules", "list").output
+        assert "0 3 * * *" in output and "active" in output and "nightly" in output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/schedules", [])
+        assert "No schedules in org 'acme'." in run_cloud("schedules", "list").output
+
+    def test_create_resolves_every_job_reference_from_one_fetch(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [
+                {
+                    "id": "job-1",
+                    "org_id": "org-acme",
+                    "name": "nightly",
+                    "operation": "run",
+                    "created_at": TS,
+                    "updated_at": TS,
+                },
+                {
+                    "id": "job-2",
+                    "org_id": "org-acme",
+                    "name": "hourly",
+                    "operation": "run",
+                    "created_at": TS,
+                    "updated_at": TS,
+                },
+            ],
+        )
+        result = run_cloud(
+            "schedules",
+            "create",
+            "nightly",
+            "job-2",
+            "--name",
+            "combined",
+            "--cron",
+            "0 * * * *",
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/schedules")
+        assert body["job_ids"] == ["job-1", "job-2"]
+        assert sum(1 for c in logged_in.calls if c.path.endswith("/jobs")) == 1
+        assert "Created schedule" in result.output
+
+    def test_create_rejects_an_unknown_job(self, logged_in, run_cloud):
+        result = run_cloud(
+            "schedules", "create", "missing", "--name", "n", "--cron", "0 * * * *"
+        )
+        assert result.exit_code != 0
+        assert "No job named 'missing'" in result.output
+
+    def test_create_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(
+            run_cloud(
+                "schedules", "create", "nightly", "--name", "n", "--cron", "0 * * * *"
+            ).output
+        )
+        assert payload["event"] == "schedule_created"
+
+    def test_delete_removes_by_id(self, logged_in, run_cloud):
+        assert "Deleted schedule sched-1" in (
+            run_cloud("schedules", "delete", "sched-1").output
+        )
+        assert logged_in.call_for("DELETE", f"/orgs/{logged_in.org}/schedules/sched-1")
+
+
+class TestSecretCommands:
+    def test_list_shows_names_never_values(self, logged_in, run_cloud):
+        assert "SNOWFLAKE_PASSWORD" in run_cloud("secrets", "list").output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/secrets", [])
+        assert "No secrets in org 'acme'." in run_cloud("secrets", "list").output
+
+    def test_set_sends_the_value_from_the_flag(self, logged_in, run_cloud):
+        result = run_cloud("secrets", "set", "PGPASSWORD", "--value", "hunter2")
+        assert result.exit_code == 0
+        assert logged_in.body_for("POST", f"/orgs/{logged_in.org}/secrets") == {
+            "name": "PGPASSWORD",
+            "value": "hunter2",
+        }
+
+    def test_set_prompts_when_no_value_is_given(self, logged_in, run_cloud):
+        result = run_cloud("secrets", "set", "PGPASSWORD", input="hunter2\n")
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/secrets")
+        assert body["value"] == "hunter2"
+        assert "hunter2" not in result.output
+
+    def test_delete_removes_by_name(self, logged_in, run_cloud):
+        assert "Deleted secret 'PGPASSWORD'" in (
+            run_cloud("secrets", "delete", "PGPASSWORD").output
+        )
+        assert logged_in.call_for("DELETE", f"/orgs/{logged_in.org}/secrets/PGPASSWORD")

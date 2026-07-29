@@ -1043,4 +1043,4 @@ def secrets_delete(ctx: click.Context, name: str) -> None:
 
 
 if __name__ == "__main__":
-    cloud()
+    cloud()  # pragma: no cover - direct-module entrypoint
