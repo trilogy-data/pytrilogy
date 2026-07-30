@@ -30,10 +30,14 @@ from trilogy.scripts.display import (
     print_success,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
-from trilogy.utility import safe_open
 
-# Configuration file name
-TRILOGY_CONFIG_NAME = "trilogy.toml"
+# Re-exported: lives in a stdlib-only module so lightweight commands can find a
+# project config without importing this one. Callers here are unchanged.
+from trilogy.scripts.project_config import (  # noqa: F401
+    TRILOGY_CONFIG_NAME,
+    find_trilogy_config,
+)
+from trilogy.utility import safe_open
 
 # Default stat types to display in output; easily configurable
 DEFAULT_STAT_TYPES: list[str] = ["persist", "update", "validate"]
@@ -191,27 +195,6 @@ def merge_runtime_config(
     )
 
     return dialect, parallelism
-
-
-def find_trilogy_config(start_path: PathlibPath | None = None) -> PathlibPath | None:
-    """
-    Search for trilogy.toml starting from the given path, walking up parent directories.
-
-    Args:
-        start_path: Starting directory for search. If None, uses current working directory.
-
-    Returns:
-        Path to trilogy.toml if found, None otherwise.
-    """
-    search_path = start_path if start_path else PathlibPath.cwd()
-    if not search_path.is_dir():
-        search_path = search_path.parent
-
-    for parent in [search_path] + list(search_path.parents):
-        candidate = parent / TRILOGY_CONFIG_NAME
-        if candidate.exists():
-            return candidate
-    return None
 
 
 def resolve_input(path: PathlibPath) -> list[PathlibPath]:

@@ -25,6 +25,7 @@ from trilogy.core.exceptions import (
     DatasourceColumnBindingError,
     DatasourceGrainValidationError,
     DatasourceModelValidationError,
+    render_datatype,
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -45,9 +46,25 @@ from trilogy.core.models.core import (
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
+# how many violating rows a failed check reports before it just says "at least N"
+SAMPLE_LIMIT = 10
+
 
 def row_to_dict(row):
     return {key: val for key, val in row._mapping.items()}
+
+
+def describe_violation_row(row, concept: BuildConcept, keys: list[BuildConcept]) -> str:
+    """``genus.name='genus' -> genus.image='image_url'`` — lead with the grain
+    keys so the offending row can actually be located in the source table."""
+    values = row_to_dict(row)
+    offending = f"{concept.address}={values.get(concept.safe_address)!r}"
+    rendered_keys = ", ".join(
+        f"{key.address}={values[key.safe_address]!r}"
+        for key in keys
+        if key.safe_address in values
+    )
+    return f"{rendered_keys} -> {offending}" if rendered_keys else offending
 
 
 def validate_unique_properties(
@@ -217,13 +234,21 @@ def validate_declared_domains(
         condition = domain_violation_condition(concept)
         if condition is None:
             continue
+        # select the datasource grain alongside the offending value so the error
+        # can point at a locatable row rather than a bare orphan value
+        keys = [
+            build_env.concepts[address]
+            for address in sorted(datasource.grain.components)
+            if address != concept.address and address in build_env.concepts
+        ]
+        selected = [concept, *keys]
         query = easy_query(
-            concepts=[concept],
+            concepts=selected,
             datasource=datasource,
             env=env,
             condition=condition,
-            grain=BuildGrain(components={concept.address}),
-            limit=10,
+            grain=BuildGrain(components={c.address for c in selected}),
+            limit=SAMPLE_LIMIT,
         )
         if exec is None:
             results.append(
@@ -237,13 +262,22 @@ def validate_declared_domains(
             )
             continue
         sql = exec.generate_sql(query)[-1]
-        rows = exec.execute_raw_sql(sql).fetchmany(10)
+        rows = exec.execute_raw_sql(sql).fetchmany(SAMPLE_LIMIT)
         error = None
         if rows:
+            counted = (
+                f"{len(rows)} row(s)"
+                if len(rows) < SAMPLE_LIMIT
+                else f"at least {SAMPLE_LIMIT} rows"
+            )
+            samples = "\n".join(
+                f"  {describe_violation_row(r, concept, keys)}" for r in rows
+            )
             error = DatasourceModelValidationError(
-                f"Datasource {datasource.name} failed validation. Values for "
-                f"{concept.address} violate declared domain "
-                f"{concept.datatype!s}: {[row_to_dict(r) for r in rows]}"
+                f"Datasource {datasource.name} ({datasource.safe_location}) failed "
+                f"validation. {counted} violate declared domain "
+                f"{render_datatype(concept.datatype)} for {concept.address}. "
+                f"Either fix the source data or widen the declared type.\n{samples}"
             )
         results.append(
             ValidationTest(
