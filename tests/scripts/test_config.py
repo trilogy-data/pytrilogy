@@ -478,6 +478,39 @@ db_location = "test.sqlite"
             tmp_file_path.unlink()
 
 
+def test_bigquery_python_datasource_config():
+    """BigQuery staging settings round-trip from [engine.config] and [staging]."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config_file = Path(tmpdir) / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "bigquery"\n\n'
+            "[engine.config]\n"
+            'project = "my-project"\n'
+            'staging_dataset = "trilogy_staging"\n'
+            "enable_python_datasources = true\n\n"
+            '[staging]\npath = "gs://my-bucket/prefix"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert isinstance(config.engine_config, BigQueryConfig)
+        assert config.engine_config.staging_dataset == "trilogy_staging"
+        assert config.engine_config.enable_python_datasources is True
+        assert config.engine_config.staging_uri is None
+        assert config.engine_config.use_sqlalchemy is False
+        assert config.staging.path == "gs://my-bucket/prefix"
+
+
+def test_bigquery_use_sqlalchemy_survives_a_cli_merge():
+    """An unset CLI flag must not clobber use_sqlalchemy from the config file."""
+    from_file = BigQueryConfig(project="p", use_sqlalchemy=True)
+    from_cli = BigQueryConfig(project="other")
+
+    merged = from_file.merge_config(from_cli)
+    assert isinstance(merged, BigQueryConfig)
+    assert merged.project == "other"
+    assert merged.use_sqlalchemy is True
+
+
 def test_duckdb_path_resolution():
     """Test that DuckDB path in config is resolved relative to the toml file."""
     with tempfile.TemporaryDirectory() as tmpdir:

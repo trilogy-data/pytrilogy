@@ -1,29 +1,28 @@
 from __future__ import annotations
 
-import shlex
 import subprocess
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
 
-MAX_ATTEMPTS = 3
-RETRY_DELAYS_SECONDS = (0.5, 1.5)
-RETRYABLE_UV_ERROR_MARKERS = (
-    "failed to acquire",
-    "file lock",
-    "database is locked",
-    "resource temporarily unavailable",
-    "being used by another process",
-    "the process cannot access the file",
-    "access is denied",
-    "os error 32",
+from trilogy.dialect.python_source import (
+    MAX_ATTEMPTS,
+    RETRY_DELAYS_SECONDS,
+    RETRYABLE_UV_ERROR_MARKERS,
+    build_uv_command,
+    is_retryable_uv_error,
+    retry_delay,
 )
 
-
-def is_retryable_uv_error(message: str) -> bool:
-    normalized = message.lower()
-    return any(marker in normalized for marker in RETRYABLE_UV_ERROR_MARKERS)
+__all__ = [
+    "MAX_ATTEMPTS",
+    "RETRYABLE_UV_ERROR_MARKERS",
+    "RETRY_DELAYS_SECONDS",
+    "is_retryable_uv_error",
+    "main",
+    "run_with_retry",
+]
 
 
 def _read_error(path: Path) -> str:
@@ -34,9 +33,10 @@ def _read_error(path: Path) -> str:
 
 
 def _run_uv(script: str, args: str, output_path: Path, error_path: Path) -> int:
-    command = ["uv", "run", "--no-project", "--quiet", script, *shlex.split(args)]
     with output_path.open("wb") as output, error_path.open("wb") as error:
-        result = subprocess.run(command, stdout=output, stderr=error, check=False)
+        result = subprocess.run(
+            build_uv_command(script, args), stdout=output, stderr=error, check=False
+        )
     return result.returncode
 
 
@@ -52,7 +52,7 @@ def run_with_retry(script: str, args: str, output_path: Path, error_path: Path) 
             sys.stderr.write(error)
             return return_code
 
-        time.sleep(RETRY_DELAYS_SECONDS[attempt - 1])
+        time.sleep(retry_delay(attempt))
 
     return 1
 

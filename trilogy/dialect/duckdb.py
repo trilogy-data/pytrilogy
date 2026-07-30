@@ -425,9 +425,12 @@ class DuckDBDialect(BaseDialect):
         staging: StagingConfig | None = None,
         instance_id: str | None = None,
     ):
-        super().__init__(rendering=rendering, config=config)
-        self.staging = staging
-        self.instance_id = instance_id
+        super().__init__(
+            rendering=rendering,
+            config=config,
+            staging=staging,
+            instance_id=instance_id,
+        )
         from trilogy.dialect.config import DuckDBConfig
 
         if isinstance(config, DuckDBConfig) and config.gcs_cache_bust:

@@ -1,8 +1,38 @@
+from collections import namedtuple
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from trilogy.core.models.author import ConceptRef
 from trilogy.engine import ResultProtocol
+
+
+def namedtuple_row_class(columns: Sequence[str], name: str = "Row") -> type:
+    """Row class for engine adapters that do not go through SQLAlchemy.
+
+    Consumers expect a SQLAlchemy Row: index access, attribute access, and
+    equality with a plain tuple. rename=True replaces invalid identifiers with
+    _0, _1, ... so column names like "local.x" don't blow up; index access
+    still works regardless.
+    """
+    return namedtuple(name, tuple(columns), rename=True)  # type: ignore[misc]
+
+
+def buffered_rows(
+    columns: Sequence[str],
+    rows: Iterable[Sequence[Any]],
+    name: str = "Row",
+) -> "BufferedResult":
+    """Build a fully-read result whose rows behave like SQLAlchemy Rows.
+
+    The shared tail of every non-SQLAlchemy engine adapter: take driver column
+    names plus positional row values, hand back something the rest of trilogy
+    cannot tell apart from a CursorResult.
+    """
+    if not columns:
+        return BufferedResult([], list(rows))
+    row_class = namedtuple_row_class(columns, name)
+    return BufferedResult(list(columns), [row_class(*row) for row in rows])
 
 
 @dataclass

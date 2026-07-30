@@ -399,7 +399,16 @@ def get_dialect_config(
         from trilogy.dialect.config import BigQueryConfig
 
         conn_dict = validate_required_connection_params(
-            conn_dict, [], ["project"], "BigQuery"
+            conn_dict,
+            [],
+            [
+                "project",
+                "staging_dataset",
+                "staging_uri",
+                "enable_python_datasources",
+                "use_sqlalchemy",
+            ],
+            "BigQuery",
         )
         conf = BigQueryConfig(**conn_dict)
     elif edialect == Dialects.PRESTO:

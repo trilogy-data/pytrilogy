@@ -53,6 +53,42 @@ select
     assert results[-1].fetchone()[0] > 100
 
 
+def test_executor_offers_python_sources_to_the_dialect_before_execution():
+    """Dialects that must materialize a script (e.g. BigQuery) get first refusal."""
+    script = """
+key fib_index int;
+property fib_index.value int;
+
+datasource fib_numbers(
+    index:fib_index,
+    fibonacci: value
+)
+grain (fib_index)
+file `./fib.py`;
+
+
+select
+    sum(value) as total_fib;
+"""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    seen: list[str] = []
+
+    def spy(addresses, run_sql):
+        seen.extend(a.location for a in addresses)
+
+    executor.generator.prepare_sources = spy  # type: ignore[method-assign]
+    executor.execute_text(script)
+    # DuckDB reads the script lazily, so it opts out of the walk entirely
+    assert seen == []
+
+    executor.generator.REQUIRES_SOURCE_PREPARATION = True
+    executor.execute_text(script)
+    assert [Path(x).name for x in seen] == ["fib.py"]
+
+
 def test_arrow_source_not_enabled_error():
     script = """
 key fib_index int;

@@ -15,11 +15,18 @@ def get_dialect_generator(
     if dialect == Dialects.BIGQUERY:
         from trilogy.dialect.bigquery import BigqueryDialect
 
-        return BigqueryDialect(rendering=rendering, config=config)
+        return BigqueryDialect(
+            rendering=rendering,
+            config=config,
+            staging=staging,
+            instance_id=instance_id,
+        )
     elif dialect == Dialects.SQL_SERVER:
         from trilogy.dialect.sql_server import SqlServerDialect
 
-        return SqlServerDialect(rendering=rendering, config=config)
+        return SqlServerDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.DUCK_DB:
         from trilogy.dialect.duckdb import DuckDBDialect
 
@@ -32,34 +39,50 @@ def get_dialect_generator(
     elif dialect == Dialects.SQLITE:
         from trilogy.dialect.sqlite import SQLiteDialect
 
-        return SQLiteDialect(rendering=rendering, config=config)
+        return SQLiteDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.PRESTO:
         from trilogy.dialect.presto import PrestoDialect
 
-        return PrestoDialect(rendering=rendering, config=config)
+        return PrestoDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.TRINO:
         from trilogy.dialect.presto import TrinoDialect
 
-        return TrinoDialect(rendering=rendering, config=config)
+        return TrinoDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.POSTGRES:
         from trilogy.dialect.postgres import PostgresDialect
 
-        return PostgresDialect(rendering=rendering, config=config)
+        return PostgresDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.MYSQL:
         from trilogy.dialect.mysql import MySQLDialect
 
-        return MySQLDialect(rendering=rendering, config=config)
+        return MySQLDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.SNOWFLAKE:
         from trilogy.dialect.snowflake import SnowflakeDialect
 
-        return SnowflakeDialect(rendering=rendering, config=config)
+        return SnowflakeDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.DATAFRAME:
         from trilogy.dialect.dataframe import DataframeDialect
 
-        return DataframeDialect(rendering=rendering, config=config)
+        return DataframeDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     elif dialect == Dialects.CLICKHOUSE:
         from trilogy.dialect.clickhouse import ClickhouseDialect
 
-        return ClickhouseDialect(rendering=rendering, config=config)
+        return ClickhouseDialect(
+            rendering=rendering, config=config, staging=staging, instance_id=instance_id
+        )
     else:
         raise ValueError(f"Unsupported dialect {dialect}")

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
@@ -13,6 +13,8 @@ from typing import (
 if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
     from trilogy.engine import ResultProtocol
+    from trilogy.executor import Executor
+    from trilogy.staging import StagingConfig
 
 from jinja2 import Template
 
@@ -844,6 +846,9 @@ class BaseDialect:
     # Whether the dialect supports a QUALIFY clause, used to lower a window
     # function appearing in a `having` condition. False dialects reject instead.
     SUPPORTS_QUALIFY = False
+    # Whether ``prepare_sources`` does anything. Off by default so the executor
+    # skips walking a query's datasource tree on every execution.
+    REQUIRES_SOURCE_PREPARATION = False
     # Whether this dialect can produce a full-result summary — per-column stats
     # over the query with its output LIMIT removed. Off by default; gates whether
     # `run` returns it. Dialects that set it True must override
@@ -889,14 +894,33 @@ class BaseDialect:
         self,
         rendering: Rendering | None = None,
         config: "DialectConfig | None" = None,
+        staging: "StagingConfig | None" = None,
+        instance_id: str | None = None,
     ):
         self.rendering = rendering or CONFIG.rendering
         self.config = config
+        self.staging = staging
+        self.instance_id = instance_id
         self.used_map: dict[str, set[str]] = defaultdict(set)
         # scoped concept-address -> rendered column ref substitutions, set while
         # rendering membership-subselect expression operands whose columns must
         # resolve against the existence source rather than the host CTE
         self._existence_ref_overrides: dict[str, str] = {}
+
+    def prepare_sources(
+        self, addresses: Iterable[Address], executor: "Executor"
+    ) -> None:
+        """Materialize sources that generated SQL can only reference by name.
+
+        Called with every source address a query touches, before that query
+        executes. Dialects that can read a source lazily (DuckDB's ``uv_run``
+        macro, file table functions) need nothing here.
+        """
+        return
+
+    def teardown(self) -> None:
+        """Release whatever ``prepare_sources`` created. Called on executor close."""
+        return
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.QUERY:

@@ -53,6 +53,29 @@ def unescape_literal_colons(sql: str) -> str:
     return sql.replace(LITERAL_COLON_ESCAPE, ":")
 
 
+def statement_to_sql(statement: Any, parameters: Any | None = None) -> str:
+    """Resolve a SQLAlchemy TextClause or raw string to a final SQL string.
+
+    For engine adapters that talk to a driver directly rather than through
+    SQLAlchemy. Parameters are inlined via the literal_binds compiler.
+    """
+    from sqlalchemy import bindparam
+    from sqlalchemy import text as sa_text
+    from sqlalchemy.sql.elements import TextClause
+
+    if not isinstance(statement, TextClause):
+        return str(statement)
+    if not parameters:
+        # A TextClause's raw .text still carries the executor's literal-colon
+        # escapes; SQLAlchemy unescapes them at compile time, which this
+        # branch skips.
+        return unescape_literal_colons(statement.text)
+    bound = sa_text(statement.text).bindparams(
+        *[bindparam(k, v) for k, v in parameters.items()]
+    )
+    return str(bound.compile(compile_kwargs={"literal_binds": True}))
+
+
 class ResultProtocol(Protocol):
 
     @property
@@ -99,6 +122,33 @@ class EngineConnection(Protocol):
 
     def close(self) -> None:
         return
+
+
+class NonTransactionalConnection(EngineConnection):
+    """Base for engines with no transaction semantics to expose.
+
+    BigQuery has none outside a script; chdb is a single in-process session.
+    Because ``in_transaction`` never becomes True, the executor never adopts an
+    implicit transaction and never tries to commit one.
+    """
+
+    def commit(self) -> None:
+        return None
+
+    def begin(self) -> None:
+        return None
+
+    def rollback(self) -> None:
+        return None
+
+    def in_transaction(self) -> bool:
+        return False
+
+    def get_transaction(self) -> Any:
+        return None
+
+    def close(self) -> None:
+        return None
 
 
 class ExecutionEngine(Protocol):

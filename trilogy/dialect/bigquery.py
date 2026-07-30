@@ -1,10 +1,12 @@
 import uuid
-from collections.abc import Callable
-from typing import ClassVar
+from collections.abc import Callable, Iterable
+from typing import TYPE_CHECKING, ClassVar
 
 from jinja2 import Template
 
+from trilogy.constants import logger
 from trilogy.core.enums import (
+    AddressType,
     ComparisonOperator,
     FunctionType,
     UnnestMode,
@@ -12,6 +14,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     DataType,
 )
+from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.statements.execute import ProcessedQueryPersist
 from trilogy.dialect.base import (
@@ -20,6 +23,13 @@ from trilogy.dialect.base import (
     TableColumn,
     safe_quote,
 )
+from trilogy.dialect.bigquery_engine import BigQueryConnection
+from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
+
+if TYPE_CHECKING:
+    from trilogy.executor import Executor
+
+LOGGER_PREFIX = "[BIGQUERY_DIALECT]"
 
 
 def transform_date_part(part: str) -> str:
@@ -245,12 +255,103 @@ class BigqueryDialect(BaseDialect):
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
+    # python datasources have to be staged to GCS before a query can name them
+    REQUIRES_SOURCE_PREPARATION = True
     # BigQuery requires an explicit DISTINCT on set operators.
     SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         **BaseDialect.SET_OPERATOR_MAP,
         "EXCEPT": "EXCEPT DISTINCT",
         "INTERSECT": "INTERSECT DISTINCT",
     }
+
+    _python_staging: BigQueryPythonStaging | None = None
+
+    def python_staging(self) -> BigQueryPythonStaging:
+        """Resolve (once) where python datasource output is staged.
+
+        Raises with the missing setting named, rather than emitting SQL against
+        a table that could never exist.
+        """
+        if self._python_staging is not None:
+            return self._python_staging
+        from trilogy.dialect.config import BigQueryConfig
+
+        config = self.config
+        if (
+            not isinstance(config, BigQueryConfig)
+            or not config.enable_python_datasources
+        ):
+            raise ValueError(
+                "Python script datasources require enable_python_datasources=True in "
+                "BigQueryConfig. Set this in your trilogy.conf under [engine.config] "
+                "or pass BigQueryConfig(enable_python_datasources=True) to the executor."
+            )
+        root_uri = config.staging_uri or (self.staging.path if self.staging else None)
+        if not root_uri or not root_uri.startswith(("gs://", "gcs://")):
+            raise ValueError(
+                "Python script datasources on BigQuery require a GCS staging "
+                "location. Set staging_uri='gs://bucket/prefix' in BigQueryConfig, "
+                "or [staging] path in your trilogy.conf."
+            )
+        if config.use_sqlalchemy and not config.staging_dataset:
+            raise ValueError(
+                "use_sqlalchemy=True cannot stage python datasources as per-job temp "
+                "tables - SQLAlchemy cannot attach job configuration. Set "
+                "staging_dataset in BigQueryConfig to use persistent external tables, "
+                "or drop use_sqlalchemy to use the native BigQuery engine."
+            )
+        if config.staging_dataset:
+            logger.info(
+                "%s staging_dataset is set, so python datasources use persistent "
+                "external tables instead of per-job temp definitions",
+                LOGGER_PREFIX,
+            )
+        self._python_staging = BigQueryPythonStaging(
+            root_uri=root_uri,
+            dataset=config.staging_dataset,
+            project=config.project,
+            instance_id=self.instance_id,
+        )
+        return self._python_staging
+
+    def render_source(self, address: Address) -> str:
+        if address.type == AddressType.PYTHON_SCRIPT:
+            return self.python_staging().table_reference(address)
+        return super().render_source(address)
+
+    def prepare_sources(
+        self, addresses: Iterable[Address], executor: "Executor"
+    ) -> None:
+        scripts = [a for a in addresses if a.type == AddressType.PYTHON_SCRIPT]
+        if not scripts:
+            return
+        staging = self.python_staging()
+        if staging.uses_external_tables:
+            for address in scripts:
+                staging.materialize(address, executor.execute_raw_sql)
+            return
+        connection = executor.connection
+        if isinstance(connection, BigQueryConnection):
+            for address in scripts:
+                uri = staging.stage(address)
+                if uri is None:
+                    continue
+                connection.register_external_table(
+                    staging.table_name(address), staging.external_config(uri)
+                )
+            return
+        raise ValueError(
+            "Per-job temp external tables need the native BigQuery engine, but this "
+            f"executor is connected via {type(connection).__name__}. Either drop "
+            "use_sqlalchemy=True, or set staging_dataset in BigQueryConfig to stage "
+            "through persistent external tables instead."
+        )
+
+    def teardown(self) -> None:
+        if self._python_staging is None:
+            return
+        for uri in self._python_staging.cleanup():
+            logger.info("%s removed staged object %s", LOGGER_PREFIX, uri)
 
     def render_string_literal(self, value: str) -> str:
         # BigQuery treats backslash as an escape character in string literals;

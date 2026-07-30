@@ -22,6 +22,7 @@ from trilogy.core.models.build import BuildDatasource, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import collect_source_addresses
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
     ChartStatement,
@@ -286,6 +287,7 @@ class Executor:
         self.commit()
 
     def close(self) -> None:
+        self.generator.teardown()
         if self.connected:
             self._flush_transaction()
             self.connection.close()
@@ -546,8 +548,22 @@ class Executor:
     def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol | None:
         return self.execute_write_sql(query.text)
 
+    def _prepare_query_sources(self, query: ProcessedQuery) -> None:
+        """Let the dialect materialize sources it can only reference by name.
+
+        DuckDB reads python scripts and files lazily in the query itself;
+        BigQuery has to stage them first. Runs before compilation because
+        rendering the source assumes the staged artifact's name.
+        """
+        if not self.generator.REQUIRES_SOURCE_PREPARATION:
+            return
+        addresses = collect_source_addresses(query.ctes)
+        if addresses:
+            self.generator.prepare_sources(addresses, self)
+
     @execute_query.register
     def _(self, query: ProcessedQuery) -> ResultProtocol | None:
+        self._prepare_query_sources(query)
         sql = self.generator.compile_statement(query)
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
@@ -561,6 +577,7 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> ResultProtocol | None:
+        self._prepare_query_sources(query)
         # Check if target is a file - convert to CopyStatement
         addr = query.output_to.address
         if addr.is_file:
