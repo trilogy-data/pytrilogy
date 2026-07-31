@@ -14,17 +14,24 @@ from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
     BaseStateStore,
     PartitionObservation,
+    RefreshPolicy,
     build_datasource_state,
     build_partition_states,
+    create_refresh_plan,
+    execute_refresh_plan,
     merge_into_snapshot,
     merge_snapshots,
+    parse_partition_selector,
     partition_id,
     probe_expected_partitions,
     probe_observed_partitions,
     refresh_stale_assets,
     render_partition_value,
     scope_to_partitions,
+    selected_slice,
+    selector_partition_ids,
     stale_partitions,
+    summarize_partitions,
 )
 from trilogy.execution.state.partitions import NULL_PARTITION_TOKEN, is_partitioned
 
@@ -126,7 +133,7 @@ def test_empty_table_observes_no_slices_but_expects_three(executor):
 def test_missing_slice_is_stale_and_present_slice_is_fresh(executor):
     executor.execute_text(BUILD_ONE_DAY)
     ds = _ds(executor)
-    states = build_partition_states(
+    states, _ = build_partition_states(
         ds,
         probe_observed_partitions(ds, executor),
         probe_expected_partitions(ds, executor, _roots(executor)),
@@ -167,7 +174,7 @@ def test_slice_behind_on_its_own_watermark_is_stale(executor):
             },
         )
     ]
-    (state,) = build_partition_states(ds, observed, expected)
+    ((state,), _) = build_partition_states(ds, observed, expected)
     assert state.status == "stale"
     assert "behind" in (state.stale_reason or "")
     assert [w.value for w in state.observed_watermarks] == ["2024-01-05 06:00:00"]
@@ -179,7 +186,7 @@ def test_slice_present_but_not_expected_is_not_stale(executor):
     observed = [
         PartitionObservation(values={"order_date": date(2023, 12, 31)}, row_count=4)
     ]
-    (state,) = build_partition_states(ds, observed, [])
+    ((state,), _) = build_partition_states(ds, observed, [])
     assert state.status == "fresh"
     assert state.expected is False
 
@@ -200,20 +207,35 @@ def test_store_caches_and_invalidates_partition_probes(executor):
 
 
 def _snapshot(executor, partitions):
+    """A whole-asset snapshot: the given slices are the complete set, so the
+    summary is derived from them rather than passed in."""
     ds = _ds(executor)
     return merge_into_snapshot(
         [
             (
                 "daily_orders",
-                build_datasource_state(ds, None, None, partitions=partitions),
+                build_datasource_state(
+                    ds,
+                    None,
+                    None,
+                    partitions=partitions,
+                    partition_summary=summarize_partitions(partitions, "reconciled"),
+                ),
             )
         ]
     )
 
 
+def _partition_kwargs(ds, observed, expected):
+    """``partitions=``/``partition_summary=`` for build_datasource_state."""
+    partitions, summary = build_partition_states(ds, observed, expected)
+    return {"partitions": partitions, "partition_summary": summary}
+
+
 def _slices(executor, statuses: dict[str, str]):
+    """Just the slice list — the summary has its own tests."""
     ds = _ds(executor)
-    return build_partition_states(
+    states, _ = build_partition_states(
         ds,
         [
             PartitionObservation(values={"order_date": date.fromisoformat(day)})
@@ -225,6 +247,7 @@ def _slices(executor, statuses: dict[str, str]):
             for day in statuses
         ],
     )
+    return states
 
 
 def test_datasource_is_stale_when_any_slice_is(executor):
@@ -463,7 +486,7 @@ def test_state_input_seeds_partitions_without_probing(hole_executor, monkeypatch
                     hole_executor.environment.datasources["facts"],
                     None,
                     None,
-                    partitions=build_partition_states(
+                    **_partition_kwargs(
                         hole_executor.environment.datasources["facts"],
                         [
                             PartitionObservation(
@@ -509,7 +532,7 @@ def test_seeded_partitions_drive_the_staleness_verdict(hole_executor, monkeypatc
                     ds,
                     None,
                     None,
-                    partitions=build_partition_states(
+                    **_partition_kwargs(
                         ds,
                         [],  # nothing observed
                         [PartitionObservation(values={"d": date(2024, 1, 9)})],
@@ -542,3 +565,247 @@ def test_unpartitioned_datasource_carries_no_partition_state(executor):
     assert state.partition_by == []
     assert state.partitions == []
     assert state.partitions_complete is True
+    assert state.partition_summary is None
+
+
+# --- the cap, and the counts that have to outlive it -------------------------
+
+
+def _days(start_day: int, count: int) -> list[PartitionObservation]:
+    """``count`` consecutive daily slices from an ordinal, one row each."""
+    return [
+        PartitionObservation(
+            values={"order_date": date.fromordinal(start_day + i)}, row_count=1
+        )
+        for i in range(count)
+    ]
+
+
+def test_summary_counts_cover_the_whole_set_not_the_capped_list(executor):
+    """The reason the summary exists: a 200-slice payload must still be able to
+    say how many of 500 slices are behind."""
+    base = date(2024, 1, 1).toordinal()
+    expected = _days(base, 500)
+    observed = _days(base, 200)  # the first 200 days exist; 300 are missing
+    states, summary = build_partition_states(_ds(executor), observed, expected)
+
+    assert summary.total == 500
+    assert summary.stale == 300
+    assert summary.missing == 300
+    assert summary.reported == 200
+    assert summary.truncated is True
+    assert summary.level == "reconciled"
+    assert len(states) == 200
+
+
+def test_cap_keeps_the_stale_slices(executor):
+    """Stale slices are the actionable set, so they survive the cap — a consumer
+    that reads the head of the list is reading the backfill queue."""
+    base = date(2024, 1, 1).toordinal()
+    states, summary = build_partition_states(
+        _ds(executor), _days(base, 200), _days(base, 260)
+    )
+    assert summary.stale == 60
+    assert sum(1 for s in states if s.status == "stale") == 60
+    assert summary.reported == 200
+
+
+def test_limit_none_disables_the_cap(executor):
+    base = date(2024, 1, 1).toordinal()
+    states, summary = build_partition_states(
+        _ds(executor), _days(base, 300), _days(base, 300), limit=None
+    )
+    assert len(states) == 300
+    assert summary.truncated is False
+    assert summary.reported == 300
+
+
+def test_unresolved_expectation_is_scan_not_reconciled(executor):
+    """probe_expected_partitions swallows an unresolvable plan and returns [].
+    Reporting that as `reconciled` would make `missing: 0` read as a clean bill
+    of health when nothing was actually asked for."""
+    base = date(2024, 1, 1).toordinal()
+    _, summary = build_partition_states(_ds(executor), _days(base, 3), [])
+    assert summary.level == "scan"
+    assert summary.missing == 0
+    assert summary.total == 3
+
+
+def test_capped_datasource_still_reports_stale(executor):
+    """The verdict comes off the summary, so a table 300 slices behind cannot
+    read as fresh just because they did not fit in the payload."""
+    base = date(2024, 1, 1).toordinal()
+    partitions, summary = build_partition_states(
+        _ds(executor), _days(base, 200), _days(base, 500)
+    )
+    state = build_datasource_state(
+        _ds(executor), None, None, partitions=partitions, partition_summary=summary
+    )
+    assert state.status == "stale"
+    assert state.stale_reason == "300 of 500 partitions stale"
+
+
+def test_scoped_delta_keeps_the_summary_but_narrows_reported(executor):
+    """A partial writer cannot be trusted about a slice it did not own, but an
+    aggregate is not a per-slice claim — and if scoping dropped it, a fan-out
+    where every run is targeted would never report totals at all."""
+    snapshot = _snapshot(
+        executor,
+        _slices(
+            executor,
+            {"2024-01-01": "stale", "2024-01-02": "stale", "2024-01-03": "fresh"},
+        ),
+    )
+    scoped = scope_to_partitions(snapshot, {"order_date=2024-01-01"})
+    summary = scoped.assets[0].datasources[0].partition_summary
+    assert summary is not None
+    assert summary.total == 3, "the table still has three slices"
+    assert summary.reported == 1, "this worker speaks for one of them"
+    assert summary.stale == 2
+    assert summary.truncated is True
+
+
+def test_partition_selector_resolves_to_ids_off_the_snapshot(executor):
+    """`--partition` speaks concept addresses; scope_to_partitions speaks
+    partition ids. partition_by carries both halves of the mapping."""
+    snapshot = _snapshot(
+        executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "fresh"})
+    )
+    assert selector_partition_ids(snapshot, {"local.order_date": "2024-01-02"}) == {
+        "order_date=2024-01-02"
+    }
+    # ISO spellings of the same day normalize to the same slice.
+    assert selector_partition_ids(snapshot, {"local.order_date": "20240102"}) == {
+        "order_date=2024-01-02"
+    }
+    # An unparseable value selects nothing rather than guessing — under-matching
+    # costs detail, over-matching would claim a slice the run never wrote.
+    assert selector_partition_ids(snapshot, {"local.order_date": "2024-1-2"}) == {
+        "order_date=2024-1-2"
+    }
+    # A concept the datasource is not partitioned on names nothing.
+    assert selector_partition_ids(snapshot, {"local.region": "north"}) == set()
+
+
+def test_merge_adjusts_summary_counts_for_the_slices_a_delta_owned(executor):
+    """A backfill that fixes one of N stale slices must leave a readable N-1
+    behind, not a recount of whatever survived the cap."""
+    base = _snapshot(
+        executor,
+        _slices(
+            executor,
+            {"2024-01-01": "stale", "2024-01-02": "stale", "2024-01-03": "fresh"},
+        ),
+    )
+    assert base.assets[0].datasources[0].partition_summary.stale == 2
+
+    fixed = scope_to_partitions(
+        _snapshot(
+            executor,
+            _slices(
+                executor,
+                {"2024-01-01": "fresh", "2024-01-02": "stale", "2024-01-03": "fresh"},
+            ),
+        ),
+        {"order_date=2024-01-01"},
+    )
+    merged = merge_snapshots(base, fixed)
+    summary = merged.assets[0].datasources[0].partition_summary
+    assert summary.stale == 1
+    assert summary.total == 3
+    assert merged.assets[0].datasources[0].status == "stale"
+
+
+# --- `refresh --partition`: naming the slice a run owns ----------------------
+
+
+def test_parse_partition_selector_accepts_repeats_and_commas():
+    assert parse_partition_selector(["a.b=1", "c.d=2,e.f=3"]) == {
+        "a.b": "1",
+        "c.d": "2",
+        "e.f": "3",
+    }
+
+
+def test_parse_partition_selector_rejects_a_bare_value():
+    with pytest.raises(ValueError, match="expected <concept.address>=<value>"):
+        parse_partition_selector(["2026-07-30"])
+
+
+def test_selected_slice_types_the_value_from_the_model(executor):
+    ds = _ds(executor)
+    obs = selected_slice(ds, executor.environment, {"local.order_date": "2024-01-02"})
+    # Typed, not the string: partition_filter builds a real comparison from it.
+    assert obs.values == {"order_date": date(2024, 1, 2)}
+    assert obs.id == "order_date=2024-01-02"
+
+
+def test_selected_slice_is_none_for_a_datasource_it_does_not_name(executor):
+    """A directory holds many assets; a selector speaks only for the ones keyed
+    on the concept it names. Not applying is normal, not an error."""
+    ds = _ds(executor)
+    assert selected_slice(ds, executor.environment, {"local.region": "north"}) is None
+    root = executor.environment.datasources["raw_orders"]
+    assert selected_slice(root, executor.environment, {"local.order_date": "x"}) is None
+
+
+def test_partial_multi_column_key_is_rejected(executor):
+    """Naming one of two key columns identifies a range, not a slice. Widening a
+    targeted refresh into a partial rebuild silently is the failure to avoid."""
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.execute_text(MODEL.replace("partition by order_date", "partition by order_date, region"))
+    ds = ex.environment.datasources["daily_orders"]
+    with pytest.raises(ValueError, match="only part of"):
+        selected_slice(ds, ex.environment, {"local.order_date": "2024-01-02"})
+
+
+def test_selector_targets_the_slice_even_when_nothing_looks_stale(executor):
+    """A tick that owns a day must load that day. The slice may be absent from
+    state entirely, so consulting staleness first would find nothing to do."""
+    executor.execute_text(BUILD_ONE_DAY)
+    plan = create_refresh_plan(
+        executor,
+        policy=RefreshPolicy(partition_selector={"local.order_date": "2024-01-01"}),
+    )
+    targeted = [
+        a for a in plan.refresh_assets if a.datasource_id == "daily_orders"
+    ]
+    assert len(targeted) == 1, "the asset is planned exactly once, not twice"
+    assert [p.id for p in targeted[0].partitions] == ["order_date=2024-01-01"]
+    assert "partition order_date=2024-01-01 requested" == targeted[0].reason
+
+
+def test_selector_refresh_writes_only_its_own_slice(executor):
+    """End to end: the targeted refresh fills its slice and leaves neighbours
+    untouched."""
+    executor.execute_text(BUILD_ONE_DAY)
+    before = executor.execute_raw_sql(
+        "SELECT order_date, order_count FROM daily_orders ORDER BY 1"
+    ).fetchall()
+    assert [str(r[0]) for r in before] == ["2024-01-01"]
+
+    plan = create_refresh_plan(
+        executor,
+        policy=RefreshPolicy(partition_selector={"local.order_date": "2024-01-03"}),
+    )
+    execute_refresh_plan(executor, plan)
+
+    after = executor.execute_raw_sql(
+        "SELECT order_date FROM daily_orders ORDER BY 1"
+    ).fetchall()
+    # 2024-01-02 is stale in source and deliberately still absent: it was not
+    # the slice this run owned.
+    assert [str(r[0]) for r in after] == ["2024-01-01", "2024-01-03"]
+
+
+def test_complete_delta_replaces_the_summary(executor):
+    base = _snapshot(
+        executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "stale"})
+    )
+    complete = _snapshot(
+        executor, _slices(executor, {"2024-01-01": "fresh", "2024-01-02": "fresh"})
+    )
+    merged = merge_snapshots(base, complete)
+    summary = merged.assets[0].datasources[0].partition_summary
+    assert summary.stale == 0
+    assert merged.assets[0].datasources[0].status == "fresh"

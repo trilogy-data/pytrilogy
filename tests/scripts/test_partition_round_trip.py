@@ -148,6 +148,79 @@ def _build(runner, workspace: Path) -> None:
     _run(runner, "refresh", str(workspace / "model.preql"))
 
 
+def test_partition_flag_refreshes_only_its_slice(runner, workspace: Path):
+    """`--partition` names the slice the run owns; the hole beside it stays a
+    hole, because nothing asked for it."""
+    _build(runner, workspace)
+    _drop_slice(workspace, HOLE)
+    _drop_slice(workspace, "2024-01-03")
+
+    _run(
+        runner,
+        "refresh",
+        str(workspace / "model.preql"),
+        "--partition",
+        "local.order_date=2024-01-03",
+    )
+    counts = _slice_counts(workspace)
+    assert "2024-01-03" in counts, "the named slice was rebuilt"
+    assert HOLE not in counts, "the neighbouring hole was not"
+
+
+def test_partition_flag_implies_state_partition(runner, workspace: Path):
+    """The pair cannot drift: a run told to rebuild one slice reports on one
+    slice, without the caller having to say so twice."""
+    _build(runner, workspace)
+    _drop_slice(workspace, HOLE)
+    state = workspace / "state.json"
+
+    _run(
+        runner,
+        "refresh",
+        str(workspace / "model.preql"),
+        "--partition",
+        f"local.order_date={HOLE}",
+        "--state-file",
+        str(state),
+    )
+    snapshot = _snapshot(state)
+    assert set(_partitions(snapshot)) == {f"order_date={HOLE}"}
+
+    ds_state = next(
+        ds
+        for asset in snapshot.assets
+        for ds in asset.datasources
+        if ds.partition_by
+    )
+    assert ds_state.partitions_complete is False, "it is a mergeable delta"
+    # The aggregate survives scoping — otherwise a fan-out where every run is
+    # partition-targeted would never report totals at all.
+    assert ds_state.partition_summary is not None
+    assert ds_state.partition_summary.total == 3
+    assert ds_state.partition_summary.reported == 1
+    assert ds_state.partition_summary.truncated is True
+
+
+def test_explicit_state_partition_still_wins(runner, workspace: Path):
+    """The implication is a default, not a lock: a caller that genuinely wants
+    the two to differ can still say so."""
+    _build(runner, workspace)
+    state = workspace / "state.json"
+
+    _run(
+        runner,
+        "refresh",
+        str(workspace / "model.preql"),
+        "--partition",
+        f"local.order_date={HOLE}",
+        "--state-partition",
+        "order_date=2024-01-03",
+        "--state-file",
+        str(state),
+    )
+    assert set(_partitions(_snapshot(state))) == {"order_date=2024-01-03"}
+
+
 def _build_one_slice(runner, workspace: Path, day: str, state_file: Path) -> str:
     """One per-partition worker: build a slice, publish a delta scoped to it."""
     _run(

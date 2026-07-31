@@ -10,6 +10,7 @@ from trilogy.core import graph as nx
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
     DatasourceWatermark,
+    RefreshPolicy,
     StaleAsset,
     refresh_stale_assets,
 )
@@ -259,7 +260,7 @@ def test_refresh_stale_assets_on_approval_declined():
     result = refresh_stale_assets(
         executor,
         on_approval=lambda assets, wm: False,
-        force_sources={"target_items"},
+        policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
     )
     assert result.stale_count == 1
     assert result.refreshed_count == 0
@@ -298,7 +299,7 @@ def test_refresh_stale_assets_on_approval_accepted():
     result = refresh_stale_assets(
         executor,
         on_approval=lambda assets, wm: True,
-        force_sources={"target_items"},
+        policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
     )
     assert result.stale_count == 1
     assert result.refreshed_count == 1
@@ -352,7 +353,9 @@ def test_refresh_stale_assets_forced():
 
     # With force, target_items SHOULD be refreshed
     result = refresh_stale_assets(
-        executor, on_refresh=track_refresh, force_sources={"target_items"}
+        executor,
+        on_refresh=track_refresh,
+        policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
     )
     assert result.stale_count == 1
     assert result.refreshed_count == 1
@@ -401,7 +404,7 @@ def test_execute_script_for_refresh_with_watermarks(tmp_path, capsys):
             executor,
             node,
             print_watermarks=True,
-            force_sources=frozenset({"target_items"}),
+            policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
         )
 
     assert stats.update_count == 1
@@ -421,7 +424,7 @@ def test_execute_script_for_refresh_interactive_declined(tmp_path, capsys):
         stats = execute_script_for_refresh(
             executor,
             node,
-            force_sources=frozenset({"target_items"}),
+            policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
             interactive=True,
         )
 
@@ -441,7 +444,7 @@ def test_execute_script_for_refresh_dry_run(tmp_path, capsys):
         stats = execute_script_for_refresh(
             executor,
             node,
-            force_sources=frozenset({"target_items"}),
+            policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
             dry_run=True,
         )
 
@@ -460,7 +463,7 @@ def test_execute_refresh_mode_dry_run(capsys):
     with set_rich_mode(False):
         result = execute_refresh_mode(
             executor,
-            force_sources={"target_items"},
+            policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
             dry_run=True,
         )
 
@@ -478,7 +481,7 @@ def test_execute_refresh_mode_with_watermarks(capsys):
     with set_rich_mode(False):
         result = execute_refresh_mode(
             executor,
-            force_sources={"target_items"},
+            policy=RefreshPolicy(force_sources=frozenset({"target_items"})),
             print_watermarks=True,
         )
 
@@ -962,13 +965,17 @@ def test_refresh_multiple_aggregate_persists_with_shared_count(tmp_path):
 
     result = refresh_stale_assets(
         executor,
-        force_sources={
-            "flight_count_total",
-            "flight_count_by_year",
-            "flight_count_by_carrier",
-            "flight_count_by_origin",
-            "flight_count_by_date",
-        },
+        policy=RefreshPolicy(
+            force_sources=frozenset(
+                {
+                    "flight_count_total",
+                    "flight_count_by_year",
+                    "flight_count_by_carrier",
+                    "flight_count_by_origin",
+                    "flight_count_by_date",
+                }
+            )
+        ),
         dry_run=True,
     )
     assert result.refreshed_count == 5

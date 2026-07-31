@@ -35,6 +35,7 @@ from trilogy.execution.state.persistence import (
 from trilogy.execution.state.snapshot import (
     DatasourceState,
     PartitionState,
+    PartitionSummary,
     StateSnapshot,
     address_type_of,
     build_datasource_state,
@@ -43,6 +44,7 @@ from trilogy.execution.state.snapshot import (
     merge_snapshots,
     project_relative_path,
     scope_to_partitions,
+    selector_partition_ids,
     stable_asset_key,
     stale_partitions,
 )
@@ -96,15 +98,18 @@ def _partition_states(
     ds: Datasource,
     probed: ProbedPartitions,
     run_id: str | None,
-) -> list[PartitionState] | None:
+) -> tuple[list[PartitionState] | None, PartitionSummary | None]:
     """Per-slice state for a partitioned datasource, or None if unpartitioned.
 
     None and ``[]`` are different answers: ``[]`` is a partitioned table with no
     slices yet (the state an orchestrator bootstraps from), None is a datasource
-    that has no partitioning to report."""
+    that has no partitioning to report.
+
+    The summary rides alongside because the slice list is capped — see
+    :class:`~trilogy.execution.state.snapshot.PartitionSummary`."""
     sides = probed.get(ds.identifier)
     if sides is None:
-        return None
+        return None, None
     observed, expected = sides
     return build_partition_states(
         ds, observed, expected, probed_at=utc_now_iso(), run_id=run_id
@@ -144,6 +149,7 @@ def _snapshot_from_directory(
         key = _asset_key(ds, address, project_root)
         keys_by_address.setdefault(address, key)
         scripts = probe.ds_to_scripts.get(ds_id) or []
+        partitions, partition_summary = _partition_states(ds, merged_partitions, run_id)
         entries.append(
             (
                 key,
@@ -157,7 +163,8 @@ def _snapshot_from_directory(
                         if scripts
                         else None
                     ),
-                    partitions=_partition_states(ds, merged_partitions, run_id),
+                    partitions=partitions,
+                    partition_summary=partition_summary,
                 ),
             )
         )
@@ -227,6 +234,7 @@ def snapshot_for_parsed_script(
     for ds in executor.environment.datasources.values():
         key = _asset_key(ds, ds.safe_address, project_root)
         keys_by_address.setdefault(ds.safe_address, key)
+        partitions, partition_summary = _partition_states(ds, probed_partitions, run_id)
         entries.append(
             (
                 key,
@@ -236,7 +244,8 @@ def snapshot_for_parsed_script(
                     stale_map.get(ds.identifier),
                     store.concept_max_watermarks,
                     script=script_attr,
-                    partitions=_partition_states(ds, probed_partitions, run_id),
+                    partitions=partitions,
+                    partition_summary=partition_summary,
                 ),
             )
         )
@@ -390,7 +399,15 @@ def maybe_write_state_snapshot(
     ``state_partition`` narrows the emitted partition state to the slices this
     run owned, so N concurrent workers produce N mergeable deltas instead of N
     conflicting whole-table claims — see
-    :func:`~trilogy.execution.state.snapshot.scope_to_partitions`."""
+    :func:`~trilogy.execution.state.snapshot.scope_to_partitions`.
+
+    A ``refresh --partition`` run **derives it** when not given explicitly: the
+    slices it owned for reporting are exactly the slices it was told to rebuild,
+    and requiring the caller to say so twice makes the two flags a pair that can
+    drift. Getting them out of step is silent — the run writes one slice and
+    then claims the whole table, which is the clobber ``--state-partition``
+    exists to prevent. An explicit value still wins, for the caller that
+    genuinely wants them different."""
     path_str = state_file or os.environ.get(ENV_STATE_FILE, "").strip() or None
     if not path_str:
         return
@@ -400,6 +417,10 @@ def maybe_write_state_snapshot(
             cli_params, run_id=sink.run_id if sink else None
         )
         partitions = resolve_state_partitions(state_partition)
+        if not partitions and cli_params.refresh_params:
+            partitions = selector_partition_ids(
+                snapshot, dict(cli_params.refresh_params.partitions)
+            )
         if partitions:
             snapshot = scope_to_partitions(snapshot, partitions)
         write_state_snapshot(snapshot, PathlibPath(path_str))

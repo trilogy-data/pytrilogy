@@ -35,6 +35,7 @@ from trilogy.execution.state import (
     create_refresh_plan,
     execute_refresh_plan,
     new_state_store,
+    parse_partition_selector,
 )
 from trilogy.scripts.click_utils import (
     report_options,
@@ -115,7 +116,6 @@ def _probe_owner_node(
     owner_node: ScriptNode,
     address_map: dict[str, str],
     addr_to_owner: dict[str, ScriptNode],
-    force_sources: set[str] | None,
     cli_params: CLIRuntimeParams,
     edialect: Dialects,
     config: RuntimeConfig,
@@ -142,7 +142,11 @@ def _probe_owner_node(
             executor.parse_text(handle.read(), root=owner_node.path)
         plan = create_refresh_plan(
             executor,
-            force_sources=force_sources,
+            policy=(
+                cli_params.refresh_params.policy()
+                if cli_params.refresh_params
+                else None
+            ),
             skip_datasources=skip_ids,
             initial_watermarks=initial_watermarks,
         )
@@ -526,7 +530,6 @@ def probe_directory_state(
                 node,
                 address_map,
                 addr_to_owner,
-                force_sources,
                 cli_params,
                 edialect,
                 config,
@@ -950,6 +953,22 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     help="Print watermark values for all datasources before refreshing",
 )
 @option(
+    "--partition",
+    "partition",
+    multiple=True,
+    default=(),
+    help=(
+        "Refresh exactly this slice, as `<concept.address>=<value>` (repeatable, "
+        "comma-separated; one pair per column of a multi-column key). Every "
+        "datasource partitioned on those concepts is rebuilt for that slice "
+        "whether or not it looks stale, and its healthy neighbours are left "
+        "alone. Addressed by concept, not physical column: the caller naming a "
+        "slice works from the model, not from a datasource's column names. "
+        "Implies --state-partition for the same slices, so a fan-out cannot "
+        "write one partition and then claim the whole table."
+    ),
+)
+@option(
     "--env",
     "-e",
     multiple=True,
@@ -987,6 +1006,7 @@ def refresh(
     parallelism: int | None,
     config,
     print_watermarks,
+    partition: tuple[str, ...],
     env,
     force,
     interactive,
@@ -1006,12 +1026,20 @@ def refresh(
     Returns 0 if any assets were refreshed, 2 if all assets were up to date,
     and 1 on error.
     """
+    from trilogy.scripts.display import print_error
+
     validate_dialect(dialect, "refresh")
+    try:
+        selected_partitions = parse_partition_selector(partition)
+    except ValueError as e:
+        print_error(str(e))
+        raise Exit(1) from e
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
         force_sources=parse_force_sources(force),
         interactive=interactive,
         dry_run=dry_run,
+        partitions=selected_partitions,
     )
 
     cli_params = CLIRuntimeParams(

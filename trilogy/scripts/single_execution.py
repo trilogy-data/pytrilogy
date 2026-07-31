@@ -1,6 +1,6 @@
 import traceback
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from trilogy import Executor
 from trilogy.core.statements.execute import (
@@ -47,6 +47,9 @@ from trilogy.scripts.display import (
     summarize_definitions,
 )
 from trilogy.utility import safe_open
+
+if TYPE_CHECKING:
+    from trilogy.execution.state import RefreshPolicy
 
 
 def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
@@ -473,13 +476,14 @@ def execute_script_for_refresh(
     node: ScriptNode,
     quiet: bool = False,
     print_watermarks: bool = False,
-    force_sources: frozenset[str] = frozenset(),
+    policy: "RefreshPolicy | None" = None,
     interactive: bool = False,
     dry_run: bool = False,
 ) -> ExecutionStats:
     """Refresh stale assets in a single script file."""
-    from trilogy.execution.state import create_refresh_plan
+    from trilogy.execution.state import RefreshPolicy, create_refresh_plan
 
+    policy = policy or RefreshPolicy()
     validation = []
     with safe_open(node.path) as f:
         statements = exec.parse_text(f.read(), root=node.path)
@@ -487,11 +491,9 @@ def execute_script_for_refresh(
         if isinstance(x, ProcessedValidateStatement):
             validation.append(x)
 
-    validate_force_sources(force_sources, exec.environment.datasources)
+    validate_force_sources(policy.force_sources, exec.environment.datasources)
 
-    plan = create_refresh_plan(
-        exec, force_sources=set(force_sources) if force_sources else None
-    )
+    plan = create_refresh_plan(exec, policy=policy)
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }
@@ -518,17 +520,18 @@ def execute_script_for_refresh(
 
 def execute_refresh_mode(
     exec: Executor,
-    force_sources: set[str] | None = None,
+    policy: "RefreshPolicy | None" = None,
     print_watermarks: bool = False,
     dry_run: bool = False,
     interactive: bool = False,
     script_path: Any = None,
 ) -> StateRefreshResult:
     """Execute refresh mode on an already-parsed executor."""
-    from trilogy.execution.state import create_refresh_plan
+    from trilogy.execution.state import RefreshPolicy, create_refresh_plan
 
-    validate_force_sources(force_sources, exec.environment.datasources)
-    plan = create_refresh_plan(exec, force_sources=force_sources)
+    policy = policy or RefreshPolicy()
+    validate_force_sources(policy.force_sources, exec.environment.datasources)
+    plan = create_refresh_plan(exec, policy=policy)
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }
