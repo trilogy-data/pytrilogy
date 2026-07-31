@@ -714,6 +714,7 @@ def handle_execution_exception(
         DisconnectedConceptsException,
         FunctionArgumentException,
         InvalidSyntaxException,
+        NothingExecutedException,
         UndefinedConceptException,
         UnresolvableQueryException,
     )
@@ -737,6 +738,10 @@ def handle_execution_exception(
             else ""
         )
         print_error(f"Syntax error{location}: {e.diagnostic.message}{span}")
+    elif isinstance(e, NothingExecutedException):
+        # The script parsed; it just does nothing. Labelling it a syntax error
+        # would send the reader looking for a parse mistake that isn't there.
+        print_error(f"{e}")
     elif isinstance(e, (SyntaxError, InvalidSyntaxException)):
         print_error(f"Syntax error{location}: {e}")
     elif isinstance(e, (DisconnectedConceptsException, UnresolvableQueryException)):

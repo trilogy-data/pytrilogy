@@ -281,6 +281,17 @@ Commands emit human formatting (rich if installed, plain text otherwise) by defa
 Use the --format flag to control; agentic access will default to --format json.
 . Pass `--format rich` for explicit human formatting.
 
+## Agent Mode
+
+`--agent` (or `TRILOGY_AGENT_MODE=1`) declares that a program, not a person, is
+reading the output; agentic access sets it by default. It is independent of
+`--format` — formatting is how output is rendered, agent mode is what counts as
+a failure. Under it, a `run` that executes nothing — a file of only
+declarations, only imports, or an empty body — exits non-zero instead of
+warning, because `0 statements` otherwise reports as a success identical to a
+real one. If you hit it, the script needs a `select` (or you wanted
+`trilogy refresh`).
+
 ## Debug Mode
 
 Add `--debug` flag to any command for verbose output:
@@ -332,6 +343,11 @@ datasources defined over it, their observed watermarks, the expected (root-
 derived) values, the staleness reason, and the physical column -> logical
 concept bindings.
 
+The same snapshot is the interchange format everywhere state crosses a boundary:
+`trilogy serve` returns it verbatim from `/state` (file or directory target).
+One producer, many transports — a CLI state file, a served response, and a cloud
+payload are the same object, not three renderings of it.
+
 ```bash
 # Probe only — never writes warehouse state
 trilogy state . duckdb -o state.json
@@ -358,6 +374,55 @@ written snapshot. Two rules make this safe:
 trilogy refresh . duckdb --state-input state.json --state-file state.json
 ```
 
+## Partitioned assets
+
+A datasource declaring `partition by <cols>` is recorded as N independently
+refreshable slices, not one verdict. Each entry in `DatasourceState.partitions`
+carries a hive-style `partition_id` (`order_date=2024-01-03`, keyed on the
+PHYSICAL column), `observed`/`expected` flags, its own status and reason, and
+both sides of its watermark comparison. A slice the roots demand but the table
+lacks reads `"stale_reason": "partition missing"` — the case a table-level MAX
+structurally cannot see.
+
+The stale slices in a state file ARE an orchestrator's work list:
+
+```bash
+# 1. probe
+trilogy state . duckdb -o state.json
+# 2. fan out — one process per stale partition, each writing its OWN delta
+trilogy run build.preql --param load_date=2024-01-03 \\
+    --state-file deltas/d3.json --state-partition order_date=2024-01-03
+# 3. fold the deltas back in (order-independent)
+trilogy state-merge state.json deltas/*.json
+```
+
+`--state-partition` (repeatable) narrows the written snapshot to the slices this
+run owns and marks it `partitions_complete: false`; `trilogy state-merge`
+overlays such a delta slice-by-slice and lets a complete snapshot replace the
+list. That is what makes concurrency safe with a file-backed store: N workers
+write N distinct files with no coordination, and one coordinator merges. A
+crashed worker loses only its own slice, and replaying a delta is idempotent.
+
+`trilogy state-merge base.json delta... [-o out.json] [--partitions-only]`
+defaults to overwriting `base.json`; `--partitions-only` prints the merged work
+list as `<asset> <datasource> <partition_id>` lines.
+
+An `APPEND` onto a partitioned datasource replaces exactly the slices its select
+produces (stage -> delete those keys -> insert), so re-running a partition is
+idempotent and never touches a neighbour.
+
+`trilogy refresh` narrows itself to the stale slices too: a partitioned asset is
+judged per slice, and the refresh filters its select to exactly those, so a
+missing day in the middle of a range is filled without rebuilding the days
+around it. That is one statement covering N slices — running slices as N
+concurrent processes is the orchestrator's call, which is what the fan-out above
+is for.
+
+`--state-input` seeds partition state on the same terms as watermarks: a
+snapshot means "trust these observations", and that applies to every observation
+in it. Feed a *merged* file, not a partition-scoped delta — a delta speaks for
+only some slices, so it is ignored for seeding rather than understating the rest.
+
 ## Execution reports
 
 `--report-file run.jsonl` appends a strict JSONL execution report (one JSON
@@ -373,6 +438,7 @@ environment rather than the argv:
 
 - `TRILOGY_STATE_FILE` — where to write the post-execution snapshot
 - `TRILOGY_STATE_INPUT` — snapshot to seed from
+- `TRILOGY_STATE_PARTITION` — comma-separated partition ids this run owns
 - `TRILOGY_REPORT_FILE` — where to append the JSONL report
 - `TRILOGY_RUN_ID` — correlation id
 

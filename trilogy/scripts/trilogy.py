@@ -1,19 +1,36 @@
+import io
 import sys
 
 import click
 
 from trilogy.scripts.click_utils import IGNORE_UNKNOWN, LazyGroup
 
-# Force UTF-8 stdio so non-ASCII output (e.g. the ``↳`` description marker
-# from ``file list``) renders on Windows consoles whose default codepage is
-# cp1252. Best-effort: a NotImplementedError or AttributeError just means
-# we're on a platform where the streams aren't reconfigurable, and we leave
-# them alone.
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-    except (AttributeError, ValueError, NotImplementedError):
-        pass
+UTF8_ALIASES = ("utf8", "utf8sig")
+
+
+def _force_utf8_stdio() -> None:
+    """Force UTF-8 stdio so non-ASCII output (e.g. the ``↳`` description marker
+    from ``file list``) survives a narrow codepage -- a cp1252 Windows console,
+    or stdout redirected to a file under a cp1252 locale.
+
+    Streams that already speak UTF-8 are left strictly alone. ``reconfigure``
+    resets the error handler to ``strict`` whenever ``errors`` isn't passed, and
+    a capture stream (pytest's, click's ``CliRunner``) is a UTF-8 wrapper opened
+    with ``errors="replace"`` over a buffer that also collects whatever raw bytes
+    subprocesses wrote to the captured fd. Flipping it to strict makes the first
+    such byte poison every capture read for the rest of the session."""
+    for stream in (sys.stdout, sys.stderr):
+        if not isinstance(stream, io.TextIOWrapper):
+            continue
+        if stream.encoding.lower().replace("-", "").replace("_", "") in UTF8_ALIASES:
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
+        except ValueError:
+            pass
+
+
+_force_utf8_stdio()
 
 
 def get_version() -> str:
@@ -52,6 +69,7 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "run": ("trilogy.scripts.run", "run", IGNORE_UNKNOWN),
     "serve": ("trilogy.scripts.serve", "serve", None),
     "state": ("trilogy.scripts.state", "state", IGNORE_UNKNOWN),
+    "state-merge": ("trilogy.scripts.state", "state_merge", None),
     "unit": ("trilogy.scripts.testing", "unit", IGNORE_UNKNOWN),
 }
 
@@ -78,6 +96,18 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     ),
 )
 @click.option(
+    "--agent",
+    "agent_mode",
+    is_flag=True,
+    default=None,
+    help=(
+        "Declare that a program, not a person, is reading this output. "
+        "Conditions a human would only be warned about — chiefly a run that "
+        "executed nothing — become errors, so a no-op cannot pass as a "
+        "success. Overrides the TRILOGY_AGENT_MODE env var."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -93,20 +123,28 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
 def cli(
     ctx: click.Context,
     output_format: str | None,
+    agent_mode: bool | None,
     debug: bool,
     debug_file: str | None,
 ):
     """Trilogy CLI - A beautiful data productivity tool."""
-    from trilogy.scripts.display import is_json_mode, set_output_format
+    from trilogy.scripts.display import (
+        is_agent_mode,
+        is_json_mode,
+        set_agent_mode,
+        set_output_format,
+    )
 
-    # The flag overrides the env-derived default; when absent the env value
-    # (set transparently by the agent subprocess) stands.
+    # The flags override the env-derived defaults; when absent the env values
+    # (set transparently by the agent subprocess) stand.
     set_output_format(output_format)
+    set_agent_mode(agent_mode)
 
     ctx.ensure_object(dict)
     ctx.obj["DEBUG"] = debug or bool(debug_file)
     ctx.obj["DEBUG_FILE"] = debug_file
     ctx.obj["OUTPUT_FORMAT"] = "json" if is_json_mode() else "rich"
+    ctx.obj["AGENT_MODE"] = is_agent_mode()
 
     if ctx.obj["DEBUG"]:
         from trilogy.scripts.display import show_debug_mode

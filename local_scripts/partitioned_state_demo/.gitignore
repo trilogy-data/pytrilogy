@@ -1,0 +1,4 @@
+warehouse.duckdb
+warehouse.duckdb.wal
+data/
+state/

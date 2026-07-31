@@ -93,9 +93,15 @@ def capture_rich_console_output():
     if display.is_rich_available() and RICH_AVAILABLE:
         from rich.console import Console
 
-        # Create a console that writes to a string buffer
+        # Create a console that writes to a string buffer. `no_color=False`
+        # overrides an ambient NO_COLOR: rich honours that env var by stripping
+        # colour while keeping bold, which collapses success/warning/error to
+        # the same bytes and makes the styling assertions depend on whoever's
+        # shell is running the suite.
         output_buffer = StringIO()
-        test_console = Console(file=output_buffer, force_terminal=True, width=80)
+        test_console = Console(
+            file=output_buffer, force_terminal=True, width=80, no_color=False
+        )
 
         # Patch both consoles so print_info AND print_error/print_warning
         # land in the same buffer for assertion (the production split is

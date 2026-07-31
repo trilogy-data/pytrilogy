@@ -67,7 +67,9 @@ def _force_utf8_stdio() -> None:
         if not isinstance(stream, io.TextIOWrapper):
             continue
         try:
-            stream.reconfigure(encoding="utf-8")
+            # Keep the stream's own error handler: reconfigure() silently
+            # resets it to 'strict' when it isn't passed.
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
         except ValueError:
             pass
 

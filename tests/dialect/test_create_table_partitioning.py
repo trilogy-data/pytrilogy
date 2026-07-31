@@ -6,6 +6,8 @@ from trilogy.core.models.datasource import Datasource
 from trilogy.core.table_processor import datasource_to_create_table_info
 from trilogy.parser import parse
 
+# Partition column declared LAST: valid everywhere, and the only ordering the
+# Presto/Trino Hive connector accepts (see test_presto_requires_partition_columns_last).
 MODEL = """
 key id int;
 property id.created_at {type};
@@ -13,8 +15,8 @@ property id.label string;
 
 datasource facts (
     id: id,
-    created_at: created_at,
     label: label,
+    created_at: created_at,
 )
 grain (id)
 address my_facts
@@ -113,11 +115,40 @@ def test_bigquery_escapes_column_descriptions():
     assert "OPTIONS(description='it\\'s a label')" in ddl
 
 
+@pytest.mark.parametrize("dialect", [Dialects.PRESTO, Dialects.TRINO])
+def test_presto_declares_partitioning_as_a_table_property(dialect):
+    assert "WITH (partitioned_by = ARRAY['created_at'])" in _ddl(dialect)
+
+
+@pytest.mark.parametrize("dialect", [Dialects.PRESTO, Dialects.TRINO])
+def test_presto_requires_partition_columns_last(dialect):
+    """The Hive connector rejects a table whose partition columns aren't last,
+    so this raises instead of emitting DDL the engine will refuse."""
+    env = Environment()
+    parse(
+        MODEL.format(type="date", partition="created_at").replace(
+            "    label: label,\n    created_at: created_at,",
+            "    created_at: created_at,\n    label: label,",
+        ),
+        env,
+    )
+    info = datasource_to_create_table_info(env.datasources["facts"])
+    with pytest.raises(ValueError, match="last columns of the table"):
+        dialect.default_renderer().compile_create_table_statements(
+            info, CreateMode.CREATE_OR_REPLACE
+        )
+
+
+#: Dialects that can express partitioning in a CREATE. Everything else must fall
+#: back to an unpartitioned table rather than syntax the engine rejects — see the
+#: physical-partitioning notes in ``BaseDialect.render_partition_clause``.
+PARTITIONING_DIALECTS = {Dialects.BIGQUERY, Dialects.PRESTO, Dialects.TRINO}
+
+
 @pytest.mark.parametrize("dialect", ALL_DIALECTS)
 def test_no_dialect_emits_unsupported_partition_syntax(dialect):
-    """Only BigQuery can express partitioning in a create; the rest must fall
-    back to an unpartitioned table rather than syntax the engine rejects."""
     ddl = _ddl(dialect)
     assert "PARTITIONED BY" not in ddl
-    if dialect != Dialects.BIGQUERY:
+    if dialect not in PARTITIONING_DIALECTS:
         assert "PARTITION BY" not in ddl
+        assert "partitioned_by" not in ddl

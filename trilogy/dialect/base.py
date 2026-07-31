@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
@@ -3164,25 +3165,133 @@ class BaseDialect:
                 raise NotImplementedError(type(statement))
         return output
 
+    def generate_partitioned_insert_statements(
+        self,
+        query: ProcessedQueryPersist,
+        recursive: bool,
+        compiled_ctes: list[CompiledCTE],
+    ) -> list[str]:
+        """Replace exactly the partitions this append produces, as staged
+        DELETE + INSERT.
+
+        A partitioned append must be idempotent per partition: rerunning one
+        slice may not duplicate its rows, and may not touch any other slice.
+        Standard SQL has no single statement for that — ``INSERT OVERWRITE`` is
+        Hive-family only — so the portable form stages the new rows, deletes the
+        partition keys they cover, and inserts. Staging (rather than running the
+        select twice) is what makes the DELETE and the INSERT agree on the same
+        set of keys, and it lets the partition columns be named by the *target's*
+        schema, which is the only place their physical names are authoritative.
+
+        An empty select touches nothing: no keys stage, so no slice is cleared.
+
+        Dialects with a native primitive override the whole method — see
+        BigQuery's scripted per-partition delete. Dialects that only differ in
+        how they spell one step override that step instead (SQL Server has no
+        ``CREATE TEMPORARY TABLE ... AS`` and no row-value ``IN``).
+        """
+        target = self.safe_quote(query.output_to.address.location)
+        staged = self.quote(self.staging_table_name(query))
+        # Rendered with no ``output``: what that keyword means is dialect-specific
+        # (postgres' template turns it into a CREATE TABLE AS), so the prefix is
+        # attached here rather than handed to the template.
+        select = self.SQL_TEMPLATE.render(
+            recursive=recursive,
+            output=None,
+            full_select=compiled_ctes[-1].statement,
+            ctes=compiled_ctes[:-1],
+        )
+        return [
+            self.render_staging_create(target, staged),
+            f"INSERT INTO {staged} {select}",
+            self.render_partition_delete(target, staged, query.partition_by),
+            f"INSERT INTO {target} SELECT * FROM {staged}",
+            f"DROP TABLE {staged}",
+        ]
+
+    def render_staging_create(self, target: str, staged: str) -> str:
+        """An empty table shaped like the target, to stage the new rows in."""
+        return f"CREATE TEMPORARY TABLE {staged} AS SELECT * FROM {target} WHERE 1=0"
+
+    def partition_key_match(
+        self, left: str, right: str, partition_by: list[str]
+    ) -> str:
+        """Null-safe equality across every partition key, as a boolean expression.
+
+        Spelled out as ``a = b OR (a IS NULL AND b IS NULL)`` rather than
+        ``IS NOT DISTINCT FROM``: the long form is universal, and the operator
+        form is missing on older SQLite and inconsistent elsewhere. A NULL slice
+        is a real slice — the state format names it ``__NULL__`` — so plain ``=``
+        (or a row-value ``IN``, which has the same hole) would leave it behind to
+        re-append on every run."""
+        return " AND ".join(
+            f"({left}.{self.quote(key)} = {right}.{self.quote(key)}"
+            f" OR ({left}.{self.quote(key)} IS NULL"
+            f" AND {right}.{self.quote(key)} IS NULL))"
+            for key in partition_by
+        )
+
+    def render_partition_delete(
+        self, target: str, staged: str, partition_by: list[str]
+    ) -> str:
+        """Clear exactly the partition keys the staged rows cover.
+
+        A correlated ``EXISTS`` rather than a row-value ``IN`` so the match can
+        be null-safe (see :meth:`partition_key_match`) and so multi-key
+        partitioning works on engines without row-value ``IN``. MySQL forbids
+        referencing the delete target in a subquery and overrides this with the
+        multi-table ``DELETE ... FROM ... JOIN`` form."""
+        matches = self.partition_key_match(staged, target, partition_by)
+        return (
+            f"DELETE FROM {target} WHERE EXISTS"
+            f" (SELECT 1 FROM {staged} WHERE {matches})"
+        )
+
+    def staging_table_name(self, query: ProcessedQueryPersist) -> str:
+        """Name of the temp table a partitioned append stages through.
+
+        Temp tables are connection-local, so concurrent per-partition writers
+        never collide on it; the target name is folded in only to keep the
+        statements readable in a debug log."""
+        base = re.sub(r"\W+", "_", query.output_to.address.location)
+        return f"_trilogy_stage_{base}"
+
     def generate_partitioned_insert(
         self,
         query: ProcessedQueryPersist,
         recursive: bool,
         compiled_ctes: list[CompiledCTE],
     ) -> str:
-        return self.SQL_TEMPLATE.render(
-            recursive=recursive,
-            output=f"INSERT OVERWRITE {self.safe_quote(query.output_to.address.location)}",
-            full_select=compiled_ctes[-1].statement,
-            ctes=compiled_ctes[:-1],
+        return ";\n".join(
+            self.generate_partitioned_insert_statements(query, recursive, compiled_ctes)
         )
 
     def render_partition_clause(self, target: CreateTableInfo) -> str:
         """The dialect's physical partitioning DDL for a create.
 
-        Most engines have no equivalent of a declared partition key that can be
-        expressed in a bare CREATE TABLE, so the default is to log and skip it
-        rather than emit syntax the engine will reject."""
+        Overridden where an engine can declare partitioning in a bare CREATE:
+        BigQuery (``PARTITION BY``) and Presto/Trino (``partitioned_by`` table
+        property). Everywhere else the default logs and skips, because emitting
+        a partition clause would either be rejected or be actively harmful:
+
+        - **DuckDB, SQLite** — no table partitioning at all. (DuckDB partitions
+          *files*; that rides on ``Address.partition_columns``, not here.)
+        - **Postgres, MySQL, SQL Server** — declarative partitioning exists but
+          a partitioned parent is unusable until its child partitions/boundaries
+          exist: Postgres rejects an insert with "no partition of relation found
+          for row", MySQL RANGE needs explicit ``VALUES LESS THAN``, SQL Server
+          needs a partition function and scheme created first. Emitting the
+          parent clause alone would turn a working table into one that refuses
+          every write. Doing it properly means creating each slice's partition
+          as it is first written — which per-partition state now has the
+          information to drive, but which is a feature, not a render change.
+        - **Snowflake** — no declarative partitioning; ``CLUSTER BY`` is the
+          pruning analogue but it is clustering, not partitioning, and automatic
+          reclustering bills credits. Not something to opt a user into silently.
+
+        A logical ``partition by`` still does real work on every dialect: it
+        drives per-partition state, expected-slice discovery, and per-slice
+        replacement on write."""
         if target.partition_keys:
             logger.warning(
                 "%s %s declares partition keys (%s), but %s cannot express "
@@ -3306,17 +3415,21 @@ class BaseDialect:
                     target, query.create_mode
                 )
             ]
-        if (
-            isinstance(query, ProcessedQueryPersist)
-            and query.persist_mode == PersistMode.OVERWRITE
-        ):
-            create_table_info = datasource_to_create_table_info(query.datasource)
-            return [
-                *self.compile_create_table_statements(
-                    create_table_info, query.create_mode
-                ),
-                self._render_query(query, self._persist_insert_prefix(query)),
-            ]
+        if isinstance(query, ProcessedQueryPersist):
+            if query.persist_mode == PersistMode.OVERWRITE:
+                create_table_info = datasource_to_create_table_info(query.datasource)
+                return [
+                    *self.compile_create_table_statements(
+                        create_table_info, query.create_mode
+                    ),
+                    self._render_query(query, self._persist_insert_prefix(query)),
+                ]
+            if query.persist_mode == PersistMode.APPEND and query.partition_by:
+                return self.generate_partitioned_insert_statements(
+                    query,
+                    any(isinstance(x, RecursiveCTE) for x in query.ctes),
+                    self.generate_ctes(query),
+                )
         return [self.compile_statement(query)]
 
     def _render_query(self, query, output: str | None) -> str:

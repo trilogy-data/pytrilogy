@@ -26,11 +26,13 @@ from trilogy import Executor
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.snapshot import (
     DatasourceState,
     StateSnapshot,
     address_type_of,
     managed_states_by_address,
+    partitions_for_datasource,
     stable_asset_key,
     watermarks_for_datasource,
 )
@@ -39,6 +41,9 @@ from trilogy.execution.state.watermarks import DatasourceWatermark, StaleAsset
 
 ENV_STATE_FILE = "TRILOGY_STATE_FILE"
 ENV_STATE_INPUT = "TRILOGY_STATE_INPUT"
+#: Comma-separated partition ids this invocation owns; scopes the written
+#: snapshot to those slices so concurrent workers produce mergeable deltas.
+ENV_STATE_PARTITION = "TRILOGY_STATE_PARTITION"
 
 
 def read_state_snapshot(path: Path | str) -> StateSnapshot:
@@ -111,8 +116,38 @@ class SnapshotStateStore(BaseStateStore):
             if ds.is_root:
                 continue
             recorded = self._recorded_state(ds, project_root)
-            if recorded is not None:
+            # An entry may be present purely for its slices; seeding an empty
+            # watermark from it would suppress the probe that should run.
+            if recorded is not None and recorded.observed_watermarks:
                 seeded[ds.identifier] = watermarks_for_datasource(recorded, ds)
+        return seeded
+
+    def seeded_partitions(
+        self, env: Environment
+    ) -> dict[str, tuple[list[PartitionObservation], list[PartitionObservation]]]:
+        """Recorded per-slice state, rehydrated for this environment.
+
+        Seeded on exactly the same terms as watermarks: providing a snapshot
+        means "trust these observations instead of re-reading the warehouse",
+        and that has to hold for every kind of observation in it. Partition
+        state being the one thing still probed live would make ``--state-input``
+        mean different things for different fields of the same record — and an
+        out-of-band change can invalidate a watermark just as easily as a slice,
+        so re-probing one and not the other buys no safety, only inconsistency.
+        """
+        project_root = self.project_root or Path(env.working_path).resolve()
+        seeded: dict[
+            str, tuple[list[PartitionObservation], list[PartitionObservation]]
+        ] = {}
+        for ds in env.datasources.values():
+            if ds.is_root:
+                continue
+            recorded = self._recorded_state(ds, project_root)
+            if recorded is None:
+                continue
+            sides = partitions_for_datasource(recorded, ds, env)
+            if sides is not None:
+                seeded[ds.identifier] = sides
         return seeded
 
     def _seed(self, env: Environment) -> None:
@@ -120,9 +155,22 @@ class SnapshotStateStore(BaseStateStore):
             return
         self._seeded = True
         seeded = self.seeded_watermarks(env)
+        seeded_partitions = self.seeded_partitions(env)
         with self._lock:
             for ds_id, watermark in seeded.items():
                 self.watermarks.setdefault(ds_id, watermark)
+            for ds_id, sides in seeded_partitions.items():
+                self.partitions.setdefault(ds_id, sides)
+
+    def partition_asset(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds_id: str,
+        root_assets: set[str] | None = None,
+    ) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+        self._seed(env)
+        return super().partition_asset(env, executor, ds_id, root_assets=root_assets)
 
     def watermark_all_assets(
         self,
@@ -166,6 +214,7 @@ def snapshot_store_factory(
 __all__ = [
     "ENV_STATE_FILE",
     "ENV_STATE_INPUT",
+    "ENV_STATE_PARTITION",
     "SnapshotStateStore",
     "read_state_snapshot",
     "resolve_state_input",

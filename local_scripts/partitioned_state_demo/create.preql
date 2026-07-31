@@ -1,0 +1,6 @@
+# Bootstrap: create the partitioned target, empty. The state snapshot taken
+# right after this is the interesting one — a table that exists, declares its
+# partitioning, and holds no slices at all.
+import model;
+
+create if not exists datasources daily_orders;

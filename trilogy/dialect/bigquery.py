@@ -482,6 +482,16 @@ class BigqueryDialect(BaseDialect):
             )
         return f"PARTITION BY {expr.format(column=quoted)}"
 
+    def generate_partitioned_insert_statements(
+        self,
+        query: ProcessedQueryPersist,
+        recursive: bool,
+        compiled_ctes: list[CompiledCTE],
+    ) -> list[str]:
+        """One scripted statement, not the portable staged sequence: BigQuery
+        drives the per-partition delete from a single BEGIN...END block."""
+        return [self.generate_partitioned_insert(query, recursive, compiled_ctes)]
+
     def generate_partitioned_insert(
         self,
         query: ProcessedQueryPersist,

@@ -1,0 +1,13 @@
+# One partition's worth of work. This is the unit an orchestrator fans out:
+# same script, one `--param load_date=...` per stale partition.
+#
+# APPEND on a datasource declaring `partition by` replaces exactly the slices
+# the select produces (stage -> delete those keys -> insert), so re-running a
+# partition is idempotent and never touches its neighbours.
+import model;
+
+parameter load_date date;
+
+APPEND daily_orders
+WHERE order_date = load_date
+;

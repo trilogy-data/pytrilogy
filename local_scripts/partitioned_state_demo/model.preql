@@ -1,0 +1,37 @@
+# Source of truth: a raw order feed, one row per order.
+key order_id int;
+property order_id.order_date date;
+property order_id.region string;
+property order_id.amount float;
+property order_id.updated_at datetime;
+
+root datasource raw_orders (
+    order_id: order_id,
+    order_date: order_date,
+    region: region,
+    amount: amount,
+    updated_at: updated_at,
+)
+grain (order_id)
+file `./data/orders.csv`
+;
+
+# The daily rollup. `max_updated_at` is carried onto the fact so a partition can
+# be judged against its own slice of the source: a late-arriving edit to one day
+# moves that day's watermark and nothing else.
+auto order_count <- count(order_id) by order_date, region;
+auto total_amount <- sum(amount) by order_date, region;
+auto max_updated_at <- max(updated_at) by order_date, region;
+
+datasource daily_orders (
+    order_date: order_date,
+    region: region,
+    order_count: order_count,
+    total_amount: total_amount,
+    max_updated_at: max_updated_at,
+)
+grain (order_date, region)
+address daily_orders
+freshness by max_updated_at
+partition by order_date
+;

@@ -5,6 +5,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
 from trilogy.core.models.core import DataType
+from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
 
 FUNCTION_MAP = {
@@ -91,6 +92,7 @@ class PrestoDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQL_TEMPLATE
+
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
         DataType.NUMERIC: "DECIMAL",
@@ -109,6 +111,32 @@ class PrestoDialect(BaseDialect):
     ) -> list[str]:
         """Presto/Trino don't enforce PKs; rely on data-driven grain detection."""
         return []
+
+    def render_partition_clause(self, target: CreateTableInfo) -> str:
+        """Presto/Trino declare partitioning as a table property.
+
+        The Hive connector requires partition columns to be the LAST columns in
+        the table, in partition order — a column list that violates that is
+        rejected at CREATE time, so it raises here rather than emitting DDL the
+        engine will refuse. (Iceberg has no such rule, but the stricter check is
+        the safe default: satisfying it is valid on both. Reordering the columns
+        for the user is NOT safe — the persist INSERT is positional, so a table
+        whose column order differs from the datasource's would be written to
+        wrong.)
+        """
+        if not target.partition_keys:
+            return ""
+        names = [column.name for column in target.columns]
+        if names[-len(target.partition_keys) :] != target.partition_keys:
+            raise ValueError(
+                f"{target.name} partitions by {', '.join(target.partition_keys)}, but"
+                " Presto/Trino require partition columns to be the last columns of"
+                f" the table, in partition order; got {', '.join(names)}."
+            )
+        keys = ", ".join(
+            self.render_string_literal(key) for key in target.partition_keys
+        )
+        return f"WITH (partitioned_by = ARRAY[{keys}])"
 
 
 class TrinoDialect(PrestoDialect):

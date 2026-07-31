@@ -76,10 +76,52 @@ After a script-kind refresh, the freshness_probe is re-run once. If it still ret
 
 `snapshot.py` defines the serializable `StateSnapshot`; `persistence.py` is the read half.
 
+**`StateSnapshot` is the universal interchange format** — CLI state files, `trilogy serve`'s `/state`, the studio UI, and the cloud service all speak it verbatim. There is exactly ONE producer per input shape: `scripts/state.py::snapshot_for_parsed_script` for a single parsed script (used by both `trilogy state` and `serve`), and `_snapshot_from_directory` over the refresh probe for a directory. Serve deliberately has **no state model of its own** — the older per-datasource `StateResponse` was removed rather than kept as a second rendering. Do not reintroduce a per-surface shape: a format only stays an interchange while one implementation defines it, and every divergence in this subsystem has started as "just one more view of the same data".
+
 - The snapshot's unit of identity is the **physical address**. Never key on `ds_id` or script — concept addresses are namespaced per script and are deliberately never reconciled across scripts.
 - `managed_states_by_address` excludes roots on purpose: a root watermark is the *expected* side of every staleness comparison, so reusing a recorded one would hide an upstream that has since moved. Roots are always re-probed live.
 - `watermarks_for_datasource` re-keys a recorded watermark onto the reading model's concept names via the shared **physical column** (`WatermarkValue.column`). Watermark keys are concept names, so without this a renamed model's seeded values are silently never compared. Key conventions mirror `watermarks.py`: full address for `KEY_HASH`, bare name otherwise, literal `update_time` passes through.
 - `SnapshotStateStore` seeds **once**, on the first env-aware call. It must NOT re-seed afterwards — `invalidate_address` drops entries so post-refresh evaluation re-reads the warehouse, and re-seeding there would resurrect the pre-refresh value.
+
+### Partition state (`partitions.py`)
+
+A datasource with `partition by` is N independently refreshable slices behind one address, so `DatasourceState.partitions` records each one. Two probes, one query each regardless of slice count:
+
+- `probe_observed_partitions` — `GROUP BY` the partition columns on the physical table (missing/reshaped target reads as "no slices", not an error).
+- `probe_expected_partitions` — a trilogy query with every non-root hidden, so only authoritative sources can answer. Failure is a real answer (the key may not be derivable from roots) and returns `[]` rather than failing the snapshot.
+
+Rules that are load-bearing:
+
+- **`partition_id` is keyed on the PHYSICAL column**, not the concept address — same reason asset keys are physical. Values render canonically (ISO temporals, `__NULL__`), because the id is compared across processes and a driver-dependent `str()` would split one slice in two.
+- **Partition columns are excluded from a slice's watermark keys.** `MAX(order_date)` inside `order_date=2024-01-03` is the slice's own name, never a signal. What remains is `freshness_by`/`incremental_by` minus the partition keys.
+- `expected and not observed` -> **stale, "partition missing"** — the case a table-level MAX structurally cannot see, and the reason this exists. `observed and not expected` is NOT stale: nothing is asking for that slice (`expected=False` says what it is).
+- A stale slice makes the whole datasource stale, even when its table-level watermark looks caught up.
+- Roots are never partitioned assets (`is_partitioned` excludes them) — a root is the expected side, never judged.
+- Partition state is **seeded from `--state-input` on exactly the same terms as watermarks** (`partitions_for_datasource`, the twin of `watermarks_for_datasource`). Supplying a snapshot means "trust these observations instead of re-reading the warehouse", and that must hold for every observation in the record — an out-of-band change invalidates a watermark as easily as a slice, so probing one and not the other buys no safety, only an inconsistent meaning for the same flag. Both sides round trip: each slice carries `observed`/`expected` flags and its own two watermark lists.
+- Seeded partition values are **restored typed, using the READER's declared datatype** (`_restore_partition_value`) — the refresh filter needs real values, not the rendered strings the format stores. Same principle as `_rekey_for` bridging a watermark through the physical column.
+- `partitions_for_datasource` returns None (meaning *probe normally*) when there is nothing trustworthy to seed: the reader declares no partitioning, the writer recorded none (older snapshot), or the record is a **partition-scoped delta** (`partitions_complete=False`), which speaks for only some slices and would understate the rest as absent.
+- `managed_states_by_address` admits an entry with **watermarks OR partitions** — a partitioned datasource may carry its whole state per slice with no table-level watermark. `seeded_watermarks` then skips entries with no watermarks, so a slice-only record does not suppress a watermark probe that should run.
+- `BaseStateStore.partitions` caches per invocation and is dropped by `invalidate`/`invalidate_address` alongside watermarks, so a post-refresh re-probe sees what the refresh wrote.
+
+### Slice-aware refresh
+
+`is_stale` checks slices **before** the table-level watermark comparison, and `StaleAsset.partitions` carries the stale ones. This is not an optimization — it is required for correctness: a missing slice's rows can be OLDER than the table's MAX, so the coarse check reports fresh while a hole sits in the middle of the range. Without it `trilogy state` and `trilogy refresh` disagree about the same asset. When no slice is stale it falls through to the coarse check, so an unprobeable expectation never reads as "fresh".
+
+`StaleAsset.partitions` and `.filters` are **mutually exclusive**. A missing slice may hold rows older than the incremental watermark, so ANDing the two would filter out exactly the rows the refresh exists to write — `update_datasource` lets slices replace the incremental filter rather than narrow it.
+
+`partition_filter` builds an `IN` list for a single key and an OR-of-ANDs for several (row-value `IN` is not portable). A NULL slice is selected with `IS NULL`, never `= NULL` — the read-side twin of the null-safe partition delete; with `=` the slice would be reported stale forever and never written.
+
+The DELETE reads the STAGED keys, so **one statement replaces exactly the N slices its select produced** — writing a set of partitions is the same operation as writing one. `MAX_PARTITION_FILTER_VALUES` chunks only to stay inside statement-size limits; how wide to fan out is the orchestrator's decision, not trilogy's.
+
+**Iteration hazard**: the expected-partition probe hides non-root datasources for the duration of its query, mutating `env.datasources`. Any loop calling `is_stale` over that dict must iterate a materialized copy (`get_stale_assets`, `execute_refresh_plan`'s cascade).
+
+### Merging deltas (`scope_to_partitions` / `merge_snapshots`)
+
+`partitions_complete` is the whole concurrency story. A whole-asset probe sets it True; a run scoped to the slices it owns (`--state-partition`) sets it False, meaning "these slices, and nothing about the others" — necessary because a worker's post-run probe sees the *whole* table, including slices peers are mid-write on.
+
+`merge_snapshots` overlays a scoped delta by `partition_id` and lets a complete one replace the list, then re-derives the datasource status from the merged slices. Because each worker speaks only for slices it owns, **the result is independent of merge order** and replaying a delta is idempotent. That is what lets a file-backed store support parallelism: N workers write N distinct files with no coordination, one coordinator merges.
+
+Datasources are merged **by `datasource_id` alone, never by `(script, datasource_id)`** — a delta legitimately comes from the per-partition build script while the base came from the model, and keying on the pair files the same asset twice. (Note `merge_into_snapshot`, which dedups *within* one probe, still uses the pair: there two scripts really are two views.)
 
 ### Injecting a store
 

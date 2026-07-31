@@ -1,10 +1,12 @@
 """State snapshot contract: a serializable, project-scoped view of asset state.
 
-This is the machine-facing state contract for orchestrators (the ``trilogy
-state`` command, ``run/refresh --state-file``, and any future remote state
-store). It is a superset of the single-file ``/state`` response served by
-``trilogy serve`` (``serve_helpers/models.py``), which stays pinned for its
-existing consumers.
+This is THE interchange format for asset state — shared by the ``trilogy state``
+command, ``run/refresh --state-file``, ``trilogy serve``'s ``/state``, the studio
+UI, and the cloud service. Every producer goes through one computation
+(:func:`~trilogy.scripts.state.snapshot_for_parsed_script` for a single script,
+the directory probe for many), and every consumer receives this shape verbatim.
+A format is only an interchange while one implementation defines it, so there is
+deliberately no per-surface variant to render into.
 
 Keying rules (load-bearing — see ``trilogy/scripts/AGENTS.md``):
 
@@ -53,6 +55,23 @@ operations emit a single ``end`` observation — begin/plan only exist where a
 refresh plan exists. All ``probed_at`` stamps are the emitting process's
 clock: fine for display, not for ordering across machines.
 
+Partitioned datasources (those declaring ``partition by``) additionally record
+**per-partition state** (``DatasourceState.partitions``), because a partitioned
+asset is N independently refreshable slices behind one address, not one thing
+with one verdict. A slice's identity is its hive-style ``partition_id``
+(``order_date=2024-01-03``), keyed on the **physical column** for the same
+reason asset keys are keyed on the physical address. Each slice carries both
+sides of its own comparison, so an orchestrator can read the snapshot, take the
+stale slices as its work list, and fan out one refresh per slice.
+
+``DatasourceState.partitions_complete`` is what makes that fan-out safe to merge
+back. A whole-asset probe enumerates every slice and sets it True; a run scoped
+to the partitions it owns (``--state-partition``) sets it False, declaring "these
+slices, and nothing about the others". :func:`merge_snapshots` overlays a scoped
+delta slice-by-slice and lets a complete one replace the list — so N concurrent
+workers writing N delta files never clobber each other's slices, and no worker
+has to observe (or lock) state it does not own.
+
 ``schema_version`` bumps only on breaking changes to existing fields; new
 fields/values are added without a bump. Consumers must ignore unknown fields.
 """
@@ -67,14 +86,26 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from trilogy.core.enums import AddressType
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import (
     Address,
     Datasource,
     UpdateKey,
     UpdateKeyType,
 )
+from trilogy.execution.state.partitions import (
+    NULL_PARTITION_TOKEN,
+    PartitionObservation,
+    PartitionValue,
+    partition_column_name,
+    partition_verdict,
+    render_partition_value,
+)
 from trilogy.execution.state.phases import get_phase_recorder
-from trilogy.execution.state.watermarks import DatasourceWatermark, StaleAsset
+from trilogy.execution.state.watermarks import (
+    DatasourceWatermark,
+    StaleAsset,
+)
 from trilogy.utility import utc_now_iso
 
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -132,6 +163,31 @@ class ColumnMapping(BaseModel):
     modifiers: list[str] = Field(default_factory=list)
 
 
+class PartitionColumn(BaseModel):
+    """One declared partition key: physical column plus its logical binding."""
+
+    column: str  # physical column — what partition ids are keyed on
+    concept_address: str
+
+
+class PartitionState(BaseModel):
+    """State of one partition slice of a partitioned datasource."""
+
+    partition_id: str  # hive-style ``col=value[/col2=value2]`` — the merge unit
+    values: dict[str, str] = Field(default_factory=dict)  # column -> rendered value
+    observed: bool = False  # the slice exists in the physical table
+    expected: bool = False  # the roots say this slice should exist
+    status: AssetStatus = "unknown"
+    stale_reason: str | None = None
+    row_count: int | None = None
+    observed_watermarks: list[WatermarkValue] = Field(default_factory=list)
+    expected_watermarks: list[WatermarkValue] = Field(default_factory=list)
+    probed_at: str | None = None
+    # Which run last wrote this slice. Provenance for a merged file, whose
+    # slices come from different processes at different times.
+    run_id: str | None = None
+
+
 class PhaseObservation(BaseModel):
     """Watermark state observed at one phase of a run.
 
@@ -177,6 +233,14 @@ class DatasourceState(BaseModel):
     # Phased observations (begin/end) + the plan's advisory verdict.
     observations: list[PhaseObservation] = Field(default_factory=list)
     plan: PlanVerdict | None = None
+    # Declared partitioning, empty for an unpartitioned datasource. Present even
+    # when the table holds no slices yet — "partitioned and empty" and "not
+    # partitioned" are different states.
+    partition_by: list[PartitionColumn] = Field(default_factory=list)
+    partitions: list[PartitionState] = Field(default_factory=list)
+    # Whether ``partitions`` enumerates every slice. False marks a delta scoped
+    # to the slices one worker owns — see ``merge_snapshots``.
+    partitions_complete: bool = True
 
 
 class PhysicalAssetState(BaseModel):
@@ -369,7 +433,12 @@ def managed_states_by_address(snapshot: StateSnapshot) -> dict[str, DatasourceSt
     by_address: dict[str, DatasourceState] = {}
     for asset in snapshot.assets:
         for ds_state in asset.datasources:
-            if ds_state.is_root or not ds_state.observed_watermarks:
+            # Either kind of observation makes an entry worth seeding: a
+            # partitioned datasource carries its whole state per slice and may
+            # have no table-level watermark at all.
+            if ds_state.is_root or not (
+                ds_state.observed_watermarks or ds_state.partitions
+            ):
                 continue
             by_address.setdefault(asset.address, ds_state)
     return by_address
@@ -416,6 +485,92 @@ def watermarks_for_datasource(
     )
 
 
+def _restore_partition_value(rendered: str, datatype) -> PartitionValue:
+    """Inverse of :func:`render_partition_value`, typed by the READER's model.
+
+    Partition values serialize as their canonical rendering, so the type comes
+    from the datasource reading them — the same principle as ``_rekey_for``,
+    which bridges a recorded watermark through the physical column rather than
+    the writer's concept name. Anything unparseable degrades to the string,
+    which still compares consistently."""
+    if rendered == NULL_PARTITION_TOKEN:
+        return None
+    try:
+        if datatype == DataType.DATE:
+            return date.fromisoformat(rendered)
+        if datatype in (DataType.DATETIME, DataType.TIMESTAMP):
+            return datetime.fromisoformat(rendered)
+        if datatype == DataType.INTEGER:
+            return int(rendered)
+        if datatype == DataType.FLOAT:
+            return float(rendered)
+        if datatype == DataType.BOOL:
+            return rendered == "true"
+    except ValueError:
+        pass
+    return rendered
+
+
+def _restore_partition_observation(
+    partition: PartitionState,
+    datatypes: dict[str, object],
+    watermarks: list[WatermarkValue],
+    row_count: int | None,
+) -> PartitionObservation:
+    return PartitionObservation(
+        values={
+            column: _restore_partition_value(rendered, datatypes.get(column))
+            for column, rendered in partition.values.items()
+        },
+        row_count=row_count,
+        keys={
+            entry.key: UpdateKey(
+                concept_name=entry.key,
+                type=UpdateKeyType(entry.type),
+                value=restore_watermark_value(entry),
+            )
+            for entry in watermarks
+        },
+    )
+
+
+def partitions_for_datasource(
+    ds_state: DatasourceState, ds: Datasource, environment
+) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+    """Rehydrate a recorded datasource's slices as ``(observed, expected)``.
+
+    The partition twin of :func:`watermarks_for_datasource`. Both sides round
+    trip: each recorded slice carries ``observed``/``expected`` flags and its own
+    two watermark lists, so the pair a live probe would have produced is
+    reconstructible without touching the warehouse.
+
+    Returns None — meaning "probe normally" — when there is nothing trustworthy
+    to seed: the reader declares no partitioning, the writer recorded none (an
+    older snapshot), or the record is a partition-scoped delta, which speaks for
+    only some slices and would understate the rest as absent.
+    """
+    if not ds.partition_by or not ds_state.partition_by:
+        return None
+    if not ds_state.partitions_complete:
+        return None
+    datatypes: dict[str, object] = {}
+    for col in ds.columns:
+        concept = environment.concepts.get(col.concept.address)
+        if concept is not None and isinstance(col.alias, str):
+            datatypes[col.alias] = concept.datatype.data_type
+    observed = [
+        _restore_partition_observation(p, datatypes, p.observed_watermarks, p.row_count)
+        for p in ds_state.partitions
+        if p.observed
+    ]
+    expected = [
+        _restore_partition_observation(p, datatypes, p.expected_watermarks, None)
+        for p in ds_state.partitions
+        if p.expected
+    ]
+    return observed, expected
+
+
 def _match_column_binding(
     key: str, ds: Datasource | None
 ) -> tuple[str | None, str | None]:
@@ -447,18 +602,102 @@ def _column_mappings(ds: Datasource) -> list[ColumnMapping]:
     ]
 
 
+def _partition_columns(ds: Datasource) -> list[PartitionColumn]:
+    by_address = {col.concept.address: col for col in ds.columns}
+    return [
+        PartitionColumn(
+            column=partition_column_name(by_address[ref.address]),
+            concept_address=ref.address,
+        )
+        for ref in ds.partition_by
+        if ref.address in by_address
+    ]
+
+
+def build_partition_states(
+    ds: Datasource,
+    observed: list[PartitionObservation],
+    expected: list[PartitionObservation],
+    probed_at: str | None = None,
+    run_id: str | None = None,
+) -> list[PartitionState]:
+    """Pair up the two probed sides into one state entry per slice."""
+    observed_by_id = {obs.id: obs for obs in observed}
+    expected_by_id = {exp.id: exp for exp in expected}
+
+    states: list[PartitionState] = []
+    for pid in sorted(observed_by_id.keys() | expected_by_id.keys()):
+        obs = observed_by_id.get(pid)
+        exp = expected_by_id.get(pid)
+        source = obs or exp
+        assert source is not None  # pid came from one of the two maps
+        # The single verdict rule, shared with the refresh work list — see
+        # ``partitions.partition_verdict``.
+        verdict = partition_verdict(obs, exp)
+        states.append(
+            PartitionState(
+                partition_id=pid,
+                values={
+                    column: render_partition_value(value)
+                    for column, value in source.values.items()
+                },
+                observed=obs is not None,
+                expected=exp is not None,
+                status="stale" if verdict.stale else "fresh",
+                stale_reason=verdict.reason,
+                row_count=obs.row_count if obs else None,
+                observed_watermarks=[
+                    _watermark_value(key, update_key, ds, probed_at)
+                    for key, update_key in (obs.keys.items() if obs else ())
+                ],
+                expected_watermarks=[
+                    _watermark_value(key, update_key, ds, probed_at)
+                    for key, update_key in (exp.keys.items() if exp else ())
+                ],
+                probed_at=probed_at,
+                run_id=run_id,
+            )
+        )
+    return states
+
+
+def _partition_rollup_reason(partitions: list[PartitionState]) -> str | None:
+    """How a datasource explains itself when its slices are what made it stale.
+
+    One phrasing, used both when a snapshot is built and when deltas are merged
+    — the merged file must not describe the same condition differently."""
+    stale = [p for p in partitions if p.status == "stale"]
+    if not stale:
+        return None
+    return f"{len(stale)} of {len(partitions)} partitions stale"
+
+
+def _rollup_status(statuses: list[AssetStatus]) -> AssetStatus:
+    if any(s == "stale" for s in statuses):
+        return "stale"
+    if any(s == "unknown" for s in statuses):
+        return "unknown"
+    return "fresh"
+
+
 def build_datasource_state(
     ds: Datasource,
     watermark: DatasourceWatermark | None,
     stale: StaleAsset | None,
     concept_max: dict[str, UpdateKey] | None = None,
     script: str | None = None,
+    partitions: list[PartitionState] | None = None,
 ) -> DatasourceState:
     """Build the per-datasource state entry from probe results.
 
     ``concept_max`` is the expected-side map (root-derived max per concept);
     only entries matching this datasource's observed watermark keys are
-    attached, so a UI can render "behind by how much"."""
+    attached, so a UI can render "behind by how much".
+
+    ``partitions`` is the per-slice state for a partitioned datasource (None
+    when unpartitioned or not probed). A stale slice makes the datasource stale
+    even when its whole-table watermark looks caught up — a missing slice is
+    exactly what a table-level MAX cannot see."""
     if ds.is_refreshable_root:
         refresh_kind: Literal["sql", "script"] | None = "script"
     elif not ds.is_root:
@@ -476,6 +715,11 @@ def build_datasource_state(
     else:
         status = "unknown"
 
+    stale_reason = stale.reason if stale is not None else None
+    if partitions and any(p.status == "stale" for p in partitions):
+        status = "stale"
+        stale_reason = stale_reason or _partition_rollup_reason(partitions)
+
     observations, plan = _phase_observations(ds, observed, expected, probed_at)
 
     return DatasourceState(
@@ -484,12 +728,15 @@ def build_datasource_state(
         is_root=ds.is_root,
         refresh_kind=refresh_kind,
         status=status,
-        stale_reason=stale.reason if stale is not None else None,
+        stale_reason=stale_reason,
         observed_watermarks=observed,
         expected_watermarks=expected,
         columns=_column_mappings(ds),
         observations=observations,
         plan=plan,
+        partition_by=_partition_columns(ds),
+        partitions=partitions or [],
+        partitions_complete=not ds.partition_by or partitions is not None,
     )
 
 
@@ -577,18 +824,12 @@ def merge_into_snapshot(
     assets: list[PhysicalAssetState] = []
     for address in sorted(by_address):
         datasources = sorted(by_address[address], key=lambda d: d.datasource_id)
-        if any(d.status == "stale" for d in datasources):
-            status: AssetStatus = "stale"
-        elif any(d.status == "unknown" for d in datasources):
-            status = "unknown"
-        else:
-            status = "fresh"
         assets.append(
             PhysicalAssetState(
                 address=address,
                 managed=address in managed_addresses,
                 owner_script=(owner_scripts or {}).get(address),
-                status=status,
+                status=_rollup_status([d.status for d in datasources]),
                 datasources=datasources,
             )
         )
@@ -600,13 +841,145 @@ def merge_into_snapshot(
         target=target,
         dialect=dialect,
         assets=assets,
-        summary=StateSnapshotSummary(
-            total=len(assets),
-            managed=sum(1 for a in assets if a.managed),
-            stale=sum(1 for a in assets if a.status == "stale"),
-            fresh=sum(1 for a in assets if a.status == "fresh"),
-            unknown=sum(1 for a in assets if a.status == "unknown"),
-        ),
+        summary=summarize(assets),
+    )
+
+
+def summarize(assets: list[PhysicalAssetState]) -> StateSnapshotSummary:
+    return StateSnapshotSummary(
+        total=len(assets),
+        managed=sum(1 for a in assets if a.managed),
+        stale=sum(1 for a in assets if a.status == "stale"),
+        fresh=sum(1 for a in assets if a.status == "fresh"),
+        unknown=sum(1 for a in assets if a.status == "unknown"),
+    )
+
+
+def stale_partitions(snapshot: StateSnapshot) -> list[tuple[str, str, PartitionState]]:
+    """Every stale slice in a snapshot as ``(asset key, datasource id, slice)``.
+
+    The orchestrator's work list: read the state file, take this, fan out one
+    run per entry."""
+    return [
+        (asset.address, ds_state.datasource_id, partition)
+        for asset in snapshot.assets
+        for ds_state in asset.datasources
+        for partition in ds_state.partitions
+        if partition.status == "stale"
+    ]
+
+
+def scope_to_partitions(
+    snapshot: StateSnapshot, partition_ids: set[str]
+) -> StateSnapshot:
+    """Narrow a snapshot to the slices a worker owns, as a mergeable delta.
+
+    A worker that refreshed one partition observed the whole table on its way
+    out — including slices other workers were concurrently rewriting. Publishing
+    those observations would let the last writer win on data it never owned, so
+    a scoped delta keeps only its own slices and flags
+    ``partitions_complete=False``; :func:`merge_snapshots` then overlays it
+    rather than replacing. Datasources with no matching slice keep an empty
+    scoped list, contributing nothing.
+    """
+    scoped = snapshot.model_copy(deep=True)
+    for asset in scoped.assets:
+        for ds_state in asset.datasources:
+            if not ds_state.partition_by:
+                continue
+            ds_state.partitions = [
+                p for p in ds_state.partitions if p.partition_id in partition_ids
+            ]
+            ds_state.partitions_complete = False
+    return scoped
+
+
+def _merge_partitions(
+    base: DatasourceState, delta: DatasourceState
+) -> list[PartitionState]:
+    if delta.partitions_complete:
+        return list(delta.partitions)
+    merged = {p.partition_id: p for p in base.partitions}
+    for partition in delta.partitions:
+        merged[partition.partition_id] = partition
+    return [merged[pid] for pid in sorted(merged)]
+
+
+def _merge_datasource_state(
+    base: DatasourceState, delta: DatasourceState
+) -> DatasourceState:
+    """Fold one datasource record into another.
+
+    A complete delta is a newer whole-asset probe and simply wins. A scoped
+    delta speaks only for its slices: its asset-level verdict was computed
+    against a table other workers were mid-write on, so the base's fields stand
+    and the status is re-derived from the merged slice set instead.
+    """
+    if delta.partitions_complete and not delta.partition_by:
+        return delta.model_copy(deep=True)
+    if delta.partitions_complete:
+        merged = delta.model_copy(deep=True)
+    else:
+        merged = base.model_copy(deep=True)
+        merged.partitions = _merge_partitions(base, delta)
+    if merged.partitions:
+        merged.status = _rollup_status([p.status for p in merged.partitions])
+        merged.stale_reason = _partition_rollup_reason(merged.partitions)
+    merged.partitions_complete = base.partitions_complete or delta.partitions_complete
+    return merged
+
+
+def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapshot:
+    """Fold partition deltas into a base snapshot.
+
+    The write side of fan-out: N workers each publish a snapshot scoped to the
+    slices they refreshed (see :func:`scope_to_partitions`), and this merges
+    them into one file. Because the merge unit is the ``partition_id`` and each
+    worker only speaks for slices it owns, the result is independent of merge
+    order — which is what lets a file-backed store support parallelism with a
+    single-writer coordinator instead of a lock per asset.
+
+    Assets and datasources present only in a delta are added; everything else
+    keeps the base's record unless the delta claims a complete probe.
+    """
+    assets: dict[str, PhysicalAssetState] = {
+        asset.address: asset.model_copy(deep=True) for asset in base.assets
+    }
+    latest = base
+    for delta in deltas:
+        if delta.snapshot_ts > latest.snapshot_ts:
+            latest = delta
+        for incoming in delta.assets:
+            existing = assets.get(incoming.address)
+            if existing is None:
+                assets[incoming.address] = incoming.model_copy(deep=True)
+                continue
+            # Keyed by datasource id alone, never by script: the defining script
+            # is attribute data, and a delta legitimately comes from a different
+            # one (the per-partition build script rather than the model). Keying
+            # on the pair would file the same asset twice.
+            by_key = {d.datasource_id: d for d in existing.datasources}
+            for ds_state in incoming.datasources:
+                current = by_key.get(ds_state.datasource_id)
+                by_key[ds_state.datasource_id] = (
+                    ds_state.model_copy(deep=True)
+                    if current is None
+                    else _merge_datasource_state(current, ds_state)
+                )
+            existing.datasources = [by_key[k] for k in sorted(by_key)]
+            existing.status = _rollup_status([d.status for d in existing.datasources])
+            existing.managed = existing.managed or incoming.managed
+            existing.owner_script = existing.owner_script or incoming.owner_script
+
+    ordered = [assets[address] for address in sorted(assets)]
+    return StateSnapshot(
+        snapshot_ts=utc_now_iso(),
+        run_id=latest.run_id,
+        project=base.project or latest.project,
+        target=base.target or latest.target,
+        dialect=base.dialect or latest.dialect,
+        assets=ordered,
+        summary=summarize(ordered),
     )
 
 
@@ -618,6 +991,8 @@ __all__ = [
     "AssetStatus",
     "ColumnMapping",
     "DatasourceState",
+    "PartitionColumn",
+    "PartitionState",
     "PhaseObservation",
     "PhysicalAssetState",
     "PlanVerdict",
@@ -626,13 +1001,19 @@ __all__ = [
     "WatermarkValue",
     "address_type_of",
     "build_datasource_state",
+    "build_partition_states",
     "is_remote_address",
     "managed_states_by_address",
     "merge_into_snapshot",
+    "merge_snapshots",
     "observed_and_expected",
+    "partitions_for_datasource",
     "project_relative_path",
     "query_digest",
     "restore_watermark_value",
+    "scope_to_partitions",
     "stable_asset_key",
+    "stale_partitions",
+    "summarize",
     "watermarks_for_datasource",
 ]

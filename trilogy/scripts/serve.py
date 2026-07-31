@@ -4,6 +4,7 @@ import os
 import secrets
 import shutil
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path as PathlibPath
 from urllib.parse import quote
@@ -12,6 +13,7 @@ from click import Path, argument, option, pass_context
 
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
+from trilogy.execution.state.snapshot import StateSnapshot
 from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
     find_all_model_files,
@@ -19,6 +21,7 @@ from trilogy.scripts.serve_helpers import (
     get_relative_model_name,
     get_safe_model_name,
 )
+from trilogy.utility import utc_now_iso
 
 TOKEN_BYTES = 16  # 128-bit random token
 
@@ -60,9 +63,15 @@ def _validate_target(target: str, directory_path: PathlibPath) -> PathlibPath:
 
 
 def _build_cmd(
-    command: str, target_path: PathlibPath, config_path: PathlibPath | None, engine: str
+    command: str,
+    target_path: PathlibPath,
+    config_path: PathlibPath | None,
+    engine: str,
+    options: list[str] | None = None,
 ) -> list[str]:
+    # Options go before the trailing dialect, which is positional.
     cmd = get_trilogy_cmd() + [command, str(target_path)]
+    cmd.extend(options or [])
     if config_path:
         cmd.extend(["--config", str(config_path)])
     elif engine != "generic":
@@ -122,13 +131,14 @@ def create_app(
     connection_type: Dialects | str | None = None,
     connection_options: dict[str, str] | None = None,
     startup_scripts: list[PathlibPath] | None = None,
+    enable_state_cache: bool = True,
 ):
-    # Normalize once so every closure (including compute_state_sync) sees the
+    # Normalize once so every closure (including the state probe) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
     # (e.g. RUNNER~1 vs runneradmin) when doing relative_to() comparisons.
     directory_path = PathlibPath(os.path.realpath(directory_path))
 
-    from fastapi import BackgroundTasks, Depends, HTTPException
+    from fastapi import BackgroundTasks, Depends, HTTPException, Response
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import PlainTextResponse
     from fastapi.routing import APIRouter
@@ -142,16 +152,66 @@ def create_app(
         JobRequest,
         JobStatus,
         ModelImport,
-        StateResponse,
+        StateSnapshotCache,
         StoreIndex,
         cancel_job,
-        compute_state_sync,
+        compute_state_snapshot_sync,
         create_job,
         find_model_by_name,
+        fingerprint_directory,
         generate_model_index,
         get_job,
+        relative_target,
         run_subprocess,
     )
+
+    state_cache = StateSnapshotCache(directory_path) if enable_state_cache else None
+
+    def _job_state_options(cache_key: str) -> tuple[list[str], PathlibPath | None]:
+        """State-store flags for a job, and the file to adopt when it finishes.
+
+        The cache doubles as the job's state store, in both directions:
+        ``--state-input`` hands the job the observations the server already
+        holds instead of making it re-probe, and ``--state-file`` has it write
+        a fresh snapshot back. Nothing has to be kept in sync by hand.
+
+        The seeding half means a job trusts recorded state rather than reading
+        the warehouse for it, which is the documented meaning of
+        ``--state-input``. A table loaded outside trilogy is therefore invisible
+        to it, exactly as it is to a cached ``/state``. ``--no-state-cache``
+        turns off both halves together, since they are the same trust decision.
+        """
+        if state_cache is None:
+            return [], None
+        options: list[str] = []
+        seed = state_cache.state_input_path(
+            cache_key, fingerprint_directory(directory_path)
+        )
+        if seed is not None:
+            options.extend(["--state-input", str(seed)])
+        handle, written = tempfile.mkstemp(suffix=".trilogy-state.json")
+        os.close(handle)
+        options.extend(["--state-file", written])
+        return options, PathlibPath(written)
+
+    def _finish_job(cache_key: str, written: PathlibPath | None) -> None:
+        """Refresh the cache from a finished job.
+
+        Only the job's own target gets a new snapshot — that is the only one it
+        wrote a probe for. Every other entry is dropped rather than reasoned
+        about: a job rewrites assets, targets overlap (a directory contains its
+        files), and state flows downstream, so anything narrower would have to
+        model the dependency graph to be sound. Getting that wrong shows a stale
+        "fresh", which is the one answer this must never invent.
+        """
+        if state_cache is None:
+            return
+        state_cache.clear()
+        if written is None:
+            return
+        if written.exists():
+            state_cache.adopt(cache_key, written, fingerprint_directory(directory_path))
+        written.unlink(missing_ok=True)
 
     url_host = "localhost" if host == "0.0.0.0" else host
     if port in (80, 443):
@@ -164,6 +224,9 @@ def create_app(
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
+        # A browser hides every non-safelisted response header from JS unless it
+        # is named here, so the studio could not read its own cache status.
+        expose_headers=["X-Trilogy-Cached", "X-Trilogy-Computed-At"],
     )
 
     # --- Token auth dependency (skipped when token is None) ---
@@ -306,8 +369,16 @@ def create_app(
         """Run a trilogy file or directory in a background subprocess."""
         target_path = _validate_target(request.target, directory_path)
         job = create_job()
-        cmd = _build_cmd("run", target_path, config_path, engine)
-        background_tasks.add_task(run_subprocess, job, cmd, str(directory_path))
+        cache_key = relative_target(target_path, directory_path)
+        options, written = _job_state_options(cache_key)
+        cmd = _build_cmd("run", target_path, config_path, engine, options)
+        background_tasks.add_task(
+            run_subprocess,
+            job,
+            cmd,
+            str(directory_path),
+            lambda: _finish_job(cache_key, written),
+        )
         return JobStatus(job_id=job.job_id, status=job.status, output=job.output, error=job.error)  # type: ignore[arg-type]
 
     @router.post("/refresh", response_model=JobStatus)
@@ -317,8 +388,16 @@ def create_app(
         """Refresh stale assets in a trilogy file or directory in a background subprocess."""
         target_path = _validate_target(request.target, directory_path)
         job = create_job()
-        cmd = _build_cmd("refresh", target_path, config_path, engine)
-        background_tasks.add_task(run_subprocess, job, cmd, str(directory_path))
+        cache_key = relative_target(target_path, directory_path)
+        options, written = _job_state_options(cache_key)
+        cmd = _build_cmd("refresh", target_path, config_path, engine, options)
+        background_tasks.add_task(
+            run_subprocess,
+            job,
+            cmd,
+            str(directory_path),
+            lambda: _finish_job(cache_key, written),
+        )
         return JobStatus(job_id=job.job_id, status=job.status, output=job.output, error=job.error)  # type: ignore[arg-type]
 
     @router.get("/jobs/{job_id}", response_model=JobStatus)
@@ -349,21 +428,58 @@ def create_app(
             return_code=job.return_code,
         )
 
-    @router.get("/state", response_model=StateResponse)
-    async def get_state(target: str) -> StateResponse:
-        """Return watermark and staleness state for all datasources in a trilogy file."""
+    @router.get("/state")
+    async def get_state(
+        target: str, response: Response, refresh: bool = False
+    ) -> StateSnapshot:
+        """Watermark, staleness and partition state for a trilogy file or directory.
+
+        Returns a ``StateSnapshot`` — the interchange format shared with
+        ``trilogy state -o``, ``run/refresh --state-file``, and the cloud
+        service. A directory target is probed as a whole project, resolving
+        cross-script ownership and deduplicating by physical address.
+
+        **Served from an on-disk cache by default.** Computing this re-parses
+        the target, builds an executor and re-probes the warehouse — seconds per
+        call, and real money on a billed warehouse — so a cached snapshot is
+        reused until a model file changes or a run/refresh job finishes. The
+        cache lives in ``.trilogy/state`` under the served directory and so
+        survives a server restart.
+
+        That makes ``snapshot_ts`` load-bearing rather than informational: it is
+        when the warehouse was actually observed, and a client showing state
+        passively should surface it. The deliberate gap is a table loaded
+        *outside* trilogy, which no server-side event can catch — pass
+        ``refresh=true`` to force a re-probe.
+
+        Cache status is reported in headers rather than in the body, so the body
+        stays a verbatim ``StateSnapshot``:
+
+        - ``X-Trilogy-Cached``: ``true`` / ``false``
+        - ``X-Trilogy-Computed-At``: when the returned probe actually ran
+        """
         import asyncio
 
+        from click.exceptions import Exit
+
         target_path = _validate_target(target, directory_path)
-        if not target_path.is_file():
-            raise HTTPException(
-                status_code=400, detail="Target must be a file, not a directory"
-            )
+        cache_key = relative_target(target_path, directory_path)
+
+        fingerprint = ""
+        if state_cache is not None:
+            fingerprint = fingerprint_directory(directory_path)
+            if not refresh:
+                hit = state_cache.get(cache_key, fingerprint)
+                if hit is not None:
+                    response.headers["X-Trilogy-Cached"] = "true"
+                    response.headers["X-Trilogy-Computed-At"] = hit.computed_at
+                    return hit.snapshot
+
         loop = asyncio.get_event_loop()
         try:
-            return await loop.run_in_executor(
+            snapshot = await loop.run_in_executor(
                 None,
-                compute_state_sync,
+                compute_state_snapshot_sync,
                 target_path,
                 engine,
                 config_path,
@@ -371,10 +487,24 @@ def create_app(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except Exit as e:
+            # The directory probe exits the process on an unparseable script;
+            # for a server that is a bad request, not a crash.
+            raise HTTPException(
+                status_code=400,
+                detail=f"State probe failed for '{target}' (exit {e.exit_code}); "
+                "check the scripts parse and their dialect is configured.",
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"State computation failed: {e}"
             )
+        computed_at = utc_now_iso()
+        if state_cache is not None:
+            state_cache.put(cache_key, snapshot, fingerprint, computed_at)
+        response.headers["X-Trilogy-Cached"] = "false"
+        response.headers["X-Trilogy-Computed-At"] = computed_at
+        return snapshot
 
     app.include_router(router)
 
@@ -411,6 +541,12 @@ def create_app(
     type=str,
     help="Use a specific auth token instead of generating one randomly",
 )
+@option(
+    "--no-state-cache",
+    is_flag=True,
+    default=False,
+    help="Recompute /state on every request instead of caching it under .trilogy/state",
+)
 @pass_context
 def serve(
     ctx,
@@ -422,6 +558,7 @@ def serve(
     no_browser: bool,
     no_auth: bool,
     auth_token: str | None,
+    no_state_cache: bool,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -492,6 +629,7 @@ def serve(
         connection_type=connection_type,
         connection_options=connection_options,
         startup_scripts=startup_scripts,
+        enable_state_cache=not no_state_cache,
     )
 
     # Generate Trilogy Studio URL

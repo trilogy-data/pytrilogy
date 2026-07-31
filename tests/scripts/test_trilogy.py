@@ -1,6 +1,8 @@
 import importlib.util
+import io
 import os
 import re
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +12,7 @@ from click.testing import CliRunner
 
 from trilogy.scripts.common import handle_execution_exception
 from trilogy.scripts.display import set_rich_mode
-from trilogy.scripts.trilogy import cli
+from trilogy.scripts.trilogy import _force_utf8_stdio, cli
 
 RICH_MODES = [False]
 
@@ -27,6 +29,22 @@ def strip_ansi(text):
 
 
 bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
+
+
+def test_force_utf8_stdio_leaves_capture_streams_alone():
+    """A capture stream (pytest's, click's CliRunner) is already UTF-8, but
+    opened with errors='replace' over a buffer that also holds raw bytes
+    subprocesses wrote to the captured fd. reconfigure() resets errors to
+    'strict' when it isn't passed, and one stray byte then fails every capture
+    read for the rest of the session -- so UTF-8 streams must be left alone."""
+    captured = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="replace")
+    narrow = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="replace")
+
+    with patch.object(sys, "stdout", captured), patch.object(sys, "stderr", narrow):
+        _force_utf8_stdio()
+
+    assert (captured.encoding, captured.errors) == ("utf-8", "replace")
+    assert (narrow.encoding, narrow.errors) == ("utf-8", "replace")
 
 
 def test_version():

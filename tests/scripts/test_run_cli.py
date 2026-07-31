@@ -25,9 +25,10 @@ def test_run_rejects_unknown_dialect_with_usage_error(tmp_path: Path):
 
 
 def test_run_empty_stdin_with_imports_parses_imports_only(tmp_path: Path):
-    """`echo "" | trilogy run --import raw/X:X -` lets an agent validate that
-    its imports parse without supplying a query body. Used to error
-    'No input on stdin.' and exit 2 — now succeeds with zero statements."""
+    """`echo "" | trilogy run --import raw/X:X -` validates that imports parse
+    without supplying a query body. Used to error 'No input on stdin.' and exit
+    2 — now succeeds (with a nothing-executed warning) on zero statements.
+    Agent mode is the exception; see test_run_import_only_file_fails_in_agent_mode."""
     raw = tmp_path / "raw"
     raw.mkdir()
     (raw / "tiny.preql").write_text(
@@ -131,18 +132,22 @@ def _json_events(output: str) -> list[dict]:
     return events
 
 
-def test_run_definitions_only_file_is_not_silent_success(tmp_path: Path):
-    """A file of only rowset/concept definitions with no consuming `select`
-    used to run as `Executing 0 statements... Execution Complete` (exit 0) — a
-    silent false success that drove agent churn. It now fails with an actionable
-    message naming the missing select."""
+def _defs_file(tmp_path: Path) -> Path:
     f = tmp_path / "defs.preql"
     f.write_text(
         "key id int;\nwith base_agg as select id, count(id) as c;",
         encoding="utf-8",
     )
-    result = CliRunner().invoke(cli, ["run", str(f), "duck_db"])
-    assert result.exit_code != 0, (result.output, result.exception)
+    return f
+
+
+def test_run_definitions_only_file_warns_but_succeeds(tmp_path: Path):
+    """A file of only rowset/concept definitions with no consuming `select` is a
+    legitimate human workflow (checking that declarations parse), so outside
+    agent mode it warns rather than failing — but it must never be silent,
+    because `Executing 0 statements... Execution Complete` reads as a real run."""
+    result = CliRunner().invoke(cli, ["run", str(_defs_file(tmp_path)), "duck_db"])
+    assert result.exit_code == 0, (result.output, result.exception)
     out = result.output or ""
     assert "Nothing was executed" in out
     assert "select" in out
@@ -150,12 +155,26 @@ def test_run_definitions_only_file_is_not_silent_success(tmp_path: Path):
     assert "1 concept" in out and "1 rowset" in out
 
 
-def test_run_definitions_only_json_reports_not_ok(tmp_path: Path):
-    """In JSON mode the summary must report ok:false (not the misleading
+def test_run_definitions_only_json_alone_still_succeeds(tmp_path: Path):
+    """`--format json` is a rendering choice, not a declaration that a program
+    is reading — a human piping JSON keeps the warning-and-exit-0 behaviour."""
+    result = CliRunner().invoke(
+        cli, ["--format", "json", "run", str(_defs_file(tmp_path)), "duck_db"]
+    )
+    assert result.exit_code == 0, (result.output, result.exception)
+    warning = next(
+        e for e in _json_events(result.output) if e.get("event") == "warning"
+    )
+    assert "Nothing was executed" in warning["message"]
+
+
+def test_run_definitions_only_agent_mode_reports_not_ok(tmp_path: Path):
+    """Under `--agent` the summary must report ok:false (not the misleading
     ok:true, rows:0) and an error event must carry the guidance."""
-    f = tmp_path / "defs.preql"
-    f.write_text("with a as select 1 -> x;", encoding="utf-8")
-    result = CliRunner().invoke(cli, ["--format", "json", "run", str(f), "duck_db"])
+    result = CliRunner().invoke(
+        cli,
+        ["--agent", "--format", "json", "run", str(_defs_file(tmp_path)), "duck_db"],
+    )
     assert result.exit_code != 0
     events = _json_events(result.output)
     summary = next(e for e in events if e.get("event") == "summary")
@@ -163,6 +182,44 @@ def test_run_definitions_only_json_reports_not_ok(tmp_path: Path):
     assert summary["statements"] == 0
     error = next(e for e in events if e.get("event") == "error")
     assert "Nothing was executed" in error["message"]
+
+
+def test_run_definitions_only_agent_env_reports_not_ok(tmp_path: Path, monkeypatch):
+    """The agent subprocess opts in through TRILOGY_AGENT_MODE rather than the
+    flag, so the raise must key on the resolved mode, not on argv."""
+    monkeypatch.setenv("TRILOGY_AGENT_MODE", "1")
+    result = CliRunner().invoke(cli, ["run", str(_defs_file(tmp_path)), "duck_db"])
+    assert result.exit_code != 0
+    assert "Nothing was executed" in (result.output or "")
+
+
+def test_run_import_only_file_fails_in_agent_mode(tmp_path: Path):
+    """Imports alone are as much a no-op as a declarations-only file. Splitting
+    the two only made the failure inconsistent, so agent mode rejects both."""
+    (tmp_path / "tiny.preql").write_text("key id int;", encoding="utf-8")
+    f = tmp_path / "imports.preql"
+    f.write_text("import tiny;", encoding="utf-8")
+    result = CliRunner().invoke(cli, ["--agent", "run", str(f), "duck_db"])
+    assert result.exit_code != 0
+    assert "Nothing was executed" in (result.output or "")
+    # Still a warning-only no-op for a human.
+    human = CliRunner().invoke(cli, ["run", str(f), "duck_db"])
+    assert human.exit_code == 0, (human.output, human.exception)
+    assert "Nothing was executed" in (human.output or "")
+
+
+def test_run_empty_body_fails_in_agent_mode(tmp_path: Path):
+    """An empty script parses fine and executes nothing — the same false
+    success, with no definitions to name in the message."""
+    f = tmp_path / "empty.preql"
+    f.write_text("", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli, ["--agent", "--format", "json", "run", str(f), "duck_db"]
+    )
+    assert result.exit_code != 0
+    error = next(e for e in _json_events(result.output) if e.get("event") == "error")
+    assert "Nothing was executed" in error["message"]
+    assert "contains no statements" in error["message"]
 
 
 def test_run_select_returning_zero_rows_still_ok(tmp_path: Path):

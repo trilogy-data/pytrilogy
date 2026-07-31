@@ -23,7 +23,6 @@ from trilogy.scripts.serve_helpers.jobs import (
     run_subprocess,
 )
 from trilogy.scripts.serve_helpers.models import (
-    AssetState,
     ConnectionSpec,
     DirectoryListing,
     FileCreateRequest,
@@ -33,16 +32,21 @@ from trilogy.scripts.serve_helpers.models import (
     JobRequest,
     JobStatus,
     ModelImport,
-    StateResponse,
-    StateSummary,
     StoreIndex,
     StoreModelIndex,
-    WatermarkInfo,
 )
-from trilogy.scripts.serve_helpers.state_computation import compute_state_sync
+from trilogy.scripts.serve_helpers.state_cache import (
+    CachedSnapshot,
+    StateSnapshotCache,
+    fingerprint_directory,
+)
+from trilogy.scripts.serve_helpers.state_computation import (
+    compute_state_snapshot_sync,
+    relative_target,
+)
 
 __all__ = [
-    "AssetState",
+    "CachedSnapshot",
     "ConnectionSpec",
     "DirectoryListing",
     "FileCreateRequest",
@@ -53,13 +57,11 @@ __all__ = [
     "JobRequest",
     "JobStatus",
     "ModelImport",
-    "StateResponse",
-    "StateSummary",
+    "StateSnapshotCache",
     "StoreIndex",
     "StoreModelIndex",
-    "WatermarkInfo",
     "cancel_job",
-    "compute_state_sync",
+    "compute_state_snapshot_sync",
     "create_job",
     "extract_description_from_file",
     "find_all_model_files",
@@ -69,9 +71,11 @@ __all__ = [
     "find_python_files",
     "find_sql_files",
     "find_trilogy_files",
+    "fingerprint_directory",
     "generate_model_index",
     "get_job",
     "get_relative_model_name",
     "get_safe_model_name",
+    "relative_target",
     "run_subprocess",
 ]

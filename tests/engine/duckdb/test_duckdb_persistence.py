@@ -31,6 +31,14 @@ def _tables(path: Path) -> set[str]:
         con.close()
 
 
+def _rows(path: Path, sql: str) -> list[tuple]:
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return con.execute(sql).fetchall()
+    finally:
+        con.close()
+
+
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "persist.duckdb"
@@ -89,6 +97,54 @@ def test_explicit_transaction_still_rolls_back(db_path, tmp_path):
     exec.connection.rollback()
     exec.close()
     assert "scratch" not in _tables(db_path)
+
+
+def test_reconnect_to_existing_db_still_persists(db_path, tmp_path):
+    """A second executor against the same file must still commit its writes.
+
+    Connect-time setup skips the guard-macro write when the macro is already
+    defined, which is exactly the case on every connection after the first. That
+    check is a read, and a read that leaves a transaction open makes every later
+    write look caller-managed — so close() discards it while the caller is told
+    the write succeeded.
+    """
+    first = _executor(db_path, tmp_path)
+    first.execute_raw_sql("CREATE TABLE raw_t AS SELECT 1 AS i, 'a' AS n")
+    first.close()
+
+    second = _executor(db_path, tmp_path)
+    assert not second.connection.in_transaction()
+    second.execute_text(SETUP + "persist p into out_t from select i, n;")
+    second.close()
+
+    assert "out_t" in _tables(db_path)
+    assert _rows(db_path, "select count(*) from out_t") == [(1,)]
+
+
+def test_concurrent_executors_share_one_database(db_path, tmp_path):
+    """Directory-wide probes build executors on a thread pool.
+
+    Against one on-disk warehouse they all run the same connect-time setup DDL,
+    and DuckDB aborts the losers of a catalog write race. In-memory databases
+    never showed this: each executor owns a private catalog.
+    """
+    import concurrent.futures
+
+    seed = _executor(db_path, tmp_path)
+    seed.execute_raw_sql("CREATE TABLE raw_t AS SELECT 1 AS i, 'a' AS n")
+    seed.close()
+
+    def connect_and_read() -> int:
+        exec = _executor(db_path, tmp_path)
+        try:
+            return exec.execute_raw_sql("select count(*) from raw_t").fetchall()[0][0]
+        finally:
+            exec.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        assert [
+            f.result() for f in [pool.submit(connect_and_read) for _ in range(8)]
+        ] == [1] * 8
 
 
 def test_persist_commits_immediately(db_path, tmp_path):

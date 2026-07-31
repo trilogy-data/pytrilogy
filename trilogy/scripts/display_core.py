@@ -137,6 +137,36 @@ def is_json_mode() -> bool:
     return OUTPUT_FORMAT == "json"
 
 
+# --- Agent mode -------------------------------------------------------------
+# An explicit declaration that a program, not a person, consumes this run. It is
+# deliberately separate from the output format: ``--format json`` is about
+# rendering, and a human piping JSON into jq should not inherit an agent's exit
+# codes. What it changes is what counts as a failure — a warning nobody reads is
+# no signal at all, so conditions an author would merely be told about (a run
+# that executed nothing) become non-zero exits here.
+_ENV_AGENT_MODE = "TRILOGY_AGENT_MODE"
+_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _initial_agent_mode() -> bool:
+    return (os.environ.get(_ENV_AGENT_MODE) or "").strip().lower() in _TRUTHY
+
+
+AGENT_MODE = _initial_agent_mode()
+
+
+def set_agent_mode(value: "bool | None") -> None:
+    """Set agent mode. ``None`` re-resolves from ``TRILOGY_AGENT_MODE`` — the
+    default when no CLI flag is passed — so each invocation starts fresh rather
+    than inheriting a prior in-process one."""
+    global AGENT_MODE
+    AGENT_MODE = _initial_agent_mode() if value is None else value
+
+
+def is_agent_mode() -> bool:
+    return AGENT_MODE
+
+
 def _is_scalar(value: Any) -> bool:
     return not isinstance(value, (list, dict))
 

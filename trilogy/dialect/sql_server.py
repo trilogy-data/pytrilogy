@@ -77,6 +77,16 @@ class SqlServerDialect(BaseDialect):
     SQL_TEMPLATE = TSQL_TEMPLATE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
 
+    def staging_table_name(self, query) -> str:
+        """T-SQL marks a session-local temp table with a leading ``#``; without
+        it the staging table is a permanent one in the default schema."""
+        return f"#{super().staging_table_name(query)}"
+
+    def render_staging_create(self, target: str, staged: str) -> str:
+        """T-SQL has no ``CREATE TABLE ... AS SELECT``; ``SELECT ... INTO``
+        creates the table from the query's shape instead."""
+        return f"SELECT * INTO {staged} FROM {target} WHERE 1=0"
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[TableColumn]:
