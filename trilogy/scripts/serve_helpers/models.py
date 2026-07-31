@@ -108,37 +108,7 @@ class JobStatus(BaseModel):
     return_code: int | None = None
 
 
-AssetStatusLiteral = Literal["fresh", "stale", "unknown"]
-
-
-class WatermarkInfo(BaseModel):
-    """Serialized watermark for a single key on a datasource."""
-
-    type: str  # "incremental_key", "update_time", "key_hash"
-    value: str | None  # always stringified for JSON safety
-
-
-class AssetState(BaseModel):
-    """State of a single datasource asset."""
-
-    id: str
-    is_root: bool
-    status: AssetStatusLiteral
-    stale_reason: str | None = None
-    watermarks: dict[str, WatermarkInfo]
-
-
-class StateSummary(BaseModel):
-    total: int
-    root: int
-    stale: int
-    fresh: int
-    unknown: int
-
-
-class StateResponse(BaseModel):
-    """Asset-level state for a parsed trilogy file."""
-
-    target: str
-    assets: list[AssetState]
-    summary: StateSummary
+# Asset state has no model here on purpose: ``/state`` returns a
+# ``trilogy.execution.state.snapshot.StateSnapshot``, the interchange format
+# shared with the CLI's state files and the cloud service. A serve-local shape
+# would be a second definition of the same thing.

@@ -1,10 +1,12 @@
 """State snapshot contract: a serializable, project-scoped view of asset state.
 
-This is the machine-facing state contract for orchestrators (the ``trilogy
-state`` command, ``run/refresh --state-file``, and any future remote state
-store). It is a superset of the single-file ``/state`` response served by
-``trilogy serve`` (``serve_helpers/models.py``), which stays pinned for its
-existing consumers.
+This is THE interchange format for asset state — shared by the ``trilogy state``
+command, ``run/refresh --state-file``, ``trilogy serve``'s ``/state``, the studio
+UI, and the cloud service. Every producer goes through one computation
+(:func:`~trilogy.scripts.state.snapshot_for_parsed_script` for a single script,
+the directory probe for many), and every consumer receives this shape verbatim.
+A format is only an interchange while one implementation defines it, so there is
+deliberately no per-surface variant to render into.
 
 Keying rules (load-bearing — see ``trilogy/scripts/AGENTS.md``):
 
@@ -84,6 +86,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from trilogy.core.enums import AddressType
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import (
     Address,
     Datasource,
@@ -91,7 +94,9 @@ from trilogy.core.models.datasource import (
     UpdateKeyType,
 )
 from trilogy.execution.state.partitions import (
+    NULL_PARTITION_TOKEN,
     PartitionObservation,
+    PartitionValue,
     partition_column_name,
     partition_verdict,
     render_partition_value,
@@ -428,7 +433,12 @@ def managed_states_by_address(snapshot: StateSnapshot) -> dict[str, DatasourceSt
     by_address: dict[str, DatasourceState] = {}
     for asset in snapshot.assets:
         for ds_state in asset.datasources:
-            if ds_state.is_root or not ds_state.observed_watermarks:
+            # Either kind of observation makes an entry worth seeding: a
+            # partitioned datasource carries its whole state per slice and may
+            # have no table-level watermark at all.
+            if ds_state.is_root or not (
+                ds_state.observed_watermarks or ds_state.partitions
+            ):
                 continue
             by_address.setdefault(asset.address, ds_state)
     return by_address
@@ -473,6 +483,92 @@ def watermarks_for_datasource(
             )
         }
     )
+
+
+def _restore_partition_value(rendered: str, datatype) -> PartitionValue:
+    """Inverse of :func:`render_partition_value`, typed by the READER's model.
+
+    Partition values serialize as their canonical rendering, so the type comes
+    from the datasource reading them — the same principle as ``_rekey_for``,
+    which bridges a recorded watermark through the physical column rather than
+    the writer's concept name. Anything unparseable degrades to the string,
+    which still compares consistently."""
+    if rendered == NULL_PARTITION_TOKEN:
+        return None
+    try:
+        if datatype == DataType.DATE:
+            return date.fromisoformat(rendered)
+        if datatype in (DataType.DATETIME, DataType.TIMESTAMP):
+            return datetime.fromisoformat(rendered)
+        if datatype == DataType.INTEGER:
+            return int(rendered)
+        if datatype == DataType.FLOAT:
+            return float(rendered)
+        if datatype == DataType.BOOL:
+            return rendered == "true"
+    except ValueError:
+        pass
+    return rendered
+
+
+def _restore_partition_observation(
+    partition: PartitionState,
+    datatypes: dict[str, object],
+    watermarks: list[WatermarkValue],
+    row_count: int | None,
+) -> PartitionObservation:
+    return PartitionObservation(
+        values={
+            column: _restore_partition_value(rendered, datatypes.get(column))
+            for column, rendered in partition.values.items()
+        },
+        row_count=row_count,
+        keys={
+            entry.key: UpdateKey(
+                concept_name=entry.key,
+                type=UpdateKeyType(entry.type),
+                value=restore_watermark_value(entry),
+            )
+            for entry in watermarks
+        },
+    )
+
+
+def partitions_for_datasource(
+    ds_state: DatasourceState, ds: Datasource, environment
+) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+    """Rehydrate a recorded datasource's slices as ``(observed, expected)``.
+
+    The partition twin of :func:`watermarks_for_datasource`. Both sides round
+    trip: each recorded slice carries ``observed``/``expected`` flags and its own
+    two watermark lists, so the pair a live probe would have produced is
+    reconstructible without touching the warehouse.
+
+    Returns None — meaning "probe normally" — when there is nothing trustworthy
+    to seed: the reader declares no partitioning, the writer recorded none (an
+    older snapshot), or the record is a partition-scoped delta, which speaks for
+    only some slices and would understate the rest as absent.
+    """
+    if not ds.partition_by or not ds_state.partition_by:
+        return None
+    if not ds_state.partitions_complete:
+        return None
+    datatypes: dict[str, object] = {}
+    for col in ds.columns:
+        concept = environment.concepts.get(col.concept.address)
+        if concept is not None and isinstance(col.alias, str):
+            datatypes[col.alias] = concept.datatype.data_type
+    observed = [
+        _restore_partition_observation(p, datatypes, p.observed_watermarks, p.row_count)
+        for p in ds_state.partitions
+        if p.observed
+    ]
+    expected = [
+        _restore_partition_observation(p, datatypes, p.expected_watermarks, None)
+        for p in ds_state.partitions
+        if p.expected
+    ]
+    return observed, expected
 
 
 def _match_column_binding(
@@ -911,6 +1007,7 @@ __all__ = [
     "merge_into_snapshot",
     "merge_snapshots",
     "observed_and_expected",
+    "partitions_for_datasource",
     "project_relative_path",
     "query_digest",
     "restore_watermark_value",

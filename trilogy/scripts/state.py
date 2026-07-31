@@ -182,11 +182,85 @@ def _snapshot_from_directory(
     )
 
 
+def snapshot_for_parsed_script(
+    executor,
+    script_path: PathlibPath,
+    project_root: PathlibPath,
+    target: str,
+    dialect: str,
+    run_id: str | None = None,
+    state_store=None,
+) -> StateSnapshot:
+    """Build a snapshot from an executor that has already parsed one script.
+
+    THE single-script state computation. ``trilogy state`` and ``trilogy
+    serve``'s ``/state`` both go through here, so the snapshot a CLI writes to a
+    file, a cloud service returns, and the studio UI renders are the same
+    object computed the same way — the state format is only an interchange if
+    exactly one function produces it.
+
+    The caller owns the executor (creation, parsing, and closing) because the
+    two entrypoints build it very differently.
+    """
+    from trilogy.execution.state import new_state_store
+
+    store = state_store or new_state_store()
+    watermarks = store.watermark_all_assets(executor.environment, executor)
+    stale_assets = store.get_stale_assets(executor.environment, executor)
+    stale_map = {a.datasource_id: a for a in stale_assets}
+
+    probed_partitions: ProbedPartitions = {}
+    for ds_id in list(executor.environment.datasources):
+        sides = store.partition_asset(executor.environment, executor, ds_id)
+        if sides is not None:
+            probed_partitions[ds_id] = sides
+
+    managed = {
+        ds.safe_address
+        for ds in executor.environment.datasources.values()
+        if ds.is_managed
+    }
+
+    script_attr = project_relative_path(str(script_path), project_root)
+    keys_by_address: dict[str, str] = {}
+    entries: list[tuple[str, DatasourceState]] = []
+    for ds in executor.environment.datasources.values():
+        key = _asset_key(ds, ds.safe_address, project_root)
+        keys_by_address.setdefault(ds.safe_address, key)
+        entries.append(
+            (
+                key,
+                build_datasource_state(
+                    ds,
+                    watermarks.get(ds.identifier),
+                    stale_map.get(ds.identifier),
+                    store.concept_max_watermarks,
+                    script=script_attr,
+                    partitions=_partition_states(ds, probed_partitions, run_id),
+                ),
+            )
+        )
+    return merge_into_snapshot(
+        entries,
+        managed_addresses={
+            keys_by_address[addr] for addr in managed if addr in keys_by_address
+        },
+        # The single script builds every managed address it binds.
+        owner_scripts={
+            keys_by_address[addr]: script_attr
+            for addr in managed
+            if addr in keys_by_address
+        },
+        run_id=run_id,
+        target=target,
+        dialect=dialect,
+    )
+
+
 def _snapshot_from_file(
     cli_params: CLIRuntimeParams, input_path: PathlibPath, run_id: str | None
 ) -> StateSnapshot:
     """Single-file snapshot: parse, watermark, and classify in one executor."""
-    from trilogy.execution.state import new_state_store
     from trilogy.scripts.common import (
         create_executor_for_script,
         merge_runtime_config,
@@ -216,56 +290,13 @@ def _snapshot_from_file(
         with safe_open(node.path) as f:
             executor.parse_text(f.read(), root=node.path)
 
-        store = new_state_store()
-        watermarks = store.watermark_all_assets(executor.environment, executor)
-        stale_assets = store.get_stale_assets(executor.environment, executor)
-        stale_map = {a.datasource_id: a for a in stale_assets}
-
-        probed_partitions: ProbedPartitions = {}
-        for ds_id in list(executor.environment.datasources):
-            sides = store.partition_asset(executor.environment, executor, ds_id)
-            if sides is not None:
-                probed_partitions[ds_id] = sides
-
-        managed = {
-            ds.safe_address
-            for ds in executor.environment.datasources.values()
-            if ds.is_managed
-        }
-
-        script_attr = project_relative_path(str(node.path), project_root)
-        keys_by_address: dict[str, str] = {}
-        entries: list[tuple[str, DatasourceState]] = []
-        for ds in executor.environment.datasources.values():
-            key = _asset_key(ds, ds.safe_address, project_root)
-            keys_by_address.setdefault(ds.safe_address, key)
-            entries.append(
-                (
-                    key,
-                    build_datasource_state(
-                        ds,
-                        watermarks.get(ds.identifier),
-                        stale_map.get(ds.identifier),
-                        store.concept_max_watermarks,
-                        script=script_attr,
-                        partitions=_partition_states(ds, probed_partitions, run_id),
-                    ),
-                )
-            )
-        return merge_into_snapshot(
-            entries,
-            managed_addresses={
-                keys_by_address[addr] for addr in managed if addr in keys_by_address
-            },
-            # The single script builds every managed address it binds.
-            owner_scripts={
-                keys_by_address[addr]: script_attr
-                for addr in managed
-                if addr in keys_by_address
-            },
-            run_id=run_id,
+        return snapshot_for_parsed_script(
+            executor,
+            node.path,
+            project_root,
             target=str(input_path),
             dialect=edialect.value,
+            run_id=run_id,
         )
     finally:
         executor.close()

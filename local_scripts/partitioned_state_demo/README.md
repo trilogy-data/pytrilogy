@@ -236,20 +236,15 @@ Generated at runtime: `warehouse.duckdb`, `data/orders.csv`, `state/state.json`,
   slices as N concurrent processes is the orchestrator's job — that is what
   `orchestrate.py` does, and the tradeoff is retry granularity and warehouse
   parallelism, neither of which the language can size for you.
-- **Partition state is always probed live, never seeded** from `--state-input`.
-  Watermark seeding exists because probing is expensive; a partition probe is
-  one `GROUP BY`, and trusting a merged file's slices without checking would
-  hide a partition someone dropped out of band.
+- **A partition-scoped delta is not usable as `--state-input`.** It speaks for
+  only some slices, so seeding from it would report the rest as absent. Feed the
+  merged file. (A complete snapshot seeds slices exactly as it seeds
+  watermarks.)
 - **`partition by` reaches physical DDL on BigQuery and Presto/Trino only.**
-  DuckDB and SQLite have no table partitioning at all. Postgres, MySQL and SQL
-  Server *do*, but a partitioned parent refuses every write until its child
-  partitions or boundaries exist — emitting the clause alone would break the
-  table. Doing it properly means creating each slice's partition as it is first
-  written, which per-slice state now has the information to drive but which is
-  its own feature. Snowflake has no declarative partitioning; `CLUSTER BY` is
-  the pruning analogue but it bills credits, so it is not something to opt into
-  silently. Everywhere else `partition by` remains a logical declaration that
-  still drives state, slice discovery, and per-slice replacement on write.
+  Everywhere else it remains a logical declaration that still drives state,
+  slice discovery, and per-slice replacement on write. The remaining engines and
+  why each is deferred are written up in
+  [`../PARTITION_DDL_PLAN.md`](../PARTITION_DDL_PLAN.md).
 - Expected partitions come from a full scan of the roots. On a real warehouse
   you would want that bounded (a lookback window), which the model has no way to
   express today.

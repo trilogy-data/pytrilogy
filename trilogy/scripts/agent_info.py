@@ -332,6 +332,11 @@ datasources defined over it, their observed watermarks, the expected (root-
 derived) values, the staleness reason, and the physical column -> logical
 concept bindings.
 
+The same snapshot is the interchange format everywhere state crosses a boundary:
+`trilogy serve` returns it verbatim from `/state` (file or directory target).
+One producer, many transports — a CLI state file, a served response, and a cloud
+payload are the same object, not three renderings of it.
+
 ```bash
 # Probe only — never writes warehouse state
 trilogy state . duckdb -o state.json
@@ -400,8 +405,12 @@ judged per slice, and the refresh filters its select to exactly those, so a
 missing day in the middle of a range is filled without rebuilding the days
 around it. That is one statement covering N slices — running slices as N
 concurrent processes is the orchestrator's call, which is what the fan-out above
-is for. Partition state is always probed live, never seeded from
-`--state-input`.
+is for.
+
+`--state-input` seeds partition state on the same terms as watermarks: a
+snapshot means "trust these observations", and that applies to every observation
+in it. Feed a *merged* file, not a partition-scoped delta — a delta speaks for
+only some slices, so it is ignored for seeding rather than understating the rest.
 
 ## Execution reports
 

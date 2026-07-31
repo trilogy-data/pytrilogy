@@ -1,11 +1,16 @@
-"""Tests for serve_helpers/state_computation.py."""
+"""Tests for serve_helpers/state_computation.py.
+
+Serve returns the shared ``StateSnapshot`` verbatim — there is no serve-local
+state shape — so these assert on the snapshot contract.
+"""
 
 import textwrap
 from pathlib import Path
 
 import pytest
 
-from trilogy.scripts.serve_helpers.state_computation import compute_state_sync
+from trilogy.execution.state.snapshot import StateSnapshot
+from trilogy.scripts.serve_helpers.state_computation import compute_state_snapshot_sync
 
 # A minimal DuckDB-compatible trilogy file with one root datasource.
 SIMPLE_PREQL = textwrap.dedent("""\
@@ -47,22 +52,27 @@ def test_compute_state_raises_without_dialect(tmp_path: Path) -> None:
     preql = tmp_path / "test.preql"
     preql.write_text(SIMPLE_PREQL)
     with pytest.raises(ValueError, match="No dialect"):
-        compute_state_sync(preql, "generic", None, tmp_path)
+        compute_state_snapshot_sync(preql, "generic", None, tmp_path)
 
 
 # ── happy path via engine param ───────────────────────────────────────────────
 
 
+def _datasources(snapshot: StateSnapshot) -> dict:
+    return {
+        ds.datasource_id: ds for asset in snapshot.assets for ds in asset.datasources
+    }
+
+
 def test_compute_state_with_duckdb_engine(tmp_path: Path) -> None:
     preql = tmp_path / "test.preql"
     preql.write_text(SIMPLE_PREQL)
-    response = compute_state_sync(preql, "duck_db", None, tmp_path)
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
 
-    assert response.target == "test.preql"
-    assert response.summary.total == 1
-    assert response.summary.root == 1
-    assert response.assets[0].id == "raw"
-    assert response.assets[0].is_root is True
+    assert snapshot.target == "test.preql"
+    assert snapshot.dialect == "duck_db"
+    assert snapshot.summary.total == 1
+    assert _datasources(snapshot)["raw"].is_root is True
 
 
 # ── happy path via config file ────────────────────────────────────────────────
@@ -74,55 +84,51 @@ def test_compute_state_with_config_dialect(tmp_path: Path) -> None:
     toml = tmp_path / "trilogy.toml"
     toml.write_text('[engine]\ndialect = "duckdb"\n')
 
-    response = compute_state_sync(preql, "generic", toml, tmp_path)
-    assert response.target == "test.preql"
-    assert response.summary.total >= 1
+    snapshot = compute_state_snapshot_sync(preql, "generic", toml, tmp_path)
+    assert snapshot.target == "test.preql"
+    assert snapshot.summary.total >= 1
 
 
 # ── asset status classifications ──────────────────────────────────────────────
 
 
-def test_compute_state_root_is_listed_first(tmp_path: Path) -> None:
+def test_compute_state_reports_both_datasources(tmp_path: Path) -> None:
     preql = tmp_path / "test.preql"
     preql.write_text(INCREMENTAL_PREQL)
-    response = compute_state_sync(preql, "duck_db", None, tmp_path)
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
 
-    assert len(response.assets) == 2
-    # Roots must appear before non-roots
-    assert response.assets[0].is_root is True
-    assert response.assets[1].is_root is False
+    by_id = _datasources(snapshot)
+    assert by_id["raw"].is_root is True
+    assert by_id["derived"].is_root is False
 
 
 def test_compute_state_missing_table_marks_stale_or_unknown(tmp_path: Path) -> None:
     preql = tmp_path / "test.preql"
     preql.write_text(INCREMENTAL_PREQL)
-    response = compute_state_sync(preql, "duck_db", None, tmp_path)
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
 
-    by_id = {a.id: a for a in response.assets}
-    assert "raw" in by_id
-    # derived_missing_table does not exist → stale (watermark behind root) or unknown
-    assert "derived" in by_id
+    by_id = _datasources(snapshot)
+    # derived_missing_table does not exist -> stale (watermark behind root) or unknown
     assert by_id["derived"].status in ("stale", "unknown")
 
 
 def test_compute_state_summary_counts(tmp_path: Path) -> None:
     preql = tmp_path / "test.preql"
     preql.write_text(INCREMENTAL_PREQL)
-    response = compute_state_sync(preql, "duck_db", None, tmp_path)
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
 
-    s = response.summary
-    # root is a structural attribute (can overlap with fresh/stale/unknown)
+    s = snapshot.summary
     assert s.total == s.stale + s.fresh + s.unknown
-    assert s.root <= s.total
+    assert s.managed <= s.total
 
 
-def test_compute_state_watermark_serialized(tmp_path: Path) -> None:
-    """Watermarks (if any) must be serialized as WatermarkInfo dicts."""
+def test_compute_state_records_column_bindings(tmp_path: Path) -> None:
+    """The snapshot carries physical column -> logical concept bindings, which
+    the old serve-local shape had no room for."""
     preql = tmp_path / "test.preql"
     preql.write_text(INCREMENTAL_PREQL)
-    response = compute_state_sync(preql, "duck_db", None, tmp_path)
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
 
-    # The root datasource (raw) may have a watermark for 'version'.
-    by_id = {a.id: a for a in response.assets}
-    # watermarks is always a dict; keys are concept names when present
-    assert isinstance(by_id["raw"].watermarks, dict)
+    columns = _datasources(snapshot)["derived"].columns
+    assert {c.column for c in columns} == {"id", "version"}
+    assert all(c.concept_address for c in columns)

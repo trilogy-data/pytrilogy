@@ -12,6 +12,7 @@ from click import Path, argument, option, pass_context
 
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
+from trilogy.execution.state.snapshot import StateSnapshot
 from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
     find_all_model_files,
@@ -123,7 +124,7 @@ def create_app(
     connection_options: dict[str, str] | None = None,
     startup_scripts: list[PathlibPath] | None = None,
 ):
-    # Normalize once so every closure (including compute_state_sync) sees the
+    # Normalize once so every closure (including the state probe) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
     # (e.g. RUNNER~1 vs runneradmin) when doing relative_to() comparisons.
     directory_path = PathlibPath(os.path.realpath(directory_path))
@@ -142,10 +143,9 @@ def create_app(
         JobRequest,
         JobStatus,
         ModelImport,
-        StateResponse,
         StoreIndex,
         cancel_job,
-        compute_state_sync,
+        compute_state_snapshot_sync,
         create_job,
         find_model_by_name,
         generate_model_index,
@@ -349,21 +349,25 @@ def create_app(
             return_code=job.return_code,
         )
 
-    @router.get("/state", response_model=StateResponse)
-    async def get_state(target: str) -> StateResponse:
-        """Return watermark and staleness state for all datasources in a trilogy file."""
+    @router.get("/state")
+    async def get_state(target: str) -> StateSnapshot:
+        """Watermark, staleness and partition state for a trilogy file or directory.
+
+        Returns a ``StateSnapshot`` — the interchange format shared with
+        ``trilogy state -o``, ``run/refresh --state-file``, and the cloud
+        service. A directory target is probed as a whole project, resolving
+        cross-script ownership and deduplicating by physical address.
+        """
         import asyncio
 
+        from click.exceptions import Exit
+
         target_path = _validate_target(target, directory_path)
-        if not target_path.is_file():
-            raise HTTPException(
-                status_code=400, detail="Target must be a file, not a directory"
-            )
         loop = asyncio.get_event_loop()
         try:
-            return await loop.run_in_executor(
+            snapshot = await loop.run_in_executor(
                 None,
-                compute_state_sync,
+                compute_state_snapshot_sync,
                 target_path,
                 engine,
                 config_path,
@@ -371,10 +375,19 @@ def create_app(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except Exit as e:
+            # The directory probe exits the process on an unparseable script;
+            # for a server that is a bad request, not a crash.
+            raise HTTPException(
+                status_code=400,
+                detail=f"State probe failed for '{target}' (exit {e.exit_code}); "
+                "check the scripts parse and their dialect is configured.",
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"State computation failed: {e}"
             )
+        return snapshot
 
     app.include_router(router)
 

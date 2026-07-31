@@ -446,6 +446,96 @@ def test_slice_filter_chunks_to_stay_within_statement_limits(
     assert sql.count("CREATE TEMPORARY TABLE") == 3
 
 
+def _seeded_store(snapshot):
+    from trilogy.execution.state import SnapshotStateStore
+
+    return SnapshotStateStore(snapshot)
+
+
+def test_state_input_seeds_partitions_without_probing(hole_executor, monkeypatch):
+    """`--state-input` means "trust this snapshot" — for slices exactly as much
+    as for watermarks. A seeded run must not touch the warehouse for either."""
+    snapshot = merge_into_snapshot(
+        [
+            (
+                "facts",
+                build_datasource_state(
+                    hole_executor.environment.datasources["facts"],
+                    None,
+                    None,
+                    partitions=build_partition_states(
+                        hole_executor.environment.datasources["facts"],
+                        [
+                            PartitionObservation(
+                                values={"d": date(2024, 1, 1)}, row_count=7
+                            )
+                        ],
+                        [PartitionObservation(values={"d": date(2024, 1, 1)})],
+                    ),
+                ),
+            )
+        ]
+    )
+
+    def explode(*args, **kwargs):
+        raise AssertionError("seeded run probed the warehouse for partitions")
+
+    monkeypatch.setattr(
+        "trilogy.execution.state.state_store.probe_observed_partitions", explode
+    )
+    monkeypatch.setattr(
+        "trilogy.execution.state.state_store.probe_expected_partitions", explode
+    )
+    store = _seeded_store(snapshot)
+    observed, expected = store.partition_asset(
+        hole_executor.environment, hole_executor, "facts"
+    )
+    assert [obs.id for obs in observed] == ["d=2024-01-01"]
+    assert [obs.id for obs in expected] == ["d=2024-01-01"]
+    # Values come back TYPED, not as their rendered strings — the refresh filter
+    # needs real values to compare and to build a WHERE.
+    assert observed[0].values == {"d": date(2024, 1, 1)}
+    assert observed[0].row_count == 7
+
+
+def test_seeded_partitions_drive_the_staleness_verdict(hole_executor, monkeypatch):
+    """Seeding is only meaningful if the seeded slices are what gets judged."""
+    ds = hole_executor.environment.datasources["facts"]
+    snapshot = merge_into_snapshot(
+        [
+            (
+                "facts",
+                build_datasource_state(
+                    ds,
+                    None,
+                    None,
+                    partitions=build_partition_states(
+                        ds,
+                        [],  # nothing observed
+                        [PartitionObservation(values={"d": date(2024, 1, 9)})],
+                    ),
+                ),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        "trilogy.execution.state.state_store.probe_observed_partitions",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("probed")),
+    )
+    store = _seeded_store(snapshot)
+    asset = store.is_stale(hole_executor.environment, hole_executor, "facts")
+    assert asset is not None
+    assert [obs.id for obs in asset.partitions] == ["d=2024-01-09"]
+
+
+def test_seeding_falls_back_to_a_probe_when_the_snapshot_has_no_slices(hole_executor):
+    """An asset absent from the snapshot is probed normally, as for watermarks."""
+    store = _seeded_store(merge_into_snapshot([]))
+    sides = store.partition_asset(hole_executor.environment, hole_executor, "facts")
+    assert sides is not None
+    assert [obs.id for obs in sides[0]] == ["d=2024-01-01", "d=2024-01-03"]
+
+
 def test_unpartitioned_datasource_carries_no_partition_state(executor):
     ds = executor.environment.datasources["raw_orders"]
     state = build_datasource_state(ds, None, None)
