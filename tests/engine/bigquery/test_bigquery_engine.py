@@ -28,11 +28,10 @@ def external_config(uri: str = "gs://b/p/x.parquet"):
 
 class FakeJob:
     def __init__(self, rows, schema):
-        self._rows = rows
-        self._schema = schema
+        self.rows = FakeRowIterator(rows, schema)
 
     def result(self):
-        return FakeRowIterator(self._rows, self._schema)
+        return self.rows
 
 
 class FakeField:
@@ -49,12 +48,17 @@ class FakeRow:
 
 
 class FakeRowIterator:
+    """Pages like a real RowIterator: records what has actually been pulled."""
+
     def __init__(self, rows, schema):
         self._rows = rows
         self.schema = schema
+        self.pulled: list[object] = []
 
     def __iter__(self):
-        return iter(self._rows)
+        for row in self._rows:
+            self.pulled.append(row)
+            yield row
 
 
 class FakeClient:
@@ -64,10 +68,13 @@ class FakeClient:
         self.rows = rows or []
         self.schema = schema or []
         self.calls: list[tuple[str, object]] = []
+        self.jobs: list[FakeJob] = []
 
     def query(self, sql, job_config=None):
         self.calls.append((sql, job_config))
-        return FakeJob(self.rows, self.schema)
+        job = FakeJob(self.rows, self.schema)
+        self.jobs.append(job)
+        return job
 
 
 def test_parameter_type_covers_runtime_values():
@@ -154,6 +161,23 @@ def test_execute_returns_tuple_comparable_rows():
     assert rows[0] == (1, "a")
     assert rows[0][1] == "a"
     assert rows[1].label == "b"
+
+
+def test_execute_does_not_read_the_result_set_up_front():
+    """Rows page from the job as they are consumed, so an unbounded select does
+    not have to fit in memory."""
+    client = FakeClient(
+        rows=[FakeRow((1, "a")), FakeRow((2, "b")), FakeRow((3, "c"))],
+        schema=[FakeField("n"), FakeField("label")],
+    )
+    result = BigQueryConnection(client).execute(text("select 1"))
+    pulled = client.jobs[0].rows.pulled
+
+    assert result.keys() == ["n", "label"]
+    assert pulled == []
+    assert result.fetchone() == (1, "a")
+    assert len(pulled) == 1
+    assert result.fetchall() == [(2, "b"), (3, "c")]
 
 
 def test_execute_buffers_nothing_for_ddl():

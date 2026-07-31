@@ -1,6 +1,7 @@
 from collections import namedtuple
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from itertools import islice
 from typing import Any
 
 from trilogy.core.models.author import ConceptRef
@@ -33,6 +34,24 @@ def buffered_rows(
         return BufferedResult([], list(rows))
     row_class = namedtuple_row_class(columns, name)
     return BufferedResult(list(columns), [row_class(*row) for row in rows])
+
+
+def streamed_rows(
+    columns: Sequence[str],
+    rows: Iterable[Sequence[Any]],
+    name: str = "Row",
+) -> "StreamedResult":
+    """``buffered_rows`` for a driver whose cursor pages server-side.
+
+    Rows are wrapped as they are pulled, so an unbounded result never has to
+    fit in memory. Only correct when the underlying iterator stays valid for
+    the life of the result — a driver that invalidates an unconsumed cursor
+    (on commit, or when the connection runs the next statement) must buffer.
+    """
+    if not columns:
+        return StreamedResult([], iter(rows))
+    row_class = namedtuple_row_class(columns, name)
+    return StreamedResult(list(columns), (row_class(*row) for row in rows))
 
 
 @dataclass
@@ -102,6 +121,33 @@ class BufferedResult(ResultProtocol):
         rval = self.rows[:size]
         self.rows = self.rows[size:]
         return rval
+
+    def keys(self):
+        return self.columns
+
+
+@dataclass
+class StreamedResult(ResultProtocol):
+    """A result pulled from the driver as it is read, rather than up front.
+
+    Single-pass, exactly like ``BufferedResult``: every read consumes, and rows
+    already handed out are not retained. The difference is only where the rows
+    live until then."""
+
+    columns: list[str]
+    rows: Iterator[Any]
+
+    def __iter__(self):
+        return self.rows
+
+    def fetchall(self):
+        return list(self.rows)
+
+    def fetchone(self):
+        return next(self.rows, None)
+
+    def fetchmany(self, size: int):
+        return list(islice(self.rows, size))
 
     def keys(self):
         return self.columns

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from trilogy.constants import logger
 from trilogy.core.models.core import ListWrapper
 from trilogy.core.models.environment import Environment
-from trilogy.dialect.results import buffered_rows
+from trilogy.dialect.results import streamed_rows
 from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
@@ -158,11 +158,16 @@ class BigQueryConnection(NonTransactionalConnection):
     def execute(self, statement: Any, parameters: Any | None = None) -> ResultProtocol:
         sql, query_parameters = to_bigquery_sql(statement, parameters)
         job = self.client.query(sql, job_config=self._job_config(sql, query_parameters))
+        # Blocks until the query finishes, so a failed query still raises from
+        # here (inside the executor's retry wrapper). The RowIterator it returns
+        # then pages server-side, and is bound to its own job rather than to a
+        # shared cursor — so it stays valid once this connection runs the next
+        # statement, and rows can be wrapped as they are consumed.
         rows = job.result()
-        # DDL/DML jobs report an empty schema; there is nothing to buffer.
+        # DDL/DML jobs report an empty schema and yield no rows.
         # A BigQuery Row is not tuple-equal, which SQLAlchemy Row consumers
-        # rely on, so buffered_rows re-wraps the values.
-        return buffered_rows(
+        # rely on, so streamed_rows re-wraps the values.
+        return streamed_rows(
             [field.name for field in rows.schema],
             (row.values() for row in rows),
             "BigQueryRow",
