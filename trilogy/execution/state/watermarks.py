@@ -206,12 +206,18 @@ def has_schema_mismatch(
         actual = executor.generator.get_table_columns(executor, table_name)
     if actual is None:
         return False
-    expected = {
-        executor.environment.concepts[col.concept.address]
-        .safe_address.lower(): executor.environment.concepts[col.concept.address]
-        .datatype.data_type
-        for col in datasource.columns
-    }
+    expected = {}
+    for col in datasource.columns:
+        concept = executor.environment.concepts[col.concept.address]
+        # A concrete alias IS the physical column name — it is what the persist
+        # DDL writes — so it, not the concept's safe_address, is what an
+        # existing table must be compared against. Declaring
+        # `carrier_code: flight.carrier.code` otherwise reads as a permanent
+        # schema mismatch against a table trilogy itself just created. A
+        # non-concrete alias (raw expression or function) names no column of its
+        # own, so the concept's address stays the best available guess.
+        name = col.alias if isinstance(col.alias, str) else concept.safe_address
+        expected[name.lower()] = concept.datatype.data_type
     if set(actual) != set(expected):
         return True
     # Check types where the dialect can resolve them (skip UNKNOWN — can't map the type)

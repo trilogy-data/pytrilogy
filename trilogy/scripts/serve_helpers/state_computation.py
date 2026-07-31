@@ -68,9 +68,14 @@ def compute_state_snapshot_sync(
     # The served target is relative to the served directory; the CLI records the
     # path it was invoked with.
     return snapshot.model_copy(
-        update={"target": _relative_target(target_path, directory)}
+        update={"target": relative_target(target_path, directory)}
     )
 
 
-def _relative_target(target_path: Path, directory: Path) -> str:
+def relative_target(target_path: Path, directory: Path) -> str:
+    """The served target's identity: its path relative to the served directory.
+
+    Also the state cache's key, so it must stay stable for a given target
+    regardless of how the client spelled it (``.`` and ``./`` resolve alike).
+    """
     return str(target_path.relative_to(directory)).replace("\\", "/")

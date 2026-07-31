@@ -35,11 +35,18 @@ from trilogy.scripts.serve_helpers.models import (
     StoreIndex,
     StoreModelIndex,
 )
+from trilogy.scripts.serve_helpers.state_cache import (
+    CachedSnapshot,
+    StateSnapshotCache,
+    fingerprint_directory,
+)
 from trilogy.scripts.serve_helpers.state_computation import (
     compute_state_snapshot_sync,
+    relative_target,
 )
 
 __all__ = [
+    "CachedSnapshot",
     "ConnectionSpec",
     "DirectoryListing",
     "FileCreateRequest",
@@ -50,6 +57,7 @@ __all__ = [
     "JobRequest",
     "JobStatus",
     "ModelImport",
+    "StateSnapshotCache",
     "StoreIndex",
     "StoreModelIndex",
     "cancel_job",
@@ -63,9 +71,11 @@ __all__ = [
     "find_python_files",
     "find_sql_files",
     "find_trilogy_files",
+    "fingerprint_directory",
     "generate_model_index",
     "get_job",
     "get_relative_model_name",
     "get_safe_model_name",
+    "relative_target",
     "run_subprocess",
 ]

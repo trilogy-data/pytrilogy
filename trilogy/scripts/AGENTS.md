@@ -75,3 +75,50 @@ Always check the actual `.preql` files before concluding how many physical roots
 ### Shared execution helper
 
 `_plan_and_execute_refresh` in `single_execution.py` is the single path for display + interactive confirm + execution + result reporting. Both single-file and directory refresh flow through it. Do not duplicate this logic.
+
+
+## Serve: the on-disk state cache
+
+`serve_helpers/state_cache.py` caches `/state` under `<served dir>/.trilogy/state`.
+Computing a snapshot re-parses the target, builds an executor (running `[setup]`
+scripts) and re-probes the warehouse — seconds per request, and money per request
+on a billed warehouse. Without a cache no consumer can show state passively, which
+is why the studio gated it behind a button.
+
+- **The cached value is a `StateSnapshot`**, byte-for-byte what the endpoint returns
+  and what `trilogy state -o` writes. Serve still has no state shape of its own (see
+  `execution/state/AGENTS.md`); cache bookkeeping lives in a sidecar `.meta.json`, and
+  cache status rides in `X-Trilogy-Cached` / `X-Trilogy-Computed-At` **headers** rather
+  than in the body. Those headers must stay in the CORS `expose_headers` list or a
+  browser cannot read them.
+- **Validity is a fingerprint, not a TTL** — size+mtime of every model file in the
+  served directory. It is deliberately directory-wide: a target's state depends on
+  what it imports, and resolving imports would mean parsing, which is the cost being
+  avoided.
+- **The cache is also the jobs' state store.** `/run` and `/refresh` subprocesses get
+  `--state-input` (the cached snapshot, when live) and `--state-file`; on completion
+  the server adopts the written snapshot as the entry for that target. A refresh
+  therefore leaves `/state` correct with no re-probe. `--no-state-cache` disables both
+  halves together — they are one trust decision.
+- **Job completion clears every other entry.** Not narrowed to the job's target: jobs
+  rewrite assets, targets overlap (a directory contains its files), and state flows
+  downstream. Anything narrower would have to model the dependency graph, and being
+  wrong shows a stale "fresh".
+- What no server-side cache can see is a table loaded **outside** trilogy. That is why
+  `snapshot_ts` is load-bearing rather than informational and `?refresh=true` exists.
+
+### On-disk DuckDB is the case that finds concurrency bugs
+
+Directory probes build executors on a thread pool. Against the default in-memory
+DuckDB each owns a private catalog, so they never interact; against one on-disk
+warehouse they share it. Two consequences, both fixed in `executor.py`:
+
+- Connect-time setup DDL races. `_execute_setup_ddl` retries the catalog write-write
+  conflict, and `_duckdb_macro_exists` skips the write entirely when the guard macro
+  is already defined.
+- **A read that leaves a transaction open is not harmless.** `_execute_with_retry`
+  claims a transaction only when the statement itself began one, so a stray open
+  transaction makes every later write look caller-managed; `_flush_transaction` then
+  declines to commit and `close()` discards it. The failure is silent — a refresh
+  reports success having written nothing. Any connect-time read must restore the
+  connection's transactional state (see `test_duckdb_persistence.py`).

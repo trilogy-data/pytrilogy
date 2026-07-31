@@ -69,6 +69,10 @@ dependency_graph.png
 faa-demo/
 _preql_import_resolver/
 
+# on-disk state snapshot cache written by `trilogy serve`
+.trilogy/
+*.duckdb
+
 pglite_test.py
 
 # PERFORMANCE_ANALYSIS.md

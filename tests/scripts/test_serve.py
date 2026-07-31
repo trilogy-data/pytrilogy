@@ -929,11 +929,20 @@ def _app_with_token(directory_path: Path, engine: str = "generic") -> TestClient
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _app_no_token(directory_path: Path, engine: str = "generic") -> TestClient:
+def _app_no_token(
+    directory_path: Path, engine: str = "generic", enable_state_cache: bool = True
+) -> TestClient:
     from fastapi import FastAPI
 
     app = FastAPI()
-    create_app(app, engine, directory_path, "localhost", 80)
+    create_app(
+        app,
+        engine,
+        directory_path,
+        "localhost",
+        80,
+        enable_state_cache=enable_state_cache,
+    )
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -1428,3 +1437,104 @@ def test_no_auth_with_localhost_no_warning():
             catch_exceptions=False,
         )
         assert "WARNING" not in result.output
+
+
+# ── /state caching ─────────────────────────────────────────────────────────────
+
+
+def test_state_second_call_is_served_from_cache(tmp_path):
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    client = _app_no_token(tmp_path, engine="duck_db")
+
+    first = client.get("/state", params={"target": "test.preql"})
+    assert first.headers["X-Trilogy-Cached"] == "false"
+
+    second = client.get("/state", params={"target": "test.preql"})
+    assert second.headers["X-Trilogy-Cached"] == "true"
+    # Same observation, not merely a same-shaped one.
+    assert (
+        second.headers["X-Trilogy-Computed-At"]
+        == first.headers["X-Trilogy-Computed-At"]
+    )
+    assert second.json() == first.json()
+
+
+def test_state_cache_persists_across_app_instances(tmp_path):
+    """The cache is on disk, so a restarted server reuses it."""
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    first = _app_no_token(tmp_path, engine="duck_db").get(
+        "/state", params={"target": "test.preql"}
+    )
+
+    revived = _app_no_token(tmp_path, engine="duck_db").get(
+        "/state", params={"target": "test.preql"}
+    )
+    assert revived.headers["X-Trilogy-Cached"] == "true"
+    assert (
+        revived.headers["X-Trilogy-Computed-At"]
+        == first.headers["X-Trilogy-Computed-At"]
+    )
+
+
+def test_state_refresh_param_forces_a_reprobe(tmp_path):
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    client = _app_no_token(tmp_path, engine="duck_db")
+    client.get("/state", params={"target": "test.preql"})
+
+    forced = client.get("/state", params={"target": "test.preql", "refresh": "true"})
+    assert forced.headers["X-Trilogy-Cached"] == "false"
+    # And the fresh result replaces the entry rather than being discarded.
+    assert (
+        client.get("/state", params={"target": "test.preql"}).headers[
+            "X-Trilogy-Computed-At"
+        ]
+        == forced.headers["X-Trilogy-Computed-At"]
+    )
+
+
+def test_state_cache_is_busted_by_a_model_edit(tmp_path):
+    """An edit changes what the target *means*, so the snapshot is discarded."""
+    model = tmp_path / "test.preql"
+    model.write_text(SIMPLE_PREQL)
+    client = _app_no_token(tmp_path, engine="duck_db")
+    client.get("/state", params={"target": "test.preql"})
+    assert (
+        client.get("/state", params={"target": "test.preql"}).headers[
+            "X-Trilogy-Cached"
+        ]
+        == "true"
+    )
+
+    model.write_text(SIMPLE_PREQL + "\nproperty id.extra int;\n")
+    assert (
+        client.get("/state", params={"target": "test.preql"}).headers[
+            "X-Trilogy-Cached"
+        ]
+        == "false"
+    )
+
+
+def test_state_cache_can_be_disabled(tmp_path):
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    client = _app_no_token(tmp_path, engine="duck_db", enable_state_cache=False)
+
+    client.get("/state", params={"target": "test.preql"})
+    assert (
+        client.get("/state", params={"target": "test.preql"}).headers[
+            "X-Trilogy-Cached"
+        ]
+        == "false"
+    )
+    assert not (tmp_path / ".trilogy").exists()
+
+
+def test_state_cache_headers_are_exposed_to_browsers(tmp_path):
+    """A browser hides non-safelisted headers from JS unless CORS names them."""
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    client = _app_no_token(tmp_path, engine="duck_db")
+    response = client.get(
+        "/state", params={"target": "test.preql"}, headers={"Origin": "http://ui.local"}
+    )
+    exposed = response.headers["access-control-expose-headers"]
+    assert "X-Trilogy-Cached" in exposed
+    assert "X-Trilogy-Computed-At" in exposed

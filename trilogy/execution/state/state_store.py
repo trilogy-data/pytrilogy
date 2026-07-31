@@ -685,7 +685,9 @@ def create_refresh_plan(
     # Per-slice state for partitioned targets. Two extra queries per partitioned
     # datasource; nothing at all for the unpartitioned majority.
     partitions = {}
-    for ds_id, ds in executor.environment.datasources.items():
+    # Materialized: partition_asset's expected probe hides non-root datasources
+    # for the duration of its query, mutating this dict mid-iteration.
+    for ds_id, ds in list(executor.environment.datasources.items()):
         if ds_id in all_skip or not is_partitioned(ds):
             continue
         probed = state_store.partition_asset(

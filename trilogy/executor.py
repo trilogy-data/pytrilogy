@@ -1,3 +1,5 @@
+import random
+import time
 import uuid
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
@@ -171,6 +173,19 @@ def _chart_copy_options(
     return size_props, save_kwargs, options.get("theme"), options.get("background")
 
 
+# DuckDB aborts the loser of a concurrent catalog write with this marker. It is
+# reachable from ordinary use: a directory-wide probe or refresh evaluates
+# scripts on a thread pool, and every executor runs the same DuckDB setup DDL on
+# connect. Against an in-memory database each executor owns a private catalog so
+# they never meet; against an on-disk one they all write the same catalog.
+_CATALOG_WRITE_CONFLICT = "write-write conflict"
+_SETUP_CONFLICT_ATTEMPTS = 5
+
+
+def _is_catalog_write_conflict(error: BaseException) -> bool:
+    return _CATALOG_WRITE_CONFLICT in str(error)
+
+
 class Executor:
     def __init__(
         self,
@@ -244,12 +259,78 @@ class Executor:
             return
         self.connection.commit()
 
+    def _execute_setup_ddl(self, sql: str) -> None:
+        """Run connect-time DuckDB setup, retrying a lost catalog race.
+
+        Every executor issues this same DDL on connect, so N of them sharing one
+        on-disk warehouse collide and DuckDB aborts all but the winner. The
+        statements are idempotent, so retrying settles it. The whole block is
+        re-run rather than the conflict being swallowed: the rollback also drops
+        session state set alongside the DDL (the per-instance ``uv_run`` temp
+        dir variable), which the macro body then reads at query time.
+        """
+        for attempt in range(_SETUP_CONFLICT_ATTEMPTS):
+            try:
+                self.execute_raw_sql(sql)
+                self.commit()
+                return
+            except Exception as e:
+                if not _is_catalog_write_conflict(e):
+                    raise
+                self.connection.rollback()
+                self._owned_transaction = None
+                if attempt == _SETUP_CONFLICT_ATTEMPTS - 1:
+                    raise
+                # Jittered, or the same losers collide again on every retry.
+                time.sleep(random.uniform(0.01, 0.05) * (attempt + 1))
+
+    def _duckdb_macro_exists(self, name: str, marker: str) -> bool:
+        """Whether a macro is already defined with a body containing ``marker``.
+
+        Read-only, so it never joins the catalog write contention it exists to
+        avoid. A failed lookup reports False: the caller then attempts the write
+        and finds out for real.
+
+        Leaves the connection's transactional state exactly as it found it. A
+        read that implicitly opens a transaction and leaves it open is not
+        harmless here: ``_execute_with_retry`` claims ownership of a transaction
+        only when the statement itself began one, so an already-open transaction
+        makes every later write look caller-managed, and ``_flush_transaction``
+        then declines to commit and ``close`` discards the lot. That failure is
+        silent — a refresh reports success having written nothing.
+        """
+        from sqlalchemy import text
+
+        # Everything is inside the guard, including reading and restoring the
+        # transaction state: this is only an optimization, and every way it can
+        # fail — a connection that does not expose transactions, an unreadable
+        # catalog — has the same right answer, which is to go do the write.
+        try:
+            implicit = not self.connection.in_transaction()
+            try:
+                rows = self.connection.execute(
+                    text(
+                        "select macro_definition from duckdb_functions() "
+                        "where function_name = :name"
+                    ),
+                    {"name": name},
+                ).fetchall()
+            finally:
+                if implicit and self.connection.in_transaction():
+                    self.connection.rollback()
+        except Exception:
+            return False
+        return any(row[0] and marker in row[0] for row in rows)
+
     def _setup_duckdb_python_datasources(self) -> None:
         """Setup DuckDB macro for Python script datasources."""
         import sys
 
         from trilogy.dialect.config import DuckDBConfig
-        from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+        from trilogy.dialect.duckdb import (
+            PYTHON_DATASOURCE_GUARD_MARKER,
+            get_python_datasource_setup_sql,
+        )
 
         # A read-only handle can't CREATE the guard macro — and python
         # datasources (which need write access) are unusable anyway, so skip it.
@@ -259,13 +340,23 @@ class Executor:
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources
         )
+        # The disabled form is a pure error guard: no extensions to load and no
+        # session state to establish, so an already-defined one is correct as it
+        # stands and the write can be skipped outright. That is the default and
+        # the overwhelmingly common case, so concurrent executors sharing an
+        # on-disk warehouse normally never contend for the catalog at all.
+        # The enabled form cannot take this shortcut — it must LOAD extensions
+        # and SET the per-instance temp dir variable in every new session.
+        if not enabled and self._duckdb_macro_exists(
+            "uv_run", PYTHON_DATASOURCE_GUARD_MARKER
+        ):
+            return
         is_windows = sys.platform == "win32"
-        self.execute_raw_sql(
+        self._execute_setup_ddl(
             get_python_datasource_setup_sql(
                 enabled, is_windows, self._instance_id, self.staging
             )
         )
-        self.commit()
 
     def _setup_duckdb_gcs(self) -> None:
         """Setup DuckDB GCS extension with application default credentials."""
@@ -277,8 +368,8 @@ class Executor:
             return
         sql = get_gcs_setup_sql(enabled)
         if sql:
-            self.execute_raw_sql(sql)
-            self.commit()
+            # CREATE SECRET is a catalog write, so it races the same way.
+            self._execute_setup_ddl(sql)
 
     def _setup_duckdb_spatial(self) -> None:
         """Setup DuckDB spatial extension for geospatial functions."""

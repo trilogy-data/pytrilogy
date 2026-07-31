@@ -3,6 +3,7 @@
 import asyncio
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,7 +60,18 @@ async def _drain_stderr(stream: asyncio.StreamReader, job: Job) -> None:
         job.error += line.decode(errors="replace")
 
 
-async def run_subprocess(job: Job, cmd: list[str], cwd: str) -> None:
+async def run_subprocess(
+    job: Job,
+    cmd: list[str],
+    cwd: str,
+    on_complete: Callable[[], None] | None = None,
+) -> None:
+    """Run a job to completion, then fire ``on_complete``.
+
+    ``on_complete`` runs however the job ended, including cancellation and
+    launch failure: a killed refresh may still have written some assets, so the
+    server's view of state is no less invalid than after a clean run.
+    """
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -83,3 +95,5 @@ async def run_subprocess(job: Job, cmd: list[str], cwd: str) -> None:
             job.status = "error"
     finally:
         job.process = None
+        if on_complete is not None:
+            on_complete()

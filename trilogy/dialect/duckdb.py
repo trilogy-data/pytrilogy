@@ -189,6 +189,13 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
+# Identifies the disabled-form `uv_run` guard in an existing macro body, so a
+# connecting executor can tell "already set up" from "set up for the other
+# config" with a read-only catalog lookup. Must appear in the disabled SQL below
+# and never in the enabled one.
+PYTHON_DATASOURCE_GUARD_MARKER = "enable_python_datasources=True in DuckDBConfig"
+
+
 def get_python_datasource_setup_sql(
     enabled: bool,
     is_windows: bool = False,
