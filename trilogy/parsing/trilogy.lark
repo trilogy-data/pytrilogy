@@ -201,8 +201,10 @@
     CREATE_IF_NOT_EXISTS: /if\s+not\s+exists/i
     CREATE_OR_REPLACE: /or\s+replace/i
 
+    CREATE_WITH_DATA: /with\s+data/i
+
     create_modifier_clause: CREATE_IF_NOT_EXISTS | CREATE_OR_REPLACE
-    create_statement: "create"i create_modifier_clause? VALIDATE_SCOPE IDENTIFIER
+    create_statement: "create"i create_modifier_clause? VALIDATE_SCOPE IDENTIFIER CREATE_WITH_DATA?
     
     // copy statement
 

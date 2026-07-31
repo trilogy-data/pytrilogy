@@ -294,7 +294,7 @@ def probe_directory_state(
         print_info,
         probe_progress,
     )
-    from trilogy.scripts.environment import parse_env_vars
+    from trilogy.scripts.environment import parse_env_params, parse_env_vars
 
     input_path = input_path.resolve()
 
@@ -345,11 +345,22 @@ def probe_directory_state(
     from trilogy.core.models.environment import Environment as Env
     from trilogy.parsing.parse_engine_v2 import parse_text as lightweight_parse
 
+    # The probe re-parses scripts the run itself already ran, so it needs the
+    # same `--param` values: a script declaring `param x` cannot parse without
+    # them.
+    try:
+        env_params = parse_env_params(cli_params.param)
+    except ValueError as e:
+        print_error(str(e))
+        raise Exit(1) from e
+
     for file_path in script_files:
         node = ScriptNode(path=file_path)
         with safe_open(file_path) as handle:
             raw_text = handle.read()
         env = Env(working_path=str(file_path.parent))
+        if env_params:
+            env.set_parameters(**env_params)
         try:
             env, _ = lightweight_parse(raw_text, environment=env, root=node.path)
         except Exception as e:

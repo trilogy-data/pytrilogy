@@ -41,6 +41,9 @@ class PersistQueryMixin:
     persist_mode: PersistMode
     partition_by: list[str]
     partition_types: list[DataType]
+    # DDL an OVERWRITE emits ahead of its insert; `create ... with data` lowers
+    # to a persist and keeps its own (stricter) create mode.
+    create_mode: CreateMode
 
 
 @dataclass

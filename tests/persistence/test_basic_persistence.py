@@ -1,3 +1,5 @@
+import pytest
+
 import networkx as nx
 
 from trilogy import Dialects
@@ -351,3 +353,68 @@ def test_persist_overwrite():
     assert len(rows) == 2
     for row in rows:
         assert row.fun_y == "fun"
+
+
+_CREATE_MODE_BASE = """
+    key x int;
+    property x.y string;
+
+    datasource ds0 (
+    x, y)
+    grain (x)
+    query '''
+    select
+    1 as x, 'fun' as y
+    union all
+    select 2 as x, 'fun' as y
+    '''
+    ;
+
+    datasource ds1 (
+        fun:x,
+        fun_y: y
+    )
+    grain (x)
+    address test_table;
+
+"""
+
+
+def _run(script: str) -> Dialects:
+    env, parsed = parse(_CREATE_MODE_BASE + script)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    for statement in parsed:
+        executor.execute_statement(statement)
+    return executor
+
+
+def _rows(executor):
+    return executor.execute_raw_sql("select * from test_table;").fetchall()
+
+
+def test_create_with_data_populates():
+    """`with data` runs the target's own query after the DDL."""
+    rows = _rows(_run("create datasource ds1 with data;"))
+    assert {row.fun for row in rows} == {1, 2}
+
+
+def test_create_or_replace_with_data_populates():
+    """`create or replace ... with data` is the DDL plus the load — the same
+    SQL as `overwrite`."""
+    rows = _rows(_run("create or replace datasource ds1 with data;"))
+    assert {row.fun for row in rows} == {1, 2}
+
+
+def test_create_modes_without_with_data_leave_table_empty():
+    """A bare create is DDL: it makes the table, it does not load it. The empty
+    table is what a following `append` expects."""
+    assert _rows(_run("create datasource ds1;")) == []
+    assert _rows(_run("create or replace datasource ds1;")) == []
+    assert _rows(_run("create if not exists datasource ds1;")) == []
+
+
+def test_create_if_not_exists_rejects_with_data():
+    """The table may already hold rows, so the load would double it."""
+    with pytest.raises(Exception) as exc_info:
+        _run("create if not exists datasource ds1 with data;")
+    assert "with data" in str(exc_info.value)

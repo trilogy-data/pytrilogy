@@ -149,6 +149,7 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.core.table_processor import (
     CreateTableInfo,
+    create_statement_to_persists,
     datasource_to_create_table_info,
     process_create_statement,
 )
@@ -2885,6 +2886,25 @@ class BaseDialect:
             output_values=[ProcessedStaticValueOutput(values=output_values)],
         )
 
+    def _process_create(
+        self,
+        statement: CreateStatement,
+        environment: Environment,
+        hooks: list[BaseHook] | None = None,
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
+        """A create is DDL only; `with data` follows the same DDL with the
+        target's own query, so the table is left populated rather than empty.
+        `create or replace ... with data` is then the same SQL as `overwrite`."""
+        if not statement.populate:
+            return [process_create_statement(statement, environment)]
+        output: list[PROCESSED_STATEMENT_TYPES] = []
+        for persist_statement in create_statement_to_persists(statement, environment):
+            if hooks:
+                for hook in hooks:
+                    hook.process_persist_info(persist_statement)
+            output.append(process_persist(environment, persist_statement, hooks=hooks))
+        return output
+
     def generate_queries(
         self,
         environment: Environment,
@@ -3123,7 +3143,9 @@ class BaseDialect:
                     )
                 )
             elif isinstance(statement, CreateStatement):
-                output.append(process_create_statement(statement, environment))
+                output.extend(
+                    self._process_create(statement, environment, hooks=hooks)
+                )
             elif isinstance(statement, PublishStatement):
                 output.append(
                     ProcessedPublishStatement(
@@ -3236,7 +3258,7 @@ class BaseDialect:
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
                 create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} {self._persist_insert_prefix(query)}"
+                output = f"{self.compile_create_table_statement(create_table_info, query.create_mode)} {self._persist_insert_prefix(query)}"
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
@@ -3275,7 +3297,7 @@ class BaseDialect:
             create_table_info = datasource_to_create_table_info(query.datasource)
             return [
                 *self.compile_create_table_statements(
-                    create_table_info, CreateMode.CREATE_OR_REPLACE
+                    create_table_info, query.create_mode
                 ),
                 self._render_query(query, self._persist_insert_prefix(query)),
             ]

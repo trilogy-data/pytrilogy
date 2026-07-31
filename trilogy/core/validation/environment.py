@@ -69,7 +69,8 @@ def validate_environment(
                 output_datatype=DataType.INTEGER,
                 output_purpose=Purpose.METRIC,
             ),
-            name=f"grain_check_{concept.safe_address}",
+            name=f"grain_check_{concept.name}",
+            namespace=concept.namespace,
             environment=env,
         )
         new_concepts.append(concept_grain_check)
