@@ -45,6 +45,14 @@ class StaleAsset:
     reason: str
     filters: UpdateKeys = field(default_factory=UpdateKeys)
     kind: RefreshKind = RefreshKind.SQL
+    # Stale slices of a partitioned asset, when the verdict was reached per
+    # partition. The refresh narrows its select to exactly these, so a hole in
+    # the middle of a range is filled without rebuilding its healthy neighbours.
+    # Mutually exclusive with ``filters``: a missing slice may hold rows OLDER
+    # than the incremental watermark, so ANDing the two would filter out the
+    # very rows the refresh exists to write. Typed loosely to keep this module
+    # free of a partitions.py import (which imports watermarks.py).
+    partitions: list = field(default_factory=list)
 
 
 def _compare_watermark_values(a: str | float | date, b: str | float | date) -> int:

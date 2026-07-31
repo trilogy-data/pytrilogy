@@ -21,6 +21,7 @@ from trilogy.execution.state import (
     partition_id,
     probe_expected_partitions,
     probe_observed_partitions,
+    refresh_stale_assets,
     render_partition_value,
     scope_to_partitions,
     stale_partitions,
@@ -311,6 +312,138 @@ def test_merge_keys_datasources_by_id_not_script(executor):
     merged = merge_snapshots(base, delta)
     assert len(merged.assets[0].datasources) == 1
     assert merged.assets[0].datasources[0].script == "model.preql"
+
+
+HOLE_MODEL = """
+key id int;
+property id.d date;
+property id.upd datetime;
+
+root datasource src (id: id, d: d, upd: upd)
+grain (id)
+query '''
+SELECT 1 as id, DATE '2024-01-01' as d, TIMESTAMP '2024-01-01 00:00:00' as upd
+UNION ALL SELECT 2, DATE '2024-01-02', TIMESTAMP '2024-01-02 00:00:00'
+UNION ALL SELECT 3, DATE '2024-01-03', TIMESTAMP '2024-01-03 00:00:00'
+''';
+
+auto mx <- max(upd) by d;
+
+datasource facts (d: d, mx: mx)
+grain (d)
+address facts
+freshness by mx
+partition by d;
+
+CREATE IF NOT EXISTS DATASOURCE facts;
+"""
+
+# d1 twice, d3 once, d2 missing. The duplicate does not move MAX(mx), so d1 stays
+# fresh — it survives only if the refresh genuinely leaves that slice alone.
+SEED_WITH_HOLE = """
+RAW_SQL('''
+INSERT INTO facts VALUES
+  (DATE '2024-01-01', TIMESTAMP '2024-01-01 00:00:00'),
+  (DATE '2024-01-01', TIMESTAMP '2024-01-01 00:00:00'),
+  (DATE '2024-01-03', TIMESTAMP '2024-01-03 00:00:00')
+''');
+"""
+
+
+@pytest.fixture
+def hole_executor():
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.execute_text(HOLE_MODEL)
+    ex.execute_text(SEED_WITH_HOLE)
+    return ex
+
+
+def _counts(executor) -> dict:
+    return dict(
+        executor.execute_raw_sql("SELECT d, count(*) FROM facts GROUP BY 1").fetchall()
+    )
+
+
+def test_a_hole_in_the_range_is_stale_even_when_the_table_max_is_current(
+    hole_executor,
+):
+    """The whole reason slices reach `is_stale`: the missing day's rows are OLDER
+    than the table's MAX, so the table-level comparison reports fresh."""
+    store = BaseStateStore()
+    asset = store.is_stale(hole_executor.environment, hole_executor, "facts")
+    assert asset is not None
+    assert [obs.id for obs in asset.partitions] == ["d=2024-01-02"]
+    assert "1 stale partition(s): d=2024-01-02" == asset.reason
+    # Slices and incremental filters are mutually exclusive.
+    assert not asset.filters.keys
+
+
+def test_refresh_fills_the_hole_without_rebuilding_its_neighbours(hole_executor):
+    assert _counts(hole_executor) == {date(2024, 1, 1): 2, date(2024, 1, 3): 1}
+    result = refresh_stale_assets(hole_executor)
+    assert result.refreshed_count == 1
+    assert _counts(hole_executor) == {
+        date(2024, 1, 1): 2,  # untouched — the duplicate survived
+        date(2024, 1, 2): 1,  # filled
+        date(2024, 1, 3): 1,
+    }
+
+
+def test_refresh_is_idempotent_once_the_hole_is_filled(hole_executor):
+    refresh_stale_assets(hole_executor)
+    after = _counts(hole_executor)
+    store = BaseStateStore()
+    assert store.is_stale(hole_executor.environment, hole_executor, "facts") is None
+    assert _counts(hole_executor) == after
+
+
+def _filter_sql(executor, slices) -> str:
+    return executor.update_datasource(
+        executor.environment.datasources["facts"], partitions=slices, dry_run=True
+    )
+
+
+def test_slice_filter_is_an_in_list_for_a_single_key(hole_executor):
+    slices = [
+        PartitionObservation(values={"d": date(2024, 1, 2)}),
+        PartitionObservation(values={"d": date(2024, 1, 4)}),
+    ]
+    sql = _filter_sql(hole_executor, slices)
+    # One membership test, not an OR of per-slice equalities (the list literal's
+    # bracket style is the dialect's business).
+    assert '"src"."d" in ' in sql.lower()
+    assert "2024-01-02" in sql and "2024-01-04" in sql
+
+
+def test_slice_filter_selects_a_null_slice_with_is_null(hole_executor):
+    """`= NULL` matches nothing, so a NULL slice would stay stale forever."""
+    sql = _filter_sql(hole_executor, [PartitionObservation(values={"d": None})])
+    assert "is null" in sql.lower()
+
+
+def test_empty_slice_list_refreshes_nothing(hole_executor):
+    """`no stale slices` must never render as `no filter` — that would rebuild
+    the whole table."""
+    before = _counts(hole_executor)
+    assert (
+        hole_executor.update_datasource(
+            hole_executor.environment.datasources["facts"], partitions=[]
+        )
+        is None
+    )
+    assert _counts(hole_executor) == before
+
+
+def test_slice_filter_chunks_to_stay_within_statement_limits(
+    hole_executor, monkeypatch
+):
+    monkeypatch.setattr("trilogy.executor.MAX_PARTITION_FILTER_VALUES", 2)
+    slices = [
+        PartitionObservation(values={"d": date(2024, 2, day)}) for day in range(1, 6)
+    ]
+    sql = _filter_sql(hole_executor, slices)
+    # 5 slices at 2 per statement = 3 persists, each with its own staging table.
+    assert sql.count("CREATE TEMPORARY TABLE") == 3
 
 
 def test_unpartitioned_datasource_carries_no_partition_state(executor):

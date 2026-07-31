@@ -98,6 +98,18 @@ Rules that are load-bearing:
 - Partition state is **always probed live**, never seeded from a snapshot. Watermark seeding exists because probing is expensive; a partition probe is one `GROUP BY`, and trusting a merged file would hide a slice dropped out of band.
 - `BaseStateStore.partitions` caches per invocation and is dropped by `invalidate`/`invalidate_address` alongside watermarks, so a post-refresh re-probe sees what the refresh wrote.
 
+### Slice-aware refresh
+
+`is_stale` checks slices **before** the table-level watermark comparison, and `StaleAsset.partitions` carries the stale ones. This is not an optimization — it is required for correctness: a missing slice's rows can be OLDER than the table's MAX, so the coarse check reports fresh while a hole sits in the middle of the range. Without it `trilogy state` and `trilogy refresh` disagree about the same asset. When no slice is stale it falls through to the coarse check, so an unprobeable expectation never reads as "fresh".
+
+`StaleAsset.partitions` and `.filters` are **mutually exclusive**. A missing slice may hold rows older than the incremental watermark, so ANDing the two would filter out exactly the rows the refresh exists to write — `update_datasource` lets slices replace the incremental filter rather than narrow it.
+
+`partition_filter` builds an `IN` list for a single key and an OR-of-ANDs for several (row-value `IN` is not portable). A NULL slice is selected with `IS NULL`, never `= NULL` — the read-side twin of the null-safe partition delete; with `=` the slice would be reported stale forever and never written.
+
+The DELETE reads the STAGED keys, so **one statement replaces exactly the N slices its select produced** — writing a set of partitions is the same operation as writing one. `MAX_PARTITION_FILTER_VALUES` chunks only to stay inside statement-size limits; how wide to fan out is the orchestrator's decision, not trilogy's.
+
+**Iteration hazard**: the expected-partition probe hides non-root datasources for the duration of its query, mutating `env.datasources`. Any loop calling `is_stale` over that dict must iterate a materialized copy (`get_stale_assets`, `execute_refresh_plan`'s cascade).
+
 ### Merging deltas (`scope_to_partitions` / `merge_snapshots`)
 
 `partitions_complete` is the whole concurrency story. A whole-asset probe sets it True; a run scoped to the slices it owns (`--state-partition`) sets it False, meaning "these slices, and nothing about the others" — necessary because a worker's post-run probe sees the *whole* table, including slices peers are mid-write on.

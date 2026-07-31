@@ -93,13 +93,13 @@ from trilogy.core.models.datasource import (
 from trilogy.execution.state.partitions import (
     PartitionObservation,
     partition_column_name,
+    partition_verdict,
     render_partition_value,
 )
 from trilogy.execution.state.phases import get_phase_recorder
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
     StaleAsset,
-    _compare_watermark_values,
 )
 from trilogy.utility import utc_now_iso
 
@@ -518,35 +518,6 @@ def _partition_columns(ds: Datasource) -> list[PartitionColumn]:
     ]
 
 
-def _partition_verdict(
-    observed: PartitionObservation | None,
-    expected: PartitionObservation | None,
-) -> tuple[AssetStatus, str | None]:
-    """Judge one slice by the same rule a whole datasource is judged by.
-
-    A slice the roots demand but the table lacks is stale — that missing-slice
-    case is the one an unpartitioned watermark can never express, and the reason
-    partition state exists. A slice present but absent upstream is not stale:
-    nothing is asking for it (``expected=False`` tells the reader what it is).
-    """
-    if observed is None:
-        return "stale", "partition missing"
-    if expected is None:
-        return "fresh", None
-    if observed.row_count == 0:
-        return "stale", "partition empty"
-    for key, expected_key in expected.keys.items():
-        if expected_key.value is None:
-            continue
-        observed_key = observed.keys.get(key)
-        current = observed_key.value if observed_key else None
-        if current is None:
-            return "stale", f"'{key}' missing (expected {expected_key.value})"
-        if _compare_watermark_values(current, expected_key.value) < 0:
-            return "stale", f"'{key}' behind: {current} < {expected_key.value}"
-    return "fresh", None
-
-
 def build_partition_states(
     ds: Datasource,
     observed: list[PartitionObservation],
@@ -564,7 +535,9 @@ def build_partition_states(
         exp = expected_by_id.get(pid)
         source = obs or exp
         assert source is not None  # pid came from one of the two maps
-        status, reason = _partition_verdict(obs, exp)
+        # The single verdict rule, shared with the refresh work list — see
+        # ``partitions.partition_verdict``.
+        verdict = partition_verdict(obs, exp)
         states.append(
             PartitionState(
                 partition_id=pid,
@@ -574,8 +547,8 @@ def build_partition_states(
                 },
                 observed=obs is not None,
                 expected=exp is not None,
-                status=status,
-                stale_reason=reason,
+                status="stale" if verdict.stale else "fresh",
+                stale_reason=verdict.reason,
                 row_count=obs.row_count if obs else None,
                 observed_watermarks=[
                     _watermark_value(key, update_key, ds, probed_at)
@@ -590,6 +563,17 @@ def build_partition_states(
             )
         )
     return states
+
+
+def _partition_rollup_reason(partitions: list[PartitionState]) -> str | None:
+    """How a datasource explains itself when its slices are what made it stale.
+
+    One phrasing, used both when a snapshot is built and when deltas are merged
+    — the merged file must not describe the same condition differently."""
+    stale = [p for p in partitions if p.status == "stale"]
+    if not stale:
+        return None
+    return f"{len(stale)} of {len(partitions)} partitions stale"
 
 
 def _rollup_status(statuses: list[AssetStatus]) -> AssetStatus:
@@ -636,13 +620,9 @@ def build_datasource_state(
         status = "unknown"
 
     stale_reason = stale.reason if stale is not None else None
-    stale_partitions = [p for p in (partitions or []) if p.status == "stale"]
-    if stale_partitions:
+    if partitions and any(p.status == "stale" for p in partitions):
         status = "stale"
-        if stale_reason is None:
-            stale_reason = (
-                f"{len(stale_partitions)} of {len(partitions or [])} partitions stale"
-            )
+        stale_reason = stale_reason or _partition_rollup_reason(partitions)
 
     observations, plan = _phase_observations(ds, observed, expected, probed_at)
 
@@ -848,12 +828,7 @@ def _merge_datasource_state(
         merged.partitions = _merge_partitions(base, delta)
     if merged.partitions:
         merged.status = _rollup_status([p.status for p in merged.partitions])
-        stale = [p for p in merged.partitions if p.status == "stale"]
-        merged.stale_reason = (
-            f"{len(stale)} of {len(merged.partitions)} partitions stale"
-            if stale
-            else None
-        )
+        merged.stale_reason = _partition_rollup_reason(merged.partitions)
     merged.partitions_complete = base.partitions_complete or delta.partitions_complete
     return merged
 

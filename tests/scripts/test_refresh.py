@@ -629,9 +629,9 @@ def test_refresh_stale_assets_excludes_peer_stale_from_planner():
     env_at_each_refresh: list[set[str]] = []
     original_update = executor.update_datasource
 
-    def tracking_update(datasource, keys=None, dry_run: bool = False):
+    def tracking_update(datasource, keys=None, dry_run: bool = False, **kwargs):
         env_at_each_refresh.append(set(executor.environment.datasources.keys()))
-        return original_update(datasource, keys)
+        return original_update(datasource, keys, **kwargs)
 
     executor.update_datasource = tracking_update  # type: ignore[method-assign]
 

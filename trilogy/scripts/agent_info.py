@@ -395,9 +395,13 @@ An `APPEND` onto a partitioned datasource replaces exactly the slices its select
 produces (stage -> delete those keys -> insert), so re-running a partition is
 idempotent and never touches a neighbour.
 
-Note: `trilogy refresh` does not yet fan out on its own — it still refreshes a
-partitioned asset as one unit. Partition state is also always probed live,
-never seeded from `--state-input`.
+`trilogy refresh` narrows itself to the stale slices too: a partitioned asset is
+judged per slice, and the refresh filters its select to exactly those, so a
+missing day in the middle of a range is filled without rebuilding the days
+around it. That is one statement covering N slices — running slices as N
+concurrent processes is the orchestrator's call, which is what the fan-out above
+is for. Partition state is always probed live, never seeded from
+`--state-input`.
 
 ## Execution reports
 

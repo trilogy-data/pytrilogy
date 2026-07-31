@@ -3269,9 +3269,29 @@ class BaseDialect:
     def render_partition_clause(self, target: CreateTableInfo) -> str:
         """The dialect's physical partitioning DDL for a create.
 
-        Most engines have no equivalent of a declared partition key that can be
-        expressed in a bare CREATE TABLE, so the default is to log and skip it
-        rather than emit syntax the engine will reject."""
+        Overridden where an engine can declare partitioning in a bare CREATE:
+        BigQuery (``PARTITION BY``) and Presto/Trino (``partitioned_by`` table
+        property). Everywhere else the default logs and skips, because emitting
+        a partition clause would either be rejected or be actively harmful:
+
+        - **DuckDB, SQLite** — no table partitioning at all. (DuckDB partitions
+          *files*; that rides on ``Address.partition_columns``, not here.)
+        - **Postgres, MySQL, SQL Server** — declarative partitioning exists but
+          a partitioned parent is unusable until its child partitions/boundaries
+          exist: Postgres rejects an insert with "no partition of relation found
+          for row", MySQL RANGE needs explicit ``VALUES LESS THAN``, SQL Server
+          needs a partition function and scheme created first. Emitting the
+          parent clause alone would turn a working table into one that refuses
+          every write. Doing it properly means creating each slice's partition
+          as it is first written — which per-partition state now has the
+          information to drive, but which is a feature, not a render change.
+        - **Snowflake** — no declarative partitioning; ``CLUSTER BY`` is the
+          pruning analogue but it is clustering, not partitioning, and automatic
+          reclustering bills credits. Not something to opt a user into silently.
+
+        A logical ``partition by`` still does real work on every dialect: it
+        drives per-partition state, expected-slice discovery, and per-slice
+        replacement on write."""
         if target.partition_keys:
             logger.warning(
                 "%s %s declares partition keys (%s), but %s cannot express "

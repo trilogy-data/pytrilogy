@@ -231,19 +231,25 @@ Generated at runtime: `warehouse.duckdb`, `data/orders.csv`, `state/state.json`,
 
 ## What this demo does not do yet
 
-- **`trilogy refresh` does not fan out on its own.** It still refreshes a
-  partitioned asset as one unit. The per-slice verdicts are computed and
-  published; making `StaleAsset` carry them so refresh can drive the fan-out
-  internally is the natural next step, and the state format is already the
-  contract it would use.
+- **`trilogy refresh` narrows to stale slices but does not fan out.** It refreshes
+  them in one statement (see below), which is usually what you want. Running
+  slices as N concurrent processes is the orchestrator's job — that is what
+  `orchestrate.py` does, and the tradeoff is retry granularity and warehouse
+  parallelism, neither of which the language can size for you.
 - **Partition state is always probed live, never seeded** from `--state-input`.
   Watermark seeding exists because probing is expensive; a partition probe is
   one `GROUP BY`, and trusting a merged file's slices without checking would
   hide a partition someone dropped out of band.
-- **`partition by` still reaches physical DDL on BigQuery only.** Everywhere
-  else it is a logical declaration: it drives state, expected-partition
-  discovery, and per-partition replacement on write, but the created table is
-  not physically partitioned.
+- **`partition by` reaches physical DDL on BigQuery and Presto/Trino only.**
+  DuckDB and SQLite have no table partitioning at all. Postgres, MySQL and SQL
+  Server *do*, but a partitioned parent refuses every write until its child
+  partitions or boundaries exist — emitting the clause alone would break the
+  table. Doing it properly means creating each slice's partition as it is first
+  written, which per-slice state now has the information to drive but which is
+  its own feature. Snowflake has no declarative partitioning; `CLUSTER BY` is
+  the pruning analogue but it bills credits, so it is not something to opt into
+  silently. Everywhere else `partition by` remains a logical declaration that
+  still drives state, slice discovery, and per-slice replacement on write.
 - Expected partitions come from a full scan of the roots. On a real warehouse
   you would want that bounded (a lookback window), which the model has no way to
   express today.

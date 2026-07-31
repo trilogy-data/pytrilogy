@@ -28,11 +28,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from trilogy import Executor
-from trilogy.constants import logger
-from trilogy.core.models.author import ConceptRef
+from trilogy.constants import MagicConstants, logger
+from trilogy.core.enums import BooleanOperator, ComparisonOperator
+from trilogy.core.models.author import (
+    Comparison,
+    ConceptRef,
+    Conditional,
+    WhereClause,
+)
 from trilogy.core.models.build import Factory
+from trilogy.core.models.core import ListWrapper
 from trilogy.core.models.datasource import (
     ColumnAssignment,
     Datasource,
@@ -45,7 +53,13 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
-from trilogy.execution.state.watermarks import _resolve_table_ref
+from trilogy.execution.state.watermarks import (
+    _compare_watermark_values,
+    _resolve_table_ref,
+)
+
+if TYPE_CHECKING:
+    from trilogy.core.models.environment import Environment
 
 LOGGER_PREFIX = "[PARTITIONS]"
 
@@ -128,6 +142,149 @@ def partition_watermark_refs(ds: Datasource) -> list[ConceptRef]:
     partition_addresses = {ref.address for ref in ds.partition_by}
     refs = ds.freshness_by or ds.incremental_by
     return [ref for ref in refs if ref.address not in partition_addresses]
+
+
+@dataclass(frozen=True)
+class PartitionVerdict:
+    """Whether one slice needs refreshing, and why."""
+
+    stale: bool
+    reason: str | None = None
+
+
+def partition_verdict(
+    observed: PartitionObservation | None,
+    expected: PartitionObservation | None,
+) -> PartitionVerdict:
+    """THE rule for judging one slice. Both consumers must call this.
+
+    ``trilogy state`` renders it into a :class:`PartitionState`; ``trilogy
+    refresh`` filters on it to build its work list. Deriving the verdict twice
+    is how the two commands come to disagree about the same asset — which is
+    exactly the bug that made slice-aware refresh necessary in the first place.
+
+    A slice the roots demand but the table lacks is stale; that missing-slice
+    case is the one an unpartitioned watermark can never express. A slice
+    present but absent upstream is NOT stale — nothing is asking for it.
+    """
+    if observed is None:
+        return PartitionVerdict(True, "partition missing")
+    if expected is None:
+        return PartitionVerdict(False)
+    if observed.row_count == 0:
+        return PartitionVerdict(True, "partition empty")
+    for key, expected_key in expected.keys.items():
+        if expected_key.value is None:
+            continue
+        observed_key = observed.keys.get(key)
+        current = observed_key.value if observed_key else None
+        if current is None:
+            return PartitionVerdict(
+                True, f"'{key}' missing (expected {expected_key.value})"
+            )
+        if _compare_watermark_values(current, expected_key.value) < 0:
+            return PartitionVerdict(
+                True, f"'{key}' behind: {current} < {expected_key.value}"
+            )
+    return PartitionVerdict(False)
+
+
+def stale_slices(
+    observed: list[PartitionObservation], expected: list[PartitionObservation]
+) -> list[PartitionObservation]:
+    """The refresh work list: expected slices whose verdict is stale.
+
+    Returned as observations rather than rendered states because a refresh needs
+    the real values to build its filter.
+    """
+    observed_by_id = {obs.id: obs for obs in observed}
+    return [
+        exp
+        for exp in expected
+        if partition_verdict(observed_by_id.get(exp.id), exp).stale
+    ]
+
+
+def partition_filter(
+    ds: Datasource,
+    environment: Environment,
+    slices: list[PartitionObservation],
+) -> WhereClause | None:
+    """A WHERE restricting a refresh to exactly ``slices``.
+
+    One ``IN`` list for single-key partitioning; an OR of AND-ed equalities when
+    several columns make up the key, because row-value ``IN`` is not portable.
+    Returns None for an empty slice list — "no slices" must never render as "no
+    filter", which would rebuild the whole table.
+    """
+    if not slices:
+        return None
+    assignments = partition_assignments(ds)
+    concepts = [environment.concepts[col.concept.address] for col in assignments]
+    columns = [partition_column_name(col) for col in assignments]
+
+    if len(assignments) == 1:
+        concept, column = concepts[0], columns[0]
+        values = [obs.values.get(column) for obs in slices]
+        present = [value for value in values if value is not None]
+        arms: list[Comparison | Conditional] = []
+        if present:
+            arms.append(
+                Comparison(
+                    left=concept.reference,
+                    right=ListWrapper(present, type=concept.datatype.data_type),
+                    operator=ComparisonOperator.IN,
+                )
+            )
+        if len(present) != len(values):
+            arms.append(_is_null(concept))
+        return WhereClause(conditional=_any_of(arms))
+
+    def one_slice(obs: PartitionObservation) -> Comparison | Conditional:
+        return _all_of(
+            [
+                _equals(concept, obs.values.get(column))
+                for concept, column in zip(concepts, columns)
+            ]
+        )
+
+    return WhereClause(conditional=_any_of([one_slice(obs) for obs in slices]))
+
+
+def _is_null(concept) -> Comparison:
+    """``IS NULL``, not ``= NULL``.
+
+    A NULL partition key is a real slice. Selecting it with ``=`` matches
+    nothing, so the slice would be reported stale forever and never written —
+    the read-side twin of the null-safe partition delete."""
+    return Comparison(
+        left=concept.reference,
+        right=MagicConstants.NULL,
+        operator=ComparisonOperator.IS,
+    )
+
+
+def _equals(concept, value: PartitionValue) -> Comparison:
+    if value is None:
+        return _is_null(concept)
+    return Comparison(
+        left=concept.reference, right=value, operator=ComparisonOperator.EQ
+    )
+
+
+def _all_of(parts: list) -> Comparison | Conditional:
+    return _fold(parts, BooleanOperator.AND)
+
+
+def _any_of(parts: list) -> Comparison | Conditional:
+    return _fold(parts, BooleanOperator.OR)
+
+
+def _fold(parts: list, operator: BooleanOperator):
+    combined = parts[0]
+    for part in parts[1:]:
+        combined = Conditional(left=combined, right=part, operator=operator)
+    return combined
 
 
 def _watermark_key_type(ds: Datasource) -> UpdateKeyType:

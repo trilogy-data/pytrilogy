@@ -20,6 +20,7 @@ from trilogy.execution.state.partitions import (
     is_partitioned,
     probe_expected_partitions,
     probe_observed_partitions,
+    stale_slices,
 )
 from trilogy.execution.state.phases import get_phase_recorder
 from trilogy.execution.state.watermarks import (
@@ -421,6 +422,23 @@ class BaseStateStore:
                 filters=UpdateKeys(),
             )
 
+        # Per-slice verdict first for a partitioned asset: a missing slice can
+        # hold rows OLDER than the table's MAX, so the table-level comparison
+        # below reports fresh while a hole sits in the middle of the range.
+        # Falling through when nothing is stale keeps the coarse check as the
+        # backstop (an unprobeable expectation must not read as "fresh").
+        probed = self.partition_asset(env, executor, ds_id, root_assets=root_assets)
+        if probed is not None:
+            slices = stale_slices(*probed)
+            if slices:
+                shown = ", ".join(obs.id for obs in slices[:3])
+                suffix = "" if len(slices) <= 3 else f", +{len(slices) - 3} more"
+                return StaleAsset(
+                    datasource_id=ds_id,
+                    reason=f"{len(slices)} stale partition(s): {shown}{suffix}",
+                    partitions=slices,
+                )
+
         # Watermark lag — needs concept_max_watermarks for the comparison.
         self._ensure_concept_max_watermarks(env, executor, root_assets)
         watermark = self.watermarks.get(ds_id)
@@ -508,7 +526,9 @@ class BaseStateStore:
         self._ensure_concept_max_watermarks(env, executor, root_assets)
 
         stale: list[StaleAsset] = []
-        for ds_id in env.datasources:
+        # Materialized: is_stale's partition probe hides non-root datasources for
+        # the duration of its query, mutating this dict mid-iteration.
+        for ds_id in list(env.datasources):
             if ds_id in skip_datasources:
                 continue
             asset = self.is_stale(env, executor, ds_id, root_assets=root_assets)
@@ -785,7 +805,10 @@ def _execute_one_asset(
     try:
         try:
             sql = executor.update_datasource(
-                datasource, keys=asset.filters, dry_run=dry_run
+                datasource,
+                keys=asset.filters,
+                dry_run=dry_run,
+                partitions=asset.partitions or None,
             )
         except Exception as e:
             raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
@@ -883,7 +906,9 @@ def execute_refresh_plan(
     # script-kind refresh moved its upstream root.
     if cascade and has_scripts and not dry_run:
         cascade_assets: list[StaleAsset] = []
-        for ds_id in executor.environment.datasources:
+        # Materialized: is_stale's partition probe mutates this dict (see
+        # get_stale_assets).
+        for ds_id in list(executor.environment.datasources):
             if ds_id in handled:
                 continue
             candidate = store.is_stale(executor.environment, executor, ds_id)
