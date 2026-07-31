@@ -22,6 +22,7 @@ from trilogy.core.models.build import BuildDatasource, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import collect_source_addresses
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
     ChartStatement,
@@ -286,6 +287,7 @@ class Executor:
         self.commit()
 
     def close(self) -> None:
+        self.generator.teardown()
         if self.connected:
             self._flush_transaction()
             self.connection.close()
@@ -546,9 +548,41 @@ class Executor:
     def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol | None:
         return self.execute_write_sql(query.text)
 
+    def _prepare_query_sources(self, query: ProcessedQuery) -> None:
+        """Let the dialect materialize sources it can only reference by name.
+
+        DuckDB reads python scripts and files lazily in the query itself;
+        BigQuery has to stage them first. Runs before compilation because
+        rendering the source assumes the staged artifact's name.
+        """
+        if not self.generator.REQUIRES_SOURCE_PREPARATION:
+            return
+        addresses = collect_source_addresses(query.ctes)
+        if addresses:
+            self.generator.prepare_sources(addresses, self)
+
+    def compile_for_execution(self, query: ProcessedQuery) -> str:
+        """Compile a statement that is about to run, rather than be displayed.
+
+        The only place the dialect's ``prepare_sources`` hook fires, so every
+        path that turns a processed statement into SQL it then executes — plain
+        selects, persists, copies, chart layers — must come through here.
+        ``generator.compile_statement`` stays side-effect free for the paths
+        that only render SQL (``generate_sql``, `show`, metadata)."""
+        self._prepare_query_sources(query)
+        return self.generator.compile_statement(query)
+
+    def compile_statements_for_execution(
+        self, query: ProcessedQueryPersist
+    ) -> list[str]:
+        """``compile_for_execution`` for writers that need one statement per
+        driver call (see ``BaseDialect.compile_statements``)."""
+        self._prepare_query_sources(query)
+        return self.generator.compile_statements(query)
+
     @execute_query.register
     def _(self, query: ProcessedQuery) -> ResultProtocol | None:
-        sql = self.generator.compile_statement(query)
+        sql = self.compile_for_execution(query)
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
@@ -589,7 +623,7 @@ class Executor:
             return None
 
         output = self.execute_write_statements(
-            self.generator.compile_statements(query),
+            self.compile_statements_for_execution(query),
             local_concepts=query.local_concepts,
         )
 
@@ -599,7 +633,7 @@ class Executor:
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
         """Build SQL with column aliases for file output."""
-        base_sql = self.generator.compile_statement(query)
+        base_sql = self.compile_for_execution(query)
         if not query.column_aliases:
             return base_sql
         quote = self.generator.QUOTE_CHARACTER
@@ -657,7 +691,7 @@ class Executor:
             if layer.query is None:
                 layer_data.append([])
                 continue
-            sql = self.generator.compile_statement(layer.query)
+            sql = self.compile_for_execution(layer.query)
             result = self.execute_raw_sql(
                 sql, local_concepts=layer.query.local_concepts
             )
@@ -749,21 +783,12 @@ class Executor:
 
     @generate_sql.register
     def _(self, command: str) -> list[str]:
-        _, parsed = parse_text(command, self.environment)
-        generatable = [
-            x
-            for x in parsed
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    ShowStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                ),
-            )
+        # Same statement set parse_text executes, so text in and statements in
+        # produce the same SQL — a narrower filter here silently drops DDL.
+        return [
+            self.generator.compile_statement(x)
+            for x in self.parse_text_generator(command)
         ]
-        return self._generate_sql(generatable)
 
     def parse_file(
         self, file: str | Path, persist: bool = False
@@ -818,10 +843,10 @@ class Executor:
         for t in parsed:
             if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
                 continue
-            x = self._generate([t])[0]
-            if persist and isinstance(x, ProcessedQueryPersist):
-                self.environment.add_datasource(x.datasource)
-            queries.append(x)
+            for x in self._generate([t]):
+                if persist and isinstance(x, ProcessedQueryPersist):
+                    self.environment.add_datasource(x.datasource)
+                queries.append(x)
         return queries, definitions
 
     def parse_text_generator(
@@ -836,12 +861,13 @@ class Executor:
         generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
-            x = self._generate([t])[0]
+            # One author statement can process into several: `create ... with
+            # data` yields a persist per target.
+            for x in self._generate([t]):
+                yield x
 
-            yield x
-
-            if persist and isinstance(x, ProcessedQueryPersist):
-                self.environment.add_datasource(x.datasource)
+                if persist and isinstance(x, ProcessedQueryPersist):
+                    self.environment.add_datasource(x.datasource)
 
     def _atom_to_value(self, val: Any) -> Any:
         if val == MagicConstants.NULL:

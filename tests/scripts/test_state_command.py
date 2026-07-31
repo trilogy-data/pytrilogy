@@ -227,6 +227,80 @@ def test_snapshot_round_trip(runner, tmp_path):
     assert model.model_dump(mode="json") == data
 
 
+PARAMETERIZED_PREQL = """import source;
+
+param cutoff datetime;
+
+datasource recent_events (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+file `{target}`
+incremental by ev_ts;
+
+select ev_id, ev_ts where ev_ts > cutoff;
+"""
+
+
+def _parameterized_workspace(tmp_path: Path) -> None:
+    """Workspace whose second script declares a `param` — unparseable without
+    the CLI's `--param` values."""
+    _workspace(tmp_path)
+    (tmp_path / "base.preql").unlink()
+    (tmp_path / "recent.preql").write_text(
+        PARAMETERIZED_PREQL.format(
+            target=(tmp_path / "recent_events.parquet").as_posix()
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_state_snapshot_passes_cli_params(runner, tmp_path):
+    """The directory probe parses every script, so it has to carry the run's
+    `--param` values — a script declaring `param x` cannot parse without
+    them."""
+    _parameterized_workspace(tmp_path)
+    snap = tmp_path / "snap.json"
+    result = runner.invoke(
+        cli,
+        [
+            "state",
+            str(tmp_path),
+            "duckdb",
+            "--param",
+            "cutoff=2024-01-01 00:00:00",
+            "--output",
+            str(snap),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    snapshot = _load_snapshot(snap)
+    _asset(snapshot, "recent_events.parquet")
+
+
+def test_run_state_file_passes_cli_params(runner, tmp_path):
+    """The post-run snapshot re-parses the scripts; dropping the parameters the
+    run itself used turns every parameterized run into a state warning."""
+    _parameterized_workspace(tmp_path)
+    state_file = tmp_path / "post_run.json"
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            str(tmp_path),
+            "duckdb",
+            "--param",
+            "cutoff=2024-01-01 00:00:00",
+            "--state-file",
+            str(state_file),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "State snapshot failed" not in result.output
+    assert state_file.exists(), result.output
+
+
 def test_refresh_state_file(runner, tmp_path):
     # No derived parquet yet -> stale -> refresh builds it.
     _workspace(tmp_path, build_target=False)

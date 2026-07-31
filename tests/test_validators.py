@@ -467,6 +467,58 @@ def test_multi_datasource_aggregate_count_totals_mismatch():
     )
 
 
+_NAMESPACE_PREFIX_COLLISION_PRODUCT = """
+    key id int;
+    property id.category string;
+
+    datasource products (
+        id: id,
+        category: category,
+    )
+    grain (id)
+    query '''
+    SELECT 1 AS id, 'jeans' AS category UNION ALL
+    SELECT 2, 'shirts'
+    ''';
+"""
+
+_NAMESPACE_PREFIX_COLLISION_MAIN = """
+    key item_id int;
+    property item_id.product_category string;
+
+    datasource inventory_items (
+        item_id: item_id,
+        product_id: product.id,
+        product_category: product_category,
+        category: product.category,
+    )
+    grain (item_id)
+    query '''
+    SELECT 10 AS item_id, 1 AS product_id, 'jeans' AS product_category,
+        'jeans' AS category UNION ALL
+    SELECT 20, 2, 'shirts', 'shirts'
+    ''';
+"""
+
+
+def test_namespace_and_prefixed_property_grain_checks_are_distinct():
+    """A namespace `product` and a sibling property `product_category` flatten
+    to the same safe_address. The per-concept grain-check helpers must key off
+    the concept address, not that flattened name — otherwise one overwrites the
+    other and validation plans `product_category` against the products
+    datasource, which cannot render it."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.environment.parse(_NAMESPACE_PREFIX_COLLISION_PRODUCT, namespace="product")
+    executor.execute_text(_NAMESPACE_PREFIX_COLLISION_MAIN)
+
+    assert (
+        executor.environment.concepts["product.category"].safe_address
+        == executor.environment.concepts["local.product_category"].safe_address
+    )
+
+    validate_environment(executor.environment, exec=executor)
+
+
 def test_concept_nullable_propagates_to_column_binding():
     """A concept declared nullable (`property x type?`) should accept NULLs in
     every datasource binding without requiring an explicit column-level `?`

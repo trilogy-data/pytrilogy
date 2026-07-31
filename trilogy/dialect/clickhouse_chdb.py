@@ -7,21 +7,20 @@ Server-mode ClickHouse goes through SQLAlchemy via clickhouse-sqlalchemy instead
 from __future__ import annotations
 
 import json
-from collections import namedtuple
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import bindparam
-from sqlalchemy import text as sa_text
 from sqlalchemy.sql.elements import TextClause
 
 from trilogy.core.models.environment import Environment
+from trilogy.dialect.results import buffered_rows
 from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
+    NonTransactionalConnection,
     ResultProtocol,
-    unescape_literal_colons,
+    statement_to_sql,
 )
 
 
@@ -59,71 +58,7 @@ def _coerce_value(ch_type: str, value: Any) -> Any:
     return coercer(value) if coercer else value
 
 
-def _row_class_for(columns: tuple[str, ...]) -> type:
-    # rename=True replaces invalid identifiers with _0, _1, ... so column names
-    # like "local.x" don't blow up. Index access still works regardless.
-    return namedtuple("ChdbRow", columns, rename=True)
-
-
-class ChdbResult(ResultProtocol):
-    def __init__(self, columns: list[str], rows: list[tuple]):
-        self._columns = columns
-        if columns:
-            row_cls = _row_class_for(tuple(columns))
-            self._rows = [row_cls(*r) for r in rows]
-        else:
-            self._rows = list(rows)
-        self._cursor = 0
-
-    def fetchall(self) -> list[Any]:
-        remaining = self._rows[self._cursor :]
-        self._cursor = len(self._rows)
-        return remaining
-
-    def fetchone(self) -> Any | None:
-        if self._cursor >= len(self._rows):
-            return None
-        row = self._rows[self._cursor]
-        self._cursor += 1
-        return row
-
-    def fetchmany(self, size: int) -> list[Any]:
-        end = min(self._cursor + size, len(self._rows))
-        chunk = self._rows[self._cursor : end]
-        self._cursor = end
-        return chunk
-
-    def keys(self) -> list[str]:
-        return list(self._columns)
-
-    def __iter__(self) -> Generator[Any, None, None]:
-        while True:
-            row = self.fetchone()
-            if row is None:
-                return
-            yield row
-
-
-def _statement_to_sql(statement: str | TextClause, parameters: Any | None) -> str:
-    """Resolve a SQLAlchemy TextClause or raw string to a final SQL string.
-
-    Parameters are inlined via SQLAlchemy's literal_binds compiler since chdb
-    does not support bound parameters in its Python API.
-    """
-    if not isinstance(statement, TextClause):
-        return str(statement)
-    if not parameters:
-        # A TextClause's raw .text still carries the executor's literal-colon
-        # escapes; SQLAlchemy unescapes them at compile time, which this
-        # branch skips.
-        return unescape_literal_colons(statement.text)
-    bound = sa_text(statement.text)
-    bound = bound.bindparams(*[bindparam(k, v) for k, v in parameters.items()])
-    compiled = bound.compile(compile_kwargs={"literal_binds": True})
-    return str(compiled)
-
-
-class ChdbConnection(EngineConnection):
+class ChdbConnection(NonTransactionalConnection):
     def __init__(self, path: str | None):
         self._path = path
         self._session: Any | None = None
@@ -142,12 +77,12 @@ class ChdbConnection(EngineConnection):
     def execute(
         self, statement: str | TextClause, parameters: Any | None = None
     ) -> ResultProtocol:
-        sql = _statement_to_sql(statement, parameters)
+        sql = statement_to_sql(statement, parameters)
         # Use JSON format so we get both column metadata and row data.
         raw = self._get_session().query(sql, "JSON")
         text_out = str(raw).strip()
         if not text_out:
-            return ChdbResult([], [])
+            return buffered_rows([], [])
         payload = json.loads(text_out)
         meta = payload.get("meta") or []
         columns = [m["name"] for m in meta]
@@ -157,20 +92,7 @@ class ChdbConnection(EngineConnection):
             tuple(_coerce_value(t, row.get(c)) for c, t in zip(columns, types))
             for row in data
         ]
-        return ChdbResult(columns, rows)
-
-    def commit(self) -> None:
-        # chdb is a single in-process session; no transactional semantics.
-        return None
-
-    def begin(self) -> None:
-        return None
-
-    def rollback(self) -> None:
-        return None
-
-    def close(self) -> None:
-        return None
+        return buffered_rows(columns, rows, "ChdbRow")
 
 
 class ChdbEngine(ExecutionEngine):

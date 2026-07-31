@@ -9,7 +9,12 @@ from trilogy.core.models.build import (
     BuildConcept,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
+from trilogy.core.validation.common import (
+    ExpectationType,
+    ValidationTest,
+    easy_query,
+    grain_check_address,
+)
 
 
 def validate_multi_datasource_concept(
@@ -25,8 +30,8 @@ def validate_multi_datasource_concept(
     results: list[ValidationTest] = []
     seen: dict[str, int] = {}
 
-    grain_check_address = f"grain_check_{concept.safe_address}"
-    if build_env.concepts.get(grain_check_address) is None:
+    check_address = grain_check_address(concept)
+    if build_env.concepts.get(check_address) is None:
         return results
 
     count = 0
@@ -45,7 +50,7 @@ def validate_multi_datasource_concept(
                 continue
             type_query = easy_query(
                 concepts=[
-                    build_env.concepts[grain_check_address],
+                    build_env.concepts[check_address],
                 ],
                 datasource=datasource,
                 env=env,

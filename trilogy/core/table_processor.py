@@ -1,7 +1,7 @@
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import Modifier, PersistMode
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
-from trilogy.core.statements.author import CreateStatement
+from trilogy.core.statements.author import CreateStatement, PersistStatement
 from trilogy.core.statements.execute import (
     ColumnInfo,
     CreateTableInfo,
@@ -32,6 +32,14 @@ def datasource_to_create_table_info(
         if col.is_concrete
     ]
 
+    missing = [c for c in datasource.partition_by if c.address not in address_field_map]
+    if missing:
+        raise ValueError(
+            f"Datasource {datasource.name} partitions by "
+            f"{', '.join(c.address for c in missing)}, which is not a concrete "
+            "column of the datasource; partition columns must be selected."
+        )
+
     return CreateTableInfo(
         name=(
             datasource.address.location
@@ -39,12 +47,38 @@ def datasource_to_create_table_info(
             else datasource.address
         ),
         columns=columns_info,
-        partition_keys=[
-            address_field_map[c.address]
-            for c in datasource.partition_by
-            if c.address in address_field_map
-        ],
+        partition_keys=[address_field_map[c.address] for c in datasource.partition_by],
     )
+
+
+def _require_datasource(target: str, environment: Environment) -> Datasource:
+    datasource: Datasource | None = environment.datasources.get(target)
+    if not datasource:
+        raise ValueError(f"Datasource {target} not found in environment.")
+    return datasource
+
+
+def create_statement_to_persists(
+    statement: CreateStatement,
+    environment: Environment,
+) -> list[PersistStatement]:
+    """`create ... with data` as persists: an OVERWRITE already emits its own
+    DDL ahead of the insert, so the create mode rides along and the statement
+    stays one processed query."""
+    persists = []
+    for target in statement.targets:
+        datasource = _require_datasource(target, environment)
+        persists.append(
+            PersistStatement(
+                select=datasource.create_update_statement(
+                    environment, None, line_no=None
+                ),
+                datasource=datasource,
+                persist_mode=PersistMode.OVERWRITE,
+                create_mode=statement.create_mode,
+            )
+        )
+    return persists
 
 
 def process_create_statement(
@@ -54,11 +88,9 @@ def process_create_statement(
     # Process the create statement to extract table info
     targets_info = []
     for target in statement.targets:
-        datasource: Datasource | None = environment.datasources.get(target)
-        if not datasource:
-            raise ValueError(f"Datasource {target} not found in environment.")
-
-        create_table_info = datasource_to_create_table_info(datasource)
+        create_table_info = datasource_to_create_table_info(
+            _require_datasource(target, environment)
+        )
         targets_info.append(create_table_info)
 
     return ProcessedCreateStatement(

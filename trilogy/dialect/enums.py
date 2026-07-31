@@ -8,6 +8,7 @@ from trilogy.core.models.environment import Environment
 if TYPE_CHECKING:
     from trilogy import Executor
     from trilogy.hooks.base_hook import BaseHook
+    from trilogy.staging import StagingConfig
 
 from trilogy.constants import Rendering, logger
 from trilogy.dialect.config import DialectConfig, DuckDBConfig
@@ -68,14 +69,27 @@ class Dialects(Enum):
 
     def default_engine(self, conf=None, _engine_factory: Callable = default_factory):
         if self == Dialects.BIGQUERY:
+            from trilogy.dialect.config import BigQueryConfig
+
+            if conf is None:
+                conf = BigQueryConfig()
+            if not isinstance(conf, BigQueryConfig):
+                raise TypeError(
+                    f"Invalid dialect configuration; expected BigQueryConfig, got {type(conf).__name__}"
+                )
+            if not conf.use_sqlalchemy:
+                from trilogy.dialect.bigquery_engine import BigQueryEngine
+
+                return BigQueryEngine(conf)
             from google.auth import default
             from google.cloud import bigquery
 
-            from trilogy.dialect.config import BigQueryConfig
-
-            credentials, project = default()
-            client = bigquery.Client(credentials=credentials, project=project)
-            conf = conf or BigQueryConfig(project=project, client=client)
+            if not conf.client:
+                credentials, project = default()
+                conf.client = bigquery.Client(
+                    credentials=credentials, project=conf.project or project
+                )
+                conf.project = conf.client.project
             return _engine_factory(
                 conf,
                 BigQueryConfig,
@@ -176,6 +190,7 @@ class Dialects(Enum):
         hooks: list["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
         rendering: Rendering | None = None,
+        staging: "StagingConfig | None" = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
         from trilogy import Executor
@@ -191,6 +206,7 @@ class Dialects(Enum):
                 rendering=rendering,
                 hooks=hooks,
                 config=conf,
+                staging=staging,
             )
 
         return Executor(
@@ -200,4 +216,5 @@ class Dialects(Enum):
             rendering=rendering,
             hooks=hooks,
             config=conf,
+            staging=staging,
         )

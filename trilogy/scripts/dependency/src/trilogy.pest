@@ -235,7 +235,8 @@ publish_statement = { PUBLISH_ACTION ~ VALIDATE_SCOPE ~ IDENTIFIER }
 create_modifier_clause = { CREATE_IF_NOT_EXISTS | CREATE_OR_REPLACE }
 CREATE_IF_NOT_EXISTS   = @{ ^"if" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+ ~ ^"exists" }
 CREATE_OR_REPLACE      = @{ ^"or" ~ WHITESPACE+ ~ ^"replace" }
-create_statement       = { ^"create" ~ create_modifier_clause? ~ VALIDATE_SCOPE ~ IDENTIFIER }
+CREATE_WITH_DATA       = @{ ^"with" ~ WHITESPACE+ ~ ^"data" }
+create_statement       = { ^"create" ~ create_modifier_clause? ~ VALIDATE_SCOPE ~ IDENTIFIER ~ CREATE_WITH_DATA? }
 
 COPY_TYPE       = @{ ^"csv" | ^"json" | ^"parquet" | ^"png" | ^"svg" | ^"html" | ^"pdf" }
 copy_option     = { IDENTIFIER ~ "=" ~ literal }

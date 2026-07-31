@@ -78,6 +78,18 @@ def build_order_args(concepts: list[BuildConcept]) -> list[BuildFunction]:
     return order_args
 
 
+def grain_check_address(concept: BuildConcept | ConceptRef) -> str:
+    """Address of a concept's grain-check helper.
+
+    Derived from the concept's namespace and name rather than its
+    ``safe_address``: flattening `.` to `_` is lossy, so a namespace ``product``
+    and a sibling property ``product_category`` share one flattened name. Keyed
+    on that, the two concepts would share (and overwrite) one grain check, and
+    validation would plan one concept's check against the other's datasource.
+    """
+    return f"{concept.namespace}.grain_check_{concept.name}"
+
+
 def easy_query(
     concepts: list[BuildConcept],
     datasource: BuildDatasource,

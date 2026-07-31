@@ -107,3 +107,32 @@ auto domain <- regexp_extract(url, 'http(?:s)?://([^/]+)', 1);
 """)
     rs = exec.execute_query("select domain;")
     assert rs.fetchall() == [("example.com",)]
+
+
+GENERATE_SQL_MODEL = """
+key id int;
+property id.name string;
+
+datasource facts (id: id, name: name) grain (id) address facts_tbl;
+
+create or replace datasources facts;
+
+select id, name;
+"""
+
+
+def test_generate_sql_from_text_covers_every_executable_statement():
+    """The str overload must cover the same statements parse_text executes --
+    a narrower filter here silently drops DDL from the generated output."""
+    from_text = Dialects.DUCK_DB.default_executor().generate_sql(GENERATE_SQL_MODEL)
+
+    executor = Dialects.DUCK_DB.default_executor()
+    from_statements = [
+        sql
+        for command in executor.parse_text(GENERATE_SQL_MODEL)
+        for sql in executor.generate_sql(command)
+    ]
+
+    assert from_text == from_statements
+    assert len(from_text) == 2
+    assert "CREATE OR REPLACE TABLE" in from_text[0]

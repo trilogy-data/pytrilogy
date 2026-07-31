@@ -93,6 +93,7 @@ def create_statement(
     targets: list[str] = []
     scope = ValidationScope.DATASOURCES
     mode = CreateMode.CREATE
+    populate = False
     for token in node.child_tokens():
         if token.kind == SyntaxTokenKind.VALIDATE_SCOPE:
             scope = _parse_validate_scope(token)
@@ -101,12 +102,26 @@ def create_statement(
                     node,
                     f"Creating is only supported for Datasources, got {scope}",
                 )
+        elif token.name == "CREATE_WITH_DATA":
+            populate = True
         elif token.kind == SyntaxTokenKind.IDENTIFIER:
             targets.append(token.value)
     modifier = node.optional_node(SyntaxNodeKind.CREATE_MODIFIER_CLAUSE)
     if modifier is not None:
         mode = _parse_create_modifier(modifier)
-    return CreateStatement(scope=scope, targets=targets, create_mode=mode)
+    if populate and mode == CreateMode.CREATE_IF_NOT_EXISTS:
+        # The load would run against a table that may already hold rows, so it
+        # would double it. There is no "populate only if I just created it"
+        # without probing the warehouse at parse time.
+        raise fail(
+            node,
+            "`with data` cannot be combined with `if not exists` — the table may "
+            "already hold rows. Use `create or replace ... with data` to rebuild "
+            "it, or `append` to add to it.",
+        )
+    return CreateStatement(
+        scope=scope, targets=targets, create_mode=mode, populate=populate
+    )
 
 
 def natural_select_statement(

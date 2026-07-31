@@ -299,9 +299,10 @@ Call for more info.
   For authoring or editing datasource.
 - `trilogy agent-info ingest` — `trilogy ingest` full reference.
   For bootstrapping a model from scratch.
-- `trilogy agent-info config` — `trilogy.toml` schema (`[engine]`, `[setup]`,
-  `[agent]`) and en-vars Only needed when
-  editing the workspace config.
+- `trilogy agent-info config` — `trilogy.toml` schema (`[engine]`,
+  `[engine.config]` per-dialect connection/behaviour keys, `[staging]`,
+  `[setup]`, `[agent]`) and env-vars. Needed when editing the workspace config
+  or turning on a dialect-level feature (python datasources, staging, ...).
 - `trilogy agent-info serve` — `trilogy public list/fetch` (browse and pull
   from trilogy-public-models) and `trilogy serve` (interactive debugging UI).
 - `trilogy agent-info state` — persisting asset state to a file and reading it
@@ -436,7 +437,7 @@ extension determines how the file is handled — no extra configuration is neede
 | `.parquet` | `read_parquet(...)` / write parquet |
 | `.csv` | `read_csv(...)` / write csv |
 | `.tsv` | `read_csv(..., delim='\t')` / write tsv |
-| `.py` | `uv_run(...)` — Arrow IPC read-only (see below) |
+| `.py` | Arrow IPC read-only — `uv_run(...)` on DuckDB, GCS-staged on BigQuery (see below) |
 
 **Reading** — declare the datasource and query it like any other source:
 
@@ -477,6 +478,11 @@ overwrite ride_summary;
 `overwrite` replaces the file contents. `persist` appends. Both work with local paths and
 cloud storage URIs (e.g. `gcs://bucket/path/out.parquet`) when the appropriate DuckDB
 extension is enabled.
+
+`create datasource <name>` emits DDL only — the table is created empty, which is what a
+following `append` expects. Add `with data` (`create or replace datasource x with data;`)
+to run the datasource's own query after the DDL and leave it populated. `with data` is
+rejected with `if not exists`, where the table may already hold rows.
 
 ## Complete and Partial Datasources
 
@@ -554,7 +560,7 @@ IPC stream to `stdout`. This is powered by `uv run` under the hood, so the scrip
 its own dependencies via inline script metadata.
 
 **Requirements:**
-- DuckDB executor with `enable_python_datasources=True` in `DuckDBConfig`
+- `enable_python_datasources=True` in the engine config (DuckDB or BigQuery)
 - Script writes `pyarrow.Table` to `sys.stdout.buffer` using `pa.ipc.new_stream`
 - Script is referenced with a `file` clause using a backtick path
 
@@ -614,6 +620,26 @@ enable_python_datasources = true
 The column names in the Arrow table must match the column names declared in the datasource
 mapping. The script runs in an isolated `uv` environment, so it can have dependencies that
 differ from the main project.
+
+**On BigQuery.** The same declaration works, but BigQuery cannot run a local
+process, so trilogy streams the script's Arrow output to a parquet object in
+GCS and the query reads that. This needs a `gs://` staging location as well as
+the enable flag:
+
+```toml
+[engine]
+dialect = "bigquery"
+
+[engine.config]
+project = "my-project"
+staging_uri = "gs://my-bucket/trilogy-staging"
+enable_python_datasources = true
+```
+
+Each script is staged once per executor and the object is deleted on close.
+`trilogy agent-info config` covers the remaining levers (`staging_dataset` for
+persistent external tables, `use_sqlalchemy`) and the bucket lifecycle rule
+that backstops cleanup.
 """
 
 
@@ -719,9 +745,11 @@ theme = "inter"
 - `[engine]` — execution dialect and parallelism defaults. Most workspaces
   override only `dialect` (`duckdb`, `postgres`, ...). `parallelism` caps the
   worker count for multi-script execution.
-- `[engine.config]` — dialect-specific connection params. For DuckDB the
-  common key is `db_location = "<path>.duckdb"`; for warehouses, a connection
-  string is supplied at the CLI instead.
+- `[engine.config]` — dialect-specific connection and behaviour params, passed
+  straight to that dialect's config object. See the per-dialect keys below.
+- `[staging]` — `path` for intermediate/temp artifacts (a local directory, or
+  a `gs://`/`s3://` prefix). Defaults to the system temp directory. Only
+  relevant to dialects that must materialize something before querying it.
 - `[setup]` — scripts to run before any user script. `trilogy = [...]` runs
   `.preql` declarations to seed the environment; `sql = [...]` runs raw SQL
   for tables/extensions.
@@ -731,6 +759,58 @@ theme = "inter"
 - `[report]` — rendering defaults. `theme` names the visual theme applied by
   `trilogy render` and chart `copy into` exports; overridable per invocation
   with `--theme` / `copy (theme='...')`.
+
+## `[engine.config]` per dialect
+
+Keys map 1:1 onto the dialect's config object. Unknown keys are rejected at
+load time. Warehouse credentials are usually supplied as CLI connection args
+instead; when set here, always reference the environment (see below).
+
+**duckdb**
+- `db_location` — path to a `.duckdb` file, resolved relative to `trilogy.toml`
+  (omit for in-memory). `path` is the same setting, taken verbatim
+- `read_only` — open the file read-only, so many processes can share it
+- `enable_python_datasources` — allow `.py` (Arrow) datasources
+- `enable_gcs` / `enable_spatial` — load the matching DuckDB extension
+- `gcs_cache_bust` — append a cache-busting query param to `gs://` reads
+
+**bigquery**
+- `project` — GCP project; defaults to the application-default-credentials one
+- `enable_python_datasources` — allow `.py` (Arrow) datasources; requires a
+  `gs://` staging location (below)
+- `staging_uri` — `gs://bucket/prefix` the staged parquet objects are written
+  under. Falls back to `[staging] path` when unset; this key wins when both
+  are set
+- `staging_dataset` — opt into persistent `EXTERNAL TABLE`s in this dataset
+  (`dataset` or `project.dataset`) instead of the default per-job temp table
+  definitions. Use when the staged table should be queryable outside trilogy,
+  or when pinned to `use_sqlalchemy`. Its objects are NOT cleaned up
+- `use_sqlalchemy` — route through sqlalchemy-bigquery instead of trilogy's
+  native BigQuery client. The native engine is the default because only it can
+  attach per-job table definitions; `use_sqlalchemy = true` therefore also
+  requires `staging_dataset` to use python datasources. A migration escape
+  hatch kept for one release — do not build on it
+
+Staged objects are deleted at executor close in the default mode, but that is
+best-effort and cannot run if the process is killed — put an age-based
+lifecycle rule on the staging bucket as the backstop.
+
+```toml
+[engine]
+dialect = "bigquery"
+
+[engine.config]
+project = "my-project"
+staging_uri = "gs://my-bucket/trilogy-staging"
+enable_python_datasources = true
+```
+
+**postgres / mysql / sql_server** — `host`, `port`, `username`, `password`,
+`database`. **snowflake** — `account`, `username`, `password`, `database`,
+`schema`. **presto / trino** — `host`, `port`, `username`, `password`,
+`catalog`, `schema`. **sqlite** — `path`. **clickhouse** — `mode`
+(`chdb` embedded or `server`), plus `host`/`port`/`username`/`password`/
+`database`/`secure` in server mode, or `chdb_path` in chdb mode.
 
 ## Environment variables and secrets
 

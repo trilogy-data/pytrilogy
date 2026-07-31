@@ -58,7 +58,7 @@ def test_trilogy_const(chdb_executor: Executor):
 
 
 def test_result_iteration(chdb_executor: Executor):
-    """Exercise fetchone, fetchmany, __iter__, keys on ChdbResult."""
+    """Exercise fetchone, fetchmany, __iter__, keys on the chdb result."""
     sql = "select arrayJoin([10, 20, 30, 40, 50]) as v"
     r = chdb_executor.execute_raw_sql(sql)
     assert r.keys() == ["v"]
@@ -72,7 +72,7 @@ def test_result_iteration(chdb_executor: Executor):
 
 
 def test_result_empty(chdb_executor: Executor):
-    """DDL has no result rows. ChdbResult should still be a valid empty result."""
+    """DDL has no result rows, but must still be a valid empty result."""
     r = chdb_executor.execute_raw_sql(
         "CREATE TABLE IF NOT EXISTS t_empty (x Int) ENGINE = Memory"
     )
@@ -96,10 +96,10 @@ def test_executor_close_is_idempotent(chdb_executor: Executor):
 
 
 def test_parameter_binding_inlines_literals():
-    """_statement_to_sql with parameters compiles literal_binds via SQLAlchemy."""
-    from trilogy.dialect.clickhouse_chdb import _statement_to_sql
+    """statement_to_sql with parameters compiles literal_binds via SQLAlchemy."""
+    from trilogy.engine import statement_to_sql
 
-    out = _statement_to_sql(sa_text("select :x as x"), {"x": 42})
+    out = statement_to_sql(sa_text("select :x as x"), {"x": 42})
     assert "42" in out
     assert ":x" not in out
 

@@ -1171,6 +1171,7 @@ def process_persist(
         partition_by=partition_by,
         datasource=statement.datasource,
         partition_types=partition_types,
+        create_mode=statement.create_mode,
     )
 
 

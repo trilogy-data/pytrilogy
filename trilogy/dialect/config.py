@@ -70,10 +70,37 @@ class BigQueryConfig(DialectConfig):
         project: str | None = None,
         client: Any | None = None,
         retry_config: RetryConfig | None = None,
+        staging_dataset: str | None = None,
+        staging_uri: str | None = None,
+        enable_python_datasources: bool | None = None,
+        use_sqlalchemy: bool | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.project = project
         self.client = client
+        # Optional dataset for persistent external tables over staged python
+        # datasource output. Unset (the default) uses per-job temp table
+        # definitions instead, which touch no catalog at all.
+        # May be `dataset` or `project.dataset`.
+        self.staging_dataset = staging_dataset
+        # gs:// prefix the staged parquet objects are written under. Overrides
+        # the executor-level StagingConfig when set.
+        self.staging_uri = staging_uri
+        self._enable_python_datasources = enable_python_datasources
+        # Route through sqlalchemy-bigquery instead of the native client. The
+        # native engine is the default because only it can attach per-job
+        # tableDefinitions; this is a migration escape hatch back to the old
+        # path, kept for one release. Left as None when unset so merge_config
+        # does not clobber a file config with a CLI default.
+        self._use_sqlalchemy = use_sqlalchemy
+
+    @property
+    def enable_python_datasources(self) -> bool:
+        return self._enable_python_datasources or False
+
+    @property
+    def use_sqlalchemy(self) -> bool:
+        return self._use_sqlalchemy or False
 
     def connection_string(self) -> str:
         return f"bigquery://{self.project}?user_supplied_client=True"

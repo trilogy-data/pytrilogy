@@ -43,7 +43,12 @@ from trilogy.core.models.core import (
     TupleWrapper,
     ValidatedType,
 )
-from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
+from trilogy.core.validation.common import (
+    ExpectationType,
+    ValidationTest,
+    easy_query,
+    grain_check_address,
+)
 from trilogy.utility import unique
 
 # how many violating rows a failed check reports before it just says "at least N"
@@ -85,8 +90,7 @@ def validate_unique_properties(
             if key_address not in output_addresses:
                 continue
             key = build_env.concepts[key_address]
-            count_address = f"grain_check_{key.safe_address}"
-            key_count = build_env.concepts.get(count_address)
+            key_count = build_env.concepts.get(grain_check_address(key))
             if key_count is None:
                 continue
             query = easy_query(

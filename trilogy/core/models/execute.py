@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 from trilogy.constants import (
@@ -1906,6 +1907,38 @@ def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
 
     final_ctes = list(final_ctes_dict.values())
     return final_ctes
+
+
+def _collect_datasource_addresses(
+    source: QueryDatasource,
+    seen_sources: set[int],
+    found: dict[tuple[str, str], Address],
+) -> None:
+    if id(source) in seen_sources:
+        return
+    seen_sources.add(id(source))
+    for datasource in source.datasources:
+        if isinstance(datasource, QueryDatasource):
+            _collect_datasource_addresses(datasource, seen_sources, found)
+        elif isinstance(datasource.address, Address):
+            address = datasource.address
+            found.setdefault((address.location, address.type.value), address)
+
+
+def collect_source_addresses(ctes: Sequence[CTE | UnionCTE]) -> list[Address]:
+    """Every distinct leaf datasource address a set of CTEs reads from.
+
+    Used to give the dialect a chance to materialize sources the generated SQL
+    can only reference by name (see ``BaseDialect.prepare_sources``).
+    """
+    found: dict[tuple[str, str], Address] = {}
+    seen_sources: set[int] = set()
+    for cte in ctes:
+        _collect_datasource_addresses(cte.source, seen_sources, found)
+        if isinstance(cte, CTE):
+            for inlined in cte.inlined_parents:
+                _collect_datasource_addresses(inlined.source, seen_sources, found)
+    return list(found.values())
 
 
 @dataclass

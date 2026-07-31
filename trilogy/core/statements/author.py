@@ -667,6 +667,9 @@ class PersistStatement(HasUUID):
     persist_mode: PersistMode = PersistMode.OVERWRITE
     partition_by: list[ConceptRef] = field(default_factory=list)
     meta: Metadata | None = field(default_factory=Metadata)
+    # DDL an OVERWRITE emits ahead of its insert. `create ... with data` lowers
+    # to a persist and keeps its own (stricter) create mode.
+    create_mode: CreateMode = CreateMode.CREATE_OR_REPLACE
 
     @property
     def identifier(self):
@@ -724,6 +727,9 @@ class CreateStatement:
     scope: ValidationScope
     create_mode: CreateMode = CreateMode.CREATE_OR_REPLACE
     targets: list[str] = field(default_factory=list)
+    # `with data`: run each target's own query after the DDL. Off by default —
+    # a create is DDL, and the empty table is what an `append` expects.
+    populate: bool = False
 
 
 @dataclass

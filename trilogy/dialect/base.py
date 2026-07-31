@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import (
@@ -13,6 +13,8 @@ from typing import (
 if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
     from trilogy.engine import ResultProtocol
+    from trilogy.executor import Executor
+    from trilogy.staging import StagingConfig
 
 from jinja2 import Template
 
@@ -147,6 +149,7 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.core.table_processor import (
     CreateTableInfo,
+    create_statement_to_persists,
     datasource_to_create_table_info,
     process_create_statement,
 )
@@ -716,15 +719,11 @@ ORDER BY{% for order in order_by %}
 CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
 {%- for column in columns %}
-    {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
+    {{ column.name }} {{ type_map[column.name] }}{% if not loop.last %},{% endif %}
 {%- endfor %}
 )
-{%- if partition_keys %}
-PARTITIONED BY (
-{%- for partition_key in partition_keys %}
-    {{ partition_key }}{% if not loop.last %},{% endif %}
-{%- endfor %}
-)
+{%- if partition_clause %}
+{{ partition_clause }}
 {%- endif %};
 """.strip())
 
@@ -844,6 +843,9 @@ class BaseDialect:
     # Whether the dialect supports a QUALIFY clause, used to lower a window
     # function appearing in a `having` condition. False dialects reject instead.
     SUPPORTS_QUALIFY = False
+    # Whether ``prepare_sources`` does anything. Off by default so the executor
+    # skips walking a query's datasource tree on every execution.
+    REQUIRES_SOURCE_PREPARATION = False
     # Whether this dialect can produce a full-result summary — per-column stats
     # over the query with its output LIMIT removed. Off by default; gates whether
     # `run` returns it. Dialects that set it True must override
@@ -889,14 +891,33 @@ class BaseDialect:
         self,
         rendering: Rendering | None = None,
         config: "DialectConfig | None" = None,
+        staging: "StagingConfig | None" = None,
+        instance_id: str | None = None,
     ):
         self.rendering = rendering or CONFIG.rendering
         self.config = config
+        self.staging = staging
+        self.instance_id = instance_id
         self.used_map: dict[str, set[str]] = defaultdict(set)
         # scoped concept-address -> rendered column ref substitutions, set while
         # rendering membership-subselect expression operands whose columns must
         # resolve against the existence source rather than the host CTE
         self._existence_ref_overrides: dict[str, str] = {}
+
+    def prepare_sources(
+        self, addresses: Iterable[Address], executor: "Executor"
+    ) -> None:
+        """Materialize sources that generated SQL can only reference by name.
+
+        Called with every source address a query touches, before that query
+        executes. Dialects that can read a source lazily (DuckDB's ``uv_run``
+        macro, file table functions) need nothing here.
+        """
+        return
+
+    def teardown(self) -> None:
+        """Release whatever ``prepare_sources`` created. Called on executor close."""
+        return
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.QUERY:
@@ -2861,6 +2882,25 @@ class BaseDialect:
             output_values=[ProcessedStaticValueOutput(values=output_values)],
         )
 
+    def _process_create(
+        self,
+        statement: CreateStatement,
+        environment: Environment,
+        hooks: list[BaseHook] | None = None,
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
+        """A create is DDL only; `with data` follows the same DDL with the
+        target's own query, so the table is left populated rather than empty.
+        `create or replace ... with data` is then the same SQL as `overwrite`."""
+        if not statement.populate:
+            return [process_create_statement(statement, environment)]
+        output: list[PROCESSED_STATEMENT_TYPES] = []
+        for persist_statement in create_statement_to_persists(statement, environment):
+            if hooks:
+                for hook in hooks:
+                    hook.process_persist_info(persist_statement)
+            output.append(process_persist(environment, persist_statement, hooks=hooks))
+        return output
+
     def generate_queries(
         self,
         environment: Environment,
@@ -3099,7 +3139,7 @@ class BaseDialect:
                     )
                 )
             elif isinstance(statement, CreateStatement):
-                output.append(process_create_statement(statement, environment))
+                output.extend(self._process_create(statement, environment, hooks=hooks))
             elif isinstance(statement, PublishStatement):
                 output.append(
                     ProcessedPublishStatement(
@@ -3137,21 +3177,43 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
+    def render_partition_clause(self, target: CreateTableInfo) -> str:
+        """The dialect's physical partitioning DDL for a create.
+
+        Most engines have no equivalent of a declared partition key that can be
+        expressed in a bare CREATE TABLE, so the default is to log and skip it
+        rather than emit syntax the engine will reject."""
+        if target.partition_keys:
+            logger.warning(
+                "%s %s declares partition keys (%s), but %s cannot express "
+                "partitioning in CREATE TABLE; creating an unpartitioned table",
+                LOGGER_PREFIX,
+                target.name,
+                ", ".join(target.partition_keys),
+                type(self).__name__,
+            )
+        return ""
+
     def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
     ) -> list[str]:
         """DDL for one target, split into individually executable statements.
         Dialects without a native CREATE OR REPLACE emit a separate DROP."""
         type_map = {}
+        description_map = {}
         for c in target.columns:
             type_map[c.name] = self.render_expr(c.type)
+            description_map[c.name] = (
+                self.render_string_literal(c.description) if c.description else ""
+            )
         return [
             self.CREATE_TABLE_SQL_TEMPLATE.render(
                 create_mode=create_mode.value,
                 name=self.safe_quote(target.name),
                 columns=target.columns,
                 type_map=type_map,
-                partition_keys=target.partition_keys,
+                description_map=description_map,
+                partition_clause=self.render_partition_clause(target),
             )
         ]
 
@@ -3212,7 +3274,7 @@ class BaseDialect:
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
                 create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} {self._persist_insert_prefix(query)}"
+                output = f"{self.compile_create_table_statement(create_table_info, query.create_mode)} {self._persist_insert_prefix(query)}"
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
@@ -3251,7 +3313,7 @@ class BaseDialect:
             create_table_info = datasource_to_create_table_info(query.datasource)
             return [
                 *self.compile_create_table_statements(
-                    create_table_info, CreateMode.CREATE_OR_REPLACE
+                    create_table_info, query.create_mode
                 ),
                 self._render_query(query, self._persist_insert_prefix(query)),
             ]
