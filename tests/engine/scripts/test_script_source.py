@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects, Environment, Executor
 from trilogy.core.enums import ValidationScope
 from trilogy.core.validation.environment import validate_environment
 from trilogy.dialect import duckdb_uv
@@ -53,9 +53,7 @@ select
     assert results[-1].fetchone()[0] > 100
 
 
-def test_executor_offers_python_sources_to_the_dialect_before_execution():
-    """Dialects that must materialize a script (e.g. BigQuery) get first refusal."""
-    script = """
+PYTHON_SOURCE_MODEL = """
 key fib_index int;
 property fib_index.value int;
 
@@ -65,28 +63,76 @@ datasource fib_numbers(
 )
 grain (fib_index)
 file `./fib.py`;
-
-
-select
-    sum(value) as total_fib;
 """
-    executor = Dialects.DUCK_DB.default_executor(
+
+
+class RecordingPrepare:
+    """Stands in for dialect.prepare_sources, recording script basenames."""
+
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    def __call__(self, addresses, run_sql) -> None:
+        self.seen.extend(Path(a.location).name for a in addresses)
+
+
+def python_source_executor() -> Executor:
+    return Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
         conf=DuckDBConfig(enable_python_datasources=True),
     )
-    seen: list[str] = []
 
-    def spy(addresses, run_sql):
-        seen.extend(a.location for a in addresses)
 
+def prepared_sources(executor: Executor, script: str) -> list[str]:
+    """Script basenames the dialect was offered while running `script`."""
+    spy = RecordingPrepare()
     executor.generator.prepare_sources = spy  # type: ignore[method-assign]
-    executor.execute_text(script)
-    # DuckDB reads the script lazily, so it opts out of the walk entirely
-    assert seen == []
+    executor.execute_text(PYTHON_SOURCE_MODEL + script)
+    return spy.seen
 
+
+def test_lazy_dialects_skip_source_preparation_entirely():
+    executor = python_source_executor()
+    assert prepared_sources(executor, "select sum(value) as total_fib;") == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "select sum(value) as total_fib;",
+        "persist fib_out into fib_summary from select fib_index, value;",
+        "copy into csv 'source_prep.csv' from select fib_index, value;",
+        "chart layer bar (x_axis <- fib_index, y_axis <- value);",
+    ],
+)
+def test_every_execution_path_offers_python_sources_to_the_dialect(
+    statement: str, tmp_path: Path
+):
+    """Dialects that must materialize a script (e.g. BigQuery) get first refusal.
+
+    Regression: chart layers and copy targets compiled their SQL directly off
+    the generator, so a script source was never staged for them.
+    """
+    executor = python_source_executor()
     executor.generator.REQUIRES_SOURCE_PREPARATION = True
-    executor.execute_text(script)
-    assert [Path(x).name for x in seen] == ["fib.py"]
+
+    statement = statement.replace(
+        "'source_prep.csv'", f"'{(tmp_path / 'source_prep.csv').as_posix()}'"
+    )
+    assert prepared_sources(executor, statement) == ["fib.py"]
+
+
+def test_rendering_sql_does_not_prepare_sources():
+    """generate_sql must stay side-effect free — no script runs, nothing staged."""
+    executor = python_source_executor()
+    executor.generator.REQUIRES_SOURCE_PREPARATION = True
+    spy = RecordingPrepare()
+    executor.generator.prepare_sources = spy  # type: ignore[method-assign]
+
+    executor.parse_text(PYTHON_SOURCE_MODEL)
+    executor.generate_sql("select sum(value) as total_fib;")
+
+    assert spy.seen == []
 
 
 def test_arrow_source_not_enabled_error():

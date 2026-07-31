@@ -73,7 +73,11 @@ Two things it does differently from the SQLAlchemy path, both deliberate:
   mis-quote them) and has no literal renderer for arrays at all.
 - **Rows.** BigQuery's `Row` is not tuple-equal, which SQLAlchemy `Row`
   consumers rely on, so results are re-wrapped as namedtuples — index,
-  attribute and tuple-equality access all behave as before.
+  attribute and tuple-equality access all behave as before. Re-wrapping means
+  the result set is **read fully into memory** before `execute` returns, where
+  the sqlalchemy-bigquery cursor paged lazily. That is fine for interactive
+  selects and anything with a `LIMIT`, but an unbounded select now has to fit
+  in RAM; `use_sqlalchemy=True` restores the paging behaviour.
 
 BigQuery has no transactions outside a script, so the connection reports
 `in_transaction() == False` and the executor never adopts or commits an
@@ -181,3 +185,11 @@ reads (`collect_source_addresses`) before compiling, so a dialect that can only
 reference a source by name gets a chance to create it; `teardown` runs from
 `Executor.close()`. DuckDB and every other dialect leave the flag off and skip
 the walk entirely.
+
+`prepare_sources` fires from `Executor.compile_for_execution` (and its plural
+`compile_statements_for_execution`), which is the single seam between a
+processed statement and SQL that is about to run — selects, persists, copies
+and chart layers all route through it. `generator.compile_statement` stays
+side-effect free, so the render-only paths (`generate_sql`, `show`, metadata)
+never run a script or write to GCS just to display SQL. **A new execution path
+must call `compile_for_execution`, not `generator.compile_statement`.**

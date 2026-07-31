@@ -4,6 +4,7 @@ import decimal
 import pytest
 from sqlalchemy import text
 
+from trilogy import Dialects
 from trilogy.core.models.core import DataType, ListWrapper
 from trilogy.dialect.bigquery_engine import (
     BigQueryConnection,
@@ -13,7 +14,7 @@ from trilogy.dialect.bigquery_engine import (
     query_parameter,
     to_bigquery_sql,
 )
-from trilogy.dialect.config import BigQueryConfig
+from trilogy.dialect.config import BigQueryConfig, DuckDBConfig
 from trilogy.engine import escape_literal_colons
 
 
@@ -208,6 +209,41 @@ def test_engine_reuses_one_connection_and_disposes_it():
     assert engine.connect() is connection
     engine.dispose()
     assert engine.connect() is not connection
+
+
+def test_bigquery_defaults_to_the_native_engine():
+    """The native engine is the default; it builds its client lazily, so this
+    resolves with no credentials present."""
+    engine = Dialects.BIGQUERY.default_engine()
+    assert isinstance(engine, BigQueryEngine)
+    assert engine.config.client is None
+
+
+def test_bigquery_honours_an_explicit_native_config():
+    conf = BigQueryConfig(client=FakeClient(), project="p")
+    engine = Dialects.BIGQUERY.default_engine(conf=conf)
+    assert isinstance(engine, BigQueryEngine)
+    assert engine.config is conf
+
+
+def test_use_sqlalchemy_routes_to_the_sqlalchemy_engine():
+    conf = BigQueryConfig(client=FakeClient(), project="p", use_sqlalchemy=True)
+    captured: list[object] = []
+
+    def factory(config, config_type):
+        captured.append(config)
+        return "sqlalchemy-engine"
+
+    assert (
+        Dialects.BIGQUERY.default_engine(conf=conf, _engine_factory=factory)
+        == "sqlalchemy-engine"
+    )
+    assert captured == [conf]
+
+
+def test_bigquery_rejects_a_foreign_dialect_config():
+    with pytest.raises(TypeError, match="expected BigQueryConfig"):
+        Dialects.BIGQUERY.default_engine(conf=DuckDBConfig())
 
 
 def test_engine_close_clears_registered_external_tables():

@@ -561,10 +561,28 @@ class Executor:
         if addresses:
             self.generator.prepare_sources(addresses, self)
 
+    def compile_for_execution(self, query: ProcessedQuery) -> str:
+        """Compile a statement that is about to run, rather than be displayed.
+
+        The only place the dialect's ``prepare_sources`` hook fires, so every
+        path that turns a processed statement into SQL it then executes — plain
+        selects, persists, copies, chart layers — must come through here.
+        ``generator.compile_statement`` stays side-effect free for the paths
+        that only render SQL (``generate_sql``, `show`, metadata)."""
+        self._prepare_query_sources(query)
+        return self.generator.compile_statement(query)
+
+    def compile_statements_for_execution(
+        self, query: ProcessedQueryPersist
+    ) -> list[str]:
+        """``compile_for_execution`` for writers that need one statement per
+        driver call (see ``BaseDialect.compile_statements``)."""
+        self._prepare_query_sources(query)
+        return self.generator.compile_statements(query)
+
     @execute_query.register
     def _(self, query: ProcessedQuery) -> ResultProtocol | None:
-        self._prepare_query_sources(query)
-        sql = self.generator.compile_statement(query)
+        sql = self.compile_for_execution(query)
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
@@ -577,7 +595,6 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> ResultProtocol | None:
-        self._prepare_query_sources(query)
         # Check if target is a file - convert to CopyStatement
         addr = query.output_to.address
         if addr.is_file:
@@ -606,7 +623,7 @@ class Executor:
             return None
 
         output = self.execute_write_statements(
-            self.generator.compile_statements(query),
+            self.compile_statements_for_execution(query),
             local_concepts=query.local_concepts,
         )
 
@@ -616,7 +633,7 @@ class Executor:
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
         """Build SQL with column aliases for file output."""
-        base_sql = self.generator.compile_statement(query)
+        base_sql = self.compile_for_execution(query)
         if not query.column_aliases:
             return base_sql
         quote = self.generator.QUOTE_CHARACTER
@@ -674,7 +691,7 @@ class Executor:
             if layer.query is None:
                 layer_data.append([])
                 continue
-            sql = self.generator.compile_statement(layer.query)
+            sql = self.compile_for_execution(layer.query)
             result = self.execute_raw_sql(
                 sql, local_concepts=layer.query.local_concepts
             )

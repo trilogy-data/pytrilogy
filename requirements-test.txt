@@ -8,6 +8,7 @@ ruff
 black
 pandas<3.0.0
 types-tabulate
+google-cloud-bigquery
 sqlalchemy-bigquery
 #fakesnow needs an upgrade to support 1.9; it calls CURRENT_VERSION which isn't mocked and hits duckdb
 snowflake-sqlalchemy

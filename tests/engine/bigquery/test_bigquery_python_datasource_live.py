@@ -73,16 +73,32 @@ def _load_dotenv(path: Path) -> None:
             os.environ.setdefault(key.strip(), value)
 
 
-for candidate in (".env.secrets", ".env"):
-    _load_dotenv(REPO_ROOT / candidate)
+_dotenv_loaded = False
+
+
+def _load_dotenv_files() -> None:
+    """Seed the environment from the dotenv files, once, on first lookup.
+
+    Lazy rather than at import time: pytest imports this module during
+    collection even when `bigquery_execution` is deselected, so seeding the
+    process environment at module scope would leak into every other suite.
+    """
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
+    _dotenv_loaded = True
+    for candidate in (".env.secrets", ".env"):
+        _load_dotenv(REPO_ROOT / candidate)
 
 
 def _env(name: str) -> str | None:
+    _load_dotenv_files()
     value = os.environ.get(name)
     return value if value else None
 
 
 def _has_adc() -> bool:
+    _load_dotenv_files()
     try:
         from google.auth import default
 
