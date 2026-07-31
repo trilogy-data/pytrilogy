@@ -783,7 +783,8 @@ instead; when set here, always reference the environment (see below).
 - `use_sqlalchemy` — route through sqlalchemy-bigquery instead of trilogy's
   native BigQuery client. The native engine is the default because only it can
   attach per-job table definitions; `use_sqlalchemy = true` therefore also
-  requires `staging_dataset` to use python datasources
+  requires `staging_dataset` to use python datasources. A migration escape
+  hatch kept for one release — do not build on it
 
 Staged objects are deleted at executor close in the default mode, but that is
 best-effort and cannot run if the process is killed — put an age-based

@@ -62,8 +62,14 @@ queryable outside trilogy, or when you are pinned to `use_sqlalchemy=True`.
 
 `trilogy/dialect/bigquery_engine.py` implements trilogy's `ExecutionEngine` /
 `EngineConnection` protocols directly over `google-cloud-bigquery`, and is the
-default for the `bigquery` dialect. `BigQueryConfig(use_sqlalchemy=True)`
-restores the old sqlalchemy-bigquery path (and forces external-table staging).
+default for the `bigquery` dialect.
+
+`BigQueryConfig(use_sqlalchemy=True)` restores the old sqlalchemy-bigquery path
+(and forces external-table staging). **It is a migration escape hatch kept for
+one release** — nothing else in trilogy needs a SQLAlchemy engine for BigQuery:
+schema introspection goes through `information_schema` SQL, and BigQuery sets
+none of the `*_NOT_FOUND_PATTERN` error classifiers. Expect it to be removed;
+report anything that only works with it set.
 
 Two things it does differently from the SQLAlchemy path, both deliberate:
 
@@ -73,11 +79,14 @@ Two things it does differently from the SQLAlchemy path, both deliberate:
   mis-quote them) and has no literal renderer for arrays at all.
 - **Rows.** BigQuery's `Row` is not tuple-equal, which SQLAlchemy `Row`
   consumers rely on, so results are re-wrapped as namedtuples — index,
-  attribute and tuple-equality access all behave as before. Re-wrapping means
-  the result set is **read fully into memory** before `execute` returns, where
-  the sqlalchemy-bigquery cursor paged lazily. That is fine for interactive
-  selects and anything with a `LIMIT`, but an unbounded select now has to fit
-  in RAM; `use_sqlalchemy=True` restores the paging behaviour.
+  attribute and tuple-equality access all behave as before. The re-wrap is
+  lazy (`streamed_rows`): `job.result()` still blocks until the query finishes,
+  so a failed query raises from `execute` inside the retry wrapper, but the
+  rows themselves page off the job as they are read. An unbounded select never
+  has to fit in memory. This is safe because a BigQuery `RowIterator` belongs
+  to its own job rather than to a shared cursor, so it stays valid after the
+  connection runs the next statement — a driver without that property must use
+  `buffered_rows` instead.
 
 BigQuery has no transactions outside a script, so the connection reports
 `in_transaction() == False` and the executor never adopts or commits an

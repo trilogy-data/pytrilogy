@@ -89,9 +89,9 @@ class BigQueryConfig(DialectConfig):
         self._enable_python_datasources = enable_python_datasources
         # Route through sqlalchemy-bigquery instead of the native client. The
         # native engine is the default because only it can attach per-job
-        # tableDefinitions; this is the escape hatch back to the old path.
-        # Left as None when unset so merge_config does not clobber a file
-        # config with a CLI default.
+        # tableDefinitions; this is a migration escape hatch back to the old
+        # path, kept for one release. Left as None when unset so merge_config
+        # does not clobber a file config with a CLI default.
         self._use_sqlalchemy = use_sqlalchemy
 
     @property
