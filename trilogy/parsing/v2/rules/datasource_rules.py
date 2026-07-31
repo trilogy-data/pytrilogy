@@ -480,9 +480,14 @@ def datasource_partition_clause(
     hydrate: HydrateFunction,
 ) -> DatasourcePartitionClause:
     args = hydrated_children(node, hydrate)
-    return DatasourcePartitionClause(
-        columns=[ConceptRef(address=arg) for arg in args[0]]
-    )
+    # Resolve to the namespaced reference so the ref matches the datasource's
+    # column concepts (which are always fully qualified); an unqualified address
+    # never matches and silently drops the partitioning from generated DDL.
+    columns = []
+    for arg in args[0]:
+        resolved = context.concepts.get(arg)
+        columns.append(resolved.reference if resolved else ConceptRef(address=arg))
+    return DatasourcePartitionClause(columns=columns)
 
 
 TEMPORAL_LAG_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}

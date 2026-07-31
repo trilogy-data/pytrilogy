@@ -783,21 +783,12 @@ class Executor:
 
     @generate_sql.register
     def _(self, command: str) -> list[str]:
-        _, parsed = parse_text(command, self.environment)
-        generatable = [
-            x
-            for x in parsed
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    ShowStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                ),
-            )
+        # Same statement set parse_text executes, so text in and statements in
+        # produce the same SQL — a narrower filter here silently drops DDL.
+        return [
+            self.generator.compile_statement(x)
+            for x in self.parse_text_generator(command)
         ]
-        return self._generate_sql(generatable)
 
     def parse_file(
         self, file: str | Path, persist: bool = False
@@ -852,10 +843,10 @@ class Executor:
         for t in parsed:
             if not isinstance(t, GENERATABLE_STATEMENT_TYPES):
                 continue
-            x = self._generate([t])[0]
-            if persist and isinstance(x, ProcessedQueryPersist):
-                self.environment.add_datasource(x.datasource)
-            queries.append(x)
+            for x in self._generate([t]):
+                if persist and isinstance(x, ProcessedQueryPersist):
+                    self.environment.add_datasource(x.datasource)
+                queries.append(x)
         return queries, definitions
 
     def parse_text_generator(
@@ -870,12 +861,13 @@ class Executor:
         generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
-            x = self._generate([t])[0]
+            # One author statement can process into several: `create ... with
+            # data` yields a persist per target.
+            for x in self._generate([t]):
+                yield x
 
-            yield x
-
-            if persist and isinstance(x, ProcessedQueryPersist):
-                self.environment.add_datasource(x.datasource)
+                if persist and isinstance(x, ProcessedQueryPersist):
+                    self.environment.add_datasource(x.datasource)
 
     def _atom_to_value(self, val: Any) -> Any:
         if val == MagicConstants.NULL:

@@ -1,4 +1,4 @@
-from trilogy.core.enums import CreateMode, Modifier, PersistMode
+from trilogy.core.enums import Modifier, PersistMode
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import CreateStatement, PersistStatement
@@ -32,6 +32,14 @@ def datasource_to_create_table_info(
         if col.is_concrete
     ]
 
+    missing = [c for c in datasource.partition_by if c.address not in address_field_map]
+    if missing:
+        raise ValueError(
+            f"Datasource {datasource.name} partitions by "
+            f"{', '.join(c.address for c in missing)}, which is not a concrete "
+            "column of the datasource; partition columns must be selected."
+        )
+
     return CreateTableInfo(
         name=(
             datasource.address.location
@@ -39,11 +47,7 @@ def datasource_to_create_table_info(
             else datasource.address
         ),
         columns=columns_info,
-        partition_keys=[
-            address_field_map[c.address]
-            for c in datasource.partition_by
-            if c.address in address_field_map
-        ],
+        partition_keys=[address_field_map[c.address] for c in datasource.partition_by],
     )
 
 

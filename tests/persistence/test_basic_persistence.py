@@ -1,6 +1,5 @@
-import pytest
-
 import networkx as nx
+import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import ConceptSource, Derivation, Purpose

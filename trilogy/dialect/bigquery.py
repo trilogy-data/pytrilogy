@@ -16,7 +16,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
-from trilogy.core.statements.execute import ProcessedQueryPersist
+from trilogy.core.statements.execute import CreateTableInfo, ProcessedQueryPersist
 from trilogy.dialect.base import (
     AGGREGATE_GRAIN_MATCH_MAP,
     BaseDialect,
@@ -163,19 +163,11 @@ LIMIT {{ limit }}{% endif %}{% endif %}
 BQ_CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name}} (
 {%- for column in columns %}
-    `{{ column.name }}` {{ type_map[column.name] }}{% if column.description %} OPTIONS(description='{{ column.description }}'){% endif %}{% if not loop.last %},{% endif %}
+    `{{ column.name }}` {{ type_map[column.name] }}{% if description_map[column.name] %} OPTIONS(description={{ description_map[column.name] }}){% endif %}{% if not loop.last %},{% endif %}
 {%- endfor %}
 )
-{%- if partition_by %}
-PARTITION BY {{ partition_by }}
-{%- endif %}
-{%- if cluster_by %}
-CLUSTER BY {{ cluster_by | join(', ') }}
-{%- endif %}
-{%- if table_description %}
-OPTIONS(
-    description='{{ table_description }}'
-)
+{%- if partition_clause %}
+{{ partition_clause }}
 {%- endif %};
 """.strip())
 
@@ -219,6 +211,15 @@ BEGIN
     END WHILE;
 END;
 """)
+
+# BigQuery rejects a bare TIMESTAMP/DATETIME column in PARTITION BY; it must be
+# truncated to a partitionable granularity. Integer range partitioning needs
+# explicit bounds we have no way to declare, so it is not offered.
+PARTITION_EXPRESSIONS: dict[DataType, str] = {
+    DataType.DATE: "{column}",
+    DataType.DATETIME: "DATETIME_TRUNC({column}, DAY)",
+    DataType.TIMESTAMP: "TIMESTAMP_TRUNC({column}, DAY)",
+}
 
 MAX_IDENTIFIER_LENGTH = 50
 
@@ -461,6 +462,25 @@ class BigqueryDialect(BaseDialect):
         if else_clause:
             clauses += f"\n\t{else_clause}"
         return f"CASE\n\t{clauses}\n\tEND"
+
+    def render_partition_clause(self, target: CreateTableInfo) -> str:
+        if not target.partition_keys:
+            return ""
+        if len(target.partition_keys) > 1:
+            raise ValueError(
+                f"BigQuery supports a single partition column, but {target.name} "
+                f"declares {', '.join(target.partition_keys)}."
+            )
+        key = target.partition_keys[0]
+        dtype = {c.name: c.type for c in target.columns}[key]
+        quoted = safe_quote(key, self.QUOTE_CHARACTER)
+        expr = PARTITION_EXPRESSIONS.get(dtype) if isinstance(dtype, DataType) else None
+        if expr is None:
+            raise ValueError(
+                f"BigQuery cannot partition {target.name} by {key}: partitioning "
+                f"requires a date/time column, but {key} is {dtype}."
+            )
+        return f"PARTITION BY {expr.format(column=quoted)}"
 
     def generate_partitioned_insert(
         self,

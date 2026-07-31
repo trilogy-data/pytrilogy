@@ -479,6 +479,11 @@ overwrite ride_summary;
 cloud storage URIs (e.g. `gcs://bucket/path/out.parquet`) when the appropriate DuckDB
 extension is enabled.
 
+`create datasource <name>` emits DDL only — the table is created empty, which is what a
+following `append` expects. Add `with data` (`create or replace datasource x with data;`)
+to run the datasource's own query after the DDL and leave it populated. `with data` is
+rejected with `if not exists`, where the table may already hold rows.
+
 ## Complete and Partial Datasources
 
 By default a datasource is "complete" — it represents the full dataset for its grain. The

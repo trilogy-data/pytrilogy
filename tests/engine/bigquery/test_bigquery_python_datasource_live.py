@@ -168,7 +168,11 @@ def test_temp_definitions_read_a_public_object(public_object_executor: Executor)
 
     connection = executor.connection
     assert isinstance(connection, BigQueryConnection)
-    assert list(connection.external_tables) == ["trilogy_py_fib_c24cc58f7d45"]
+    # exactly one temp definition, registered under the name the SQL reads from.
+    # The name embeds a hash of the script's absolute path, so it is only stable
+    # for a given checkout — assert the relationship, never a literal.
+    (registered,) = connection.external_tables
+    assert f"`{registered}`" in sql
 
 
 @pytest.fixture(scope="module")

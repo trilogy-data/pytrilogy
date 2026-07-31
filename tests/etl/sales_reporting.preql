@@ -24,8 +24,8 @@ datasource sales_reporting (
     total_cost:order_item.total_cost,
     ) 
 address `preqldata.look_etl.sales_reporting`
-incremental by events.created_at.date
-partition by events.created_at.date;
+incremental by order_item.order.created_at.date
+partition by order_item.order.created_at.date;
 
 
 

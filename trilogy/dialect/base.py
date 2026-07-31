@@ -719,15 +719,11 @@ ORDER BY{% for order in order_by %}
 CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
 {%- for column in columns %}
-    {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
+    {{ column.name }} {{ type_map[column.name] }}{% if not loop.last %},{% endif %}
 {%- endfor %}
 )
-{%- if partition_keys %}
-PARTITIONED BY (
-{%- for partition_key in partition_keys %}
-    {{ partition_key }}{% if not loop.last %},{% endif %}
-{%- endfor %}
-)
+{%- if partition_clause %}
+{{ partition_clause }}
 {%- endif %};
 """.strip())
 
@@ -3143,9 +3139,7 @@ class BaseDialect:
                     )
                 )
             elif isinstance(statement, CreateStatement):
-                output.extend(
-                    self._process_create(statement, environment, hooks=hooks)
-                )
+                output.extend(self._process_create(statement, environment, hooks=hooks))
             elif isinstance(statement, PublishStatement):
                 output.append(
                     ProcessedPublishStatement(
@@ -3183,21 +3177,43 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
+    def render_partition_clause(self, target: CreateTableInfo) -> str:
+        """The dialect's physical partitioning DDL for a create.
+
+        Most engines have no equivalent of a declared partition key that can be
+        expressed in a bare CREATE TABLE, so the default is to log and skip it
+        rather than emit syntax the engine will reject."""
+        if target.partition_keys:
+            logger.warning(
+                "%s %s declares partition keys (%s), but %s cannot express "
+                "partitioning in CREATE TABLE; creating an unpartitioned table",
+                LOGGER_PREFIX,
+                target.name,
+                ", ".join(target.partition_keys),
+                type(self).__name__,
+            )
+        return ""
+
     def compile_create_table_statements(
         self, target: CreateTableInfo, create_mode: CreateMode
     ) -> list[str]:
         """DDL for one target, split into individually executable statements.
         Dialects without a native CREATE OR REPLACE emit a separate DROP."""
         type_map = {}
+        description_map = {}
         for c in target.columns:
             type_map[c.name] = self.render_expr(c.type)
+            description_map[c.name] = (
+                self.render_string_literal(c.description) if c.description else ""
+            )
         return [
             self.CREATE_TABLE_SQL_TEMPLATE.render(
                 create_mode=create_mode.value,
                 name=self.safe_quote(target.name),
                 columns=target.columns,
                 type_map=type_map,
-                partition_keys=target.partition_keys,
+                description_map=description_map,
+                partition_clause=self.render_partition_clause(target),
             )
         ]
 

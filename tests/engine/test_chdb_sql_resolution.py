@@ -1,4 +1,4 @@
-"""`_statement_to_sql` must mirror SQLAlchemy's compile-time unescaping of
+"""`statement_to_sql` must mirror SQLAlchemy's compile-time unescaping of
 `\\:` — the executor escapes colons inside string literals so text() doesn't
 read them as bind params, and every path that skips real compilation has to
 undo that itself. Regression for datetime literals reaching ClickHouse as
