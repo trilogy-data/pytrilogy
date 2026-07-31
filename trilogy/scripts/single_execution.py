@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any
 
 from trilogy import Executor
-from trilogy.core.statements.author import ImportStatement
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
@@ -29,6 +28,7 @@ from trilogy.scripts.display import (
     RICH_AVAILABLE,
     ResultSet,
     create_progress_context,
+    is_agent_mode,
     is_json_mode,
     print_chart_terminal,
     print_error,
@@ -280,35 +280,40 @@ def execute_queries_simple(
 
 
 def _no_executable_statements_message(definitions: list[Any]) -> str:
+    parsed = (
+        f"parsed {len(definitions)} definition statement(s) "
+        f"({summarize_definitions(definitions)}) but none produce output"
+        if definitions
+        else "the script contains no statements"
+    )
     return (
-        f"Nothing was executed: parsed {len(definitions)} definition "
-        f"statement(s) ({summarize_definitions(definitions)}) but none produce "
-        "output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?"
+        f"Nothing was executed: {parsed}. Did you mean to include a SELECT "
+        "statement, or run a refresh on datasources instead?"
     )
 
 
 def _report_no_executable_statements(definitions: list[Any], start: datetime) -> None:
-    """A file that parsed real definitions (rowset/with/concept/...) but yields
-    no output-producing statement is a silent false success (`{ok: true,
-    rows: 0}`) — those definitions register into the environment but do nothing
-    on their own.
+    """A run that produced no output-producing statement did nothing, whatever
+    parsed on the way: definitions (rowset/with/concept/...) register into the
+    environment but do nothing on their own, and an import-only or empty body
+    does not even do that. All of them report `{ok: true, rows: 0}` — a success
+    indistinguishable from a real one.
 
-    Humans get a warning: authoring a declarations file and running it to check
-    it parses is legitimate, and the run itself did nothing wrong. Agentic
-    callers (JSON mode) get it as a hard failure, because a passing exit code on
-    a script that refreshed nothing is exactly the false signal that drives
-    retry churn."""
+    Humans get a warning and their exit code: running a declarations file to
+    check it parses is a legitimate thing to do, and the run itself did nothing
+    wrong. In agent mode it is a hard failure — a warning nobody reads cannot
+    stop the retry churn a passing no-op causes."""
     message = _no_executable_statements_message(definitions)
-    if not is_json_mode():
+    if not is_agent_mode():
         print_warning(message)
         return
 
-    from trilogy.core.exceptions import InvalidSyntaxException
+    from trilogy.core.exceptions import NothingExecutedException
 
     # Emit the failing summary so consumers keyed on it see ok:false rather
     # than the misleading ok:true, rows:0.
     show_execution_summary(0, datetime.now() - start, False, 0)
-    raise InvalidSyntaxException(message)
+    raise NothingExecutedException(message)
 
 
 def execute_run_mode(
@@ -322,12 +327,10 @@ def execute_run_mode(
     start = datetime.now()
     show_execution_start(len(queries))
 
-    # An import-only or empty body is a deliberately-supported no-op (validating
-    # that imports/setup parse). But real definitions with no consuming select is
-    # the false-success churn the agent hits — always surface it, and in an
-    # agentic context fail on it.
-    consumable = [d for d in (definitions or []) if not isinstance(d, ImportStatement)]
-    if not queries and consumable:
+    # Zero executable statements is the whole trigger: an import-only or empty
+    # body is as much a no-op as a declarations-only file, and drawing the line
+    # between them only made the failure inconsistent.
+    if not queries:
         _report_no_executable_statements(definitions or [], start)
 
     # The rich progress bar is chrome that would corrupt the NDJSON stream, so

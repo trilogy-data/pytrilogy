@@ -281,6 +281,17 @@ Commands emit human formatting (rich if installed, plain text otherwise) by defa
 Use the --format flag to control; agentic access will default to --format json.
 . Pass `--format rich` for explicit human formatting.
 
+## Agent Mode
+
+`--agent` (or `TRILOGY_AGENT_MODE=1`) declares that a program, not a person, is
+reading the output; agentic access sets it by default. It is independent of
+`--format` — formatting is how output is rendered, agent mode is what counts as
+a failure. Under it, a `run` that executes nothing — a file of only
+declarations, only imports, or an empty body — exits non-zero instead of
+warning, because `0 statements` otherwise reports as a success identical to a
+real one. If you hit it, the script needs a `select` (or you wanted
+`trilogy refresh`).
+
 ## Debug Mode
 
 Add `--debug` flag to any command for verbose output:

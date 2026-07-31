@@ -471,10 +471,14 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     # same information as the rich view, none of the formatting chrome that
     # wastes tokens. A flag in `raw_args` (e.g. `--format rich`) still wins,
     # since group-level flags are parsed after the env default is applied.
+    # ``TRILOGY_AGENT_MODE`` is the separate declaration that a program reads
+    # this: it turns warnings the agent would silently sail past — a run that
+    # executed nothing — into non-zero exits.
     child_env = {
         **os.environ,
         "PYTHONIOENCODING": "utf-8",
         "TRILOGY_OUTPUT_FORMAT": "json",
+        "TRILOGY_AGENT_MODE": "1",
     }
     try:
         completed = subprocess.run(

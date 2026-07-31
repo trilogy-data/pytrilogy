@@ -96,6 +96,18 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     ),
 )
 @click.option(
+    "--agent",
+    "agent_mode",
+    is_flag=True,
+    default=None,
+    help=(
+        "Declare that a program, not a person, is reading this output. "
+        "Conditions a human would only be warned about — chiefly a run that "
+        "executed nothing — become errors, so a no-op cannot pass as a "
+        "success. Overrides the TRILOGY_AGENT_MODE env var."
+    ),
+)
+@click.option(
     "--debug",
     is_flag=True,
     default=False,
@@ -111,20 +123,28 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
 def cli(
     ctx: click.Context,
     output_format: str | None,
+    agent_mode: bool | None,
     debug: bool,
     debug_file: str | None,
 ):
     """Trilogy CLI - A beautiful data productivity tool."""
-    from trilogy.scripts.display import is_json_mode, set_output_format
+    from trilogy.scripts.display import (
+        is_agent_mode,
+        is_json_mode,
+        set_agent_mode,
+        set_output_format,
+    )
 
-    # The flag overrides the env-derived default; when absent the env value
-    # (set transparently by the agent subprocess) stands.
+    # The flags override the env-derived defaults; when absent the env values
+    # (set transparently by the agent subprocess) stand.
     set_output_format(output_format)
+    set_agent_mode(agent_mode)
 
     ctx.ensure_object(dict)
     ctx.obj["DEBUG"] = debug or bool(debug_file)
     ctx.obj["DEBUG_FILE"] = debug_file
     ctx.obj["OUTPUT_FORMAT"] = "json" if is_json_mode() else "rich"
+    ctx.obj["AGENT_MODE"] = is_agent_mode()
 
     if ctx.obj["DEBUG"]:
         from trilogy.scripts.display import show_debug_mode

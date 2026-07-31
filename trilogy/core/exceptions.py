@@ -64,6 +64,14 @@ class InvalidComparison(InvalidSyntaxException):
     predicate against an enum field that is tautologically true or false."""
 
 
+class NothingExecutedException(Exception):
+    """A script parsed cleanly but produced no output-producing statement, so the
+    run did nothing. Raised only in agent mode, where a zero-statement success is
+    indistinguishable from a real one. Deliberately not an
+    ``InvalidSyntaxException``: nothing is wrong with the syntax, and labelling
+    it that way sends the reader hunting for a parse error."""
+
+
 class UnresolvableQueryException(Exception):
     pass
 

@@ -58,6 +58,21 @@ def test_handle_execution_exception_labels_syntax_errors(capsys):
     assert "Syntax error:" not in combined, combined
 
 
+def test_handle_execution_exception_does_not_label_nothing_executed_as_syntax(capsys):
+    """The script parsed; it just does nothing. A `Syntax error:` prefix would
+    send the reader hunting for a parse mistake that isn't there."""
+    from trilogy.core.exceptions import NothingExecutedException
+
+    with raises(Exit):
+        handle_execution_exception(
+            NothingExecutedException("Nothing was executed: …"), source="defs.preql"
+        )
+    combined = "".join(capsys.readouterr())
+    assert "Nothing was executed" in combined, combined
+    assert "Syntax error" not in combined, combined
+    assert "Unexpected error" not in combined, combined
+
+
 def test_handle_execution_exception_labels_import_error(capsys):
     """A bad import path raises ImportError (with a `Did you mean ...?` hint); it
     must be labelled `Import error:`, not `Unexpected error:`, so the reader fixes
