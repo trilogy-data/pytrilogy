@@ -15,6 +15,12 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.partitions import (
+    PartitionObservation,
+    is_partitioned,
+    probe_expected_partitions,
+    probe_observed_partitions,
+)
 from trilogy.execution.state.phases import get_phase_recorder
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
@@ -90,6 +96,14 @@ class StateStore(Protocol):
         skip_datasources: set[str] | None = None,
     ) -> list[StaleAsset]: ...
 
+    def partition_asset(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds_id: str,
+        root_assets: set[str] | None = None,
+    ) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None: ...
+
     def run_freshness_probe_cached(self, probe_path: str) -> bool: ...
 
 
@@ -98,6 +112,10 @@ class BaseStateStore:
     def __init__(self, cache: ColumnStatsCache | None = None) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
         self.concept_max_watermarks: dict[str, UpdateKey] = {}
+        # ds_id -> (observed slices, expected slices) for partitioned assets.
+        self.partitions: dict[
+            str, tuple[list[PartitionObservation], list[PartitionObservation]]
+        ] = {}
         self._cache = cache
         # Probe path -> result; deduplicates subprocess calls for the same probe
         # script during one refresh invocation.
@@ -130,6 +148,7 @@ class BaseStateStore:
         """
         with self._lock:
             self.watermarks.pop(ds_id, None)
+            self.partitions.pop(ds_id, None)
             self.concept_max_watermarks.clear()
 
     def invalidate_address(self, env: Environment, address: str) -> None:
@@ -151,6 +170,7 @@ class BaseStateStore:
         with self._lock:
             for ds_id in affected_ids:
                 self.watermarks.pop(ds_id, None)
+                self.partitions.pop(ds_id, None)
             for probe in affected_probes:
                 self._probe_results.pop(probe, None)
             self.concept_max_watermarks.clear()
@@ -180,6 +200,37 @@ class BaseStateStore:
 
         self.watermarks[datasource.identifier] = watermarks
         return watermarks
+
+    def partition_asset(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds_id: str,
+        root_assets: set[str] | None = None,
+    ) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+        """Observed and expected slices for a partitioned datasource.
+
+        None for anything unpartitioned (and for roots, which are the expected
+        side of every comparison and never judged themselves). Cached per
+        invocation and dropped by ``invalidate*`` alongside watermarks, so a
+        post-refresh re-probe sees the slices the refresh just wrote.
+        """
+        ds = env.datasources[ds_id]
+        if not is_partitioned(ds):
+            return None
+        with self._lock:
+            cached = self.partitions.get(ds_id)
+        if cached is not None:
+            return cached
+        if root_assets is None:
+            root_assets = {d.identifier for d in env.datasources.values() if d.is_root}
+        probed = (
+            probe_observed_partitions(ds, executor),
+            probe_expected_partitions(ds, executor, root_assets),
+        )
+        with self._lock:
+            self.partitions[ds_id] = probed
+        return probed
 
     def get_datasource_watermarks(
         self, datasource: Datasource
@@ -533,6 +584,10 @@ class RefreshPlan:
     root_assets: int
     all_assets: int
     root_watermarks: dict[str, DatasourceWatermark] = field(default_factory=dict)
+    # ds_id -> (observed slices, expected slices); partitioned datasources only.
+    partitions: dict[
+        str, tuple[list[PartitionObservation], list[PartitionObservation]]
+    ] = field(default_factory=dict)
 
     @property
     def refresh_assets(self) -> list[StaleAsset]:
@@ -607,6 +662,18 @@ def create_refresh_plan(
         if ds_id in root_ds_ids
     }
 
+    # Per-slice state for partitioned targets. Two extra queries per partitioned
+    # datasource; nothing at all for the unpartitioned majority.
+    partitions = {}
+    for ds_id, ds in executor.environment.datasources.items():
+        if ds_id in all_skip or not is_partitioned(ds):
+            continue
+        probed = state_store.partition_asset(
+            executor.environment, executor, ds_id, root_assets=root_ds_ids
+        )
+        if probed is not None:
+            partitions[ds_id] = probed
+
     plan = RefreshPlan(
         stale_assets=stale_assets,
         forced_assets=forced_assets,
@@ -615,6 +682,7 @@ def create_refresh_plan(
         root_assets=root_assets,
         all_assets=all_assets,
         root_watermarks=root_watermarks,
+        partitions=partitions,
     )
 
     # Begin-phase capture: the planning probe is the last look at state

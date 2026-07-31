@@ -55,7 +55,10 @@ def auto_persist(
         select=select,
         datasource=target,
         persist_mode=persist_mode,
-        partition_by=target.incremental_by,
+        # A declared physical partitioning is what an append should replace;
+        # `incremental by` is the fallback for models that only declare a
+        # monotonic key.
+        partition_by=target.partition_by or target.incremental_by,
         meta=metadata_from_meta(node.meta),
     )
 

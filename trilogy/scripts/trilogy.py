@@ -1,19 +1,36 @@
+import io
 import sys
 
 import click
 
 from trilogy.scripts.click_utils import IGNORE_UNKNOWN, LazyGroup
 
-# Force UTF-8 stdio so non-ASCII output (e.g. the ``↳`` description marker
-# from ``file list``) renders on Windows consoles whose default codepage is
-# cp1252. Best-effort: a NotImplementedError or AttributeError just means
-# we're on a platform where the streams aren't reconfigurable, and we leave
-# them alone.
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-    except (AttributeError, ValueError, NotImplementedError):
-        pass
+UTF8_ALIASES = ("utf8", "utf8sig")
+
+
+def _force_utf8_stdio() -> None:
+    """Force UTF-8 stdio so non-ASCII output (e.g. the ``↳`` description marker
+    from ``file list``) survives a narrow codepage -- a cp1252 Windows console,
+    or stdout redirected to a file under a cp1252 locale.
+
+    Streams that already speak UTF-8 are left strictly alone. ``reconfigure``
+    resets the error handler to ``strict`` whenever ``errors`` isn't passed, and
+    a capture stream (pytest's, click's ``CliRunner``) is a UTF-8 wrapper opened
+    with ``errors="replace"`` over a buffer that also collects whatever raw bytes
+    subprocesses wrote to the captured fd. Flipping it to strict makes the first
+    such byte poison every capture read for the rest of the session."""
+    for stream in (sys.stdout, sys.stderr):
+        if not isinstance(stream, io.TextIOWrapper):
+            continue
+        if stream.encoding.lower().replace("-", "").replace("_", "") in UTF8_ALIASES:
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
+        except ValueError:
+            pass
+
+
+_force_utf8_stdio()
 
 
 def get_version() -> str:
@@ -52,6 +69,7 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "run": ("trilogy.scripts.run", "run", IGNORE_UNKNOWN),
     "serve": ("trilogy.scripts.serve", "serve", None),
     "state": ("trilogy.scripts.state", "state", IGNORE_UNKNOWN),
+    "state-merge": ("trilogy.scripts.state", "state_merge", None),
     "unit": ("trilogy.scripts.testing", "unit", IGNORE_UNKNOWN),
 }
 

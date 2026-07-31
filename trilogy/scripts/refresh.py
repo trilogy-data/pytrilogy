@@ -995,6 +995,7 @@ def refresh(
     run_id: str | None,
     state_input: str | None,
     state_file: str | None,
+    state_partition: tuple[str, ...],
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -1059,7 +1060,7 @@ def refresh(
                     # Snapshot regardless of outcome: post-failure state is
                     # still the current truth, and this never alters the
                     # exit code.
-                    maybe_write_state_snapshot(cli_params, state_file)
+                    maybe_write_state_snapshot(cli_params, state_file, state_partition)
             if up_to_date:
                 raise Exit(2)
     except Exit:

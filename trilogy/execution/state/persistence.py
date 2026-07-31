@@ -39,6 +39,9 @@ from trilogy.execution.state.watermarks import DatasourceWatermark, StaleAsset
 
 ENV_STATE_FILE = "TRILOGY_STATE_FILE"
 ENV_STATE_INPUT = "TRILOGY_STATE_INPUT"
+#: Comma-separated partition ids this invocation owns; scopes the written
+#: snapshot to those slices so concurrent workers produce mergeable deltas.
+ENV_STATE_PARTITION = "TRILOGY_STATE_PARTITION"
 
 
 def read_state_snapshot(path: Path | str) -> StateSnapshot:
@@ -166,6 +169,7 @@ def snapshot_store_factory(
 __all__ = [
     "ENV_STATE_FILE",
     "ENV_STATE_INPUT",
+    "ENV_STATE_PARTITION",
     "SnapshotStateStore",
     "read_state_snapshot",
     "resolve_state_input",

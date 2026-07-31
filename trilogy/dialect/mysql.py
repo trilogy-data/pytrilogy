@@ -182,6 +182,25 @@ class MySQLDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
 
+    def partition_key_match(
+        self, left: str, right: str, partition_by: list[str]
+    ) -> str:
+        """MySQL spells null-safe equality ``<=>``, so the base's explicit
+        ``IS NULL`` arms collapse to one operator."""
+        return " AND ".join(
+            f"{left}.{self.quote(key)} <=> {right}.{self.quote(key)}"
+            for key in partition_by
+        )
+
+    def render_partition_delete(
+        self, target: str, staged: str, partition_by: list[str]
+    ) -> str:
+        """MySQL rejects the base's correlated ``EXISTS`` ("You can't specify
+        target table for delete"), so the key match rides a multi-table DELETE
+        join instead. The table name doubles as its own alias."""
+        matches = self.partition_key_match(target, staged, partition_by)
+        return f"DELETE {target} FROM {target} JOIN {staged} ON {matches}"
+
     def render_ordering(self, rendered: str, order: Ordering) -> str:
         return render_ordering(rendered, order)
 

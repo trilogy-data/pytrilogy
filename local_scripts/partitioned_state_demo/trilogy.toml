@@ -1,0 +1,9 @@
+[engine]
+dialect = "duck_db"
+
+[engine.config]
+# One on-disk warehouse shared by every step of the demo. DuckDB allows many
+# concurrent readers but only a single writer, which is exactly why the
+# orchestrator serializes the *warehouse* writes and parallelizes everything
+# else — see README.md.
+path = "warehouse.duckdb"

@@ -193,6 +193,7 @@ def run(
     run_id: str | None,
     state_input: str | None,
     state_file: str | None,
+    state_partition: tuple[str, ...],
     conn_args,
 ):
     """Execute a Trilogy script or query."""
@@ -260,7 +261,7 @@ def run(
                     )
             finally:
                 # Snapshot regardless of outcome; never alters the exit code.
-                maybe_write_state_snapshot(cli_params, state_file)
+                maybe_write_state_snapshot(cli_params, state_file, state_partition)
     except Exit:
         raise
     except Exception as e:

@@ -81,6 +81,31 @@ After a script-kind refresh, the freshness_probe is re-run once. If it still ret
 - `watermarks_for_datasource` re-keys a recorded watermark onto the reading model's concept names via the shared **physical column** (`WatermarkValue.column`). Watermark keys are concept names, so without this a renamed model's seeded values are silently never compared. Key conventions mirror `watermarks.py`: full address for `KEY_HASH`, bare name otherwise, literal `update_time` passes through.
 - `SnapshotStateStore` seeds **once**, on the first env-aware call. It must NOT re-seed afterwards — `invalidate_address` drops entries so post-refresh evaluation re-reads the warehouse, and re-seeding there would resurrect the pre-refresh value.
 
+### Partition state (`partitions.py`)
+
+A datasource with `partition by` is N independently refreshable slices behind one address, so `DatasourceState.partitions` records each one. Two probes, one query each regardless of slice count:
+
+- `probe_observed_partitions` — `GROUP BY` the partition columns on the physical table (missing/reshaped target reads as "no slices", not an error).
+- `probe_expected_partitions` — a trilogy query with every non-root hidden, so only authoritative sources can answer. Failure is a real answer (the key may not be derivable from roots) and returns `[]` rather than failing the snapshot.
+
+Rules that are load-bearing:
+
+- **`partition_id` is keyed on the PHYSICAL column**, not the concept address — same reason asset keys are physical. Values render canonically (ISO temporals, `__NULL__`), because the id is compared across processes and a driver-dependent `str()` would split one slice in two.
+- **Partition columns are excluded from a slice's watermark keys.** `MAX(order_date)` inside `order_date=2024-01-03` is the slice's own name, never a signal. What remains is `freshness_by`/`incremental_by` minus the partition keys.
+- `expected and not observed` -> **stale, "partition missing"** — the case a table-level MAX structurally cannot see, and the reason this exists. `observed and not expected` is NOT stale: nothing is asking for that slice (`expected=False` says what it is).
+- A stale slice makes the whole datasource stale, even when its table-level watermark looks caught up.
+- Roots are never partitioned assets (`is_partitioned` excludes them) — a root is the expected side, never judged.
+- Partition state is **always probed live**, never seeded from a snapshot. Watermark seeding exists because probing is expensive; a partition probe is one `GROUP BY`, and trusting a merged file would hide a slice dropped out of band.
+- `BaseStateStore.partitions` caches per invocation and is dropped by `invalidate`/`invalidate_address` alongside watermarks, so a post-refresh re-probe sees what the refresh wrote.
+
+### Merging deltas (`scope_to_partitions` / `merge_snapshots`)
+
+`partitions_complete` is the whole concurrency story. A whole-asset probe sets it True; a run scoped to the slices it owns (`--state-partition`) sets it False, meaning "these slices, and nothing about the others" — necessary because a worker's post-run probe sees the *whole* table, including slices peers are mid-write on.
+
+`merge_snapshots` overlays a scoped delta by `partition_id` and lets a complete one replace the list, then re-derives the datasource status from the merged slices. Because each worker speaks only for slices it owns, **the result is independent of merge order** and replaying a delta is idempotent. That is what lets a file-backed store support parallelism: N workers write N distinct files with no coordination, one coordinator merges.
+
+Datasources are merged **by `datasource_id` alone, never by `(script, datasource_id)`** — a delta legitimately comes from the per-partition build script while the base came from the model, and keying on the pair files the same asset twice. (Note `merge_into_snapshot`, which dedups *within* one probe, still uses the pair: there two scripts really are two views.)
+
 ### Injecting a store
 
 Two seams, in precedence order:

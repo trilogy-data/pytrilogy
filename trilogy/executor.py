@@ -397,6 +397,12 @@ class Executor:
             datasource=datasource,
             select=select_stmt,
             persist_mode=persist_mode,
+            # A declared partitioning makes an incremental append idempotent per
+            # slice: the dialect replaces the partitions this select covers
+            # instead of blindly adding rows to them.
+            partition_by=(
+                datasource.partition_by if persist_mode == PersistMode.APPEND else []
+            ),
         )
         generated = self._generate([statement])
         if not generated:
