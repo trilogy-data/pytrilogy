@@ -225,25 +225,21 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
 
     sink: dict = {}
     response_payload = {
-        "choices": [
+        "output": [
             {
-                "message": {
-                    "content": "",
-                    "reasoning_content": "opaque continuation state",
-                    "tool_calls": [
-                        {
-                            "function": {
-                                "name": "submit_query",
-                                "arguments": '{"query":"select 1"}',
-                            }
-                        }
-                    ],
-                }
-            }
+                "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": "reasoning summary"}],
+            },
+            {
+                "type": "function_call",
+                "name": "submit_query",
+                "arguments": '{"query":"select 1"}',
+            },
         ],
         "usage": {
-            "prompt_tokens": 1,
-            "completion_tokens": 2,
+            "input_tokens": 1,
+            "output_tokens": 2,
+            "output_tokens_details": {"reasoning_tokens": 1},
             "total_tokens": 3,
         },
     }
@@ -260,8 +256,13 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
     )
 
     assert sink["json"]["tool_choice"] == "required"
+    assert sink["url"] == "https://api.openai.com/v1/responses"
+    assert sink["json"]["input"] == [{"role": "user", "content": "hi"}]
+    assert sink["json"]["tools"][0]["name"] == "submit_query"
+    assert "function" not in sink["json"]["tools"][0]
     assert result.tool_calls[0].arguments["query"] == "select 1"
-    assert result.reasoning_content == "opaque continuation state"
+    assert result.reasoning == "reasoning summary"
+    assert result.usage.reasoning_tokens == 1
 
 
 def test_openai_provider_prefers_named_tool_choice(monkeypatch):
@@ -269,10 +270,15 @@ def test_openai_provider_prefers_named_tool_choice(monkeypatch):
 
     sink: dict = {}
     response_payload = {
-        "choices": [{"message": {"content": "ok", "tool_calls": []}}],
+        "output": [
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "ok"}],
+            }
+        ],
         "usage": {
-            "prompt_tokens": 1,
-            "completion_tokens": 1,
+            "input_tokens": 1,
+            "output_tokens": 1,
             "total_tokens": 2,
         },
     }
@@ -287,7 +293,26 @@ def test_openai_provider_prefers_named_tool_choice(monkeypatch):
         [LLMMessage(role="user", content="hi")],
     )
 
-    assert sink["json"]["tool_choice"]["function"]["name"] == "submit_query"
+    assert sink["json"]["tool_choice"] == {
+        "type": "function",
+        "name": "submit_query",
+    }
+
+
+def test_openai_response_input_threads_tool_calls():
+    from trilogy.ai.providers.openai import to_openai_response_input
+
+    items = to_openai_response_input(_tool_history())
+
+    assert [item.get("type", "message") for item in items] == [
+        "message",
+        "message",
+        "function_call",
+        "function_call_output",
+    ]
+    assert items[2]["call_id"] == items[3]["call_id"]
+    assert items[2]["arguments"] == '{"action": "list"}'
+    assert items[3]["output"] == "todo result"
 
 
 def test_to_anthropic_messages_includes_assistant_text_with_tool_calls():

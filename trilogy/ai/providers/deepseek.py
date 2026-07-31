@@ -41,6 +41,7 @@ class DeepSeekProvider(OpenAIProvider):
         super().__init__(name=name, model=model, api_key=api_key)
         self.base_completion_url = "https://api.deepseek.com/v1/chat/completions"
         self.base_model_url = "https://api.deepseek.com/v1/models"
+        self.use_responses_api = False
         self.type = Provider.DEEPSEEK
 
         self.retry_options = retry_options or RetryOptions(
