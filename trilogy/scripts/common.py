@@ -40,7 +40,8 @@ from trilogy.scripts.project_config import (  # noqa: F401
 from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
-    from trilogy.execution.state import RefreshPolicy
+    from trilogy.core.models.datasource import Datasource
+    from trilogy.execution.state import DatasourceWatermark, RefreshPolicy
 
 # Default stat types to display in output; easily configurable
 DEFAULT_STAT_TYPES: list[str] = ["persist", "update", "validate"]
@@ -118,14 +119,11 @@ class RefreshParams:
     partitions: Mapping[str, str] = field(default_factory=dict)
 
     def policy(self) -> "RefreshPolicy":
-        """The planning half of these params, as the execution layer wants it.
+        """The planning half of these params — THE CLI-to-plan mapping.
 
-        THE mapping from CLI flags to refresh intent. A new planning option is
-        added to :class:`~trilogy.execution.state.RefreshPolicy` and mapped
-        here, once — every call site that plans a refresh then carries it
-        without being edited. The rest of this dataclass
-        (``print_watermarks``/``interactive``/``dry_run``) is presentation and
-        execution, and deliberately does not cross into the plan.
+        A new planning option is added to `RefreshPolicy` and mapped here, once;
+        every call site that plans a refresh then carries it unedited. The rest
+        of this dataclass is presentation and does not cross into the plan.
         """
         from trilogy.execution.state import RefreshPolicy
 
@@ -159,6 +157,95 @@ def validate_force_sources(
 
     noun = "datasource" if len(missing) == 1 else "datasources"
     print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}")
+    raise Exit(1)
+
+
+def validate_partition_selector(
+    selector: Mapping[str, str],
+    available_keys: Iterable[str],
+) -> None:
+    """Fail fast when --partition names a concept nothing is partitioned by.
+
+    A selector matching no datasource does not narrow anything — the plan keeps
+    whatever staleness decided and the written snapshot claims the whole table.
+    Both are the widening the flag exists to prevent, and both are silent.
+    """
+    if not selector:
+        return
+
+    missing = sorted(set(selector) - set(available_keys))
+    if not missing:
+        return
+
+    noun = "concept" if len(missing) == 1 else "concepts"
+    print_error(
+        f"No datasource is partitioned by {noun} passed to --partition:"
+        f" {', '.join(missing)}"
+    )
+    raise Exit(1)
+
+
+def validate_refresh_policy(policy: "RefreshPolicy", environment: Environment) -> None:
+    """Fail fast on --force/--partition values this model cannot honor."""
+    from trilogy.execution.state import partition_key_addresses
+
+    validate_force_sources(policy.force_sources, environment.datasources)
+    validate_partition_selector(
+        policy.partition_selector,
+        partition_key_addresses(environment.datasources.values()),
+    )
+
+
+def _observed_nothing(watermark: "DatasourceWatermark | None") -> bool:
+    """No watermark value at all — the table is missing or holds no rows."""
+    if watermark is None:
+        return True
+    return not any(key.value is not None for key in watermark.keys.values())
+
+
+def require_a_source_of_truth(
+    datasources: Iterable["Datasource"],
+    watermarks: Mapping[str, "DatasourceWatermark"],
+) -> None:
+    """Fail a refresh that found nothing to do over an asset that is empty and
+    has no source of truth to fill it from.
+
+    With no ``root datasource`` there is no expected side, so everything reads
+    fresh — including a target that has never been built. "All assets are up to
+    date" is then false in a way that looks exactly like success.
+
+    Narrow on purpose; every condition must hold. Callers only reach here with
+    an **empty plan**, so ``--force`` never does. Beyond that: no root is
+    declared anywhere; some asset declares an incremental/freshness key (which
+    is what marks it something refresh maintains, as opposed to an inline-query
+    source, which is not a table anyone builds); and that asset observed no
+    watermark value, i.e. it is missing or empty. A populated table that merely
+    cannot be judged is uninformative, not a lie, and stays a plain no-op.
+
+    ``trilogy state`` never calls this — observing what exists is useful with or
+    without roots, and it already reports ``level: scan``.
+    """
+    sources = list(datasources)
+    if any(ds.is_root for ds in sources):
+        return
+
+    unbuilt = sorted(
+        ds.identifier
+        for ds in sources
+        if (ds.incremental_by or ds.freshness_by)
+        and _observed_nothing(watermarks.get(ds.identifier))
+    )
+    if not unbuilt:
+        return
+
+    print_error(
+        f"Nothing can be refreshed, but {', '.join(unbuilt)} "
+        f"{'is' if len(unbuilt) == 1 else 'are'} empty: this project declares no "
+        "`root datasource`, so there is no source of truth to compare against "
+        "and every asset reports fresh whether or not it holds anything.\n"
+        "Mark the authoritative sources (the tables you do not build) as "
+        "`root datasource`, or pass --force to rebuild a target explicitly."
+    )
     raise Exit(1)
 
 

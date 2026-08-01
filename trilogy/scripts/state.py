@@ -382,13 +382,9 @@ def write_state_snapshot(snapshot: StateSnapshot, path: PathlibPath) -> None:
 def resolve_partition_limit(state_max_partitions: str | None = None) -> int | None:
     """Flag > TRILOGY_STATE_MAX_PARTITIONS env > no cap.
 
-    **Uncapped by default.** A snapshot describes a whole table, and only a
-    consumer with a payload budget has a reason to want less — so that consumer
-    is the one that says so, and a client that later moves to a transport
-    without the limit just stops passing it. ``all`` is the explicit spelling of
-    the default; ``0`` keeps the summary counts and no slices;
-    :data:`MAX_REPORTED_PARTITIONS` is a sane budget for a client that has one
-    but no particular number in mind."""
+    **Uncapped by default** — only a consumer with a payload budget has reason
+    to want less, so that consumer is the one that says so. ``all`` spells the
+    default explicitly; ``0`` keeps the summary counts and no slices."""
     raw = (state_max_partitions or os.environ.get(ENV_STATE_MAX_PARTITIONS, "")).strip()
     if not raw:
         return None
@@ -433,16 +429,12 @@ def maybe_write_state_snapshot(
     :func:`~trilogy.execution.state.snapshot.scope_to_partitions`.
 
     A ``refresh --partition`` run **derives it** when not given explicitly: the
-    slices it owned for reporting are exactly the slices it was told to rebuild,
-    and requiring the caller to say so twice makes the two flags a pair that can
-    drift. Getting them out of step is silent — the run writes one slice and
-    then claims the whole table, which is the clobber ``--state-partition``
-    exists to prevent. An explicit value still wins, for the caller that
-    genuinely wants them different.
+    slices it owned are the slices it was told to rebuild, and making the caller
+    say so twice makes the two flags a pair that can drift — silently, into
+    writing one slice while claiming the whole table. An explicit value wins.
 
-    ``state_max_partitions`` is the reader's payload budget, applied last (see
-    :func:`~trilogy.execution.state.snapshot.cap_snapshot`) — the snapshot is
-    computed whole and trimmed only on the way out."""
+    ``state_max_partitions`` is the reader's payload budget, applied last: the
+    snapshot is computed whole and trimmed only on the way out."""
     path_str = state_file or os.environ.get(ENV_STATE_FILE, "").strip() or None
     if not path_str:
         return

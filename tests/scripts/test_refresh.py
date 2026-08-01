@@ -5,7 +5,7 @@ import pytest
 from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy import Dialects
+from trilogy import Dialects, parse
 from trilogy.core import graph as nx
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
@@ -1176,6 +1176,38 @@ class TestRefreshWithoutASourceOfTruth:
         # Actionable, not just a complaint.
         assert "--force" in result.output
 
+    def test_a_single_file_refresh_errors_the_same_way(self, tmp_path):
+        """The guard belongs to the verdict, not to directory mode. Refreshing
+        the file directly reaches the same false "up to date"."""
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["refresh", str(ws / "model.preql")])
+
+        assert result.exit_code == 1, result.output
+        assert "no `root datasource`" in result.output
+
+    def test_a_single_file_refresh_with_a_built_target_is_not_an_error(self, tmp_path):
+        ws = _rootless_workspace(tmp_path)
+        model = str(ws / "model.preql")
+        assert (
+            CliRunner().invoke(cli, ["refresh", model, "--force", "daily"]).exit_code
+            == 0
+        )
+
+        result = CliRunner().invoke(cli, ["refresh", model])
+        assert result.exit_code in (0, 2), result.output
+        assert "Nothing can be refreshed" not in result.output
+
+    def test_an_asset_with_no_watermark_row_at_all_counts_as_empty(self, tmp_path):
+        """The table is absent, so the plan holds no watermark entry for it —
+        distinct from an entry whose values are all None, and the same verdict."""
+        from trilogy.scripts.common import require_a_source_of_truth
+
+        ws = _rootless_workspace(tmp_path)
+        env, _ = parse(ROOTLESS_MODEL.format(root=""))
+        with pytest.raises(Exit):
+            require_a_source_of_truth(env.datasources.values(), {})
+        assert ws.exists()
+
     def test_rootless_state_still_reports(self, tmp_path):
         """Observation is legitimate without roots — only refresh is impossible.
         `state` says `level: scan` rather than pretending to an expected side."""
@@ -1218,13 +1250,18 @@ class TestRefreshWithoutASourceOfTruth:
         """
         ws = _rootless_workspace(tmp_path)
         # Build it the only way a rootless project can.
-        assert CliRunner().invoke(cli, ["refresh", str(ws), "--force", "daily"]).exit_code == 0
+        assert (
+            CliRunner().invoke(cli, ["refresh", str(ws), "--force", "daily"]).exit_code
+            == 0
+        )
 
         result = CliRunner().invoke(cli, ["refresh", str(ws)])
         assert result.exit_code in (0, 2), result.output
         assert "Nothing can be refreshed" not in result.output
 
-    def test_a_source_defined_by_an_inline_query_is_not_a_refresh_target(self, tmp_path):
+    def test_a_source_defined_by_an_inline_query_is_not_a_refresh_target(
+        self, tmp_path
+    ):
         """Not everything non-root is something refresh maintains. A datasource
         backed by an inline query is a source, not a table anyone builds, so a
         project of only those has legitimately nothing to do."""

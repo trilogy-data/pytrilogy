@@ -11,24 +11,14 @@ from trilogy.dialect.base import BaseDialect
 #: The model cannot answer a question, as opposed to the warehouse failing to.
 #:
 #: Both expected-side probes (``get_concept_max_watermark_abstract``,
-#: ``probe_expected_partitions``) hide every non-root datasource so the planner
-#: can only answer from authoritative sources. That routinely leaves a question
-#: unanswerable — a derived concept need not be derivable from roots, and in a
-#: project that declares no ``root`` at all *nothing* is left to answer from —
-#: so "no expectation" is a real result rather than a failure.
+#: ``probe_expected_partitions``) hide every non-root datasource, which routinely
+#: leaves a question unanswerable — and answers nothing at all in a project that
+#: declares no ``root``. "No expectation" is a real result there.
 #:
-#: Narrow on purpose. Catching every exception here would report a broken
-#: warehouse, a bad credential or a typo in this module as "nothing is
-#: expected", which reads downstream as *fresh* — an outage would look like a
-#: clean bill of health. Only planning failures are the model talking; anything
-#: else is a problem the caller needs to see.
+#: Narrow on purpose: an empty expected side reads downstream as *fresh*, so
+#: catching a broken warehouse or a bad credential here would render an outage
+#: as a clean bill of health.
 UNRESOLVABLE_ERRORS = (UnresolvableQueryException, DisconnectedConceptsException)
-
-
-def is_unresolvable_error(exc: Exception) -> bool:
-    """Whether ``exc`` means "the model cannot answer this" — see
-    :data:`UNRESOLVABLE_ERRORS`."""
-    return isinstance(exc, UNRESOLVABLE_ERRORS)
 
 
 def _error_text(exc: Exception) -> str:

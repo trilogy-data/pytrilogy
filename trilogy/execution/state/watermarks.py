@@ -363,21 +363,14 @@ def get_concept_max_watermark_abstract(
     resolve the concept exclusively from authoritative root sources.
 
     A concept the roots cannot answer yields a null value, not an exception —
-    the same rule :func:`~trilogy.execution.state.partitions.probe_expected_partitions`
-    follows for the partition-level version of this question, and the one the
-    caller already codes against (it keeps the key only ``if wm.value is not
-    None``). "No expectation available" is a real answer here: nothing forces a
-    derived concept to be derivable from roots alone.
+    which is what the caller already codes against (it keeps the key only ``if
+    wm.value is not None``), and the rule ``probe_expected_partitions`` follows
+    for the partition-level version of the same question. It is also the normal
+    answer for a model declaring no ``root`` at all: everything is hidden, so
+    raising took the whole snapshot down and such a project could not report
+    state.
 
-    It is also the *normal* answer for a model that declares no ``root``
-    datasources at all — every source external, which is an ordinary shape.
-    Everything is hidden, so every abstract probe is unresolvable. Raising took
-    the whole snapshot down over one unanswerable question, so such a project
-    could not report state at all.
-
-    Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`). A
-    warehouse error is not the model saying "nothing is expected" — swallowing
-    it would render an outage as *fresh*.
+    Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`).
     """
     hidden = {
         ds_id: executor.environment.datasources.pop(ds_id)

@@ -71,23 +71,16 @@ slices, and nothing about the others". :func:`merge_snapshots` overlays a scoped
 delta slice-by-slice and lets a complete one replace the list — so N concurrent
 workers writing N delta files never clobber each other's slices, and no worker
 has to observe (or lock) state it does not own. (A complete delta replaces only
-where nothing was trimmed on the way out; see :func:`cap_snapshot` below, and
-``_merge_partitions`` for why a trimmed one has to overlay instead.)
+where nothing was trimmed on the way out — see ``_merge_partitions``.)
 
 Snapshots are built and written **complete**; a consumer with a payload budget
 opts into trimming on the way out (:func:`cap_snapshot`, wired to
-``--state-max-partitions``). The budget belongs to the transport, not to the
-format: partition counts are unbounded (``partition by`` an id, or hourly over
-five years) while a status event or a message payload is not, and a producer
-that emits 44,000 slices into a smaller envelope just gets truncated further
-downstream by something with less context about which ones mattered. Trimming
-where the verdicts are known means
-:func:`cap_partitions` keeps the stale slices — the backfill queue — while
-``DatasourceState.partition_summary`` counts the whole probed set, so a trim
-changes what a reader can *enumerate* and never what it can *conclude*: "2,583
-of 2,700 stale" survives a 200-slice payload. ``PartitionSummary.level`` says
-how the observation was obtained, so "did not look" never reads as "nothing to
-report".
+``--state-max-partitions``). The budget belongs to the transport, not the
+format. :func:`cap_partitions` keeps the stale slices — the backfill queue —
+while ``DatasourceState.partition_summary`` counts the whole probed set, so a
+trim changes what a reader can *enumerate* and never what it can *conclude*.
+``PartitionSummary.level`` says how the observation was obtained, so "did not
+look" never reads as "nothing to report".
 
 ``schema_version`` bumps only on breaking changes to existing fields; new
 fields/values are added without a bump. Consumers must ignore unknown fields.
@@ -103,6 +96,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from trilogy.core.enums import AddressType
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import (
     Address,
     Datasource,
@@ -131,18 +125,7 @@ AssetStatus = Literal["fresh", "stale", "unknown"]
 
 #: A sane slice budget for a consumer that has one but no particular number in
 #: mind. **Not a default** — snapshots are written uncapped unless a reader asks
-#: for less (``--state-max-partitions`` / ``TRILOGY_STATE_MAX_PARTITIONS``; see
-#: :func:`cap_snapshot`).
-#:
-#: A rendering limit, not a scheduling one, and it belongs to the consumer
-#: rather than to the format: partition counts are unbounded in principle
-#: (``partition by`` an id, or hourly over five years) while a status event, a
-#: message payload or a database column is not. A producer that emits 44,000
-#: slices to something that can only carry 200 does not inform anyone — it gets
-#: truncated downstream, by something with less context about what mattered.
-#: Trimming where the verdicts are known means the survivors are the ones a
-#: reader would have picked (see :func:`cap_partitions`), and
-#: :class:`PartitionSummary` keeps the counts exact regardless.
+#: for less (``--state-max-partitions`` / ``TRILOGY_STATE_MAX_PARTITIONS``).
 MAX_REPORTED_PARTITIONS = 200
 
 #: Separates a key's type scheme from its body (``script::``, ``query::``).
@@ -225,26 +208,18 @@ class PartitionSummary(BaseModel):
     """Aggregate truth about a datasource's slices, independent of how many of
     them ``partitions`` actually carries.
 
-    Partition counts are unbounded in principle — ``partition by`` an id, or
-    hourly over five years — while every consumer downstream has a size budget,
-    so ``partitions`` is capped (:func:`cap_partitions`). The counts here are
-    computed over the WHOLE probed set before that cap, so trimming the list
-    changes what a reader can *enumerate* and never what it can *conclude*:
-    "2,583 of 2,700 slices stale" survives a 200-slice payload. Without that a
-    consumer cannot tell a clean table from a truncated one, which is the single
-    distinction per-partition state exists to make.
-
-    ``level`` is the other half of that: a reader must never mistake "did not
-    look" for "nothing to report". When the expected side could not be resolved
-    the probe still reports every observed slice, but ``missing`` is then
-    trivially zero because nothing was asked for — ``scan`` says so out loud.
+    Counted over the WHOLE probed set before :func:`cap_partitions` trims the
+    list, so a trim changes what a reader can *enumerate* and never what it can
+    *conclude*: "2,583 of 2,700 slices stale" survives a 200-slice payload.
+    Without that a consumer cannot tell a clean table from a truncated one,
+    which is the single distinction per-partition state exists to make.
     """
 
     # How the observation was obtained. ``scan`` groups the physical table but
     # has no expectation to compare against, so ``missing`` and ``stale``
-    # understate. ``reconciled`` probed the roots too and its counts are
-    # meaningful. ``metadata`` is reserved for the cheap catalog route
-    # (INFORMATION_SCHEMA.PARTITIONS and friends), which is not implemented yet.
+    # understate — a reader must not mistake "did not look" for "nothing to
+    # report". ``reconciled`` probed the roots too. ``metadata`` is reserved for
+    # the cheap catalog route (INFORMATION_SCHEMA.PARTITIONS), not implemented.
     level: Literal["metadata", "scan", "reconciled"] = "scan"
     total: int = 0  # slices in the probed set, before the cap
     reported: int = 0  # how many of them ``partitions`` carries
@@ -559,16 +534,15 @@ def watermarks_for_datasource(
     )
 
 
-#: Typed inverse of ``render_partition_value``. Lives in ``partitions`` because
-#: a ``--partition`` selector parses values the same way a recorded slice does,
-#: and two spellings of that would let a flag and a snapshot disagree about what
-#: ``2024-01-03`` means.
+#: Typed inverse of ``render_partition_value``. Lives in ``partitions`` because a
+#: ``--partition`` selector parses values the same way a recorded slice does, and
+#: two spellings would let a flag and a snapshot disagree about ``2024-01-03``.
 _restore_partition_value = parse_partition_value
 
 
 def _restore_partition_observation(
     partition: PartitionState,
-    datatypes: dict[str, object],
+    datatypes: dict[str, DataType],
     watermarks: list[WatermarkValue],
     row_count: int | None,
 ) -> PartitionObservation:
@@ -608,7 +582,7 @@ def partitions_for_datasource(
         return None
     if not ds_state.partitions_complete:
         return None
-    datatypes: dict[str, object] = {}
+    datatypes: dict[str, DataType] = {}
     for col in ds.columns:
         concept = environment.concepts.get(col.concept.address)
         if concept is not None and isinstance(col.alias, str):
@@ -706,14 +680,11 @@ def cap_partitions(
 ) -> tuple[list[PartitionState], PartitionSummary]:
     """Trim the slice list to ``limit``, keeping the ones worth carrying.
 
-    Stale slices first, oldest id first — that ordering *is* the backfill queue,
-    so the head of the list is what a consumer would act on. The remaining
-    budget goes to the most recent healthy slices, which are what a freshness
-    view renders; older healthy slices are the least informative thing in the
-    set and are the first to go.
-
-    The kept list is re-sorted by id, because the merge unit is the id and a
-    reader diffing two snapshots should not see order churn.
+    Stale slices first, oldest id first — that ordering *is* the backfill queue.
+    The remaining budget goes to the most recent healthy slices; older healthy
+    ones are the least informative thing in the set. Re-sorted by id at the end,
+    because the id is the merge unit and a reader diffing two snapshots should
+    not see order churn.
     """
     if limit < 0 or len(states) <= limit:
         return states, summary
@@ -730,11 +701,9 @@ def cap_snapshot(snapshot: StateSnapshot, limit: int | None) -> StateSnapshot:
     size budget. ``None`` returns the snapshot unchanged; ``0`` keeps the
     summaries and no slices.
 
-    Deliberately a step at the boundary rather than a mode of the producer. A
-    snapshot is complete as computed; what a given transport can carry is that
-    transport's business, and the counts in :class:`PartitionSummary` survive
-    the trim either way. Moving a consumer onto something that can carry the
-    whole set is then a matter of not calling this.
+    A step at the boundary rather than a mode of the producer: a snapshot is
+    complete as computed, so moving a consumer onto a transport that can carry
+    the whole set is a matter of not calling this.
     """
     if limit is None:
         return snapshot
@@ -759,12 +728,10 @@ def build_partition_states(
 ) -> tuple[list[PartitionState], PartitionSummary]:
     """Pair up the two probed sides into one state entry per slice.
 
-    Returns every probed slice alongside a summary of the set — see
-    :class:`PartitionSummary`. **Uncapped by default**: what a snapshot is is
-    separate from what a particular consumer can carry, and trimming belongs at
-    that boundary (:func:`cap_snapshot`), not here where the information is
-    still recoverable. ``limit`` is offered for a caller that never wants to
-    hold the whole set in the first place.
+    Returns every probed slice alongside a summary of the set. **Uncapped by
+    default** — trimming belongs at the consumer boundary (:func:`cap_snapshot`),
+    not here where the information is still recoverable. ``limit`` is for a
+    caller that never wants to hold the whole set in the first place.
     """
     observed_by_id = {obs.id: obs for obs in observed}
     expected_by_id = {exp.id: exp for exp in expected}
@@ -1060,18 +1027,12 @@ def scope_to_partitions(
     rather than replacing. Datasources with no matching slice keep an empty
     scoped list, contributing nothing.
 
-    The **summary is kept**, and that is not a contradiction of the above. What
-    a partial writer cannot be trusted about is a per-slice *claim* — asserting
-    a state for a slice another worker is mid-write on. An aggregate is a
-    different kind of statement: "this table has 2,700 slices and 2,583 are
-    behind" is true of the table at the moment it was probed, by anyone who
-    probed it. :class:`PartitionSummary` already distinguishes the two —
-    ``reported`` drops to the scoped count while ``total`` stays whole — so the
-    delta says "1 of 2,700" rather than pretending to 2,700.
-
-    Dropping it instead would be quietly disastrous for the case this exists to
-    serve: where every run is partition-targeted, no run ever emits a complete
-    probe, and the totals would never be reported at all.
+    The **summary is kept**: what a partial writer cannot be trusted about is a
+    per-slice claim, not an aggregate, which is true of the table by anyone who
+    probed it. ``reported`` drops to the scoped count while ``total`` stays
+    whole, so the delta says "1 of 2,700" rather than pretending to 2,700.
+    Dropping it would mean a fan-out where every run is targeted never reports
+    totals at all.
     """
     scoped = snapshot.model_copy(deep=True)
     for asset in scoped.assets:
@@ -1094,24 +1055,20 @@ def selector_partition_ids(
 ) -> set[str]:
     """Partition ids a concept-addressed selector names, read off the snapshot.
 
-    The bridge between ``refresh --partition`` (which speaks concept addresses,
-    because that is what a caller working from the model has) and
-    ``scope_to_partitions`` (which speaks partition ids, because that is the
-    merge unit). ``DatasourceState.partition_by`` carries both halves of the
-    mapping, so no environment is needed here.
+    The bridge between ``refresh --partition`` (concept addresses) and
+    ``scope_to_partitions`` (partition ids, the merge unit);
+    ``DatasourceState.partition_by`` carries both halves, so no environment is
+    needed.
 
     **Recorded slices match first**, because only they know how the writer's
     datatype rendered the value: ``order_date=2024-01-03`` against a ``datetime``
-    column was recorded as ``2024-01-03T00:00:00``, and re-rendering the flag
-    here — with no datatype to consult — would name a slice that does not exist.
-    The snapshot is built after the run, so the slice it just wrote is in it.
+    column was recorded ``2024-01-03T00:00:00``, and re-rendering the flag here —
+    with no datatype to consult — would name a slice that does not exist.
 
-    A rendered id is added as well, for a slice no probe could observe. That
-    fallback is why this never returns empty for a datasource it named: an empty
-    result means "do not scope", and an unscoped snapshot claims the whole
-    table, which is the clobber this pairing exists to prevent. Naming a slice
-    that does not exist costs reporting detail; naming none costs another
-    worker's state.
+    A rendered id is added as well, so this never returns empty for a datasource
+    it named: empty means "do not scope", and an unscoped snapshot claims the
+    whole table. Naming a slice that does not exist costs reporting detail;
+    naming none costs another worker's state.
     """
     ids: set[str] = set()
     for asset in snapshot.assets:
@@ -1154,24 +1111,25 @@ def _selector_value_matches(recorded: str | None, raw: str) -> bool:
 
 
 def _as_datetime(raw: str) -> datetime | None:
-    """``raw`` as an instant, midnight for a bare date; None if not temporal."""
-    for parse in (datetime.fromisoformat, date.fromisoformat):
-        try:
-            parsed = parse(raw)
-        except ValueError:
-            continue
-        if isinstance(parsed, datetime):
-            return parsed
-        return datetime(parsed.year, parsed.month, parsed.day)
-    return None
+    """``raw`` as an instant, midnight for a bare date; None if not temporal.
+
+    One parse covers both: ``datetime.fromisoformat`` accepts every spelling
+    ``date.fromisoformat`` does."""
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
 
 
 def _normalize_selector_value(raw: str) -> PartitionValue:
     """Best-effort canonical form for a selector value.
 
-    Temporal values are the ones that actually vary in spelling, and they are
-    also almost every real partition key; anything else is already its own
-    canonical string."""
+    Temporal values are the ones that vary in spelling, and are also almost
+    every real partition key; anything else is already canonical.
+
+    Date first, unlike :func:`_as_datetime`: that one wants a comparable
+    instant, this one has to preserve precision, and ``date.fromisoformat``
+    rejecting a datetime string is what keeps the two apart."""
     for parse in (date.fromisoformat, datetime.fromisoformat):
         try:
             return parse(raw)
@@ -1202,14 +1160,11 @@ def _merge_partitions(
         return list(delta.partitions)
     merged = {p.partition_id: p for p in base.partitions}
     if delta.partitions_complete and _carries_every_stale(delta):
-        # A truncated probe's silence about a slice means "did not fit", not
-        # "gone", so its list overlays rather than replaces — otherwise the
-        # accumulated work list shrinks to whatever one payload could hold. But
-        # it kept stale slices first, so when it carried every stale one, a base
-        # entry it does not mention is provably no longer stale. Dropping those
-        # is cheaper than dispatching a run to rediscover it. Where the stale set
-        # itself overflowed we cannot infer, and a stale slice that has since
-        # been fixed simply costs one idempotent run that corrects the record.
+        # A truncated probe overlays (its silence means "did not fit", not
+        # "gone"), but it kept stale slices first — so when it carried every
+        # stale one, a base entry it does not mention is provably no longer
+        # stale and can be dropped. Where the stale set itself overflowed we
+        # cannot infer, and a phantom costs one idempotent corrective run.
         current = {p.partition_id for p in delta.partitions}
         merged = {
             pid: p for pid, p in merged.items() if p.status != "stale" or pid in current
@@ -1232,32 +1187,24 @@ def _merge_partition_summary(
 
     A complete delta re-probed everything, so its summary replaces the base's. A
     scoped delta only moved the slices it owned, so the base's counts stand and
-    are adjusted slice by slice — which is the whole point of keeping counts
-    separate from the list: a backfill that fixes one of 2,583 stale slices must
-    leave a readable 2,582 behind, not a recount of whatever 200 slices happened
-    to fit in the payload.
+    are adjusted slice by slice: a backfill that fixes one of 2,583 stale slices
+    must leave a readable 2,582 behind, not a recount of whatever fit.
 
-    A scoped delta carries a whole-table aggregate of its own (it probed the
-    table on its way out) and that aggregate is deliberately **not** preferred,
-    tempting as its recency is. It was taken at an arbitrary point in the
-    fan-out, so letting it win makes the merged counts — and the datasource
-    status derived from them — depend on which worker's file was folded in last.
-    Order independence is the property that lets N workers write N files with no
-    coordination; a summary is not worth trading it for. It is used only to
-    bootstrap a base that has no counts at all, where there is nothing to be
-    inconsistent with.
+    A scoped delta's own whole-table aggregate is deliberately **not** preferred,
+    tempting as its recency is — it was taken at an arbitrary point in the
+    fan-out, so letting it win would make the merged counts (and the status
+    derived from them) depend on which file was folded last. Order independence
+    is what lets N workers write N files with no coordination. It bootstraps a
+    base with no counts, and nothing else.
 
-    One inexactness, bounded and deliberate: if the base was itself truncated, a
-    delta slice whose id is not in the base's retained list is counted as new,
-    when it may have been one of the slices the cap dropped. The drift is at most
-    the number of such slices, and it self-corrects on the next complete probe.
-    Making it exact would mean carrying every id the cap exists to not carry.
+    One bounded inexactness: if the base was itself truncated, a delta slice
+    absent from its retained list counts as new when it may have been trimmed.
+    That self-corrects on the next complete probe; making it exact would mean
+    carrying every id the cap exists to not carry.
     """
-    # Complete: its probe re-observed everything, so its counts are the current
-    # ones. No base counts: nothing to carry forward, so bootstrap from the
-    # delta. Either way ``total`` is that probe's whole-set count while
-    # ``reported`` describes the list that survived the merge — which overlaying
-    # a truncated delta may have grown past what the delta itself carried.
+    # ``total`` is the winning probe's whole-set count; ``reported`` describes
+    # the merged list, which overlaying a truncated delta may have grown past
+    # what the delta itself carried.
     if delta.partitions_complete or base.partition_summary is None:
         if delta.partition_summary is None:
             return None

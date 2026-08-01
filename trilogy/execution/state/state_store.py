@@ -603,23 +603,19 @@ class RefreshResult:
 @dataclass(frozen=True)
 class RefreshPolicy:
     """What the caller asked a refresh to do, as opposed to how a particular
-    call site is wired up.
-
-    Every entry point that plans a refresh — the CLI's single-file and directory
-    paths, and the :func:`refresh_stale_assets` convenience wrapper — needs to
-    carry these, while ``skip_datasources``/``initial_watermarks``/``cache``/
+    call site is wired up. ``skip_datasources``/``initial_watermarks``/``cache``/
     ``state_store`` genuinely differ per site and stay separate arguments.
 
-    Grouping them is not tidiness. When each of the four planning call sites
-    took intent as loose keyword arguments, adding ``partition_selector``
-    reached one of them and was silently ignored on the others: the flag parsed,
-    the run succeeded, and it rebuilt slices the caller had not asked for. A new
-    field here reaches every site by construction, and the only place that has
-    to learn about it is :meth:`~trilogy.scripts.common.RefreshParams.policy`.
+    Grouping intent is not tidiness. When the four planning call sites took it
+    as loose keyword arguments, ``partition_selector`` reached one of them and
+    was silently ignored on the others: the flag parsed, the run succeeded, and
+    it rebuilt slices the caller had not asked for. A new field here reaches
+    every site by construction, and only
+    :meth:`~trilogy.scripts.common.RefreshParams.policy` has to learn about it.
 
-    One policy object is shared by every managed node in a directory refresh,
-    which evaluates them on a thread pool — hence frozen, and hence the selector
-    is copied behind a read-only view rather than aliasing the caller's dict.
+    One policy is shared by every managed node in a directory refresh, which
+    evaluates them on a thread pool — hence frozen, and hence the selector is
+    copied behind a read-only view rather than aliasing the caller's dict.
     """
 
     #: Datasource names to rebuild regardless of staleness (``--force``).
@@ -631,6 +627,13 @@ class RefreshPolicy:
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "partition_selector", MappingProxyType(dict(self.partition_selector))
+        )
+
+    def __hash__(self) -> int:
+        # The generated one would hash the (unhashable) mapping, leaving a frozen
+        # dataclass that raises wherever anything treats it as a value.
+        return hash(
+            (self.force_sources, tuple(sorted(self.partition_selector.items())))
         )
 
 
@@ -780,18 +783,11 @@ def target_partition_selector(
 ) -> None:
     """Point the plan at exactly the slice ``selector`` names. Mutates ``plan``.
 
-    Two things happen, and both are the point:
-
-    - Any datasource partitioned on the named concepts is refreshed **whether or
-      not it looks stale**. A tick that owns 2026-07-30 must load 2026-07-30;
-      the slice may be absent from state entirely (never loaded, or the run is a
-      backfill of a day the watermark is already past), and a plan that consults
-      staleness first would decide there is nothing to do.
-    - Its refresh is narrowed to that slice, so the run replaces one partition
-      and leaves its healthy neighbours untouched.
-
-    Datasources the selector does not name plan normally: a directory holds many
-    assets and this flag speaks only for the ones keyed on the concept it names.
+    A named datasource is refreshed **whether or not it looks stale** — a tick
+    that owns 2026-07-30 must load it, and the slice may be absent from state
+    entirely (never loaded, or a backfill of a day the watermark is past) — and
+    narrowed to that slice, so healthy neighbours are untouched. Datasources the
+    selector does not name plan normally.
     """
     targeted: dict[str, StaleAsset] = {}
     for ds_id, ds in executor.environment.datasources.items():

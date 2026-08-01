@@ -1649,14 +1649,9 @@ def test_get_stale_assets_parquet_missing_column(tmp_path):
 class TestAbstractWatermarkWithoutRoots:
     """A project that declares no `root` datasource must still report state.
 
-    `get_concept_max_watermark_abstract` hides every non-root datasource so the
-    planner can only answer from authoritative sources. When nothing is marked
-    root — an ordinary shape for a model whose sources are all external tables
-    — that hides *everything*, and the probe is unanswerable by construction.
-
-    It used to raise, which took down the whole snapshot: `trilogy state` and
-    `trilogy refresh` both died with "No datasource exists for root concept
-    X@Grain<Y>" on any such project with a derived incremental key.
+    The probe hides every non-root datasource, so with nothing marked root it
+    hides everything and is unanswerable by construction. It used to raise,
+    taking the whole snapshot down with "No datasource exists for root concept".
     """
 
     MODEL = """
@@ -1702,10 +1697,9 @@ incremental by created_at.date
     def test_unanswerable_expectation_is_recorded_as_absent(self) -> None:
         """Not merely "does not crash" — the concept must be left out entirely.
 
-        The caller keeps a key only `if wm.value is not None`, so a null result
-        is how "no expectation available" is spelled. Recording a bogus value
-        would make every dependent look fresh or stale on a number nothing
-        actually measured.
+        The caller keeps a key only `if wm.value is not None`, so a null is how
+        "no expectation" is spelled; a bogus value would judge every dependent
+        against a number nothing measured.
         """
         executor = self._executor()
         store = BaseStateStore()
@@ -1714,21 +1708,19 @@ incremental by created_at.date
         assert store.concept_max_watermarks == {}
 
     def test_a_warehouse_failure_is_not_swallowed(self) -> None:
-        """The distinction the narrow catch exists to preserve.
+        """The distinction the narrow catch exists to preserve: absorbing a
+        broken warehouse would empty the expected side, and an asset with
+        nothing expected of it reads as FRESH.
 
-        "The model cannot answer this" is a result; "the warehouse is broken" is
-        an error. Absorbing the second would leave the expected side empty, and
-        an asset with nothing expected of it reads as FRESH — so a dead
-        connection or a bad credential would render as a clean bill of health
-        across every asset at once.
+        Injected — a real connection failure is not reproducible on demand.
         """
         executor = self._executor()
         boom = RuntimeError("connection reset by peer")
 
-        with patch.object(executor, "execute_query", side_effect=boom), pytest.raises(RuntimeError, match="connection reset"):
-            get_concept_max_watermark_abstract(
-                "local.created_at.date", executor, set()
-            )
+        with patch.object(executor, "execute_query", side_effect=boom), pytest.raises(
+            RuntimeError, match="connection reset"
+        ):
+            get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 
     def test_hidden_datasources_are_restored_after_a_failure(self) -> None:
         """The `finally` must outlive the new `except`: a probe that raises still
@@ -1737,10 +1729,10 @@ incremental by created_at.date
         executor = self._executor()
         before = dict(executor.environment.datasources)
 
-        with patch.object(executor, "execute_query", side_effect=RuntimeError("x")), pytest.raises(RuntimeError):
-            get_concept_max_watermark_abstract(
-                "local.created_at.date", executor, set()
-            )
+        with patch.object(
+            executor, "execute_query", side_effect=RuntimeError("x")
+        ), pytest.raises(RuntimeError):
+            get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 
         assert executor.environment.datasources == before
 
@@ -1748,13 +1740,14 @@ incremental by created_at.date
         """The swallow must not hide a working probe: mark the source `root`
         and the same model resolves an expected value."""
         executor = Dialects.DUCK_DB.default_executor()
-        executor.execute_text(self.MODEL.replace("datasource events (", "root datasource events (", 1))
+        executor.execute_text(
+            self.MODEL.replace("datasource events (", "root datasource events (", 1)
+        )
 
         store = BaseStateStore()
         store.get_stale_assets(executor.environment, executor)
 
         assert store.concept_max_watermarks, "a root model must still be measurable"
         assert any(
-            wm.value == date(2024, 1, 2)
-            for wm in store.concept_max_watermarks.values()
+            wm.value == date(2024, 1, 2) for wm in store.concept_max_watermarks.values()
         )
