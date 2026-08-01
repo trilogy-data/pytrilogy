@@ -27,6 +27,7 @@ from trilogy.execution.report import emit_report, get_report_sink, report_run
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
+    ENV_STATE_MAX_PARTITIONS,
     ENV_STATE_PARTITION,
     read_state_snapshot,
     resolve_state_input,
@@ -40,6 +41,7 @@ from trilogy.execution.state.snapshot import (
     address_type_of,
     build_datasource_state,
     build_partition_states,
+    cap_snapshot,
     merge_into_snapshot,
     merge_snapshots,
     project_relative_path,
@@ -105,8 +107,8 @@ def _partition_states(
     slices yet (the state an orchestrator bootstraps from), None is a datasource
     that has no partitioning to report.
 
-    The summary rides alongside because the slice list is capped — see
-    :class:`~trilogy.execution.state.snapshot.PartitionSummary`."""
+    Every probed slice is returned; a consumer's payload budget is applied on
+    the way out (``cap_snapshot``), not here."""
     sides = probed.get(ds.identifier)
     if sides is None:
         return None, None
@@ -377,6 +379,34 @@ def write_state_snapshot(snapshot: StateSnapshot, path: PathlibPath) -> None:
     print_info(f"State snapshot written to {path}")
 
 
+def resolve_partition_limit(state_max_partitions: str | None = None) -> int | None:
+    """Flag > TRILOGY_STATE_MAX_PARTITIONS env > no cap.
+
+    **Uncapped by default.** A snapshot describes a whole table, and only a
+    consumer with a payload budget has a reason to want less — so that consumer
+    is the one that says so, and a client that later moves to a transport
+    without the limit just stops passing it. ``all`` is the explicit spelling of
+    the default; ``0`` keeps the summary counts and no slices;
+    :data:`MAX_REPORTED_PARTITIONS` is a sane budget for a client that has one
+    but no particular number in mind."""
+    raw = (state_max_partitions or os.environ.get(ENV_STATE_MAX_PARTITIONS, "")).strip()
+    if not raw:
+        return None
+    if raw.lower() == "all":
+        return None
+    try:
+        limit = int(raw)
+    except ValueError:
+        raise ValueError(
+            f"Invalid --state-max-partitions {raw!r}; expected an integer or 'all'"
+        ) from None
+    if limit < 0:
+        raise ValueError(
+            f"Invalid --state-max-partitions {raw!r}; use 'all' for no limit"
+        )
+    return limit
+
+
 def resolve_state_partitions(state_partition: tuple[str, ...]) -> set[str]:
     """Flag > TRILOGY_STATE_PARTITION env > empty (whole-asset snapshot)."""
     if state_partition:
@@ -391,6 +421,7 @@ def maybe_write_state_snapshot(
     cli_params: CLIRuntimeParams,
     state_file: str | None,
     state_partition: tuple[str, ...] = (),
+    state_max_partitions: str | None = None,
 ) -> None:
     """Post-execution snapshot hook for run/refresh (--state-file /
     TRILOGY_STATE_FILE). Best-effort by contract: failures warn and emit an
@@ -407,7 +438,11 @@ def maybe_write_state_snapshot(
     drift. Getting them out of step is silent — the run writes one slice and
     then claims the whole table, which is the clobber ``--state-partition``
     exists to prevent. An explicit value still wins, for the caller that
-    genuinely wants them different."""
+    genuinely wants them different.
+
+    ``state_max_partitions`` is the reader's payload budget, applied last (see
+    :func:`~trilogy.execution.state.snapshot.cap_snapshot`) — the snapshot is
+    computed whole and trimmed only on the way out."""
     path_str = state_file or os.environ.get(ENV_STATE_FILE, "").strip() or None
     if not path_str:
         return
@@ -423,6 +458,7 @@ def maybe_write_state_snapshot(
             )
         if partitions:
             snapshot = scope_to_partitions(snapshot, partitions)
+        snapshot = cap_snapshot(snapshot, resolve_partition_limit(state_max_partitions))
         write_state_snapshot(snapshot, PathlibPath(path_str))
     except Exception as e:
         from trilogy.scripts.display import print_warning
@@ -550,6 +586,16 @@ def state_merge(
     default=None,
     help="Write the state snapshot as JSON to this path",
 )
+@option(
+    "--state-max-partitions",
+    "state_max_partitions",
+    default=None,
+    help=(
+        "Slices per datasource the emitted snapshot may carry (env: "
+        "TRILOGY_STATE_MAX_PARTITIONS). Unset carries every slice; `0` only the "
+        "summary counts."
+    ),
+)
 @report_options
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
@@ -562,6 +608,7 @@ def state(
     config,
     env,
     output: str | None,
+    state_max_partitions: str | None,
     report_file: str | None,
     run_id: str | None,
     conn_args,
@@ -596,8 +643,11 @@ def state(
             config_path=str(config) if config else None,
         ):
             sink = get_report_sink()
-            snapshot = compute_state_snapshot(
-                cli_params, run_id=sink.run_id if sink else None
+            snapshot = cap_snapshot(
+                compute_state_snapshot(
+                    cli_params, run_id=sink.run_id if sink else None
+                ),
+                resolve_partition_limit(state_max_partitions),
             )
             if output:
                 write_state_snapshot(snapshot, PathlibPath(output))

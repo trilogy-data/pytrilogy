@@ -146,19 +146,44 @@ def parse_partition_selector(pairs: Iterable[str]) -> dict[str, str]:
     ``order.created_at.date``), while the column is an implementation detail of
     whichever datasource binds it. The two are bridged per-datasource in
     :func:`selected_slice`.
+
+    Commas separate pairs, but a fragment with no ``=`` is read as the rest of a
+    value that contained one, so a comma-bearing partition value survives
+    instead of being silently truncated. A value holding BOTH a comma and an
+    ``=`` is the one thing this cannot express; it reads as two pairs.
+
+    Naming the same concept twice with **different** values raises, for the same
+    reason a partial multi-column key does: two values are a range, not the one
+    slice a run owns, and quietly keeping the last would refresh something other
+    than what was asked for.
     """
     selector: dict[str, str] = {}
     for pair in pairs:
+        # Continuation is only meaningful inside one flag's text — otherwise a
+        # malformed second flag would be swallowed by the first flag's value.
+        last: str | None = None
         for item in pair.split(","):
             item = item.strip()
             if not item:
                 continue
             address, sep, value = item.partition("=")
-            if not sep or not address.strip():
+            address = address.strip()
+            if not sep or not address:
+                if last is None:
+                    raise ValueError(
+                        f"Invalid --partition {item!r};"
+                        " expected <concept.address>=<value>"
+                    )
+                selector[last] = f"{selector[last]},{item}"
+                continue
+            value = value.strip()
+            if selector.get(address, value) != value:
                 raise ValueError(
-                    f"Invalid --partition {item!r}; expected <concept.address>=<value>"
+                    f"--partition names {address} twice, as {selector[address]!r} and"
+                    f" {value!r}; two values name a range, not the slice a run owns"
                 )
-            selector[address.strip()] = value.strip()
+            selector[address] = value
+            last = address
     return selector
 
 

@@ -2,6 +2,7 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from trilogy import Executor
@@ -380,7 +381,12 @@ class BaseStateStore:
                 if (ds.is_root and ds.refresh_script)
                 else RefreshKind.SQL
             )
-            return StaleAsset(datasource_id=ds_id, reason="forced rebuild", kind=kind)
+            return StaleAsset(
+                datasource_id=ds_id,
+                reason="forced rebuild",
+                kind=kind,
+                explicit=True,
+            )
 
         if is_managed_root:
             if not self.run_freshness_probe_cached(ds.freshness_probe):  # type: ignore[arg-type]
@@ -610,6 +616,10 @@ class RefreshPolicy:
     the run succeeded, and it rebuilt slices the caller had not asked for. A new
     field here reaches every site by construction, and the only place that has
     to learn about it is :meth:`~trilogy.scripts.common.RefreshParams.policy`.
+
+    One policy object is shared by every managed node in a directory refresh,
+    which evaluates them on a thread pool — hence frozen, and hence the selector
+    is copied behind a read-only view rather than aliasing the caller's dict.
     """
 
     #: Datasource names to rebuild regardless of staleness (``--force``).
@@ -618,9 +628,10 @@ class RefreshPolicy:
     #: (``--partition``). Empty means "let staleness decide".
     partition_selector: Mapping[str, str] = field(default_factory=dict)
 
-    def __bool__(self) -> bool:
-        """False when the policy asks for nothing beyond a normal refresh."""
-        return bool(self.force_sources or self.partition_selector)
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "partition_selector", MappingProxyType(dict(self.partition_selector))
+        )
 
 
 @dataclass
@@ -671,7 +682,7 @@ def create_refresh_plan(
         BaseStateStore. Pre-seeded watermarks on the store are respected
         (watermark_all_assets skips already-present ds_ids).
     """
-    policy = policy or RefreshPolicy()
+    policy = policy if policy is not None else RefreshPolicy()
     if state_store is None:
         state_store = new_state_store(cache=cache)
     if initial_watermarks:
@@ -702,6 +713,7 @@ def create_refresh_plan(
                     datasource_id=ds.identifier,
                     reason="forced rebuild",
                     kind=kind,
+                    explicit=True,
                 )
             )
 
@@ -741,8 +753,13 @@ def create_refresh_plan(
         partitions=partitions,
     )
     if policy.partition_selector:
-        _target_partition_selector(
-            executor, plan, dict(policy.partition_selector), all_skip
+        # ``extra_skip``, not ``all_skip``: a forced source is skipped by
+        # detection because it is rebuilt regardless, which is not a reason to
+        # withhold the narrowing. ``--force ds --partition day=X`` means "rebuild
+        # ds's X, stale or not" — dropping the selector there would rebuild every
+        # slice while the state delta still claimed only X.
+        target_partition_selector(
+            executor, plan, dict(policy.partition_selector), extra_skip
         )
 
     # Begin-phase capture: the planning probe is the last look at state
@@ -755,7 +772,7 @@ def create_refresh_plan(
     return plan
 
 
-def _target_partition_selector(
+def target_partition_selector(
     executor: "Executor",
     plan: RefreshPlan,
     selector: dict[str, str],
@@ -788,6 +805,7 @@ def _target_partition_selector(
             reason=f"partition {slice_.id} requested",
             kind=RefreshKind.SQL,
             partitions=[slice_],
+            explicit=True,
         )
     if not targeted:
         return
@@ -800,9 +818,7 @@ def _target_partition_selector(
     ]
     placed = {a.datasource_id for a in plan.stale_assets}
     plan.forced_assets = [
-        asset
-        for asset in plan.forced_assets
-        if asset.datasource_id not in targeted
+        asset for asset in plan.forced_assets if asset.datasource_id not in targeted
     ] + [asset for ds_id, asset in targeted.items() if ds_id not in placed]
 
 
@@ -962,10 +978,11 @@ def execute_refresh_plan(
 
         # SQL-kind assets may have been invalidated by a script-kind refresh
         # earlier in this same loop. Re-evaluate against the live store, except
-        # for explicit `forced rebuild` which bypasses staleness checks.
+        # for assets the caller asked for by name — re-deciding those would
+        # discard the very intent that put them in the plan.
         if (
             asset.kind != RefreshKind.SCRIPT
-            and asset.reason != "forced rebuild"
+            and not asset.explicit
             and has_scripts
             and not dry_run
         ):

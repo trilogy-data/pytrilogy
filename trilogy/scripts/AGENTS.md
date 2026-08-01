@@ -26,7 +26,8 @@ A datasource that is `is_root=True` AND has both `freshness_probe` and `refresh_
 `execute_managed_node_for_refresh` re-evaluates staleness against the live DB at execute time, not from the preview snapshot:
 
 - Each node builds its own `BaseStateStore`, calls `is_stale` per `ds_id` in `node.datasource_ids`, refreshes if stale (dispatching on `kind`), and skips otherwise.
-- Pre-classified `node.assets` are only used to honor forced rebuilds (their `reason == "forced rebuild"`); everything else goes through the live `is_stale` check.
+- Pre-classified `node.assets` are only used to honor what the caller asked for by name (`StaleAsset.explicit`); everything else goes through the live `is_stale` check.
+- **Anything from `RefreshParams` that narrows a plan must reach this function**, not just the preview probe. Re-deciding staleness here is the point of the phase, so a `--partition` slice chosen at preview would be widened back to whatever is stale — `execute_managed_node_for_refresh` takes the `RefreshPolicy` and re-applies the selector against its own datasource ids.
 - `update_count == 0` signals "skipped" to `run_parallel_execution`, which reports it in the final summary.
 
 This is what closes the cross-script cascade gap: by the time a downstream node executes, upstream script-kind nodes have already mutated the live DB through `phys_graph` topo order, so the deferred check sees the post-refresh state.

@@ -115,11 +115,35 @@ The DELETE reads the STAGED keys, so **one statement replaces exactly the N slic
 
 **Iteration hazard**: the expected-partition probe hides non-root datasources for the duration of its query, mutating `env.datasources`. Any loop calling `is_stale` over that dict must iterate a materialized copy (`get_stale_assets`, `execute_refresh_plan`'s cascade).
 
+### Targeted refresh (`RefreshPolicy` / `--partition`)
+
+What the caller asked for travels as one `RefreshPolicy` (force set + partition selector), not as loose keyword arguments — a new kind of intent then reaches every planning call site by construction, and `RefreshParams.policy()` is the single CLI→plan mapping.
+
+The selector is addressed **by concept, not by physical column**: a caller naming a slice works from the model, and the column is whichever datasource binds it. `selected_slice` bridges the two per-datasource; naming only part of a multi-column key raises, because that identifies a range and silently widening a targeted refresh is the failure the flag exists to prevent.
+
+`target_partition_selector` refreshes a named slice **whether or not it looks stale** (a backfill of a day the watermark is already past looks fresh) and *replaces* any whole-table entry for that datasource — planning it twice would rebuild everything alongside the one slice.
+
+**`StaleAsset.explicit` is what makes that survive execution.** Staleness is deliberately re-decided after planning — `execute_refresh_plan` re-evaluates SQL assets once a script-kind refresh has run, and directory mode re-probes at execute time to close the cross-script cascade. Both would discard a targeted slice (or drop the asset entirely, since it may look fresh). Anything the caller named — `--force`, `--partition` — carries `explicit=True` and is not re-decided. Do not reintroduce the `reason == "forced rebuild"` string check: it is the sentinel that silently excluded the second kind of intent.
+
+Because directory mode builds its own plan per node, the policy has to reach `execute_managed_node_for_refresh`, which re-applies the selector against that node's datasources. A selector applied only at preview time is silently widened back.
+
+`refresh --partition` also **implies `--state-partition` for the same slices** (`selector_partition_ids` + `scope_to_partitions` in `maybe_write_state_snapshot`), so a fan-out cannot write one slice and then claim the whole table. That function matches **recorded slices first**: only they know how the writer's datatype rendered the value (`2024-01-03` against a `datetime` column is recorded `2024-01-03T00:00:00`), and it has no datatype to consult. It falls back to a rendered id rather than returning empty, because empty means "do not scope" — an unscoped snapshot is exactly the whole-table claim being prevented.
+
 ### Merging deltas (`scope_to_partitions` / `merge_snapshots`)
 
 `partitions_complete` is the whole concurrency story. A whole-asset probe sets it True; a run scoped to the slices it owns (`--state-partition`) sets it False, meaning "these slices, and nothing about the others" — necessary because a worker's post-run probe sees the *whole* table, including slices peers are mid-write on.
 
 `merge_snapshots` overlays a scoped delta by `partition_id` and lets a complete one replace the list, then re-derives the datasource status from the merged slices. Because each worker speaks only for slices it owns, **the result is independent of merge order** and replaying a delta is idempotent. That is what lets a file-backed store support parallelism: N workers write N distinct files with no coordination, one coordinator merges.
+
+Snapshots are **built and written complete**. A slice budget belongs to the consumer reading the file, not to the format, so it is opt-in: `--state-max-partitions` / `TRILOGY_STATE_MAX_PARTITIONS` (unset = every slice, `0` = summaries only, `MAX_REPORTED_PARTITIONS` = 200 is a sane number for a client that has a budget but no particular figure in mind). `cap_snapshot` applies it on the way out (`maybe_write_state_snapshot`, `trilogy state`), and `DatasourceState.partition_summary` counts the whole probed set either way — trimming changes what a reader can enumerate, never what it can conclude.
+
+Do not push the budget back into `build_partition_states`, and do not give it a non-null default. Keeping it opt-in at the boundary is what lets a client that moves to a transport without the size limit simply stop passing it, with nothing upstream to change and no information destroyed earlier where it could not be recovered. Because a trim is possible at all, `partitions_complete=True` promises the *probe* was whole, not that the list is exhaustive — check `partition_summary.truncated`.
+
+That distinction decides how a complete delta merges. **Untruncated it replaces the list** (an absent id is the only signal that a partition was dropped from the table, and that has to keep propagating); **truncated it overlays**, because there an absent id means "did not fit", and replacing would shrink the accumulated work list to one payload's worth. So `stale_partitions` accumulates across probes and a table further behind than the cap drains over successive rounds instead of being pinned at 200.
+
+Overlaying can retain a slice the newer probe would have called fresh. Where it can be ruled out it is: the cap spends its budget on stale slices first, so when a delta carried every stale slice its summary counts (`_carries_every_stale`), any base entry it does not mention is provably no longer stale and is dropped. Where the stale set itself overflowed, a phantom costs one idempotent dispatched run that corrects the record — cheap, and self-healing, unlike a silently truncated queue.
+
+A scoped delta keeps its summary (a fan-out where every run is targeted would otherwise never report totals), but on merge that aggregate is **not** preferred over the base's adjusted counts, tempting as its recency is: it was probed at an arbitrary point in the fan-out, so letting it win makes the merged counts — and the status derived from them — depend on which file was folded last. It bootstraps a base with no counts and nothing else.
 
 Datasources are merged **by `datasource_id` alone, never by `(script, datasource_id)`** — a delta legitimately comes from the per-partition build script while the base came from the model, and keying on the pair files the same asset twice. (Note `merge_into_snapshot`, which dedups *within* one probe, still uses the pair: there two scripts really are two views.)
 

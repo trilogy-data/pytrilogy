@@ -13,6 +13,7 @@ from trilogy.execution.state.partitions import (
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
     ENV_STATE_INPUT,
+    ENV_STATE_MAX_PARTITIONS,
     ENV_STATE_PARTITION,
     SnapshotStateStore,
     read_state_snapshot,
@@ -47,6 +48,7 @@ from trilogy.execution.state.snapshot import (
     build_datasource_state,
     build_partition_states,
     cap_partitions,
+    cap_snapshot,
     is_remote_address,
     managed_states_by_address,
     merge_into_snapshot,
@@ -77,6 +79,7 @@ from trilogy.execution.state.state_store import (
     refresh_stale_assets,
     set_state_store_factory,
     state_store_factory,
+    target_partition_selector,
 )
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
@@ -95,6 +98,7 @@ from trilogy.execution.state.watermarks import (
 __all__ = [
     "ENV_STATE_FILE",
     "ENV_STATE_INPUT",
+    "ENV_STATE_MAX_PARTITIONS",
     "ENV_STATE_PARTITION",
     "KEY_SCHEME_SEPARATOR",
     "MAX_REPORTED_PARTITIONS",
@@ -133,6 +137,7 @@ __all__ = [
     "build_datasource_state",
     "build_partition_states",
     "cap_partitions",
+    "cap_snapshot",
     "create_refresh_plan",
     "execute_refresh_plan",
     "get_concept_max_watermark_abstract",
@@ -174,5 +179,6 @@ __all__ = [
     "stale_partitions",
     "state_store_factory",
     "summarize_partitions",
+    "target_partition_selector",
     "watermarks_for_datasource",
 ]

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig
+from trilogy.execution.state import RefreshPolicy
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.single_execution import execute_script_for_refresh
 
@@ -120,7 +121,7 @@ def test_multi_enum_correctness():
         ScriptNode(path=MULTI_ENUM_CORRECTNESS_PATH),
         quiet=True,
         dry_run=True,
-        force_sources={"boston_tree_info"},
+        policy=RefreshPolicy(force_sources=frozenset({"boston_tree_info"})),
     )
     for q in queries.refresh_queries:
         assert "arboretum_raw_tree_info" in q.sql, q.sql

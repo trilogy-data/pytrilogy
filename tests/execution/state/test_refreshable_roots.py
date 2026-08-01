@@ -199,7 +199,9 @@ def test_refresh_forced_runs_script_even_when_probe_fresh():
     with patch(
         "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
     ), patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh:
-        result = refresh_stale_assets(e, policy=RefreshPolicy(force_sources=frozenset({"raw"})))
+        result = refresh_stale_assets(
+            e, policy=RefreshPolicy(force_sources=frozenset({"raw"}))
+        )
 
     mock_refresh.assert_called_once()
     assert result.refreshed_count >= 1

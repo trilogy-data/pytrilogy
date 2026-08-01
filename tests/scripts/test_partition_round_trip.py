@@ -167,6 +167,28 @@ def test_partition_flag_refreshes_only_its_slice(runner, workspace: Path):
     assert HOLE not in counts, "the neighbouring hole was not"
 
 
+def test_partition_flag_survives_directory_mode(runner, workspace: Path):
+    """Directory mode re-decides staleness at execute time (that is how it closes
+    the cross-script cascade), so a plan narrowed at preview is not enough — the
+    selector has to reach the executing node or the run quietly widens back to
+    every stale slice."""
+    (workspace / "build.preql").unlink()  # needs a --param; not part of this run
+    _build(runner, workspace)
+    _drop_slice(workspace, HOLE)
+    _drop_slice(workspace, "2024-01-03")
+
+    _run(
+        runner,
+        "refresh",
+        str(workspace),
+        "--partition",
+        "local.order_date=2024-01-03",
+    )
+    counts = _slice_counts(workspace)
+    assert "2024-01-03" in counts, "the named slice was rebuilt"
+    assert HOLE not in counts, "the neighbouring hole was not"
+
+
 def test_partition_flag_implies_state_partition(runner, workspace: Path):
     """The pair cannot drift: a run told to rebuild one slice reports on one
     slice, without the caller having to say so twice."""
@@ -187,10 +209,7 @@ def test_partition_flag_implies_state_partition(runner, workspace: Path):
     assert set(_partitions(snapshot)) == {f"order_date={HOLE}"}
 
     ds_state = next(
-        ds
-        for asset in snapshot.assets
-        for ds in asset.datasources
-        if ds.partition_by
+        ds for asset in snapshot.assets for ds in asset.datasources if ds.partition_by
     )
     assert ds_state.partitions_complete is False, "it is a mergeable delta"
     # The aggregate survives scoping — otherwise a fan-out where every run is
@@ -198,6 +217,35 @@ def test_partition_flag_implies_state_partition(runner, workspace: Path):
     assert ds_state.partition_summary is not None
     assert ds_state.partition_summary.total == 3
     assert ds_state.partition_summary.reported == 1
+    assert ds_state.partition_summary.truncated is True
+
+
+def test_written_snapshot_carries_every_slice_unless_a_budget_is_set(
+    runner, workspace: Path
+):
+    """The file describes the whole table by default; a consumer with a payload
+    budget is the one that asks for less, and the counts survive either way."""
+    _build(runner, workspace)
+    state = workspace / "state.json"
+
+    _run(runner, "refresh", str(workspace / "model.preql"), "--state-file", str(state))
+    assert len(_partitions(_snapshot(state))) == 3
+
+    _run(
+        runner,
+        "refresh",
+        str(workspace / "model.preql"),
+        "--state-file",
+        str(state),
+        "--state-max-partitions",
+        "1",
+    )
+    snapshot = _snapshot(state)
+    assert len(_partitions(snapshot)) == 1
+    ds_state = next(
+        ds for asset in snapshot.assets for ds in asset.datasources if ds.partition_by
+    )
+    assert ds_state.partition_summary.total == 3, "the counts outlive the budget"
     assert ds_state.partition_summary.truncated is True
 
 

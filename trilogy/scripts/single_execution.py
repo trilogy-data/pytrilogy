@@ -483,7 +483,7 @@ def execute_script_for_refresh(
     """Refresh stale assets in a single script file."""
     from trilogy.execution.state import RefreshPolicy, create_refresh_plan
 
-    policy = policy or RefreshPolicy()
+    policy = policy if policy is not None else RefreshPolicy()
     validation = []
     with safe_open(node.path) as f:
         statements = exec.parse_text(f.read(), root=node.path)
@@ -529,7 +529,7 @@ def execute_refresh_mode(
     """Execute refresh mode on an already-parsed executor."""
     from trilogy.execution.state import RefreshPolicy, create_refresh_plan
 
-    policy = policy or RefreshPolicy()
+    policy = policy if policy is not None else RefreshPolicy()
     validate_force_sources(policy.force_sources, exec.environment.datasources)
     plan = create_refresh_plan(exec, policy=policy)
     addr_map = {
