@@ -6,6 +6,7 @@ back into a base snapshot without workers clobbering each other.
 """
 
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -1029,3 +1030,37 @@ def test_complete_delta_replaces_the_summary(executor):
     summary = merged.assets[0].datasources[0].partition_summary
     assert summary.stale == 0
     assert merged.assets[0].datasources[0].status == "fresh"
+
+
+# --- what the expected-side probe may and may not absorb ---------------------
+
+
+def test_expected_probe_absorbs_an_unresolvable_model(executor):
+    """Hiding non-roots can leave the partition key underivable — that is the
+    model answering "no expectation", not a failure."""
+    from trilogy.core.exceptions import NoDatasourceException
+
+    ds = _ds(executor)
+    with patch.object(
+        executor, "execute_query", side_effect=NoDatasourceException("unresolvable")
+    ):
+        assert probe_expected_partitions(ds, executor, set()) == []
+
+
+def test_expected_probe_does_not_absorb_a_warehouse_failure(executor):
+    """An empty expected side makes every slice look fresh, so swallowing a
+    broken connection here would report a healthy table for an unreachable one."""
+    ds = _ds(executor)
+    with patch.object(
+        executor, "execute_query", side_effect=RuntimeError("connection reset by peer")
+    ), pytest.raises(RuntimeError, match="connection reset"):
+        probe_expected_partitions(ds, executor, set())
+
+
+def test_expected_probe_restores_hidden_datasources_after_a_failure(executor):
+    """The probe mutates the environment; a raise must not leave it stripped."""
+    ds = _ds(executor)
+    before = dict(executor.environment.datasources)
+    with patch.object(executor, "execute_query", side_effect=RuntimeError("x")), pytest.raises(RuntimeError):
+        probe_expected_partitions(ds, executor, set())
+    assert executor.environment.datasources == before

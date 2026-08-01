@@ -579,6 +579,69 @@ def probe_directory_state(
     )
 
 
+def _require_a_source_of_truth(probe) -> None:
+    """Fail a refresh that reported "up to date" over an asset that is empty and
+    has no source of truth to fill it from.
+
+    Refresh decides what to rebuild by comparing an asset against authoritative
+    sources. With no ``root datasource`` declared there is no expected side, so
+    everything reads fresh — including a target table that has never been built.
+    "All assets are up to date" is then not merely uninformative, it is false,
+    and it looks exactly like success.
+
+    Deliberately narrow, because "nothing to refresh" is usually legitimate. All
+    of these must hold:
+
+    - The plan is **empty**. A rootless project can still refresh via ``--force``,
+      which puts assets in the plan and never reaches here.
+    - **No root is declared anywhere.** With one, an asset that probes empty is a
+      real (and correctly reported) staleness question, not an unanswerable one.
+    - Some asset **declares an incremental/freshness key** — that is what marks it
+      something refresh maintains, as opposed to a source defined by an inline
+      query, which is not a table anyone builds.
+    - That asset **observed no watermark value at all**, i.e. it is missing or
+      empty. A populated table that merely cannot be judged is uninformative, not
+      a lie, and stays a plain no-op.
+
+    ``trilogy state`` never runs this: observing what exists is useful with or
+    without roots, and it already reports ``level: scan`` to say the expected
+    side is absent.
+    """
+    datasources = list(probe.ds_objects.values())
+    if any(ds.is_root for ds in datasources):
+        return
+
+    watermarks: dict = {}
+    for _, plan in probe.plans_by_node:
+        watermarks.update(plan.watermarks)
+
+    def is_empty(ds_id: str) -> bool:
+        watermark = watermarks.get(ds_id)
+        if watermark is None:
+            return True
+        return not any(key.value is not None for key in watermark.keys.values())
+
+    unbuilt = sorted(
+        ds.identifier
+        for ds in datasources
+        if (ds.incremental_by or ds.freshness_by) and is_empty(ds.identifier)
+    )
+    if not unbuilt:
+        return
+
+    from trilogy.scripts.display import print_error
+
+    print_error(
+        f"Nothing can be refreshed, but {', '.join(unbuilt)} "
+        f"{'is' if len(unbuilt) == 1 else 'are'} empty: this project declares no "
+        "`root datasource`, so there is no source of truth to compare against "
+        "and every asset reports fresh whether or not it holds anything.\n"
+        "Mark the authoritative sources (the tables you do not build) as "
+        "`root datasource`, or pass --force to rebuild a target explicitly."
+    )
+    raise Exit(1)
+
+
 def _preview_directory_refresh(
     cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
 ) -> tuple[bool, nx.DiGraph | None]:
@@ -611,6 +674,7 @@ def _preview_directory_refresh(
     )
 
     if not refresh_assets:
+        _require_a_source_of_truth(probe)
         print_info("All assets are up to date.")
         return True, None
 

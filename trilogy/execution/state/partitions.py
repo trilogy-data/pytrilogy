@@ -51,6 +51,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.execute import CTE
 from trilogy.execution.state.exceptions import (
+    UNRESOLVABLE_ERRORS,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
@@ -512,12 +513,18 @@ def probe_expected_partitions(
     try:
         result = executor.execute_query(f"SELECT {', '.join(selected)};")
         rows = list(result.fetchall()) if result else []
-    except Exception as e:
+    except UNRESOLVABLE_ERRORS as e:
         # An unresolvable expectation is a real answer here: the partition key
-        # may not be derivable from roots alone. Report no expectation rather
-        # than failing the whole snapshot.
+        # may not be derivable from roots alone, and in a project with no
+        # declared roots nothing is left to derive it from. Report no
+        # expectation rather than failing the whole snapshot.
+        #
+        # Narrow on purpose — see UNRESOLVABLE_ERRORS. A warehouse failure
+        # swallowed here would empty the expected side, and an asset with no
+        # expectation reads as fresh, so a broken connection would look like a
+        # fully loaded table.
         logger.debug(
-            "%s expected-partition probe for %s failed: %s",
+            "%s no root-derived expectation for %s: %s",
             LOGGER_PREFIX,
             ds.identifier,
             e,
