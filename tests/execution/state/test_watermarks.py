@@ -13,6 +13,7 @@ from trilogy.execution.state.exceptions import (
 )
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
+    get_concept_max_watermark_abstract,
     get_concept_max_watermarks,
     get_freshness_watermarks,
     get_incremental_key_watermarks,
@@ -1643,3 +1644,110 @@ def test_get_stale_assets_parquet_missing_column(tmp_path):
     stale = state_store.get_stale_assets(executor.environment, executor)
 
     assert any(a.datasource_id == "target_events" for a in stale)
+
+
+class TestAbstractWatermarkWithoutRoots:
+    """A project that declares no `root` datasource must still report state.
+
+    The probe hides every non-root datasource, so with nothing marked root it
+    hides everything and is unanswerable by construction. It used to raise,
+    taking the whole snapshot down with "No datasource exists for root concept".
+    """
+
+    MODEL = """
+key id int;
+key session_id string;
+property id.created_at datetime;
+
+datasource events (
+    id: id,
+    session_id: session_id,
+    created_at: created_at,
+)
+grain (id)
+query '''
+SELECT 1 AS id, 's1' AS session_id, TIMESTAMP '2024-01-01 10:00:00' AS created_at
+UNION ALL SELECT 2, 's2', TIMESTAMP '2024-01-02 11:00:00'
+''';
+
+auto session_count <- count(session_id) by created_at.date;
+
+datasource daily (
+    date: created_at.date,
+    session_count: session_count,
+)
+grain (created_at.date)
+address daily
+incremental by created_at.date
+;
+"""
+
+    def _executor(self) -> Executor:
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(self.MODEL)
+        return executor
+
+    def test_no_roots_does_not_raise(self) -> None:
+        executor = self._executor()
+        assert not any(ds.is_root for ds in executor.environment.datasources.values())
+
+        # The regression: this call raised a resolution error.
+        BaseStateStore().get_stale_assets(executor.environment, executor)
+
+    def test_unanswerable_expectation_is_recorded_as_absent(self) -> None:
+        """Not merely "does not crash" — the concept must be left out entirely.
+
+        The caller keeps a key only `if wm.value is not None`, so a null is how
+        "no expectation" is spelled; a bogus value would judge every dependent
+        against a number nothing measured.
+        """
+        executor = self._executor()
+        store = BaseStateStore()
+        store.get_stale_assets(executor.environment, executor)
+
+        assert store.concept_max_watermarks == {}
+
+    def test_a_warehouse_failure_is_not_swallowed(self) -> None:
+        """The distinction the narrow catch exists to preserve: absorbing a
+        broken warehouse would empty the expected side, and an asset with
+        nothing expected of it reads as FRESH.
+
+        Injected — a real connection failure is not reproducible on demand.
+        """
+        executor = self._executor()
+        boom = RuntimeError("connection reset by peer")
+
+        with patch.object(executor, "execute_query", side_effect=boom), pytest.raises(
+            RuntimeError, match="connection reset"
+        ):
+            get_concept_max_watermark_abstract("local.created_at.date", executor, set())
+
+    def test_hidden_datasources_are_restored_after_a_failure(self) -> None:
+        """The `finally` must outlive the new `except`: a probe that raises still
+        has to put the environment back, or every later probe sees a model with
+        no datasources in it."""
+        executor = self._executor()
+        before = dict(executor.environment.datasources)
+
+        with patch.object(
+            executor, "execute_query", side_effect=RuntimeError("x")
+        ), pytest.raises(RuntimeError):
+            get_concept_max_watermark_abstract("local.created_at.date", executor, set())
+
+        assert executor.environment.datasources == before
+
+    def test_a_declared_root_still_produces_an_expectation(self) -> None:
+        """The swallow must not hide a working probe: mark the source `root`
+        and the same model resolves an expected value."""
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(
+            self.MODEL.replace("datasource events (", "root datasource events (", 1)
+        )
+
+        store = BaseStateStore()
+        store.get_stale_assets(executor.environment, executor)
+
+        assert store.concept_max_watermarks, "a root model must still be measurable"
+        assert any(
+            wm.value == date(2024, 1, 2) for wm in store.concept_max_watermarks.values()
+        )

@@ -167,6 +167,64 @@ def test_partition_flag_refreshes_only_its_slice(runner, workspace: Path):
     assert HOLE not in counts, "the neighbouring hole was not"
 
 
+def test_a_partition_flag_naming_no_partition_key_is_rejected(runner, workspace: Path):
+    """The failure the flag exists to prevent, arriving through a typo. Left
+    unchecked the selector matches nothing, so the plan keeps whatever staleness
+    decided AND the delta claims the whole table — both silently."""
+    _build(runner, workspace)
+    _drop_slice(workspace, HOLE)
+    _drop_slice(workspace, "2024-01-03")
+    state = workspace / "state.json"
+
+    result = runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(workspace / "model.preql"),
+            "--partition",
+            "local.order_dat=2024-01-03",
+            "--state-file",
+            str(state),
+        ],
+    )
+    assert result.exit_code == 1, result.output
+    assert "local.order_dat" in result.output
+    counts = _slice_counts(workspace)
+    assert "2024-01-03" not in counts, "and nothing was rebuilt on the way out"
+    assert HOLE not in counts
+
+
+def test_a_partition_flag_on_an_unpartitioned_concept_is_rejected(
+    runner, workspace: Path
+):
+    """`region` is a real concept but nothing is partitioned by it, so the
+    selector would apply to no datasource — same silent widening."""
+    _build(runner, workspace)
+    result = runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(workspace / "model.preql"),
+            "--partition",
+            "local.region=north",
+        ],
+    )
+    assert result.exit_code == 1, result.output
+    assert "local.region" in result.output
+
+
+def test_directory_mode_rejects_it_too(runner, workspace: Path):
+    """Directory mode validates against the union of every script's partition
+    keys, since a selector legitimately names only some scripts' assets."""
+    (workspace / "build.preql").unlink()  # needs a --param; not part of this run
+    _build(runner, workspace)
+    result = runner.invoke(
+        cli, ["refresh", str(workspace), "--partition", "local.order_dat=2024-01-03"]
+    )
+    assert result.exit_code == 1, result.output
+    assert "local.order_dat" in result.output
+
+
 def test_partition_flag_survives_directory_mode(runner, workspace: Path):
     """Directory mode re-decides staleness at execute time (that is how it closes
     the cross-script cascade), so a plan narrowed at preview is not enough — the

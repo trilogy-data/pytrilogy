@@ -235,11 +235,10 @@ def state_file_option(fn: Callable) -> Callable:
         help=(
             "Slices per datasource a written snapshot may carry (env: "
             "TRILOGY_STATE_MAX_PARTITIONS). Unset carries every slice; `0` "
-            "carries none and reports only the summary counts. A payload budget "
-            "for whatever reads the file, so set it only if that reader has one "
-            "— the counts in partition_summary stay exact whatever it is, and "
-            "stale slices are kept first, so a trimmed list is still the "
-            "backfill queue."
+            "carries none and reports only the summary counts. Set it only if "
+            "whatever reads the file has a payload budget — partition_summary "
+            "stays exact either way, and stale slices are kept first, so a "
+            "trimmed list is still the backfill queue."
         ),
     )(fn)
     fn = click.option(

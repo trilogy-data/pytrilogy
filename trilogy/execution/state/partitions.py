@@ -51,6 +51,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.execute import CTE
 from trilogy.execution.state.exceptions import (
+    UNRESOLVABLE_ERRORS,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
@@ -112,13 +113,13 @@ def partition_id(values: dict[str, PartitionValue]) -> str:
     )
 
 
-def parse_partition_value(rendered: str, datatype) -> PartitionValue:
+def parse_partition_value(rendered: str, datatype: DataType | None) -> PartitionValue:
     """Inverse of :func:`render_partition_value`, typed by the READER's model.
 
-    Partition values travel as their canonical rendering — in a snapshot, and on
-    a ``--partition`` flag — so the type comes from the datasource reading them
-    rather than the process that wrote them. Anything unparseable degrades to the
-    string, which still compares consistently.
+    Values travel as their canonical rendering — in a snapshot, and on a
+    ``--partition`` flag — so the type comes from the datasource reading them,
+    not the process that wrote them. Unparseable degrades to the string, which
+    still compares consistently.
     """
     if rendered == NULL_PARTITION_TOKEN:
         return None
@@ -141,21 +142,15 @@ def parse_partition_value(rendered: str, datatype) -> PartitionValue:
 def parse_partition_selector(pairs: Iterable[str]) -> dict[str, str]:
     """``concept.address=value`` pairs into a selector map.
 
-    Addressed by CONCEPT, not by physical column: the caller naming a slice is
-    working from the model (a schedule that knows a job loads
-    ``order.created_at.date``), while the column is an implementation detail of
-    whichever datasource binds it. The two are bridged per-datasource in
-    :func:`selected_slice`.
+    Addressed by concept, not physical column; :func:`selected_slice` bridges
+    the two per-datasource.
 
     Commas separate pairs, but a fragment with no ``=`` is read as the rest of a
-    value that contained one, so a comma-bearing partition value survives
-    instead of being silently truncated. A value holding BOTH a comma and an
-    ``=`` is the one thing this cannot express; it reads as two pairs.
+    value that contained one, so a comma-bearing value survives instead of being
+    truncated. A value holding both a comma and an ``=`` reads as two pairs.
 
-    Naming the same concept twice with **different** values raises, for the same
-    reason a partial multi-column key does: two values are a range, not the one
-    slice a run owns, and quietly keeping the last would refresh something other
-    than what was asked for.
+    Two different values for one concept raise: that names a range, not the one
+    slice a run owns.
     """
     selector: dict[str, str] = {}
     for pair in pairs:
@@ -187,16 +182,21 @@ def parse_partition_selector(pairs: Iterable[str]) -> dict[str, str]:
     return selector
 
 
+def partition_key_addresses(datasources: Iterable[Datasource]) -> set[str]:
+    """Concept addresses these datasources declare as partition keys."""
+    return {ref.address for ds in datasources for ref in ds.partition_by}
+
+
 def selected_slice(
     ds: Datasource, environment: Environment, selector: dict[str, str]
 ) -> PartitionObservation | None:
     """The one slice ``selector`` names on ``ds``, or None if it names none.
 
-    Not applying is the normal case, not an error: a directory run holds many
-    datasources and a selector speaks for the one (or few) partitioned on the
-    concept it names. Naming *some* of a multi-column key IS an error — it
-    identifies a range rather than a slice, and silently widening a targeted
-    refresh into a partial rebuild is the failure this flag exists to avoid.
+    Not applying is normal — a directory holds many datasources and a selector
+    speaks for those partitioned on the concept it names. Naming *some* of a
+    multi-column key raises: that is a range, and silently widening a targeted
+    refresh is the failure this flag exists to avoid. (Naming nothing *anywhere*
+    is caught up front by ``validate_partition_selector``.)
     """
     if not ds.partition_by:
         return None
@@ -512,12 +512,12 @@ def probe_expected_partitions(
     try:
         result = executor.execute_query(f"SELECT {', '.join(selected)};")
         rows = list(result.fetchall()) if result else []
-    except Exception as e:
-        # An unresolvable expectation is a real answer here: the partition key
-        # may not be derivable from roots alone. Report no expectation rather
-        # than failing the whole snapshot.
+    except UNRESOLVABLE_ERRORS as e:
+        # A real answer, not a failure: the partition key may not be derivable
+        # from roots alone, and a rootless project has nothing to derive it
+        # from. Narrow on purpose — see UNRESOLVABLE_ERRORS.
         logger.debug(
-            "%s expected-partition probe for %s failed: %s",
+            "%s no root-derived expectation for %s: %s",
             LOGGER_PREFIX,
             ds.identifier,
             e,
@@ -553,6 +553,7 @@ __all__ = [
     "partition_assignments",
     "partition_column_name",
     "partition_id",
+    "partition_key_addresses",
     "partition_watermark_refs",
     "probe_expected_partitions",
     "probe_observed_partitions",

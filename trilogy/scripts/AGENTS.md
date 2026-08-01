@@ -34,6 +34,12 @@ This is what closes the cross-script cascade gap: by the time a downstream node 
 
 `cascade=False` is passed to `_run_refresh_plan` in directory mode so `execute_refresh_plan`'s own cascade pass doesn't double-refresh dependents that are already separate managed nodes.
 
+### "Nothing to refresh" that is not true
+
+`require_a_source_of_truth` (in `common.py`) fails a refresh that found nothing to do over an asset that is empty and has no root to compare against — with no `root datasource` everything reads fresh, including a target table that has never been built, so "up to date" plus exit 2 is indistinguishable from success.
+
+It belongs to the **verdict**, not to a path: both single-file entry points (`execute_script_for_refresh`, `execute_refresh_mode`) and the directory preview call it, each right where their plan comes back empty. A guard wired into only one of them leaves the same lie reachable through the other spelling of the same command.
+
 ### Key deduplication rules
 
 - Deduplication is always by **physical address** (`ds.safe_address`), never by `ds_id` or script.

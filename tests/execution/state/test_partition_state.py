@@ -6,15 +6,18 @@ back into a base snapshot without workers clobbering each other.
 """
 
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
     MAX_REPORTED_PARTITIONS,
     BaseStateStore,
     PartitionObservation,
+    RefreshKind,
     RefreshPolicy,
     build_datasource_state,
     build_partition_states,
@@ -24,6 +27,7 @@ from trilogy.execution.state import (
     merge_into_snapshot,
     merge_snapshots,
     parse_partition_selector,
+    parse_partition_value,
     partition_id,
     probe_expected_partitions,
     probe_observed_partitions,
@@ -615,8 +619,7 @@ def test_cap_keeps_the_stale_slices(executor):
 
 
 def test_the_builder_does_not_cap(executor):
-    """A snapshot is complete as computed. What a consumer can carry is applied
-    at the boundary (:func:`cap_snapshot`), where it is still a choice."""
+    """A snapshot is complete as computed; the cap is a boundary step."""
     base = date(2024, 1, 1).toordinal()
     states, summary = build_partition_states(
         _ds(executor), _days(base, 300), _days(base, 300)
@@ -627,9 +630,8 @@ def test_the_builder_does_not_cap(executor):
 
 
 def test_cap_snapshot_trims_at_the_boundary(executor):
-    """The budget belongs to whoever reads the file, so it applies to a finished
-    snapshot — a consumer that outgrows it stops asking, and nothing upstream
-    has to change."""
+    """The budget applies to a finished snapshot, so a consumer that outgrows
+    it just stops asking."""
     day = date(2024, 1, 1).toordinal()
     snapshot = _probed_snapshot(executor, _days(day, 300), _days(day, 500))
     assert len(snapshot.assets[0].datasources[0].partitions) == 500
@@ -766,9 +768,8 @@ def test_a_truncated_probe_drops_stale_entries_it_proved_healthy(executor):
 
 
 def test_scoped_delta_keeps_the_summary_but_narrows_reported(executor):
-    """A partial writer cannot be trusted about a slice it did not own, but an
-    aggregate is not a per-slice claim — and if scoping dropped it, a fan-out
-    where every run is targeted would never report totals at all."""
+    """An aggregate is not a per-slice claim, and dropping it would leave a
+    fan-out of targeted runs never reporting totals at all."""
     snapshot = _snapshot(
         executor,
         _slices(
@@ -786,8 +787,7 @@ def test_scoped_delta_keeps_the_summary_but_narrows_reported(executor):
 
 
 def test_partition_selector_resolves_to_ids_off_the_snapshot(executor):
-    """`--partition` speaks concept addresses; scope_to_partitions speaks
-    partition ids. partition_by carries both halves of the mapping."""
+    """`--partition` speaks concept addresses, scope_to_partitions ids."""
     snapshot = _snapshot(
         executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "fresh"})
     )
@@ -879,6 +879,28 @@ def test_merge_adjusts_summary_counts_for_the_slices_a_delta_owned(executor):
     assert merged.assets[0].datasources[0].status == "stale"
 
 
+def test_a_snapshot_written_before_summaries_still_merges(executor):
+    """`schema_version` was not bumped, so files predating `partition_summary`
+    are still valid input. The verdict then has to come off the slice list, as
+    it did before the counts existed."""
+    base = _snapshot(
+        executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "fresh"})
+    )
+    old = _snapshot(executor, _slices(executor, {"2024-01-01": "fresh"}))
+    for asset in (*base.assets, *old.assets):
+        for ds_state in asset.datasources:
+            ds_state.partition_summary = None
+    old.assets[0].datasources[0].partitions_complete = False
+
+    merged = merge_snapshots(base, old).assets[0].datasources[0]
+    assert merged.partition_summary is None
+    assert merged.status == "fresh"
+    assert {p.partition_id: p.status for p in merged.partitions} == {
+        "order_date=2024-01-01": "fresh",
+        "order_date=2024-01-02": "fresh",
+    }
+
+
 def test_summary_counts_do_not_depend_on_merge_order(executor):
     """Each worker's delta carries a whole-table probe taken at a different
     moment. Preferring the delta's aggregate would make the merged counts — and
@@ -905,6 +927,29 @@ def test_summary_counts_do_not_depend_on_merge_order(executor):
     assert forward.status == reverse.status == "fresh"
     # And the aggregate never contradicts the slices in its own record.
     assert not [p for p in reverse.partitions if p.status == "stale"]
+
+
+def test_a_scoped_delta_can_add_a_slice_the_base_never_had(executor):
+    """A worker that just built a brand-new slice grows the table. The base's
+    counts stand for everything else, so the new one is added rather than
+    triggering a recount from a payload that speaks for one slice."""
+    base = _snapshot(
+        executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "fresh"})
+    )
+    assert base.assets[0].datasources[0].partition_summary.total == 2
+
+    fresh_slice = scope_to_partitions(
+        _snapshot(executor, _slices(executor, {"2024-01-03": "stale"})),
+        {"order_date=2024-01-03"},
+    )
+    merged = merge_snapshots(base, fresh_slice).assets[0].datasources[0]
+
+    assert merged.partition_summary.total == 3
+    assert merged.partition_summary.stale == 2
+    assert merged.partition_summary.missing == 2
+    assert merged.partition_summary.first == "order_date=2024-01-01"
+    assert merged.partition_summary.last == "order_date=2024-01-03"
+    assert len(merged.partitions) == 3
 
 
 # --- `refresh --partition`: naming the slice a run owns ----------------------
@@ -952,12 +997,90 @@ def test_policy_owns_its_selector():
         policy.partition_selector["local.order_date"] = "2024-01-05"  # type: ignore[index]
 
 
+def test_policy_is_hashable_despite_holding_a_mapping():
+    """It advertises frozen, so anything that treats it as a value must work —
+    the generated __hash__ would raise on the read-only mapping."""
+    policy = RefreshPolicy(
+        force_sources=frozenset({"a"}), partition_selector={"local.d": "2024-01-03"}
+    )
+    twin = RefreshPolicy(
+        force_sources=frozenset({"a"}), partition_selector={"local.d": "2024-01-03"}
+    )
+    assert len({policy, twin}) == 1
+    assert hash(policy) != hash(RefreshPolicy())
+
+
 def test_selected_slice_types_the_value_from_the_model(executor):
     ds = _ds(executor)
     obs = selected_slice(ds, executor.environment, {"local.order_date": "2024-01-02"})
     # Typed, not the string: partition_filter builds a real comparison from it.
     assert obs.values == {"order_date": date(2024, 1, 2)}
     assert obs.id == "order_date=2024-01-02"
+
+
+NON_TEMPORAL_MODEL = """
+key order_id int;
+property order_id.yr int;
+property order_id.ratio float;
+property order_id.live bool;
+property order_id.amt int;
+
+root datasource raw (order_id: order_id, yr: yr, ratio: ratio, live: live, amt: amt)
+grain (order_id)
+query '''SELECT 1 as order_id, 2024 as yr, 0.5 as ratio, true as live, 10 as amt
+UNION ALL SELECT 2, 2025, 1.5, false, 20''';
+
+auto total <- sum(amt) by yr, ratio, live;
+
+datasource by_kind (yr: yr, ratio: ratio, live: live, total: total)
+grain (yr, ratio, live)
+address by_kind
+incremental by yr
+partition by yr, ratio, live;
+"""
+
+
+def test_selector_types_non_temporal_partition_values():
+    """Dates are the common key, but the parse is shared with snapshot restore
+    and has to type the rest — a string on an int column reaches partition_filter
+    and renders a comparison that cannot match."""
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.execute_text(NON_TEMPORAL_MODEL)
+    ds = ex.environment.datasources["by_kind"]
+
+    obs = selected_slice(
+        ds,
+        ex.environment,
+        {"local.yr": "2025", "local.ratio": "1.5", "local.live": "false"},
+    )
+    assert obs.values == {"yr": 2025, "ratio": 1.5, "live": False}
+
+
+def test_unparseable_partition_value_degrades_to_the_string():
+    """It still compares consistently, and the refresh fails loudly at execute
+    rather than quietly writing the wrong slice."""
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.execute_text(NON_TEMPORAL_MODEL)
+    ds = ex.environment.datasources["by_kind"]
+
+    obs = selected_slice(
+        ex.environment.datasources["by_kind"],
+        ex.environment,
+        {"local.yr": "not-an-int", "local.ratio": "x", "local.live": "false"},
+    )
+    assert obs.values == {"yr": "not-an-int", "ratio": "x", "live": False}
+    assert ds.partition_by
+
+
+def test_null_partition_token_restores_as_none(executor):
+    """A NULL slice is a real slice; round-tripping it as the literal token
+    would make it a distinct, never-matching value."""
+    ds = _ds(executor)
+    (state,), _ = build_partition_states(
+        ds, [PartitionObservation(values={"order_date": None}, row_count=2)], []
+    )
+    assert state.values == {"order_date": NULL_PARTITION_TOKEN}
+    assert parse_partition_value(NULL_PARTITION_TOKEN, DataType.DATE) is None
 
 
 def test_selected_slice_is_none_for_a_datasource_it_does_not_name(executor):
@@ -1018,6 +1141,44 @@ def test_selector_refresh_writes_only_its_own_slice(executor):
     assert [str(r[0]) for r in after] == ["2024-01-01", "2024-01-03"]
 
 
+def test_a_targeted_slice_survives_the_post_script_re_evaluation(executor):
+    """`execute_refresh_plan` re-decides staleness for SQL assets once a
+    script-kind refresh has run. A targeted slice must not be re-decided — it may
+    look fresh (this one already exists) and would be dropped from the plan,
+    which is the sentinel `StaleAsset.explicit` replaced a reason-string check to
+    prevent."""
+    executor.execute_text(BUILD_ONE_DAY)
+    raw = executor.environment.datasources["raw_orders"]
+    executor.environment.datasources["raw_orders"] = raw.model_copy(
+        update={"freshness_probe": "/fake/probe.py", "refresh_script": "/fake/ref.py"}
+    )
+    policy = RefreshPolicy(
+        force_sources=frozenset({"raw_orders"}),
+        partition_selector={"local.order_date": "2024-01-01"},
+    )
+
+    with patch(
+        "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
+    ), patch("trilogy.execution.state.state_store.run_refresh_script"):
+        plan = create_refresh_plan(executor, policy=policy)
+        assert any(
+            a.kind == RefreshKind.SCRIPT for a in plan.refresh_assets
+        ), "the script asset is what turns on re-evaluation"
+        targeted = next(
+            a for a in plan.refresh_assets if a.datasource_id == "daily_orders"
+        )
+        assert targeted.explicit is True
+        assert [p.id for p in targeted.partitions] == ["order_date=2024-01-01"]
+
+        result = execute_refresh_plan(executor, plan)
+
+    assert result.refreshed_count == 2, "the script AND the slice it did not re-decide"
+    rows = executor.execute_raw_sql(
+        "SELECT order_date, order_count FROM daily_orders ORDER BY 1"
+    ).fetchall()
+    assert [str(r[0]) for r in rows] == ["2024-01-01"], "its slice, and only its slice"
+
+
 def test_complete_delta_replaces_the_summary(executor):
     base = _snapshot(
         executor, _slices(executor, {"2024-01-01": "stale", "2024-01-02": "stale"})
@@ -1029,3 +1190,48 @@ def test_complete_delta_replaces_the_summary(executor):
     summary = merged.assets[0].datasources[0].partition_summary
     assert summary.stale == 0
     assert merged.assets[0].datasources[0].status == "fresh"
+
+
+# --- what the expected-side probe may and may not absorb ---------------------
+
+
+def test_expected_probe_absorbs_an_unresolvable_model():
+    """Hiding non-roots can leave the partition key underivable — the model
+    answering "no expectation", not a failure.
+
+    Unmocked on purpose: a rootless model reaches this for real, which is what
+    pins the exception the planner actually raises into UNRESOLVABLE_ERRORS. An
+    injected one only asserts that whatever it injected is caught.
+    """
+    ex = Dialects.DUCK_DB.default_executor()
+    ex.execute_text(
+        MODEL.replace("root datasource raw_orders", "datasource raw_orders")
+    )
+    ds = ex.environment.datasources["daily_orders"]
+
+    assert not any(d.is_root for d in ex.environment.datasources.values())
+    assert probe_expected_partitions(ds, ex, set()) == []
+
+
+def test_expected_probe_does_not_absorb_a_warehouse_failure(executor):
+    """An empty expected side makes every slice look fresh, so swallowing a
+    broken connection here would report a healthy table for an unreachable one.
+
+    Injected: a real connection failure is not reproducible on demand.
+    """
+    ds = _ds(executor)
+    with patch.object(
+        executor, "execute_query", side_effect=RuntimeError("connection reset by peer")
+    ), pytest.raises(RuntimeError, match="connection reset"):
+        probe_expected_partitions(ds, executor, set())
+
+
+def test_expected_probe_restores_hidden_datasources_after_a_failure(executor):
+    """The probe mutates the environment; a raise must not leave it stripped."""
+    ds = _ds(executor)
+    before = dict(executor.environment.datasources)
+    with patch.object(
+        executor, "execute_query", side_effect=RuntimeError("x")
+    ), pytest.raises(RuntimeError):
+        probe_expected_partitions(ds, executor, set())
+    assert executor.environment.datasources == before

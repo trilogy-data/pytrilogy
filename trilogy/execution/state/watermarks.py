@@ -22,6 +22,7 @@ from trilogy.core.models.datasource import (
 from trilogy.core.models.execute import CTE
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.exceptions import (
+    UNRESOLVABLE_ERRORS,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
@@ -360,6 +361,16 @@ def get_concept_max_watermark_abstract(
 
     Temporarily hides non-root datasources so the query planner is forced to
     resolve the concept exclusively from authoritative root sources.
+
+    A concept the roots cannot answer yields a null value, not an exception —
+    which is what the caller already codes against (it keeps the key only ``if
+    wm.value is not None``), and the rule ``probe_expected_partitions`` follows
+    for the partition-level version of the same question. It is also the normal
+    answer for a model declaring no ``root`` at all: everything is hidden, so
+    raising took the whole snapshot down and such a project could not report
+    state.
+
+    Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`).
     """
     hidden = {
         ds_id: executor.environment.datasources.pop(ds_id)
@@ -370,6 +381,13 @@ def get_concept_max_watermark_abstract(
         result = executor.execute_query(f"SELECT MAX({concept_address}) as max_value;")
         row = result.fetchone() if result else None
         value = row[0] if row else None
+    except UNRESOLVABLE_ERRORS as e:
+        logger.debug(
+            "[STATE_STORE] no root-derived expectation for %s: %s",
+            concept_address,
+            e,
+        )
+        value = None
     finally:
         executor.environment.datasources.update(hidden)
     return UpdateKey(

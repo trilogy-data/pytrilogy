@@ -5,7 +5,7 @@ import pytest
 from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy import Dialects
+from trilogy import Dialects, parse
 from trilogy.core import graph as nx
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state import (
@@ -1118,3 +1118,163 @@ def test_managed_dependency_edges_cross_script_dependency():
     edges = _managed_dependency_edges(physical_nodes, script_graph, {})
 
     assert edges == [("source.parquet", "consumer.parquet")]
+
+
+ROOTLESS_MODEL = """key id int;
+property id.created_at datetime;
+
+{root}datasource events (
+    id: id,
+    created_at: created_at,
+)
+grain (id)
+query '''
+SELECT 1 AS id, TIMESTAMP '2024-01-01 10:00:00' AS created_at
+UNION ALL SELECT 2, TIMESTAMP '2024-01-02 11:00:00'
+''';
+
+auto daily_count <- count(id) by created_at.date;
+
+datasource daily (
+    date: created_at.date,
+    daily_count: daily_count,
+)
+grain (created_at.date)
+address daily
+incremental by created_at.date
+;
+"""
+
+
+def _rootless_workspace(tmp_path: Path, root: bool = False) -> Path:
+    (tmp_path / "model.preql").write_text(
+        ROOTLESS_MODEL.format(root="root " if root else ""), encoding="utf-8"
+    )
+    (tmp_path / "trilogy.toml").write_text(
+        '[engine]\ndialect = "duck_db"\n\n[engine.config]\npath = "'
+        + (tmp_path / "w.duckdb").as_posix()
+        + '"\n',
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+class TestRefreshWithoutASourceOfTruth:
+    """A refresh that can never do anything must say so.
+
+    With no `root datasource` there is no expected side, so every managed asset
+    reads fresh and refresh reports "all assets are up to date" — for a target
+    table that does not exist. That is indistinguishable from success.
+    """
+
+    def test_rootless_refresh_that_did_nothing_errors(self, tmp_path):
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["refresh", str(ws)])
+
+        assert result.exit_code == 1, result.output
+        assert "no `root datasource`" in result.output
+        # Actionable, not just a complaint.
+        assert "--force" in result.output
+
+    def test_a_single_file_refresh_errors_the_same_way(self, tmp_path):
+        """The guard belongs to the verdict, not to directory mode. Refreshing
+        the file directly reaches the same false "up to date"."""
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["refresh", str(ws / "model.preql")])
+
+        assert result.exit_code == 1, result.output
+        assert "no `root datasource`" in result.output
+
+    def test_a_single_file_refresh_with_a_built_target_is_not_an_error(self, tmp_path):
+        ws = _rootless_workspace(tmp_path)
+        model = str(ws / "model.preql")
+        assert (
+            CliRunner().invoke(cli, ["refresh", model, "--force", "daily"]).exit_code
+            == 0
+        )
+
+        result = CliRunner().invoke(cli, ["refresh", model])
+        assert result.exit_code in (0, 2), result.output
+        assert "Nothing can be refreshed" not in result.output
+
+    def test_an_asset_with_no_watermark_row_at_all_counts_as_empty(self, tmp_path):
+        """The table is absent, so the plan holds no watermark entry for it —
+        distinct from an entry whose values are all None, and the same verdict."""
+        from trilogy.scripts.common import require_a_source_of_truth
+
+        ws = _rootless_workspace(tmp_path)
+        env, _ = parse(ROOTLESS_MODEL.format(root=""))
+        with pytest.raises(Exit):
+            require_a_source_of_truth(env.datasources.values(), {})
+        assert ws.exists()
+
+    def test_rootless_state_still_reports(self, tmp_path):
+        """Observation is legitimate without roots — only refresh is impossible.
+        `state` says `level: scan` rather than pretending to an expected side."""
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["state", str(ws)])
+
+        assert result.exit_code == 0, result.output
+
+    def test_rootless_refresh_with_force_still_builds(self, tmp_path):
+        """--force is the escape hatch the error points at, so it must work."""
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["refresh", str(ws), "--force", "daily"])
+
+        assert result.exit_code == 0, result.output
+        import duckdb
+
+        con = duckdb.connect(str(ws / "w.duckdb"))
+        try:
+            tables = con.execute(
+                "select table_name from information_schema.tables"
+            ).fetchall()
+        finally:
+            con.close()
+        assert ("daily",) in tables
+
+    def test_a_rooted_model_with_nothing_to_do_is_not_an_error(self, tmp_path):
+        """The guard must not fire on the ordinary no-op: build it, then refresh
+        again and get a plain 'up to date'."""
+        ws = _rootless_workspace(tmp_path, root=True)
+        assert CliRunner().invoke(cli, ["refresh", str(ws)]).exit_code in (0, 2)
+
+        result = CliRunner().invoke(cli, ["refresh", str(ws)])
+        assert result.exit_code in (0, 2), result.output
+        assert "no `root datasource`" not in result.output
+
+    def test_rootless_but_populated_is_not_an_error(self, tmp_path):
+        """The line the guard draws. A rootless project whose target already
+        holds data cannot be *judged* — uninformative, not a lie — so it stays a
+        plain no-op. Only an empty target makes "up to date" false.
+        """
+        ws = _rootless_workspace(tmp_path)
+        # Build it the only way a rootless project can.
+        assert (
+            CliRunner().invoke(cli, ["refresh", str(ws), "--force", "daily"]).exit_code
+            == 0
+        )
+
+        result = CliRunner().invoke(cli, ["refresh", str(ws)])
+        assert result.exit_code in (0, 2), result.output
+        assert "Nothing can be refreshed" not in result.output
+
+    def test_a_source_defined_by_an_inline_query_is_not_a_refresh_target(
+        self, tmp_path
+    ):
+        """Not everything non-root is something refresh maintains. A datasource
+        backed by an inline query is a source, not a table anyone builds, so a
+        project of only those has legitimately nothing to do."""
+        (tmp_path / "model.preql").write_text(
+            "key x int;\n\n"
+            "datasource x_source (\n    x,\n)\ngrain (x)\n"
+            "query '''select 1 as x''';\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "trilogy.toml").write_text(
+            '[engine]\ndialect = "duck_db"\n', encoding="utf-8"
+        )
+        result = CliRunner().invoke(cli, ["refresh", str(tmp_path)])
+
+        assert result.exit_code in (0, 2), result.output
+        assert "Nothing can be refreshed" not in result.output

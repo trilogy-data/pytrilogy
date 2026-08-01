@@ -20,7 +20,8 @@ from trilogy.execution.state import RefreshResult as StateRefreshResult
 from trilogy.scripts.common import (
     ExecutionStats,
     RefreshQuery,
-    validate_force_sources,
+    require_a_source_of_truth,
+    validate_refresh_policy,
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
@@ -491,9 +492,13 @@ def execute_script_for_refresh(
         if isinstance(x, ProcessedValidateStatement):
             validation.append(x)
 
-    validate_force_sources(policy.force_sources, exec.environment.datasources)
+    validate_refresh_policy(policy, exec.environment)
 
     plan = create_refresh_plan(exec, policy=policy)
+    if not plan.refresh_assets:
+        require_a_source_of_truth(
+            exec.environment.datasources.values(), plan.watermarks
+        )
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }
@@ -530,8 +535,12 @@ def execute_refresh_mode(
     from trilogy.execution.state import RefreshPolicy, create_refresh_plan
 
     policy = policy if policy is not None else RefreshPolicy()
-    validate_force_sources(policy.force_sources, exec.environment.datasources)
+    validate_refresh_policy(policy, exec.environment)
     plan = create_refresh_plan(exec, policy=policy)
+    if not plan.refresh_assets:
+        require_a_source_of_truth(
+            exec.environment.datasources.values(), plan.watermarks
+        )
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }

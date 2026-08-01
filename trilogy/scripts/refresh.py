@@ -37,6 +37,7 @@ from trilogy.execution.state import (
     execute_refresh_plan,
     new_state_store,
     parse_partition_selector,
+    partition_key_addresses,
     target_partition_selector,
 )
 from trilogy.scripts.click_utils import (
@@ -51,7 +52,9 @@ from trilogy.scripts.common import (
     RefreshQuery,
     handle_execution_exception,
     parse_force_sources,
+    require_a_source_of_truth,
     validate_force_sources,
+    validate_partition_selector,
 )
 from trilogy.scripts.dependency import (
     DependencyResolver,
@@ -326,6 +329,7 @@ def probe_directory_state(
 
     address_map: dict[str, str] = {}
     available_datasources: set[str] = set()
+    available_partition_keys: set[str] = set()
     # (physical address, owner script path) -> earliest definition line in that script
     addr_line_by_script: dict[tuple[str, str], int] = {}
     ds_objects: dict[str, Datasource] = {}
@@ -376,6 +380,9 @@ def probe_directory_state(
             print_info(f"Skipping {file_path.name} (no datasources)")
             continue
         available_datasources.update(env.datasources)
+        available_partition_keys.update(
+            partition_key_addresses(env.datasources.values())
+        )
         needed_in_script: set[str] = set()
         for ds_id, ds in env.datasources.items():
             address_map.setdefault(ds_id, ds.safe_address)
@@ -414,6 +421,10 @@ def probe_directory_state(
                         ).update(env.concepts[ref].name for ref in matching)
 
     validate_force_sources(force_sources, available_datasources)
+    if cli_params.refresh_params:
+        validate_partition_selector(
+            cli_params.refresh_params.partitions, available_partition_keys
+        )
 
     # Build topo order so we can assign each physical address to its furthest-upstream owner.
     # script_graph is string-keyed (path strings); map back to ScriptNode for callers.
@@ -611,6 +622,10 @@ def _preview_directory_refresh(
     )
 
     if not refresh_assets:
+        watermarks: dict[str, DatasourceWatermark] = {}
+        for _, plan in plans_by_node:
+            watermarks.update(plan.watermarks)
+        require_a_source_of_truth(probe.ds_objects.values(), watermarks)
         print_info("All assets are up to date.")
         return True, None
 
@@ -781,10 +796,10 @@ def execute_managed_node_for_refresh(
     in this same orchestrator pass, their data mutations are visible here, and
     cascade dependents that probed fresh at preview will now probe stale.
 
-    That deferral is why ``policy`` has to reach this far: staleness is re-decided
-    here, so a plan narrowed to a ``--partition`` slice at preview time would be
-    silently widened back to whatever the live probe thinks. The selector is
-    re-applied against this node's own datasources instead.
+    That deferral is why ``policy`` has to reach this far: a plan narrowed to a
+    ``--partition`` slice at preview would be silently widened back to whatever
+    the live probe thinks, so the selector is re-applied here against this
+    node's own datasources.
     """
     stats = ExecutionStats()
     store = state_store if state_store is not None else new_state_store()
@@ -822,7 +837,7 @@ def execute_managed_node_for_refresh(
         forced_assets=[],
         watermarks=dict(store.watermarks),
         concept_max_watermarks=dict(store.concept_max_watermarks),
-        root_assets=len(assets_to_refresh),
+        root_assets=0,
         all_assets=len(target_ds_ids),
     )
     if policy is not None and policy.partition_selector:
@@ -837,6 +852,8 @@ def execute_managed_node_for_refresh(
 
     if not plan.refresh_assets:
         return stats
+    # Counted after the selector, which can add an asset staleness did not.
+    plan.root_assets = len(plan.refresh_assets)
 
     # cascade=False: the orchestrator handles cross-managed-node cascade via
     # phys_graph topo order. Per-node cascade would double-refresh dependents
