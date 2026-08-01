@@ -29,12 +29,15 @@ from trilogy.execution.state import (
     DatasourceWatermark,
     RefreshKind,
     RefreshPlan,
+    RefreshPolicy,
     RefreshResult,
     StaleAsset,
     StateStore,
     create_refresh_plan,
     execute_refresh_plan,
     new_state_store,
+    parse_partition_selector,
+    target_partition_selector,
 )
 from trilogy.scripts.click_utils import (
     report_options,
@@ -115,7 +118,6 @@ def _probe_owner_node(
     owner_node: ScriptNode,
     address_map: dict[str, str],
     addr_to_owner: dict[str, ScriptNode],
-    force_sources: set[str] | None,
     cli_params: CLIRuntimeParams,
     edialect: Dialects,
     config: RuntimeConfig,
@@ -142,7 +144,11 @@ def _probe_owner_node(
             executor.parse_text(handle.read(), root=owner_node.path)
         plan = create_refresh_plan(
             executor,
-            force_sources=force_sources,
+            policy=(
+                cli_params.refresh_params.policy()
+                if cli_params.refresh_params
+                else None
+            ),
             skip_datasources=skip_ids,
             initial_watermarks=initial_watermarks,
         )
@@ -526,7 +532,6 @@ def probe_directory_state(
                 node,
                 address_map,
                 addr_to_owner,
-                force_sources,
                 cli_params,
                 edialect,
                 config,
@@ -767,6 +772,7 @@ def execute_managed_node_for_refresh(
     interactive: bool,
     dry_run: bool,
     state_store: StateStore | None = None,
+    policy: RefreshPolicy | None = None,
 ) -> ExecutionStats:
     """Refresh one managed physical address.
 
@@ -774,6 +780,11 @@ def execute_managed_node_for_refresh(
     preview snapshot). When upstream refreshable-root scripts have already run
     in this same orchestrator pass, their data mutations are visible here, and
     cascade dependents that probed fresh at preview will now probe stale.
+
+    That deferral is why ``policy`` has to reach this far: staleness is re-decided
+    here, so a plan narrowed to a ``--partition`` slice at preview time would be
+    silently widened back to whatever the live probe thinks. The selector is
+    re-applied against this node's own datasources instead.
     """
     stats = ExecutionStats()
     store = state_store if state_store is not None else new_state_store()
@@ -795,9 +806,9 @@ def execute_managed_node_for_refresh(
             if ds.safe_address == node.address
         ]
 
-    # Honor pre-classified forced rebuilds — their `reason` is "forced rebuild"
-    # and is_stale would skip them otherwise.
-    forced_ids = {a.datasource_id for a in node.assets if a.reason == "forced rebuild"}
+    # Honor pre-classified assets the caller asked for by name — is_stale would
+    # skip them otherwise.
+    forced_ids = {a.datasource_id for a in node.assets if a.explicit}
 
     assets_to_refresh: list[StaleAsset] = []
     for ds_id in target_ds_ids:
@@ -805,9 +816,6 @@ def execute_managed_node_for_refresh(
         asset = store.is_stale(executor.environment, executor, ds_id, force=forced)
         if asset is not None:
             assets_to_refresh.append(asset)
-
-    if not assets_to_refresh:
-        return stats
 
     plan = RefreshPlan(
         stale_assets=assets_to_refresh,
@@ -817,6 +825,18 @@ def execute_managed_node_for_refresh(
         root_assets=len(assets_to_refresh),
         all_assets=len(target_ds_ids),
     )
+    if policy is not None and policy.partition_selector:
+        # Only this node's datasources: the owner script's environment holds
+        # every asset it declares, and the rest belong to other nodes.
+        target_partition_selector(
+            executor,
+            plan,
+            dict(policy.partition_selector),
+            skip=set(executor.environment.datasources) - set(target_ds_ids),
+        )
+
+    if not plan.refresh_assets:
+        return stats
 
     # cascade=False: the orchestrator handles cross-managed-node cascade via
     # phys_graph topo order. Per-node cascade would double-refresh dependents
@@ -835,6 +855,7 @@ def make_managed_refresh_fn(
     print_watermarks: bool,
     interactive: bool,
     dry_run: bool = False,
+    policy: RefreshPolicy | None = None,
 ):
     """Create a refresh execution function for physical nodes."""
 
@@ -842,7 +863,7 @@ def make_managed_refresh_fn(
         exec: Executor, node: ManagedRefreshNode, quiet: bool = False
     ) -> ExecutionStats:
         return execute_managed_node_for_refresh(
-            exec, node, quiet, print_watermarks, interactive, dry_run
+            exec, node, quiet, print_watermarks, interactive, dry_run, policy=policy
         )
 
     return wrapped_execute
@@ -896,6 +917,7 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
             refresh_params.print_watermarks,
             False,
             refresh_params.dry_run,
+            policy=refresh_params.policy(),
         )
 
         def physical_executor_factory(node: ManagedRefreshNode) -> Executor:
@@ -950,6 +972,22 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     help="Print watermark values for all datasources before refreshing",
 )
 @option(
+    "--partition",
+    "partition",
+    multiple=True,
+    default=(),
+    help=(
+        "Refresh exactly this slice, as `<concept.address>=<value>` (repeatable, "
+        "comma-separated; one pair per column of a multi-column key). Every "
+        "datasource partitioned on those concepts is rebuilt for that slice "
+        "whether or not it looks stale, and its healthy neighbours are left "
+        "alone. Addressed by concept, not physical column: the caller naming a "
+        "slice works from the model, not from a datasource's column names. "
+        "Implies --state-partition for the same slices, so a fan-out cannot "
+        "write one partition and then claim the whole table."
+    ),
+)
+@option(
     "--env",
     "-e",
     multiple=True,
@@ -987,6 +1025,7 @@ def refresh(
     parallelism: int | None,
     config,
     print_watermarks,
+    partition: tuple[str, ...],
     env,
     force,
     interactive,
@@ -996,6 +1035,7 @@ def refresh(
     state_input: str | None,
     state_file: str | None,
     state_partition: tuple[str, ...],
+    state_max_partitions: str | None,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -1006,12 +1046,20 @@ def refresh(
     Returns 0 if any assets were refreshed, 2 if all assets were up to date,
     and 1 on error.
     """
+    from trilogy.scripts.display import print_error
+
     validate_dialect(dialect, "refresh")
+    try:
+        selected_partitions = parse_partition_selector(partition)
+    except ValueError as e:
+        print_error(str(e))
+        raise Exit(1) from e
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
         force_sources=parse_force_sources(force),
         interactive=interactive,
         dry_run=dry_run,
+        partitions=selected_partitions,
     )
 
     cli_params = CLIRuntimeParams(
@@ -1060,7 +1108,9 @@ def refresh(
                     # Snapshot regardless of outcome: post-failure state is
                     # still the current truth, and this never alters the
                     # exit code.
-                    maybe_write_state_snapshot(cli_params, state_file, state_partition)
+                    maybe_write_state_snapshot(
+                        cli_params, state_file, state_partition, state_max_partitions
+                    )
             if up_to_date:
                 raise Exit(2)
     except Exit:

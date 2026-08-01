@@ -45,6 +45,9 @@ ENV_STATE_INPUT = "TRILOGY_STATE_INPUT"
 #: snapshot to those slices so concurrent workers produce mergeable deltas.
 ENV_STATE_PARTITION = "TRILOGY_STATE_PARTITION"
 
+#: Slice budget for a written snapshot: an integer, or ``all`` for no cap.
+ENV_STATE_MAX_PARTITIONS = "TRILOGY_STATE_MAX_PARTITIONS"
+
 
 def read_state_snapshot(path: Path | str) -> StateSnapshot:
     """Parse a snapshot file. Unknown fields are ignored by the model, so a
@@ -214,6 +217,7 @@ def snapshot_store_factory(
 __all__ = [
     "ENV_STATE_FILE",
     "ENV_STATE_INPUT",
+    "ENV_STATE_MAX_PARTITIONS",
     "ENV_STATE_PARTITION",
     "SnapshotStateStore",
     "read_state_snapshot",

@@ -53,6 +53,12 @@ class StaleAsset:
     # very rows the refresh exists to write. Typed loosely to keep this module
     # free of a partitions.py import (which imports watermarks.py).
     partitions: list = field(default_factory=list)
+    # The caller asked for this refresh by name (``--force``, ``--partition``)
+    # rather than a probe deciding it. Execution must not re-derive it from live
+    # staleness: a forced rebuild is wanted regardless, and a targeted slice may
+    # look fresh (a backfill of a day the watermark is already past) while still
+    # being exactly what the run was told to load.
+    explicit: bool = False
 
 
 def _compare_watermark_values(a: str | float | date, b: str | float | date) -> int:

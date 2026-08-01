@@ -229,6 +229,20 @@ def state_file_option(fn: Callable) -> Callable:
     write the post-execution state back out, optionally scoped to the partitions
     this invocation owned."""
     fn = click.option(
+        "--state-max-partitions",
+        "state_max_partitions",
+        default=None,
+        help=(
+            "Slices per datasource a written snapshot may carry (env: "
+            "TRILOGY_STATE_MAX_PARTITIONS). Unset carries every slice; `0` "
+            "carries none and reports only the summary counts. A payload budget "
+            "for whatever reads the file, so set it only if that reader has one "
+            "— the counts in partition_summary stay exact whatever it is, and "
+            "stale slices are kept first, so a trimmed list is still the "
+            "backfill queue."
+        ),
+    )(fn)
+    fn = click.option(
         "--state-partition",
         "state_partition",
         multiple=True,

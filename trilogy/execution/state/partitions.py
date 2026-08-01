@@ -26,6 +26,7 @@ processes: values are rendered canonically, never via ``repr``.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING
@@ -40,7 +41,7 @@ from trilogy.core.models.author import (
     WhereClause,
 )
 from trilogy.core.models.build import Factory
-from trilogy.core.models.core import ListWrapper
+from trilogy.core.models.core import DataType, ListWrapper
 from trilogy.core.models.datasource import (
     ColumnAssignment,
     Datasource,
@@ -109,6 +110,114 @@ def partition_id(values: dict[str, PartitionValue]) -> str:
     return PARTITION_ID_SEPARATOR.join(
         f"{column}={render_partition_value(value)}" for column, value in values.items()
     )
+
+
+def parse_partition_value(rendered: str, datatype) -> PartitionValue:
+    """Inverse of :func:`render_partition_value`, typed by the READER's model.
+
+    Partition values travel as their canonical rendering — in a snapshot, and on
+    a ``--partition`` flag — so the type comes from the datasource reading them
+    rather than the process that wrote them. Anything unparseable degrades to the
+    string, which still compares consistently.
+    """
+    if rendered == NULL_PARTITION_TOKEN:
+        return None
+    try:
+        if datatype == DataType.DATE:
+            return date.fromisoformat(rendered)
+        if datatype in (DataType.DATETIME, DataType.TIMESTAMP):
+            return datetime.fromisoformat(rendered)
+        if datatype == DataType.INTEGER:
+            return int(rendered)
+        if datatype == DataType.FLOAT:
+            return float(rendered)
+        if datatype == DataType.BOOL:
+            return rendered == "true"
+    except ValueError:
+        pass
+    return rendered
+
+
+def parse_partition_selector(pairs: Iterable[str]) -> dict[str, str]:
+    """``concept.address=value`` pairs into a selector map.
+
+    Addressed by CONCEPT, not by physical column: the caller naming a slice is
+    working from the model (a schedule that knows a job loads
+    ``order.created_at.date``), while the column is an implementation detail of
+    whichever datasource binds it. The two are bridged per-datasource in
+    :func:`selected_slice`.
+
+    Commas separate pairs, but a fragment with no ``=`` is read as the rest of a
+    value that contained one, so a comma-bearing partition value survives
+    instead of being silently truncated. A value holding BOTH a comma and an
+    ``=`` is the one thing this cannot express; it reads as two pairs.
+
+    Naming the same concept twice with **different** values raises, for the same
+    reason a partial multi-column key does: two values are a range, not the one
+    slice a run owns, and quietly keeping the last would refresh something other
+    than what was asked for.
+    """
+    selector: dict[str, str] = {}
+    for pair in pairs:
+        # Continuation is only meaningful inside one flag's text — otherwise a
+        # malformed second flag would be swallowed by the first flag's value.
+        last: str | None = None
+        for item in pair.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            address, sep, value = item.partition("=")
+            address = address.strip()
+            if not sep or not address:
+                if last is None:
+                    raise ValueError(
+                        f"Invalid --partition {item!r};"
+                        " expected <concept.address>=<value>"
+                    )
+                selector[last] = f"{selector[last]},{item}"
+                continue
+            value = value.strip()
+            if selector.get(address, value) != value:
+                raise ValueError(
+                    f"--partition names {address} twice, as {selector[address]!r} and"
+                    f" {value!r}; two values name a range, not the slice a run owns"
+                )
+            selector[address] = value
+            last = address
+    return selector
+
+
+def selected_slice(
+    ds: Datasource, environment: Environment, selector: dict[str, str]
+) -> PartitionObservation | None:
+    """The one slice ``selector`` names on ``ds``, or None if it names none.
+
+    Not applying is the normal case, not an error: a directory run holds many
+    datasources and a selector speaks for the one (or few) partitioned on the
+    concept it names. Naming *some* of a multi-column key IS an error — it
+    identifies a range rather than a slice, and silently widening a targeted
+    refresh into a partial rebuild is the failure this flag exists to avoid.
+    """
+    if not ds.partition_by:
+        return None
+    matched = [ref for ref in ds.partition_by if ref.address in selector]
+    if not matched:
+        return None
+    if len(matched) != len(ds.partition_by):
+        missing = sorted(
+            ref.address for ref in ds.partition_by if ref.address not in selector
+        )
+        raise ValueError(
+            f"--partition names only part of {ds.identifier}'s partition key;"
+            f" missing {', '.join(missing)}"
+        )
+    values: dict[str, PartitionValue] = {}
+    for col in partition_assignments(ds):
+        concept = environment.concepts[col.concept.address]
+        values[partition_column_name(col)] = parse_partition_value(
+            selector[col.concept.address], concept.datatype.data_type
+        )
+    return PartitionObservation(values=values)
 
 
 def partition_assignments(ds: Datasource) -> list[ColumnAssignment]:
@@ -439,6 +548,8 @@ __all__ = [
     "PartitionObservation",
     "PartitionValue",
     "is_partitioned",
+    "parse_partition_selector",
+    "parse_partition_value",
     "partition_assignments",
     "partition_column_name",
     "partition_id",
@@ -446,4 +557,5 @@ __all__ = [
     "probe_expected_partitions",
     "probe_observed_partitions",
     "render_partition_value",
+    "selected_slice",
 ]
