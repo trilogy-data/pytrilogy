@@ -183,3 +183,34 @@ warehouse they share it. Two consequences, both fixed in `executor.py`:
   declines to commit and `close()` discards it. The failure is silent — a refresh
   reports success having written nothing. Any connect-time read must restore the
   connection's transactional state (see `test_duckdb_persistence.py`).
+
+## Serve: hosting the studio bundle
+
+`serve_helpers/studio_bundle.py` fetches the published studio build and `serve`
+mounts it, so the printed link is `http://localhost:<port>/trilogy-studio-core/#...`
+instead of a `trilogydata.dev` deep link.
+
+- **This is not a convenience.** A page on a public origin fetching a loopback
+  store is gated by Local Network Access, a browser *permission* that is
+  auto-denied when the fetch fires on page load. No response header satisfies it;
+  same-origin is the only fix. `build_hosted_studio_link` remains as a fallback
+  and prints a caveat.
+- **`basePath` comes from the manifest, never a constant.** The bundle is built
+  with an absolute vite base — mounted anywhere else, every asset 404s.
+- **The static mount is deliberately unauthenticated.** A `<script src>` cannot
+  send `X-Trilogy-Token`; the token protects the store's files, not the studio's
+  own assets.
+- Assets are read from `releases/latest/download/<name>` (a redirect). Do **not**
+  reach for `api.github.com` — 60 requests/hour unauthenticated, and this runs on
+  every serve.
+- Resolution never fails the server: bad manifest, no network, checksum mismatch
+  or a `contractVersion` newer than `REMOTE_STORE_CONTRACT_VERSION` all degrade
+  to the newest cached bundle, then to the hosted link. Only `--studio-bundle
+  <dir>` is fatal when wrong, because the user named that directory.
+- Extraction stages into a temp dir and renames it into
+  `~/.trilogy/studio/<version>/`, so a killed download can't leave a directory
+  that later reads as a cache hit. The manifest is written alongside — a bundle
+  without it is ignored, since it's what carries the mount path.
+- The tarball holds the app only; duckdb-wasm is fetched from jsDelivr at
+  runtime exactly as on trilogydata.dev (the studio release step excludes the
+  wasm vite emits for a branch it compiles out).

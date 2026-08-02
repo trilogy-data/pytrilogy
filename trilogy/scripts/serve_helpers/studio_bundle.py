@@ -18,6 +18,7 @@ Contract with the studio repo (docs/studio-bundle-hosting.md):
   newer than this server understands is refused rather than served broken.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -127,7 +128,9 @@ def cached_bundles(cache_root: Path = STUDIO_CACHE_ROOT) -> list[StudioBundle]:
         for child in cache_root.iterdir()
         if child.is_dir() and (bundle := load_bundle_directory(child)) is not None
     ]
-    return [bundle for _, bundle in sorted(found, key=lambda pair: pair[0], reverse=True)]
+    return [
+        bundle for _, bundle in sorted(found, key=lambda pair: pair[0], reverse=True)
+    ]
 
 
 def _verify(payload: bytes, tarball: StudioTarball) -> None:
@@ -204,7 +207,7 @@ def resolve_studio_bundle(
     release_base: str = STUDIO_RELEASE_BASE,
     manifest_timeout: float = MANIFEST_TIMEOUT,
     download_timeout: float = DOWNLOAD_TIMEOUT,
-    on_progress=None,
+    on_progress: Callable[[StudioManifest], None] | None = None,
 ) -> StudioBundle | None:
     """The bundle to host, or None to fall back to the hosted studio.
 

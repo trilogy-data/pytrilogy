@@ -76,6 +76,12 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    # Msg 208: `Invalid object name 'dbo.orders'.`
+    TABLE_NOT_FOUND_PATTERN = r"Invalid object name"
+    # Msg 207: `Invalid column name 'updated_at'.` Msg 4104 (multi-part
+    # identifier could not be bound) is deliberately excluded — the alias
+    # trilogy emits always binds, so that would mean a generated-SQL bug.
+    COLUMN_NOT_FOUND_PATTERN = r"Invalid column name"
 
     def staging_table_name(self, query) -> str:
         """T-SQL marks a session-local temp table with a leading ``#``; without

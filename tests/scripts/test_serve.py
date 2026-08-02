@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from trilogy.execution.state.snapshot import StateSnapshot
-from trilogy.scripts.serve_helpers import REMOTE_STORE_CONTRACT_VERSION
+from trilogy.scripts.serve_helpers import REMOTE_STORE_CONTRACT_VERSION, StudioBundle
 from trilogy.scripts.trilogy import cli
 
 pytest.importorskip("fastapi")
@@ -24,7 +24,11 @@ pytest.importorskip("uvicorn")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trilogy.scripts.serve import create_app
+from trilogy.scripts.serve import (
+    build_hosted_studio_link,
+    build_local_studio_link,
+    create_app,
+)
 
 
 def create_test_app(
@@ -1621,3 +1625,110 @@ def test_state_cache_headers_are_exposed_to_browsers(tmp_path):
     exposed = response.headers["access-control-expose-headers"]
     assert "X-Trilogy-Cached" in exposed
     assert "X-Trilogy-Computed-At" in exposed
+
+
+# ── hosted studio bundle ──────────────────────────────────────────────────────
+
+
+def _bundle_dir(root: Path, base_path: str = "/trilogy-studio-core/") -> StudioBundle:
+    directory = root / "bundle"
+    (directory / "assets").mkdir(parents=True)
+    (directory / "index.html").write_text("<html>studio</html>")
+    (directory / "assets" / "app.js").write_text("//app")
+    return StudioBundle(directory=directory, base_path=base_path, version="1.2.3")
+
+
+def test_studio_bundle_is_served_at_its_base_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("key id int;")
+        app = FastAPI()
+        create_app(
+            app, "duck_db", tmppath, "localhost", 80, studio_bundle=_bundle_dir(tmppath)
+        )
+        client = TestClient(app)
+
+        index = client.get("/trilogy-studio-core/")
+        assert index.status_code == 200
+        assert "studio" in index.text
+        assert client.get("/trilogy-studio-core/assets/app.js").status_code == 200
+
+
+def test_studio_bundle_assets_do_not_require_the_token():
+    """A <script src> can't send X-Trilogy-Token; the token guards the store."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("key id int;")
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            tmppath,
+            "localhost",
+            80,
+            token="secret",
+            studio_bundle=_bundle_dir(tmppath),
+        )
+        client = TestClient(app)
+
+        assert client.get("/trilogy-studio-core/").status_code == 200
+        assert client.get("/files").status_code == 401
+
+
+def test_studio_bundle_honors_a_non_default_base_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            tmppath,
+            "localhost",
+            80,
+            studio_bundle=_bundle_dir(tmppath, base_path="/elsewhere/"),
+        )
+        client = TestClient(app)
+
+        assert client.get("/elsewhere/").status_code == 200
+        assert client.get("/trilogy-studio-core/").status_code == 404
+
+
+def test_local_studio_link_omits_import_and_connection():
+    link = build_local_studio_link(
+        "http://localhost:8100",
+        "/trilogy-studio-core/",
+        "analytics/common",
+        "user analytics",
+        "user_analytics",
+        "tok",
+    )
+    assert link.startswith("http://localhost:8100/trilogy-studio-core/#")
+    assert "store=http%3A//localhost%3A8100" in link
+    assert "storeId=user_analytics" in link
+    assert "remote=true" in link
+    assert "assetName=analytics/common" in link
+    assert link.endswith("&token=tok")
+    assert "import=" not in link
+    assert "connection=" not in link
+
+
+def test_local_studio_link_without_token():
+    link = build_local_studio_link(
+        "http://localhost:8100", "/trilogy-studio-core/", "a", "m", "m", None
+    )
+    assert "token" not in link
+
+
+def test_hosted_studio_link_shape_is_unchanged():
+    link = build_hosted_studio_link(
+        "https://trilogydata.dev/trilogy-studio-core/",
+        "http://localhost:8100/models/m.json",
+        "hello_world",
+        "bigquery",
+        "bigquery",
+        "http://localhost:8100",
+        "tok",
+    )
+    assert link.startswith("https://trilogydata.dev/trilogy-studio-core/#import=")
+    assert "connection=bigquery" in link
+    assert link.endswith("&token=tok")

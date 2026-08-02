@@ -98,6 +98,13 @@ class PrestoDialect(BaseDialect):
         DataType.NUMERIC: "DECIMAL",
         DataType.STRING: "VARCHAR",
     }
+    # `line 1:15: Table 'hive.default.orders' does not exist`; the client also
+    # surfaces the engine's error name, which is matched for both forms.
+    TABLE_NOT_FOUND_PATTERN = (
+        r"(Table|Schema) '.+' does not exist|TABLE_NOT_FOUND|SCHEMA_NOT_FOUND"
+    )
+    # `line 1:12: Column 'updated_at' cannot be resolved`
+    COLUMN_NOT_FOUND_PATTERN = r"Column '.+' cannot be resolved|COLUMN_NOT_FOUND"
     UNNEST_MODE = UnnestMode.PRESTO
     GROUP_MODE = GroupMode.BY_INDEX
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

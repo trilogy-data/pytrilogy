@@ -18,6 +18,7 @@ from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
     REMOTE_STORE_CONTRACT_VERSION,
     StudioBundle,
+    StudioManifest,
     find_all_model_files,
     find_trilogy_files,
     get_relative_model_name,
@@ -119,6 +120,14 @@ def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
             detail=f"Only {', '.join(sorted(ALLOWED_WRITE_EXTENSIONS))} files are allowed",
         )
     return target_path
+
+
+def announce_studio_download(manifest: StudioManifest) -> None:
+    megabytes = manifest.tarball.bytes / 1_000_000
+    print(
+        f"Fetching Trilogy Studio {manifest.version} ({megabytes:.1f} MB) "
+        "— cached for future runs..."
+    )
 
 
 def build_hosted_studio_link(
