@@ -277,6 +277,9 @@ class DirectoryProbeResult:
     probe_addrs: set[str]  # managed physical addresses
     total_physical: int
     ds_objects: dict[str, Datasource]  # ds_id -> parsed Datasource (first seen)
+    # ds_id -> effective model hash (first seen), env-invariant; stamped into
+    # written snapshots so a later --state-input read can detect model drift.
+    model_fingerprints: dict[str, str]
     ds_to_scripts: dict[str, list[ScriptNode]]
     ds_is_root: dict[str, bool]
     ds_is_refreshable_root: dict[str, bool]
@@ -334,6 +337,7 @@ def probe_directory_state(
     # (physical address, owner script path) -> earliest definition line in that script
     addr_line_by_script: dict[tuple[str, str], int] = {}
     ds_objects: dict[str, Datasource] = {}
+    model_fingerprints: dict[str, str] = {}
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
     ds_is_refreshable_root: dict[str, bool] = {}
@@ -386,6 +390,16 @@ def probe_directory_state(
         if not env.datasources:
             print_info(f"Skipping {file_path.name} (no datasources)")
             continue
+        # A probe must never fail on fingerprinting; absent hashes are legal.
+        try:
+            from trilogy.core.fingerprint import build_environment_fingerprint
+
+            for ds_id, entry in build_environment_fingerprint(env).datasources.items():
+                model_fingerprints.setdefault(ds_id, entry.effective)
+        except Exception as e:
+            from trilogy.constants import logger
+
+            logger.debug(f"Model fingerprinting skipped for {file_path.name}: {e}")
         available_datasources.update(env.datasources)
         available_partition_keys.update(
             partition_key_addresses(env.datasources.values())
@@ -585,6 +599,7 @@ def probe_directory_state(
         probe_addrs=probe_addrs,
         total_physical=total_physical,
         ds_objects=ds_objects,
+        model_fingerprints=model_fingerprints,
         ds_to_scripts=dict(ds_to_scripts),
         ds_is_root=ds_is_root,
         ds_is_refreshable_root=ds_is_refreshable_root,
@@ -1118,8 +1133,12 @@ def refresh(
         ):
             from trilogy.execution.envs import env_activation_scope
             from trilogy.execution.state.phases import phase_recording
+            from trilogy.execution.state.state_store import (
+                model_fingerprint_baseline,
+            )
             from trilogy.scripts.env_commands import (
                 announce_activation,
+                load_env_model_baseline,
                 resolve_activation,
             )
             from trilogy.scripts.state import (
@@ -1134,11 +1153,39 @@ def refresh(
             up_to_date = False
             # The recorder captures the planning probes' begin-phase
             # observations and verdicts for the post-run snapshot.
-            with env_activation_scope(activation), phase_recording() as recorder:
+            # Watermark-based staleness cannot see model changes; the env's
+            # recorded fingerprint (when one exists) becomes the baseline the
+            # state store compares each asset's current definition against, so
+            # semantically-changed datasources read as stale and rebuild.
+            baseline: dict[str, str] | None = None
+            if activation:
+                baseline = load_env_model_baseline(activation)
+            with env_activation_scope(activation), model_fingerprint_baseline(
+                baseline
+            ), phase_recording() as recorder:
                 try:
                     with state_input_scope(state_input, cli_params):
                         summary = run_refresh_command(cli_params)
                     up_to_date = summary.successful == 0 and summary.skipped > 0
+                    # Maintain (never establish) the env's fingerprint: with a
+                    # baseline installed, everything model-stale in scope was
+                    # just rebuilt, so recording is sound. A partition-scoped
+                    # or dry run rebuilds less than the record would claim;
+                    # first records come from `run` or `env fingerprint`.
+                    if (
+                        activation
+                        and baseline is not None
+                        and not partition
+                        and not dry_run
+                        and not up_to_date
+                    ):
+                        from trilogy.scripts.env_commands import (
+                            record_env_fingerprint,
+                        )
+
+                        record_env_fingerprint(
+                            activation, str(input), param, cli_params.config_path
+                        )
                 finally:
                     # Frozen first: the snapshot re-probes, and a datasource
                     # never probed during execution must not acquire a fake

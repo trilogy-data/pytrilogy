@@ -123,6 +123,18 @@ class BaseStateStore:
         # Probe path -> result; deduplicates subprocess calls for the same probe
         # script during one refresh invocation.
         self._probe_results: dict[str, bool] = {}
+        # Model-fingerprint baseline: logical location -> effective hash the
+        # asset was last built with (installed from an env's recorded
+        # fingerprint; SnapshotStateStore also reads its snapshot's per-asset
+        # record). Empty means the check never fires.
+        self._model_baseline: dict[str, str] = get_model_fingerprint_baseline() or {}
+        # ds_id -> current effective hash; pure function of the parsed model,
+        # so cacheable for the store's lifetime (stores are per-script).
+        self._model_fp_cache: dict[str, str] = {}
+        # Assets refreshed during this invocation: the recorded fingerprint
+        # describes the PRE-refresh build, so once invalidate*() runs the
+        # claim must not resurrect — same rule as re-seeding watermarks.
+        self._model_refreshed: set[str] = set()
         # Mutations to the caches happen from parallel managed-node executions;
         # serialize them to keep the dicts consistent.
         self._lock = threading.Lock()
@@ -152,6 +164,7 @@ class BaseStateStore:
         with self._lock:
             self.watermarks.pop(ds_id, None)
             self.partitions.pop(ds_id, None)
+            self._model_refreshed.add(ds_id)
             self.concept_max_watermarks.clear()
 
     def invalidate_address(self, env: Environment, address: str) -> None:
@@ -174,9 +187,51 @@ class BaseStateStore:
             for ds_id in affected_ids:
                 self.watermarks.pop(ds_id, None)
                 self.partitions.pop(ds_id, None)
+                self._model_refreshed.add(ds_id)
             for probe in affected_probes:
                 self._probe_results.pop(probe, None)
             self.concept_max_watermarks.clear()
+
+    def recorded_model_fingerprint(
+        self, env: Environment, ds: Datasource
+    ) -> str | None:
+        """The effective model hash the asset was last built with, if known."""
+        if not self._model_baseline:
+            return None
+        from trilogy.core.fingerprint import datasource_logical_location
+
+        location = datasource_logical_location(ds)
+        if location is None:
+            return None
+        return self._model_baseline.get(location)
+
+    def _current_model_fingerprint(
+        self, env: Environment, ds: Datasource
+    ) -> str | None:
+        with self._lock:
+            cached = self._model_fp_cache.get(ds.identifier)
+        if cached is not None:
+            return cached
+        # Staleness must never fail on fingerprinting; None skips the check.
+        try:
+            from trilogy.core.fingerprint import datasource_effective_hash
+
+            current = datasource_effective_hash(env, ds)
+        except Exception as e:
+            logger.debug(f"Model fingerprint of {ds.identifier} skipped: {e}")
+            return None
+        with self._lock:
+            self._model_fp_cache[ds.identifier] = current
+        return current
+
+    def _model_changed(self, env: Environment, ds: Datasource) -> bool:
+        if ds.identifier in self._model_refreshed:
+            return False
+        recorded = self.recorded_model_fingerprint(env, ds)
+        if recorded is None:
+            return False
+        current = self._current_model_fingerprint(env, ds)
+        return current is not None and current != recorded
 
     def watermark_asset(
         self, datasource: Datasource, executor: Executor
@@ -416,6 +471,17 @@ class BaseStateStore:
                 filters=UpdateKeys(),
             )
 
+        # Model change: the definition the asset was last built with no longer
+        # matches the current model. Checked ahead of the schema probe (pure
+        # CPU, no warehouse query); like schema change, empty filters force a
+        # full rebuild — an incremental filter would keep old-definition rows.
+        if self._model_changed(env, ds):
+            return StaleAsset(
+                datasource_id=ds_id,
+                reason="model changed since last build",
+                filters=UpdateKeys(),
+            )
+
         if has_schema_mismatch(ds, executor, cache=self._cache):
             return StaleAsset(
                 datasource_id=ds_id,
@@ -585,6 +651,31 @@ def state_store_factory(factory: StateStoreFactory | None) -> Iterator[None]:
         yield
     finally:
         set_state_store_factory(previous)
+
+
+# Ambient model-fingerprint baseline: logical physical location -> effective
+# hash the asset was last built with. Same plain-module-global pattern (and
+# reason) as _ACTIVE_FACTORY: stores are constructed on refresh worker
+# threads a ContextVar set in the entrypoint would not reach. Installed by
+# refresh from a deployment env's recorded fingerprint; snapshot-seeded
+# stores prefer their snapshot's own per-asset record.
+_MODEL_FINGERPRINT_BASELINE: dict[str, str] | None = None
+
+
+def get_model_fingerprint_baseline() -> dict[str, str] | None:
+    return _MODEL_FINGERPRINT_BASELINE
+
+
+@contextmanager
+def model_fingerprint_baseline(baseline: dict[str, str] | None) -> Iterator[None]:
+    """Scope an ambient fingerprint baseline to a block."""
+    global _MODEL_FINGERPRINT_BASELINE
+    previous = _MODEL_FINGERPRINT_BASELINE
+    _MODEL_FINGERPRINT_BASELINE = baseline
+    try:
+        yield
+    finally:
+        _MODEL_FINGERPRINT_BASELINE = previous
 
 
 @dataclass

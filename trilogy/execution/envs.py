@@ -89,6 +89,38 @@ def apply_env_prefix(location: str, env_name: str, is_file: bool = False) -> str
     return _prefix_table(location, env_name)
 
 
+def strip_env_prefix(location: str, env_name: str, is_file: bool = False) -> str:
+    """Inverse of :func:`apply_env_prefix`, for an address whose ``env_label``
+    records that the transform ran. Kept adjacent to the forward transform so
+    the two cannot diverge. Returns the location unchanged when the expected
+    prefix/suffix is absent (e.g. a file address the transform left alone)."""
+    if not is_file:
+        parts = location.split(".")
+        prefix = f"{env_name}_"
+        parts[-1] = parts[-1].removeprefix(prefix)
+        return ".".join(parts)
+    scheme = ""
+    rest = location
+    if "://" in location:
+        scheme_end = location.index("://") + 3
+        scheme, rest = location[:scheme_end], location[scheme_end:]
+    rest = rest.replace("\\", "/")
+    parent = posixpath.dirname(rest)
+    filename = posixpath.basename(rest)
+    stem, dot, ext = filename.rpartition(".")
+    suffix = f"_{env_name}"
+    if stem:
+        if not stem.endswith(suffix):
+            return location
+        new_filename = f"{stem[: -len(suffix)]}{dot}{ext}"
+    else:
+        if not filename.endswith(suffix):
+            return location
+        new_filename = filename[: -len(suffix)]
+    new_rest = posixpath.join(parent, new_filename) if parent else new_filename
+    return f"{scheme}{new_rest}"
+
+
 def env_backup_address(location: str) -> str:
     """Holding address for the current production asset during a publish."""
     return f"{location}__pub_backup"
@@ -250,6 +282,27 @@ class EnvironmentManager:
             return None
         name = active.read_text(encoding="utf-8").strip()
         return name or None
+
+    def _fingerprint_file(self, env_name: str) -> Path:
+        return self._env_dir(env_name) / "fingerprint.json"
+
+    def save_fingerprint(self, env_name: str, data: dict) -> None:
+        """Persist the model fingerprint the environment was last built with.
+
+        Stored as a plain dict; (de)serialization to typed models lives in
+        ``trilogy.execution.model_fingerprint``.
+        """
+        with self._lock:
+            self.ensure(env_name)
+            self._fingerprint_file(env_name).write_text(
+                json.dumps(data, indent=2), encoding="utf-8"
+            )
+
+    def load_fingerprint(self, env_name: str) -> dict | None:
+        fingerprint_file = self._fingerprint_file(env_name)
+        if not fingerprint_file.exists():
+            return None
+        return json.loads(fingerprint_file.read_text(encoding="utf-8"))
 
     def track_assets(self, env_name: str, addresses: list[str]) -> None:
         """Union physical addresses into the environment's tracked-asset list."""

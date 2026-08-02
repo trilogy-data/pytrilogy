@@ -160,6 +160,45 @@ def test_first_publish_without_existing_prod(project: Path):
     assert "dev_orders_summary" not in tables(db)
 
 
+def test_env_fingerprint_diff_workflow(project: Path):
+    # a successful run under the environment records its fingerprint
+    invoke("run", "model.preql", "--environment", "dev")
+    result = CliRunner().invoke(cli, ["env", "diff", "dev", "."])
+    assert result.exit_code == 0, (result.output, result.exception)
+    assert "identical" in result.output
+
+    # change the model: diff reports the change and the datasource to rebuild
+    (project / "model.preql").write_text(MODEL_V2, encoding="utf-8")
+    result = CliRunner().invoke(cli, ["env", "diff", "dev", "."])
+    assert result.exit_code == 1, (result.output, result.exception)
+    assert "orders_summary" in result.output
+
+    # explicit re-record clears the diff
+    invoke("env", "fingerprint", "dev", ".")
+    result = CliRunner().invoke(cli, ["env", "diff", "dev", "."])
+    assert result.exit_code == 0, (result.output, result.exception)
+
+
+def test_env_diff_between_environments(project: Path):
+    invoke("env", "fingerprint", "dev", ".")
+    (project / "model.preql").write_text(MODEL_V2, encoding="utf-8")
+    invoke("env", "fingerprint", "prod", ".")
+
+    result = CliRunner().invoke(cli, ["env", "diff", "dev", ".", "--against", "prod"])
+    assert result.exit_code == 1, (result.output, result.exception)
+    assert "orders_summary" in result.output
+
+    result = CliRunner().invoke(cli, ["env", "diff", "dev", ".", "--against", "dev"])
+    assert result.exit_code == 0, (result.output, result.exception)
+
+
+def test_env_diff_without_recorded_fingerprint(project: Path):
+    invoke("env", "create", "empty")
+    result = CliRunner().invoke(cli, ["env", "diff", "empty", "."])
+    assert result.exit_code == 2, (result.output, result.exception)
+    assert "no recorded fingerprint" in result.output
+
+
 REFRESH_MODEL = """
 key order_id int;
 property order_id.amount int;

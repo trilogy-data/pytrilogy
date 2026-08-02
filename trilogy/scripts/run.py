@@ -276,6 +276,14 @@ def run(
                             execution_fn=execute_script_for_run,
                             execution_mode=ExecutionMode.RUN,
                         )
+                    if activation:
+                        from trilogy.scripts.env_commands import (
+                            record_env_fingerprint,
+                        )
+
+                        record_env_fingerprint(
+                            activation, str(input), param, cli_params.config_path
+                        )
                 finally:
                     # Snapshot regardless of outcome; never alters the exit code.
                     maybe_write_state_snapshot(

@@ -199,6 +199,17 @@ class SnapshotStateStore(BaseStateStore):
             env, executor, ds_id, root_assets=root_assets, force=force
         )
 
+    def recorded_model_fingerprint(
+        self, env: Environment, ds: Datasource
+    ) -> str | None:
+        """The snapshot's own record of what the asset was built with wins
+        over any ambient baseline — it describes the actual build."""
+        project_root = self.project_root or Path(env.working_path).resolve()
+        recorded = self._recorded_state(ds, project_root)
+        if recorded is not None and recorded.model_fingerprint:
+            return recorded.model_fingerprint
+        return super().recorded_model_fingerprint(env, ds)
+
 
 def snapshot_store_factory(
     snapshot: StateSnapshot, project_root: Path | None = None

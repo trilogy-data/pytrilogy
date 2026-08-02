@@ -32,6 +32,38 @@ Central class for watermark collection and staleness detection.
 - `run_freshness_probe_cached(path)`: memoized wrapper around `run_freshness_probe`. Same probe path used by N datasources in one refresh invocation = one subprocess call. Memo keyed by path; cleared by `invalidate_address` for any ds whose `freshness_probe` matches.
 - A `threading.Lock` guards cache mutations — managed nodes evaluate in parallel, so reads/writes must serialize.
 
+### Model-fingerprint staleness
+
+`is_stale` checks the asset's model fingerprint before the schema probe (pure
+CPU, no warehouse query): when a recorded effective hash (see
+`trilogy/core/fingerprint.py`) differs from the current parse's, the asset is
+stale with reason "model changed since last build" and empty filters — a full
+rebuild, because an incremental filter would keep rows computed under the old
+definition.
+
+Recorded hashes come from, in precedence order: the seeded snapshot's
+per-asset `DatasourceState.model_fingerprint` (stamped by both snapshot
+producers), then the ambient `model_fingerprint_baseline` (installed by
+`refresh` from a deployment env's recorded fingerprint; keyed by LOGICAL
+location — env prefixes stripped, since fingerprints are env-invariant).
+
+Rules that are load-bearing:
+
+- `invalidate`/`invalidate_address` mark the asset in `_model_refreshed`, and
+  the check never fires for marked assets. The recorded hash describes the
+  PRE-refresh build and lives in an immutable file, so without the mark the
+  post-refresh re-evaluations (`execute_refresh_plan`'s cascade, directory
+  execute-time re-decides) would see the same mismatch and refresh twice —
+  the same rule as never re-seeding watermarks after invalidation.
+- Fingerprinting must never fail staleness or snapshot production; a compute
+  error skips the check / leaves the field None. Old snapshots read the same
+  way, so the feature is opt-in by data presence.
+- `refresh` maintains but never ESTABLISHES an env fingerprint record
+  (auto-record only when a baseline existed, the run was unscoped and not
+  dry, and something rebuilt). First records come from `run` or `trilogy env
+  fingerprint` — recording after a watermark-only refresh would claim tables
+  were built with code that never ran.
+
 ### Allowable lag (`within`)
 
 A datasource may declare `within <n> [unit]` — how far behind its upstream it

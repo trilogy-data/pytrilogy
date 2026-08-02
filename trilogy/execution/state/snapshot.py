@@ -275,6 +275,11 @@ class DatasourceState(BaseModel):
     # can, derive their own verdict from ``observations`` instead.
     status: AssetStatus = "unknown"
     stale_reason: str | None = None
+    # Effective content hash of the datasource's model definition at snapshot
+    # time (trilogy.core.fingerprint; deployment-env invariant). Lets a reader
+    # detect that an asset was built from different model code without
+    # re-parsing. Optional: populated when the producer had a parsed model.
+    model_fingerprint: str | None = None
     observed_watermarks: list[WatermarkValue] = Field(default_factory=list)
     expected_watermarks: list[WatermarkValue] = Field(default_factory=list)
     columns: list[ColumnMapping] = Field(default_factory=list)

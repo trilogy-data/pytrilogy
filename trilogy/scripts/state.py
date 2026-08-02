@@ -152,24 +152,23 @@ def _snapshot_from_directory(
         keys_by_address.setdefault(address, key)
         scripts = probe.ds_to_scripts.get(ds_id) or []
         partitions, partition_summary = _partition_states(ds, merged_partitions, run_id)
-        entries.append(
-            (
-                key,
-                build_datasource_state(
-                    ds,
-                    merged_watermarks.get(ds_id),
-                    stale_map.get(ds_id),
-                    merged_concept_max,
-                    script=(
-                        project_relative_path(str(scripts[0].path), project_root)
-                        if scripts
-                        else None
-                    ),
-                    partitions=partitions,
-                    partition_summary=partition_summary,
-                ),
-            )
+        state = build_datasource_state(
+            ds,
+            merged_watermarks.get(ds_id),
+            stale_map.get(ds_id),
+            merged_concept_max,
+            script=(
+                project_relative_path(str(scripts[0].path), project_root)
+                if scripts
+                else None
+            ),
+            partitions=partitions,
+            partition_summary=partition_summary,
         )
+        recorded_fp = probe.model_fingerprints.get(ds_id)
+        if recorded_fp is not None:
+            state.model_fingerprint = recorded_fp
+        entries.append((key, state))
 
     return merge_into_snapshot(
         entries,
@@ -230,6 +229,19 @@ def snapshot_for_parsed_script(
         if ds.is_managed
     }
 
+    # A snapshot must never fail on fingerprinting; absent hashes are legal.
+    try:
+        from trilogy.core.fingerprint import build_environment_fingerprint
+
+        model_fingerprints = build_environment_fingerprint(
+            executor.environment
+        ).datasources
+    except Exception as e:
+        from trilogy.constants import logger
+
+        logger.debug(f"Model fingerprinting skipped for snapshot: {e}")
+        model_fingerprints = {}
+
     script_attr = project_relative_path(str(script_path), project_root)
     keys_by_address: dict[str, str] = {}
     entries: list[tuple[str, DatasourceState]] = []
@@ -237,20 +249,19 @@ def snapshot_for_parsed_script(
         key = _asset_key(ds, ds.safe_address, project_root)
         keys_by_address.setdefault(ds.safe_address, key)
         partitions, partition_summary = _partition_states(ds, probed_partitions, run_id)
-        entries.append(
-            (
-                key,
-                build_datasource_state(
-                    ds,
-                    watermarks.get(ds.identifier),
-                    stale_map.get(ds.identifier),
-                    store.concept_max_watermarks,
-                    script=script_attr,
-                    partitions=partitions,
-                    partition_summary=partition_summary,
-                ),
-            )
+        state = build_datasource_state(
+            ds,
+            watermarks.get(ds.identifier),
+            stale_map.get(ds.identifier),
+            store.concept_max_watermarks,
+            script=script_attr,
+            partitions=partitions,
+            partition_summary=partition_summary,
         )
+        recorded = model_fingerprints.get(ds.identifier)
+        if recorded is not None:
+            state.model_fingerprint = recorded.effective
+        entries.append((key, state))
     return merge_into_snapshot(
         entries,
         managed_addresses={

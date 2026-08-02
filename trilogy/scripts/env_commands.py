@@ -277,6 +277,213 @@ def env() -> None:
     """Manage deployment environments (namespaced builds + publish cutover)."""
 
 
+def _resolve_env_name(manager: EnvironmentManager, name: str | None) -> str:
+    resolved = name or manager.get_active()
+    if not resolved:
+        print_error("No environment named and none activated.")
+        raise Exit(2)
+    return resolved
+
+
+def _current_code_fingerprint(input: str, param: tuple[str, ...], config):
+    from trilogy.execution.model_fingerprint import build_project_fingerprint
+    from trilogy.scripts.environment import parse_env_params
+    from trilogy.scripts.state import project_root_for
+
+    input_path = Path(input)
+    files = resolve_input(input_path)
+    anchor = _anchor_dir(input)
+    project_root = project_root_for(config, anchor)
+    env_params = parse_env_params(param)
+    return build_project_fingerprint(files, project_root, env_params)
+
+
+def record_env_fingerprint(
+    activation: EnvActivation,
+    input: str,
+    param: tuple[str, ...],
+    config_path: Path | None = None,
+) -> None:
+    """Record the current code's fingerprint for the scripts just built.
+
+    Called after a successful run/refresh under an environment; only the
+    scripts in scope are updated. Never fails the command it rides on, and
+    silently skips inline-query inputs (no script to fingerprint).
+    """
+    from trilogy.execution.model_fingerprint import update_project_fingerprint
+
+    try:
+        if not Path(input).exists():
+            return
+    except OSError:
+        return
+    try:
+        config = get_runtime_config(_anchor_dir(input), config_path)
+        fingerprint = _current_code_fingerprint(input, param, config)
+        if fingerprint.scripts:
+            update_project_fingerprint(activation.manager, activation.name, fingerprint)
+    except Exception as e:
+        logger.warning(f"Could not record environment fingerprint: {e}")
+
+
+def load_env_model_baseline(activation: EnvActivation) -> dict[str, str] | None:
+    """The env's recorded fingerprint as a staleness baseline, or None.
+
+    Installed around a refresh so the state store treats datasources whose
+    current definition differs from what the env was built with as stale —
+    watermark comparison alone cannot see a model change. Never fails the
+    command it rides on.
+    """
+    from trilogy.execution.model_fingerprint import (
+        fingerprint_baseline,
+        load_project_fingerprint,
+    )
+
+    try:
+        recorded = load_project_fingerprint(activation.manager, activation.name)
+    except Exception as e:
+        logger.debug(f"Model baseline unavailable: {e}")
+        return None
+    if recorded is None:
+        return None
+    return fingerprint_baseline(recorded) or None
+
+
+def _show_section_diff(label: str, section) -> None:
+    for key in section.added:
+        print_info(f"    + {label} {key}")
+    for key in section.removed:
+        print_info(f"    - {label} {key}")
+    for old, new in section.renamed.items():
+        print_info(f"    ~ {label} {old} -> {new} (renamed, no rebuild)")
+    for key, kind in section.changed.items():
+        print_info(f"    ~ {label} {key} ({kind.value})")
+
+
+def _show_project_diff(diff) -> None:
+    for script in diff.added_scripts:
+        print_info(f"  + script {script}")
+    for script in diff.removed_scripts:
+        print_info(f"  - script {script}")
+    for script, script_diff in diff.changed_scripts.items():
+        print_info(f"  ~ script {script}")
+        _show_section_diff("concept", script_diff.concepts)
+        _show_section_diff("datasource", script_diff.datasources)
+        if script_diff.extras_changed:
+            print_info("    ~ merges/functions/types changed")
+    if diff.invalidated_datasources:
+        print_warning("Datasources needing rebuild:")
+        for entry in diff.invalidated_datasources:
+            location = f" @ {entry.location}" if entry.location else ""
+            print_warning(
+                f"  {entry.datasource_id}{location} "
+                f"[{entry.script}] ({entry.kind.value})"
+            )
+    else:
+        print_info("No datasources need rebuild.")
+
+
+@env.command("fingerprint")
+@argument("name", required=False, default=None)
+@argument("input", type=click.Path(), default=".")
+@option("--param", multiple=True)
+@option("--config", "config_path", type=click.Path(exists=True), default=None)
+def env_fingerprint(name: str | None, input: str, param, config_path: str | None):
+    """Record the current model code as an environment's fingerprint.
+
+    Normally recorded automatically by a successful run/refresh under the
+    environment; use this to (re)record explicitly. NAME defaults to the
+    activated environment.
+    """
+    from trilogy.execution.model_fingerprint import update_project_fingerprint
+
+    anchor = _anchor_dir(input)
+    config = get_runtime_config(anchor, Path(config_path) if config_path else None)
+    manager = manager_for(config, anchor)
+    env_name = _resolve_env_name(manager, name)
+    manager.ensure(env_name)
+    fingerprint = _current_code_fingerprint(input, param, config)
+    update_project_fingerprint(manager, env_name, fingerprint)
+    print_success(
+        f"Recorded fingerprint for '{env_name}': {len(fingerprint.scripts)} "
+        f"script(s), root {fingerprint.root[:12]}."
+    )
+
+
+@env.command("diff")
+@argument("name", required=False, default=None)
+@argument("input", type=click.Path(), default=".")
+@option(
+    "--against",
+    default=None,
+    help="Compare against this environment's recorded fingerprint instead of "
+    "the current code",
+)
+@option("--param", multiple=True)
+@option("--config", "config_path", type=click.Path(exists=True), default=None)
+@option("--json", "as_json", is_flag=True, default=False, help="Emit the diff as JSON")
+def env_diff(
+    name: str | None,
+    input: str,
+    against: str | None,
+    param,
+    config_path: str | None,
+    as_json: bool,
+):
+    """Diff an environment's recorded model against the current code.
+
+    With --against, diffs two environments' recorded models instead. Exit
+    codes: 0 = identical, 1 = different, 2 = error.
+    """
+    from trilogy.core.fingerprint import FingerprintError
+    from trilogy.execution.model_fingerprint import (
+        diff_project_fingerprints,
+        load_project_fingerprint,
+    )
+
+    anchor = _anchor_dir(input)
+    config = get_runtime_config(anchor, Path(config_path) if config_path else None)
+    manager = manager_for(config, anchor)
+    env_name = _resolve_env_name(manager, name)
+
+    def recorded(label: str):
+        try:
+            fingerprint = load_project_fingerprint(manager, label)
+        except FingerprintError as e:
+            print_error(str(e))
+            raise Exit(2) from e
+        if fingerprint is None:
+            print_error(
+                f"Environment '{label}' has no recorded fingerprint. Run "
+                f"'trilogy env fingerprint {label}' or a run/refresh under it."
+            )
+            raise Exit(2)
+        return fingerprint
+
+    base = recorded(env_name)
+    if against:
+        other = recorded(against)
+        other_label = f"environment '{against}'"
+    else:
+        try:
+            other = _current_code_fingerprint(input, param, config)
+        except FileNotFoundError as e:
+            print_error(str(e))
+            raise Exit(2) from e
+        other_label = "current code"
+
+    diff = diff_project_fingerprints(base, other)
+    if as_json:
+        click.echo(diff.model_dump_json(indent=2))
+    elif diff.identical:
+        print_success(f"'{env_name}' is identical to {other_label}.")
+    else:
+        print_info(f"'{env_name}' vs {other_label}:")
+        _show_project_diff(diff)
+    if not diff.identical:
+        raise Exit(1)
+
+
 @env.command("create")
 @argument("name")
 @argument("input", type=click.Path(), default=".")
