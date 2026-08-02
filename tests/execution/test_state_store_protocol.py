@@ -82,8 +82,8 @@ def test_preseeded_store_short_circuits_asset_probing():
     store = PreSeededStore()
     seeded = DatasourceWatermark(
         keys={
-            "updated_at": UpdateKey(
-                concept_name="updated_at",
+            "local.updated_at": UpdateKey(
+                concept_name="local.updated_at",
                 type=UpdateKeyType.INCREMENTAL_KEY,
                 value=datetime(2024, 1, 10, 12, 0, 0),
             )
@@ -100,7 +100,7 @@ def test_preseeded_store_short_circuits_asset_probing():
     # Seeded value matches the root max, so nothing is stale.
     assert plan.stale_assets == []
     # Root concept-max computation ran against the custom store.
-    assert "updated_at" in plan.concept_max_watermarks
+    assert "local.updated_at" in plan.concept_max_watermarks
 
 
 def test_recording_store_is_used_for_staleness_decisions():
@@ -112,8 +112,8 @@ def test_recording_store_is_used_for_staleness_decisions():
     store = PreSeededStore()
     store.watermarks["target_items"] = DatasourceWatermark(
         keys={
-            "updated_at": UpdateKey(
-                concept_name="updated_at",
+            "local.updated_at": UpdateKey(
+                concept_name="local.updated_at",
                 type=UpdateKeyType.INCREMENTAL_KEY,
                 value=datetime(2020, 1, 1, 0, 0, 0),  # far behind the root
             )
@@ -126,4 +126,4 @@ def test_recording_store_is_used_for_staleness_decisions():
     stale_ids = {a.datasource_id for a in plan.stale_assets}
     assert stale_ids == {"target_items"}
     reason = plan.stale_assets[0].reason
-    assert "updated_at" in reason and "behind" in reason
+    assert "local.updated_at" in reason and "behind" in reason

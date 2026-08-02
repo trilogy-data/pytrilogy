@@ -206,10 +206,14 @@ def test_state_stale_detection(runner, tmp_path):
 
     observed = {w.key: w for w in ds.observed_watermarks}
     expected = {w.key: w for w in ds.expected_watermarks}
-    assert "ev_ts" in observed
-    assert "ev_ts" in expected
-    assert observed["ev_ts"].value and "2024-01-15" in observed["ev_ts"].value
-    assert expected["ev_ts"].value and "2024-02-01" in expected["ev_ts"].value
+    assert "local.ev_ts" in observed
+    assert "local.ev_ts" in expected
+    assert (
+        observed["local.ev_ts"].value and "2024-01-15" in observed["local.ev_ts"].value
+    )
+    assert (
+        expected["local.ev_ts"].value and "2024-02-01" in expected["local.ev_ts"].value
+    )
 
     assert snapshot.summary.stale >= 1
 
@@ -358,20 +362,22 @@ def test_refresh_state_file_phased_observations(runner, tmp_path):
     begin_values = {w.key: w.value for w in begin.observed_watermarks}
     end_values = {w.key: w.value for w in end.observed_watermarks}
     # Found behind (the pre-refresh probe), left refreshed.
-    assert begin_values["ev_ts"] and "2024-01-15" in begin_values["ev_ts"]
-    assert end_values["ev_ts"] and "2024-02-01" in end_values["ev_ts"]
+    assert begin_values["local.ev_ts"] and "2024-01-15" in begin_values["local.ev_ts"]
+    assert end_values["local.ev_ts"] and "2024-02-01" in end_values["local.ev_ts"]
     assert begin.probed_at and end.probed_at
     # The end phase carries the freshest expected values the run attests to.
-    assert {w.key for w in end.expected_watermarks} == {"ev_ts"}
+    assert {w.key for w in end.expected_watermarks} == {"local.ev_ts"}
     assert all(w.probed_at for w in end.observed_watermarks)
 
     # Both phases carry BOTH sides, so the reader can re-derive each verdict
     # without trusting ds.plan: behind at begin, caught up at end.
     begin_expected = {w.key: w.value for w in begin.expected_watermarks}
     end_expected = {w.key: w.value for w in end.expected_watermarks}
-    assert begin_expected["ev_ts"] and "2024-02-01" in begin_expected["ev_ts"]
-    assert begin_values["ev_ts"] < begin_expected["ev_ts"]  # stale, derived
-    assert end_values["ev_ts"] == end_expected["ev_ts"]  # fresh, derived
+    assert (
+        begin_expected["local.ev_ts"] and "2024-02-01" in begin_expected["local.ev_ts"]
+    )
+    assert begin_values["local.ev_ts"] < begin_expected["local.ev_ts"]  # stale, derived
+    assert end_values["local.ev_ts"] == end_expected["local.ev_ts"]  # fresh, derived
 
     # The plan's verdict rides as an auditable input, not a trusted class.
     assert ds.plan is not None

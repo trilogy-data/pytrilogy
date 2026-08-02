@@ -1,5 +1,26 @@
 ## State Store & Watermarks
 
+### Watermark key convention (load-bearing)
+
+A watermark key is the concept's **full address** as known to the emitting
+environment (`order_item.created_at.date`), or the literal `update_time` for a
+table-mtime watermark. Never a bare concept name: names collide across
+namespaces (`events.created_at` and `orders.created_at` are both `created_at`,
+so a name-keyed `concept_max_watermarks` merges unrelated roots' maxima), and a
+derived property's dotted name (`created_at.date`) is ambiguous against both
+addresses and bare names. Addresses make every pairing — observed vs
+`concept_max`, `missing_derived` resolution, `UpdateKey.to_comparison`'s
+concept lookup, snapshot column-binding — an exact, deterministic lookup.
+
+Keys still never cross environments as text. Within one environment addresses
+are canonical; across environments the bridge is **physical**:
+
+- A snapshot read by a different model re-keys through `WatermarkValue.column`
+  (`snapshot._rekey_for`) onto the reader's own addresses.
+- Cross-script root injection (`initial_watermarks`) is keyed by datasource
+  identifier, which only matches when the namespaces — and therefore the inner
+  addresses — match too; a non-matching identifier just re-probes.
+
 ### BaseStateStore
 
 Central class for watermark collection and staleness detection.
@@ -80,7 +101,7 @@ After a script-kind refresh, the freshness_probe is re-run once. If it still ret
 
 - The snapshot's unit of identity is the **physical address**. Never key on `ds_id` or script — concept addresses are namespaced per script and are deliberately never reconciled across scripts.
 - `managed_states_by_address` excludes roots on purpose: a root watermark is the *expected* side of every staleness comparison, so reusing a recorded one would hide an upstream that has since moved. Roots are always re-probed live.
-- `watermarks_for_datasource` re-keys a recorded watermark onto the reading model's concept names via the shared **physical column** (`WatermarkValue.column`). Watermark keys are concept names, so without this a renamed model's seeded values are silently never compared. Key conventions mirror `watermarks.py`: full address for `KEY_HASH`, bare name otherwise, literal `update_time` passes through.
+- `watermarks_for_datasource` re-keys a recorded watermark onto the reading model's own concept addresses via the shared **physical column** (`WatermarkValue.column`). Watermark keys are concept addresses, which are namespaced per script, so without this a different model's seeded values are silently never compared. `update_time` (no concept) passes through, as does a legacy name-keyed entry with no recorded column — it falls out of comparisons like any unknown key.
 - `SnapshotStateStore` seeds **once**, on the first env-aware call. It must NOT re-seed afterwards — `invalidate_address` drops entries so post-refresh evaluation re-reads the warehouse, and re-seeding there would resurrect the pre-refresh value.
 
 ### Partition state (`partitions.py`)

@@ -536,7 +536,7 @@ import base;
     assert result.exit_code == 2, result.output
     assert confirm.call_count == 1
     assert "target_events_table" in result.output
-    assert "incremental key 'event_ts' behind" in result.output
+    assert "incremental key 'local.event_ts' behind" in result.output
     assert "Asset Status:" in result.output
 
 

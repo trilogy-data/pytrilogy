@@ -175,7 +175,7 @@ def _validate_probe_coverage(
     probe_addrs: set[str],
     address_map: dict[str, str],
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]],
-    expected_root_names_by_addr: dict[str, set[str]],
+    expected_root_keys_by_addr: dict[str, set[str]],
     all_root_watermarks: dict[str, DatasourceWatermark],
     refreshable_root_addrs: set[str] | None = None,
 ) -> None:
@@ -201,21 +201,21 @@ def _validate_probe_coverage(
         )
         raise Exit(1)
 
-    provided_root_names_by_addr: dict[str, set[str]] = defaultdict(set)
+    provided_root_keys_by_addr: dict[str, set[str]] = defaultdict(set)
     for ds_id, watermark in all_root_watermarks.items():
         addr = address_map.get(ds_id)
         if addr:
-            provided_root_names_by_addr[addr].update(watermark.keys)
+            provided_root_keys_by_addr[addr].update(watermark.keys)
 
     missing_root_details = {
-        addr: sorted(expected_names - provided_root_names_by_addr.get(addr, set()))
-        for addr, expected_names in expected_root_names_by_addr.items()
-        if expected_names - provided_root_names_by_addr.get(addr, set())
+        addr: sorted(expected_keys - provided_root_keys_by_addr.get(addr, set()))
+        for addr, expected_keys in expected_root_keys_by_addr.items()
+        if expected_keys - provided_root_keys_by_addr.get(addr, set())
     }
     if missing_root_details:
         detail_str = "; ".join(
-            f"{addr}: {', '.join(names)}"
-            for addr, names in sorted(missing_root_details.items())
+            f"{addr}: {', '.join(keys)}"
+            for addr, keys in sorted(missing_root_details.items())
         )
         print_error(
             "Refresh probe validation failed: some root watermark concepts were "
@@ -341,9 +341,9 @@ def probe_directory_state(
     # that are needed by at least one non-root datasource in any script
     root_addr_to_needed_concepts: dict[str, set[str]] = defaultdict(set)
     root_probe_candidates: dict[str, dict[ScriptNode, set[str]]] = defaultdict(dict)
-    root_probe_name_candidates: dict[str, dict[ScriptNode, set[str]]] = defaultdict(
-        dict
-    )
+    # Same shape, but holding the watermark KEYS the probe will emit (concept
+    # addresses) so coverage validation compares like against like.
+    root_probe_key_candidates: dict[str, dict[ScriptNode, set[str]]] = defaultdict(dict)
 
     script_files = [fp.resolve() for fp in files if not isinstance(fp, StringIO)]
     print_info(f"Scanning {len(script_files)} file(s)...")
@@ -419,13 +419,13 @@ def probe_directory_state(
                     if matching:
                         root_addr_to_needed_concepts[ds.safe_address].update(matching)
                         root_probe_candidates.setdefault(ds.safe_address, {})
-                        root_probe_name_candidates.setdefault(ds.safe_address, {})
+                        root_probe_key_candidates.setdefault(ds.safe_address, {})
                         root_probe_candidates[ds.safe_address].setdefault(
                             node, set()
                         ).update(matching)
-                        root_probe_name_candidates[ds.safe_address].setdefault(
+                        root_probe_key_candidates[ds.safe_address].setdefault(
                             node, set()
-                        ).update(env.concepts[ref].name for ref in matching)
+                        ).update(env.concepts[ref].address for ref in matching)
 
     validate_force_sources(force_sources, available_datasources)
     if cli_params.refresh_params:
@@ -501,11 +501,11 @@ def probe_directory_state(
     # Only probe root addresses that were directly matched to a needed concept within
     # an executor context — no cross-script namespace reconciliation needed.
     root_probe_plan: dict[ScriptNode, dict[str, set[str]]] = defaultdict(dict)
-    expected_root_names_by_addr: dict[str, set[str]] = {}
+    expected_root_keys_by_addr: dict[str, set[str]] = {}
     for addr, matches_by_node in root_probe_candidates.items():
         probe_node = min(matches_by_node, key=lambda n: script_to_order.get(n, 999999))
         root_probe_plan[probe_node][addr] = matches_by_node[probe_node]
-        expected_root_names_by_addr[addr] = root_probe_name_candidates[addr][probe_node]
+        expected_root_keys_by_addr[addr] = root_probe_key_candidates[addr][probe_node]
 
     from trilogy.scripts.display import root_probe_progress, show_root_concepts
 
@@ -573,7 +573,7 @@ def probe_directory_state(
         probe_addrs,
         address_map,
         plans_by_node,
-        expected_root_names_by_addr,
+        expected_root_keys_by_addr,
         all_root_watermarks,
         refreshable_root_addrs=refreshable_root_addrs,
     )

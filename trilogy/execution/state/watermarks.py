@@ -30,6 +30,21 @@ from trilogy.execution.state.exceptions import (
 
 @dataclass
 class DatasourceWatermark:
+    """Watermark values for one datasource, keyed by watermark key.
+
+    The key is the concept's **full address** as known to the emitting
+    environment (``order_item.created_at.date``), or the literal
+    ``"update_time"`` for a table-mtime watermark, which has no concept.
+    Addresses are the one deterministic identity inside an environment —
+    names collide (``events.created_at`` and ``orders.created_at`` are both
+    ``created_at``) and a derived property's dotted name is ambiguous
+    against them. Watermarks never cross environments by key: a snapshot
+    read by a different model is re-keyed through the physical column
+    binding (``snapshot._rekey_for``), and cross-script root injection is
+    keyed by datasource identifier, which only matches when the namespaces
+    — and therefore the addresses — match too.
+    """
+
     keys: dict[str, UpdateKey]
 
 
@@ -327,8 +342,8 @@ def _get_max_watermarks(
 
         max_value = _execute_raw_sql_scalar(query, executor)
 
-        watermarks[concept.name] = UpdateKey(
-            concept_name=concept.name,
+        watermarks[concept.address] = UpdateKey(
+            concept_name=concept.address,
             type=key_type,
             value=max_value,
         )
@@ -424,8 +439,8 @@ def get_concept_max_watermarks(
 
         max_value = _execute_raw_sql_scalar(query, executor)
 
-        watermarks[concept.name] = UpdateKey(
-            concept_name=concept.name,
+        watermarks[concept.address] = UpdateKey(
+            concept_name=concept.address,
             type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )

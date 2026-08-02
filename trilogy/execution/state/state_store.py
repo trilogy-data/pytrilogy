@@ -340,9 +340,10 @@ class BaseStateStore:
                     and key not in concept_max_watermarks
                     and key not in missing_derived
                 ):
-                    concept = next(
-                        (c for c in env.concepts.values() if c.name == key), None
-                    )
+                    # Keys are concept addresses, so this is an exact lookup —
+                    # which may lazily materialize an auto-derived property
+                    # (``created_at.date``) rather than scanning for a name.
+                    concept = env.concepts.get(key)
                     if concept is not None and concept.lineage is not None:
                         missing_derived[key] = concept.address
 
