@@ -393,11 +393,22 @@ dialect = "duck_db"
 # Parallelism level for directory execution
 # parallelism = 2
 
+# Connection parameters for the dialect; ${env:VAR} reads an environment variable
+[engine.config]
+# db_location = "local.duckdb"
+
 # Startup scripts to run before execution
 [setup]
 # startup_trilogy = []
 sql = ['setup/setup_dev.sql']
 ```
+
+`trilogy init [path] [dialect]` scaffolds this file, alongside `root/` (where
+`trilogy ingest` writes generated models by default), `jobs/`, and an example
+script. Passing a dialect (`trilogy init . bigquery`) pins `engine.dialect` and
+stubs out that dialect's connection parameters in `[engine.config]`. Init
+refuses to run over an existing `trilogy.toml`; `--force` overwrites it and
+leaves every other file untouched.
 
 ## More Resources
 

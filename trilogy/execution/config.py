@@ -174,7 +174,7 @@ class AgentConfig:
     # When False, the agent's `trilogy` tool refuses `database list`/`database
     # describe` and the prompt omits them. Raw-table introspection is for
     # building a model (ingest); during query generation the model already
-    # exists under raw/, and listing tables just adds a confusing, unneeded
+    # exists under root/, and listing tables just adds a confusing, unneeded
     # surface. The per-query eval turns this off; the ingest eval leaves it on.
     allow_database_introspection: bool = True
     # When False, the ``trilogy`` tool refuses ``file read`` (a gentle deny that

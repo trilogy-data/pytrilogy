@@ -29,6 +29,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.common import (
+    MODEL_ROOT_DIR,
     create_executor,
     find_trilogy_config,
     get_runtime_config,
@@ -239,6 +240,18 @@ def _column_grain_penalty(
     return _PENALTY_FK if stem is not None else 0
 
 
+# Types warehouses refuse to GROUP BY or COUNT(DISTINCT) — BigQuery rejects both
+# on GEOGRAPHY, and nested types have no scalar equality — so they can never be
+# verified as a grain and are excluded from candidate keys entirely.
+_UNKEYABLE_TYPES = frozenset(
+    {DataType.GEOGRAPHY, DataType.ARRAY, DataType.MAP, DataType.STRUCT}
+)
+
+
+def _unkeyable_columns(columns: list[TableColumn]) -> set[str]:
+    return {c.column_name for c in columns if c.trilogy_type in _UNKEYABLE_TYPES}
+
+
 def _rank_key_candidates(
     candidates: list[list[str]],
     column_order: dict[str, int],
@@ -259,6 +272,7 @@ def detect_unique_key_combinations(
     sample_rows: list[tuple],
     max_key_size: int = 3,
     penalties: dict[str, int] | None = None,
+    exclude: set[str] | None = None,
 ) -> list[list[str]]:
     """Detect unique key combinations from sample data.
 
@@ -266,16 +280,20 @@ def detect_unique_key_combinations(
     smallest size first. Within a size, ``penalties`` (raw column name → cost,
     from ``_grain_penalties``) ranks candidates so a natural key beats an
     equally-unique combination of measures/foreign keys; absent it, column order.
+    ``exclude`` drops columns that cannot be a key at all (see
+    ``_unkeyable_columns``).
     """
     if not sample_rows or not column_names:
         return []
 
     column_order = {name: i for i, name in enumerate(column_names)}
     penalties = penalties or {}
+    exclude = exclude or set()
+    eligible = [(i, n) for i, n in enumerate(column_names) if n not in exclude]
 
     single = [
         [name]
-        for i, name in enumerate(column_names)
+        for i, name in eligible
         if _check_column_combination_uniqueness([i], sample_rows)
     ]
     if single:
@@ -283,7 +301,7 @@ def detect_unique_key_combinations(
 
     for size in range(2, max_key_size + 1):
         sized: list[list[str]] = []
-        for col_combination in combinations(enumerate(column_names), size):
+        for col_combination in combinations(eligible, size):
             indices = [idx for idx, _ in col_combination]
             col_names = [name for _, name in col_combination]
             if _check_column_combination_uniqueness(indices, sample_rows):
@@ -539,6 +557,7 @@ def create_datasource_from_file(
             columns,
             column_concept_mapping,
         ),
+        exclude=_unkeyable_columns(columns),
     )
     if suggested_keys:
         print_info(f"Detected potential unique key combinations: {suggested_keys}")
@@ -650,6 +669,7 @@ def create_datasource_from_table(
             column_names,
             sample_rows,
             penalties=_grain_penalties(table_name, columns, column_concept_mapping),
+            exclude=_unkeyable_columns(columns),
         )
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
@@ -871,12 +891,11 @@ def ingest(
     if output:
         output_dir = PathlibPath(output)
     elif config:
-        output_dir = PathlibPath(config).parent / "raw"
+        output_dir = PathlibPath(config).parent / MODEL_ROOT_DIR
     else:
         found_config = find_trilogy_config()
-        output_dir = (
-            (found_config.parent / "raw") if found_config else PathlibPath.cwd() / "raw"
-        )
+        base = found_config.parent if found_config else PathlibPath.cwd()
+        output_dir = base / MODEL_ROOT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cli_env_vars: dict[str, str] = {}

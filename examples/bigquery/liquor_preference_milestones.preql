@@ -1,0 +1,20 @@
+import raw.bigquery_public_data_iowa_liquor_sales_sales as sales;
+
+with annual_category as
+where sales.category_name is not null and sales.volume_sold_liters > 0 and year(sales.date) <= 2025
+select
+    year(sales.date) as sale_year,
+    sales.category_name,
+    sum(sales.volume_sold_liters) as volume_liters;
+
+auto annual_total <- sum(annual_category.volume_liters) by annual_category.sale_year;
+auto volume_share_pct <- 100.0 * annual_category.volume_liters / annual_total;
+auto category_rank <- rank(annual_category.sales.category_name) over (partition by annual_category.sale_year order by annual_category.volume_liters desc);
+
+select
+    annual_category.sale_year,
+    annual_category.sales.category_name,
+    round(volume_share_pct, 2) as share_pct,
+    category_rank
+having annual_category.sale_year in (2012, 2017, 2021, 2025) and category_rank <= 10
+order by annual_category.sale_year asc, category_rank asc;

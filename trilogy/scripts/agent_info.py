@@ -20,7 +20,7 @@ Trilogy operates on an abstract semantic model, not tables.
 ### trilogy init [path]
 
 Create a new workspace (default: current dir): `trilogy init [path]`. Scaffolds
-`trilogy.toml`, `assets/root/` (the `root` namespace), `jobs/`, and a
+`trilogy.toml`, `root/` (the `root` namespace), `jobs/`, and a
 `hello_world.preql` example.
 
 ---
@@ -92,10 +92,10 @@ Prefer explore over reading the raw model file (`trilogy file read`);
 
 **Examples:**
 ```bash
-trilogy explore raw/my_fact.preql                    # full schema, grouped
-trilogy explore raw/my_fact.preql --regex customer --regex date
-trilogy explore raw/my_fact.preql --regex 'date\.(year|week_seq)'
-trilogy explore raw/my_fact.preql --show concepts --purpose key --purpose property
+trilogy explore root/my_fact.preql                    # full schema, grouped
+trilogy explore root/my_fact.preql --regex customer --regex date
+trilogy explore root/my_fact.preql --regex 'date\.(year|week_seq)'
+trilogy explore root/my_fact.preql --show concepts --purpose key --purpose property
 ```
 
 **Reading the JSON output: shared (conformed) dimensions.** A fact often binds the same
@@ -187,7 +187,7 @@ as a file.
 ### trilogy ingest
 
 Bootstrap a Trilogy model from existing warehouse tables, files, or cloud
-objects. 
+objects. Also spelled `trilogy import`.
 
 ---
 
@@ -451,7 +451,7 @@ code — the run's own outcome stands.
 DATASOURCES_DOC = """# Trilogy Datasource Authoring - AI Agent Reference
 
 When you must declare a NEW datasource (most agent tasks instead query an
-existing one in `raw/`), this reference covers every form Trilogy supports:
+existing one in `root/`), this reference covers every form Trilogy supports:
 the `root` keyword, file-based (Parquet / CSV / Python+Arrow), and the
 `partial` / `complete` forms for unioning partitioned subsets.
 
@@ -481,7 +481,7 @@ address source_schema.raw_rides;
   datasource declares `freshness_by` pointing to a concept that lives on the root — no
   configuration on the root itself is needed or allowed.
 
-**Convention:** place root datasource definitions in `assets/root/` so they can be imported
+**Convention:** place root datasource definitions in `root/` so they can be imported
 via `import root;` in downstream scripts. This is convention only — the `root` keyword is what
 matters, not the file location.
 
@@ -936,7 +936,7 @@ INGEST_DOC = """# trilogy ingest - AI Agent Reference
 
 Bootstrap datasources from existing warehouse tables OR from data files
 (local paths and remote URLs). Connects to a database, introspects schemas,
-and generates Trilogy datasource definitions under `raw/`.
+and generates Trilogy datasource definitions under `root/`.
 
 Most agent tasks query an EXISTING model — only invoke this when a fresh
 model needs to be generated.
@@ -944,6 +944,8 @@ model needs to be generated.
 ## Usage
 
 `trilogy ingest <sources> [dialect] [options] [conn_args...]`
+
+`trilogy import` is an alias for the same command.
 
 **Arguments:**
 - `sources` (required unless `--all`): Comma-separated list of either table names OR file
@@ -971,7 +973,7 @@ trilogy ingest "users,orders,products" duckdb "path/to/db.duckdb"
 trilogy ingest --all
 
 # Ingest with schema and output directory
-trilogy ingest "customers" postgres -s public -o raw/ "postgresql://localhost/db"
+trilogy ingest "customers" postgres -s public -o root/ "postgresql://localhost/db"
 
 # Ingest with foreign key relationships
 trilogy ingest "orders,customers" duckdb --fks "orders.customer_id:customers.id"
@@ -983,7 +985,7 @@ trilogy ingest ./data/orders.csv
 trilogy ingest https://example.com/data/events.parquet --name events
 
 # Ingest from a public GCS bucket
-trilogy ingest gs://my-bucket/sales.parquet -o raw/
+trilogy ingest gs://my-bucket/sales.parquet -o root/
 ```
 """
 

@@ -1,0 +1,18 @@
+# Top 10 liquor products by sales dollars for each of the latest five years
+import raw.bigquery_public_data_iowa_liquor_sales_sales as sales;
+
+auto sales_year <- year(sales.date);
+auto total_sales_dollars <- sum(sales.sale_dollars);
+auto bottles_sold <- sum(sales.bottles_sold);
+auto latest_year <- max(year(sales.date)) by *;
+auto sales_rank <- rank(sales.item_description) over (partition by sales_year order by total_sales_dollars desc);
+
+where sales_year >= latest_year - 4
+select
+    sales_year,
+    sales.item_description,
+    total_sales_dollars,
+    bottles_sold,
+    sales_rank
+having sales_rank <= 10
+order by sales_year desc, sales_rank asc;

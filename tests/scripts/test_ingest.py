@@ -15,6 +15,7 @@ from trilogy.scripts.ingest import (
     _is_unique_key,
     _process_column,
     _select_verified_grain,
+    _unkeyable_columns,
     canonicalize_names,
     create_datasource_from_table,
     detect_nullability_from_sample,
@@ -58,11 +59,10 @@ def test_ingest():
         raise results.exception
     assert results.exit_code == 0
 
-    # Check that the file was created in the raw directory
-    raw_dir = config_dir / "raw"
-    assert raw_dir.exists()
+    root_dir = config_dir / "root"
+    assert root_dir.exists()
 
-    output_file = raw_dir / "world_capitals.preql"
+    output_file = root_dir / "world_capitals.preql"
     assert output_file.exists()
 
     # Read and verify the content has the expected structure
@@ -121,7 +121,7 @@ def test_ingest_infers_numeric_bounds_end_to_end():
     )
     if results.exception:
         raise results.exception
-    content = (config_dir / "raw" / "world_capitals.preql").read_text()
+    content = (config_dir / "root" / "world_capitals.preql").read_text()
     assert "population int[" in content
 
 
@@ -148,11 +148,10 @@ def test_ingest_with_db_primary_key():
         raise results.exception
     assert results.exit_code == 0
 
-    # Check that the file was created in the raw directory
-    raw_dir = config_dir / "raw"
-    assert raw_dir.exists()
+    root_dir = config_dir / "root"
+    assert root_dir.exists()
 
-    output_file = raw_dir / "users_with_pk.preql"
+    output_file = root_dir / "users_with_pk.preql"
     assert output_file.exists()
 
     # Read and verify the content has the expected structure
@@ -304,7 +303,7 @@ def test_ingest_with_config_dialect_only():
         raise result.exception
     assert result.exit_code == 0
 
-    output_file = config_dir / "raw" / "world_capitals.preql"
+    output_file = config_dir / "root" / "world_capitals.preql"
     assert output_file.exists()
 
 
@@ -723,6 +722,31 @@ class TestRichTypeDetection:
         )
         assert detect_rich_type("city", DataType.STRING) == ("std.geography", "city")
 
+    def test_currency_detection(self):
+        assert detect_rich_type("sale_dollars", DataType.FLOAT) == (
+            "std.currency",
+            "usd",
+        )
+        assert detect_rich_type("amount_usd", DataType.NUMERIC) == (
+            "std.currency",
+            "usd",
+        )
+        assert detect_rich_type("price_eur", DataType.DOUBLE) == ("std.currency", "eur")
+
+    def test_currency_code_outranks_colloquial_word(self):
+        assert detect_rich_type("revenue_cad_dollars", DataType.FLOAT) == (
+            "std.currency",
+            "cad",
+        )
+
+    def test_currency_needs_a_currency_signal(self):
+        # A money-shaped column with no currency in its name stays untyped —
+        # guessing the currency from `cost`/`price` alone would be a fabrication.
+        assert detect_rich_type("state_bottle_cost", DataType.FLOAT) == (None, None)
+        assert detect_rich_type("price", DataType.FLOAT) == (None, None)
+        # Integer columns are excluded: `*_usd` whole numbers are usually cents.
+        assert detect_rich_type("sale_dollars", DataType.INTEGER) == (None, None)
+
     def test_wrong_datatype(self):
         # Latitude should be FLOAT, not STRING
         assert detect_rich_type("latitude", DataType.STRING) == (None, None)
@@ -943,6 +967,53 @@ class TestDetectUniqueKeyCombinations:
         ]
         result = detect_unique_key_combinations(column_names, sample_rows)
         assert result == []
+
+
+class TestUnkeyableColumns:
+    """Geography/nested columns can't be grouped or counted distinct."""
+
+    def test_geography_type_resolves(self):
+        from trilogy.dialect.bigquery import BigqueryDialect
+
+        assert BigqueryDialect().normalize_db_type("GEOGRAPHY") == DataType.GEOGRAPHY
+        assert _DIALECT.normalize_db_type("geography") == DataType.GEOGRAPHY
+
+    def test_geography_column_excluded(self):
+        columns = [
+            _DIALECT.make_table_column("invoice_id", "STRING"),
+            _DIALECT.make_table_column("store_location", "GEOGRAPHY"),
+        ]
+        assert _unkeyable_columns(columns) == {"store_location"}
+
+    def test_excluded_column_never_a_candidate(self):
+        column_names = ["invoice_id", "store_location"]
+        sample_rows = [("a", "POINT(1 1)"), ("b", "POINT(2 2)")]
+        result = detect_unique_key_combinations(
+            column_names, sample_rows, exclude={"store_location"}
+        )
+        assert result == [["invoice_id"]]
+
+    def test_excluded_column_never_in_composite(self):
+        column_names = ["region", "store_location"]
+        sample_rows = [("a", "POINT(1 1)"), ("a", "POINT(2 2)")]
+        assert (
+            detect_unique_key_combinations(
+                column_names, sample_rows, exclude={"store_location"}
+            )
+            == []
+        )
+
+    def test_geography_not_enum_eligible(self):
+        # Nothing is queried at all, so the missing table never has to resolve —
+        # a count(DISTINCT geography) is exactly what BigQuery rejects.
+        exc = Dialects.DUCK_DB.default_executor()
+        col = _DIALECT.make_table_column("store_location", "GEOGRAPHY")
+        assert (
+            detect_enum_types(
+                exc, "no_such_table", [(col.column_name, col.trilogy_type)]
+            )
+            == {}
+        )
 
 
 class TestGrainCandidateRanking:
@@ -1448,6 +1519,16 @@ class TestProcessColumn:
         assert rich_import == "std.net"
         assert hasattr(concept.datatype, "traits")
         assert "email_address" in concept.datatype.traits
+
+    def test_rich_type_detection_currency(self):
+        col = _DIALECT.make_table_column("sale_dollars", "DOUBLE", True)
+        concept, _column_assignment, rich_import = _process_column(
+            0, col, [], [(1.5,), (2.5,)], _make_concept_mapping(["sale_dollars"])
+        )
+        assert rich_import == "std.currency"
+        assert isinstance(concept.datatype, TraitDataType)
+        assert concept.datatype.traits == ["usd"]
+        assert concept.datatype.type == DataType.FLOAT
 
     def test_rich_type_detection_latitude(self):
         """Test rich type detection for latitude."""
@@ -2161,6 +2242,27 @@ def test_ingest_local_csv_file():
         assert content.rstrip().endswith("`;") or "`;" in content
         # Email rich type detected
         assert "email_address" in content
+
+
+def test_import_alias_ingests_local_csv_file():
+    """`trilogy import` is the same command as `trilogy ingest`."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_path = tmppath / "orders.csv"
+        rows = "\n".join(f"{i},{i * 10}.50" for i in range(1, 16))
+        csv_path.write_text(f"order_id,total\n{rows}\n")
+        out_dir = tmppath / "raw"
+
+        result = CliRunner().invoke(
+            cli,
+            ["import", str(csv_path), "--output", str(out_dir)],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert (out_dir / "orders.preql").exists()
 
 
 def test_ingest_local_parquet_file():

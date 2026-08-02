@@ -11,6 +11,7 @@ import json
 import os
 import textwrap
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,13 @@ from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
 from trilogy.execution.config import AgentConfig
+from trilogy.scripts.agent_sessions import (
+    AgentSession,
+    SessionError,
+    SessionMeta,
+    list_sessions,
+    resolve_session,
+)
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
     SHOW_MESSAGE_TOOL,
@@ -43,7 +51,13 @@ from trilogy.scripts.agent_tools import (
     truncate_middle,
 )
 from trilogy.scripts.common import get_runtime_config
-from trilogy.scripts.display_core import print_info, print_success, with_status
+from trilogy.scripts.display_core import (
+    emit_event,
+    is_json_mode,
+    print_info,
+    print_success,
+    with_status,
+)
 from trilogy.scripts.environment import parse_env_vars
 
 DEFAULT_PROVIDER = Provider.ANTHROPIC
@@ -91,7 +105,7 @@ Available tools:
       ["database", "describe", "<table>"] — show a table's columns and types."""
     base += """
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
-      under raw/) for every table in the database, in one step."""
+      under root/) for every table in the database, in one step."""
     if include_scope_diagnostics:
         base += """
     * Run a Trilogy script: ["run", "<path.preql>"]. Each result carries
@@ -155,7 +169,7 @@ Available tools:
     * ["file", "list", "<dir>"] (add "--recursive") — list workspace files;
       .preql entries carry their leading-comment description. Use this when
       unsure what exists (e.g. before guessing `./store_sales.preql` — the
-      model files live under raw/)."""
+      model files live under root/)."""
     if include_file_read:
         base += """
     * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
@@ -548,6 +562,37 @@ def _run_turn(
     validate_completion: bool = True,
     require_tool: bool = False,
     handlers: dict | None = None,
+    session: AgentSession | None = None,
+) -> None:
+    try:
+        _run_turn_inner(
+            conv,
+            state,
+            max_iterations,
+            log_path,
+            tools=tools,
+            provider=provider,
+            validate_completion=validate_completion,
+            require_tool=require_tool,
+            handlers=handlers,
+        )
+    finally:
+        # Runs on the normal return, on IterationExhaustedError, and on Ctrl-C,
+        # so a session is resumable from wherever the turn actually stopped.
+        if session is not None:
+            session.flush(conv.messages)
+
+
+def _run_turn_inner(
+    conv: Conversation,
+    state: AgentState,
+    max_iterations: int,
+    log_path: Path | None = None,
+    tools: list[LLMToolDefinition] | None = None,
+    provider: LLMProvider | None = None,
+    validate_completion: bool = True,
+    require_tool: bool = False,
+    handlers: dict | None = None,
 ) -> None:
     options = LLMRequestOptions(tools=tools or ALL_TOOLS, require_tool=require_tool)
     for _ in range(max_iterations):
@@ -654,7 +699,32 @@ def _run_turn(
     )
 
 
-@argument("command", type=str)
+def _print_resume_hint(session: AgentSession | None) -> None:
+    if session is None:
+        return
+    print_info(
+        f"[session] {session.id} — continue with: "
+        f'trilogy agent -r {session.id} "<next question>"'
+    )
+
+
+def _print_sessions(sessions: list[SessionMeta]) -> None:
+    if is_json_mode():
+        for meta in sessions:
+            emit_event("agent_session", **asdict(meta))
+        return
+    if not sessions:
+        print_info("No saved agent sessions.")
+        return
+    for meta in sessions:
+        when = meta.updated_at[:19].replace("T", " ")
+        click.echo(
+            f"{meta.id}  {when}  turns={meta.turns:<3} "
+            f"{truncate_middle(meta.first_command.replace(chr(10), ' '), 60)}"
+        )
+
+
+@argument("command", type=str, required=False)
 @option(
     "--context",
     "-c",
@@ -702,10 +772,38 @@ def _run_turn(
     help="Tool surface. 'trilogy' (default) uses the Trilogy CLI; 'sql' is the "
     "no-Trilogy baseline (write/read/list file + run_file/run_query plain SQL).",
 )
+@option(
+    "--resume",
+    "-r",
+    "resume",
+    type=str,
+    default=None,
+    metavar="SESSION_ID",
+    help="Continue a saved conversation: COMMAND is asked as the next question "
+    "with the prior history in context. Takes a session id (unique prefixes "
+    "work) or 'last' for the most recent session in this directory.",
+)
+@option(
+    "--list-sessions",
+    "list_sessions_flag",
+    is_flag=True,
+    help="List saved agent sessions for this directory and exit.",
+)
+@option(
+    "--all-projects",
+    is_flag=True,
+    help="With --list-sessions, list sessions from every directory.",
+)
+@option(
+    "--save/--no-save",
+    "save",
+    default=True,
+    help="Persist the conversation so it can be resumed later (default on).",
+)
 @pass_context
 def agent(
     ctx: click.Context,
-    command: str,
+    command: str | None,
     context: tuple[str, ...],
     model: str | None,
     provider: str | None,
@@ -714,6 +812,10 @@ def agent(
     interactive: bool,
     quiet: bool | None,
     toolset: str,
+    resume: str | None,
+    list_sessions_flag: bool,
+    all_projects: bool,
+    save: bool,
 ) -> None:
     """Pass off a multi-step orchestration task to an AI agent.
 
@@ -721,10 +823,21 @@ def agent(
     model, api_key_env, max_iterations, tool_output_limit). The agent drives a
     tool loop over: show_message, trilogy, todo, return_control_to_user.
 
+    Conversations are saved under ~/.trilogy/agent_sessions (override with
+    TRILOGY_AGENT_SESSION_HOME) and can be continued with --resume.
+
     Examples:
         trilogy agent "analyze sales trends and create a dashboard"
         trilogy agent -i "ingest new data and run validation tests"
+        trilogy agent --resume last "now break that out by month"
+        trilogy agent -r 4f2a91bc "and chart it"
     """
+    if list_sessions_flag:
+        _print_sessions(list_sessions(Path.cwd(), all_projects=all_projects))
+        return
+    if not command:
+        raise click.UsageError("Missing argument 'COMMAND'.")
+
     cli_env: dict[str, str] = {}
     if env:
         try:
@@ -808,6 +921,33 @@ def agent(
         allow_file_read=cfg.allow_file_read,
     )
 
+    session: AgentSession | None = None
+    if resume:
+        try:
+            resumed_path = resolve_session(Path.cwd(), resume)
+            resumed, prior = AgentSession.load(resumed_path)
+        except SessionError as exc:
+            raise click.ClickException(str(exc)) from exc
+        # Prior messages carry the system prompt they were recorded with; the
+        # current flags own it instead, so only the dialogue is replayed.
+        conv.messages.extend(m for m in prior if m.role != "system")
+        print_info(
+            f"[session] resumed {resumed.id} "
+            f"({len(prior)} prior messages, turn {resumed.meta.turns + 1})"
+        )
+        if save:
+            session = resumed
+            session.flushed = len(conv.messages)
+            session.record_command(command)
+    elif save:
+        session = AgentSession.start(
+            Path.cwd(),
+            provider=llm_provider.type.value,
+            model=llm_provider.model,
+            toolset=toolset,
+            command=command,
+        )
+
     context_block = _read_context_files(context)
     initial = f"{context_block}\n\n{command}" if context_block else command
     conv.add_message(initial, role="user")
@@ -824,6 +964,7 @@ def agent(
             require_tool=cfg.force_tool_choice,
             validate_completion=not cfg.disable_reviewer,
             handlers=handlers,
+            session=session,
         )
     finally:
         if log_path:
@@ -832,17 +973,23 @@ def agent(
         print_success(state.farewell)
 
     if not interactive:
+        _print_resume_hint(session)
         return
 
     while True:
         try:
             next_command = click.prompt("> ", default="", show_default=False)
         except click.exceptions.Abort:
+            _print_resume_hint(session)
             return
         next_command = next_command.strip()
         if next_command in ("", "exit", "quit"):
+            _print_resume_hint(session)
             return
         _log_event(log_path, {"type": "user_followup", "command": next_command})
+        if session is not None:
+            session.flush(conv.messages)
+            session.record_command(next_command)
         state.done = False
         state.farewell = ""
         state.todos = []
@@ -861,6 +1008,7 @@ def agent(
                 require_tool=cfg.force_tool_choice,
                 validate_completion=not cfg.disable_reviewer,
                 handlers=handlers,
+                session=session,
             )
         finally:
             if log_path:

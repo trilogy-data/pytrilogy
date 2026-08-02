@@ -10,8 +10,65 @@ if TYPE_CHECKING:
 # resolves whole-number columns to either, depending on the source).
 _INT_TYPES = frozenset({DataType.INTEGER, DataType.BIGINT})
 
+# Money is always continuous in a warehouse; an integer column named `*_usd` is
+# far more likely a count of cents (or an id) than an amount, so it stays bare.
+_CURRENCY_TYPES = frozenset(
+    {DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC, DataType.NUMBER}
+)
+# ISO codes we accept as a name token. Restricted to currencies people actually
+# label columns with — every three-letter word would otherwise be a false hit.
+_CURRENCY_CODES = (
+    "usd",
+    "eur",
+    "gbp",
+    "jpy",
+    "chf",
+    "cad",
+    "aud",
+    "nzd",
+    "cny",
+    "inr",
+    "brl",
+    "mxn",
+    "zar",
+    "sek",
+    "nok",
+)
+# Colloquial names for the same currencies. Ambiguous by nature — "dollars" is
+# CAD in a Canadian dataset — so an explicit code anywhere in the name outranks
+# them (`priority`), and only words with no non-currency meaning are listed
+# (`pound` is a weight, `real`/`won` are common English words).
+_CURRENCY_WORDS: dict[str, tuple[str, ...]] = {
+    "usd": ("dollars?", "usdollars?"),
+    "eur": ("euros?",),
+    "jpy": ("yen",),
+}
+
+_CURRENCY_PATTERNS: dict[str, Any] = {
+    **{
+        code: {
+            "patterns": [rf"(?:^|_){code}(?:$|_)"],
+            "import": "std.currency",
+            "type_name": code,
+            "base_type": _CURRENCY_TYPES,
+            "priority": 1,
+        }
+        for code in _CURRENCY_CODES
+    },
+    **{
+        f"{code}_word": {
+            "patterns": [rf"(?:^|_)(?:{word})(?:$|_)" for word in words],
+            "import": "std.currency",
+            "type_name": code,
+            "base_type": _CURRENCY_TYPES,
+        }
+        for code, words in _CURRENCY_WORDS.items()
+    },
+}
+
 # Rich type detection mappings
 RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
+    "currency": _CURRENCY_PATTERNS,
     # Date-part columns (std.date traits). Gated by an inclusive value RANGE as
     # well as the name so a same-named-but-unrelated column (e.g. d_month_seq,
     # values ~1200) is not misclassified.
@@ -184,8 +241,9 @@ def detect_rich_type(
 
     Returns: (import_path, type_name) or (None, None) if no match.
 
-    When multiple patterns match, the longest matched string wins (more
-    specific matches are preferred). A config carrying a `value_pattern` only
+    When multiple patterns match, the highest `priority` wins, then the longest
+    matched string (more specific matches are preferred). A config carrying a
+    `value_pattern` only
     matches when every sampled value satisfies it — e.g. a Y/N "channel_email"
     flag is not an email address.
     """
@@ -204,14 +262,19 @@ def detect_rich_type(
                 match = re.search(pattern, column_lower)
                 if match:
                     matches.append(
-                        (len(match.group()), config["import"], config["type_name"])
+                        (
+                            config.get("priority", 0),
+                            len(match.group()),
+                            config["import"],
+                            config["type_name"],
+                        )
                     )
                     break  # Only need one match per type
 
-    # Return the most specific match (longest matched string)
+    # Highest priority wins, then the most specific match (longest matched string)
     if matches:
         matches.sort(reverse=True)
-        return str(matches[0][1]), str(matches[0][2])
+        return str(matches[0][2]), str(matches[0][3])
 
     return None, None
 

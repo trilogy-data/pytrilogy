@@ -2,6 +2,7 @@
 
 import importlib
 from collections.abc import Callable
+from copy import copy
 
 import click
 
@@ -100,6 +101,7 @@ class LazyGroup(click.Group):
         self,
         *args,
         lazy_subcommands: dict[str, tuple[str, str, dict | None]] | None = None,
+        aliases: dict[str, str] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -107,35 +109,53 @@ class LazyGroup(click.Group):
         self._lazy_subcommands: dict[str, tuple[str, str, dict | None]] = (
             lazy_subcommands or {}
         )
+        # alias -> canonical command name; the alias is a full command in its
+        # own right (listed, hoisted, invocable), just loaded from the target.
+        self._aliases: dict[str, str] = aliases or {}
         self._loaded_commands: dict[str, click.Command] = {}
 
     def list_commands(self, ctx: click.Context) -> list[str]:
         base = super().list_commands(ctx)
-        lazy = sorted(self._lazy_subcommands.keys())
+        lazy = sorted(set(self._lazy_subcommands) | set(self._aliases))
         return base + lazy
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        subcommands = set(self._lazy_subcommands.keys()) | set(self.commands.keys())
+        subcommands = (
+            set(self._lazy_subcommands) | set(self.commands) | set(self._aliases)
+        )
         hoist = derive_hoist_map(self.get_params(ctx))
         args = _hoist_group_flags(list(args), subcommands, hoist)
         return super().parse_args(ctx, args)
 
+    def _load_lazy(self, name: str) -> click.Command:
+        if name not in self._loaded_commands:
+            module_path, attr, context_settings = self._lazy_subcommands[name]
+            module = importlib.import_module(module_path)
+            func = getattr(module, attr)
+            if isinstance(func, click.Command):
+                func.name = name
+                self._loaded_commands[name] = func
+            else:
+                self._loaded_commands[name] = click.command(
+                    name, context_settings=context_settings
+                )(func)
+        return self._loaded_commands[name]
+
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
-        if cmd_name in self._lazy_subcommands:
-            if cmd_name not in self._loaded_commands:
-                module_path, attr, context_settings = self._lazy_subcommands[cmd_name]
-                module = importlib.import_module(module_path)
-                func = getattr(module, attr)
-                if isinstance(func, click.Command):
-                    func.name = cmd_name
-                    self._loaded_commands[cmd_name] = func
-                else:
-                    cmd = click.command(cmd_name, context_settings=context_settings)(
-                        func
-                    )
-                    self._loaded_commands[cmd_name] = cmd
-            return self._loaded_commands[cmd_name]
-        return super().get_command(ctx, cmd_name)
+        target = self._aliases.get(cmd_name, cmd_name)
+        if target not in self._lazy_subcommands:
+            return super().get_command(ctx, cmd_name)
+        if cmd_name not in self._loaded_commands:
+            # An alias copies the built command rather than re-wrapping the
+            # function: click.command() consumes the function's pending params,
+            # so a second wrap would produce a command with no options at all.
+            # Renaming in place is equally wrong — both names would resolve to
+            # the one module-level object.
+            alias = copy(self._load_lazy(target))
+            alias.name = cmd_name
+            alias.short_help = f"Alias for `{target}`."
+            self._loaded_commands[cmd_name] = alias
+        return self._loaded_commands[cmd_name]
 
 
 IGNORE_UNKNOWN = {"ignore_unknown_options": True}

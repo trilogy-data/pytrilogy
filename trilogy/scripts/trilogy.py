@@ -74,8 +74,18 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "unit": ("trilogy.scripts.testing", "unit", IGNORE_UNKNOWN),
 }
 
+# Alternate spellings of a command, resolved to the canonical entry above.
+COMMAND_ALIASES: dict[str, str] = {
+    "import": "ingest",
+}
 
-@click.group(cls=LazyGroup, lazy_subcommands=LAZY_SUBCOMMANDS, epilog=AGENT_NOTICE)
+
+@click.group(
+    cls=LazyGroup,
+    lazy_subcommands=LAZY_SUBCOMMANDS,
+    aliases=COMMAND_ALIASES,
+    epilog=AGENT_NOTICE,
+)
 @click.option(
     "--version",
     is_flag=True,
@@ -129,7 +139,9 @@ def cli(
     debug_file: str | None,
 ):
     """Trilogy CLI - A beautiful data productivity tool."""
-    from trilogy.scripts.display import (
+    # display_core, not the display hub: this runs for EVERY command, and the
+    # hub pulls the execution/refresh/validation renderers most never use.
+    from trilogy.scripts.display_core import (
         is_agent_mode,
         is_json_mode,
         set_agent_mode,

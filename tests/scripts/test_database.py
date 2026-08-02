@@ -81,8 +81,8 @@ def test_ingest_all_bootstraps_every_table(tmp_path, monkeypatch):
     _setup()
     result = CliRunner().invoke(cli, ["ingest", "--all"])
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "raw" / "users.preql").exists()
-    assert (tmp_path / "raw" / "orders.preql").exists()
+    assert (tmp_path / "root" / "users.preql").exists()
+    assert (tmp_path / "root" / "orders.preql").exists()
 
 
 def test_ingest_all_accepts_cli_dialect_and_connection_args(tmp_path, monkeypatch):
@@ -93,8 +93,8 @@ def test_ingest_all_accepts_cli_dialect_and_connection_args(tmp_path, monkeypatc
         ["ingest", "--all", "duck_db", "path=test.duckdb"],
     )
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "raw" / "users.preql").exists()
-    assert (tmp_path / "raw" / "orders.preql").exists()
+    assert (tmp_path / "root" / "users.preql").exists()
+    assert (tmp_path / "root" / "orders.preql").exists()
 
 
 def test_ingest_all_rejects_explicit_sources(tmp_path, monkeypatch):

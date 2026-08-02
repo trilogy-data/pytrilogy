@@ -3,10 +3,9 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from trilogy.core.models.environment import Environment
-
 if TYPE_CHECKING:
     from trilogy import Executor
+    from trilogy.core.models.environment import Environment
     from trilogy.hooks.base_hook import BaseHook
     from trilogy.staging import StagingConfig
 
@@ -194,6 +193,7 @@ class Dialects(Enum):
         _engine_factory: Callable | None = None,
     ) -> "Executor":
         from trilogy import Executor
+        from trilogy.core.models.environment import Environment
 
         environment = environment or Environment()
         if working_path:

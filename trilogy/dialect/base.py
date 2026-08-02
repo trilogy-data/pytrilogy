@@ -476,6 +476,9 @@ DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
     "timestamp with time zone": DataType.TIMESTAMP,
     "timestamptz": DataType.TIMESTAMP,
     "datetimeoffset": DataType.TIMESTAMP,
+    # geospatial
+    "geography": DataType.GEOGRAPHY,
+    "geometry": DataType.GEOGRAPHY,
     # complex
     "map": DataType.MAP,
     "array": DataType.ARRAY,

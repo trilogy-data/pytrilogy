@@ -12,6 +12,11 @@ from pathlib import Path
 
 TRILOGY_CONFIG_NAME = "trilogy.toml"
 
+# Directory holding root datasource definitions, relative to the project root.
+# `init` scaffolds it and `ingest` writes generated models into it by default —
+# one constant so the two cannot drift apart.
+MODEL_ROOT_DIR = "root"
+
 
 def find_trilogy_config(start_path: Path | None = None) -> Path | None:
     """The nearest ``trilogy.toml`` at or above *start_path* (default: cwd).

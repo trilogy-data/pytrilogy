@@ -151,6 +151,66 @@ def test_lazy_group_wraps_plain_function_in_click_command():
     assert "hi" in res.output
 
 
+def _aliased_root() -> LazyGroup:
+    @click.group(
+        cls=LazyGroup,
+        lazy_subcommands={
+            "say-hi": ("tests.scripts._click_utils_fixture", "_say_hi", None),
+            "premade": ("tests.scripts._click_utils_fixture", "_premade_cmd", None),
+        },
+        aliases={"greet": "say-hi", "canned": "premade"},
+    )
+    def root():
+        pass
+
+    assert isinstance(root, LazyGroup)
+    return root
+
+
+def test_lazy_group_alias_invokes_target():
+    result = CliRunner().invoke(_aliased_root(), ["greet"])
+    assert result.exit_code == 0
+    assert "hi" in result.output
+
+
+def test_lazy_group_alias_is_listed_and_labelled():
+    root = _aliased_root()
+    ctx = click.Context(root)
+    assert "greet" in root.list_commands(ctx)
+    cmd = root.get_command(ctx, "greet")
+    assert isinstance(cmd, click.Command)
+    assert cmd.short_help == "Alias for `say-hi`."
+
+
+def test_lazy_group_alias_does_not_rename_premade_target():
+    """A premade Command is shared via the module; aliasing must copy it."""
+    root = _aliased_root()
+    ctx = click.Context(root)
+    alias = root.get_command(ctx, "canned")
+    target = root.get_command(ctx, "premade")
+    assert alias is not None and target is not None
+    assert alias.name == "canned"
+    assert target.name == "premade"
+
+
+def test_lazy_group_alias_hoists_group_flags():
+    root = _aliased_root()
+    ctx = click.Context(root)
+    assert root.parse_args(ctx, ["greet", "--help"]) is not None
+
+
+def test_cli_exposes_import_alias_for_ingest():
+    from trilogy.scripts.trilogy import cli
+
+    ctx = click.Context(cli)
+    alias = cli.get_command(ctx, "import")
+    ingest = cli.get_command(ctx, "ingest")
+    assert alias is not None and ingest is not None
+    assert alias.name == "import"
+    assert ingest.name == "ingest"
+    assert [p.name for p in alias.params] == [p.name for p in ingest.params]
+
+
 def test_derive_hoist_map_from_real_group_params():
     """The hoist map is derived from the group's declared options so it can't
     drift: --format/--debug/--debug-file are all present with correct arity,

@@ -1,0 +1,59 @@
+# Datasource ingested from bigquery-public-data.iowa_liquor_sales.sales
+import std.geography;
+
+key invoice_and_item_number string;
+
+properties invoice_and_item_number (
+    date date,
+    store_number string,
+    store_name string,
+    address string?,
+    city string::city?,
+    zip_code string::us_zip_code?,
+    store_location geography?,
+    county_number string?,
+    county string?,
+    category string?,
+    category_name string?,
+    vendor_number string,
+    vendor_name string,
+    item_number string,
+    item_description string,
+    pack int[1..336],
+    bottle_volume_ml int[0..378000],
+    state_bottle_cost float[0..],
+    state_bottle_retail float[0..],
+    bottles_sold int[-768..15000],
+    sale_dollars float,
+    volume_sold_liters float,
+    volume_sold_gallons float,
+);
+
+root datasource bigquery_public_data_iowa_liquor_sales_sales (
+    invoice_and_item_number,
+    date,
+    store_number,
+    store_name,
+    address: ?address,
+    city: ?city,
+    zip_code: ?zip_code,
+    store_location: ?store_location,
+    county_number: ?county_number,
+    county: ?county,
+    category: ?category,
+    category_name: ?category_name,
+    vendor_number,
+    vendor_name,
+    item_number,
+    item_description,
+    pack,
+    bottle_volume_ml,
+    state_bottle_cost,
+    state_bottle_retail,
+    bottles_sold,
+    sale_dollars,
+    volume_sold_liters,
+    volume_sold_gallons,
+)
+grain (invoice_and_item_number)
+address `bigquery-public-data.iowa_liquor_sales.sales`;

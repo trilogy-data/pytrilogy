@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap"><script src="https://cdn.jsdelivr.net/npm/vega@5"></script><script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script><script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script><style>
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f5f3;
+  color: #5f5c56;
+  font-family: "Inter", "IBM Plex Sans", "SF Pro Display", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 420;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+main {
+  max-width: 1000px;
+  margin: 48px auto;
+  padding: 80px;
+  background: #fbfbf9;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.04);
+}
+
+h1, h2, h3 { color: #1f1f1c; }
+h1 {
+  font-size: 48px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1.0;
+  margin: 0 0 20px;
+}
+h2 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 72px 0 20px;
+}
+h3 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin: 36px 0 18px;
+}
+
+p { margin: 0 0 18px; }
+strong { color: #1f1f1c; font-weight: 600; }
+a { color: #6D7CE8; text-decoration: none; }
+
+table.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 15px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+table.report-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #1f1f1c;
+  padding: 14px 18px;
+}
+table.report-table td {
+  padding: 14px 18px;
+  color: #1f1f1c;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+table.report-table tr:nth-child(even) td { background: rgba(0,0,0,0.012); }
+table.report-table th.num, table.report-table td.num { text-align: right; }
+
+.report-chart { width: 100%; margin: 36px 0; }
+.report-chart svg { max-width: 100%; height: auto; display: block;
+  margin: 0 auto; }
+
+.report-row {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  margin: 36px 0;
+}
+.report-row-cell { flex: 1 1 0; min-width: 0; }
+.report-row-cell > :first-child { margin-top: 0; }
+.report-row-cell .report-chart { margin: 0; }
+
+.report-error {
+  margin: 18px 0;
+  padding: 14px 18px;
+  background: #f7ecec;
+  border: 1px solid rgba(140,42,42,0.18);
+  border-radius: 10px;
+  color: #8a2a2a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+code {
+  background: #efeee8;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+pre {
+  background: #efeee8;
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.06);
+  overflow: auto;
+}
+pre code { background: none; padding: 0; font-size: 13px; }
+</style></head><body><main><h1>Top Liquor Sales by Year</h1>
+<h2>Latest five years: 2022–2026</h2>
+<p>This report ranks the <strong>top 10 liquor products by sales dollars within each year</strong>. The latest year available is 2026; it may be a partial year. Bottle counts are included as a volume reference.</p>
+<h2>Annual leaders</h2>
+<table class="report-table"><thead><tr><th class="num">Sales Year</th><th>Sales Item Description</th><th class="num">Total Sales Dollars</th><th class="num">Bottles Sold</th><th class="num">Sales Rank</th></tr></thead><tbody><tr><td class="num">2026</td><td>TITOS HANDMADE VODKA</td><td class="num">8726074.36</td><td class="num">494694</td><td class="num">1</td></tr><tr><td class="num">2025</td><td>TITOS HANDMADE VODKA</td><td class="num">29955644.73000004</td><td class="num">1658902</td><td class="num">1</td></tr><tr><td class="num">2024</td><td>TITOS HANDMADE VODKA</td><td class="num">30750516.12000002</td><td class="num">1677006</td><td class="num">1</td></tr><tr><td class="num">2023</td><td>TITOS HANDMADE VODKA</td><td class="num">30042562.530000024</td><td class="num">1629074</td><td class="num">1</td></tr><tr><td class="num">2022</td><td>TITOS HANDMADE VODKA</td><td class="num">27247213.760000035</td><td class="num">1459030</td><td class="num">1</td></tr></tbody></table>
+<h2>Top 10 products in each year</h2>
+<table class="report-table"><thead><tr><th class="num">Sales Year</th><th>Sales Item Description</th><th class="num">Total Sales Dollars</th><th class="num">Bottles Sold</th><th class="num">Sales Rank</th></tr></thead><tbody><tr><td class="num">2026</td><td>TITOS HANDMADE VODKA</td><td class="num">8726074.360000003</td><td class="num">494694</td><td class="num">1</td></tr><tr><td class="num">2026</td><td>FIREBALL CINNAMON WHISKEY</td><td class="num">2962035.0</td><td class="num">954270</td><td class="num">2</td></tr><tr><td class="num">2026</td><td>BLACK VELVET</td><td class="num">2911417.9899999998</td><td class="num">278718</td><td class="num">3</td></tr><tr><td class="num">2026</td><td>CROWN ROYAL</td><td class="num">2512087.8999999994</td><td class="num">100293</td><td class="num">4</td></tr><tr><td class="num">2026</td><td>JACK DANIELS OLD #7 BLACK LABEL</td><td class="num">2493225.6900000004</td><td class="num">95469</td><td class="num">5</td></tr><tr><td class="num">2026</td><td>CAPTAIN MORGAN ORIGINAL SPICED BARREL</td><td class="num">2481453.9599999995</td><td class="num">89454</td><td class="num">6</td></tr><tr><td class="num">2026</td><td>CROWN ROYAL REGAL APPLE</td><td class="num">2439217.4900000026</td><td class="num">112413</td><td class="num">7</td></tr><tr><td class="num">2026</td><td>CAPTAIN MORGAN ORIGINAL SPICED</td><td class="num">2360791.0400000005</td><td class="num">153103</td><td class="num">8</td></tr><tr><td class="num">2026</td><td>JAMESON</td><td class="num">2013937.5000000005</td><td class="num">71883</td><td class="num">9</td></tr><tr><td class="num">2026</td><td>FIREBALL CINNAMON WHISKEY MINI SLEEVE</td><td class="num">1899828.0</td><td class="num">281456</td><td class="num">10</td></tr><tr><td class="num">2025</td><td>TITOS HANDMADE VODKA</td><td class="num">29955644.730000038</td><td class="num">1658902</td><td class="num">1</td></tr><tr><td class="num">2025</td><td>BLACK VELVET</td><td class="num">10876179.329999998</td><td class="num">982154</td><td class="num">2</td></tr><tr><td class="num">2025</td><td>FIREBALL CINNAMON WHISKEY</td><td class="num">9991751.5</td><td class="num">3086198</td><td class="num">3</td></tr><tr><td class="num">2025</td><td>CROWN ROYAL</td><td class="num">9120633.99</td><td class="num">345607</td><td class="num">4</td></tr><tr><td class="num">2025</td><td>CROWN ROYAL REGAL APPLE</td><td class="num">8940633.3</td><td class="num">394891</td><td class="num">5</td></tr><tr><td class="num">2025</td><td>JACK DANIELS OLD #7 BLACK LABEL</td><td class="num">8541210.879999997</td><td class="num">320771</td><td class="num">6</td></tr><tr><td class="num">2025</td><td>CAPTAIN MORGAN ORIGINAL SPICED</td><td class="num">7864635.909999996</td><td class="num">498472</td><td class="num">7</td></tr><tr><td class="num">2025</td><td>JAMESON</td><td class="num">6392808.81</td><td class="num">227210</td><td class="num">8</td></tr><tr><td class="num">2025</td><td>CAPTAIN MORGAN ORIGINAL SPICED BARREL</td><td class="num">6301862.239999998</td><td class="num">227176</td><td class="num">9</td></tr><tr><td class="num">2025</td><td>FIREBALL CINNAMON WHISKEY MINI SLEEVE</td><td class="num">5859490.21</td><td class="num">882328</td><td class="num">10</td></tr><tr><td class="num">2024</td><td>TITOS HANDMADE VODKA</td><td class="num">30750516.12000004</td><td class="num">1677006</td><td class="num">1</td></tr><tr><td class="num">2024</td><td>BLACK VELVET</td><td class="num">11718925.819999998</td><td class="num">1069991</td><td class="num">2</td></tr><tr><td class="num">2024</td><td>FIREBALL CINNAMON WHISKEY</td><td class="num">10895231.0</td><td class="num">3193968</td><td class="num">3</td></tr><tr><td class="num">2024</td><td>CROWN ROYAL</td><td class="num">9605163.839999996</td><td class="num">367893</td><td class="num">4</td></tr><tr><td class="num">2024</td><td>CROWN ROYAL REGAL APPLE</td><td class="num">9407693.639999999</td><td class="num">416998</td><td class="num">5</td></tr><tr><td class="num">2024</td><td>JACK DANIELS OLD #7 BLACK LABEL</td><td class="num">9261105.57</td><td class="num">345655</td><td class="num">6</td></tr><tr><td class="num">2024</td><td>CAPTAIN MORGAN ORIGINAL SPICED</td><td class="num">8388729.999999996</td><td class="num">537817</td><td class="num">7</td></tr><tr><td class="num">2024</td><td>CAPTAIN MORGAN ORIGINAL SPICED BARREL</td><td class="num">7137291.04</td><td class="num">252896</td><td class="num">8</td></tr><tr><td class="num">2024</td><td>JAMESON</td><td class="num">6721177.239999997</td><td class="num">238159</td><td class="num">9</td></tr><tr><td class="num">2024</td><td>CROWN ROYAL BLACKBERRY</td><td class="num">6474300.159999995</td><td class="num">246734</td><td class="num">10</td></tr><tr><td class="num">2023</td><td>TITOS HANDMADE VODKA</td><td class="num">30042562.530000016</td><td class="num">1629074</td><td class="num">1</td></tr><tr><td class="num">2023</td><td>BLACK VELVET</td><td class="num">12263890.700000001</td><td class="num">1144076</td><td class="num">2</td></tr><tr><td class="num">2023</td><td>FIREBALL CINNAMON WHISKEY</td><td class="num">11592055.800000006</td><td class="num">3125760</td><td class="num">3</td></tr><tr><td class="num">2023</td><td>CROWN ROYAL</td><td class="num">10209429.249999994</td><td class="num">393512</td><td class="num">4</td></tr><tr><td class="num">2023</td><td>JACK DANIELS OLD #7 BLACK LABEL</td><td class="num">9611569.68</td><td class="num">360325</td><td class="num">5</td></tr><tr><td class="num">2023</td><td>CAPTAIN MORGAN ORIGINAL SPICED</td><td class="num">9261306.209999997</td><td class="num">598173</td><td class="num">6</td></tr><tr><td class="num">2023</td><td>CROWN ROYAL REGAL APPLE</td><td class="num">9239467.829999998</td><td class="num">415792</td><td class="num">7</td></tr><tr><td class="num">2023</td><td>CAPTAIN MORGAN ORIGINAL SPICED BARREL</td><td class="num">7061536.239999998</td><td class="num">256115</td><td class="num">8</td></tr><tr><td class="num">2023</td><td>PATRON SILVER</td><td class="num">6963129.0</td><td class="num">200317</td><td class="num">9</td></tr><tr><td class="num">2023</td><td>JAMESON</td><td class="num">6958456.300000003</td><td class="num">244894</td><td class="num">10</td></tr><tr><td class="num">2022</td><td>TITOS HANDMADE VODKA</td><td class="num">27247213.76000001</td><td class="num">1459030</td><td class="num">1</td></tr><tr><td class="num">2022</td><td>FIREBALL CINNAMON WHISKEY</td><td class="num">11839539.80999999</td><td class="num">3024830</td><td class="num">2</td></tr><tr><td class="num">2022</td><td>BLACK VELVET</td><td class="num">11674549.600000016</td><td class="num">1121314</td><td class="num">3</td></tr><tr><td class="num">2022</td><td>CROWN ROYAL</td><td class="num">11343341.340000004</td><td class="num">434262</td><td class="num">4</td></tr><tr><td class="num">2022</td><td>CAPTAIN MORGAN ORIGINAL SPICED</td><td class="num">10358733.520000001</td><td class="num">640194</td><td class="num">5</td></tr><tr><td class="num">2022</td><td>CROWN ROYAL REGAL APPLE</td><td class="num">10139859.320000006</td><td class="num">447429</td><td class="num">6</td></tr><tr><td class="num">2022</td><td>JACK DANIELS OLD #7 BLACK LABEL</td><td class="num">9517637.009999996</td><td class="num">351401</td><td class="num">7</td></tr><tr><td class="num">2022</td><td>HENNESSY VS</td><td class="num">7424003.100000006</td><td class="num">336915</td><td class="num">8</td></tr><tr><td class="num">2022</td><td>JAMESON</td><td class="num">6830823.150000001</td><td class="num">242968</td><td class="num">9</td></tr><tr><td class="num">2022</td><td>PATRON SILVER</td><td class="num">6729499.5</td><td class="num">184040</td><td class="num">10</td></tr></tbody></table>
+<h2>Sales-dollar comparison</h2>
+<div class="report-chart" id="report-chart-0"></div><script>vegaEmbed('#report-chart-0', {"config": {"view": {"continuousWidth": 300, "continuousHeight": 300, "stroke": null}, "area": {"fillOpacity": 0.35, "line": {"strokeWidth": 2.5}}, "axis": {"domain": false, "grid": true, "gridColor": "rgba(0,0,0,0.05)", "gridWidth": 1, "labelColor": "#77736b", "labelFont": "\"Inter\", \"IBM Plex Sans\", \"SF Pro Display\", system-ui, sans-serif", "labelFontSize": 12, "labelFontWeight": 500, "labelPadding": 8, "ticks": false, "titleColor": "#5f5c56", "titleFont": "\"Inter\", \"IBM Plex Sans\", \"SF Pro Display\", system-ui, sans-serif", "titleFontSize": 12, "titleFontWeight": 500, "titlePadding": 16}, "bar": {"cornerRadiusEnd": 4}, "legend": {"labelColor": "#77736b", "labelFont": "\"Inter\", \"IBM Plex Sans\", \"SF Pro Display\", system-ui, sans-serif", "titleColor": "#5f5c56", "titleFont": "\"Inter\", \"IBM Plex Sans\", \"SF Pro Display\", system-ui, sans-serif"}, "line": {"strokeWidth": 2.5}, "mark": {"color": "#6D7CE8"}, "range": {"category": ["#6D7CE8", "#7CC6A6", "#E6B450", "#9C8AD1", "#E0917E", "#6FB1C4"]}}, "data": {"name": "data-d1d9509af5470f0416cc9fe84ada5664"}, "mark": {"type": "bar"}, "background": "transparent", "encoding": {"color": {"field": "sales_year", "title": "Sales Year", "type": "quantitative"}, "column": {"field": "sales_year", "title": "Sales Year", "type": "quantitative"}, "x": {"field": "sales_item_description", "sort": null, "title": "Sales Item Description", "type": "nominal"}, "y": {"field": "total_sales_dollars", "title": "Total Sales Dollars", "type": "quantitative"}}, "height": 380, "padding": {"top": 16, "left": 12, "right": 16, "bottom": 8}, "title": "Total Sales Dollars", "width": "container", "$schema": "https://vega.github.io/schema/vega-lite/v6.4.1.json", "datasets": {"data-d1d9509af5470f0416cc9fe84ada5664": [{"sales_year": 2025, "sales_item_description": "TITOS HANDMADE VODKA", "total_sales_dollars": 29955644.730000053, "sales_rank": 1}, {"sales_year": 2026, "sales_item_description": "TITOS HANDMADE VODKA", "total_sales_dollars": 8726074.360000001, "sales_rank": 1}, {"sales_year": 2023, "sales_item_description": "TITOS HANDMADE VODKA", "total_sales_dollars": 30042562.530000024, "sales_rank": 1}, {"sales_year": 2022, "sales_item_description": "TITOS HANDMADE VODKA", "total_sales_dollars": 27247213.760000024, "sales_rank": 1}, {"sales_year": 2024, "sales_item_description": "TITOS HANDMADE VODKA", "total_sales_dollars": 30750516.12000002, "sales_rank": 1}, {"sales_year": 2025, "sales_item_description": "BLACK VELVET", "total_sales_dollars": 10876179.329999996, "sales_rank": 2}, {"sales_year": 2026, "sales_item_description": "FIREBALL CINNAMON WHISKEY", "total_sales_dollars": 2962035.0, "sales_rank": 2}, {"sales_year": 2023, "sales_item_description": "BLACK VELVET", "total_sales_dollars": 12263890.700000003, "sales_rank": 2}, {"sales_year": 2022, "sales_item_description": "FIREBALL CINNAMON WHISKEY", "total_sales_dollars": 11839539.809999997, "sales_rank": 2}, {"sales_year": 2024, "sales_item_description": "BLACK VELVET", "total_sales_dollars": 11718925.820000002, "sales_rank": 2}, {"sales_year": 2025, "sales_item_description": "FIREBALL CINNAMON WHISKEY", "total_sales_dollars": 9991751.5, "sales_rank": 3}, {"sales_year": 2026, "sales_item_description": "BLACK VELVET", "total_sales_dollars": 2911417.9899999998, "sales_rank": 3}, {"sales_year": 2023, "sales_item_description": "FIREBALL CINNAMON WHISKEY", "total_sales_dollars": 11592055.8, "sales_rank": 3}, {"sales_year": 2022, "sales_item_description": "BLACK VELVET", "total_sales_dollars": 11674549.600000015, "sales_rank": 3}, {"sales_year": 2024, "sales_item_description": "FIREBALL CINNAMON WHISKEY", "total_sales_dollars": 10895231.0, "sales_rank": 3}, {"sales_year": 2025, "sales_item_description": "CROWN ROYAL", "total_sales_dollars": 9120633.989999993, "sales_rank": 4}, {"sales_year": 2026, "sales_item_description": "CROWN ROYAL", "total_sales_dollars": 2512087.9000000004, "sales_rank": 4}, {"sales_year": 2023, "sales_item_description": "CROWN ROYAL", "total_sales_dollars": 10209429.249999998, "sales_rank": 4}, {"sales_year": 2022, "sales_item_description": "CROWN ROYAL", "total_sales_dollars": 11343341.340000002, "sales_rank": 4}, {"sales_year": 2024, "sales_item_description": "CROWN ROYAL", "total_sales_dollars": 9605163.839999992, "sales_rank": 4}, {"sales_year": 2025, "sales_item_description": "CROWN ROYAL REGAL APPLE", "total_sales_dollars": 8940633.300000003, "sales_rank": 5}, {"sales_year": 2026, "sales_item_description": "JACK DANIELS OLD #7 BLACK LABEL", "total_sales_dollars": 2493225.69, "sales_rank": 5}, {"sales_year": 2023, "sales_item_description": "JACK DANIELS OLD #7 BLACK LABEL", "total_sales_dollars": 9611569.68, "sales_rank": 5}, {"sales_year": 2022, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED", "total_sales_dollars": 10358733.520000005, "sales_rank": 5}, {"sales_year": 2024, "sales_item_description": "CROWN ROYAL REGAL APPLE", "total_sales_dollars": 9407693.640000002, "sales_rank": 5}, {"sales_year": 2025, "sales_item_description": "JACK DANIELS OLD #7 BLACK LABEL", "total_sales_dollars": 8541210.879999997, "sales_rank": 6}, {"sales_year": 2026, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED BARREL", "total_sales_dollars": 2481453.960000001, "sales_rank": 6}, {"sales_year": 2023, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED", "total_sales_dollars": 9261306.209999995, "sales_rank": 6}, {"sales_year": 2022, "sales_item_description": "CROWN ROYAL REGAL APPLE", "total_sales_dollars": 10139859.319999997, "sales_rank": 6}, {"sales_year": 2024, "sales_item_description": "JACK DANIELS OLD #7 BLACK LABEL", "total_sales_dollars": 9261105.570000004, "sales_rank": 6}, {"sales_year": 2025, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED", "total_sales_dollars": 7864635.91, "sales_rank": 7}, {"sales_year": 2026, "sales_item_description": "CROWN ROYAL REGAL APPLE", "total_sales_dollars": 2439217.49, "sales_rank": 7}, {"sales_year": 2023, "sales_item_description": "CROWN ROYAL REGAL APPLE", "total_sales_dollars": 9239467.83, "sales_rank": 7}, {"sales_year": 2022, "sales_item_description": "JACK DANIELS OLD #7 BLACK LABEL", "total_sales_dollars": 9517637.009999994, "sales_rank": 7}, {"sales_year": 2024, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED", "total_sales_dollars": 8388729.999999996, "sales_rank": 7}, {"sales_year": 2025, "sales_item_description": "JAMESON", "total_sales_dollars": 6392808.8100000005, "sales_rank": 8}, {"sales_year": 2026, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED", "total_sales_dollars": 2360791.0400000005, "sales_rank": 8}, {"sales_year": 2023, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED BARREL", "total_sales_dollars": 7061536.2399999965, "sales_rank": 8}, {"sales_year": 2022, "sales_item_description": "HENNESSY VS", "total_sales_dollars": 7424003.100000005, "sales_rank": 8}, {"sales_year": 2024, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED BARREL", "total_sales_dollars": 7137291.040000002, "sales_rank": 8}, {"sales_year": 2025, "sales_item_description": "CAPTAIN MORGAN ORIGINAL SPICED BARREL", "total_sales_dollars": 6301862.239999997, "sales_rank": 9}, {"sales_year": 2026, "sales_item_description": "JAMESON", "total_sales_dollars": 2013937.5000000002, "sales_rank": 9}, {"sales_year": 2023, "sales_item_description": "PATRON SILVER", "total_sales_dollars": 6963129.0, "sales_rank": 9}, {"sales_year": 2022, "sales_item_description": "JAMESON", "total_sales_dollars": 6830823.15, "sales_rank": 9}, {"sales_year": 2024, "sales_item_description": "JAMESON", "total_sales_dollars": 6721177.239999997, "sales_rank": 9}, {"sales_year": 2025, "sales_item_description": "FIREBALL CINNAMON WHISKEY MINI SLEEVE", "total_sales_dollars": 5859490.209999997, "sales_rank": 10}, {"sales_year": 2026, "sales_item_description": "FIREBALL CINNAMON WHISKEY MINI SLEEVE", "total_sales_dollars": 1899828.0, "sales_rank": 10}, {"sales_year": 2023, "sales_item_description": "JAMESON", "total_sales_dollars": 6958456.300000001, "sales_rank": 10}, {"sales_year": 2022, "sales_item_description": "PATRON SILVER", "total_sales_dollars": 6729499.5, "sales_rank": 10}, {"sales_year": 2024, "sales_item_description": "CROWN ROYAL BLACKBERRY", "total_sales_dollars": 6474300.1599999955, "sales_rank": 10}]}}, {actions: false, renderer: 'svg'});</script>
+<p><em>Source: Iowa Liquor Sales public dataset. “Top” is defined by summed <code>sale_dollars</code>; returns or adjustments in the source are retained.</em></p></main></body></html>

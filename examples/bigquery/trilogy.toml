@@ -1,0 +1,23 @@
+# Trilogy Configuration File
+# Learn more at: https://github.com/trilogy-data/pytrilogy
+
+[engine]
+# Default dialect for execution
+dialect = "bigquery"
+
+# Max parallelism for multi-script execution
+# parallelism = 3
+
+[engine.config]
+# Connection parameters for bigquery.
+# project = "my-gcp-project"
+# staging_dataset = "my_dataset"
+# staging_uri = "gs://my-bucket/trilogy-staging"
+
+[setup]
+# Startup scripts to run before execution
+# trilogy = []
+# sql = []
+
+[agent]
+model = 'gpt-5.6'

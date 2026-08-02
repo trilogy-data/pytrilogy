@@ -1,0 +1,23 @@
+# Welcome to Trilogy!
+# This is a simple example script to get you started.
+
+# Define a simple concept
+key user_id int;
+
+# Create a sample datasource
+datasource users (
+    user_id
+)
+grain (user_id)
+query '''
+    SELECT 1 as user_id
+    UNION ALL
+    SELECT 2 as user_id
+    UNION ALL
+    SELECT 3 as user_id
+''';
+
+# Query the data
+SELECT
+    user_id
+;

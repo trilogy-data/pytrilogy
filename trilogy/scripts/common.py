@@ -34,6 +34,7 @@ from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 # Re-exported: lives in a stdlib-only module so lightweight commands can find a
 # project config without importing this one. Callers here are unchanged.
 from trilogy.scripts.project_config import (  # noqa: F401
+    MODEL_ROOT_DIR,
     TRILOGY_CONFIG_NAME,
     find_trilogy_config,
 )

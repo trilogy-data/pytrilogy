@@ -1,5 +1,3 @@
-import tempfile
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -184,6 +182,11 @@ class SQLiteConfig(DialectConfig):
 
     @staticmethod
     def _download_remote(url: str, staging_path: str | None = None) -> str:
+        # Local imports: urllib.request drags in http.client and the email
+        # package (~0.1s), and this file is on the CLI's startup path.
+        import tempfile
+        import urllib.request
+
         with tempfile.NamedTemporaryFile(
             suffix=".db", delete=False, dir=staging_path
         ) as tmp:

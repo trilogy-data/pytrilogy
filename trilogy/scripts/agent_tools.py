@@ -451,7 +451,7 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     if not state.allow_db_introspection and _first_non_flag_arg(raw_args) == "database":
         return (
             "trilogy database introspection is disabled for this task. The "
-            "semantic model is already built under raw/ — use "
+            "semantic model is already built under root/ — use "
             "`explore <file.preql>` to see queryable concepts (it chains in "
             "imported dimensions too). Do not list raw database tables."
         )

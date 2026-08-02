@@ -428,3 +428,12 @@ def test_plan_emits_plan_event(runner, tmp_path):
     assert result.exit_code == 0, result.output
     plan = events_of(parse_events(result.output), "plan")[0]
     assert plan["execution_order"] == [["q.preql"]]
+
+
+def test_init_emits_start_event(runner, tmp_path):
+    target = tmp_path / "ws"
+    result = runner.invoke(cli, ["--format", "json", "init", str(target), "duckdb"])
+    assert result.exit_code == 0, result.output
+    start = events_of(parse_events(result.output), "init_start")[0]
+    assert start["dialect"] == "duck_db"
+    assert start["overwrite"] is False
