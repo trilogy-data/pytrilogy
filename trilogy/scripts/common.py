@@ -612,6 +612,8 @@ def create_executor(
     if env_params:
         environment.set_parameters(**env_params)
 
+    from trilogy.execution.envs import datasource_transform_from_active
+
     exec = Executor(
         dialect=edialect,
         engine=edialect.default_engine(conf=conf),
@@ -622,6 +624,7 @@ def create_executor(
         config=conf,
         staging=config.staging,
         chart_theme=config.report_theme,
+        datasource_transform=datasource_transform_from_active(PathlibPath(directory)),
     )
     if config.startup_sql:
         for script in config.startup_sql:

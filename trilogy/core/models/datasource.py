@@ -190,6 +190,9 @@ class Address:
     # ``file [`a.parquet`, `b.parquet`]``). When non-empty, ``location`` holds
     # the first entry and readers should emit an array call.
     additional_locations: list[str] = field(default_factory=list)
+    # Deployment environment this address has been namespaced into (see
+    # trilogy.execution.envs). Doubles as the guard against double-prefixing.
+    env_label: str | None = None
 
     @property
     def is_query(self):

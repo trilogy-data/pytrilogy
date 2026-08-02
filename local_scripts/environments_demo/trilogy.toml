@@ -1,0 +1,16 @@
+[engine]
+dialect = "duck_db"
+
+[engine.config]
+db_location = "warehouse.duckdb"
+
+[project]
+name = "environments_demo"
+
+# Registry for deployment environments; kept inside the demo dir so the
+# whole example is self-contained. Omit to default to ~/.trilogy.
+[environments]
+home = ".trilogy_envs"
+
+[setup]
+sql = ["setup.sql"]

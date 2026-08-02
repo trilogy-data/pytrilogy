@@ -18,6 +18,7 @@ from trilogy.core import graph as nx
 from trilogy.core.models.datasource import Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
+from trilogy.execution.envs import active_env, apply_env_to_environment
 from trilogy.execution.report import (
     emit_asset_refresh,
     emit_asset_refresh_query,
@@ -376,6 +377,12 @@ def probe_directory_state(
         except Exception as e:
             print_error(f"Error parsing {node.path}: {e}")
             raise Exit(1) from e
+        # The lightweight parse bypasses the Executor, so the deployment-env
+        # rewrite (normally an Executor.datasource_transform) applies here
+        # directly — phase 2's executor-parsed addresses must match phase 1's.
+        active_activation = active_env()
+        if active_activation:
+            apply_env_to_environment(env, active_activation)
         if not env.datasources:
             print_info(f"Skipping {file_path.name} (no datasources)")
             continue
@@ -1030,6 +1037,11 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     default=False,
     help="Show SQL that would be executed without running it",
 )
+@option(
+    "--environment",
+    default=None,
+    help="Build into this deployment environment (overrides the activated one)",
+)
 @report_options
 @state_file_option
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
@@ -1047,6 +1059,7 @@ def refresh(
     force,
     interactive,
     dry_run,
+    environment: str | None,
     report_file: str | None,
     run_id: str | None,
     state_input: str | None,
@@ -1103,16 +1116,25 @@ def refresh(
             parallelism=parallelism,
             config_path=str(config) if config else None,
         ):
+            from trilogy.execution.envs import env_activation_scope
             from trilogy.execution.state.phases import phase_recording
+            from trilogy.scripts.env_commands import (
+                announce_activation,
+                resolve_activation,
+            )
             from trilogy.scripts.state import (
                 maybe_write_state_snapshot,
                 state_input_scope,
             )
 
+            activation = resolve_activation(
+                environment, str(input), cli_params.config_path
+            )
+            announce_activation(activation)
             up_to_date = False
             # The recorder captures the planning probes' begin-phase
             # observations and verdicts for the post-run snapshot.
-            with phase_recording() as recorder:
+            with env_activation_scope(activation), phase_recording() as recorder:
                 try:
                     with state_input_scope(state_input, cli_params):
                         summary = run_refresh_command(cli_params)

@@ -173,6 +173,11 @@ def _format_import(value: str) -> str:
         "on by default (disable with TRILOGY_AGENT_SCOPE_WARNINGS=0)."
     ),
 )
+@option(
+    "--environment",
+    default=None,
+    help="Build into this deployment environment (overrides the activated one)",
+)
 @report_options
 @state_file_option
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
@@ -189,6 +194,7 @@ def run(
     displayed_rows: int,
     all_rows: bool,
     scope: bool,
+    environment: str | None,
     report_file: str | None,
     run_id: str | None,
     state_input: str | None,
@@ -248,23 +254,33 @@ def run(
                 row_limit=None if all_rows else displayed_rows,
                 show_scopes=scope,
             )
+            from trilogy.execution.envs import env_activation_scope
+            from trilogy.scripts.env_commands import (
+                announce_activation,
+                resolve_activation,
+            )
             from trilogy.scripts.state import (
                 maybe_write_state_snapshot,
                 state_input_scope,
             )
 
-            try:
-                with state_input_scope(state_input, cli_params):
-                    run_parallel_execution(
-                        cli_params=cli_params,
-                        execution_fn=execute_script_for_run,
-                        execution_mode=ExecutionMode.RUN,
+            activation = resolve_activation(
+                environment, str(input), cli_params.config_path
+            )
+            announce_activation(activation)
+            with env_activation_scope(activation):
+                try:
+                    with state_input_scope(state_input, cli_params):
+                        run_parallel_execution(
+                            cli_params=cli_params,
+                            execution_fn=execute_script_for_run,
+                            execution_mode=ExecutionMode.RUN,
+                        )
+                finally:
+                    # Snapshot regardless of outcome; never alters the exit code.
+                    maybe_write_state_snapshot(
+                        cli_params, state_file, state_partition, state_max_partitions
                     )
-            finally:
-                # Snapshot regardless of outcome; never alters the exit code.
-                maybe_write_state_snapshot(
-                    cli_params, state_file, state_partition, state_max_partitions
-                )
     except Exit:
         raise
     except Exception as e:

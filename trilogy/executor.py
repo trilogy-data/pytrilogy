@@ -1,7 +1,7 @@
 import random
 import time
 import uuid
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
 from functools import singledispatchmethod
@@ -197,11 +197,15 @@ class Executor:
         config: DialectConfig | None = None,
         staging: StagingConfig | None = None,
         chart_theme: str | None = None,
+        datasource_transform: Callable[[Datasource], None] | None = None,
     ):
 
         self.dialect: Dialects = dialect
         self.engine = engine
         self.environment = environment or Environment()
+        # Physical-address rewrite (e.g. deployment-env prefixing) applied to
+        # every datasource after parse, before statement processing.
+        self.datasource_transform = datasource_transform
         self.generator: BaseDialect
         self.logger = logger
         self.hooks = hooks
@@ -977,6 +981,19 @@ class Executor:
     ) -> list[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_text_generator(command, persist=persist, root=root))
 
+    def _apply_datasource_transform(self, parsed: Sequence[Any]) -> None:
+        """Run the installed physical-address rewrite over everything a parse
+        produced: registered datasources plus not-yet-registered persist
+        targets. Must run before ``_generate`` so processed statements bake
+        the rewritten addresses."""
+        if not self.datasource_transform:
+            return
+        for ds in self.environment.datasources.values():
+            self.datasource_transform(ds)
+        for statement in parsed:
+            if isinstance(statement, PersistStatement):
+                self.datasource_transform(statement.datasource)
+
     def parse_text_with_definitions(
         self, command: str, persist: bool = False, root: Path | None = None
     ) -> tuple[list[PROCESSED_STATEMENT_TYPES], list[Any]]:
@@ -985,6 +1002,7 @@ class Executor:
         Lets callers warn when a file parses cleanly but has no statement that
         produces output (a definitions-only file does nothing on its own)."""
         _, parsed = parse_text(command, self.environment, root=root)
+        self._apply_datasource_transform(parsed)
         definitions = [
             x
             for x in parsed
@@ -1010,6 +1028,7 @@ class Executor:
     ]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment, root=root)
+        self._apply_datasource_transform(parsed)
         generatable = [x for x in parsed if isinstance(x, GENERATABLE_STATEMENT_TYPES)]
         while generatable:
             t = generatable.pop(0)
