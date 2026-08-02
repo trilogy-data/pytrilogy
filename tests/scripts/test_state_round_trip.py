@@ -134,7 +134,7 @@ def test_state_round_trip_across_models(runner, tmp_path):
     assert recorded.status == "fresh"
     assert recorded.managed is True
     observed = {w.key: w.value for w in recorded.datasources[0].observed_watermarks}
-    assert observed["ev_ts"] and "2024-01-15" in observed["ev_ts"]
+    assert observed["local.ev_ts"] and "2024-01-15" in observed["local.ev_ts"]
 
     # --- Drift: the root advances, and the target is brought up to date out of
     # band. A live probe would now call the target fresh; the recorded state
@@ -181,10 +181,13 @@ def test_state_round_trip_across_models(runner, tmp_path):
     )
     assert refreshed.status == "fresh"
     assert after.summary.stale == 0
-    # Model B records under ITS concept name; the seeded key was re-keyed onto
-    # it through the shared physical column.
+    # Model B records under ITS concept address; the seeded key was re-keyed
+    # onto it through the shared physical column.
     reobserved = {w.key: w.value for w in refreshed.datasources[0].observed_watermarks}
-    assert reobserved["event_time"] and "2024-02-01" in reobserved["event_time"]
+    assert (
+        reobserved["local.event_time"]
+        and "2024-02-01" in reobserved["local.event_time"]
+    )
 
 
 PORTABLE_SOURCE = """key ev_id int;

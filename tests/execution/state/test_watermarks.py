@@ -229,9 +229,9 @@ def test_incremental_key_watermarks(duckdb_engine: Executor):
     datasource = duckdb_engine.environment.datasources["orders"]
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
 
-    assert "order_date" in watermarks.keys
-    assert watermarks.keys["order_date"].type == UpdateKeyType.INCREMENTAL_KEY
-    assert watermarks.keys["order_date"].value is not None
+    assert "local.order_date" in watermarks.keys
+    assert watermarks.keys["local.order_date"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["local.order_date"].value is not None
 
 
 def test_unique_key_hash_watermarks(duckdb_engine: Executor):
@@ -296,8 +296,8 @@ def test_base_state_store_incremental_by(duckdb_engine: Executor):
     watermarks = state_store.watermark_asset(datasource, duckdb_engine)
 
     assert watermarks is not None
-    assert "timestamp" in watermarks.keys
-    assert watermarks.keys["timestamp"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert "local.timestamp" in watermarks.keys
+    assert watermarks.keys["local.timestamp"].type == UpdateKeyType.INCREMENTAL_KEY
 
     retrieved = state_store.get_datasource_watermarks(datasource)
     assert retrieved == watermarks
@@ -436,10 +436,10 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
     datasource = duckdb_engine.environment.datasources["versioned_records"]
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
 
-    assert "updated_at" in watermarks.keys
-    assert "version" in watermarks.keys
-    assert watermarks.keys["updated_at"].type == UpdateKeyType.INCREMENTAL_KEY
-    assert watermarks.keys["version"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert "local.updated_at" in watermarks.keys
+    assert "local.version" in watermarks.keys
+    assert watermarks.keys["local.updated_at"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["local.version"].type == UpdateKeyType.INCREMENTAL_KEY
 
 
 def test_watermark_all_assets(duckdb_engine: Executor):
@@ -858,9 +858,9 @@ def test_freshness_watermarks():
     datasource = executor.environment.datasources["users"]
     watermarks = get_freshness_watermarks(datasource, executor)
 
-    assert "updated_at" in watermarks.keys
-    assert watermarks.keys["updated_at"].type == UpdateKeyType.UPDATE_TIME
-    assert watermarks.keys["updated_at"].value is not None
+    assert "local.updated_at" in watermarks.keys
+    assert watermarks.keys["local.updated_at"].type == UpdateKeyType.UPDATE_TIME
+    assert watermarks.keys["local.updated_at"].value is not None
 
 
 def test_freshness_stale_assets():
@@ -1029,9 +1029,9 @@ def test_freshness_watermarks_missing_table():
     watermarks = get_freshness_watermarks(datasource, executor)
 
     # Should return watermark with None value instead of raising
-    assert "updated_at" in watermarks.keys
-    assert watermarks.keys["updated_at"].value is None
-    assert watermarks.keys["updated_at"].type == UpdateKeyType.UPDATE_TIME
+    assert "local.updated_at" in watermarks.keys
+    assert watermarks.keys["local.updated_at"].value is None
+    assert watermarks.keys["local.updated_at"].type == UpdateKeyType.UPDATE_TIME
 
 
 def test_incremental_watermarks_missing_table():
@@ -1054,9 +1054,9 @@ def test_incremental_watermarks_missing_table():
     watermarks = get_incremental_key_watermarks(datasource, executor)
 
     # Should return watermark with None value instead of raising
-    assert "event_ts" in watermarks.keys
-    assert watermarks.keys["event_ts"].value is None
-    assert watermarks.keys["event_ts"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert "local.event_ts" in watermarks.keys
+    assert watermarks.keys["local.event_ts"].value is None
+    assert watermarks.keys["local.event_ts"].type == UpdateKeyType.INCREMENTAL_KEY
 
 
 def test_unique_key_hash_watermarks_missing_table():
@@ -1107,9 +1107,9 @@ def test_get_concept_max_watermarks():
         datasource, list(datasource.output_concepts), executor
     )
 
-    assert "gcm_ts" in watermarks.keys
-    assert watermarks.keys["gcm_ts"].type == UpdateKeyType.INCREMENTAL_KEY
-    assert watermarks.keys["gcm_ts"].value is not None
+    assert "local.gcm_ts" in watermarks.keys
+    assert watermarks.keys["local.gcm_ts"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["local.gcm_ts"].value is not None
 
 
 def test_root_auto_watermark_stale():
@@ -1602,8 +1602,8 @@ def test_freshness_watermarks_missing_column_parquet(tmp_path):
     datasource = executor.environment.datasources["parquet_src"]
     watermarks = get_freshness_watermarks(datasource, executor)
 
-    assert "updated_at" in watermarks.keys
-    assert watermarks.keys["updated_at"].value is None
+    assert "local.updated_at" in watermarks.keys
+    assert watermarks.keys["local.updated_at"].value is None
 
 
 def test_get_stale_assets_parquet_missing_column(tmp_path):
@@ -1751,3 +1751,53 @@ incremental by created_at.date
         assert any(
             wm.value == date(2024, 1, 2) for wm in store.concept_max_watermarks.values()
         )
+
+
+def test_derived_property_watermark_key_is_its_address(
+    duckdb_engine: Executor,
+):
+    """A derived-property incremental key (``created_at.date``) is emitted
+    under its full concept address, and the snapshot's column-binding match is
+    an exact address lookup — so the one watermark a reader most wants carries
+    both the qualified ``concept_address`` and the physical column that binds
+    it, deterministically. A dotted *name* previously fell between the
+    exact-address and bare-name rules and rendered unattached.
+    """
+    from trilogy.execution.state.snapshot import _match_column_binding
+
+    duckdb_engine.execute_text("""
+        key order_id int;
+        property order_id.created_at datetime;
+
+        datasource orders (
+            order_id: order_id,
+            order_creation_date: created_at.date
+        )
+        grain (order_id)
+        query '''
+        SELECT 1 as order_id, date '2024-01-01' as order_creation_date
+        UNION ALL
+        SELECT 2 as order_id, date '2024-01-05' as order_creation_date
+        '''
+        incremental by created_at.date;
+        """)
+
+    datasource = duckdb_engine.environment.datasources["orders"]
+    watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
+
+    bound = next(
+        col for col in datasource.columns if str(col.alias) == "order_creation_date"
+    )
+    (key,) = watermarks.keys
+    assert key == bound.concept.address == "local.created_at.date"
+    assert watermarks.keys[key].type == UpdateKeyType.INCREMENTAL_KEY
+
+    assert _match_column_binding(key, datasource) == (key, "order_creation_date")
+
+    # A key with no bound column keeps its address but reports no column; the
+    # table-level sentinel has neither.
+    assert _match_column_binding("local.unbound.thing", datasource) == (
+        "local.unbound.thing",
+        None,
+    )
+    assert _match_column_binding("update_time", datasource) == (None, None)

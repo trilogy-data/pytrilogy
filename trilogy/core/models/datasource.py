@@ -80,6 +80,8 @@ class FreshnessLag(BaseModel):
 class UpdateKey:
     """Represents a key used to track data freshness for incremental updates."""
 
+    #: The watermark key: the concept's full address as known to the emitting
+    #: environment, or the literal ``update_time`` for a table-mtime watermark.
     concept_name: str
     type: UpdateKeyType
     value: str | int | float | datetime | date | None

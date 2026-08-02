@@ -101,8 +101,8 @@ def _snapshot_for(
 def _watermark(value) -> DatasourceWatermark:
     return DatasourceWatermark(
         keys={
-            "updated_at": UpdateKey(
-                concept_name="updated_at",
+            "local.updated_at": UpdateKey(
+                concept_name="local.updated_at",
                 type=UpdateKeyType.INCREMENTAL_KEY,
                 value=value,
             )
@@ -128,10 +128,10 @@ def test_watermark_value_round_trips(value):
     ds_state = managed_states_by_address(snapshot)["target_items_table"]
     ds = executor.environment.datasources["target_items"]
     restored = watermarks_for_datasource(ds_state, ds)
-    assert restored.keys["updated_at"].value == value
-    assert restored.keys["updated_at"].type == UpdateKeyType.INCREMENTAL_KEY
-    # concept_name mirrors the emitted key, never the writer's namespaced address.
-    assert restored.keys["updated_at"].concept_name == "updated_at"
+    assert restored.keys["local.updated_at"].value == value
+    assert restored.keys["local.updated_at"].type == UpdateKeyType.INCREMENTAL_KEY
+    # concept_name mirrors the emitted key: the reader's own concept address.
+    assert restored.keys["local.updated_at"].concept_name == "local.updated_at"
 
 
 def test_unparseable_temporal_degrades_to_string():
@@ -171,15 +171,15 @@ def test_seeds_across_a_renamed_datasource():
     store = SnapshotStateStore(snapshot)
     seeded = store.seeded_watermarks(reader.environment)
     assert set(seeded) == {"warehouse_items"}
-    assert seeded["warehouse_items"].keys["updated_at"].value == datetime(
+    assert seeded["warehouse_items"].keys["local.updated_at"].value == datetime(
         2024, 1, 10, 12, 0
     )
 
 
 def test_rekeys_onto_a_renamed_concept():
-    """Watermark keys are concept names, so a reader that renamed its concepts
-    would never match the writer's keys. The shared physical column bridges
-    them — without this, the seeded value is silently never compared."""
+    """Watermark keys are concept addresses, so a reader that renamed its
+    concepts would never match the writer's keys. The shared physical column
+    bridges them — without this, the seeded value is silently never compared."""
     writer = _executor()
     snapshot = _snapshot_for(
         writer, {"target_items": _watermark(datetime(2024, 1, 10, 12, 0))}
@@ -191,8 +191,8 @@ def test_rekeys_onto_a_renamed_concept():
         ds_state, reader.environment.datasources["target_items"]
     )
 
-    assert set(restored.keys) == {"loaded_at"}
-    assert restored.keys["loaded_at"].value == datetime(2024, 1, 10, 12, 0)
+    assert set(restored.keys) == {"local.loaded_at"}
+    assert restored.keys["local.loaded_at"].value == datetime(2024, 1, 10, 12, 0)
 
 
 def test_unmatched_column_keeps_the_recorded_key():
@@ -208,7 +208,7 @@ def test_unmatched_column_keeps_the_recorded_key():
     restored = watermarks_for_datasource(
         ds_state, reader.environment.datasources["target_items"]
     )
-    assert set(restored.keys) == {"updated_at"}
+    assert set(restored.keys) == {"local.updated_at"}
 
 
 def test_seeded_watermark_drives_the_plan():
@@ -235,7 +235,7 @@ def test_unseeded_assets_still_probe_live():
 
     # Live probe finds target_items matching the root -> fresh.
     assert plan.stale_assets == []
-    assert plan.watermarks["target_items"].keys["updated_at"].value == datetime(
+    assert plan.watermarks["target_items"].keys["local.updated_at"].value == datetime(
         2024, 1, 10, 12, 0
     )
 
@@ -249,14 +249,14 @@ def test_seeding_does_not_resurrect_after_invalidate():
     )
     store = SnapshotStateStore(snapshot)
     store.watermark_all_assets(executor.environment, executor)
-    assert store.watermarks["target_items"].keys["updated_at"].value == datetime(
+    assert store.watermarks["target_items"].keys["local.updated_at"].value == datetime(
         2020, 1, 1, 0, 0
     )
 
     store.invalidate_address(executor.environment, "target_items_table")
     store.watermark_all_assets(executor.environment, executor)
 
-    assert store.watermarks["target_items"].keys["updated_at"].value == datetime(
+    assert store.watermarks["target_items"].keys["local.updated_at"].value == datetime(
         2024, 1, 10, 12, 0
     )
 

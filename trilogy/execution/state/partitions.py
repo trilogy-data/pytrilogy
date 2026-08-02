@@ -463,7 +463,7 @@ def probe_observed_partitions(
     rows = _execute_raw_sql_rows(query, executor)
 
     key_type = _watermark_key_type(ds)
-    names = [executor.environment.concepts[ref.address].name for ref in wm_refs]
+    addresses = [executor.environment.concepts[ref.address].address for ref in wm_refs]
     offset = len(assignments)
     return [
         PartitionObservation(
@@ -473,10 +473,10 @@ def probe_observed_partitions(
             },
             row_count=row[offset],
             keys={
-                name: UpdateKey(
-                    concept_name=name, type=key_type, value=row[offset + 1 + i]
+                address: UpdateKey(
+                    concept_name=address, type=key_type, value=row[offset + 1 + i]
                 )
-                for i, name in enumerate(names)
+                for i, address in enumerate(addresses)
             },
         )
         for row in rows
@@ -498,10 +498,12 @@ def probe_expected_partitions(
 
     key_type = _watermark_key_type(ds)
     wm_refs = partition_watermark_refs(ds)
-    wm_names = [executor.environment.concepts[ref.address].name for ref in wm_refs]
+    wm_addresses = [
+        executor.environment.concepts[ref.address].address for ref in wm_refs
+    ]
+    # Positional aliases: an address contains dots, which no alias can carry.
     selected = [ref.address for ref in ds.partition_by] + [
-        f"MAX({ref.address}) -> _expected_{name}"
-        for ref, name in zip(wm_refs, wm_names)
+        f"MAX({ref.address}) -> _expected_{i}" for i, ref in enumerate(wm_refs)
     ]
 
     hidden = {
@@ -534,8 +536,10 @@ def probe_expected_partitions(
                 for idx, col in enumerate(assignments)
             },
             keys={
-                name: UpdateKey(concept_name=name, type=key_type, value=row[offset + i])
-                for i, name in enumerate(wm_names)
+                address: UpdateKey(
+                    concept_name=address, type=key_type, value=row[offset + i]
+                )
+                for i, address in enumerate(wm_addresses)
             },
         )
         for row in rows
