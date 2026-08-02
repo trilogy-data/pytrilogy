@@ -15,6 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from trilogy.execution.state.snapshot import StateSnapshot
+from trilogy.scripts.serve_helpers import REMOTE_STORE_CONTRACT_VERSION
 from trilogy.scripts.trilogy import cli
 
 pytest.importorskip("fastapi")
@@ -63,6 +64,7 @@ def test_serve_root_endpoint():
         assert data["message"] == "Trilogy Model Server"
         assert "with 1 files" in data["description"]
         assert "/index.json" in data["endpoints"]
+        assert data["contract_version"] == REMOTE_STORE_CONTRACT_VERSION
 
 
 def test_serve_index_endpoint_empty():
@@ -431,6 +433,28 @@ def test_serve_index_startup_scripts_populated():
         # Both inputs resolve to the same posix-relative path; the client
         # matches this string against editor `remotePath`.
         assert data["startup_scripts"] == ["setup/init.sql", "setup/init.sql"]
+
+
+def test_serve_index_startup_scripts_unlisted_files_skipped():
+    """An entry only means something if it also appears in /files, so a missing
+    file or an extension the store doesn't serve is dropped."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        (tmppath / "notes.md").write_text("not a script")
+        (tmppath / "real.sql").write_text("select 1;")
+
+        app = create_test_app(
+            tmppath,
+            startup_scripts=[
+                Path("missing.sql"),
+                Path("notes.md"),
+                Path("real.sql"),
+            ],
+        )
+        client = TestClient(app)
+
+        assert client.get("/index.json").json()["startup_scripts"] == ["real.sql"]
 
 
 def test_serve_index_startup_scripts_outside_dir_skipped():
@@ -1222,7 +1246,7 @@ def test_index_defaults_connection_to_serving_engine():
         app = create_test_app(Path(tmpdir), engine="duck_db")
         client = TestClient(app)
         data = client.get("/index.json").json()
-        assert data["connection"] == {"type": "duck_db", "options": {}}
+        assert data["connection"] == {"type": "duckdb", "options": {}}
 
 
 def test_index_omits_connection_for_generic_engine():
@@ -1255,6 +1279,65 @@ def test_index_emits_connection_when_configured():
         assert data["connection"] == {
             "type": "snowflake",
             "options": {"account": "acme", "warehouse": "wh"},
+        }
+
+
+def test_index_omits_connection_for_engine_without_client_runtime():
+    """postgres/presto/sql_server have no client-side constructor, so the store
+    stays browse-only rather than advertising a runtime that fails on first
+    query."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = create_test_app(Path(tmpdir), engine="postgres")
+        client = TestClient(app)
+        assert client.get("/index.json").json()["connection"] is None
+
+
+def test_index_advertises_motherduck():
+    """motherduck is a client runtime with no dialect behind it; the token is a
+    secret so no options ride along."""
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            Path(tmpdir),
+            "localhost",
+            80,
+            connection_type="motherduck",
+            connection_options={"token": "secret"},
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/index.json").json()["connection"] == {
+            "type": "motherduck",
+            "options": {},
+        }
+
+
+def test_index_connection_options_drop_secrets_and_unknowns():
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = FastAPI()
+        create_app(
+            app,
+            "generic",
+            Path(tmpdir),
+            "localhost",
+            80,
+            connection_type="snowflake",
+            connection_options={
+                "account": "acme",
+                "username": "u",
+                "privateKey": "-----BEGIN PRIVATE KEY-----",
+                "nonsense": "x",
+            },
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/index.json").json()["connection"] == {
+            "type": "snowflake",
+            "options": {"account": "acme", "username": "u"},
         }
 
 

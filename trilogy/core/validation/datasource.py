@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -55,14 +56,26 @@ from trilogy.utility import unique
 SAMPLE_LIMIT = 10
 
 
-def row_to_dict(row):
-    return {key: val for key, val in row._mapping.items()}
+def row_to_dict(row: Any, columns: Sequence[str]) -> dict[str, Any]:
+    """Pair a result row with the column names its own result reported.
+
+    Position is the only accessor every engine shares. `_mapping` is
+    SQLAlchemy-only, and the namedtuple rows built by `trilogy.dialect.results`
+    renumber any field name that is not a valid identifier — so neither the
+    mapping nor the field names can be read off the row itself.
+    """
+    return dict(zip(columns, row))
 
 
-def describe_violation_row(row, concept: BuildConcept, keys: list[BuildConcept]) -> str:
+def describe_violation_row(
+    row: Any,
+    columns: Sequence[str],
+    concept: BuildConcept,
+    keys: list[BuildConcept],
+) -> str:
     """``genus.name='genus' -> genus.image='image_url'`` — lead with the grain
     keys so the offending row can actually be located in the source table."""
-    values = row_to_dict(row)
+    values = row_to_dict(row, columns)
     offending = f"{concept.address}={values.get(concept.safe_address)!r}"
     rendered_keys = ", ".join(
         f"{key.address}={values[key.safe_address]!r}"
@@ -117,13 +130,16 @@ def validate_unique_properties(
                 )
                 continue
             sql = exec.generate_sql(query)[-1]
-            rows = exec.execute_raw_sql(sql).fetchmany(10)
+            result = exec.execute_raw_sql(sql)
+            columns = list(result.keys())
+            rows = result.fetchmany(10)
             error = None
             if rows:
                 error = DatasourceModelValidationError(
                     f"Datasource {datasource.name} failed validation. Unique "
                     f"property {concept.address} maps to multiple "
-                    f"{key.address} values: {[row_to_dict(row) for row in rows]}"
+                    f"{key.address} values: "
+                    f"{[row_to_dict(row, columns) for row in rows]}"
                 )
             results.append(
                 ValidationTest(
@@ -266,7 +282,9 @@ def validate_declared_domains(
             )
             continue
         sql = exec.generate_sql(query)[-1]
-        rows = exec.execute_raw_sql(sql).fetchmany(SAMPLE_LIMIT)
+        result = exec.execute_raw_sql(sql)
+        columns = list(result.keys())
+        rows = result.fetchmany(SAMPLE_LIMIT)
         error = None
         if rows:
             counted = (
@@ -275,7 +293,7 @@ def validate_declared_domains(
                 else f"at least {SAMPLE_LIMIT} rows"
             )
             samples = "\n".join(
-                f"  {describe_violation_row(r, concept, keys)}" for r in rows
+                f"  {describe_violation_row(r, columns, concept, keys)}" for r in rows
             )
             error = DatasourceModelValidationError(
                 f"Datasource {datasource.name} ({datasource.safe_location}) failed "
@@ -443,6 +461,7 @@ def validate_datasource(
     )
 
     rows = []
+    type_columns: list[str] = []
     result_column_types: dict[str, CONCRETE_TYPES] = {}
     if exec:
         type_sql = exec.generate_sql(type_query)[-1]
@@ -451,6 +470,7 @@ def validate_datasource(
             result_column_types = (
                 exec.generator.get_result_column_types_for_validation(result) or {}
             )
+            type_columns = list(result.keys())
             rows = result.fetchall()
         except Exception as e:
             results.append(
@@ -482,11 +502,12 @@ def validate_datasource(
     cols_with_error = set()
     refined_type_cache: dict[tuple[str, str, str], CONCRETE_TYPES] = {}
     for row in rows:
+        values = row_to_dict(row, type_columns)
         for col in datasource.columns:
             actual_address = build_env.concepts[col.concept.address].safe_address
             if actual_address in cols_with_error:
                 continue
-            rval = getattr(row, actual_address)
+            rval = values[actual_address]
             passed = type_check(rval, col.concept.datatype, col.is_nullable)
             value_type = None
             if not passed:
@@ -584,7 +605,9 @@ def validate_datasource(
     else:
         sql = exec.generate_sql(query)[-1]
 
-        rows = exec.execute_raw_sql(sql).fetchmany(10)
+        grain_result = exec.execute_raw_sql(sql)
+        grain_columns = list(grain_result.keys())
+        rows = grain_result.fetchmany(10)
         if rows:
             results.append(
                 ValidationTest(
@@ -593,7 +616,7 @@ def validate_datasource(
                     check_type=ExpectationType.ROWCOUNT,
                     expected="0",
                     result=DatasourceModelValidationError(
-                        f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {[row_to_dict(r) for r in rows]}"
+                        f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {[row_to_dict(r, grain_columns) for r in rows]}"
                     ),
                     ran=True,
                 )

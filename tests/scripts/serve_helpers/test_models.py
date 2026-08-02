@@ -6,6 +6,7 @@ from trilogy.scripts.serve_helpers.models import (
     ConnectionSpec,
     ImportFile,
     ModelImport,
+    StoreConnectionType,
     StoreIndex,
     StoreModelIndex,
 )
@@ -129,7 +130,7 @@ def test_store_index_with_models():
 
 def test_connection_spec_minimal():
     spec = ConnectionSpec(type="duckdb")
-    assert spec.type == Dialects.DUCK_DB
+    assert spec.type == StoreConnectionType.DUCKDB
     assert spec.options == {}
 
 
@@ -137,20 +138,19 @@ def test_connection_spec_with_options():
     spec = ConnectionSpec(
         type="snowflake", options={"account": "acme", "warehouse": "wh"}
     )
-    assert spec.type == Dialects.SNOWFLAKE
+    assert spec.type == StoreConnectionType.SNOWFLAKE
     assert spec.options == {"account": "acme", "warehouse": "wh"}
 
 
-@pytest.mark.parametrize(
-    "dialect",
-    list(Dialects),
-)
-def test_connection_spec_accepts_all_dialects(dialect):
-    assert ConnectionSpec(type=dialect.value).type == dialect
+@pytest.mark.parametrize("connection_type", list(StoreConnectionType))
+def test_connection_spec_accepts_every_contract_type(connection_type):
+    assert ConnectionSpec(type=connection_type.value).type == connection_type
 
 
-def test_connection_spec_accepts_duckdb_alias():
-    assert ConnectionSpec(type="duckdb").type == Dialects.DUCK_DB
+def test_connection_spec_rejects_dialect_spelling():
+    """The wire format is the client runtime name, not a `Dialects` value."""
+    with pytest.raises(ValidationError):
+        ConnectionSpec(type=Dialects.DUCK_DB.value)  # type: ignore[arg-type]
 
 
 def test_connection_spec_rejects_unknown_type():
@@ -165,9 +165,9 @@ def test_store_index_with_connection():
         connection=ConnectionSpec(type="duckdb"),
     )
     assert store.connection is not None
-    assert store.connection.type == Dialects.DUCK_DB
+    assert store.connection.type == StoreConnectionType.DUCKDB
     assert store.model_dump(mode="json")["connection"] == {
-        "type": "duck_db",
+        "type": "duckdb",
         "options": {},
     }
 
