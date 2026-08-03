@@ -1,0 +1,25 @@
+
+WITH 
+quizzical as (
+SELECT
+    "lineitem"."l_orderkey" as "order_id"
+FROM
+    "memory"."lineitem" as "lineitem"
+GROUP BY
+    1
+HAVING
+    count(CASE WHEN "lineitem"."l_commitdate" < "lineitem"."l_receiptdate" THEN "lineitem"."l_linenumber" ELSE NULL END) > 0
+)
+SELECT
+    "order_orders"."o_orderpriority" as "order_priority",
+    count("quizzical"."order_id") as "order_count"
+FROM
+    "memory"."orders" as "order_orders"
+    INNER JOIN "quizzical" on "order_orders"."o_orderkey" = "quizzical"."order_id"
+WHERE
+    "order_orders"."o_orderdate" >= date '1993-07-01' and "order_orders"."o_orderdate" < date '1993-10-01'
+
+GROUP BY
+    1
+ORDER BY 
+    "order_orders"."o_orderpriority" asc

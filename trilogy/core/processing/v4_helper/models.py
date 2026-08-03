@@ -2,12 +2,29 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import DepthLabel
 from .edges import EdgeMap, copy_edges
+
+
+def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
+    """Whether a group written with this GROUP BY mode NULLs its own grouping
+    keys on some of the rows it emits.
+
+    ROLLUP/CUBE/GROUPING SETS add subtotal and grand-total rows whose rolled-up
+    key columns are NULL. Every consumer above such a group must treat those
+    keys as unusable: a WHERE, a join axis, or a re-aggregation keyed on them
+    silently drops the subtotals. This is the single question the planner
+    should ask — not "what does the group id string look like"."""
+    return mode is not None and mode != AggregateGroupingMode.STANDARD
 
 
 @dataclass
@@ -78,13 +95,27 @@ class GroupAttrs:
     # before aggregation. This is the grouping grain plus the natural grain of
     # the aggregate arguments.
     aggregate_input_grain: frozenset[str] = frozenset()
+    # Members merged onto this group from a coarser-input-grain sibling bucket
+    # (count-of-a-key over a finer row stream): render COUNT(DISTINCT ...)
+    # instead of dedup-then-COUNT.
+    aggregate_distinct_addrs: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently — so a single clause may live at
     # multiple groups, or one group may collect atoms from several clauses.
     condition_atoms: list[BoolExpr] = field(default_factory=list)
+    # Conjunctive siblings of an atom hosted here, delivered so an aggregate
+    # RECOMPUTE filters its input by the full clause. Kept apart from
+    # `condition_atoms`: the builder folds them in only when the group
+    # genuinely recomputes over rows (a twin-reused value is read through,
+    # and the extra WHERE would resurrect the redundant fact-rescan parent).
+    conjunction_atoms: list[BoolExpr] = field(default_factory=list)
     # String renderings of the atoms above, just for visualization.
     conditions: list[str] = field(default_factory=list)
+    # How this group's GROUP BY is written. Non-STANDARD modes NULL-inject
+    # their grouping keys on the subtotal rows they add, which is what
+    # `nulls_grouping_keys` exists to ask about.
+    grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     # Populated by `_compute_concept_sets`. Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
     hidden_concepts: tuple[str, ...] = ()
@@ -94,6 +125,10 @@ class GroupAttrs:
     final_contract: FinalAssemblyContract | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)
 
 
 @dataclass
@@ -115,10 +150,22 @@ class ConceptAttrs:
     granularity: Granularity
     depth_label: DepthLabel
     grain_components: frozenset[str] = frozenset()
-    grouping_mode: str | None = None
+    # None for a non-aggregate concept; otherwise the aggregate's GROUP BY
+    # mode, which `partition_aggregates` splits buckets on (one CTE cannot
+    # carry both a flat GROUP BY and a GROUP BY ROLLUP).
+    grouping_mode: AggregateGroupingMode | None = None
     rowset_name: str | None = None
     aggregate_input_grain: frozenset[str] = frozenset()
+    # True for a COUNT whose argument's value IS the key carrying the
+    # aggregate's residual input grain (count of a key, or of a FILTER over a
+    # key). Such a count may share a finer-grain sibling input stream by
+    # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
+    aggregate_distinct_rewritable: bool = False
     keys: frozenset[str] = frozenset()
+    # Addresses this concept answers for under another identity (scoped-join
+    # canonical collapse, `merge into`): lets grouping relate a property root
+    # to its key root when the key was collapsed onto a different address.
+    pseudonyms: frozenset[str] = frozenset()
     # True for a pure rename (``alias(...)`` lineage) — a pseudonym of its
     # source. The renderer resolves it transparently to the source column, so
     # it must not be folded into a rollup group like a genuine transform dim.
@@ -174,11 +221,13 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         secondary_members=a.secondary_members,
         member_depths=dict(a.member_depths),
         condition_atoms=list(a.condition_atoms),
+        conjunction_atoms=list(a.conjunction_atoms),
         conditions=list(a.conditions),
         output_concepts=a.output_concepts,
         hidden_concepts=a.hidden_concepts,
         input_concepts=a.input_concepts,
         aggregate_input_grain=a.aggregate_input_grain,
+        aggregate_distinct_addrs=a.aggregate_distinct_addrs,
         final_contract=a.final_contract,
         input_contracts=a.input_contracts,
     )
@@ -196,7 +245,9 @@ def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
         grouping_mode=a.grouping_mode,
         rowset_name=a.rowset_name,
         aggregate_input_grain=a.aggregate_input_grain,
+        aggregate_distinct_rewritable=a.aggregate_distinct_rewritable,
         keys=a.keys,
+        pseudonyms=a.pseudonyms,
         is_rename=a.is_rename,
         existence_only=a.existence_only,
     )
@@ -233,3 +284,14 @@ class GroupBucket:
     discriminator: str = ""
     # Grain to normalize this aggregate's inputs to before aggregating.
     aggregate_input_grain: frozenset[str] = frozenset()
+    # Member addresses to render COUNT(DISTINCT ...) — merged in from a
+    # coarser-input-grain sibling whose dedup folds into the aggregate.
+    aggregate_distinct_addrs: set[str] = field(default_factory=set)
+    # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
+    # only exists to keep distinct buckets at distinct group ids. Ask
+    # `nulls_grouping_keys`, never the id string.
+    grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)

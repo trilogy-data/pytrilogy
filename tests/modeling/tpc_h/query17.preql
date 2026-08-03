@@ -1,10 +1,19 @@
 import lineitem;
 
-auto avg_qty_per_part <- avg(quantity) by part.id;
-
-where
+rowset relevant_lines <- where
     part.brand = 'Brand#23'
     and part.container = 'MED BOX'
-    and quantity < 0.2 * avg_qty_per_part
+    and order.id is not null
 select
-    sum(extended_price) / 7.0 -> avg_yearly;
+    order.id as order_id,
+    line_no,
+    part.id as part_id,
+    quantity,
+    extended_price,
+;
+
+auto avg_qty_per_part <- avg(relevant_lines.quantity) by relevant_lines.part_id;
+
+where relevant_lines.quantity < 0.2 * avg_qty_per_part
+select
+    sum(relevant_lines.extended_price) / 7.0 -> avg_yearly;

@@ -1,11 +1,51 @@
 query_id = "76"
-generator = "v3"
-gen_length = 5838
+generator = "v4"
+gen_length = 5295
 preql_size = 1833
 comp_size = 1708
 generated_sql = """
 
 WITH 
+late as (
+SELECT
+    \"ws_item_items\".\"I_CATEGORY\" as \"___tvf_arm_1_i_category\",
+    \"ws_sale_date_date\".\"D_QOY\" as \"___tvf_arm_1_d_qoy\",
+    \"ws_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_1_d_year\",
+    :___tvf_arm_1_channel as \"___tvf_arm_1_channel\",
+    :___tvf_arm_1_col_name as \"___tvf_arm_1_col_name\",
+    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ws_web_sales\".\"WS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"ws_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_1_sales_cnt\",
+    sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"___tvf_arm_1_sales_amt\"
+FROM
+    \"memory\".\"web_sales\" as \"ws_web_sales\"
+    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
+juicy as (
+SELECT
+    \"ss_item_items\".\"I_CATEGORY\" as \"___tvf_arm_0_i_category\",
+    \"ss_sale_date_date\".\"D_QOY\" as \"___tvf_arm_0_d_qoy\",
+    \"ss_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_0_d_year\",
+    :___tvf_arm_0_channel as \"___tvf_arm_0_channel\",
+    :___tvf_arm_0_col_name as \"___tvf_arm_0_col_name\",
+    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ss_store_sales\".\"SS_TICKET_NUMBER\" as string),'\u001e'), coalesce(cast(\"ss_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_0_sales_cnt\",
+    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"___tvf_arm_0_sales_amt\"
+FROM
+    \"memory\".\"store_sales\" as \"ss_store_sales\"
+    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
+
+GROUP BY
+    1,
+    2,
+    3),
 cheerful as (
 SELECT
     \"cs_item_items\".\"I_CATEGORY\" as \"___tvf_arm_2_i_category\",
@@ -26,47 +66,7 @@ GROUP BY
     1,
     2,
     3),
-yummy as (
-SELECT
-    \"ss_item_items\".\"I_CATEGORY\" as \"___tvf_arm_0_i_category\",
-    \"ss_sale_date_date\".\"D_QOY\" as \"___tvf_arm_0_d_qoy\",
-    \"ss_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_0_d_year\",
-    :___tvf_arm_0_channel as \"___tvf_arm_0_channel\",
-    :___tvf_arm_0_col_name as \"___tvf_arm_0_col_name\",
-    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ss_store_sales\".\"SS_TICKET_NUMBER\" as string),'\u001e'), coalesce(cast(\"ss_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_0_sales_cnt\",
-    sum(\"ss_store_sales\".\"SS_EXT_SALES_PRICE\") as \"___tvf_arm_0_sales_amt\"
-FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-    3),
-abhorrent as (
-SELECT
-    \"ws_item_items\".\"I_CATEGORY\" as \"___tvf_arm_1_i_category\",
-    \"ws_sale_date_date\".\"D_QOY\" as \"___tvf_arm_1_d_qoy\",
-    \"ws_sale_date_date\".\"D_YEAR\" as \"___tvf_arm_1_d_year\",
-    :___tvf_arm_1_channel as \"___tvf_arm_1_channel\",
-    :___tvf_arm_1_col_name as \"___tvf_arm_1_col_name\",
-    count(md5(CONCAT_WS('\u001f', coalesce(cast(\"ws_web_sales\".\"WS_ORDER_NUMBER\" as string),'\u001e'), coalesce(cast(\"ws_item_items\".\"I_ITEM_SK\" as string),'\u001e')))) as \"___tvf_arm_1_sales_cnt\",
-    sum(\"ws_web_sales\".\"WS_EXT_SALES_PRICE\") as \"___tvf_arm_1_sales_amt\"
-FROM
-    \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
-
-GROUP BY
-    1,
-    2,
-    3),
-macho as (
+kaput as (
 SELECT
     \"cheerful\".\"___tvf_arm_2_channel\" as \"_q76_results_channel\",
     \"cheerful\".\"___tvf_arm_2_col_name\" as \"_q76_results_col_name\",
@@ -79,47 +79,36 @@ FROM
     \"cheerful\"
 UNION ALL
 SELECT
-    \"yummy\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
-    \"yummy\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
-    \"yummy\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
-    \"yummy\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
-    \"yummy\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
-    \"yummy\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"yummy\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
+    \"juicy\".\"___tvf_arm_0_channel\" as \"_q76_results_channel\",
+    \"juicy\".\"___tvf_arm_0_col_name\" as \"_q76_results_col_name\",
+    \"juicy\".\"___tvf_arm_0_d_year\" as \"_q76_results_d_year\",
+    \"juicy\".\"___tvf_arm_0_d_qoy\" as \"_q76_results_d_qoy\",
+    \"juicy\".\"___tvf_arm_0_i_category\" as \"_q76_results_i_category\",
+    \"juicy\".\"___tvf_arm_0_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"juicy\".\"___tvf_arm_0_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"yummy\"
+    \"juicy\"
 UNION ALL
 SELECT
-    \"abhorrent\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
-    \"abhorrent\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
-    \"abhorrent\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
-    \"abhorrent\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
-    \"abhorrent\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
-    \"abhorrent\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
-    \"abhorrent\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
+    \"late\".\"___tvf_arm_1_channel\" as \"_q76_results_channel\",
+    \"late\".\"___tvf_arm_1_col_name\" as \"_q76_results_col_name\",
+    \"late\".\"___tvf_arm_1_d_year\" as \"_q76_results_d_year\",
+    \"late\".\"___tvf_arm_1_d_qoy\" as \"_q76_results_d_qoy\",
+    \"late\".\"___tvf_arm_1_i_category\" as \"_q76_results_i_category\",
+    \"late\".\"___tvf_arm_1_sales_cnt\" as \"_q76_results_sales_cnt\",
+    \"late\".\"___tvf_arm_1_sales_amt\" as \"_q76_results_sales_amt\"
 FROM
-    \"abhorrent\"),
-scrawny as (
+    \"late\")
 SELECT
-    \"macho\".\"_q76_results_channel\" as \"_q76_results_channel\",
-    \"macho\".\"_q76_results_col_name\" as \"_q76_results_col_name\",
-    \"macho\".\"_q76_results_d_qoy\" as \"_q76_results_d_qoy\",
-    \"macho\".\"_q76_results_d_year\" as \"_q76_results_d_year\",
-    \"macho\".\"_q76_results_i_category\" as \"_q76_results_i_category\",
-    \"macho\".\"_q76_results_sales_amt\" as \"_q76_results_sales_amt\",
-    \"macho\".\"_q76_results_sales_cnt\" as \"_q76_results_sales_cnt\"
+    \"kaput\".\"_q76_results_channel\" as \"q76_results_channel\",
+    \"kaput\".\"_q76_results_col_name\" as \"q76_results_col_name\",
+    \"kaput\".\"_q76_results_d_year\" as \"q76_results_d_year\",
+    \"kaput\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
+    \"kaput\".\"_q76_results_i_category\" as \"q76_results_i_category\",
+    \"kaput\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
+    \"kaput\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
 FROM
-    \"macho\")
-SELECT
-    \"scrawny\".\"_q76_results_channel\" as \"q76_results_channel\",
-    \"scrawny\".\"_q76_results_col_name\" as \"q76_results_col_name\",
-    \"scrawny\".\"_q76_results_d_year\" as \"q76_results_d_year\",
-    \"scrawny\".\"_q76_results_d_qoy\" as \"q76_results_d_qoy\",
-    \"scrawny\".\"_q76_results_i_category\" as \"q76_results_i_category\",
-    \"scrawny\".\"_q76_results_sales_cnt\" as \"q76_results_sales_cnt\",
-    \"scrawny\".\"_q76_results_sales_amt\" as \"q76_results_sales_amt\"
-FROM
-    \"scrawny\"
+    \"kaput\"
 ORDER BY 
     \"q76_results_channel\" asc nulls first,
     \"q76_results_col_name\" asc nulls first,

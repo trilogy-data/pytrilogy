@@ -1,0 +1,33 @@
+
+WITH 
+thoughtful as (
+SELECT
+    "ws_web_sales"."WS_ITEM_SK" as "ws_item_sk",
+    avg(CASE WHEN cast("ws_sale_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date THEN "ws_web_sales"."WS_EXT_DISCOUNT_AMT" ELSE NULL END) as "_virt_agg_avg_198593922217621_wscope"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    LEFT OUTER JOIN "memory"."date_dim" as "ws_sale_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_sale_date_date"."D_DATE_SK"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    "ws_item_items"."I_ITEM_SK" as "ws_item_sk",
+    "ws_web_sales"."WS_EXT_DISCOUNT_AMT" as "ws_ext_discount_amount"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."item" as "ws_item_items" on "ws_web_sales"."WS_ITEM_SK" = "ws_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "ws_sale_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_sale_date_date"."D_DATE_SK"
+WHERE
+    "ws_item_items"."I_MANUFACT_ID" = 350 and cast("ws_sale_date_date"."D_DATE" as date) BETWEEN :start_date AND :end_date
+)
+SELECT
+    sum("cheerful"."ws_ext_discount_amount") as "excess_discount_amount"
+FROM
+    "cheerful"
+    INNER JOIN "thoughtful" on "cheerful"."ws_item_sk" = "thoughtful"."ws_item_sk"
+WHERE
+    "cheerful"."ws_ext_discount_amount" > 1.3 * "thoughtful"."_virt_agg_avg_198593922217621_wscope"
+
+ORDER BY 
+    "excess_discount_amount" asc nulls first
+LIMIT (100)

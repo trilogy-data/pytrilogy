@@ -19,7 +19,13 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
+from trilogy.core.optimizations.utils import (
+    consumed_parent_column,
+    is_sole_consumer,
+    rebind_rename_to_consumed,
+    rename_reference,
+    repoint_consumers,
+)
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 if TYPE_CHECKING:
@@ -56,12 +62,52 @@ def is_passthrough_projection(cte: CTE) -> bool:
         SourceType.UNION,
     ):
         return False
+    # A column with a non-empty source_map entry is pulled from upstream as a
+    # plain column — safe to pass through whatever its derivation. Only a
+    # column computed LOCALLY (inline aggregate/window render) disqualifies
+    # the fold (usa_names: a stripped condition wrapper still carrying its
+    # now-unused aggregate virts as passthrough columns).
     return all(
-        concept.derivation not in UNSAFE_DERIVATIONS
-        and concept.derivation != Derivation.AGGREGATE
-        and not isinstance(concept.lineage, (BuildAggregateWrapper, BuildWindowItem))
+        bool(cte.source_map.get(concept.address))
+        or (
+            concept.derivation not in UNSAFE_DERIVATIONS
+            and concept.derivation != Derivation.AGGREGATE
+            and not isinstance(
+                concept.lineage, (BuildAggregateWrapper, BuildWindowItem)
+            )
+        )
         for concept in cte.output_columns
     )
+
+
+def renders_off_parent_output(
+    column: BuildConcept, cte: CTE, parent: CTE, parent_outputs: set[str]
+) -> bool:
+    """True when `column` is a rename the merged parent will render
+    IDENTICALLY to the child's render today: the child renders it as a bare
+    parent-column reference and `rename_rederivation_preserves_value` proves
+    the parent-context re-derivation emits that same column's expression.
+    A parent-side source_map binding for the column's own address is
+    disqualifying — it wins over the lineage render and can name a RAW column
+    where the child read a derived one. Lineage-less pseudonym twins never
+    fold: candidate recovery re-runs in the parent's richer binding context
+    and can settle on a different twin than it did in the child."""
+    if parent.source_map.get(column.address):
+        return False
+    if rename_reference(column) is None:
+        return False
+    return consumed_parent_column(column, cte, parent) is not None
+
+
+def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
+    """Every output the parent doesn't already expose is a rename of one it does."""
+    parent_outputs = {c.address for c in parent.output_columns}
+    for column in cte.output_columns:
+        if column.address in parent_outputs:
+            continue
+        if not renders_off_parent_output(column, cte, parent, parent_outputs):
+            return False
+    return True
 
 
 def has_unsafe_derivations(cte: CTE) -> bool:
@@ -97,6 +143,51 @@ def produces_unbound_rowset(cte: CTE, domain_graph: "DomainGraph | None") -> boo
             if domain_graph is None or not domain_graph.binding_sources(pseudonym):
                 return True
     return False
+
+
+def unbound_rowset_blocks_merge(
+    cte: CTE,
+    parent: CTE,
+    merge_mode: MergeMode,
+    domain_graph: "DomainGraph | None",
+) -> bool:
+    if merge_mode == MergeMode.PASSTHROUGH and parent_is_group(parent):
+        return False
+    if merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
+        # An identity fold: every child output address is one the parent
+        # already outputs, so the merge removes no rename — every unbound key
+        # stays renderable through the parent's own column. Without this the
+        # guard permanently pins TVF union-arm layers (`SELECT x as x` over
+        # synthetic ___tvf_arm_* concepts, whose pseudonyms are never bound).
+        # Those layers classify as BASIC (their outputs carry BASIC/CONSTANT
+        # derivations), so the carve-out must cover BASIC too, not just
+        # PASSTHROUGH.
+        parent_outputs = parent.output_lcl
+        if all(c.address in parent_outputs for c in cte.output_columns):
+            return False
+    return produces_unbound_rowset(cte, domain_graph) or produces_unbound_rowset(
+        parent, domain_graph
+    )
+
+
+def grouped_unbound_passthrough_should_wait(
+    cte: CTE, domain_graph: "DomainGraph | None"
+) -> bool:
+    if get_merge_mode(cte) != MergeMode.PASSTHROUGH:
+        return False
+    parents = cte.dependency_nodes()
+    if len(parents) != 1 or not isinstance(parents[0], CTE):
+        return False
+    parent = parents[0]
+    return (
+        parent_is_group(parent)
+        and get_merge_mode(parent) == MergeMode.AGGREGATE
+        and bool(parent.dependency_nodes())
+        and (
+            produces_unbound_rowset(cte, domain_graph)
+            or produces_unbound_rowset(parent, domain_graph)
+        )
+    )
 
 
 def get_merge_mode(cte: CTE) -> MergeMode | None:
@@ -230,7 +321,34 @@ def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
 def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     for column in cte.output_columns:
         if column not in parent.output_columns:
+            # A rename consumed as a bare parent-column reference is pinned to
+            # the consumed OBJECT so its render can never drift to another
+            # same-address variant (see rebind_rename_to_consumed).
+            consumed = (
+                consumed_parent_column(column, cte, parent)
+                if rename_reference(column) is not None
+                else None
+            )
+            if consumed is not None:
+                column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
+
+    # Carry the child's nullability metadata: the merged CTE now exposes the
+    # child's columns (rename addresses included), and an under-reported
+    # nullable set lets SimplifyNullSafeJoins falsely prove a key non-null and
+    # downgrade IS NOT DISTINCT FROM to `=`, dropping NULL-keyed groups.
+    nullable_addresses = {c.address for c in parent.nullable_concepts}
+    for column in cte.nullable_concepts:
+        if column.address not in nullable_addresses:
+            parent.nullable_concepts.append(column)
+
+    # Carry the child's existence references: an `IN (<set>)` rendered by the
+    # child resolves its set columns through existence_source_map; dropping
+    # those entries strands the membership (INVALID_REFERENCE on every set
+    # component) and lets the feeder CTE be pruned as unreferenced.
+    for address, sources in cte.existence_source_map.items():
+        if address not in parent.existence_source_map:
+            parent.existence_source_map[address] = sources
 
     # AND-combine the child's WHERE into the parent — for AGGREGATE merges the
     # child sits BELOW the aggregate (its condition is the pre-aggregation
@@ -271,6 +389,46 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         parent.source.source_type = SourceType.WINDOW
     # BASIC / PASSTHROUGH merge: keep parent's source_type; the child's columns
     # render alongside parent's outputs. HideUnusedConcepts handles pruning later.
+
+
+def destroys_subset_anchor_boundary(
+    cte: CTE, parent: CTE, domain_graph: "DomainGraph | None"
+) -> bool:
+    """True when folding `cte` into `parent` would erase a rowset definition
+    boundary that a declared SUBSET relation narrows against.
+
+    `_rowset_definition_boundary` (value_set_join_upgrade) proves a rowset
+    output complete-by-construction only at a CTE that has CTE parents which
+    do not carry the output's own address. Folding the boundary projection
+    into a datasource-bound scan removes that structure and the FULL join a
+    `subset join x = rs.k` should narrow to the anchored LEFT stays FULL.
+    Only outputs that are the SUPERSET target of a declared subset edge feed
+    that proof, so only those block the fold. With no domain graph the edge
+    set is unknowable — treat any rowset output as potentially targeted."""
+    from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
+
+    targets: set[str] | None = None
+    if domain_graph is not None:
+        targets = {
+            e.target
+            for e in domain_graph.edges
+            if e.relation is DomainRelation.SUBSET
+            and e.provenance is EdgeProvenance.DECLARED
+        }
+    parent_preserves = bool(parent.parent_ctes)
+    for column in cte.output_columns:
+        if column.derivation != Derivation.ROWSET:
+            continue
+        if targets is not None and column.address not in targets:
+            continue
+        if not parent_preserves or any(
+            out.address == column.address
+            for grandparent in parent.parent_ctes
+            if isinstance(grandparent, CTE)
+            for out in grandparent.output_columns
+        ):
+            return True
+    return False
 
 
 class CollapseSingleParent(OptimizationRule):
@@ -365,22 +523,70 @@ class CollapseSingleParent(OptimizationRule):
                 "not row-preserving (grain change or non-scalar output), skipping"
             )
             return False, None
-        if merge_mode == MergeMode.PASSTHROUGH and not (
-            {c.address for c in cte.output_columns}
-            <= {c.address for c in parent.output_columns}
+        if merge_mode == MergeMode.PASSTHROUGH and not passthrough_renders_from_parent(
+            cte, parent
         ):
-            # Not a true passthrough — the child renders a column the parent does
-            # not already expose, so folding would drop it. Leave it.
+            # Not a true passthrough — the child renders a column the parent
+            # neither exposes nor can express as a rename, so folding would
+            # drop it. Leave it.
             self.debug(
                 f"Passthrough {cte.name} renders a column absent from parent "
                 f"{parent.name}, skipping"
             )
             return False, None
-
-        # Parent must only be used by this CTE
-        if not is_sole_consumer(cte, parent, inverse_map):
-            self.debug(f"Parent {parent.name} has multiple children, skipping")
+        if destroys_subset_anchor_boundary(cte, parent, self.domain_graph):
+            self.debug(
+                f"CTE {cte.name} is a subset-narrowing rowset boundary its "
+                f"parent {parent.name} cannot preserve, skipping"
+            )
             return False, None
+        # An existence subselect must always read FROM a CTE other than its
+        # host. Two self-reference shapes, one per direction: the child's
+        # exists() reads from the parent (merged, the exists() references the
+        # CTE it lives in), or the parent's exists() reads from the child
+        # (the post-merge repoint rewrites the parent's own existence map to
+        # name itself). Either way the feeder must stay a separate CTE.
+        if any(
+            parent.name in (sources or [])
+            for sources in cte.existence_source_map.values()
+        ) or any(
+            cte.name in (sources or [])
+            for sources in parent.existence_source_map.values()
+        ):
+            self.debug(
+                f"CTE {cte.name} and parent {parent.name} are linked by an "
+                "existence reference; merging would self-reference, skipping"
+            )
+            return False, None
+
+        # Parent must only be used by this CTE — except for a rename-only
+        # projection, whose fold only appends output columns to the parent (no
+        # condition, no regroup, no joins), leaving the parent's other consumers
+        # unaffected. That covers PASSTHROUGH, and BASIC CTEs whose only local
+        # computation is aliasing (`x as y` renders the parent's column under a
+        # new name — get_merge_mode calls that BASIC, but it carries no compute).
+        # A limited child is excluded: carrying its LIMIT onto a shared parent
+        # would truncate the siblings' rows.
+        if not is_sole_consumer(cte, parent, inverse_map):
+            rename_only = (
+                merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC)
+                and cte.limit is None
+                and is_passthrough_projection(cte)
+                and passthrough_renders_from_parent(cte, parent)
+            )
+            # A consumer that already depends on the parent would end up
+            # joining the parent to itself after the repoint (two rowset
+            # renames of one scan, joined to each other, both folding into
+            # that scan -> `p JOIN p` under one alias). Keep this child
+            # materialized; the sibling that folded first already saved a CTE.
+            consumer_joins_parent = any(
+                parent.name in {d.name for d in consumer.dependency_nodes()}
+                for consumer in inverse_map.get(cte.name, [])
+            )
+            if not rename_only or consumer_joins_parent:
+                self.debug(f"Parent {parent.name} has multiple children, skipping")
+                return False, None
+            merge_mode = MergeMode.PASSTHROUGH
 
         if has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
@@ -389,9 +595,7 @@ class CollapseSingleParent(OptimizationRule):
         # Never fold away a rowset node whose rename backs an unbound merge/
         # scoped key: collapsing strands the key (INVALID_REFERENCE_BUG). A
         # rowset over bound keys (or unaliased outputs) folds normally.
-        if produces_unbound_rowset(cte, self.domain_graph) or produces_unbound_rowset(
-            parent, self.domain_graph
-        ):
+        if unbound_rowset_blocks_merge(cte, parent, merge_mode, self.domain_graph):
             self.debug(
                 f"CTE {cte.name} or parent {parent.name} is a rowset node backing "
                 "an unbound key, skipping"
@@ -406,8 +610,19 @@ class CollapseSingleParent(OptimizationRule):
         # lineage-less key has no local derivation to fall back on, so the
         # collapsed CTE could never render the address (INVALID_REFERENCE_BUG).
         parent_outputs = parent.output_lcl
+        renders_from_lineage = {
+            column.address
+            for column in cte.output_columns
+            if renders_off_parent_output(column, cte, parent, set(parent_outputs))
+        }
         for address, sources in cte.source_map.items():
-            if parent.name in sources and address not in parent_outputs:
+            if (
+                parent.name in sources
+                and address not in parent_outputs
+                # A rename whose referent the parent exposes needs no source_map
+                # entry after the fold — the merged CTE renders it from lineage.
+                and address not in renders_from_lineage
+            ):
                 self.log(
                     f"CTE {cte.name} sources {address} from parent {parent.name} "
                     "under a pseudonym rename the merge cannot carry, skipping"
@@ -428,6 +643,25 @@ class CollapseSingleParent(OptimizationRule):
                         f"Parent {parent.name} renders inline aggregate {x.address}, skipping"
                     )
                     return False, None
+            # An aggregate ARGUMENT renders inside the merged CTE by lineage
+            # re-derivation — it is not an output, so the rename rebind can
+            # never pin it. A ROWSET boundary re-exposure re-derived in the
+            # parent's context can settle on a different same-address twin
+            # (count(rs.k) over a coalescing body picked the one-arm authored
+            # key — unrenderable), so the fold must keep the boundary CTE
+            # that materializes it.
+            for column in cte.output_columns:
+                for arg in column.concept_arguments:
+                    if (
+                        arg.derivation == Derivation.ROWSET
+                        and arg.address not in parent_outputs
+                    ):
+                        self.log(
+                            f"Aggregate argument {arg.address} of {column.address} "
+                            f"is a rowset re-exposure parent {parent.name} does "
+                            "not output, skipping"
+                        )
+                        return False, None
 
         self.log(
             f"Collapsing {merge_mode.value} CTE {cte.name} into parent {parent.name} ({parent.source.source_type})."

@@ -1,0 +1,101 @@
+
+WITH 
+cheerful as (
+SELECT
+    "ss_store_store"."S_STATE" as "ss_store_state",
+    sum("ss_store_sales"."SS_NET_PROFIT") as "state_total"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+WHERE
+    "ss_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
+
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "cheerful"."ss_store_state" as "_top_states_ts_state",
+    rank() over (order by "cheerful"."state_total" desc ) as "state_rnk"
+FROM
+    "cheerful"),
+questionable as (
+SELECT
+    "cooperative"."_top_states_ts_state" as "_top_states_ts_state"
+FROM
+    "cooperative"
+WHERE
+    "cooperative"."state_rnk" <= 5
+),
+abundant as (
+SELECT
+    "questionable"."_top_states_ts_state" as "top_states_ts_state"
+FROM
+    "questionable"),
+uneven as (
+SELECT
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+    "ss_store_store"."S_COUNTY" as "ss_store_county",
+    "ss_store_store"."S_STATE" as "ss_store_state"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+WHERE
+    "ss_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and exists (select 1 from abundant where abundant."top_states_ts_state" is not distinct from "ss_store_store"."S_STATE")
+
+GROUP BY
+    1,
+    2,
+    3,
+    "ss_store_sales"."SS_ITEM_SK",
+    "ss_store_sales"."SS_STORE_SK",
+    "ss_store_sales"."SS_TICKET_NUMBER"),
+yummy as (
+SELECT
+    "uneven"."ss_store_county" as "ss_store_county",
+    "uneven"."ss_store_state" as "ss_store_state",
+    CASE
+	WHEN grouping("uneven"."ss_store_county") = 0 THEN "uneven"."ss_store_state"
+	ELSE null
+	END as "partition_state",
+    grouping("uneven"."ss_store_state") + grouping("uneven"."ss_store_county") as "lochierarchy",
+    sum("uneven"."ss_net_profit") as "total_sum"
+FROM
+    "uneven"
+GROUP BY
+    ROLLUP (2, 1)),
+juicy as (
+SELECT
+    "yummy"."lochierarchy" as "lochierarchy",
+    "yummy"."partition_state" as "partition_state",
+    "yummy"."ss_store_county" as "ss_store_county",
+    "yummy"."ss_store_state" as "ss_store_state",
+    "yummy"."total_sum" as "total_sum"
+FROM
+    "yummy"),
+vacuous as (
+SELECT
+    "juicy"."lochierarchy" as "lochierarchy",
+    "juicy"."ss_store_county" as "ss_store_county",
+    "juicy"."ss_store_state" as "ss_store_state",
+    "juicy"."total_sum" as "total_sum",
+    rank() over (partition by "juicy"."lochierarchy","juicy"."partition_state" order by "juicy"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "juicy")
+SELECT
+    "vacuous"."total_sum" as "total_sum",
+    "vacuous"."ss_store_state" as "s_state",
+    "vacuous"."ss_store_county" as "s_county",
+    "vacuous"."lochierarchy" as "lochierarchy",
+    "vacuous"."rank_within_parent" as "rank_within_parent"
+FROM
+    "vacuous"
+ORDER BY 
+    "vacuous"."lochierarchy" desc nulls first,
+    CASE
+	WHEN "vacuous"."lochierarchy" = 0 THEN "vacuous"."ss_store_state"
+	ELSE null
+	END asc nulls first,
+    "vacuous"."rank_within_parent" asc nulls first
+LIMIT (100)

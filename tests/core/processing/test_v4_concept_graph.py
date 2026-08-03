@@ -1,11 +1,11 @@
 """Tests for the v4 concept-graph helpers and the top-level multiselect
 resolver.
 
-The pure-graph helpers (`_filter_existence_only`, `_aggregate_input_grain`) are
+The pure-graph helpers (`lineage_existence_only`, `_aggregate_input_grain`) are
 exercised on real build concepts pulled from a tiny inline environment — they
 isinstance-check Build* lineage, so synthetic fakes don't reach the branches.
 The end-to-end cases drive `search_concepts` (v4) so the build_concept_graph
-existence loop, the count-dedup discriminator, and `_resolve_multiselect` all
+existence loop, the count-dedup discriminator, and `gen_multiselect` all
 run on a genuine plan.
 """
 
@@ -19,15 +19,16 @@ from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import concept_strategies_v4 as v4
 from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
-from trilogy.core.processing.nodes import MergeNode, SelectNode
+from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.concept_graph import (
     _aggregate_input_grain,
-    _filter_existence_only,
     _upstream_window,
     build_concept_graph,
 )
 from trilogy.core.processing.v4_helper.constants import EdgeKind
 from trilogy.core.processing.v4_helper.edges import edges_of_kind
+from trilogy.core.processing.v4_helper.projection import lineage_existence_only
+from trilogy.core.processing.v4_node_generators import multiselect as ms
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -258,7 +259,7 @@ class TestUpstreamWindow:
         assert "local.order_id" not in parents
 
 
-# ----- _filter_existence_only -----------------------------------------
+# ----- lineage_existence_only ------------------------------------------
 
 
 class TestFilterExistenceOnly:
@@ -268,11 +269,11 @@ class TestFilterExistenceOnly:
         _, benv = _build(EXISTENCE_MODEL)
         f = benv.concepts["local.filtered"]
         assert f.derivation == Derivation.FILTER
-        assert _filter_existence_only(f) == {"local.other"}
+        assert lineage_existence_only(f) == {"local.other"}
 
     def test_non_filter_returns_empty(self):
         _, benv = _build(EXISTENCE_MODEL)
-        assert _filter_existence_only(benv.concepts["local.id"]) == set()
+        assert lineage_existence_only(benv.concepts["local.id"]) == set()
 
     def test_existence_edge_wired_into_concept_graph(self):
         _, benv = _build(EXISTENCE_MODEL)
@@ -305,7 +306,7 @@ class TestRowsetTagging:
         assert cattrs["local.store_id"].rowset_name is None
 
 
-# ----- _resolve_multiselect -------------------------------------------
+# ----- gen_multiselect -------------------------------------------
 
 MULTISELECT_MODEL = """
 key one int;
@@ -338,8 +339,8 @@ class TestResolveMultiselect:
             environment,
             depth,
             g,
-            accept_partial=False,
             conditions=None,
+            complete_partials=True,
         ):
             seen_envs.append(environment)
             return v4.BuildInfo(
@@ -351,10 +352,10 @@ class TestResolveMultiselect:
             )
 
         monkeypatch.setattr(v4, "search_concepts", fake_search_concepts)
-        monkeypatch.setattr(v4, "extra_align_joins", lambda *_args: [])
-        monkeypatch.setattr(v4.StrategyNode, "rebuild_cache", lambda _self: None)
+        monkeypatch.setattr(ms, "extra_align_joins", lambda *_args: [])
+        monkeypatch.setattr(StrategyNode, "rebuild_cache", lambda _self: None)
 
-        info = v4._resolve_multiselect(
+        node = ms.gen_multiselect(
             benv.concepts["local.one_key"],
             [benv.concepts["local.one_key"]],
             benv,
@@ -364,7 +365,7 @@ class TestResolveMultiselect:
             [],
         )
 
-        assert info.strategy_node is not None
+        assert node is not None
         assert len(seen_envs) == 2
         assert all(arm_env is not benv for arm_env in seen_envs)
         assert len({id(arm_env) for arm_env in seen_envs}) == 2

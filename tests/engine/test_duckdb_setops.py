@@ -204,6 +204,34 @@ select combined.c, count(combined.k) -> items;
     assert rows == [("b", 1)]
 
 
+def test_aggregate_inside_arm_keeps_arm_grouping():
+    """An arm that aggregates must keep its own GROUP BY. Re-exposing the union
+    outputs by mutating the arm node made it regroup on the union outputs and
+    emit `GROUP BY count(...)`, which the binder rejects."""
+    executor = _executor()
+    rows = _rows(
+        executor,
+        """
+with combined as union(
+    (select yr, count(line_id) -> c),
+    (where cat = 'a' select yr, count(line_id) -> c)
+) -> (y, c);
+select combined.y, combined.c order by combined.y asc, combined.c asc;
+""",
+    )
+    assert rows == [
+        (2001, 2),
+        (2001, 4),
+        (2002, 1),
+        (2002, 2),
+        (2003, 1),
+        (2011, 1),
+        (2011, 2),
+        (2012, 1),
+        (2012, 2),
+    ]
+
+
 def test_except_subset_consumer_keeps_tuple_identity():
     # q87 shape: 2011 tuples {(1,'a'),(2,'b')} vs 2012 {(1,'b'),(2,'a')} — no
     # tuple matches, so EXCEPT keeps both rows even though every k (and every

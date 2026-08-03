@@ -1,0 +1,120 @@
+
+WITH 
+abundant as (
+SELECT
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_sk",
+    avg(CASE WHEN "ss_store_sales"."SS_STORE_SK" = 1 THEN "ss_store_sales"."SS_NET_PROFIT" ELSE NULL END) as "_virt_agg_avg_7707029941687820_wscope"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    avg("ss_store_sales"."SS_NET_PROFIT") as "addr_null_threshold_threshold"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
+),
+wakeful as (
+SELECT
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_sk",
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 1
+),
+cheerful as (
+SELECT
+    "wakeful"."ss_item_sk" as "ss_item_sk",
+    "wakeful"."ss_net_profit" as "_virt_filter_net_profit_2835528987416348"
+FROM
+    "wakeful"),
+yummy as (
+SELECT
+    "cheerful"."ss_item_sk" as "ss_item_sk",
+    avg("cheerful"."_virt_filter_net_profit_2835528987416348") as "item_avg_profit"
+FROM
+    "cheerful"
+    INNER JOIN "abundant" on "cheerful"."ss_item_sk" = "abundant"."ss_item_sk"
+    INNER JOIN "thoughtful" on 1=1
+WHERE
+    "abundant"."_virt_agg_avg_7707029941687820_wscope" > 0.9 * "thoughtful"."addr_null_threshold_threshold"
+
+GROUP BY
+    1),
+concerned as (
+SELECT
+    "yummy"."ss_item_sk" as "ss_item_sk",
+    rank() over (order by "yummy"."item_avg_profit" asc ) as "_ascending_rnk_a",
+    rank() over (order by "yummy"."item_avg_profit" desc ) as "_descending_rnk_d"
+FROM
+    "yummy"),
+quizzical as (
+SELECT
+    "ss_item_items"."I_ITEM_SK" as "ss_item_sk",
+    "ss_item_items"."I_PRODUCT_NAME" as "_ascending_best_performing",
+    "ss_item_items"."I_PRODUCT_NAME" as "_descending_worst_performing"
+FROM
+    "memory"."item" as "ss_item_items"),
+sweltering as (
+SELECT
+    "concerned"."_descending_rnk_d" as "_descending_rnk_d",
+    "quizzical"."_descending_worst_performing" as "_descending_worst_performing"
+FROM
+    "concerned"
+    INNER JOIN "quizzical" on "concerned"."ss_item_sk" = "quizzical"."ss_item_sk"
+GROUP BY
+    1,
+    2),
+late as (
+SELECT
+    "sweltering"."_descending_rnk_d" as "descending_rnk_d",
+    "sweltering"."_descending_worst_performing" as "descending_worst_performing"
+FROM
+    "sweltering"),
+young as (
+SELECT
+    "concerned"."_ascending_rnk_a" as "_ascending_rnk_a",
+    "quizzical"."_ascending_best_performing" as "_ascending_best_performing"
+FROM
+    "concerned"
+    INNER JOIN "quizzical" on "concerned"."ss_item_sk" = "quizzical"."ss_item_sk"
+GROUP BY
+    1,
+    2),
+sparkling as (
+SELECT
+    "young"."_ascending_best_performing" as "ascending_best_performing",
+    "young"."_ascending_rnk_a" as "ascending_rnk_a"
+FROM
+    "young"),
+abhorrent as (
+SELECT
+    "sparkling"."ascending_best_performing" as "ascending_best_performing",
+    "sparkling"."ascending_rnk_a" as "rnk"
+FROM
+    "sparkling"),
+macho as (
+SELECT
+    "abhorrent"."ascending_best_performing" as "ascending_best_performing",
+    "abhorrent"."rnk" as "rnk",
+    "late"."descending_worst_performing" as "descending_worst_performing"
+FROM
+    "abhorrent"
+    INNER JOIN "late" on "abhorrent"."rnk" = "late"."descending_rnk_d"
+WHERE
+    "abhorrent"."rnk" < 11
+)
+SELECT
+    "macho"."rnk" as "rnk",
+    "macho"."ascending_best_performing" as "ascending_best_performing",
+    "macho"."descending_worst_performing" as "descending_worst_performing"
+FROM
+    "macho"
+ORDER BY 
+    "macho"."rnk" asc nulls first,
+    "macho"."ascending_best_performing" desc nulls first,
+    "macho"."descending_worst_performing" desc nulls first
+LIMIT (100)

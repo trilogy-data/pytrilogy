@@ -1,0 +1,69 @@
+
+WITH 
+concerned as (
+SELECT
+    "web_sales_web_sales"."WS_BILL_CUSTOMER_SK" as "web_sales_billing_customer_sk",
+    "web_sales_web_sales"."WS_SOLD_DATE_SK" as "web_sales_sale_date_sk"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    "catalog_sales_catalog_sales"."CS_BILL_CUSTOMER_SK" as "catalog_sales_billing_customer_sk",
+    "catalog_sales_catalog_sales"."CS_SOLD_DATE_SK" as "catalog_sales_sale_date_sk"
+FROM
+    "memory"."catalog_sales" as "catalog_sales_catalog_sales"
+GROUP BY
+    1,
+    2),
+wakeful as (
+SELECT
+    "store_sales_store_sales"."SS_CUSTOMER_SK" as "store_sales_customer_sk",
+    "store_sales_store_sales"."SS_SOLD_DATE_SK" as "store_sales_sale_date_sk"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+GROUP BY
+    1,
+    2),
+abhorrent as (
+SELECT
+    "store_sales_customer_customers"."C_LAST_NAME" as "_tvf_union_last_name",
+    "store_sales_customer_customers"."C_FIRST_NAME" as "_tvf_union_first_name",
+    cast("store_sales_sale_date_date"."D_DATE" as date) as "_tvf_union_sale_date"
+FROM
+    "wakeful"
+    LEFT OUTER JOIN "memory"."customer" as "store_sales_customer_customers" on "wakeful"."store_sales_customer_sk" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    LEFT OUTER JOIN "memory"."date_dim" as "store_sales_sale_date_date" on "wakeful"."store_sales_sale_date_sk" = "store_sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "store_sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "wakeful"."store_sales_customer_sk" is not null
+
+EXCEPT
+SELECT
+    "catalog_sales_billing_customer_customers"."C_LAST_NAME" as "_tvf_union_last_name",
+    "catalog_sales_billing_customer_customers"."C_FIRST_NAME" as "_tvf_union_first_name",
+    cast("catalog_sales_sale_date_date"."D_DATE" as date) as "_tvf_union_sale_date"
+FROM
+    "questionable"
+    LEFT OUTER JOIN "memory"."date_dim" as "catalog_sales_sale_date_date" on "questionable"."catalog_sales_sale_date_sk" = "catalog_sales_sale_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "catalog_sales_billing_customer_customers" on "questionable"."catalog_sales_billing_customer_sk" = "catalog_sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "catalog_sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "questionable"."catalog_sales_billing_customer_sk" is not null
+
+EXCEPT
+SELECT
+    "web_sales_billing_customer_customers"."C_LAST_NAME" as "_tvf_union_last_name",
+    "web_sales_billing_customer_customers"."C_FIRST_NAME" as "_tvf_union_first_name",
+    cast("web_sales_sale_date_date"."D_DATE" as date) as "_tvf_union_sale_date"
+FROM
+    "concerned"
+    LEFT OUTER JOIN "memory"."date_dim" as "web_sales_sale_date_date" on "concerned"."web_sales_sale_date_sk" = "web_sales_sale_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "web_sales_billing_customer_customers" on "concerned"."web_sales_billing_customer_sk" = "web_sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "web_sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "concerned"."web_sales_billing_customer_sk" is not null
+)
+SELECT
+    count("abhorrent"."_tvf_union_sale_date") as "cnt"
+FROM
+    "abhorrent"

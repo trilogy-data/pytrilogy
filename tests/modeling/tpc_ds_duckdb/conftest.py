@@ -50,6 +50,7 @@ def _make_engine(sf: float, subdir: str) -> Executor:
     if not os.environ.get("CI"):
         # Cap memory so a pathological plan errors instead of taking the machine down.
         engine.execute_raw_sql("SET memory_limit='3GB';")
+    engine.connection.commit()
     return engine
 
 

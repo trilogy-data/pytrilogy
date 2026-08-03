@@ -1,0 +1,121 @@
+
+WITH 
+abundant as (
+SELECT
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_sales_unified"."CS_NET_PAID" as "sales_net_paid",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_catalog_sales_unified"."CS_NET_PROFIT" > 1 and "sales_catalog_sales_unified"."CS_NET_PAID" > 0 and "sales_catalog_sales_unified"."CS_QUANTITY" > 0 and "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" = 12
+
+UNION ALL
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_NET_PAID" as "sales_net_paid",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_store_sales_unified"."SS_NET_PROFIT" > 1 and "sales_store_sales_unified"."SS_NET_PAID" > 0 and "sales_store_sales_unified"."SS_QUANTITY" > 0 and "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" = 12
+
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_sk",
+    "sales_web_sales_unified"."WS_NET_PAID" as "sales_net_paid",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_web_sales_unified"."WS_NET_PROFIT" > 1 and "sales_web_sales_unified"."WS_NET_PAID" > 0 and "sales_web_sales_unified"."WS_QUANTITY" > 0 and "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" = 12
+),
+cheerful as (
+SELECT
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_returns_unified"."CR_RETURN_AMOUNT" as "sales_return_amount",
+    "sales_catalog_returns_unified"."CR_RETURN_QUANTITY" as "sales_return_quantity"
+FROM
+    "memory"."catalog_returns" as "sales_catalog_returns_unified"
+WHERE
+    "sales_catalog_returns_unified"."CR_RETURN_AMOUNT" > 10000
+
+UNION ALL
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_sk",
+    "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_returns_unified"."SR_RETURN_AMT" as "sales_return_amount",
+    "sales_store_returns_unified"."SR_RETURN_QUANTITY" as "sales_return_quantity"
+FROM
+    "memory"."store_returns" as "sales_store_returns_unified"
+WHERE
+    "sales_store_returns_unified"."SR_RETURN_AMT" > 10000
+
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+    "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_sk",
+    "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_returns_unified"."WR_RETURN_AMT" as "sales_return_amount",
+    "sales_web_returns_unified"."WR_RETURN_QUANTITY" as "sales_return_quantity"
+FROM
+    "memory"."web_returns" as "sales_web_returns_unified"
+WHERE
+    "sales_web_returns_unified"."WR_RETURN_AMT" > 10000
+),
+yummy as (
+SELECT
+    "abundant"."sales_item_sk" as "sales_item_sk",
+    "cheerful"."sales_channel" as "sales_channel",
+    cast(sum("cheerful"."sales_return_amount") as numeric(15,4)) / cast(sum("abundant"."sales_net_paid") as numeric(15,4)) as "currency_ratio",
+    cast(sum("cheerful"."sales_return_quantity") as numeric(15,4)) / cast(sum("abundant"."sales_quantity") as numeric(15,4)) as "return_ratio"
+FROM
+    "abundant"
+    INNER JOIN "cheerful" on "abundant"."sales_channel" = "cheerful"."sales_channel" AND "abundant"."sales_item_sk" = "cheerful"."sales_item_sk" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id"
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    "yummy"."return_ratio" as "return_ratio",
+    "yummy"."sales_item_sk" as "sales_item_sk",
+    LOWER("yummy"."sales_channel")  as "channel_label",
+    rank() over (partition by "yummy"."sales_channel" order by "yummy"."currency_ratio" asc ) as "currency_rank",
+    rank() over (partition by "yummy"."sales_channel" order by "yummy"."return_ratio" asc ) as "return_rank"
+FROM
+    "yummy")
+SELECT
+    "vacuous"."channel_label" as "channel",
+    "vacuous"."sales_item_sk" as "item",
+    "vacuous"."return_ratio" as "return_ratio",
+    "vacuous"."return_rank" as "return_rank",
+    "vacuous"."currency_rank" as "currency_rank"
+FROM
+    "vacuous"
+WHERE
+    "vacuous"."return_rank" <= 10 or "vacuous"."currency_rank" <= 10
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
+ORDER BY 
+    "channel" asc nulls first,
+    "vacuous"."return_rank" asc nulls first,
+    "vacuous"."currency_rank" asc nulls first,
+    "item" asc nulls first
+LIMIT (100)

@@ -13,6 +13,9 @@ def _optimization_flags(**overrides: bool) -> Iterator[None]:
         "join_hoist",
         "datasource_inlining",
         "predicate_pushdown",
+        "push_filtered_aggregate_input",
+        "push_filtered_count_into_join",
+        "push_semi_join_into_aggregate",
         "upgrade_condition_joins",
         "upgrade_outer_key_set_equivalence",
         "narrow_keyless_full_joins",
@@ -109,6 +112,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "collapse_single_parent.passthrough_after_pushdown",
         "upgrade_join_on_guards.final",
         "predicate_pushdown.after_final_upgrade",
+        "predicate_pushdown.remove.after_join_upgrades",
     ]
     assert by_name["union_dim_pushdown"].depends_on == (
         "predicate_pushdown.initial",

@@ -12,11 +12,18 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildWindowItem,
 )
-from trilogy.core.models.execute import CTE, DatasourceCTE, Join, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    BaseJoin,
+    DatasourceCTE,
+    Join,
+    UnionCTE,
+)
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
+    render_cte_used_map,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -28,6 +35,9 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
 from trilogy.utility import unique
+
+# Joins upgrade_join_on_guards can still make stricter; see _atom_guards_outer_join.
+_OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
 
 def is_child_of(a, comparison):
@@ -163,7 +173,30 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
             or _branch_constraint_implies(branch, condition)
             for branch in parent.internal_ctes
         )
-    return is_child_of(condition, parent.condition)
+    if is_child_of(condition, parent.condition):
+        return True
+    # Transitive hop: the parent may merely pass through rows an ancestor
+    # already filtered — e.g. a join CTE reading a HAVING-filtered group,
+    # with the consumer's WHERE copy referencing only columns the join
+    # sources from that ancestor on a non-nullable side (usa_names
+    # aggregate-filter under v4). Every source of every referenced column
+    # must be a covering, non-NULL-padded ancestor.
+    if not isinstance(condition, BuildConceptArgs):
+        return False
+    grandparents = {p.name: p for p in parent.dependency_nodes()}
+    needed: set[str] = set()
+    for c in condition.row_arguments:
+        sources = parent.source_map.get(c.address)
+        if not sources or not all(s in grandparents for s in sources):
+            return False
+        needed.update(sources)
+    if not needed:
+        return False
+    return all(
+        not _parent_nullable_in_cte(parent, name)
+        and _parent_covers_condition(grandparents[name], condition)
+        for name in needed
+    )
 
 
 def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
@@ -614,7 +647,16 @@ class PredicatePushdown(OptimizationRule):
                 # so the pushed subselect has a real source to render against
                 # instead of a dangling CTE reference. A subselect-only feeder
                 # is absent from ``source_map`` entirely and lives in
-                # ``existence_source_map``; promote it into the same map.
+                # ``existence_source_map``; promote it into the same map. A
+                # feeder the consumer double-lists (naturally-planned CTEs
+                # carry existence concepts in BOTH maps) promotes into both:
+                # the renderer's WHERE/QUALIFY split and materialized-scalar
+                # checks read ``source_map``, while the sibling-feeder
+                # chaining guard in ``optimize`` reads only
+                # ``existence_source_map`` — writing just one map either
+                # mis-renders the pushed subselect (QUALIFY with no window)
+                # or blinds the guard and re-chains membership semijoins
+                # O(n^2).
                 promotions: list[
                     tuple[
                         str, list[str], bool, list[CTE | UnionCTE], list[DatasourceCTE]
@@ -697,6 +739,8 @@ class PredicatePushdown(OptimizationRule):
                         parent_cte.existence_source_map[x] = list(source_names)
                     else:
                         parent_cte.source_map[x] = list(source_names)
+                        if x in existence_conditions:
+                            parent_cte.existence_source_map[x] = list(source_names)
                     for source in sources:
                         parent_cte.add_dependency(source)
                     for inlined in inlined_sources:
@@ -898,9 +942,10 @@ class PredicatePushdown(OptimizationRule):
 
 
 class PredicatePushdownRemove(OptimizationRule):
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, after_join_upgrades: bool = False, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
+        self.after_join_upgrades = after_join_upgrades
 
     def _atom_sourced_only_from_parents(self, atom, cte: CTE) -> bool:
         """True if every concept referenced by `atom` is materialized in `cte`
@@ -937,6 +982,61 @@ class PredicatePushdownRemove(OptimizationRule):
 
     def _parent_is_nullable_in_cte(self, cte: CTE, parent_name: str) -> bool:
         return _parent_nullable_in_cte(cte, parent_name)
+
+    def _defers_to_join_upgrade(self, cte: CTE) -> bool:
+        """Whether atom removal on `cte` should wait for join types to settle.
+
+        A pending OUTER join makes the WHERE load-bearing beyond row selection:
+        ``upgrade_join_on_guards.final`` reads it to prove the NULL-padded rows
+        can never survive, and it runs after this phase. Dropping a redundant
+        atom is row-equivalent but erases that proof, so the join stays outer —
+        worse SQL, and the padded rows then flow on into downstream null-safe
+        joins. The post-upgrade instance of this rule sweeps these up once the
+        proofs have been consumed.
+        """
+        if self.after_join_upgrades:
+            return False
+        return any(
+            isinstance(join, Join) and join.jointype in _OUTER_JOIN_TYPES
+            for join in cte.joins or []
+        ) or any(
+            isinstance(join, BaseJoin) and join.join_type in _OUTER_JOIN_TYPES
+            for join in cte.source.joins or []
+        )
+
+    def _prune_unused_single_row_parents(self, cte: CTE) -> bool:
+        used = render_cte_used_map(cte)
+        prunable: set[str] = set()
+        for join in cte.joins:
+            if not isinstance(join, Join):
+                continue
+            parent = join.right_cte
+            if (
+                join.jointype == JoinType.INNER
+                and not join.joinkey_pairs
+                and join.condition is None
+                and not used.get(parent.name)
+                and isinstance(parent, CTE)
+                and parent.group_to_grain
+                and not parent.group_concepts
+                and parent.condition is None
+                and parent.limit is None
+            ):
+                prunable.add(parent.name)
+        if not prunable:
+            return False
+        cte.joins = [
+            join
+            for join in cte.joins
+            if not (isinstance(join, Join) and join.right_cte.name in prunable)
+        ]
+        cte.parent_ctes = [
+            parent for parent in cte.parent_ctes if parent.name not in prunable
+        ]
+        self.log(
+            f"Removed unused single-row parents {sorted(prunable)} from {cte.name}"
+        )
+        return True
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -987,6 +1087,7 @@ class PredicatePushdownRemove(OptimizationRule):
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )
+            self._prune_unused_single_row_parents(cte)
             return True, None
 
         # Per-conjunct removal: even when the full condition isn't covered (e.g.
@@ -998,6 +1099,8 @@ class PredicatePushdownRemove(OptimizationRule):
         # inside the loop: an atom whose source parent is on the nullable side
         # of an outer join in `cte` can't be removed (NULL-padding bypasses
         # the parent's filter).
+        if self._defers_to_join_upgrade(cte):
+            return optimized, None
         existence_set = set(existence_only)
         if (
             isinstance(cte.condition, BuildConditional)
@@ -1006,9 +1109,6 @@ class PredicatePushdownRemove(OptimizationRule):
             atoms = cte.condition.decompose()
         else:
             atoms = [cte.condition]
-        if len(atoms) <= 1:
-            self.complete[cte.name] = True
-            return optimized, None
         surviving: list = []
         removed = 0
         for atom in atoms:
@@ -1037,6 +1137,7 @@ class PredicatePushdownRemove(OptimizationRule):
                 cte.condition = combine_condition_atoms(surviving)
             else:
                 cte.condition = None
+            self._prune_unused_single_row_parents(cte)
             return True, None
 
         self.complete[cte.name] = True

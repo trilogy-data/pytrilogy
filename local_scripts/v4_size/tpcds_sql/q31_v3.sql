@@ -1,0 +1,58 @@
+
+WITH 
+cheerful as (
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_ADDR_SK" as "sales_pos_bill_address_sk",
+    "sales_sale_date_date"."D_QOY" as "sales_sale_date_quarter",
+    "sales_sale_date_date"."D_YEAR" as "sales_sale_date_year"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2000 and ("sales_sale_date_date"."D_QOY" is not null and "sales_sale_date_date"."D_QOY" in (1,2,3))
+
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_BILL_ADDR_SK" as "sales_pos_bill_address_sk",
+    "sales_sale_date_date"."D_QOY" as "sales_sale_date_quarter",
+    "sales_sale_date_date"."D_YEAR" as "sales_sale_date_year"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2000 and ("sales_sale_date_date"."D_QOY" is not null and "sales_sale_date_date"."D_QOY" in (1,2,3))
+)
+SELECT
+    "sales_pos_bill_address_customer_address"."CA_COUNTY" as "sales_pos_bill_address_county",
+    "cheerful"."sales_sale_date_year" as "sales_sale_date_year",
+    sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) as "web_q1_q2_increase",
+    sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) as "store_q1_q2_increase",
+    sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 3 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) as "web_q2_q3_increase",
+    sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 3 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) as "store_q2_q3_increase"
+FROM
+    "cheerful"
+    LEFT OUTER JOIN "memory"."customer_address" as "sales_pos_bill_address_customer_address" on "cheerful"."sales_pos_bill_address_sk" = "sales_pos_bill_address_customer_address"."CA_ADDRESS_SK"
+GROUP BY
+    1,
+    2
+HAVING
+    sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 and sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 1 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END ) and ( CASE
+	WHEN sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 3 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'WEB' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END > CASE
+	WHEN sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) > 0 THEN sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 3 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END) / sum(CASE WHEN "cheerful"."sales_channel" = 'STORE' and "cheerful"."sales_sale_date_quarter" = 2 THEN "cheerful"."sales_ext_sales_price" ELSE NULL END)
+	ELSE null
+	END )
+
+ORDER BY 
+    "sales_pos_bill_address_customer_address"."CA_COUNTY" asc nulls first

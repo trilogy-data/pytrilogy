@@ -8,13 +8,19 @@ gate restricts that to the row-preserving subset: every output the child derives
 from the GROUP parent are fine."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildRowsetItem
+from trilogy.core.models.execute import CTE
+from trilogy.core.optimization import _optimization_visit_order
 from trilogy.core.optimizations.collapse_single_parent import (
+    CollapseSingleParent,
+    MergeMode,
     basic_fold_into_group_is_safe,
     produces_unbound_rowset,
+    unbound_rowset_blocks_merge,
 )
 
 
@@ -116,6 +122,53 @@ def test_unbound_rowset_gate_allows_unaliased_output():
 def test_unbound_rowset_gate_conservative_without_graph():
     cte = _rowset_cte(("stages.stage", {"local.step"}))
     assert produces_unbound_rowset(cte, None)
+
+
+def test_grouped_passthrough_can_absorb_unbound_rowset_rename():
+    cte = _rowset_cte(("grouped.item", {"local.item"}))
+    parent = SimpleNamespace(
+        group_to_grain=True,
+        source=SimpleNamespace(source_type=None),
+        output_lcl={"local.item"},
+    )
+    graph = _FakeGraph(bound=set())
+    assert not unbound_rowset_blocks_merge(cte, parent, MergeMode.PASSTHROUGH, graph)
+    # BASIC child ADDING a new unbound rename address still blocks.
+    assert unbound_rowset_blocks_merge(cte, parent, MergeMode.BASIC, graph)
+
+
+def test_identity_fold_exempt_from_unbound_rowset_gate():
+    """A child whose every output address the parent already outputs removes no
+    rename when folded -- unbound keys stay renderable through the parent's own
+    columns (q77's TVF union-arm `SELECT x as x` layers, which classify BASIC).
+    A child adding any new address keeps the block."""
+    cte = _rowset_cte(("arm.u_id", {"local.u_id"}))
+    graph = _FakeGraph(bound=set())
+    identity_parent = SimpleNamespace(
+        group_to_grain=False,
+        source=SimpleNamespace(source_type=None),
+        output_lcl={"arm.u_id", "arm.u_sales"},
+    )
+    for mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
+        assert not unbound_rowset_blocks_merge(cte, identity_parent, mode, graph)
+    renaming_parent = SimpleNamespace(
+        group_to_grain=False,
+        source=SimpleNamespace(source_type=None),
+        output_lcl={"arm.u_sales"},
+    )
+    for mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
+        assert unbound_rowset_blocks_merge(cte, renaming_parent, mode, graph)
+
+
+def test_collapse_visits_grouped_unbound_passthrough_last(monkeypatch):
+    regular = Mock(spec=CTE)
+    delayed = Mock(spec=CTE)
+    monkeypatch.setattr(
+        "trilogy.core.optimization.grouped_unbound_passthrough_should_wait",
+        lambda cte, _graph: cte is delayed,
+    )
+    ordered = _optimization_visit_order(CollapseSingleParent(), [delayed, regular])
+    assert ordered == [regular, delayed]
 
 
 FUNNEL_MERGE_MODEL = """

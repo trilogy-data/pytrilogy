@@ -3,7 +3,7 @@
 The cross-datasource branch is the interesting one: when a subselect concept
 carries `outer_arguments`, the INNER select reads a *separate* datasource and
 must be planned recursively and attached as a second parent. These drive the
-real `search_concepts` planner so the dispatch wiring (history/g/source_policy
+real `search_concepts` planner so the dispatch wiring (history/g
 threading) and the generator body both run on a genuine plan.
 """
 

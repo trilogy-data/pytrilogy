@@ -17,6 +17,7 @@ from trilogy.constants import CONFIG
 from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
     BuildComparison,
     BuildHavingClause,
@@ -24,13 +25,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.concept_strategies_v4 import (
-    V4History,
-    _resolve_and_inject_condition,
-    _resolve_condition_sources,
-    resolve_rowset,
-    search_concepts,
-)
+from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
 from trilogy.core.processing.nodes import (
     GroupNode,
     MergeNode,
@@ -41,9 +36,13 @@ from trilogy.core.processing.nodes import (
     UnnestNode,
 )
 from trilogy.core.processing.v4_helper.strategy_builder import _add_needed_concept
+from trilogy.core.processing.v4_node_generators.condition_sources import (
+    resolve_and_inject_condition,
+    resolve_condition_sources,
+)
 from trilogy.core.processing.v4_node_generators.dispatch import build_node
 from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
-from trilogy.core.processing.v4_node_generators.rowset import gen_rowset
+from trilogy.core.processing.v4_node_generators.rowset import gen_rowset, resolve_rowset
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -138,7 +137,7 @@ auto u <- union(one, two);
 
 # Relational `union((select...),(select...)) -> (k, v)` TVF: a column-positional
 # row stack whose arms are independent sub-selects. This is the form routed
-# through `_resolve_union_select` (distinct from the inline `union(one, two)`
+# through `gen_union_select` (distinct from the inline `union(one, two)`
 # concept-stack above, which the dispatch generator handles).
 RELATIONAL_UNION_MODEL = """
 key id int;
@@ -517,7 +516,7 @@ class TestConditionInjection:
                 operator=ComparisonOperator.GT,
             )
         )
-        injected = _resolve_and_inject_condition(
+        injected = resolve_and_inject_condition(
             inner,
             having,
             list(inner.output_concepts),
@@ -544,7 +543,7 @@ class TestConditionInjection:
                 operator=ComparisonOperator.GT,
             )
         )
-        sources = _resolve_condition_sources(
+        sources = resolve_condition_sources(
             inner,
             having,
             environment=benv,
@@ -565,7 +564,7 @@ class TestConditionInjection:
                 operator=ComparisonOperator.IN,
             )
         )
-        sources = _resolve_condition_sources(
+        sources = resolve_condition_sources(
             inner,
             condition,
             environment=benv,
@@ -590,8 +589,8 @@ class TestConditionInjection:
         monkeypatch.setattr(
             cs, "search_concepts", lambda **_: types.SimpleNamespace(strategy_node=None)
         )
-        with pytest.raises(ValueError, match="condition row arguments"):
-            _resolve_condition_sources(
+        with pytest.raises(UnresolvableQueryException, match="condition row arguments"):
+            resolve_condition_sources(
                 inner,
                 having,
                 environment=benv,

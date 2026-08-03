@@ -1,0 +1,43 @@
+
+WITH 
+thoughtful as (
+SELECT
+    "orders_customer_customers"."c_acctbal" as "orders_customer_account_balance",
+    "orders_customer_customers"."c_phone" as "orders_customer_phone",
+    coalesce("orders_customer_customers"."c_custkey","orders_orders"."o_custkey") as "orders_customer_id"
+FROM
+    "memory"."customer" as "orders_customer_customers"
+    LEFT OUTER JOIN "memory"."orders" as "orders_orders" on "orders_customer_customers"."c_custkey" = "orders_orders"."o_custkey"
+WHERE
+    (SUBSTRING("orders_customer_customers"."c_phone",1,2) is not null and SUBSTRING("orders_customer_customers"."c_phone",1,2) in ('13','31','23','29','30','18','17')) and "orders_orders"."o_orderkey" is null
+),
+highfalutin as (
+SELECT
+    avg(CASE WHEN "orders_customer_customers"."c_acctbal" > 0 and (SUBSTRING("orders_customer_customers"."c_phone",1,2) is not null and SUBSTRING("orders_customer_customers"."c_phone",1,2) in ('13','31','23','29','30','18','17')) THEN "orders_customer_customers"."c_acctbal" ELSE NULL END) as "avg_bal_in_target"
+FROM
+    "memory"."customer" as "orders_customer_customers"),
+cooperative as (
+SELECT
+    "thoughtful"."orders_customer_account_balance" as "orders_customer_account_balance",
+    "thoughtful"."orders_customer_id" as "orders_customer_id",
+    SUBSTRING("thoughtful"."orders_customer_phone",1,2) as "cntrycode"
+FROM
+    "highfalutin"
+    INNER JOIN "thoughtful" on 1=1
+WHERE
+    "thoughtful"."orders_customer_account_balance" > "highfalutin"."avg_bal_in_target"
+
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    "cooperative"."cntrycode" as "cntrycode",
+    count("cooperative"."orders_customer_id") as "numcust",
+    sum("cooperative"."orders_customer_account_balance") as "totacctbal"
+FROM
+    "cooperative"
+GROUP BY
+    1
+ORDER BY 
+    "cooperative"."cntrycode" asc

@@ -1,11 +1,25 @@
 query_id = "02"
-generator = "v3"
-gen_length = 2698
+generator = "v4"
+gen_length = 2679
 preql_size = 562
 comp_size = 840
 generated_sql = """
 
 WITH 
+questionable as (
+SELECT
+    \"partsupp\".\"ps_partkey\" as \"id\",
+    min(\"partsupp\".\"ps_supplycost\") as \"min_supply_cost_in_europe\"
+FROM
+    \"memory\".\"partsupp\" as \"partsupp\"
+    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
+    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
+    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
+WHERE
+    \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
+
+GROUP BY
+    1),
 cooperative as (
 SELECT
     \"part\".\"p_mfgr\" as \"manufacturer\",
@@ -25,18 +39,7 @@ FROM
     INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
     \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
-),
-questionable as (
-SELECT
-    \"partsupp\".\"ps_partkey\" as \"id\",
-    min(CASE WHEN \"supplier_nation_region_region\".\"r_name\" = 'EUROPE' THEN \"partsupp\".\"ps_supplycost\" ELSE NULL END) as \"min_supply_cost_in_europe\"
-FROM
-    \"memory\".\"partsupp\" as \"partsupp\"
-    INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
-    INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
-    INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
-GROUP BY
-    1)
+)
 SELECT
     \"cooperative\".\"supplier_account_balance\" as \"supplier_account_balance\",
     \"cooperative\".\"supplier_name\" as \"supplier_name\",

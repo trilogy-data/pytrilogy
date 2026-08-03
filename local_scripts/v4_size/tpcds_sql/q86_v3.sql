@@ -1,0 +1,62 @@
+
+WITH 
+cheerful as (
+SELECT
+    "web_sales_item_items"."I_CATEGORY" as "web_sales_item_category",
+    "web_sales_item_items"."I_CLASS" as "web_sales_item_class",
+    "web_sales_web_sales"."WS_NET_PAID" as "web_sales_net_paid"
+FROM
+    "memory"."web_sales" as "web_sales_web_sales"
+    INNER JOIN "memory"."item" as "web_sales_item_items" on "web_sales_web_sales"."WS_ITEM_SK" = "web_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "web_sales_sale_date_date" on "web_sales_web_sales"."WS_SOLD_DATE_SK" = "web_sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "web_sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211
+),
+thoughtful as (
+SELECT
+    "cheerful"."web_sales_item_category" as "web_sales_item_category",
+    "cheerful"."web_sales_item_class" as "web_sales_item_class",
+    CASE
+	WHEN grouping("cheerful"."web_sales_item_class") = 0 THEN "cheerful"."web_sales_item_category"
+	ELSE null
+	END as "partition_cat",
+    grouping("cheerful"."web_sales_item_category") + grouping("cheerful"."web_sales_item_class") as "lochierarchy",
+    sum("cheerful"."web_sales_net_paid") as "total_sum"
+FROM
+    "cheerful"
+GROUP BY
+    ROLLUP (1, 2)),
+cooperative as (
+SELECT
+    "thoughtful"."lochierarchy" as "lochierarchy",
+    "thoughtful"."partition_cat" as "partition_cat",
+    "thoughtful"."total_sum" as "total_sum",
+    "thoughtful"."web_sales_item_category" as "web_sales_item_category",
+    "thoughtful"."web_sales_item_class" as "web_sales_item_class"
+FROM
+    "thoughtful"),
+questionable as (
+SELECT
+    "cooperative"."lochierarchy" as "lochierarchy",
+    "cooperative"."total_sum" as "total_sum",
+    "cooperative"."web_sales_item_category" as "web_sales_item_category",
+    "cooperative"."web_sales_item_class" as "web_sales_item_class",
+    rank() over (partition by "cooperative"."lochierarchy","cooperative"."partition_cat" order by "cooperative"."total_sum" desc ) as "rank_within_parent"
+FROM
+    "cooperative")
+SELECT
+    "questionable"."total_sum" as "total_sum",
+    "questionable"."web_sales_item_category" as "i_category",
+    "questionable"."web_sales_item_class" as "i_class",
+    "questionable"."lochierarchy" as "lochierarchy",
+    "questionable"."rank_within_parent" as "rank_within_parent"
+FROM
+    "questionable"
+ORDER BY 
+    "questionable"."lochierarchy" desc nulls first,
+    CASE
+	WHEN "questionable"."lochierarchy" = 0 THEN "questionable"."web_sales_item_category"
+	ELSE null
+	END asc nulls first,
+    "questionable"."rank_within_parent" asc nulls first
+LIMIT (100)

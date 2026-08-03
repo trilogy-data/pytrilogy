@@ -3,7 +3,11 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import StrategyNode, WindowNode
 from trilogy.utility import unique
 
-from .common import parent_outputs_needed, passthrough_if_materialized
+from .common import (
+    collapse_conditions,
+    parent_outputs_needed,
+    passthrough_if_materialized,
+)
 
 
 def gen_window(
@@ -22,9 +26,7 @@ def gen_window(
     )
     if passthrough is not None:
         return passthrough
-    new = conditions.conditional if conditions else None
-    pre = preexisting_conditions.conditional if preexisting_conditions else None
-    combined = new if pre is None else (pre if new is None else (new + pre))
+    combined = collapse_conditions(conditions, preexisting_conditions)
     output_addresses = {concept.address for concept in outputs}
     nullable_concepts = unique(
         [

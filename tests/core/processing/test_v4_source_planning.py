@@ -1,7 +1,6 @@
 from trilogy import Environment
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.graph_models import SearchCriteria
 from trilogy.core.models.build import (
     BuildComparison,
     BuildUnionDatasource,
@@ -11,24 +10,13 @@ from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.nodes import RecursiveNode, UnionNode
 from trilogy.core.processing.v4_helper.source_planning import (
     SourceRequest,
-    _bridge_plan,
-    _concepts_in_graph,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
     _inject_union_datasources,
+    _network_source,
     _original_datasource_concept_nodes,
-    _requested_concepts,
-    _resolve_bridge_graph,
     _search_concepts_for_bridge,
     plan_source,
-)
-from trilogy.core.processing.v4_helper.source_policy import (
-    FALLBACK_SOURCE_POLICY,
-    ROWSET_SOURCE_POLICY,
-    STRICT_SOURCE_POLICY,
-    SourceAttempt,
-    SourcePolicy,
-    source_policy_from_legacy_accept_partial,
 )
 
 PARTIAL_UNION_MODEL = """
@@ -280,27 +268,11 @@ def _build_recursive_connector():
     return env, env.materialize_for_select()
 
 
-class TestSourcePolicy:
-    def test_attempts_map_to_search_criteria(self):
-        assert SourceAttempt.FULL.criteria == SearchCriteria.FULL_ONLY
-        assert (
-            SourceAttempt.PARTIAL_UNSCOPED.criteria == SearchCriteria.PARTIAL_UNSCOPED
-        )
-        assert (
-            SourceAttempt.PARTIAL_SCOPED.criteria
-            == SearchCriteria.PARTIAL_INCLUDING_SCOPED
-        )
-
-    def test_policy_cache_key_is_attempt_order(self):
-        policy = SourcePolicy((SourceAttempt.FULL, SourceAttempt.PARTIAL_UNSCOPED))
-        assert policy.cache_key == "full|partial_unscoped"
-        assert policy.accepts_partial
-        assert not STRICT_SOURCE_POLICY.accepts_partial
-
-    def test_legacy_accept_partial_maps_to_default_fallback_policy(self):
-        assert source_policy_from_legacy_accept_partial(False) is FALLBACK_SOURCE_POLICY
-        assert source_policy_from_legacy_accept_partial(True) is FALLBACK_SOURCE_POLICY
-        assert ROWSET_SOURCE_POLICY is FALLBACK_SOURCE_POLICY
+def _network_bridge(request):
+    """The BridgePlan the search settles on, or None if this request is not the
+    bridge emitter's to answer."""
+    decision = _network_source(request)
+    return None if decision is None else decision.bridge
 
 
 class TestBridgeSourcePlanning:
@@ -351,7 +323,6 @@ class TestBridgeSourcePlanning:
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
 
         search = _search_concepts_for_bridge(request)
@@ -362,17 +333,16 @@ class TestBridgeSourcePlanning:
             "local.sales_channel",
         }
 
-    def test_bridge_plan_treats_grain_keys_as_injected_concepts(self):
+    def test_bridge_treats_grain_keys_as_injected_concepts(self):
         env, benv = _build_channel_dim()
         request = SourceRequest(
             outputs=[benv.concepts["local.channel_dim_text_id"]],
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
 
-        plan = _bridge_plan(request, SourceAttempt.FULL)
+        plan = _network_bridge(request)
 
         assert plan is not None
         assert {concept.address for concept in plan.concepts} == {
@@ -388,12 +358,11 @@ class TestBridgeSourcePlanning:
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
-        plan = _bridge_plan(request, SourceAttempt.FULL)
+        plan = _network_bridge(request)
         assert plan is not None
 
-        parents = _datasource_nodes_for_bridge(request, plan, SourceAttempt.FULL)
+        parents = _datasource_nodes_for_bridge(request, plan, False)
         assert parents is not None
         union = next(parent for parent in parents if isinstance(parent, UnionNode))
 
@@ -421,17 +390,16 @@ class TestBridgeSourcePlanning:
 
         assert any("c~local.sales_channel@" in node for node in extra)
 
-    def test_bridge_plan_uses_union_source_for_partial_channel_sources(self):
+    def test_bridge_uses_union_source_for_partial_channel_sources(self):
         env, benv = _build_partial_union()
         request = SourceRequest(
             outputs=_source_outputs(benv),
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
 
-        plan = _bridge_plan(request, SourceAttempt.FULL)
+        plan = _network_bridge(request)
 
         assert plan is not None
         assert "ds~web_sales-catalog_sales" in plan.graph.datasources
@@ -443,22 +411,21 @@ class TestBridgeSourcePlanning:
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
-        plan = _bridge_plan(request, SourceAttempt.FULL)
+        plan = _network_bridge(request)
         assert plan is not None
 
-        parents = _datasource_nodes_for_bridge(request, plan, SourceAttempt.FULL)
+        parents = _datasource_nodes_for_bridge(request, plan, False)
 
         assert parents is not None
         assert any(isinstance(parent, UnionNode) for parent in parents)
 
-    def test_bridge_plan_ignores_single_row_subset_as_non_connector(self):
-        """A bridged set that is a strict SUBSET of the request is not a
-        connector — it just means a single-row/abstract concept (`data_through`)
-        was excluded from the bridge search. `_bridge_plan` must return None so
-        `_direct_source` builds the complete-key merge, rather than treating the
-        subset as a connector and routing through one partial scan. (brief 06)"""
+    def test_single_row_output_is_not_the_bridge_s_to_answer(self):
+        """A single-row/abstract concept (`data_through`) is excluded from the
+        source search because it joins by cross product, never by a key — and the
+        bridge emitter has no cross join. So the search must report a decision the
+        bridge CANNOT satisfy, letting `_direct_source` build the complete-key
+        merge rather than routing through one partial scan. (brief 06)"""
         env, benv = _build_partial_key_with_watermark()
         request = SourceRequest(
             outputs=[
@@ -469,27 +436,12 @@ class TestBridgeSourcePlanning:
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
-            source_policy=FALLBACK_SOURCE_POLICY,
         )
 
-        # The bridge graph excludes the single-row `data_through`, so its concept
-        # set is exactly the strict subset that used to misfire the old
-        # `bridged != requested` gate.
-        search = _search_concepts_for_bridge(request)
-        bridge_graph = _resolve_bridge_graph(
-            search,
-            request,
-            attempt=SourceAttempt.FULL,
-            filter_downstream=False,
-            search_conditions=None,
-        )
-        assert bridge_graph is not None
-        bridged = {c.address for c in _concepts_in_graph(bridge_graph, benv)}
-        requested = {c.address for c in _requested_concepts(request)}
-        assert bridged < requested  # strict subset (data_through dropped)
+        decision = _network_source(request)
 
-        for attempt in (SourceAttempt.FULL, SourceAttempt.PARTIAL_UNSCOPED):
-            assert _bridge_plan(request, attempt) is None
+        assert decision is not None
+        assert decision.bridge is None
 
     def test_plan_source_keeps_partial_key_complete_with_single_row_output(self):
         """Sourcing a partial foreign key (`code`) alongside a single-row
@@ -506,7 +458,6 @@ class TestBridgeSourcePlanning:
                 environment=benv,
                 graph=generate_graph(benv),
                 history=V4History(base_environment=env),
-                source_policy=FALLBACK_SOURCE_POLICY,
             )
         )
 
@@ -534,7 +485,6 @@ class TestBridgeSourcePlanning:
                 environment=benv,
                 graph=generate_graph(benv),
                 history=V4History(base_environment=env),
-                source_policy=FALLBACK_SOURCE_POLICY,
             )
         )
 

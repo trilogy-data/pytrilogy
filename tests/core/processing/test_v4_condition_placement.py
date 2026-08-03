@@ -3,9 +3,11 @@ from trilogy.core.enums import ComparisonOperator, Derivation, Purpose
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
+    BuildFilterItem,
     BuildGrain,
     BuildWhereClause,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.v4_helper.condition_placement import (
     PlacementReason,
@@ -156,3 +158,101 @@ def test_cross_grain_aggregate_comparison_defers_to_final() -> None:
     assert len(placements) == 1
     assert placements[0].group_ids == (FINAL_NODE_ID,)
     assert placements[0].reason is PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE
+
+
+def _filter_environment(scope_condition_address: str) -> BuildEnvironment:
+    """Environment holding one filtered value whose own WHERE is `<addr> = 'x'`
+    — the same expression the outer atom uses."""
+    filtered = BuildConcept(
+        name="filtered_cost",
+        canonical_name="filtered_cost",
+        datatype=DataType.STRING,
+        purpose=Purpose.METRIC,
+        build_is_aggregate=False,
+        namespace="local",
+        grain=BuildGrain(),
+        pseudonyms=set(),
+        lineage=BuildFilterItem(
+            content=_concept("cost"),
+            where=_where(scope_condition_address),
+        ),
+    )
+    environment = BuildEnvironment()
+    environment.concepts[_addr("filtered_cost")] = filtered
+    return environment
+
+
+def _filter_scope_graph(
+    aggregate_grain: set[str],
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupBucket]]:
+    buckets = {
+        "root": _bucket(
+            Derivation.ROOT,
+            [_addr("id"), _addr("region"), _addr("cost"), _addr("out")],
+            depth=DepthLabel.ROOT,
+        ),
+        # The pristine scan the d1 calculations read; never a host itself.
+        "root_d1": _bucket(
+            Derivation.ROOT,
+            [_addr("id"), _addr("region"), _addr("cost")],
+            depth=DepthLabel.ROOT_D1,
+        ),
+        "filter": _bucket(
+            Derivation.FILTER,
+            [_addr("filtered_cost")],
+            depth=DepthLabel.D1,
+            grain={_addr("id")},
+        ),
+        "agg": _bucket(
+            Derivation.AGGREGATE,
+            [_addr("min_cost")],
+            secondary=[_addr("id")],
+            depth=DepthLabel.D1,
+            grain=aggregate_grain,
+        ),
+    }
+    graph, edges = _graph()
+    graph.add_nodes_from(buckets)
+    add_edge(graph, edges, "root_d1", "filter", EdgeKind.LINEAGE)
+    add_edge(graph, edges, "filter", "agg", EdgeKind.LINEAGE)
+    add_edge(graph, edges, "agg", "root", EdgeKind.LINEAGE)
+    for gid in buckets:
+        add_edge(graph, edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
+    return graph, edges, buckets
+
+
+def test_atom_a_filter_scope_cannot_propagate_lands_outside_the_scope() -> None:
+    # tpch q02: `min(cost ? region = 'EUROPE')` keyed by id, joined back on id.
+    # Hosting `region = 'EUROPE'` in that scope restricts nothing and never
+    # reaches the output population, so the atom belongs on the outer ROOT.
+    graph, edges, buckets = _filter_scope_graph(aggregate_grain={_addr("id")})
+
+    placements = plan_condition_placements(
+        graph,
+        edges,
+        buckets,
+        [_where("region")],
+        [_concept("out")],
+        environment=_filter_environment("region"),
+    )
+
+    assert len(placements) == 1
+    assert placements[0].group_ids == ("root",)
+
+
+def test_atom_the_scope_keys_its_value_by_stays_in_the_scope() -> None:
+    # tpcds q30/q81: the filtered average is grouped BY the atom's own concept
+    # and joined back on it, so the scope's filtering reaches the outer rows.
+    graph, edges, buckets = _filter_scope_graph(aggregate_grain={_addr("region")})
+
+    placements = plan_condition_placements(
+        graph,
+        edges,
+        buckets,
+        [_where("region")],
+        [_concept("out")],
+        environment=_filter_environment("region"),
+    )
+
+    assert len(placements) == 1
+    assert placements[0].group_ids == ("filter",)

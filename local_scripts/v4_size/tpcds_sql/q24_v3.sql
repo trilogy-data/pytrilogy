@@ -1,0 +1,53 @@
+
+WITH 
+yummy as (
+SELECT
+    sum("store_sales_store_sales"."SS_NET_PAID") as "_virt_agg_sum_8086358811880305"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."store_returns" as "store_sales_store_returns" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_store_returns"."SR_ITEM_SK" AND "store_sales_store_sales"."SS_TICKET_NUMBER" = "store_sales_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."customer_address" as "store_sales_customer_current_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_current_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "store_sales_store_store"."S_MARKET_ID" = 8 and "store_sales_customer_customers"."C_BIRTH_COUNTRY" != UPPER("store_sales_customer_current_address_customer_address"."CA_COUNTRY")  and ("store_sales_store_returns"."SR_TICKET_NUMBER" is not null) is True and "store_sales_store_store"."S_ZIP" = "store_sales_customer_current_address_customer_address"."CA_ZIP"
+
+GROUP BY
+    "store_sales_customer_customers"."C_CUSTOMER_SK",
+    "store_sales_store_store"."S_STORE_SK",
+    coalesce("store_sales_store_returns"."SR_ITEM_SK","store_sales_store_sales"."SS_ITEM_SK")),
+vacuous as (
+SELECT
+    avg("yummy"."_virt_agg_sum_8086358811880305") as "_virt_agg_avg_3394423827549395"
+FROM
+    "yummy"),
+questionable as (
+SELECT
+    "store_sales_customer_customers"."C_FIRST_NAME" as "store_sales_customer_first_name",
+    "store_sales_customer_customers"."C_LAST_NAME" as "store_sales_customer_last_name",
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name",
+    sum(CASE WHEN "store_sales_item_items"."I_COLOR" = 'peach' THEN "store_sales_store_sales"."SS_NET_PAID" ELSE NULL END) as "peach_sales"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "store_sales_customer_customers" on "store_sales_store_sales"."SS_CUSTOMER_SK" = "store_sales_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."store_returns" as "store_sales_store_returns" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_store_returns"."SR_ITEM_SK" AND "store_sales_store_sales"."SS_TICKET_NUMBER" = "store_sales_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."customer_address" as "store_sales_customer_current_address_customer_address" on "store_sales_customer_customers"."C_CURRENT_ADDR_SK" = "store_sales_customer_current_address_customer_address"."CA_ADDRESS_SK"
+    LEFT OUTER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+WHERE
+    "store_sales_store_store"."S_MARKET_ID" = 8 and "store_sales_customer_customers"."C_BIRTH_COUNTRY" != UPPER("store_sales_customer_current_address_customer_address"."CA_COUNTRY")  and ("store_sales_store_returns"."SR_TICKET_NUMBER" is not null) is True and "store_sales_store_store"."S_ZIP" = "store_sales_customer_current_address_customer_address"."CA_ZIP"
+
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    "questionable"."store_sales_customer_last_name" as "store_sales_customer_last_name",
+    "questionable"."store_sales_customer_first_name" as "store_sales_customer_first_name",
+    "questionable"."store_sales_store_name" as "store_sales_store_name",
+    "questionable"."peach_sales" as "peach_sales"
+FROM
+    "vacuous"
+    INNER JOIN "questionable" on 1=1
+WHERE
+    "questionable"."peach_sales" > 0.05 * ("vacuous"."_virt_agg_avg_3394423827549395")

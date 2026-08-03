@@ -1,0 +1,64 @@
+
+WITH 
+thoughtful as (
+SELECT
+    "ss_item_items"."I_CATEGORY" as "ss_item_category",
+    "ss_item_items"."I_CLASS" as "ss_item_class",
+    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price",
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."item" as "ss_item_items" on "ss_store_sales"."SS_ITEM_SK" = "ss_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+WHERE
+    "ss_sale_date_date"."D_YEAR" = 2001 and "ss_store_store"."S_STATE" = 'TN'
+),
+cooperative as (
+SELECT
+    "thoughtful"."ss_item_category" as "ss_item_category",
+    "thoughtful"."ss_item_class" as "ss_item_class",
+    CASE
+	WHEN grouping("thoughtful"."ss_item_class") = 0 THEN "thoughtful"."ss_item_category"
+	ELSE null
+	END as "partition_cat",
+    cast(sum("thoughtful"."ss_net_profit") as numeric(15,4)) / cast(sum("thoughtful"."ss_ext_sales_price") as numeric(15,4)) as "gross_margin",
+    grouping("thoughtful"."ss_item_category") + grouping("thoughtful"."ss_item_class") as "lochierarchy"
+FROM
+    "thoughtful"
+GROUP BY
+    ROLLUP (1, 2)),
+questionable as (
+SELECT
+    "cooperative"."gross_margin" as "gross_margin",
+    "cooperative"."lochierarchy" as "lochierarchy",
+    "cooperative"."partition_cat" as "partition_cat",
+    "cooperative"."ss_item_category" as "ss_item_category",
+    "cooperative"."ss_item_class" as "ss_item_class"
+FROM
+    "cooperative"),
+abundant as (
+SELECT
+    "questionable"."gross_margin" as "gross_margin",
+    "questionable"."lochierarchy" as "lochierarchy",
+    "questionable"."ss_item_category" as "ss_item_category",
+    "questionable"."ss_item_class" as "ss_item_class",
+    rank() over (partition by "questionable"."lochierarchy","questionable"."partition_cat" order by "questionable"."gross_margin" asc ) as "rank_within_parent"
+FROM
+    "questionable")
+SELECT
+    "abundant"."gross_margin" as "gross_margin",
+    "abundant"."ss_item_category" as "i_category",
+    "abundant"."ss_item_class" as "i_class",
+    "abundant"."lochierarchy" as "lochierarchy",
+    "abundant"."rank_within_parent" as "rank_within_parent"
+FROM
+    "abundant"
+ORDER BY 
+    "abundant"."lochierarchy" desc nulls first,
+    CASE
+	WHEN "abundant"."lochierarchy" = 0 THEN "abundant"."ss_item_category"
+	ELSE null
+	END asc nulls first,
+    "abundant"."rank_within_parent" asc nulls first
+LIMIT (100)

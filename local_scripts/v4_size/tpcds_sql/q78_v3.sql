@@ -1,0 +1,108 @@
+
+WITH 
+abundant as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_sale_date_sk",
+    "sales_catalog_sales_unified"."CS_SALES_PRICE" as "sales_sales_price",
+    "sales_catalog_sales_unified"."CS_WHOLESALE_COST" as "sales_wholesale_cost"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null
+
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_sale_date_sk",
+    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
+    "sales_store_sales_unified"."SS_WHOLESALE_COST" as "sales_wholesale_cost"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+WHERE
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_sk",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_sale_date_sk",
+    "sales_web_sales_unified"."WS_SALES_PRICE" as "sales_sales_price",
+    "sales_web_sales_unified"."WS_WHOLESALE_COST" as "sales_wholesale_cost"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+WHERE
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
+),
+cheerful as (
+SELECT
+     'CATALOG'  as "sales_channel",
+     true  as "sales_is_returned",
+    "sales_catalog_returns_unified"."CR_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_returns_unified"."CR_ORDER_NUMBER" as "sales_order_id"
+FROM
+    "memory"."catalog_returns" as "sales_catalog_returns_unified"
+UNION ALL
+SELECT
+     'STORE'  as "sales_channel",
+     true  as "sales_is_returned",
+    "sales_store_returns_unified"."SR_ITEM_SK" as "sales_item_sk",
+    "sales_store_returns_unified"."SR_TICKET_NUMBER" as "sales_order_id"
+FROM
+    "memory"."store_returns" as "sales_store_returns_unified"
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+     true  as "sales_is_returned",
+    "sales_web_returns_unified"."WR_ITEM_SK" as "sales_item_sk",
+    "sales_web_returns_unified"."WR_ORDER_NUMBER" as "sales_order_id"
+FROM
+    "memory"."web_returns" as "sales_web_returns_unified")
+SELECT
+    "sales_sale_date_date"."D_YEAR" as "ss_sold_year",
+    coalesce("abundant"."sales_item_sk","cheerful"."sales_item_sk") as "ss_item_sk",
+    "abundant"."sales_billing_customer_sk" as "ss_customer_sk",
+    round(cast(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as numeric(7,2)) / cast(coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END),0) as numeric(7,2)),2) as "ratio",
+    sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'STORE' THEN "abundant"."sales_quantity" ELSE NULL END) as "store_qty",
+    sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'STORE' THEN "abundant"."sales_wholesale_cost" ELSE NULL END) as "store_wholesale_cost",
+    sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'STORE' THEN "abundant"."sales_sales_price" ELSE NULL END) as "store_sales_price",
+    coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END),0) as "other_chan_qty",
+    coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'WEB' THEN "abundant"."sales_wholesale_cost" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'CATALOG' THEN "abundant"."sales_wholesale_cost" ELSE NULL END),0) as "other_chan_wholesale_cost",
+    coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'WEB' THEN "abundant"."sales_sales_price" ELSE NULL END),0) + coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'CATALOG' THEN "abundant"."sales_sales_price" ELSE NULL END),0) as "other_chan_sales_price"
+FROM
+    "abundant"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "abundant"."sales_sale_date_sk" = "sales_sale_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "cheerful" on "abundant"."sales_channel" = "cheerful"."sales_channel" AND "abundant"."sales_item_sk" = "cheerful"."sales_item_sk" AND "abundant"."sales_order_id" = "cheerful"."sales_order_id"
+WHERE
+    "cheerful"."sales_is_returned" is null and "sales_sale_date_date"."D_YEAR" = 2000 and "abundant"."sales_billing_customer_sk" is not null
+
+GROUP BY
+    1,
+    2,
+    3
+HAVING
+    "store_qty" > 0 and ( coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'WEB' THEN "abundant"."sales_quantity" ELSE NULL END),0) > 0 or coalesce(sum(CASE WHEN coalesce("abundant"."sales_channel","cheerful"."sales_channel") = 'CATALOG' THEN "abundant"."sales_quantity" ELSE NULL END),0) > 0 )
+
+ORDER BY 
+    "ss_sold_year" asc nulls first,
+    "ss_item_sk" asc nulls first,
+    "ss_customer_sk" asc nulls first,
+    "store_qty" desc nulls last,
+    "store_wholesale_cost" desc nulls last,
+    "store_sales_price" desc nulls last,
+    "other_chan_qty" asc nulls first,
+    "other_chan_wholesale_cost" asc nulls first,
+    "other_chan_sales_price" asc nulls first,
+    "ratio" asc nulls first
+LIMIT (100)

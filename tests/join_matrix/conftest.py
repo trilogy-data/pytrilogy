@@ -16,48 +16,12 @@ import pytest
 
 from trilogy.constants import CONFIG
 
-_AXIS_RECURSION = (
-    "v4 coalescing-axis over derived (cast/concat) members: recursion gap "
-    "(coalescing_presence Bug-1 family, see local_scripts/v4_audit.md)"
-)
-_COMPOSITE_FULL = "v4 composite-key UNION cells with a derived key member"
-_FILTERED_ANCHOR = "v4 filtered-rowset-anchor directional narrowing not ported"
-_STITCH = "v4 nullable-measure stitch re-sources one side through the other"
-_PREDROP = "v4 predrop chain narrowing: aggregate-consumer cell"
-_MULTI_PROBE = (
-    "v4 multi-probe coalescing carry not ported: a second member presence probe "
-    "re-derives off the fused key (v3 fix = retain_presence_probes, TPC-DS q35)"
-)
-_OFFSET_ROWSET = (
-    "v4 aggregate-rowset offset join: subset-side projected member key resolves "
-    "only from partial sources (q59 shape; v3 fix = _enrich_rowset_node)"
-)
-_ROWSET_ONTO_ROOT = (
-    "v4 rowset-onto-ROOT subset join: projecting the rowset member INNER-"
-    "collapses the anchor instead of preserving the coalesced group axis "
-    "(q35 mixed shape; v3 = pseudonym_unsatisfiable_group_mates widening)"
-)
-
-V4_FAILING: dict[str, str] = {
-    "test_coalescing_presence_matrix.py::test_presence_union_cast_single": _AXIS_RECURSION,
-    "test_coalescing_presence_matrix.py::test_presence_full_cast_single": _AXIS_RECURSION,
-    "test_coalescing_presence_matrix.py::test_presence_union_concat_composite": _AXIS_RECURSION,
-    "test_coalescing_presence_matrix.py::test_bare_member_projection_unions_domains": _AXIS_RECURSION,
-    "test_composite_matrix.py::test_composite_key_join[plain_derived-union]": _COMPOSITE_FULL,
-    "test_composite_matrix.py::test_composite_key_join[derived_derived-union]": _COMPOSITE_FULL,
-    "test_composite_matrix.py::test_union_derived_key_as_left_operand_direction": _COMPOSITE_FULL,
-    "test_composite_matrix.py::test_mixed_anchor_composite_composes_to_full": _COMPOSITE_FULL,
-    "test_filtered_rowset_anchor.py::test_filtered_rowset_anchor_subset_join_narrows": _FILTERED_ANCHOR,
-    "test_filtered_rowset_anchor.py::test_unfiltered_rowset_anchor_subset_join_narrows": _FILTERED_ANCHOR,
-    "test_filtered_rowset_anchor.py::test_explicit_is_not_null_matches_directional": _FILTERED_ANCHOR,
-    "test_nullable_measure_stitch_keys.py::test_nullable_measure_rows_survive_stitch": _STITCH,
-    "test_predrop_chain_narrowing.py::test_predrop_chain_cell[aggregate_consumer]": _PREDROP,
-    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_key_only": _MULTI_PROBE,
-    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_join_order_swapped": _MULTI_PROBE,
-    "test_multi_probe_coalescing.py::test_store_and_web_or_catalog_with_property_and_aggregate": _MULTI_PROBE,
-    "test_aggregate_rowset_offset_join.py::test_offset_join_between_aggregate_rowsets_plans_on_authored_keys": _OFFSET_ROWSET,
-    "test_subset_join_rowset_onto_root.py::test_projecting_member_key_is_group_axis": _ROWSET_ONTO_ROOT,
-}
+# 2026-08-02: EMPTY — the last three cells (one root cause: v4 never sourced a
+# scoped-join key-group mate nothing else references) fixed by
+# `_unsourced_relation_mates` + `_add_partial_completion_contributors`.
+# Non-strict xfails rot silently: re-measure with `--runxfail` before trusting
+# any future entry's count.
+V4_FAILING: dict[str, str] = {}
 
 
 def _cell_key(node: pytest.Item) -> str:

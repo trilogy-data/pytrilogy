@@ -1,0 +1,27 @@
+SELECT
+    SUBSTRING("ws_warehouse_warehouse"."w_warehouse_name",1,20) as "w_substr",
+    "ws_ship_mode_ship_mode"."SM_TYPE" as "ws_ship_mode_type",
+    "ws_web_site_web_site"."web_name" as "ws_web_site_name",
+    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 30 THEN 1 ELSE NULL END),0) as "days_30",
+    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 30 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 60 THEN 1 ELSE NULL END),0) as "days_31_60",
+    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 60 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 90 THEN 1 ELSE NULL END),0) as "days_61_90",
+    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 90 and "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" <= 120 THEN 1 ELSE NULL END),0) as "days_91_120",
+    coalesce(sum(CASE WHEN "ws_web_sales"."WS_SHIP_DATE_SK" - "ws_web_sales"."WS_SOLD_DATE_SK" > 120 THEN 1 ELSE NULL END),0) as "days_120_plus"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."ship_mode" as "ws_ship_mode_ship_mode" on "ws_web_sales"."WS_SHIP_MODE_SK" = "ws_ship_mode_ship_mode"."SM_SHIP_MODE_SK"
+    INNER JOIN "memory"."warehouse" as "ws_warehouse_warehouse" on "ws_web_sales"."WS_WAREHOUSE_SK" = "ws_warehouse_warehouse"."w_warehouse_sk"
+WHERE
+    "ws_ship_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1211 and "ws_web_sales"."WS_WAREHOUSE_SK" is not null and "ws_web_sales"."WS_SHIP_MODE_SK" is not null and "ws_web_sales"."WS_WEB_SITE_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    "w_substr" asc nulls first,
+    "ws_ship_mode_ship_mode"."SM_TYPE" asc nulls first,
+    "ws_web_site_web_site"."web_name" asc nulls first
+LIMIT (100)

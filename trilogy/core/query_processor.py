@@ -26,7 +26,9 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     Function,
+    HavingClause,
     MultiSelectLineage,
+    OrderBy,
     RowsetItem,
     SelectLineage,
     WhereClause,
@@ -658,6 +660,19 @@ def _raise_if_disconnected(
         island_rowsets=False,
         line_number=line_number,
     )
+    if conditions is None:
+        return
+    # An existence subselect (`x in (<set>)`) is its own resolution scope — v3
+    # plans it as an independent query, so its RHS concepts (with any FILTER's
+    # hidden content/condition concepts surfaced) must be connected on their
+    # own. A correlated filter across unmerged models (`b ? b = a`, q64)
+    # otherwise plans a FROM-less feeder that dies at render.
+    for arg_group in conditions.existence_arguments or ():
+        if not arg_group:
+            continue
+        raise_if_filter_disconnected(
+            list(arg_group), build_environment, graph, island_rowsets=False
+        )
 
 
 def _get_query_node_v4(
@@ -721,7 +736,18 @@ def _get_query_node_v4(
         )
     if build_statement.having_clause:
         final = build_statement.having_clause.conditional
-        if ds.conditions:
+        # Fold the merge's own conditions into the HAVING wrap only when the
+        # wrap can express them: a FINAL-deferred WHERE can reference a filter
+        # arg the merge carries as a hidden JOIN input without projecting it
+        # (`where st.s_cid is not null` beside outputs that only rename it) —
+        # re-stated above the projection, the arg re-derives by lineage into a
+        # missing base column (INVALID_REFERENCE). Left unfolded, the merge
+        # renders its WHERE at its own layer, where the column exists.
+        usable_addrs = {c.address for c in ds.usable_outputs}
+        if ds.conditions and all(
+            arg.address in usable_addrs
+            for arg in BuildWhereClause(conditional=ds.conditions).row_arguments
+        ):
             final = BuildConditional(
                 left=ds.conditions,
                 right=build_statement.having_clause.conditional,
@@ -748,6 +774,41 @@ def _get_query_node_v4(
             history,
             conditions=build_statement.where_clause,
         )
+    # A plain ORDER BY arg that is only an alias-source of a projected derived
+    # output (`order by channel` with `lower(channel) as chan` projected) must
+    # be resolvable from the final node's source map: the renderer references
+    # it against the final CTE's source and aggregate-wraps it (`MIN(channel)`)
+    # when the final is grouped. v3's final node carries such columns as
+    # INPUTS incidentally; v4's contract-projected FINAL slices them off.
+    # Carry them as inputs only — never outputs, which would put the column in
+    # the final GROUP BY and change the dedup grain.
+    if build_statement.order_by and ds.parents:
+        output_addrs = {c.address for c in ds.output_concepts}
+        input_addrs = {c.address for c in ds.input_concepts}
+        parent_outputs = {
+            c.address for parent in ds.parents for c in parent.output_concepts
+        }
+        order_by_carry = [
+            c
+            for item in build_statement.order_by.items
+            for c in item.concept_arguments
+            if c.address not in output_addrs
+            and c.address not in input_addrs
+            and c.address in parent_outputs
+        ]
+        if order_by_carry:
+            # The parent must expose the column PLAINLY: `resolve_concept_map`
+            # skips a parent output the parent itself hides, so a FINAL-hidden
+            # carry key never reaches the final node's source map.
+            for parent in ds.parents:
+                parent_hidden = set(parent.hidden_concepts or set())
+                unhide = {
+                    c.address for c in order_by_carry if c.address in parent_hidden
+                }
+                if unhide and {c.address for c in parent.output_concepts} & unhide:
+                    parent.hidden_concepts = parent_hidden - unhide
+                    parent.rebuild_cache()
+            ds.input_concepts.extend(unique(order_by_carry, "address"))
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
     )
@@ -770,6 +831,7 @@ def _get_query_node_v4(
 def _authored_reference_addresses(
     statement: SelectLineage | MultiSelectLineage,
     environment: Environment,
+    include_where: bool = True,
 ) -> set[str]:
     """Transitive closure of AUTHOR-referenced concept addresses for this
     select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage —
@@ -777,16 +839,25 @@ def _authored_reference_addresses(
     rewrites addresses. The scoped-join declarations themselves are
     deliberately excluded: a declared relation whose far side the author
     never references is pure domain metadata and must not force that side
-    into the plan."""
+    into the plan. `include_where=False` drops the WHERE clauses — the
+    outputs-only closure distinguishes row-stream contributors from
+    population-scope (condition) references."""
     selects = (
         statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
     )
     stack: list[str] = []
     locals_pool: dict[str, Concept] = {}
-    clauses = [statement.where_clause, statement.having_clause, statement.order_by]
+    clauses: list[WhereClause | HavingClause | OrderBy | None] = [
+        statement.having_clause,
+        statement.order_by,
+    ]
+    if include_where:
+        clauses.append(statement.where_clause)
     for select in selects:
         stack.extend(ref.address for ref in select.output_components)
-        clauses.extend([select.where_clause, select.having_clause, select.order_by])
+        clauses.extend([select.having_clause, select.order_by])
+        if include_where:
+            clauses.append(select.where_clause)
         locals_pool.update(select.local_concepts)
     for clause in clauses:
         if clause is not None:
@@ -855,6 +926,9 @@ def get_query_node(
     )
     build_environment.statement_authored_addresses = _authored_reference_addresses(
         statement, environment
+    )
+    build_environment.statement_output_addresses = _authored_reference_addresses(
+        statement, environment, include_where=False
     )
 
     _carry_order_by_concepts(build_statement)

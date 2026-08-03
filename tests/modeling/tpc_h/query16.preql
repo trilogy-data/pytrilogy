@@ -11,7 +11,7 @@ select
     brand,
     type,
     size,
-    count_distinct(supplier.id) -> supplier_cnt
+    count(supplier.id) -> supplier_cnt
 order by
     supplier_cnt desc,
     brand asc,

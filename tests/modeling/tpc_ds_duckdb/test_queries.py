@@ -1,14 +1,12 @@
 import os
 import platform
 import re
-import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
 
 import tomli_w
 import tomllib
 
+from tests.modeling._benchmark_timing import benchmark_query
 from tests.modeling._row_compare import rows_match
 from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Executor
@@ -33,16 +31,6 @@ working_path = Path(__file__).parent
 # only ever adds time, so the min is the most faithful estimate of true cost.
 REPEAT_TIME_CUTOFF = 0.15
 REPEAT_COUNT = 3
-
-T = TypeVar("T")
-
-
-def _time(fn: Callable[[], T]) -> tuple[float, T]:
-    """Monotonic, high-resolution elapsed time around fn (perf_counter, not
-    datetime.now, which is wall-clock and ~15ms-quantized on Windows)."""
-    start = time.perf_counter()
-    value = fn()
-    return time.perf_counter() - start, value
 
 
 def _load_toml_mapping(path: Path) -> dict[str, object]:
@@ -101,33 +89,22 @@ def run_query(
     else:
         rquery = f"PRAGMA tpcds({idx});"
 
-    # Time exec *including* fetch on both sides -- DuckDB materializes lazily,
-    # so excluding fetch on one side only would bias the comparison.
-    def _exec_trilogy() -> list:
-        return list(engine.execute_raw_sql(query).fetchall())
-
     def _exec_reference() -> list:
         return list(engine.execute_raw_sql(rquery).fetchall())
 
-    parse_time, query = _time(lambda: engine.generate_sql(text)[-1])
-    exec_time, comp_results = _time(_exec_trilogy)
-    comp_time, base_results = _time(_exec_reference)
-
-    # Only re-run the sides that are themselves sub-cutoff (jitter-dominated).
-    # A side already well above the cutoff is a stable sample, so re-running it
-    # only multiplies cost — e.g. q64/q72's reference SQL is ~20s even at
-    # sf=0.01, and re-running it 3x ballooned those tests to 90s/23s purely to
-    # denoise the unrelated, fast trilogy side.
-    if min(parse_time, exec_time, comp_time) < REPEAT_TIME_CUTOFF:
-        for _ in range(REPEAT_COUNT):
-            if parse_time < REPEAT_TIME_CUTOFF:
-                parse_time = min(
-                    parse_time, _time(lambda: engine.generate_sql(text))[0]
-                )
-            if exec_time < REPEAT_TIME_CUTOFF:
-                exec_time = min(exec_time, _time(_exec_trilogy)[0])
-            if comp_time < REPEAT_TIME_CUTOFF:
-                comp_time = min(comp_time, _time(_exec_reference)[0])
+    benchmark = benchmark_query(
+        generate=lambda: engine.generate_sql(text)[-1],
+        execute_candidate=lambda query: list(engine.execute_raw_sql(query).fetchall()),
+        execute_reference=_exec_reference,
+        repeat_time_cutoff=REPEAT_TIME_CUTOFF,
+        repeat_count=REPEAT_COUNT,
+    )
+    parse_time = benchmark.parse_time
+    query = benchmark.query
+    exec_time = benchmark.candidate_time
+    comp_results = benchmark.candidate_result
+    comp_time = benchmark.reference_time
+    base_results = benchmark.reference_result
 
     # Always prefer the on-disk reference SQL for size comparison when available,
     # so the PRAGMA-driven runs still report a meaningful comp_size.
@@ -409,7 +386,9 @@ def test_twenty_seven(engine):
 
 
 def test_twenty_eight(engine):
-    _ = run_query(engine, 28)
+    query = run_query(engine, 28)
+    assert len(query) < 12000, query
+    assert query.count('END as "bucket_id"') == 1, query
 
 
 def test_twenty_nine(engine):
@@ -511,7 +490,11 @@ def test_forty_four(engine):
     # query44.preql/.sql both filter to store id=1 (spec uses 4, which has
     # no rows at this scale); compare against the matching .sql file rather
     # than PRAGMA, which still uses the spec constant.
-    _ = run_query(engine, 44, sql_override=True)
+    query = run_query(engine, 44, sql_override=True)
+    # The item-name lookup inlines as a direct join per consumer — a
+    # rename-only scan CTE (`I_PRODUCT_NAME as ...`) must not rematerialize
+    # (InlineDatasource rename fold).
+    assert query.count('"memory"."item"') == 2, query
 
 
 def test_forty_five(engine):
@@ -595,6 +578,11 @@ def test_fifty_eight(engine):
 def test_fifty_nine(engine):
     query = run_query(engine, 59, sql_override=True)
     assert len(query) < 12000, query
+    # The store-label scan (`S_STORE_ID as "s_store_id1"`) inlines into its
+    # consumer as a direct join (InlineDatasource rename fold); a separate
+    # rename-only CTE reappearing means the fold regressed.
+    assert query.count('"memory"."store"') == 1, query
+    assert query.count("SELECT") <= 8, query
 
 
 def test_sixty(engine):
@@ -663,6 +651,7 @@ def test_sixty_five(engine):
 def test_sixty_six(engine):
     query = run_query(engine, 66)
     assert len(query) < 38000, query
+    assert query.count('"memory"."warehouse"') == 1, query
 
 
 def test_sixty_seven(engine):
@@ -722,7 +711,11 @@ def test_seventy_six(engine):
 def test_seventy_seven(engine):
     # The stock TPC-DS query cross-joins catalog sales and return groups,
     # inflating sales. Our reference matches all three channels by outlet.
-    _ = run_query(engine, 77, sql_override=True)
+    query = run_query(engine, 77, sql_override=True)
+    # 9195 with the TVF-arm identity layers folded (the unbound-rowset guard's
+    # identity carve-out); regressing past ~300 chars of headroom means the
+    # `SELECT x as x` layers rematerialized.
+    assert len(query) < 9500, query
 
 
 def test_seventy_eight(engine):
@@ -753,8 +746,8 @@ def test_eighty_two(engine):
 
 def test_eighty_three(engine):
     query = run_query(engine, 83)
-    # Larger after UnionDimPushdown: dim joins + WHEREs land per branch.
-    assert len(query) < 9500, query
+    assert len(query) < 6500, query
+    assert query.count(' as "item_id"') == 1, query
 
 
 def test_eighty_four(engine):

@@ -1,0 +1,32 @@
+
+WITH 
+cheerful as (
+SELECT
+    avg("lineitem"."l_quantity") as "avg_qty_per_part",
+    coalesce("lineitem"."l_partkey","part_part"."p_partkey") as "part_id"
+FROM
+    "memory"."part" as "part_part"
+    LEFT OUTER JOIN "memory"."lineitem" as "lineitem" on "part_part"."p_partkey" = "lineitem"."l_partkey"
+WHERE
+    "part_part"."p_brand" = 'Brand#23' and "part_part"."p_container" = 'MED BOX'
+
+GROUP BY
+    2),
+wakeful as (
+SELECT
+    "lineitem"."l_extendedprice" as "extended_price",
+    "lineitem"."l_quantity" as "quantity",
+    "part_part"."p_partkey" as "part_id"
+FROM
+    "memory"."part" as "part_part"
+    INNER JOIN "memory"."lineitem" as "lineitem" on "part_part"."p_partkey" = "lineitem"."l_partkey"
+WHERE
+    "part_part"."p_brand" = 'Brand#23' and "part_part"."p_container" = 'MED BOX'
+)
+SELECT
+    sum("wakeful"."extended_price") / 7.0 as "avg_yearly"
+FROM
+    "cheerful"
+    INNER JOIN "wakeful" on "cheerful"."part_id" = "wakeful"."part_id"
+WHERE
+    "wakeful"."quantity" < 0.2 * "cheerful"."avg_qty_per_part"

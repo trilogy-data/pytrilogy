@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from trilogy.core.enums import Derivation, FunctionType, JoinType, Purpose
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import (
+    ComparisonOperator,
+    Derivation,
+    FunctionType,
+    JoinType,
+    Purpose,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -21,6 +28,62 @@ from trilogy.core.processing.condition_utility import (
 )
 
 GrainSource = QueryDatasource | BuildDatasource
+
+
+def _null_tested_addresses(condition: BoolExpr | None) -> set[str]:
+    if condition is None:
+        return set()
+    output: set[str] = set()
+    for atom in decompose_condition(condition):
+        if not isinstance(atom, BuildComparison):
+            continue
+        if atom.operator != ComparisonOperator.IS:
+            continue
+        if isinstance(atom.left, BuildConcept) and atom.right in (
+            None,
+            MagicConstants.NULL,
+        ):
+            output.add(atom.left.address)
+        elif isinstance(atom.right, BuildConcept) and atom.left in (
+            None,
+            MagicConstants.NULL,
+        ):
+            output.add(atom.right.address)
+    return output
+
+
+def anti_join_preserved_grain(
+    final_datasets: list[GrainSource],
+    joins: list[BaseJoin | UnnestJoin],
+    condition: BoolExpr | None,
+) -> BuildGrain | None:
+    """Grain of the preserved side of a proven two-source anti-join."""
+    if len(final_datasets) != 2 or len(joins) != 1:
+        return None
+    join = joins[0]
+    if not isinstance(join, BaseJoin):
+        return None
+    if join.join_type not in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER):
+        return None
+    null_tests = _null_tested_addresses(condition)
+    if not null_tests:
+        return None
+    right = join.right_datasource
+    left = next((source for source in final_datasets if source is not right), None)
+    if left is None:
+        return None
+    nullable_side, preserved_side = (
+        (right, left) if join.join_type == JoinType.LEFT_OUTER else (left, right)
+    )
+    nullable_addresses = {
+        concept.address for concept in nullable_side.nullable_concepts
+    }
+    intrinsic_outputs = {
+        concept.address for concept in nullable_side.output_concepts
+    } - nullable_addresses
+    if not (null_tests & intrinsic_outputs):
+        return None
+    return preserved_side.effective_grain
 
 
 def non_null_proofs(

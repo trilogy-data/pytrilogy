@@ -1,0 +1,95 @@
+
+WITH 
+yummy as (
+SELECT
+    "part"."p_mfgr" as "manufacturer",
+    "part"."p_partkey" as "id",
+    "partsupp"."ps_suppkey" as "supplier_id",
+    "supplier_supplier"."s_acctbal" as "supplier_account_balance",
+    "supplier_supplier"."s_address" as "supplier_address",
+    "supplier_supplier"."s_comment" as "supplier_comment",
+    "supplier_supplier"."s_name" as "supplier_name",
+    "supplier_supplier"."s_phone" as "supplier_phone",
+    UPPER("supplier_nation_nation"."n_name")  as "supplier_nation_name"
+FROM
+    "memory"."partsupp" as "partsupp"
+    INNER JOIN "memory"."part" as "part" on "partsupp"."ps_partkey" = "part"."p_partkey"
+    INNER JOIN "memory"."supplier" as "supplier_supplier" on "partsupp"."ps_suppkey" = "supplier_supplier"."s_suppkey"
+    INNER JOIN "memory"."nation" as "supplier_nation_nation" on "supplier_supplier"."s_nationkey" = "supplier_nation_nation"."n_nationkey"
+WHERE
+    "part"."p_size" = 15 and "part"."p_type" like '%BRASS'
+),
+cooperative as (
+SELECT
+    "partsupp"."ps_partkey" as "id",
+    "partsupp"."ps_suppkey" as "supplier_id",
+    "partsupp"."ps_supplycost" as "supply_cost",
+    "supplier_nation_nation"."n_nationkey" as "supplier_nation_id",
+    "supplier_nation_nation"."n_regionkey" as "supplier_nation_region_id",
+    "supplier_nation_region_region"."r_name" as "supplier_nation_region_name"
+FROM
+    "memory"."partsupp" as "partsupp"
+    INNER JOIN "memory"."supplier" as "supplier_supplier" on "partsupp"."ps_suppkey" = "supplier_supplier"."s_suppkey"
+    INNER JOIN "memory"."nation" as "supplier_nation_nation" on "supplier_supplier"."s_nationkey" = "supplier_nation_nation"."n_nationkey"
+    INNER JOIN "memory"."region" as "supplier_nation_region_region" on "supplier_nation_nation"."n_regionkey" = "supplier_nation_region_region"."r_regionkey"),
+abundant as (
+SELECT
+    "cooperative"."id" as "id",
+    min(CASE WHEN "cooperative"."supplier_nation_region_name" = 'EUROPE' THEN "cooperative"."supply_cost" ELSE NULL END) as "min_supply_cost_in_europe"
+FROM
+    "cooperative"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    "cooperative"."id" as "id",
+    "cooperative"."supplier_id" as "supplier_id",
+    "cooperative"."supplier_nation_id" as "supplier_nation_id",
+    "cooperative"."supplier_nation_region_id" as "supplier_nation_region_id",
+    "cooperative"."supplier_nation_region_name" as "supplier_nation_region_name",
+    "cooperative"."supply_cost" as "supply_cost"
+FROM
+    "cooperative"
+WHERE
+    "cooperative"."supplier_nation_region_name" = 'EUROPE'
+),
+uneven as (
+SELECT
+    "part"."p_partkey" as "id",
+    "questionable"."supplier_id" as "supplier_id",
+    "questionable"."supplier_nation_id" as "supplier_nation_id"
+FROM
+    "questionable"
+    INNER JOIN "abundant" on "questionable"."id" = "abundant"."id"
+    INNER JOIN "memory"."part" as "part" on "questionable"."id" = "part"."p_partkey"
+WHERE
+    "part"."p_size" = 15 and "part"."p_type" like '%BRASS' and "questionable"."supply_cost" = "abundant"."min_supply_cost_in_europe"
+
+GROUP BY
+    1,
+    2,
+    3,
+    "abundant"."min_supply_cost_in_europe",
+    "part"."p_size",
+    "part"."p_type",
+    "questionable"."supplier_nation_region_id",
+    "questionable"."supplier_nation_region_name",
+    "questionable"."supply_cost")
+SELECT
+    "yummy"."supplier_account_balance" as "supplier_account_balance",
+    "yummy"."supplier_name" as "supplier_name",
+    "yummy"."supplier_nation_name" as "supplier_nation_name",
+    "uneven"."id" as "id",
+    "yummy"."manufacturer" as "manufacturer",
+    "yummy"."supplier_address" as "supplier_address",
+    "yummy"."supplier_phone" as "supplier_phone",
+    "yummy"."supplier_comment" as "supplier_comment"
+FROM
+    "yummy"
+    INNER JOIN "uneven" on "yummy"."id" = "uneven"."id" AND "yummy"."supplier_id" = "uneven"."supplier_id"
+ORDER BY 
+    "yummy"."supplier_account_balance" desc,
+    "yummy"."supplier_nation_name" asc,
+    "yummy"."supplier_name" asc,
+    "uneven"."id" asc
+LIMIT (100)

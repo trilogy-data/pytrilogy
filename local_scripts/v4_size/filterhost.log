@@ -1,0 +1,12 @@
+
+== atoms hosted on a [@condition]filter group ==
+tpcds/query04	BuildSubselectComparison(left=sales.sale_date.year@Grain<sales.sale_da
+tpcds/query11	BuildSubselectComparison(left=sales.channel@Grain<sales.channel>, righ
+tpcds/query11	BuildSubselectComparison(left=sales.sale_date.year@Grain<sales.sale_da
+tpcds/query11	sales.billing_customer.sk is not MagicConstants.NULL
+tpcds/query30-alt	ws.return_address.state is not MagicConstants.NULL
+tpcds/query30	ws.return_address.state is not MagicConstants.NULL
+tpcds/query74	BuildSubselectComparison(left=sales.channel@Grain<sales.channel>, righ
+tpcds/query81	cs.return_address.state is not MagicConstants.NULL
+tpch/query02	supplier.nation.region.name = EUROPE
+total: 9

@@ -1,0 +1,56 @@
+
+WITH 
+quizzical as (
+SELECT
+    "lineitem"."l_extendedprice" * (1 - "lineitem"."l_discount") as "revenue",
+    "lineitem"."l_shipdate" as "ship_date",
+    "lineitem"."l_suppkey" as "part_supplier_id"
+FROM
+    "memory"."lineitem" as "lineitem"),
+highfalutin as (
+SELECT
+    "quizzical"."part_supplier_id" as "part_supplier_id",
+    sum(CASE WHEN "quizzical"."ship_date" >= date '1996-01-01' and "quizzical"."ship_date" < date '1996-04-01' THEN "quizzical"."revenue" ELSE NULL END) as "_virt_agg_sum_9262565358839663_wscope",
+    sum(CASE WHEN "quizzical"."ship_date" >= date '1996-01-01' and "quizzical"."ship_date" < date '1996-04-01' THEN "quizzical"."revenue" ELSE NULL END) as "supplier_rev"
+FROM
+    "quizzical"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "highfalutin"."_virt_agg_sum_9262565358839663_wscope" as "_virt_agg_sum_9262565358839663_wscope",
+    "lineitem"."l_discount" as "discount",
+    "lineitem"."l_extendedprice" as "extended_price",
+    "lineitem"."l_shipdate" as "ship_date",
+    "lineitem"."l_suppkey" as "part_supplier_id"
+FROM
+    "memory"."lineitem" as "lineitem"
+    INNER JOIN "highfalutin" on "lineitem"."l_suppkey" = "highfalutin"."part_supplier_id"),
+cheerful as (
+SELECT
+    max("highfalutin"."supplier_rev") as "max_supplier_rev"
+FROM
+    "highfalutin"),
+cooperative as (
+SELECT
+    "thoughtful"."part_supplier_id" as "part_supplier_id",
+    sum(CASE WHEN "thoughtful"."ship_date" >= date '1996-01-01' and "thoughtful"."ship_date" < date '1996-04-01' THEN "thoughtful"."extended_price" * (1 - "thoughtful"."discount") ELSE NULL END) as "supplier_rev"
+FROM
+    "thoughtful"
+    INNER JOIN "cheerful" on 1=1
+WHERE
+    "thoughtful"."_virt_agg_sum_9262565358839663_wscope" = "cheerful"."max_supplier_rev"
+
+GROUP BY
+    1)
+SELECT
+    "cooperative"."part_supplier_id" as "part_supplier_id",
+    "part_supplier_supplier"."s_name" as "part_supplier_name",
+    "part_supplier_supplier"."s_address" as "part_supplier_address",
+    "part_supplier_supplier"."s_phone" as "part_supplier_phone",
+    "cooperative"."supplier_rev" as "total_revenue"
+FROM
+    "cooperative"
+    INNER JOIN "memory"."supplier" as "part_supplier_supplier" on "cooperative"."part_supplier_id" = "part_supplier_supplier"."s_suppkey"
+ORDER BY 
+    "cooperative"."part_supplier_id" asc

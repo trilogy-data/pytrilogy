@@ -1,0 +1,42 @@
+
+WITH 
+quizzical as (
+SELECT
+    "lineitem"."l_suppkey" as "part_supplier_id",
+    sum(CASE WHEN "lineitem"."l_shipdate" >= date '1996-01-01' and "lineitem"."l_shipdate" < date '1996-04-01' THEN "lineitem"."l_extendedprice" * (1 - "lineitem"."l_discount") ELSE NULL END) as "_virt_agg_sum_9262565358839663_wscope",
+    sum(CASE WHEN "lineitem"."l_shipdate" >= date '1996-01-01' and "lineitem"."l_shipdate" < date '1996-04-01' THEN "lineitem"."l_extendedprice" * (1 - "lineitem"."l_discount") ELSE NULL END) as "supplier_rev"
+FROM
+    "memory"."lineitem" as "lineitem"
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    max("quizzical"."supplier_rev") as "max_supplier_rev"
+FROM
+    "quizzical"),
+thoughtful as (
+SELECT
+    "quizzical"."_virt_agg_sum_9262565358839663_wscope" as "_virt_agg_sum_9262565358839663_wscope",
+    "quizzical"."part_supplier_id" as "part_supplier_id",
+    "quizzical"."supplier_rev" as "total_revenue"
+FROM
+    "quizzical"
+    INNER JOIN "cheerful" on 1=1
+WHERE
+    "quizzical"."_virt_agg_sum_9262565358839663_wscope" = "cheerful"."max_supplier_rev"
+)
+SELECT
+    "thoughtful"."part_supplier_id" as "part_supplier_id",
+    "part_supplier_supplier"."s_name" as "part_supplier_name",
+    "part_supplier_supplier"."s_address" as "part_supplier_address",
+    "part_supplier_supplier"."s_phone" as "part_supplier_phone",
+    "thoughtful"."total_revenue" as "total_revenue"
+FROM
+    "thoughtful"
+    INNER JOIN "cheerful" on 1=1
+    LEFT OUTER JOIN "memory"."supplier" as "part_supplier_supplier" on "thoughtful"."part_supplier_id" = "part_supplier_supplier"."s_suppkey"
+WHERE
+    "thoughtful"."_virt_agg_sum_9262565358839663_wscope" = "cheerful"."max_supplier_rev"
+
+ORDER BY 
+    "thoughtful"."part_supplier_id" asc

@@ -102,13 +102,17 @@ class SelectNode(StrategyNode):
                 continue
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
+        # Outputs resolved at render rather than read off a column get an empty
+        # entry, which marks them mapped for `validate_missing` without naming a
+        # source. TVF_UNION belongs here for the same reason MULTISELECT does:
+        # both are align outputs recovered via `find_source`.
         for x in all_concepts_final:
             if x.address not in source_map and x.derivation in (
                 Derivation.MULTISELECT,
+                Derivation.TVF_UNION,
                 Derivation.FILTER,
                 Derivation.BASIC,
                 Derivation.ROWSET,
-                Derivation.BASIC,
                 Derivation.UNION,
                 Derivation.CONSTANT,
             ):
@@ -128,9 +132,14 @@ class SelectNode(StrategyNode):
             datasources=[datasource],
             grain=grain,
             joins=[],
-            partial_concepts=[
-                c.concept for c in datasource.columns if not c.is_complete
-            ],
+            # union the node-level stamps (mirrors nullable below): a licensed
+            # rowset handle widened onto this scan can be a partial binding the
+            # datasource columns alone cannot express
+            partial_concepts=unique(
+                [c.concept for c in datasource.columns if not c.is_complete]
+                + list(self.partial_concepts),
+                "address",
+            ),
             rollup_concepts=self.rollup_concepts,
             # union the node-level stamps: a BASIC computed at this scan over a
             # nullable column (`l_key + 1`) is nullable here but is not a

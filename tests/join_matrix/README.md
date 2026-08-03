@@ -23,7 +23,7 @@ power-scaled values (fan-out changes sums), and an opt-in nullable axis
 | `test_consumption_matrix.py` | post-join WHERE on the optional side; `is not null` intersection idiom × form |
 | `test_narrowing_matrix.py` | declared-domain narrowing proofs on HONEST data: EQUAL (`merge`) FULL→INNER by default; UNION never narrows; flag-off opt-out |
 | `test_domain_validation.py` | opt-in lying-declaration checks (`trilogy/core/domain_validation.py`) |
-| `test_property_hop_alignment_matrix.py` | authored key on a dimension PROPERTY needing an FK hop per side, with a competing directly-bound shared key (q17/q25): member projected/unprojected × subset/union × join-vs-merge parity; hosts the strict xfail for the unmatched-side NULL-group projection bug |
+| `test_property_hop_alignment_matrix.py` | authored key on a dimension PROPERTY needing an FK hop per side, with a competing directly-bound shared key (q17/q25): member projected/unprojected × subset/union × join-vs-merge parity (the unmatched-side NULL-group projection bug it once pinned as a strict xfail is fixed; all cells green) |
 | `test_global_aggregate_broadcast_matrix.py` | global (`by *`) aggregate broadcast beside a scoped join (q23): join form (none / subset / union) × aggregate (max / count) × source (anchor / non-anchor rowset output / plain concepts) × position (select / having); plus the loud-not-silent backstop for mis-grained aggregate collapse |
 
 ## Join semantics (phase 2 landed 2026-07-03, docs/subset_union_join_design.md)
@@ -58,8 +58,8 @@ those relations keep their preserving FULL.
   chained groups, preserving + explicit-filter idiom pairs.
 - `tests/test_scoped_join.py` — build-time merge behavior pins, q29 nullable-FK
   handling, q78 chained-composite parse guard, preserving shared-base cells.
-- `tests/test_scoped_join_permutations.py` — root-key permutations incl. the
-  strict xfail for the root-OUTER binding-substitution incompleteness.
+- `tests/test_scoped_join_permutations.py` — root-key permutations (the
+  root-OUTER binding-substitution strict xfail it once carried is fixed).
 - `tests/test_scoped_derived_rowset_join_matrix.py` — derived-rowset join
   shapes; hosts the q59 shared-canonical guard.
 - `tests/test_scoped_left_join_multi_partial_anchor.py` — q78 family:

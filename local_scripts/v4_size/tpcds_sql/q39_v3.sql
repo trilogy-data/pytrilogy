@@ -1,0 +1,36 @@
+SELECT
+    "inventory_warehouse_inventory"."inv_warehouse_sk" as "wsk1",
+    "inventory_warehouse_inventory"."inv_item_sk" as "isk1",
+    1 as "dmoy1",
+    avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "mean1",
+    CASE
+	WHEN avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) / avg(CASE WHEN "inventory_date_date"."D_MOY" = 1 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END)
+	END as "cov1",
+    "inventory_warehouse_inventory"."inv_warehouse_sk" as "wsk2",
+    "inventory_warehouse_inventory"."inv_item_sk" as "isk2",
+    2 as "dmoy2",
+    avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) as "mean2",
+    CASE
+	WHEN avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) = 0 THEN null
+	ELSE stddev_samp(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END) / avg(CASE WHEN "inventory_date_date"."D_MOY" = 2 THEN "inventory_warehouse_inventory"."inv_quantity_on_hand" ELSE NULL END)
+	END as "cov2"
+FROM
+    "memory"."inventory" as "inventory_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
+WHERE
+    "inventory_date_date"."D_YEAR" = 2001 and ("inventory_date_date"."D_MOY" is not null and "inventory_date_date"."D_MOY" in (1,2)) and "inventory_warehouse_inventory"."inv_warehouse_sk" is not null
+
+GROUP BY
+    1,
+    2
+HAVING
+    "cov1" > 1 and "cov2" > 1
+
+ORDER BY 
+    "wsk1" asc nulls first,
+    "isk1" asc nulls first,
+    "mean1" asc nulls first,
+    "cov1" asc nulls first,
+    "mean2" asc nulls first,
+    "cov2" asc nulls first

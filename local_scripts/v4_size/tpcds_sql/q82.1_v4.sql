@@ -1,0 +1,31 @@
+
+WITH 
+cheerful as (
+SELECT
+    "inventory_item_items"."I_CURRENT_PRICE" as "inventory_item_current_price",
+    "inventory_item_items"."I_ITEM_DESC" as "inventory_item_desc",
+    "inventory_item_items"."I_ITEM_ID" as "inventory_item_id",
+    "inventory_item_items"."I_ITEM_SK" as "inventory_item_sk"
+FROM
+    "memory"."inventory" as "inventory_warehouse_inventory"
+    INNER JOIN "memory"."date_dim" as "inventory_date_date" on "inventory_warehouse_inventory"."inv_date_sk" = "inventory_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."item" as "inventory_item_items" on "inventory_warehouse_inventory"."inv_item_sk" = "inventory_item_items"."I_ITEM_SK"
+WHERE
+    "inventory_item_items"."I_CURRENT_PRICE" BETWEEN 62 AND 92 and cast("inventory_date_date"."D_DATE" as date) BETWEEN date '2000-05-25' AND date '2000-07-24' and ("inventory_item_items"."I_MANUFACT_ID" is not null and "inventory_item_items"."I_MANUFACT_ID" in (129,270,821,423)) and "inventory_warehouse_inventory"."inv_quantity_on_hand" BETWEEN 100 AND 500 and exists (select 1 from memory.item as store_sales_item_items where store_sales_item_items."I_ITEM_SK" is not distinct from "inventory_item_items"."I_ITEM_SK")
+)
+SELECT
+    "cheerful"."inventory_item_id" as "inventory_item_id",
+    "cheerful"."inventory_item_desc" as "inventory_item_desc",
+    "cheerful"."inventory_item_current_price" as "inventory_item_current_price"
+FROM
+    "cheerful"
+WHERE
+    exists (select 1 from memory.item as store_sales_item_items where store_sales_item_items."I_ITEM_SK" is not distinct from "cheerful"."inventory_item_sk")
+
+GROUP BY
+    1,
+    2,
+    3
+ORDER BY 
+    "cheerful"."inventory_item_id" asc
+LIMIT (100)

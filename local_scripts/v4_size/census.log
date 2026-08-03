@@ -1,0 +1,165 @@
+tpcds/query-1 0.33s
+tpcds/query-2 0.20s
+tpcds/query-3 0.28s
+tpcds/query01 0.11s
+tpcds/query01_agg 0.08s
+tpcds/query02-one 0.64s
+tpcds/query02-two 0.71s
+tpcds/query02 1.17s
+tpcds/query03 0.07s
+tpcds/query04 9.75s
+tpcds/query05 36.92s
+tpcds/query06 0.08s
+tpcds/query07 0.09s
+tpcds/query08 1.04s
+tpcds/query09 0.40s
+tpcds/query10 2.83s
+tpcds/query11 7.25s
+tpcds/query12 0.14s
+tpcds/query13 0.11s
+tpcds/query14 3.63s
+tpcds/query15 0.14s
+tpcds/query16 0.18s
+tpcds/query17 0.20s
+tpcds/query18 0.28s
+tpcds/query19 0.09s
+tpcds/query20 0.17s
+tpcds/query21 0.19s
+tpcds/query22 0.03s
+tpcds/query23 10.61s
+tpcds/query24 0.24s
+tpcds/query25 0.10s
+tpcds/query26 0.13s
+tpcds/query27 0.11s
+tpcds/query28 0.22s
+tpcds/query29 0.33s
+tpcds/query30-alt 0.27s
+tpcds/query30 0.20s
+tpcds/query31 3.00s
+tpcds/query32 0.12s
+tpcds/query33 0.88s
+tpcds/query34 0.34s
+tpcds/query35 3.27s
+tpcds/query36 0.15s
+tpcds/query37 0.20s
+tpcds/query38 1.16s
+tpcds/query39 0.08s
+tpcds/query40 0.56s
+tpcds/query41 0.22s
+tpcds/query42 0.08s
+tpcds/query43 0.20s
+tpcds/query44 0.27s
+tpcds/query45 0.16s
+tpcds/query46 0.19s
+tpcds/query47 0.20s
+tpcds/query48 0.10s
+tpcds/query49 0.88s
+tpcds/query50 0.28s
+tpcds/query51 3.10s
+tpcds/query52 0.09s
+tpcds/query53 0.15s
+tpcds/query54 2.00s
+tpcds/query55 0.12s
+tpcds/query56 0.95s
+tpcds/query57 0.27s
+tpcds/query58 0.80s
+tpcds/query59 0.29s
+tpcds/query60 0.95s
+tpcds/query61 0.11s
+tpcds/query62 0.62s
+tpcds/query63 0.16s
+tpcds/query64 1.76s
+tpcds/query65 0.13s
+tpcds/query66 6.64s
+tpcds/query67 0.22s
+tpcds/query68 0.23s
+tpcds/query69 3.01s
+tpcds/query70 0.23s
+tpcds/query71 2.56s
+tpcds/query72 0.45s
+tpcds/query73 2.02s
+tpcds/query74 3.84s
+tpcds/query75 2.19s
+tpcds/query76 1.19s
+tpcds/query77 2.39s
+tpcds/query78 0.79s
+tpcds/query79 0.13s
+tpcds/query80 9.63s
+tpcds/query81 0.24s
+tpcds/query82.1 0.09s
+tpcds/query82 0.08s
+tpcds/query83 0.77s
+tpcds/query84 0.13s
+tpcds/query85 0.17s
+tpcds/query86 0.14s
+tpcds/query87 0.51s
+tpcds/query88 0.31s
+tpcds/query89 0.16s
+tpcds/query90 0.13s
+tpcds/query91 0.18s
+tpcds/query92 0.17s
+tpcds/query93 0.10s
+tpcds/query94 0.22s
+tpcds/query95 0.19s
+tpcds/query96 0.11s
+tpcds/query97-one 0.42s
+tpcds/query97-two 0.41s
+tpcds/query97 3.40s
+tpcds/query98 0.14s
+tpcds/query99 0.31s
+tpch/query01 1.86s
+tpch/query02 0.06s
+tpch/query03 0.04s
+tpch/query04 0.04s
+tpch/query05 0.04s
+tpch/query06 0.03s
+tpch/query07 0.05s
+tpch/query08 0.06s
+tpch/query09 0.09s
+tpch/query10 0.05s
+tpch/query11 0.05s
+tpch/query12 0.11s
+tpch/query13 0.03s
+tpch/query14 0.06s
+tpch/query15 0.06s
+tpch/query16 0.04s
+tpch/query17 0.04s
+tpch/query18 0.04s
+tpch/query19 0.06s
+tpch/query20 0.07s
+tpch/query21 0.06s
+tpch/query22 0.12s
+
+== planner census ==
+direct_hit	80
+direct_miss	13
+network_bridge	313
+network_none	6
+network_single_scan	81
+search_calls	400
+search_declined	6
+search_truncated	1
+
+== slowest searches ==
+tpcds/query05	cands=46	covers=4096	trunc=True	36.69s
+tpcds/query66	cands=46	covers=1417	trunc=False	5.81s
+tpcds/query80	cands=46	covers=1023	trunc=False	4.85s
+tpcds/query80	cands=46	covers=1023	trunc=False	4.61s
+tpcds/query04	cands=46	covers=2833	trunc=False	4.30s
+tpcds/query04	cands=46	covers=1417	trunc=False	2.55s
+tpcds/query23	cands=46	covers=2714	trunc=False	2.55s
+tpcds/query23	cands=46	covers=2714	trunc=False	2.55s
+tpcds/query04	cands=46	covers=709	trunc=False	2.42s
+tpcds/query11	cands=46	covers=1417	trunc=False	2.03s
+tpcds/query11	cands=46	covers=1417	trunc=False	1.95s
+tpcds/query11	cands=46	covers=1417	trunc=False	1.94s
+tpcds/query74	cands=46	covers=1417	trunc=False	1.85s
+tpcds/query74	cands=46	covers=709	trunc=False	1.68s
+tpcds/query54	cands=79	covers=703	trunc=False	1.64s
+tpcds/query23	cands=46	covers=709	trunc=False	1.61s
+tpcds/query97	cands=46	covers=1418	trunc=False	1.44s
+tpcds/query97	cands=46	covers=1418	trunc=False	1.42s
+tpcds/query31	cands=46	covers=709	trunc=False	1.42s
+tpcds/query31	cands=46	covers=709	trunc=False	1.40s
+
+total search seconds: 114.9 over 400 searches

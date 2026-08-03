@@ -2,7 +2,7 @@
 
 Exercises `_materialized_root_addresses` (which demanded concepts get sourced
 directly from a precomputed / summary datasource instead of re-derived) and its
-`_combine_conditions` helper, plus the `materialized_roots` branch of
+`combine_where_clauses` helper, plus the `materialized_roots` branch of
 `build_concept_graph`, against small inline models — no SQL execution.
 """
 
@@ -15,10 +15,10 @@ from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause, Factory
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
-    _combine_conditions,
     _datasource_materializes,
     _materialized_root_addresses,
 )
+from trilogy.core.processing.condition_utility import combine_where_clauses
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.parser import parse
 
@@ -324,7 +324,7 @@ def test_datasource_materializes_partial_covered_by_condition():
         "WHERE revenue_band = 'high' SELECT customer_id, total_revenue;",
         MODEL_COMPLETE_WHERE,
     )
-    where = _combine_conditions(conditions)
+    where = combine_where_clauses(conditions)
     summary = be.datasources["high_band_summary"]
     total = be.concepts["local.total_revenue"]
     assert _datasource_materializes(total, summary, where, be)
@@ -332,11 +332,11 @@ def test_datasource_materializes_partial_covered_by_condition():
     assert not _datasource_materializes(total, summary, None, be)
 
 
-# ---------- _combine_conditions ----------
+# ---------- combine_where_clauses ----------
 
 
 def test_combine_conditions_empty_is_none():
-    assert _combine_conditions([]) is None
+    assert combine_where_clauses([]) is None
 
 
 def test_combine_conditions_single_passthrough():
@@ -344,7 +344,7 @@ def test_combine_conditions_single_passthrough():
         "WHERE customer_id = 101 SELECT customer_id, order_count;"
     )
     assert len(conditions) == 1
-    combined = _combine_conditions(conditions)
+    combined = combine_where_clauses(conditions)
     assert combined is not None
     assert combined.conditional == conditions[0].conditional
 
@@ -353,7 +353,7 @@ def test_combine_conditions_ands_multiple():
     _, _, conditions = _build(
         "WHERE customer_id = 101 SELECT customer_id, order_count;"
     )
-    combined = _combine_conditions(conditions + conditions)
+    combined = combine_where_clauses(conditions + conditions)
     assert combined is not None
     assert combined.conditional.operator == BooleanOperator.AND
 

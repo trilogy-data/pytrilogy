@@ -1097,6 +1097,7 @@ def _materialize_for_query(
         canonical_build_cache=caches.canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
+        scoped_joins=caches.scoped_joins,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = factory.build(
         lineage
@@ -1108,6 +1109,7 @@ def _materialize_for_query(
         grain_build_cache=factory.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
     )
 
     return build_statement, build_env, build_statement.where_clause

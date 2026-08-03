@@ -1,0 +1,24 @@
+adhoc02	-	PARSE_ERROR InvalidSyntaxException: Aggregate concept local.total_revenue cannot reference itself. If defining a new concept in a select, use a new name.		
+query18	0	ref:order.id is not MagicConstants.NULL	effective	noop
+adhoc01_imports	0	ref:store_sales.sale_date.quarter = 2	noop	noop
+adhoc01_imports	0	ref:store_sales.sale_date.year = 1998	noop	noop
+adhoc01_imports	0	SubselectComparison(left=substring(ref:store_sales.store.zip,1,2), right=ref:local.final_z	noop	noop
+adhoc02	-	PARSE_ERROR UndefinedConceptException: (UndefinedConceptException(...), '3 undefined concept references; fix all before re-running:\n  - store_sales.sale_date.year (line 4, col 5, in SELECT); did you mean: store_sales.sale_date.sk, store_sales.ticket_number, web_sales.sale_date.year, web_sales.sale_date.sk?\n  - store_sales.ticket_number (line 5, in SELECT); did you mean: store_sales.sale_date.year, store_sales.sale_date.sk, web_sales.order_number?\n  - store_sales.sale_date.sk (line 2, col 5, in WHERE); did you mean: store_sales.sale_date.year, web_sales.sale_date.sk, web_sales.sale_date.year?')		
+[v4] source search hit cover_limit over 46 candidates for terminals s.channel,s.channel_dim_id,s.channel_dim_text_id,s.ext_sales_price,s.item.sk,s.net_profit,s.order_id,s.return_amount,s.return_channel_dim_id,s.return_channel_dim_text_id,s.return_date.date,s.return_date.sk,s.return_net_loss,s.sale_date.date,s.sale_date.sk: solution kept but it may not be cost-minimal
+[v4] source search hit cover_limit over 46 candidates for terminals s.channel,s.channel_dim_id,s.channel_dim_text_id,s.ext_sales_price,s.item.sk,s.net_profit,s.order_id,s.return_amount,s.return_channel_dim_id,s.return_channel_dim_text_id,s.return_date.date,s.return_date.sk,s.return_net_loss,s.sale_date.date,s.sale_date.sk: solution kept but it may not be cost-minimal
+[v4] source search hit cover_limit over 46 candidates for terminals s.channel,s.channel_dim_id,s.channel_dim_text_id,s.ext_sales_price,s.item.sk,s.net_profit,s.order_id,s.return_amount,s.return_channel_dim_id,s.return_channel_dim_text_id,s.return_date.date,s.return_date.sk,s.return_net_loss,s.sale_date.date,s.sale_date.sk: solution kept but it may not be cost-minimal
+query11	0	SubselectComparison(left=ref:sales.channel, right=('STORE', 'WEB'), operator=<ComparisonOp	effective	noop
+query11	0	SubselectComparison(left=ref:sales.sale_date.year, right=(ref:local.first_year, ref:local.	effective	noop
+query11	0	ref:sales.billing_customer.sk is not MagicConstants.NULL	effective	noop
+query34	0	ref:store_sales.ticket_number is not MagicConstants.NULL	noop	noop
+query44	0	ref:ss.store.sk = 1	noop	effective
+
+== summary ==
+SUSPECT (v3 effective, v4 no-op): 4
+   query18	ref:order.id is not MagicConstants.NULL
+   query11	SubselectComparison(left=ref:sales.channel, right=('STORE', 'WEB'), operator=<ComparisonOp
+   query11	SubselectComparison(left=ref:sales.sale_date.year, right=(ref:local.first_year, ref:local.
+   query11	ref:sales.billing_customer.sk is not MagicConstants.NULL
+redundant under both planners:    4
+v4 stricter than v3:              1
+errors:                           0
