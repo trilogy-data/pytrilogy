@@ -12,7 +12,7 @@ See docs/remote-store-contract.md in trilogy-studio-core.
 """
 
 from trilogy.constants import logger
-from trilogy.dialect.config import DialectConfig
+from trilogy.dialect.config import BigQueryConfig, DialectConfig, SnowflakeConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.serve_helpers.models import ConnectionSpec, StoreConnectionType
 
@@ -48,27 +48,35 @@ _TYPE_ALIASES: dict[str, StoreConnectionType] = {
 
 _STORE_TYPE_VALUES = {member.value for member in StoreConnectionType}
 
-# Non-secret `[engine.config]` fields projected onto advertised wire options,
-# per store type: {dialect config attribute: wire option key}. Deliberately
-# narrow — only fields the client needs to build the same connection, and only
-# ones that are never credentials. Everything else (paths, passwords, staging
-# locations, client objects) stays server-side.
-_ENGINE_CONFIG_OPTIONS: dict[StoreConnectionType, dict[str, str]] = {
-    # A duckdb/sqlite `path` names a file on the server's disk; the client
-    # opens its own database, so there is nothing useful to hand it.
-    StoreConnectionType.DUCKDB: {},
-    StoreConnectionType.SQLITE: {},
-    # The MotherDuck token is the only field, and it is a secret.
-    StoreConnectionType.MOTHERDUCK: {},
-    StoreConnectionType.BIGQUERY: {"project": "projectId"},
-    # SnowflakeConfig carries no warehouse/role; `password` never travels.
-    StoreConnectionType.SNOWFLAKE: {
-        "account": "account",
-        "username": "username",
-        "database": "database",
-        "schema": "schema",
-    },
-}
+# Store types that publish anything at all from `[engine.config]`. The rest
+# are deliberately empty: a duckdb/sqlite `path` names a file on the server's
+# disk and the client opens its own database, and MotherDuck's only field is
+# its token.
+_PUBLISHES_ENGINE_CONFIG = frozenset(
+    {StoreConnectionType.BIGQUERY, StoreConnectionType.SNOWFLAKE}
+)
+
+
+def _engine_option_values(engine_config: DialectConfig) -> dict[str, str | None]:
+    """Wire options a config implies, before unset ones are dropped.
+
+    Deliberately narrow — only fields the client needs to build the same
+    connection, and only ones that are never credentials. Everything else
+    (paths, passwords, staging locations, client objects) stays server-side.
+    Dispatched on the config type rather than by attribute name so that
+    renaming a field fails type-check instead of silently advertising nothing.
+    """
+    if isinstance(engine_config, BigQueryConfig):
+        return {"projectId": engine_config.project}
+    if isinstance(engine_config, SnowflakeConfig):
+        # SnowflakeConfig carries no warehouse/role; `password` never travels.
+        return {
+            "account": engine_config.account,
+            "username": engine_config.username,
+            "database": engine_config.database,
+            "schema": engine_config.schema,
+        }
+    return {}
 
 
 def derive_engine_options(
@@ -81,15 +89,13 @@ def derive_engine_options(
     restricted to fields that are not credentials. A store that wants to
     publish less declares `[serve.connection]` explicitly.
     """
-    if engine_config is None:
+    if engine_config is None or connection_type not in _PUBLISHES_ENGINE_CONFIG:
         return {}
-    options: dict[str, str] = {}
-    for attribute, wire_key in _ENGINE_CONFIG_OPTIONS[connection_type].items():
-        value = getattr(engine_config, attribute, None)
-        if value is None or value == "":
-            continue
-        options[wire_key] = str(value)
-    return options
+    return {
+        key: value
+        for key, value in _engine_option_values(engine_config).items()
+        if value
+    }
 
 
 def normalize_connection_type(value: Dialects | str) -> StoreConnectionType | None:

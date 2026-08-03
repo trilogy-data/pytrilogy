@@ -44,7 +44,7 @@ from trilogy.core.enums import (
     UnnestMode,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import InvalidSyntaxException, UnsupportedDialectFeature
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
@@ -1678,17 +1678,22 @@ class BaseDialect:
         return f"(SELECT array_agg(_sr.{q}{lineage.content.safe_address}{q}) FROM ({inner_select}) _sr)"
 
     def render_array_member_source(
-        self, array_sql: str, from_clause: str | None
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
     ) -> tuple[str, str]:
         """``(from_clause, member_column)`` exposing one row per element of
         ``array_sql``. ``from_clause`` is where that expression is read from, or
         None when the array stands alone (a literal or a bound parameter).
 
+        ``member_type`` is what the probe presents, for dialects whose unnest
+        yields an untyped column that has to be cast back before it will
+        compare. Ignored where the element arrives already typed.
+
         Default is the set-returning-function form (DuckDB, Postgres,
         ClickHouse); dialects whose unnest is a table operator override."""
         if not self.SUPPORTS_ARRAYS:
-            raise NotImplementedError(
-                f"{type(self).__name__} does not support array membership"
+            raise UnsupportedDialectFeature(
+                f"{type(self).__name__} has no array type, so membership against "
+                "an array-valued expression cannot be rendered for it."
             )
         unnest = self.FUNCTION_MAP[FunctionType.UNNEST]([array_sql], [])
         select = f"select {unnest} as {self.ARRAY_MEMBER_COLUMN}"
@@ -1704,11 +1709,14 @@ class BaseDialect:
         left_sql: str,
         array_sql: str,
         operator: ComparisonOperator,
+        member_type: CONCRETE_TYPES,
         from_clause: str | None = None,
     ) -> str:
         """Membership against an array-valued RHS. Unnesting to one row per
         element keeps the identity semantics every other membership form has."""
-        source, member = self.render_array_member_source(array_sql, from_clause)
+        source, member = self.render_array_member_source(
+            array_sql, from_clause, member_type
+        )
         return self._render_membership_exists(left_sql, member, source, operator)
 
     def _renders_as_parameter(self, e: BuildParamaterizedConceptReference) -> bool:
@@ -2058,6 +2066,8 @@ class BaseDialect:
             | NumericType
             | StructType
             | ArrayType
+            | EnumType
+            | ValidatedType
             | ListWrapper[Any]
             | TupleWrapper[Any]
             | DatePart
@@ -2163,7 +2173,11 @@ class BaseDialect:
                 )
                 if rhs_is_array:
                     return self.render_array_membership(
-                        left_sql, col_ref, e.operator, from_clause=from_clause
+                        left_sql,
+                        col_ref,
+                        e.operator,
+                        arg_to_datatype(e.left),
+                        from_clause=from_clause,
                     )
                 return self._render_membership_exists(
                     left_sql, col_ref, from_clause, e.operator
@@ -2195,6 +2209,7 @@ class BaseDialect:
                             right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
                         ),
                         e.operator,
+                        arg_to_datatype(e.left),
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(right, (ListWrapper, TupleWrapper)):

@@ -1092,9 +1092,7 @@ class TestJobCommands:
         assert output.index("v2") < output.index("v1")
         assert logged_in.call_for("GET", f"/orgs/{logged_in.org}/jobs/job-1/versions")
 
-    def test_versions_marks_the_one_the_job_currently_holds(
-        self, logged_in, run_cloud
-    ):
+    def test_versions_marks_the_one_the_job_currently_holds(self, logged_in, run_cloud):
         lines = run_cloud("jobs", "versions", "nightly").output.splitlines()
         current = [line for line in lines if "(current)" in line]
         assert len(current) == 1 and current[0].startswith("v1")

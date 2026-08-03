@@ -105,6 +105,20 @@ class TestRemoteNormalization:
     def test_a_hostless_remote_names_a_filesystem_and_is_refused(self, url):
         assert normalize_remote(url) is None
 
+    @pytest.mark.parametrize(
+        "url", ["C:/dev/models", "c:/dev/models.git", r"D:\repos\etl", "Z:/x"]
+    )
+    def test_a_windows_drive_path_is_not_a_host(self, url):
+        """`C:/dev/models` is scp-style shaped, with `C` where the host goes.
+        Reading it as one would publish a disk layout as the origin — the thing
+        this module exists to keep on the machine."""
+        assert normalize_remote(url) is None
+
+    def test_a_single_letter_host_is_still_a_host_when_a_scheme_says_so(self):
+        """The drive-letter rule is scoped to the ambiguous spelling; an
+        explicit scheme is not ambiguous."""
+        assert normalize_remote("ssh://git@h/acme/etl.git") == "h/acme/etl"
+
 
 class TestGitOrigin:
     def test_a_checkout_reports_its_remote_commit_and_branch(self, tmp_path):

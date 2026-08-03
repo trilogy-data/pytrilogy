@@ -9,6 +9,7 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.constants import Rendering
+from trilogy.core.exceptions import UnsupportedDialectFeature
 from trilogy.parser import parse
 from trilogy.render import get_dialect_generator
 
@@ -97,7 +98,7 @@ def test_array_valued_membership_uses_the_native_unnest(dialect, expected):
 
 @pytest.mark.parametrize("dialect", NO_ARRAY_DIALECTS)
 def test_array_valued_membership_raises_without_an_array_type(dialect):
-    with pytest.raises(NotImplementedError, match="does not support array membership"):
+    with pytest.raises(UnsupportedDialectFeature, match="has no array type"):
         _render(dialect, ARRAY_VALUED)
 
 
@@ -122,6 +123,13 @@ def test_inlined_array_constant_is_a_value_list(dialect):
     assert "in ('24128','76232')" in sql
     assert "unnest" not in sql.lower()
     assert "flatten" not in sql.lower()
+
+
+def test_snowflake_casts_the_variant_member_to_the_probe_type():
+    """FLATTEN yields a VARIANT — uncast, the predicate is valid SQL that
+    matches nothing. Executed in tests/engine/snowflake."""
+    sql = _render(Dialects.SNOWFLAKE, ARRAY_VALUED)
+    assert "cast(unnest_members.value as string)" in sql, sql
 
 
 @pytest.mark.parametrize("dialect,expected", list(STANDALONE_FORMS.items()))

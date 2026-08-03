@@ -4,7 +4,7 @@ from typing import ClassVar
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
 
@@ -120,7 +120,7 @@ class PrestoDialect(BaseDialect):
         return []
 
     def render_array_member_source(
-        self, array_sql: str, from_clause: str | None
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
     ) -> tuple[str, str]:
         """UNNEST is a relation here, and names its output column via an alias
         list rather than in a select list."""

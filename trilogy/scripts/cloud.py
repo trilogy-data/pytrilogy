@@ -912,17 +912,18 @@ def jobs_push(
         config_text = apply_rewrites(config_text, rewrite)
         print_info(f"Applied rewrites to {touched} file(s)")
 
-    existing = None if force_create else _existing_job(client, org, name)
+    existing = _existing_job(client, org, name, force_create)
 
     origin = resolve_origin(source.resolve())
     fingerprint = SourceFingerprint.build(content_digest(config_text, files), origin)
 
+    carried = _carried_settings(existing)
     payload: dict = {
         "name": name,
         "config": config_text,
         "files": files,
         "source_fingerprint": fingerprint.model_dump(mode="json", exclude_none=True),
-        "operation": _kept(operation, existing, "operation", DEFAULT_OPERATION),
+        "operation": operation or carried.get("operation") or DEFAULT_OPERATION,
     }
     for field, value in (
         ("description", description),
@@ -935,7 +936,7 @@ def jobs_push(
         ("parameters", None),
         ("vm_class", None),
     ):
-        kept = _kept(value, existing, field)
+        kept = value if value is not None else carried.get(field)
         if kept is not None:
             payload[field] = kept
 
@@ -975,29 +976,51 @@ def jobs_push(
             _report_schedule(org, schedule, "Scheduled")
 
 
-def _kept(value: Any, existing: Job | None, field: str, default: Any = None) -> Any:
-    """*value* if the command line supplied one, else what the job already has.
+def _carried_settings(existing: Job | None) -> dict[str, Any]:
+    """The settings a push has to send back when it is updating a job.
 
     ``PUT`` replaces a job's content wholesale — an omitted field is *cleared*,
-    not left alone — so every setting the push was not told about has to be
-    read off the job being updated and sent back. Creates fall through to
-    *default*, which for everything but ``operation`` is "let the platform
-    decide".
+    not left alone — so every setting the command line was not told about has
+    to be read off the job being updated. Empty for a create, which falls
+    through to "let the platform decide" for everything but ``operation``.
     """
-    if value is not None:
-        return value
-    return getattr(existing, field, None) if existing is not None else default
+    if existing is None:
+        return {}
+    return {
+        "operation": existing.operation,
+        "description": existing.description,
+        "timeout_seconds": existing.timeout_seconds,
+        "memory_mb": existing.memory_mb,
+        "cpus": existing.cpus,
+        "secret_env": existing.secret_env,
+        "parameters": existing.parameters,
+        "vm_class": existing.vm_class,
+    }
 
 
-def _existing_job(client: CloudClient, org: str, name: str) -> Job | None:
+def _existing_job(
+    client: CloudClient, org: str, name: str, force_create: bool
+) -> Job | None:
     """The one job of this name to update, or ``None`` to create a new one.
 
     Ambiguity is refused rather than resolved: the platform puts no unique
     constraint on job names, and picking one of several by recency would edit
     whichever job happened to be touched last. That is the same reasoning the
     cloud's own declarative deploy applies to duplicate names.
+
+    ``--create`` always creates, but still looks: making a second job of a name
+    that is already taken is the thing it is for, and also the thing worth
+    saying out loud — the schedules on the org keep pointing at the first one.
     """
     matches = [j for j in client.get_many(f"/orgs/{org}/jobs", Job) if j.name == name]
+    if force_create:
+        if matches:
+            print_warning(
+                f"{len(matches)} job(s) in {org!r} are already named {name!r}; "
+                "--create adds another. Existing schedules stay bound to the "
+                "job they already name."
+            )
+        return None
     if len(matches) > 1:
         raise CloudError(
             f"{len(matches)} jobs in {org!r} are named {name!r} "
@@ -1116,7 +1139,22 @@ def runs_list(
         query["source"] = source_filter
     path = f"/orgs/{org}/jobs/runs?{urlencode(query)}"
     rows = client.get_many(path, JobRunExt)
-    _show_rows("runs", "runs", rows, f"No runs in org {org!r}.", _fmt_run, org=org)
+    # Naming the filters in the empty message: "no runs at all" and "none that
+    # match" are different answers, and only one of them is alarming.
+    applied = ", ".join(
+        part
+        for part in (
+            f"status {status!r}" if status else "",
+            f"source {source_filter!r}" if source_filter else "",
+        )
+        if part
+    )
+    empty = (
+        f"No runs in org {org!r} matching {applied}."
+        if applied
+        else f"No runs in org {org!r}."
+    )
+    _show_rows("runs", "runs", rows, empty, _fmt_run, org=org)
 
 
 @runs.command("show")

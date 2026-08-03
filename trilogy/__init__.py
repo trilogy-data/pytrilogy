@@ -18,7 +18,13 @@ __all__ = [
     "parse",
 ]
 
-# Lazy import for CLI performance
+# Importing the engine (environment, executor, parser) costs ~half a second,
+# and every `trilogy.<anything>` import runs this file first — so CLI commands
+# that never touch the engine (init, --version, file, cloud) were paying for
+# it. PEP 562 defers each name to first attribute access; `from trilogy import
+# Executor` is unchanged, it just resolves on use. Keep the mapped modules free
+# of engine imports — `Dialects` in particular must not pull in `Environment`,
+# or the deferral buys nothing.
 _LAZY_ATTRS: dict[str, str] = {
     "CONFIG": "trilogy.constants",
     "Dialects": "trilogy.dialect.enums",

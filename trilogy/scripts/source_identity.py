@@ -255,8 +255,9 @@ def normalize_remote(url: str) -> str | None:
     ``https://user:token@host/repo`` is common in CI checkouts, and a
     fingerprint is a thing that gets stored and displayed. Returning ``None``
     for a hostless remote (``file://``, a bare local path, a relative
-    submodule URL) is deliberate — those name a filesystem, so the caller
-    falls back to path identity instead of publishing someone's disk layout.
+    submodule URL, a Windows drive path) is deliberate — those name a
+    filesystem, so the caller falls back to path identity instead of
+    publishing someone's disk layout.
     """
     text = url.strip()
     if not text:
@@ -266,6 +267,11 @@ def normalize_remote(url: str) -> str | None:
     scp = re.match(r"^(?:(?P<user>[^@/]+)@)?(?P<host>[^:/@]+):(?P<path>.+)$", text)
     if scp and "//" not in text:
         host, path = scp.group("host"), scp.group("path")
+        # `C:/dev/models` matches that pattern as host `C`; git resolves the
+        # same ambiguity in favour of the drive letter, and so must this —
+        # reading it as a host would put a local disk layout in the origin.
+        if len(host) == 1:
+            return None
     else:
         parts = urlsplit(text)
         if parts.scheme in ("", "file") or not parts.hostname:

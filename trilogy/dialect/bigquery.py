@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     UnnestMode,
 )
 from trilogy.core.models.core import (
+    CONCRETE_TYPES,
     DataType,
 )
 from trilogy.core.models.datasource import Address
@@ -423,7 +424,7 @@ class BigqueryDialect(BaseDialect):
         return [row[0] for row in rows]
 
     def render_array_member_source(
-        self, array_sql: str, from_clause: str | None
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
     ) -> tuple[str, str]:
         """UNNEST is a table operator in BigQuery, not a set-returning scalar, so
         it joins against the source rather than sitting in its select list."""
