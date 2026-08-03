@@ -61,7 +61,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 
-FINGERPRINT_VERSION = 2
+FINGERPRINT_VERSION = 1
 
 # Fields that are validation metadata or inferred from arguments (output
 # types ripple from upstream and would misclassify upstream changes as
