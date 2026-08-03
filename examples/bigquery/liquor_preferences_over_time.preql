@@ -1,22 +1,29 @@
 import raw.bigquery_public_data_iowa_liquor_sales_sales as sales;
 
 # Aggregate first so rankings compare category-year totals.
-with annual_category as
-where sales.category_name is not null and sales.volume_sold_liters > 0
+rowset annual_category <- where
+    sales.category_name is not null and sales.volume_sold_liters > 0
 select
     year(sales.date) as sale_year,
     sales.category_name,
-    sum(sales.volume_sold_liters) as volume_liters;
+    sum(sales.volume_sold_liters) as volume_liters,
+;
 
 auto annual_total <- sum(annual_category.volume_liters) by annual_category.sale_year;
+auto category_rank <- rank(annual_category.sales.category_name)
+    over (partition by annual_category.sale_year order by annual_category.volume_liters desc);
 auto volume_share_pct <- 100.0 * annual_category.volume_liters / annual_total;
-auto category_rank <- rank(annual_category.sales.category_name) over (partition by annual_category.sale_year order by annual_category.volume_liters desc);
 
 select
     annual_category.sale_year,
     annual_category.sales.category_name,
     annual_category.volume_liters,
     volume_share_pct,
-    category_rank
-having category_rank <= 10
-order by annual_category.sale_year asc, category_rank asc;
+    category_rank,
+having
+    category_rank <= 10
+
+order by
+    annual_category.sale_year asc,
+    category_rank asc
+;

@@ -10,7 +10,7 @@ dialect = "bigquery"
 
 [engine.config]
 # Connection parameters for bigquery.
-# project = "my-gcp-project"
+project = "preqldata"
 # staging_dataset = "my_dataset"
 # staging_uri = "gs://my-bucket/trilogy-staging"
 
@@ -20,4 +20,5 @@ dialect = "bigquery"
 # sql = []
 
 [agent]
+provider = 'openai'
 model = 'gpt-5.6'

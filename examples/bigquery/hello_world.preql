@@ -1,12 +1,11 @@
 # Welcome to Trilogy!
 # This is a simple example script to get you started.
-
 # Define a simple concept
 key user_id int;
 
 # Create a sample datasource
 datasource users (
-    user_id
+    user_id,
 )
 grain (user_id)
 query '''
@@ -18,6 +17,6 @@ query '''
 ''';
 
 # Query the data
-SELECT
-    user_id
+select
+    user_id,
 ;

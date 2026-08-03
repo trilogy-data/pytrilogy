@@ -1005,6 +1005,74 @@ state unpublished;"""
     basic.parse(test2)
 
 
+def test_render_quoted_table_address_round_trips():
+    """A backtick-quoted table address keeps its quotes so fmt output reparses."""
+    src = """key id int;
+
+datasource sales (
+    id,
+)
+grain (id)
+address `bigquery-public-data.iowa_liquor_sales.sales`;
+"""
+    env = Environment()
+    env.parse(src)
+    rendered = Renderer().to_string(env.datasources["sales"])
+    assert (
+        "address `bigquery-public-data.iowa_liquor_sales.sales`" in rendered
+    ), rendered
+
+    reparsed = Environment()
+    reparsed.parse("key id int;\n" + rendered)
+    assert (
+        reparsed.datasources["sales"].address.location
+        == "bigquery-public-data.iowa_liquor_sales.sales"
+    )
+
+
+def test_render_unquoted_table_address_stays_bare():
+    from trilogy.core.models.datasource import (
+        Address,
+        ColumnAssignment,
+        Datasource,
+    )
+
+    id = Concept(name="id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    ds = Datasource(
+        name="plain",
+        columns=[ColumnAssignment(alias="id", concept=id)],
+        address=Address(location="memory.orders"),
+        grain=Grain(components=[id]),
+    )
+    assert "address memory.orders" in Renderer().to_string(ds)
+
+
+def test_render_unquoted_address_with_hyphen_gets_quoted():
+    """Addresses built programmatically without ``quoted`` still render parseably."""
+    from trilogy.core.models.datasource import (
+        Address,
+        ColumnAssignment,
+        Datasource,
+    )
+
+    id = Concept(name="id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    ds = Datasource(
+        name="hyphenated",
+        columns=[ColumnAssignment(alias="id", concept=id)],
+        address=Address(location="my-project.dataset.table"),
+        grain=Grain(components=[id]),
+    )
+    rendered = Renderer().to_string(ds)
+    assert "address `my-project.dataset.table`" in rendered, rendered
+
+    reparsed = Environment()
+    reparsed.parse("key id int;\n" + rendered)
+    assert (
+        reparsed.datasources["hyphenated"].address.location
+        == "my-project.dataset.table"
+    )
+
+
 def test_render_file_address_single_path():
     """Single-file `file `path`` form preserves the literal location."""
     from trilogy.core.models.datasource import (
