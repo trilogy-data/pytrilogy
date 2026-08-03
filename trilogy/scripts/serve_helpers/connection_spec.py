@@ -12,6 +12,7 @@ See docs/remote-store-contract.md in trilogy-studio-core.
 """
 
 from trilogy.constants import logger
+from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.serve_helpers.models import ConnectionSpec, StoreConnectionType
 
@@ -46,6 +47,49 @@ _TYPE_ALIASES: dict[str, StoreConnectionType] = {
 }
 
 _STORE_TYPE_VALUES = {member.value for member in StoreConnectionType}
+
+# Non-secret `[engine.config]` fields projected onto advertised wire options,
+# per store type: {dialect config attribute: wire option key}. Deliberately
+# narrow — only fields the client needs to build the same connection, and only
+# ones that are never credentials. Everything else (paths, passwords, staging
+# locations, client objects) stays server-side.
+_ENGINE_CONFIG_OPTIONS: dict[StoreConnectionType, dict[str, str]] = {
+    # A duckdb/sqlite `path` names a file on the server's disk; the client
+    # opens its own database, so there is nothing useful to hand it.
+    StoreConnectionType.DUCKDB: {},
+    StoreConnectionType.SQLITE: {},
+    # The MotherDuck token is the only field, and it is a secret.
+    StoreConnectionType.MOTHERDUCK: {},
+    StoreConnectionType.BIGQUERY: {"project": "projectId"},
+    # SnowflakeConfig carries no warehouse/role; `password` never travels.
+    StoreConnectionType.SNOWFLAKE: {
+        "account": "account",
+        "username": "username",
+        "database": "database",
+        "schema": "schema",
+    },
+}
+
+
+def derive_engine_options(
+    connection_type: StoreConnectionType, engine_config: DialectConfig | None
+) -> dict[str, str]:
+    """Non-secret wire options implied by `[engine.config]`.
+
+    Values are advertised resolved: `${env:...}` in `[engine.config]` is
+    interpolated for server-side execution, and the projection above is
+    restricted to fields that are not credentials. A store that wants to
+    publish less declares `[serve.connection]` explicitly.
+    """
+    if engine_config is None:
+        return {}
+    options: dict[str, str] = {}
+    for attribute, wire_key in _ENGINE_CONFIG_OPTIONS[connection_type].items():
+        value = getattr(engine_config, attribute, None)
+        if value is None or value == "":
+            continue
+        options[wire_key] = str(value)
+    return options
 
 
 def normalize_connection_type(value: Dialects | str) -> StoreConnectionType | None:
@@ -82,11 +126,17 @@ def build_connection_spec(
     configured_type: Dialects | str | None,
     configured_options: dict[str, str] | None,
     engine: str,
+    engine_config: DialectConfig | None = None,
 ) -> ConnectionSpec | None:
     """Connection to advertise, or None to leave the store browse-only.
 
-    Explicit `[serve.connection]` wins; otherwise the serving engine dialect is
-    advertised so a local `trilogy serve` runs queries without further config.
+    Explicit `[serve.connection]` wins and is authoritative: its options are
+    the entire advertised set, which is also how a store publishes less than
+    `[engine.config]` would imply. Otherwise the serving engine dialect is
+    advertised, carrying the non-secret parts of `[engine.config]` (notably the
+    BigQuery project) so a local `trilogy serve` runs queries without further
+    config. `engine_config` must belong to `engine`; the caller drops it when
+    the two disagree.
     """
     if configured_type:
         resolved = normalize_connection_type(configured_type)
@@ -104,4 +154,6 @@ def build_connection_spec(
     resolved = normalize_connection_type(engine)
     if resolved is None:
         return None
-    return ConnectionSpec(type=resolved)
+    return ConnectionSpec(
+        type=resolved, options=derive_engine_options(resolved, engine_config)
+    )

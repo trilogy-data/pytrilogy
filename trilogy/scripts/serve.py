@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from click import Path, argument, option, pass_context
 
+from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
 from trilogy.execution.state.snapshot import StateSnapshot
@@ -229,6 +230,7 @@ def create_app(
     project_name: str | None = None,
     connection_type: Dialects | str | None = None,
     connection_options: dict[str, str] | None = None,
+    engine_config: DialectConfig | None = None,
     startup_scripts: list[PathlibPath] | None = None,
     enable_state_cache: bool = True,
     studio_bundle: StudioBundle | None = None,
@@ -366,7 +368,7 @@ def create_app(
         }
 
     connection_spec: ConnectionSpec | None = build_connection_spec(
-        connection_type, connection_options, engine
+        connection_type, connection_options, engine, engine_config
     )
 
     # Resolve startup script paths to posix paths relative to the served
@@ -714,6 +716,7 @@ def serve(
     project_name: str | None = None
     connection_type: Dialects | str | None = None
     connection_options: dict[str, str] = {}
+    engine_config: DialectConfig | None = None
     startup_scripts: list[PathlibPath] = []
     if config_path:
         runtime_config = load_config_file(config_path)
@@ -724,6 +727,14 @@ def serve(
         if runtime_config.serve_connection:
             connection_type = runtime_config.serve_connection.type
             connection_options = runtime_config.serve_connection.options
+        # Only advertisable when it describes the engine actually being served
+        # — an explicit `--engine` that disagrees with `[engine] dialect` makes
+        # the config's fields belong to a different database.
+        if (
+            runtime_config.engine_dialect
+            and runtime_config.engine_dialect.value == engine
+        ):
+            engine_config = runtime_config.engine_config
         startup_scripts = runtime_config.startup_sql + runtime_config.startup_trilogy
 
     if no_auth:
@@ -770,6 +781,7 @@ def serve(
         project_name=project_name,
         connection_type=connection_type,
         connection_options=connection_options,
+        engine_config=engine_config,
         startup_scripts=startup_scripts,
         enable_state_cache=not no_state_cache,
         studio_bundle=resolved_bundle,
