@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from trilogy.scripts.serve import (
     build_hosted_studio_link,
     build_local_studio_link,
+    build_store_id,
     create_app,
 )
 
@@ -1732,3 +1733,44 @@ def test_hosted_studio_link_shape_is_unchanged():
     assert link.startswith("https://trilogydata.dev/trilogy-studio-core/#import=")
     assert "connection=bigquery" in link
     assert link.endswith("&token=tok")
+
+
+def test_store_id_is_unique_per_served_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        first = Path(tmpdir) / "a" / "analytics"
+        second = Path(tmpdir) / "b" / "analytics"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+
+        left = build_store_id(first, None)
+        right = build_store_id(second, None)
+        assert left != right
+        assert left.startswith("analytics-")
+        assert right.startswith("analytics-")
+
+
+def test_store_id_is_stable_across_spellings_of_the_same_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        served = Path(tmpdir) / "project"
+        served.mkdir()
+        assert build_store_id(served, None) == build_store_id(
+            Path(tmpdir) / "project" / ".", None
+        )
+
+
+def test_store_id_sanitizes_the_project_name():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        served = Path(tmpdir)
+        store_id = build_store_id(served, "Example BigQuery Model!")
+        label, _, digest = store_id.rpartition("-")
+        assert label == "example-bigquery-model"
+        assert len(digest) == 8
+        assert store_id == store_id.lower()
+        assert " " not in store_id
+
+
+def test_store_id_survives_a_nameless_label():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store_id = build_store_id(Path(tmpdir), "***")
+        assert len(store_id) == 8
+        assert store_id.isalnum()

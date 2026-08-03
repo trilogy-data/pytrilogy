@@ -1,6 +1,7 @@
 """Serve command for Trilogy CLI."""
 
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -120,6 +121,40 @@ def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
             detail=f"Only {', '.join(sorted(ALLOWED_WRITE_EXTENSIONS))} files are allowed",
         )
     return target_path
+
+
+_STORE_ID_DISALLOWED = re.compile(r"[^a-z0-9._-]+")
+
+
+def _store_id_label(value: str) -> str:
+    return (
+        _STORE_ID_DISALLOWED.sub("-", value.strip().lower())
+        .strip("-.")[:40]
+        .strip("-.")
+    )
+
+
+def build_store_id(directory_path: PathlibPath, project_name: str | None) -> str:
+    """Stable, collision-resistant id for the studio's store registration.
+
+    The client namespaces every remote entity under this (`remote:<id>:<path>`)
+    and matches stores by it, so two projects sharing an id merge into one
+    store — same-named files collide, and because the store record holds the
+    base URL, saves start routing to whichever server registered last. The id
+    the client derives on its own is the base URL (`localhost:8100`), which
+    every project served on that port shares and which moves with the port.
+
+    Hence a label plus a digest of the served path: the path is what actually
+    distinguishes two projects, and it doesn't change when the port does. The
+    digest rather than the path itself keeps the filesystem layout out of the
+    client's storage keys.
+    """
+    import hashlib
+
+    canonical = os.path.normcase(os.path.realpath(directory_path))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
+    label = _store_id_label(project_name or directory_path.name)
+    return f"{label}-{digest}" if label else digest
 
 
 def announce_studio_download(manifest: StudioManifest) -> None:
@@ -763,7 +798,7 @@ def serve(
                 resolved_bundle.base_path,
                 asset_name,
                 display_model_name,
-                get_safe_model_name(display_model_name),
+                build_store_id(directory_path, project_name),
                 token,
             )
         else:
