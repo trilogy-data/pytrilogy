@@ -44,7 +44,7 @@ from trilogy.core.enums import (
     UnnestMode,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import InvalidSyntaxException, UnsupportedDialectFeature
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
@@ -287,6 +287,20 @@ def _collect_subselect_comparisons(node: Any) -> list[BuildSubselectComparison]:
     return acc
 
 
+def _parameterized_list_value(
+    ref: BuildParamaterizedConceptReference,
+) -> "ListWrapper[Any] | TupleWrapper[Any] | None":
+    """The literal element list behind a parameterized array constant, if any."""
+    lineage = ref.concept.lineage
+    if (
+        isinstance(lineage, BuildFunction)
+        and lineage.arguments
+        and isinstance(lineage.arguments[0], (ListWrapper, TupleWrapper))
+    ):
+        return lineage.arguments[0]
+    return None
+
+
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
@@ -294,6 +308,9 @@ SUBSELECT_ITEMS = (BuildSubselectItem,)
 COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
 BETWEEN_ITEMS = (BuildBetween,)
+# Membership is a property of the operator, not of the node class: any
+# comparison carrying one renders through the membership path.
+MEMBERSHIP_OPERATORS = (ComparisonOperator.IN, ComparisonOperator.NOT_IN)
 
 BASE_INVALID = "INVALID_REFERENCE_BUG"
 
@@ -860,6 +877,13 @@ class BaseDialect:
     # UNION-declared key; dialects without it (MySQL, MariaDB) get those joins
     # lowered to a UNION key spine by the optimizer instead.
     SUPPORTS_FULL_JOIN = True
+    # Whether the dialect has an array type. Dialects without one raise on array
+    # membership rather than emitting SQL that cannot parse.
+    SUPPORTS_ARRAYS = True
+    # Names for the derived source that exposes one row per array element. Shared
+    # so the predicate wrapping it is identical in every dialect.
+    ARRAY_MEMBER_SOURCE_ALIAS = "unnest_members"
+    ARRAY_MEMBER_COLUMN = "unnest_member"
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
@@ -1653,16 +1677,54 @@ class BaseDialect:
         # Wrap with array aggregation
         return f"(SELECT array_agg(_sr.{q}{lineage.content.safe_address}{q}) FROM ({inner_select}) _sr)"
 
-    def render_array_unnest(
+    def render_array_member_source(
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
+    ) -> tuple[str, str]:
+        """``(from_clause, member_column)`` exposing one row per element of
+        ``array_sql``. ``from_clause`` is where that expression is read from, or
+        None when the array stands alone (a literal or a bound parameter).
+
+        ``member_type`` is what the probe presents, for dialects whose unnest
+        yields an untyped column that has to be cast back before it will
+        compare. Ignored where the element arrives already typed.
+
+        Default is the set-returning-function form (DuckDB, Postgres,
+        ClickHouse); dialects whose unnest is a table operator override."""
+        if not self.SUPPORTS_ARRAYS:
+            raise UnsupportedDialectFeature(
+                f"{type(self).__name__} has no array type, so membership against "
+                "an array-valued expression cannot be rendered for it."
+            )
+        unnest = self.FUNCTION_MAP[FunctionType.UNNEST]([array_sql], [])
+        select = f"select {unnest} as {self.ARRAY_MEMBER_COLUMN}"
+        if from_clause:
+            select = f"{select} from {from_clause}"
+        return (
+            f"({select}) as {self.ARRAY_MEMBER_SOURCE_ALIAS}",
+            self.ARRAY_MEMBER_COLUMN,
+        )
+
+    def render_array_membership(
         self,
-        left,
-        right,
+        left_sql: str,
+        array_sql: str,
         operator: ComparisonOperator,
-        cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
-        raise_invalid: bool = False,
-    ):
-        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+        member_type: CONCRETE_TYPES,
+        from_clause: str | None = None,
+    ) -> str:
+        """Membership against an array-valued RHS. Unnesting to one row per
+        element keeps the identity semantics every other membership form has."""
+        source, member = self.render_array_member_source(
+            array_sql, from_clause, member_type
+        )
+        return self._render_membership_exists(left_sql, member, source, operator)
+
+    def _renders_as_parameter(self, e: BuildParamaterizedConceptReference) -> bool:
+        """Whether a parameterized reference binds (``:name``) or inlines its
+        value; small datatypes round-trip cleanly and are always inlined."""
+        return bool(self.rendering.parameters) and (
+            e.concept.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+        )
 
     def render_comparison(
         self,
@@ -2004,6 +2066,8 @@ class BaseDialect:
             | NumericType
             | StructType
             | ArrayType
+            | EnumType
+            | ValidatedType
             | ListWrapper[Any]
             | TupleWrapper[Any]
             | DatePart
@@ -2020,7 +2084,9 @@ class BaseDialect:
         # inside CASE/arithmetic/non-aggregate functions, but not from inside
         # an aggregate (DuckDB resolves aggregate inputs against FROM, not the
         # projection).
-        if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
+        if isinstance(e, SUBSELECT_COMPARISON_ITEMS) or (
+            isinstance(e, COMPARISON_ITEMS) and e.operator in MEMBERSHIP_OPERATORS
+        ):
             right: Any = e.right
             while isinstance(right, BuildParenthetical):
                 right = right.content
@@ -2098,12 +2164,6 @@ class BaseDialect:
                     self.used_map[target].add(right.address)
                     col_ref = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
                     from_clause = target
-                if rhs_is_array:
-                    from_clause = (
-                        f"(select unnest({col_ref}) as unnest_member "
-                        f"from {from_clause}) as unnest_members"
-                    )
-                    col_ref = "unnest_member"
                 left_sql = self.render_expr(
                     e.left,
                     cte=cte,
@@ -2111,20 +2171,45 @@ class BaseDialect:
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 )
+                if rhs_is_array:
+                    return self.render_array_membership(
+                        left_sql,
+                        col_ref,
+                        e.operator,
+                        arg_to_datatype(e.left),
+                        from_clause=from_clause,
+                    )
                 return self._render_membership_exists(
                     left_sql, col_ref, from_clause, e.operator
                 )
             elif isinstance(right, BuildParamaterizedConceptReference):
-                if isinstance(right.concept.lineage, BuildFunction) and isinstance(
-                    right.concept.lineage.arguments[0], ListWrapper
-                ):
-                    return self.render_array_unnest(
+                literal = _parameterized_list_value(right)
+                if literal is not None and not self._renders_as_parameter(right):
+                    # inlined rather than bound: it is a plain value list, and the
+                    # portable `in (a, b, c)` beats unnesting an array literal
+                    return self._render_value_list_membership(
                         e.left,
-                        right,
+                        literal,
                         e.operator,
                         cte=cte,
                         cte_map=cte_map,
                         raise_invalid=raise_invalid,
+                        materialized_addresses=materialized_addresses,
+                    )
+                if literal is not None:
+                    return self.render_array_membership(
+                        self.render_expr(
+                            e.left,
+                            cte=cte,
+                            cte_map=cte_map,
+                            raise_invalid=raise_invalid,
+                            materialized_addresses=materialized_addresses,
+                        ),
+                        self.render_expr(
+                            right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                        ),
+                        e.operator,
+                        arg_to_datatype(e.left),
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(right, (ListWrapper, TupleWrapper)):
@@ -2354,8 +2439,7 @@ class BaseDialect:
         elif isinstance(e, list):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e], [])}"
         elif isinstance(e, BuildParamaterizedConceptReference):
-            inline_safe = e.concept.datatype.data_type in INLINE_SAFE_PARAM_DATATYPES
-            if self.rendering.parameters and not inline_safe:
+            if self._renders_as_parameter(e):
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
                 return f":{e.concept.address.replace('.', '_')}"

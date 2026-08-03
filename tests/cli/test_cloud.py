@@ -42,6 +42,7 @@ from trilogy.scripts.cloud_models import (
     SecretMeta,
     TokenSummary,
 )
+from trilogy.scripts.source_identity import SOURCE_FINGERPRINT_VERSION, content_digest
 
 TS = "2026-07-28T12:00:00Z"
 
@@ -902,12 +903,172 @@ class TestJobCommands:
         assert result.exit_code != 0
         assert "No files matched" in result.output
 
-    def test_push_warns_when_the_name_is_already_taken(
+    def test_push_updates_an_existing_job_in_place(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The whole point of the upsert: a POST here would mint a second
+        'nightly' and leave every schedule bound to the first."""
+        source = self._project(tmp_path)
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
+        assert result.exit_code == 0, result.output
+        put = logged_in.call_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        assert put.body["config"] == "[trilogy]\n"
+        assert not any(
+            c.method == "POST" and c.path == f"/orgs/{logged_in.org}/jobs"
+            for c in logged_in.calls
+        )
+        assert "Updated job 'nightly'" in result.output
+
+    def test_push_keeps_settings_it_was_not_told_to_change(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """PUT clears what it omits, so a push that only ships an edited file
+        must carry the job's operation, timeouts and secrets back with it."""
+        source = self._project(tmp_path)
+        configured = {
+            **logged_in.routes[("GET", f"/orgs/{logged_in.org}/jobs")][0],
+            "operation": "refresh",
+            "timeout_seconds": 14400,
+            "secret_env": ["GOATCOUNTER_API_TOKEN", "GOOGLE_HMAC_KEY"],
+            "parameters": {"site": "example"},
+            "vm_class": "shared",
+        }
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [configured])
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        assert body["operation"] == "refresh"
+        assert body["timeout_seconds"] == 14400
+        assert body["secret_env"] == ["GOATCOUNTER_API_TOKEN", "GOOGLE_HMAC_KEY"]
+        assert body["parameters"] == {"site": "example"}
+        assert body["vm_class"] == "shared"
+
+    def test_push_flags_override_what_the_job_holds(
         self, logged_in, run_cloud, tmp_path
     ):
         source = self._project(tmp_path)
+        configured = {
+            **logged_in.routes[("GET", f"/orgs/{logged_in.org}/jobs")][0],
+            "operation": "refresh",
+            "timeout_seconds": 14400,
+        }
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [configured])
+        run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "nightly",
+            "--operation",
+            "run",
+            "--timeout-seconds",
+            "60",
+        )
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        assert body["operation"] == "run" and body["timeout_seconds"] == 60
+
+    def test_a_new_job_gets_the_platform_default_operation(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert body["operation"] == "run"
+        assert "timeout_seconds" not in body and "secret_env" not in body
+
+    def test_push_reports_matching_content_as_a_no_op(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        # A PUT whose content matched mints nothing, so the job comes back on
+        # the version it already held.
+        unmoved = logged_in.routes[("GET", f"/orgs/{logged_in.org}/jobs")][0]
+        logged_in.set("PUT", f"/orgs/{logged_in.org}/jobs/*", unmoved)
         result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
-        assert "already exists" in result.output
+        assert "already matches this content" in result.output
+
+    def test_push_refuses_to_guess_between_duplicate_names(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        listed = logged_in.routes[("GET", f"/orgs/{logged_in.org}/jobs")]
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [listed[0], {**listed[0], "id": "job-2"}],
+        )
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
+        assert result.exit_code != 0
+        assert "2 jobs in 'acme' are named 'nightly'" in result.output
+        assert "job-1, job-2" in result.output
+
+    def test_push_create_forces_a_second_job(self, logged_in, run_cloud, tmp_path):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "nightly", "--create"
+        )
+        assert result.exit_code == 0, result.output
+        assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs")
+
+    def test_push_create_still_warns_that_the_name_is_taken(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Creating the duplicate is the point of the flag; that the org's
+        schedules keep naming the *other* job is the part worth saying."""
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "nightly", "--create"
+        )
+        assert "already named 'nightly'" in result.output
+
+    def test_push_create_is_silent_for_an_unused_name(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "fresh", "--create"
+        )
+        assert "already named" not in result.output
+
+    def test_push_carries_a_source_fingerprint(self, logged_in, run_cloud, tmp_path):
+        source = self._project(tmp_path)
+        run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
+        sent = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        fingerprint = sent["source_fingerprint"]
+        assert fingerprint["version"] == SOURCE_FINGERPRINT_VERSION
+        assert fingerprint["content"] == content_digest(
+            "[trilogy]\n",
+            [f for f in sent["files"]],
+        )
+        # tmp_path is not a repository, so the origin is the opaque local
+        # token — never the absolute path it was built from.
+        assert fingerprint["origin_kind"] == "path"
+        assert fingerprint["origin"].startswith("local:project-")
+        assert str(source) not in json.dumps(sent)
+
+    def test_the_fingerprint_follows_rewrites_not_the_files_on_disk(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        plain = run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
+        before = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        rewritten = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--rewrite",
+            "gs://old=gs://new",
+        )
+        after = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert plain.exit_code == 0 and rewritten.exit_code == 0
+        assert (
+            before["source_fingerprint"]["content"]
+            != after["source_fingerprint"]["content"]
+        )
 
     def test_push_with_a_cron_also_creates_a_schedule(
         self, logged_in, run_cloud, tmp_path
@@ -946,6 +1107,26 @@ class TestJobCommands:
         events = [obj["event"] for obj in _json_stream(result.output)]
         assert events[-2:] == ["job_created", "schedule_created"]
 
+    def test_versions_lists_history_newest_first(self, logged_in, run_cloud):
+        output = run_cloud("jobs", "versions", "nightly").output
+        assert output.index("v2") < output.index("v1")
+        assert logged_in.call_for("GET", f"/orgs/{logged_in.org}/jobs/job-1/versions")
+
+    def test_versions_marks_the_one_the_job_currently_holds(self, logged_in, run_cloud):
+        lines = run_cloud("jobs", "versions", "nightly").output.splitlines()
+        current = [line for line in lines if "(current)" in line]
+        assert len(current) == 1 and current[0].startswith("v1")
+
+    def test_versions_shows_recorded_push_provenance(self, logged_in, run_cloud):
+        output = run_cloud("jobs", "versions", "nightly").output
+        assert "github.com/acme/models" in output
+
+    def test_versions_says_so_when_a_job_predates_versioning(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/*/versions", [])
+        assert "predates versioning" in run_cloud("jobs", "versions", "nightly").output
+
     def test_run_triggers_by_name(self, logged_in, run_cloud):
         result = run_cloud("jobs", "run", "nightly")
         assert "Triggered run run-new" in result.output
@@ -981,13 +1162,35 @@ class TestRunCommands:
         output = run_cloud("runs", "list").output
         assert "run-1" in output and "run-2" in output
 
-    def test_list_slices_client_side(self, logged_in, run_cloud):
-        output = run_cloud("runs", "list", "--limit", "1").output
-        assert "run-1" in output and "run-2" not in output
+    def test_list_filters_server_side(self, logged_in, run_cloud):
+        """A newest-N window filtered after the fact shows nothing a burst of
+        successes has already pushed out of it."""
+        run_cloud("runs", "list", "--limit", "1", "--status", "failed")
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/jobs/runs")
+        assert call.query == {"limit": ["1"], "status": ["failed"]}
+
+    def test_list_clamps_a_limit_past_the_server_cap(self, logged_in, run_cloud):
+        run_cloud("runs", "list", "--limit", "5000")
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/jobs/runs")
+        assert call.query["limit"] == [str(cloud_mod.RUNS_MAX_LIMIT)]
+
+    def test_list_forwards_the_source_filter(self, logged_in, run_cloud):
+        run_cloud("runs", "list", "--source", "scheduled")
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/jobs/runs")
+        assert call.query["source"] == ["scheduled"]
 
     def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/runs", [])
         assert "No runs in org 'acme'." in run_cloud("runs", "list").output
+
+    def test_an_empty_filtered_list_says_what_it_filtered_on(
+        self, logged_in, run_cloud
+    ):
+        """'no runs at all' and 'none that match' are different answers, and
+        only one of them should worry anyone."""
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/runs", [])
+        output = run_cloud("runs", "list", "--status", "failed").output
+        assert "matching status 'failed'" in output
 
     def test_show_renders_the_timeline_files_and_logs(self, logged_in, run_cloud):
         output = run_cloud("runs", "show", "run-1").output

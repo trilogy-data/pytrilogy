@@ -44,6 +44,13 @@ class FrozenEnvironmentException(Exception):
     pass
 
 
+class UnsupportedDialectFeature(NotImplementedError):
+    """A valid query that this dialect has no SQL for. Subclasses
+    `NotImplementedError` so it still reads as "unimplemented" to anything
+    catching that, while naming the dialect and the feature rather than
+    surfacing as a bare internal error."""
+
+
 class InvalidSyntaxException(Exception):
     pass
 

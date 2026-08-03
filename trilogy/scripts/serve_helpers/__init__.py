@@ -3,6 +3,7 @@
 from trilogy.scripts.serve_helpers.connection_spec import (
     ALLOWED_CONNECTION_OPTIONS,
     build_connection_spec,
+    derive_engine_options,
     filter_connection_options,
     normalize_connection_type,
 )
@@ -93,6 +94,7 @@ __all__ = [
     "cancel_job",
     "compute_state_snapshot_sync",
     "create_job",
+    "derive_engine_options",
     "download_bundle",
     "extract_description_from_file",
     "fetch_manifest",

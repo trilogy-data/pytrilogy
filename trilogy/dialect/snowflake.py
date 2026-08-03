@@ -4,7 +4,7 @@ from typing import ClassVar
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
 
 ENV_SNOWFLAKE_PW = "PREQL_SNOWFLAKE_PW"
@@ -109,6 +109,22 @@ class SnowflakeDialect(BaseDialect):
     def render_string_literal(self, value: str) -> str:
         # Snowflake treats backslash as an escape character in string literals.
         return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+
+    def render_array_member_source(
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
+    ) -> tuple[str, str]:
+        """FLATTEN is a table function; the element lands in its `value` column.
+
+        That column is a VARIANT — `value` for the string element `24128` is
+        the JSON text `"24128"`, which matches no VARCHAR probe — so it is cast
+        back to what the probe presents. Casting the member rather than
+        stringifying both sides keeps 1 and '1' distinct."""
+        alias = self.ARRAY_MEMBER_SOURCE_ALIAS
+        if from_clause:
+            source = f"{from_clause}, lateral flatten(input => {array_sql}) as {alias}"
+        else:
+            source = f"table(flatten(input => {array_sql})) as {alias}"
+        return source, f"cast({alias}.value as {self.render_expr(member_type)})"
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None

@@ -11,6 +11,9 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import PersistMode
+from trilogy.core.statements.author import PersistStatement
+from trilogy.execution.state import PartitionObservation
+from trilogy.execution.state.partitions import partition_filter
 from trilogy.parser import parse
 
 MODEL = """
@@ -198,3 +201,52 @@ def test_bigquery_keeps_its_scripted_per_partition_delete():
     (script,) = renderer.compile_statements(processed)
     assert "EXECUTE IMMEDIATE" in script
     assert "CREATE TEMPORARY TABLE" not in script
+
+
+SLICES = [
+    PartitionObservation(values={"created_at": date(2025, 12, 15)}),
+    PartitionObservation(values={"created_at": date(2025, 12, 17)}),
+]
+
+
+def _slice_scoped_refresh(dialect: Dialects, slices) -> str:
+    """The statement `Executor._update_datasource_once` builds for stale slices."""
+    env = Environment()
+    parse(MODEL, env)
+    ds = env.datasources["facts"]
+    statement = PersistStatement(
+        datasource=ds,
+        select=ds.create_update_statement(
+            env, partition_filter(ds, env, slices), line_no=None
+        ),
+        persist_mode=PersistMode.APPEND,
+        partition_by=ds.partition_by,
+    )
+    renderer = dialect.default_renderer()
+    (processed,) = renderer.generate_queries(env, [statement])
+    return "\n".join(renderer.compile_statements(processed))
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [Dialects.BIGQUERY, *STAGED_DIALECTS, Dialects.SQL_SERVER, Dialects.TRINO],
+)
+def test_slice_filter_renders_portable_membership(dialect):
+    """A slice filter is a value list, and every engine spells that `in (...)`.
+    The negative assertions are the load-bearing half — a dialect array
+    constructor after `in` parses on DuckDB alone."""
+    sql = _slice_scoped_refresh(dialect, SLICES)
+    assert "in (date '2025-12-15',date '2025-12-17')" in sql
+    assert "in [" not in sql
+    assert "ARRAY_CONSTRUCT" not in sql
+    assert "ARRAY[" not in sql
+
+
+def test_slice_filter_selects_a_null_slice_with_is_null():
+    sql = _slice_scoped_refresh(
+        Dialects.POSTGRES, [*SLICES, PartitionObservation(values={"created_at": None})]
+    )
+    assert (
+        "in (date '2025-12-15',date '2025-12-17')) or \"source_facts\".\"created_at\" is null"
+        in sql
+    )

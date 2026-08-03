@@ -38,6 +38,7 @@ from trilogy.core.models.author import (
     Comparison,
     ConceptRef,
     Conditional,
+    SubselectComparison,
     WhereClause,
 )
 from trilogy.core.models.build import Factory
@@ -339,7 +340,10 @@ def partition_filter(
         arms: list[Comparison | Conditional] = []
         if present:
             arms.append(
-                Comparison(
+                # Membership, not a scalar comparison: the RHS is a set, and only
+                # a SubselectComparison carries the planner's existence semantics
+                # for one.
+                SubselectComparison(
                     left=concept.reference,
                     right=ListWrapper(present, type=concept.datatype.data_type),
                     operator=ComparisonOperator.IN,

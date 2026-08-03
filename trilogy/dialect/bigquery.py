@@ -7,15 +7,15 @@ from jinja2 import Template
 from trilogy.constants import logger
 from trilogy.core.enums import (
     AddressType,
-    ComparisonOperator,
     FunctionType,
     UnnestMode,
 )
 from trilogy.core.models.core import (
+    CONCRETE_TYPES,
     DataType,
 )
 from trilogy.core.models.datasource import Address
-from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
+from trilogy.core.models.execute import CompiledCTE
 from trilogy.core.statements.execute import CreateTableInfo, ProcessedQueryPersist
 from trilogy.dialect.base import (
     AGGREGATE_GRAIN_MATCH_MAP,
@@ -423,16 +423,15 @@ class BigqueryDialect(BaseDialect):
         rows = executor.execute_raw_sql(pk_query).fetchall()
         return [row[0] for row in rows]
 
-    def render_array_unnest(
-        self,
-        left,
-        right,
-        operator: ComparisonOperator,
-        cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
-        raise_invalid: bool = False,
-    ):
-        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+    def render_array_member_source(
+        self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES
+    ) -> tuple[str, str]:
+        """UNNEST is a table operator in BigQuery, not a set-returning scalar, so
+        it joins against the source rather than sitting in its select list."""
+        source = f"unnest({array_sql}) as {self.ARRAY_MEMBER_COLUMN}"
+        if from_clause:
+            source = f"{from_clause}, {source}"
+        return source, self.ARRAY_MEMBER_COLUMN
 
     def render_simple_case(
         self,

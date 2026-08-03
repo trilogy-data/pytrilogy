@@ -905,6 +905,67 @@ def test_serve_cli_uses_trilogy_toml_connection():
             raise cli_result.exception
 
 
+def test_serve_cli_advertises_bigquery_project_from_engine_config():
+    """A plain `trilogy init`-shaped BigQuery config — no [serve.connection] —
+    should hand the client the project it needs, not an optionless bigquery
+    connection it cannot query with."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("select 1;")
+        (tmppath / "trilogy.toml").write_text(
+            "[engine]\n"
+            'dialect = "bigquery"\n\n'
+            "[engine.config]\n"
+            'project = "preqldata"\n'
+            'staging_dataset = "scratch"\n'
+        )
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+
+        runner = CliRunner()
+        cli_result = None
+
+        def run_cli():
+            nonlocal cli_result
+            cli_result = runner.invoke(
+                cli,
+                [
+                    "serve",
+                    str(tmppath),
+                    "--port",
+                    str(port),
+                    "--host",
+                    "127.0.0.1",
+                    "--timeout",
+                    "12",
+                    "--no-browser",
+                    "--no-auth",
+                ],
+            )
+
+        thread = threading.Thread(target=run_cli, daemon=True)
+        thread.start()
+
+        base_url = f"http://127.0.0.1:{port}"
+        _wait_for_server(base_url, lambda: cli_result, thread)
+
+        with urllib.request.urlopen(f"{base_url}/index.json") as response:
+            data = json.loads(response.read().decode())
+
+        # staging_dataset is a server-side execution detail and stays put.
+        assert data["connection"] == {
+            "type": "bigquery",
+            "options": {"projectId": "preqldata"},
+        }
+
+        thread.join(timeout=20.0)
+        assert cli_result is not None
+        if cli_result.exception:
+            raise cli_result.exception
+
+
 def test_serve_cli_raises_on_invalid_trilogy_toml():
     """Invalid trilogy.toml surfaces the error instead of silently starting
     with defaults — misconfiguration should be loud, not swallowed."""
