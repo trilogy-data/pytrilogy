@@ -6,8 +6,12 @@ it reasons over addresses, node names and set relations alone, which is what
 makes "the search is pure — it selects sources and reports why, but builds no
 StrategyNodes" a structural property rather than a promise.
 
-No pruning here either: a datasource the conditions disqualify is labeled
-SENSITIVE, not removed, so the search can explain itself.
+No QUALITATIVE pruning here: a datasource the conditions disqualify is labeled
+SENSITIVE, not removed, so the search can explain itself. Join-REACHABILITY is
+the one exception (`_relevant_nodes`): a datasource no chain of shared bindings
+connects to any requested address can appear in no cover, no obligation and no
+explanation, and labeling a wide environment's every scan costs more than the
+search it feeds (s66: 168 candidates labeled for a 3-terminal request).
 """
 
 from __future__ import annotations
@@ -31,7 +35,11 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.node_generators.common import (
     relevant_authored_join_pairs,
 )
-from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
+from trilogy.core.processing.node_generators.presence_probe import (
+    is_presence_probe,
+    member_binding_datasources,
+    probe_member_address,
+)
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -488,6 +496,74 @@ def _address_grains(
     return out
 
 
+def _relevant_nodes(
+    graph: ReferenceGraph,
+    emitted_by_node: dict[str, set[str]],
+    addresses: list[str],
+    environment: BuildEnvironment,
+    equivalence: dict[str, str],
+    extra_sets: list[frozenset[str]],
+) -> set[str]:
+    """Datasource nodes some cover could contain: the join-components of the
+    pool touching a requested address, over CANONICAL emitted addresses —
+    computed before labeling, because a candidate's binding keys are exactly
+    its canonicalized emitted addresses (minus probe-ownership removals), so
+    address-reachability over this bipartite graph over-approximates every
+    join any cover could make. `extra_sets` carries the union/connector
+    candidates' binding keys — a derived connector can bridge scans that share
+    no address. Presence-probe carriers are seeded by node: their binding is
+    INJECTED by `pin_unoffered_probes`, never emitted by the graph."""
+    canonical: dict[str, set[str]] = {
+        node: {equivalence.get(a, a) for a in emitted}
+        for node, emitted in emitted_by_node.items()
+    }
+    address_nodes: dict[str, set[str]] = {}
+    for node, canon in canonical.items():
+        for address in canon:
+            address_nodes.setdefault(address, set()).add(node)
+    carrier_ids: set[str] = set()
+    for address in addresses:
+        if not is_presence_probe(address):
+            continue
+        member = probe_member_address(address, environment)
+        if member is None:
+            continue
+        carrier_ids.update(
+            c.identifier for c in member_binding_datasources(member, environment)
+        )
+    stack: list[str] = [
+        node
+        for node, datasource in graph.datasources.items()
+        if node in canonical
+        and carrier_ids.intersection(datasource_identifiers(datasource))
+    ]
+    # bridge sets are join EDGES, not selectable nodes: reaching any address of
+    # one reaches them all
+    bridges = [set(extra) for extra in extra_sets]
+    seen_addresses: set[str] = set()
+    frontier = {equivalence.get(a, a) for a in addresses}
+    included: set[str] = set()
+    while stack or frontier:
+        while frontier:
+            address = frontier.pop()
+            if address in seen_addresses:
+                continue
+            seen_addresses.add(address)
+            stack.extend(address_nodes.get(address, ()))
+            for bridge in bridges:
+                if address in bridge:
+                    frontier |= bridge - seen_addresses
+        while stack:
+            node = stack.pop()
+            if node in included:
+                continue
+            included.add(node)
+            frontier |= canonical[node] - seen_addresses
+            if frontier:
+                break
+    return included
+
+
 def build_source_network(
     terminals: list[BuildConcept],
     environment: BuildEnvironment,
@@ -496,9 +572,11 @@ def build_source_network(
 ) -> SourceNetwork:
     addresses = _terminal_addresses(terminals)
     all_addresses = set(addresses)
+    emitted_by_node: dict[str, set[str]] = {}
     for node in graph.datasources:
         if node in graph:
-            all_addresses |= _emitted_addresses(graph, node)
+            emitted_by_node[node] = _emitted_addresses(graph, node)
+            all_addresses |= emitted_by_node[node]
     equivalence = _equivalence_map(
         environment, all_addresses, _graph_pseudonym_pairs(graph)
     )
@@ -513,21 +591,38 @@ def build_source_network(
             for identifier in datasource_identifiers(datasource)
         },
     )
+    union_candidates = {
+        node: union_candidate
+        for node, union_candidate in _union_candidates(
+            terminals, environment, conditions, equivalence
+        ).items()
+        if not union_candidate.condition.disqualifying
+    }
+    connector_candidates = _connector_candidates(environment, equivalence)
+    relevant = _relevant_nodes(
+        graph,
+        emitted_by_node,
+        addresses,
+        environment,
+        equivalence,
+        [
+            frozenset(candidate.bindings)
+            for table in (union_candidates, connector_candidates)
+            for candidate in table.values()
+        ],
+    )
     candidates: dict[str, SourceCandidate] = {}
     for node, datasource in sorted(graph.datasources.items()):
-        if node not in graph:
+        if node not in relevant:
             continue
         candidate = _candidate_for(
             graph, node, datasource, conditions, equivalence, owners
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate
-    for node, union_candidate in _union_candidates(
-        terminals, environment, conditions, equivalence
-    ).items():
-        if not union_candidate.condition.disqualifying:
-            candidates.setdefault(node, union_candidate)
-    for node, connector in _connector_candidates(environment, equivalence).items():
+    for node, union_candidate in union_candidates.items():
+        candidates.setdefault(node, union_candidate)
+    for node, connector in connector_candidates.items():
         candidates.setdefault(node, connector)
     candidates = pin_unoffered_probes(addresses, candidates, environment, equivalence)
     bound = {address for c in candidates.values() for address in c.bindings}
