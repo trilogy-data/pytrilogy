@@ -1011,6 +1011,26 @@ class TestJobCommands:
         assert result.exit_code == 0, result.output
         assert logged_in.call_for("POST", f"/orgs/{logged_in.org}/jobs")
 
+    def test_push_create_still_warns_that_the_name_is_taken(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Creating the duplicate is the point of the flag; that the org's
+        schedules keep naming the *other* job is the part worth saying."""
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "nightly", "--create"
+        )
+        assert "already named 'nightly'" in result.output
+
+    def test_push_create_is_silent_for_an_unused_name(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "fresh", "--create"
+        )
+        assert "already named" not in result.output
+
     def test_push_carries_a_source_fingerprint(self, logged_in, run_cloud, tmp_path):
         source = self._project(tmp_path)
         run_cloud("jobs", "push", "--source", str(source), "--name", "fresh")
@@ -1162,6 +1182,15 @@ class TestRunCommands:
     def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/runs", [])
         assert "No runs in org 'acme'." in run_cloud("runs", "list").output
+
+    def test_an_empty_filtered_list_says_what_it_filtered_on(
+        self, logged_in, run_cloud
+    ):
+        """'no runs at all' and 'none that match' are different answers, and
+        only one of them should worry anyone."""
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/runs", [])
+        output = run_cloud("runs", "list", "--status", "failed").output
+        assert "matching status 'failed'" in output
 
     def test_show_renders_the_timeline_files_and_logs(self, logged_in, run_cloud):
         output = run_cloud("runs", "show", "run-1").output
