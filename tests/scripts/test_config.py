@@ -1,5 +1,6 @@
 import os
 import tempfile
+import urllib.request
 from pathlib import Path
 
 from click.exceptions import Exit
@@ -585,9 +586,10 @@ def test_sqlite_remote_downloads_to_staging(tmp_path, monkeypatch):
 
         shutil.copy2(str(src_db), dest)
 
-    monkeypatch.setattr(
-        "trilogy.dialect.config.urllib.request.urlretrieve", fake_urlretrieve
-    )
+    # Patched on the stdlib module, not on trilogy.dialect.config: config.py
+    # imports urllib.request lazily inside _download_remote to keep it off the
+    # CLI startup path, so it exposes no module-level `urllib` attribute.
+    monkeypatch.setattr(urllib.request, "urlretrieve", fake_urlretrieve)
 
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
@@ -629,9 +631,7 @@ def test_sqlite_remote_uses_system_temp_without_staging(tmp_path, monkeypatch):
 
         shutil.copy2(str(src_db), dest)
 
-    monkeypatch.setattr(
-        "trilogy.dialect.config.urllib.request.urlretrieve", fake_urlretrieve
-    )
+    monkeypatch.setattr(urllib.request, "urlretrieve", fake_urlretrieve)
 
     config = SQLiteConfig(path="gs://bucket/data.db")
 
