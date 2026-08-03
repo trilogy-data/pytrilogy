@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build script for preql-import-resolver
+# Build script for trilogy-parser
 
 set -e
 
-echo "Building preql-import-resolver..."
+echo "Building trilogy-parser..."
 
 # Check for Rust
 if ! command -v cargo &> /dev/null; then
@@ -16,10 +16,10 @@ cargo build --release
 
 echo ""
 echo "Build successful!"
-echo "Binary location: ./target/release/preql-import-resolver"
+echo "Binary location: ./target/release/trilogy-parser-cli"
 echo ""
 echo "To install globally, run:"
 echo "  cargo install --path ."
 echo ""
 echo "To test:"
-echo "  ./target/release/preql-import-resolver --help"
+echo "  ./target/release/trilogy-parser-cli --help"

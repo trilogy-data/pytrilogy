@@ -314,21 +314,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
 
 [[package]]
-name = "preql-import-resolver"
-version = "0.3.310"
-dependencies = [
- "clap",
- "pathdiff",
- "pest",
- "pest_derive",
- "pyo3",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -546,6 +531,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "trilogy-parser"
+version = "0.3.312"
+dependencies = [
+ "clap",
+ "pathdiff",
+ "pest",
+ "pest_derive",
+ "pyo3",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

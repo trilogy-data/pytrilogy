@@ -50,12 +50,23 @@ impl From<&ImportStatement> for ImportInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct DatasourceInfo {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    pub address_kind: String,
+    pub is_root: bool,
+    pub is_partial: bool,
+    pub is_partitioned: bool,
 }
 
 impl From<&DatasourceDeclaration> for DatasourceInfo {
     fn from(ds: &DatasourceDeclaration) -> Self {
         DatasourceInfo {
             name: ds.name.clone(),
+            address: ds.address.clone(),
+            address_kind: ds.address_kind.to_string(),
+            is_root: ds.is_root,
+            is_partial: ds.is_partial,
+            is_partitioned: ds.is_partitioned,
         }
     }
 }
@@ -704,5 +715,60 @@ mod tests {
         assert_eq!(graph.datasource_declarations.len(), 2);
         assert!(graph.datasource_declarations.contains_key("customers"));
         assert!(graph.datasource_declarations.contains_key("orders"));
+    }
+
+    #[test]
+    fn test_datasource_metadata_reaches_file_nodes() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        create_test_file(
+            root,
+            "models.preql",
+            r#"
+            root partial datasource raw_events (
+                id: key
+            )
+            file `./ingest.py`;
+
+            datasource events (
+                id: key
+            )
+            address warehouse.events
+            partition by id;
+        "#,
+        );
+
+        let models_path = root.join("models.preql");
+        let mut resolver = ImportResolver::new();
+        let graph = resolver.resolve(&models_path).unwrap();
+
+        let node = graph
+            .files
+            .values()
+            .find(|n| n.path.ends_with("models.preql"))
+            .unwrap();
+
+        let raw = node
+            .datasources
+            .iter()
+            .find(|d| d.name == "raw_events")
+            .unwrap();
+        assert_eq!(raw.address_kind, "file");
+        assert_eq!(raw.address.as_deref(), Some("`./ingest.py`"));
+        assert!(raw.is_root);
+        assert!(raw.is_partial);
+        assert!(!raw.is_partitioned);
+
+        let events = node
+            .datasources
+            .iter()
+            .find(|d| d.name == "events")
+            .unwrap();
+        assert_eq!(events.address_kind, "literal");
+        assert_eq!(events.address.as_deref(), Some("warehouse.events"));
+        assert!(!events.is_root);
+        assert!(!events.is_partial);
+        assert!(events.is_partitioned);
     }
 }

@@ -51,7 +51,11 @@ jobs:
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
+          # Default features are what crates.io consumers get: pure Rust, no pyo3.
           cargo test --release
+          # The pyo3 layer is feature-gated out of the run above, so type-check it
+          # here rather than discovering a break at wheel-build time.
+          cargo check --release --features python --all-targets
       - name: Build Rust extension
         run: |
           python -m pip install -e .

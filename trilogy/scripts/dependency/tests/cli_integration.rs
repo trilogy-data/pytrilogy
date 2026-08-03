@@ -6,8 +6,8 @@ use tempfile::TempDir;
 fn get_binary_path() -> PathBuf {
     // Find the compiled binary in either debug or release
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let debug_path = Path::new(manifest_dir).join("target/debug/preql-import-resolver");
-    let release_path = Path::new(manifest_dir).join("target/release/preql-import-resolver");
+    let debug_path = Path::new(manifest_dir).join("target/debug/trilogy-parser-cli");
+    let release_path = Path::new(manifest_dir).join("target/release/trilogy-parser-cli");
 
     #[cfg(target_os = "windows")]
     {
@@ -94,6 +94,77 @@ fn test_parse_with_datasource() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("\"datasources\""));
     assert!(stdout.contains("\"name\":\"orders\""));
+    assert!(stdout.contains("\"address\":\"db.orders\""));
+    assert!(stdout.contains("\"address_kind\":\"literal\""));
+}
+
+#[test]
+fn test_parse_datasource_metadata_json() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    let test_file = create_test_file(
+        root,
+        "test.preql",
+        r#"
+        root partial datasource raw_events (
+            id: key
+        )
+        file `./ingest.py`;
+
+        datasource events (
+            id: key
+        )
+        address warehouse.events
+        partition by id;
+
+        datasource event_view (
+            id: key
+        )
+        query '''select 1 as id''';
+        "#,
+    );
+
+    let output = Command::new(get_binary_path())
+        .arg("parse")
+        .arg(&test_file)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid json");
+    let datasources = parsed["datasources"].as_array().unwrap();
+    assert_eq!(datasources.len(), 3);
+
+    let by_name = |name: &str| {
+        datasources
+            .iter()
+            .find(|d| d["name"] == name)
+            .unwrap_or_else(|| panic!("missing datasource {name}"))
+            .clone()
+    };
+
+    let raw = by_name("raw_events");
+    assert_eq!(raw["address_kind"], "file");
+    assert_eq!(raw["address"], "`./ingest.py`");
+    assert_eq!(raw["is_root"], true);
+    assert_eq!(raw["is_partial"], true);
+    assert_eq!(raw["is_partitioned"], false);
+
+    let events = by_name("events");
+    assert_eq!(events["address_kind"], "literal");
+    assert_eq!(events["address"], "warehouse.events");
+    assert_eq!(events["is_root"], false);
+    assert_eq!(events["is_partitioned"], true);
+
+    let view = by_name("event_view");
+    assert_eq!(view["address_kind"], "query");
+    // `query` datasources have no physical address; the key is omitted entirely.
+    assert!(view.get("address").is_none());
 }
 
 #[test]
