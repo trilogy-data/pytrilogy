@@ -319,14 +319,28 @@ def search_sources(network: SourceNetwork) -> SearchResult:
     covers, limit = _enumerate_covers(network)
     solutions: list[SourceSolution] = []
     seen: set[tuple[str, ...]] = set()
+    # (reduced solution, its profile): a later cover that CONTAINS a reduced
+    # solution and answers the request identically only re-derives it — the
+    # extra sources are exactly what `_reduce` exists to strip — so it is
+    # skipped before paying the reduction. The enumeration emits every
+    # alternative discharge, which on a wide join graph is mostly supersets of
+    # the same few minimal covers (q23: 1162 covers, a handful of solutions).
+    reduced: list[tuple[frozenset[str], dict[str, int]]] = []
     for cover in covers:
         if not is_connected(network, cover):
+            continue
+        profile = _binding_profile(network, cover, targets)
+        if any(
+            prior <= cover and profile == prior_profile
+            for prior, prior_profile in reduced
+        ):
             continue
         connected = _reduce(network, cover, targets)
         key = tuple(sorted(connected))
         if key in seen:
             continue
         seen.add(key)
+        reduced.append((connected, _binding_profile(network, connected, targets)))
         solutions.append(_solution_for(network, connected, targets))
     if not solutions:
         return SearchResult(limit=limit)

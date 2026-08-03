@@ -357,6 +357,19 @@ def _network_source(
     chose the sources", which is the only thing under test.
     """
     concepts = _search_concepts_for_bridge(request)
+    v4_history = request.history if isinstance(request.history, V4History) else None
+    verdict_key: tuple[str, str, bool] | None = None
+    if v4_history is not None:
+        verdict_key = (
+            "-".join(sorted(c.address for c in concepts)),
+            str(request.conditions),
+            defer_single_scan,
+        )
+        cached_verdict = v4_history.network_verdicts.get(verdict_key)
+        if cached_verdict == "none":
+            return None
+        if cached_verdict == "defer":
+            return NetworkDecision(bridge=None)
     network = build_source_network(
         concepts, request.environment, request.graph, request.conditions
     )
@@ -374,6 +387,8 @@ def _network_source(
             ",".join(sorted(result.split)),
         )
     if result.solution is None:
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "none"
         return None
     if (
         defer_single_scan
@@ -395,6 +410,8 @@ def _network_source(
         # the graph never offered) is the exception: `_direct_source`'s
         # graph-scored select cannot see it, only the bridge emitter's
         # `_datasource_renders_probe` path renders it.
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "defer"
         return NetworkDecision(bridge=None)
     graph = request.graph.copy()
     # The network mints union candidates itself and names them with the same
@@ -412,6 +429,8 @@ def _network_source(
     )
     chosen -= {f"{CONNECTOR_NODE_PREFIX}{alias}" for alias in connector_aliases}
     if not chosen <= set(graph.datasources):
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "none"
         return None
     for node in [n for n in graph.datasources if n not in chosen]:
         del graph.datasources[node]
