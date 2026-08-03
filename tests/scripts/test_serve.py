@@ -15,6 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from trilogy.execution.state.snapshot import StateSnapshot
+from trilogy.scripts.serve_helpers import REMOTE_STORE_CONTRACT_VERSION, StudioBundle
 from trilogy.scripts.trilogy import cli
 
 pytest.importorskip("fastapi")
@@ -23,7 +24,12 @@ pytest.importorskip("uvicorn")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trilogy.scripts.serve import create_app
+from trilogy.scripts.serve import (
+    build_hosted_studio_link,
+    build_local_studio_link,
+    build_store_id,
+    create_app,
+)
 
 
 def create_test_app(
@@ -63,6 +69,7 @@ def test_serve_root_endpoint():
         assert data["message"] == "Trilogy Model Server"
         assert "with 1 files" in data["description"]
         assert "/index.json" in data["endpoints"]
+        assert data["contract_version"] == REMOTE_STORE_CONTRACT_VERSION
 
 
 def test_serve_index_endpoint_empty():
@@ -431,6 +438,28 @@ def test_serve_index_startup_scripts_populated():
         # Both inputs resolve to the same posix-relative path; the client
         # matches this string against editor `remotePath`.
         assert data["startup_scripts"] == ["setup/init.sql", "setup/init.sql"]
+
+
+def test_serve_index_startup_scripts_unlisted_files_skipped():
+    """An entry only means something if it also appears in /files, so a missing
+    file or an extension the store doesn't serve is dropped."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        (tmppath / "notes.md").write_text("not a script")
+        (tmppath / "real.sql").write_text("select 1;")
+
+        app = create_test_app(
+            tmppath,
+            startup_scripts=[
+                Path("missing.sql"),
+                Path("notes.md"),
+                Path("real.sql"),
+            ],
+        )
+        client = TestClient(app)
+
+        assert client.get("/index.json").json()["startup_scripts"] == ["real.sql"]
 
 
 def test_serve_index_startup_scripts_outside_dir_skipped():
@@ -1222,7 +1251,7 @@ def test_index_defaults_connection_to_serving_engine():
         app = create_test_app(Path(tmpdir), engine="duck_db")
         client = TestClient(app)
         data = client.get("/index.json").json()
-        assert data["connection"] == {"type": "duck_db", "options": {}}
+        assert data["connection"] == {"type": "duckdb", "options": {}}
 
 
 def test_index_omits_connection_for_generic_engine():
@@ -1255,6 +1284,65 @@ def test_index_emits_connection_when_configured():
         assert data["connection"] == {
             "type": "snowflake",
             "options": {"account": "acme", "warehouse": "wh"},
+        }
+
+
+def test_index_omits_connection_for_engine_without_client_runtime():
+    """postgres/presto/sql_server have no client-side constructor, so the store
+    stays browse-only rather than advertising a runtime that fails on first
+    query."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = create_test_app(Path(tmpdir), engine="postgres")
+        client = TestClient(app)
+        assert client.get("/index.json").json()["connection"] is None
+
+
+def test_index_advertises_motherduck():
+    """motherduck is a client runtime with no dialect behind it; the token is a
+    secret so no options ride along."""
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            Path(tmpdir),
+            "localhost",
+            80,
+            connection_type="motherduck",
+            connection_options={"token": "secret"},
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/index.json").json()["connection"] == {
+            "type": "motherduck",
+            "options": {},
+        }
+
+
+def test_index_connection_options_drop_secrets_and_unknowns():
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = FastAPI()
+        create_app(
+            app,
+            "generic",
+            Path(tmpdir),
+            "localhost",
+            80,
+            connection_type="snowflake",
+            connection_options={
+                "account": "acme",
+                "username": "u",
+                "privateKey": "-----BEGIN PRIVATE KEY-----",
+                "nonsense": "x",
+            },
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/index.json").json()["connection"] == {
+            "type": "snowflake",
+            "options": {"account": "acme", "username": "u"},
         }
 
 
@@ -1538,3 +1626,151 @@ def test_state_cache_headers_are_exposed_to_browsers(tmp_path):
     exposed = response.headers["access-control-expose-headers"]
     assert "X-Trilogy-Cached" in exposed
     assert "X-Trilogy-Computed-At" in exposed
+
+
+# ── hosted studio bundle ──────────────────────────────────────────────────────
+
+
+def _bundle_dir(root: Path, base_path: str = "/trilogy-studio-core/") -> StudioBundle:
+    directory = root / "bundle"
+    (directory / "assets").mkdir(parents=True)
+    (directory / "index.html").write_text("<html>studio</html>")
+    (directory / "assets" / "app.js").write_text("//app")
+    return StudioBundle(directory=directory, base_path=base_path, version="1.2.3")
+
+
+def test_studio_bundle_is_served_at_its_base_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("key id int;")
+        app = FastAPI()
+        create_app(
+            app, "duck_db", tmppath, "localhost", 80, studio_bundle=_bundle_dir(tmppath)
+        )
+        client = TestClient(app)
+
+        index = client.get("/trilogy-studio-core/")
+        assert index.status_code == 200
+        assert "studio" in index.text
+        assert client.get("/trilogy-studio-core/assets/app.js").status_code == 200
+
+
+def test_studio_bundle_assets_do_not_require_the_token():
+    """A <script src> can't send X-Trilogy-Token; the token guards the store."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("key id int;")
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            tmppath,
+            "localhost",
+            80,
+            token="secret",
+            studio_bundle=_bundle_dir(tmppath),
+        )
+        client = TestClient(app)
+
+        assert client.get("/trilogy-studio-core/").status_code == 200
+        assert client.get("/files").status_code == 401
+
+
+def test_studio_bundle_honors_a_non_default_base_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        app = FastAPI()
+        create_app(
+            app,
+            "duck_db",
+            tmppath,
+            "localhost",
+            80,
+            studio_bundle=_bundle_dir(tmppath, base_path="/elsewhere/"),
+        )
+        client = TestClient(app)
+
+        assert client.get("/elsewhere/").status_code == 200
+        assert client.get("/trilogy-studio-core/").status_code == 404
+
+
+def test_local_studio_link_omits_import_and_connection():
+    link = build_local_studio_link(
+        "http://localhost:8100",
+        "/trilogy-studio-core/",
+        "analytics/common",
+        "user analytics",
+        "user_analytics",
+        "tok",
+    )
+    assert link.startswith("http://localhost:8100/trilogy-studio-core/#")
+    assert "store=http%3A//localhost%3A8100" in link
+    assert "storeId=user_analytics" in link
+    assert "remote=true" in link
+    assert "assetName=analytics/common" in link
+    assert link.endswith("&token=tok")
+    assert "import=" not in link
+    assert "connection=" not in link
+
+
+def test_local_studio_link_without_token():
+    link = build_local_studio_link(
+        "http://localhost:8100", "/trilogy-studio-core/", "a", "m", "m", None
+    )
+    assert "token" not in link
+
+
+def test_hosted_studio_link_shape_is_unchanged():
+    link = build_hosted_studio_link(
+        "https://trilogydata.dev/trilogy-studio-core/",
+        "http://localhost:8100/models/m.json",
+        "hello_world",
+        "bigquery",
+        "bigquery",
+        "http://localhost:8100",
+        "tok",
+    )
+    assert link.startswith("https://trilogydata.dev/trilogy-studio-core/#import=")
+    assert "connection=bigquery" in link
+    assert link.endswith("&token=tok")
+
+
+def test_store_id_is_unique_per_served_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        first = Path(tmpdir) / "a" / "analytics"
+        second = Path(tmpdir) / "b" / "analytics"
+        first.mkdir(parents=True)
+        second.mkdir(parents=True)
+
+        left = build_store_id(first, None)
+        right = build_store_id(second, None)
+        assert left != right
+        assert left.startswith("analytics-")
+        assert right.startswith("analytics-")
+
+
+def test_store_id_is_stable_across_spellings_of_the_same_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        served = Path(tmpdir) / "project"
+        served.mkdir()
+        assert build_store_id(served, None) == build_store_id(
+            Path(tmpdir) / "project" / ".", None
+        )
+
+
+def test_store_id_sanitizes_the_project_name():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        served = Path(tmpdir)
+        store_id = build_store_id(served, "Example BigQuery Model!")
+        label, _, digest = store_id.rpartition("-")
+        assert label == "example-bigquery-model"
+        assert len(digest) == 8
+        assert store_id == store_id.lower()
+        assert " " not in store_id
+
+
+def test_store_id_survives_a_nameless_label():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store_id = build_store_id(Path(tmpdir), "***")
+        assert len(store_id) == 8
+        assert store_id.isalnum()

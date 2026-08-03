@@ -1,5 +1,11 @@
 """Helpers for the serve command."""
 
+from trilogy.scripts.serve_helpers.connection_spec import (
+    ALLOWED_CONNECTION_OPTIONS,
+    build_connection_spec,
+    filter_connection_options,
+    normalize_connection_type,
+)
 from trilogy.scripts.serve_helpers.file_discovery import (
     extract_description_from_file,
     find_all_model_files,
@@ -23,6 +29,7 @@ from trilogy.scripts.serve_helpers.jobs import (
     run_subprocess,
 )
 from trilogy.scripts.serve_helpers.models import (
+    REMOTE_STORE_CONTRACT_VERSION,
     ConnectionSpec,
     DirectoryListing,
     FileCreateRequest,
@@ -32,6 +39,7 @@ from trilogy.scripts.serve_helpers.models import (
     JobRequest,
     JobStatus,
     ModelImport,
+    StoreConnectionType,
     StoreIndex,
     StoreModelIndex,
 )
@@ -44,8 +52,24 @@ from trilogy.scripts.serve_helpers.state_computation import (
     compute_state_snapshot_sync,
     relative_target,
 )
+from trilogy.scripts.serve_helpers.studio_bundle import (
+    STUDIO_CACHE_ROOT,
+    STUDIO_RELEASE_BASE,
+    StudioBundle,
+    StudioBundleError,
+    StudioManifest,
+    cached_bundles,
+    download_bundle,
+    fetch_manifest,
+    load_bundle_directory,
+    resolve_studio_bundle,
+)
 
 __all__ = [
+    "ALLOWED_CONNECTION_OPTIONS",
+    "REMOTE_STORE_CONTRACT_VERSION",
+    "STUDIO_CACHE_ROOT",
+    "STUDIO_RELEASE_BASE",
     "CachedSnapshot",
     "ConnectionSpec",
     "DirectoryListing",
@@ -58,12 +82,21 @@ __all__ = [
     "JobStatus",
     "ModelImport",
     "StateSnapshotCache",
+    "StoreConnectionType",
     "StoreIndex",
     "StoreModelIndex",
+    "StudioBundle",
+    "StudioBundleError",
+    "StudioManifest",
+    "build_connection_spec",
+    "cached_bundles",
     "cancel_job",
     "compute_state_snapshot_sync",
     "create_job",
+    "download_bundle",
     "extract_description_from_file",
+    "fetch_manifest",
+    "filter_connection_options",
     "find_all_model_files",
     "find_csv_files",
     "find_model_by_name",
@@ -76,6 +109,9 @@ __all__ = [
     "get_job",
     "get_relative_model_name",
     "get_safe_model_name",
+    "load_bundle_directory",
+    "normalize_connection_type",
     "relative_target",
+    "resolve_studio_bundle",
     "run_subprocess",
 ]

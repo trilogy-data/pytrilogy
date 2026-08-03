@@ -1,15 +1,30 @@
 """Pydantic models for the serve command."""
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from trilogy.dialect.enums import Dialects
+# Version of the remote store contract this server speaks; see
+# docs/remote-store-contract.md in trilogy-studio-core. A published studio
+# bundle declares the same number in its release manifest, so a host can
+# refuse a bundle it cannot talk to. Bump on any breaking change.
+REMOTE_STORE_CONTRACT_VERSION = 1
 
-# Wire-format type for /index.json `connection.type` — always a `Dialects`
-# value (e.g. `"duck_db"`, `"bigquery"`). Clients remap these to whatever
-# in-process runtime constructor they use; the server speaks one format.
-ConnectionType = Dialects
+
+class StoreConnectionType(str, Enum):
+    """Wire-format type for /index.json `connection.type`.
+
+    Client runtime names, not `Dialects` members: `motherduck` has no dialect
+    behind it, and a dialect the client cannot construct is omitted rather than
+    advertised (see connection_spec.py).
+    """
+
+    DUCKDB = "duckdb"
+    BIGQUERY = "bigquery"
+    SNOWFLAKE = "snowflake"
+    MOTHERDUCK = "motherduck"
+    SQLITE = "sqlite"
 
 
 class ConnectionSpec(BaseModel):
@@ -18,7 +33,7 @@ class ConnectionSpec(BaseModel):
     Non-secret fields only. Secrets are supplied per-user by the client.
     """
 
-    type: ConnectionType
+    type: StoreConnectionType
     options: dict[str, str] = Field(default_factory=dict)
 
 

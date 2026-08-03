@@ -729,7 +729,7 @@ def create_datasource_from_table(
 
     grain = Grain(components=set(grain_components)) if grain_components else Grain()
 
-    address = Address(location=qualified_name, quoted=True)
+    address = Address(location=qualified_name)
 
     datasource = Datasource(
         name=table_name.replace(".", "_"),

@@ -86,6 +86,13 @@ class PostgresDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = PG_SQL_TEMPLATE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    # `relation "orders" does not exist` / `schema "analytics" does not exist`.
+    # Anchored on the object kind: bare `does not exist` also covers a missing
+    # type or function, which are query bugs rather than a missing source.
+    TABLE_NOT_FOUND_PATTERN = r'(relation|schema) ".+" does not exist'
+    # quoted when unqualified (`column "updated_at" does not exist`), unquoted
+    # when qualified (`column base.updated_at does not exist`)
+    COLUMN_NOT_FOUND_PATTERN = r"column .+ does not exist"
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

@@ -13,6 +13,7 @@ from trilogy.execution.state.exceptions import (
 )
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
+    _execute_raw_sql_scalar,
     get_concept_max_watermark_abstract,
     get_concept_max_watermarks,
     get_freshness_watermarks,
@@ -175,6 +176,153 @@ class TestDuckDBMissingSourcePatterns:
             "stmt", {}, Exception("Catalog Error: Table with name foo does not exist!")
         )
         assert is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is True
+
+
+class StubProbeExecutor:
+    """Only what _execute_raw_sql_scalar touches."""
+
+    def __init__(self, dialect, error: Exception):
+        self.generator = dialect
+        self.connection = self
+        self._error = error
+
+    def execute_raw_sql(self, query: str):
+        raise self._error
+
+    def rollback(self) -> None:
+        return None
+
+
+#: (dialect, missing-column wordings, missing-source wordings, must-still-raise).
+#: A probe naming a column the physical table lacks has to read as stale, or a
+#: model change that outruns the warehouse fails the run instead of rebuilding.
+PROBE_ERROR_CASES = [
+    (
+        Dialects.BIGQUERY,
+        [
+            "400 Unrecognized name: updated_at at [1:12]",
+            "400 Name updated_at not found inside base at [1:12]",
+        ],
+        [
+            "404 Not found: Table proj:ds.orders was not found in location US",
+            "404 Not found: Dataset proj:ds was not found in location US",
+        ],
+        [
+            "403 Access Denied: Table proj:ds.orders: User does not have permission",
+            "400 Syntax error: Unexpected keyword SELECT at [1:20]",
+            "403 Quota exceeded: Your project exceeded quota for free query bytes",
+            "404 Not found: Job proj:US.job_abc123",
+        ],
+    ),
+    (
+        Dialects.POSTGRES,
+        [
+            'column "updated_at" does not exist',
+            "column base.updated_at does not exist",
+        ],
+        [
+            'relation "orders" does not exist',
+            'schema "analytics" does not exist',
+        ],
+        [
+            'type "geography" does not exist',
+            "function max(text) does not exist",
+            "permission denied for table orders",
+            'syntax error at or near "SELECT"',
+        ],
+    ),
+    (
+        Dialects.SQL_SERVER,
+        ["[42S22] [SQL Server]Invalid column name 'updated_at'. (207)"],
+        ["[42S02] [SQL Server]Invalid object name 'dbo.orders'. (208)"],
+        [
+            "[42000] [SQL Server]The SELECT permission was denied on the object 'orders'",
+            "[42000] [SQL Server]Incorrect syntax near 'SELECT'. (102)",
+            "[08S01] [SQL Server]Communication link failure",
+        ],
+    ),
+    (
+        Dialects.PRESTO,
+        ["line 1:12: Column 'updated_at' cannot be resolved"],
+        ["line 1:15: Table 'hive.default.orders' does not exist"],
+        [
+            "Access Denied: Cannot select from table hive.default.orders",
+            "line 1:1: mismatched input 'SELEC'",
+            "Query exceeded per-node memory limit",
+        ],
+    ),
+    (
+        Dialects.TRINO,
+        [
+            "TrinoUserError(type=USER_ERROR, name=COLUMN_NOT_FOUND, message=\"line 1:12: Column 'updated_at' cannot be resolved\")"
+        ],
+        [
+            "TrinoUserError(type=USER_ERROR, name=TABLE_NOT_FOUND, message=\"line 1:15: Table 'hive.default.orders' does not exist\")"
+        ],
+        [
+            'TrinoUserError(type=USER_ERROR, name=PERMISSION_DENIED, message="Access Denied")'
+        ],
+    ),
+]
+
+
+def _flatten(index: int) -> list[tuple]:
+    return [
+        pytest.param(dialect, message, id=f"{dialect.value}-{message[:40]}")
+        for case in PROBE_ERROR_CASES
+        for dialect in [case[0]]
+        for message in case[index]
+    ]
+
+
+MISSING_COLUMN_CASES = _flatten(1)
+MISSING_SOURCE_CASES = _flatten(2)
+UNRELATED_CASES = _flatten(3)
+
+
+class TestProbeErrorClassification:
+    """Every engine trilogy can probe must classify its own missing-column and
+    missing-source wordings, and nothing else."""
+
+    @pytest.mark.parametrize("dialect,message", MISSING_COLUMN_CASES)
+    def test_missing_column_is_a_schema_mismatch(self, dialect, message: str) -> None:
+        assert (
+            is_schema_mismatch_error(Exception(message), dialect.default_renderer())
+            is True
+        )
+
+    @pytest.mark.parametrize("dialect,message", MISSING_SOURCE_CASES)
+    def test_missing_source_is_recognized(self, dialect, message: str) -> None:
+        assert (
+            is_missing_source_error(Exception(message), dialect.default_renderer())
+            is True
+        )
+
+    @pytest.mark.parametrize("dialect,message", UNRELATED_CASES)
+    def test_real_failures_are_not_absorbed(self, dialect, message: str) -> None:
+        renderer = dialect.default_renderer()
+        exc = Exception(message)
+        assert is_schema_mismatch_error(exc, renderer) is False
+        assert is_missing_source_error(exc, renderer) is False
+
+    @pytest.mark.parametrize(
+        "dialect,message", MISSING_COLUMN_CASES + MISSING_SOURCE_CASES
+    )
+    def test_probe_reports_no_watermark(self, dialect, message: str) -> None:
+        """The reported failure: repointing freshness at a column the physical
+        table does not have yet failed the run instead of reading as stale."""
+        executor = StubProbeExecutor(dialect.default_renderer(), Exception(message))
+        assert _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor) is None
+
+    @pytest.mark.parametrize("dialect,message", UNRELATED_CASES)
+    def test_probe_still_raises_on_an_unrelated_failure(
+        self, dialect, message: str
+    ) -> None:
+        sentinel = RuntimeError(message)
+        executor = StubProbeExecutor(dialect.default_renderer(), sentinel)
+        with pytest.raises(RuntimeError) as exc_info:
+            _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor)
+        assert exc_info.value is sentinel
 
 
 def test_last_update_time_watermarks(duckdb_engine: Executor):

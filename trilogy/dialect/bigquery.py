@@ -258,6 +258,12 @@ class BigqueryDialect(BaseDialect):
     SUPPORTS_QUALIFY = True
     # python datasources have to be staged to GCS before a query can name them
     REQUIRES_SOURCE_PREPARATION = True
+    # `404 Not found: Table proj:ds.tbl was not found in location US`
+    TABLE_NOT_FOUND_PATTERN = r"Not found: (Table|Dataset)"
+    # unqualified `Unrecognized name: col`; qualified `Name col not found inside base`.
+    # A staleness probe names a column the model declares, so a table built before
+    # that column existed must read as stale rather than failing the probe.
+    COLUMN_NOT_FOUND_PATTERN = r"Unrecognized name|Name .+ not found inside"
     # BigQuery requires an explicit DISTINCT on set operators.
     SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         **BaseDialect.SET_OPERATOR_MAP,

@@ -15,6 +15,10 @@ def namedtuple_row_class(columns: Sequence[str], name: str = "Row") -> type:
     equality with a plain tuple. rename=True replaces invalid identifiers with
     _0, _1, ... so column names like "local.x" don't blow up; index access
     still works regardless.
+
+    Not provided, so consumers must not reach for either: SQLAlchemy's
+    ``_mapping``, and the driver's column names — read those from the result's
+    ``keys()``, since rename may have renumbered the fields.
     """
     return namedtuple(name, tuple(columns), rename=True)  # type: ignore[misc]
 

@@ -1,6 +1,7 @@
 """Serve command for Trilogy CLI."""
 
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -16,6 +17,9 @@ from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
 from trilogy.execution.state.snapshot import StateSnapshot
 from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
+    REMOTE_STORE_CONTRACT_VERSION,
+    StudioBundle,
+    StudioManifest,
     find_all_model_files,
     find_trilogy_files,
     get_relative_model_name,
@@ -119,6 +123,101 @@ def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
     return target_path
 
 
+_STORE_ID_DISALLOWED = re.compile(r"[^a-z0-9._-]+")
+
+
+def _store_id_label(value: str) -> str:
+    return (
+        _STORE_ID_DISALLOWED.sub("-", value.strip().lower())
+        .strip("-.")[:40]
+        .strip("-.")
+    )
+
+
+def build_store_id(directory_path: PathlibPath, project_name: str | None) -> str:
+    """Stable, collision-resistant id for the studio's store registration.
+
+    The client namespaces every remote entity under this (`remote:<id>:<path>`)
+    and matches stores by it, so two projects sharing an id merge into one
+    store — same-named files collide, and because the store record holds the
+    base URL, saves start routing to whichever server registered last. The id
+    the client derives on its own is the base URL (`localhost:8100`), which
+    every project served on that port shares and which moves with the port.
+
+    Hence a label plus a digest of the served path: the path is what actually
+    distinguishes two projects, and it doesn't change when the port does. The
+    digest rather than the path itself keeps the filesystem layout out of the
+    client's storage keys.
+    """
+    import hashlib
+
+    canonical = os.path.normcase(os.path.realpath(directory_path))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
+    label = _store_id_label(project_name or directory_path.name)
+    return f"{label}-{digest}" if label else digest
+
+
+def announce_studio_download(manifest: StudioManifest) -> None:
+    megabytes = manifest.tarball.bytes / 1_000_000
+    print(
+        f"Fetching Trilogy Studio {manifest.version} ({megabytes:.1f} MB) "
+        "— cached for future runs..."
+    )
+
+
+def build_hosted_studio_link(
+    studio_url: str,
+    model_url: str,
+    asset_name: str,
+    model_name: str,
+    engine_url: str,
+    store_url: str,
+    token: str | None,
+) -> str:
+    """Deep link into the studio hosted on trilogydata.dev.
+
+    Fallback only. A public origin fetching a loopback store is gated by Local
+    Network Access, which the browser auto-denies when the fetch fires on page
+    load — so this link needs the user to grant a permission prompt that may
+    never appear. Prefer `build_local_studio_link`.
+    """
+    return (
+        f"{studio_url}#"
+        f"import={quote(model_url)}&"
+        f"assetType=trilogy&"
+        f"assetName={quote(asset_name)}&"
+        f"modelName={quote(model_name)}&"
+        f"connection={quote(engine_url)}&"
+        f"store={quote(store_url)}&"
+        f"remote={quote('true')}" + (f"&token={token}" if token else "")
+    )
+
+
+def build_local_studio_link(
+    base_url: str,
+    base_path: str,
+    asset_name: str,
+    model_name: str,
+    store_id: str,
+    token: str | None,
+) -> str:
+    """Deep link into the studio this server hosts — same origin as the store.
+
+    No `import` or `connection`: the client ignores both when `remote=true` and
+    reads them from /index.json instead. `storeId` is pinned so the studio's
+    saved state survives a port change, which would otherwise mint a new id.
+    """
+    return (
+        f"{base_url}{base_path}#"
+        f"store={quote(base_url)}&"
+        f"storeId={quote(store_id)}&"
+        f"remote=true&"
+        f"assetType=trilogy&"
+        f"assetName={quote(asset_name)}&"
+        f"modelName={quote(model_name)}" + (f"&token={token}" if token else "")
+    )
+
+
 def create_app(
     app,
     engine: str,
@@ -132,6 +231,7 @@ def create_app(
     connection_options: dict[str, str] | None = None,
     startup_scripts: list[PathlibPath] | None = None,
     enable_state_cache: bool = True,
+    studio_bundle: StudioBundle | None = None,
 ):
     # Normalize once so every closure (including the state probe) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
@@ -154,6 +254,7 @@ def create_app(
         ModelImport,
         StateSnapshotCache,
         StoreIndex,
+        build_connection_spec,
         cancel_job,
         compute_state_snapshot_sync,
         create_job,
@@ -253,6 +354,7 @@ def create_app(
         return {
             "message": "Trilogy Model Server",
             "description": f"Serving model '{directory_path.name}' with {file_count} files from {directory_path}",
+            "contract_version": REMOTE_STORE_CONTRACT_VERSION,
             "endpoints": {
                 "/index.json": "Get list of available models",
                 "/models/<model-name>.json": "Get specific model details",
@@ -263,31 +365,15 @@ def create_app(
             },
         }
 
-    # Explicit `[serve.connection]` in trilogy.toml wins. Otherwise fall back
-    # to the serving engine dialect. The wire format is always a `Dialects`
-    # value (e.g. `"duck_db"`); clients are responsible for remapping.
-    def _resolve_dialect(value: Dialects | str) -> Dialects | None:
-        if isinstance(value, Dialects):
-            return value
-        try:
-            return Dialects(value)
-        except ValueError:
-            return None
-
-    if connection_type:
-        resolved = _resolve_dialect(connection_type)
-        connection_spec: ConnectionSpec | None = (
-            ConnectionSpec(type=resolved, options=connection_options or {})
-            if resolved
-            else None
-        )
-    else:
-        resolved = _resolve_dialect(engine)
-        connection_spec = ConnectionSpec(type=resolved) if resolved else None
+    connection_spec: ConnectionSpec | None = build_connection_spec(
+        connection_type, connection_options, engine
+    )
 
     # Resolve startup script paths to posix paths relative to the served
-    # directory. Files outside `directory_path` are silently skipped — they
-    # aren't reachable via /files, so the client couldn't tag them anyway.
+    # directory. A script the client can't reach is dropped rather than
+    # advertised: an entry only means anything if it also shows up in /files,
+    # which requires it to exist, live under `directory_path`, and be one of
+    # the served extensions.
     resolved_startup_scripts: list[str] = []
     for script in startup_scripts or []:
         script_abs = script if script.is_absolute() else directory_path / script
@@ -295,6 +381,11 @@ def create_app(
             script_real = PathlibPath(os.path.realpath(script_abs))
             rel = script_real.relative_to(directory_path)
         except ValueError:
+            continue
+        if (
+            script_real.suffix not in ALLOWED_WRITE_EXTENSIONS
+            or not script_real.is_file()
+        ):
             continue
         resolved_startup_scripts.append(rel.as_posix())
 
@@ -508,6 +599,25 @@ def create_app(
 
     app.include_router(router)
 
+    if studio_bundle is not None:
+        import mimetypes
+
+        from fastapi.staticfiles import StaticFiles
+
+        # DuckDB instantiates wasm by streaming, which rejects any other content
+        # type; `mimetypes` doesn't register .wasm on every platform.
+        mimetypes.add_type("application/wasm", ".wasm")
+
+        # The bundle is built with an absolute vite base, so it only works
+        # mounted at the path its manifest names. Unauthenticated on purpose:
+        # a <script src> can't carry X-Trilogy-Token, and the token is there to
+        # protect the store's files, not the studio's own assets.
+        app.mount(
+            studio_bundle.base_path.rstrip("/"),
+            StaticFiles(directory=studio_bundle.directory, html=True),
+            name="studio",
+        )
+
     print(f"Starting Trilogy Model Server on http://{host}:{port}")
     print(f"Serving model '{directory_path.name}' from: {directory_path}")
     print(f"Engine: {engine}")
@@ -547,6 +657,18 @@ def create_app(
     default=False,
     help="Recompute /state on every request instead of caching it under .trilogy/state",
 )
+@option(
+    "--no-local-studio",
+    is_flag=True,
+    default=False,
+    help="Link to the hosted studio instead of serving a local bundle",
+)
+@option(
+    "--studio-bundle",
+    default=None,
+    type=Path(exists=True, file_okay=False, dir_okay=True),
+    help="Serve an already-extracted studio bundle from this directory",
+)
 @pass_context
 def serve(
     ctx,
@@ -559,6 +681,8 @@ def serve(
     no_auth: bool,
     auth_token: str | None,
     no_state_cache: bool,
+    no_local_studio: bool,
+    studio_bundle: str | None,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -616,6 +740,24 @@ def serve(
     else:
         token = secrets.token_urlsafe(TOKEN_BYTES)
 
+    resolved_bundle: StudioBundle | None = None
+    if not no_local_studio:
+        from trilogy.scripts.serve_helpers import (
+            StudioBundleError,
+            resolve_studio_bundle,
+        )
+
+        try:
+            resolved_bundle = resolve_studio_bundle(
+                explicit_directory=(
+                    PathlibPath(studio_bundle) if studio_bundle else None
+                ),
+                on_progress=announce_studio_download,
+            )
+        except StudioBundleError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
     app = FastAPI(title="Trilogy Model Server", version=__version__)
     create_app(
         app,
@@ -630,6 +772,7 @@ def serve(
         connection_options=connection_options,
         startup_scripts=startup_scripts,
         enable_state_cache=not no_state_cache,
+        studio_bundle=resolved_bundle,
     )
 
     # Generate Trilogy Studio URL
@@ -646,26 +789,37 @@ def serve(
 
     if target_file:
         model_safe_name = get_safe_model_name(directory_path.name)
-        model_url = f"{base_url}/models/{model_safe_name}.json"
-        store_url = base_url
         asset_name = get_relative_model_name(target_file, directory_path)
-        engine_url = "duckdb" if engine == "duck_db" else engine
-
         display_model_name = project_name if project_name else directory_path.name
-        studio_link = (
-            f"{studio_url}#"
-            f"import={quote(model_url)}&"
-            f"assetType=trilogy&"
-            f"assetName={quote(asset_name)}&"
-            f"modelName={quote(display_model_name)}&"
-            f"connection={quote(engine_url)}&"
-            f"store={quote(store_url)}&"
-            f"remote={quote('true')}" + (f"&token={token}" if token else "")
-        )
+
+        if resolved_bundle is not None:
+            studio_link = build_local_studio_link(
+                base_url,
+                resolved_bundle.base_path,
+                asset_name,
+                display_model_name,
+                build_store_id(directory_path, project_name),
+                token,
+            )
+        else:
+            studio_link = build_hosted_studio_link(
+                studio_url,
+                f"{base_url}/models/{model_safe_name}.json",
+                asset_name,
+                display_model_name,
+                "duckdb" if engine == "duck_db" else engine,
+                base_url,
+                token,
+            )
 
         print("\n" + "=" * 80)
         print("Trilogy Studio Link:")
         print(studio_link)
+        if resolved_bundle is None:
+            print(
+                "(hosted studio — your browser may block it from reaching this "
+                "local server; run with a studio bundle to serve it locally)"
+            )
         print("=" * 80 + "\n")
 
         if not no_browser:

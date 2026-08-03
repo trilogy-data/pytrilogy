@@ -169,11 +169,12 @@ def _address_token(address: Address | str) -> str:
     if isinstance(address, str):
         return _h("addr", address)
     location, write_location, additional = _logical_locations(address)
+    # Address.quoted is source syntax only (see Renderer); it never reaches SQL,
+    # so re-quoting an address must not invalidate the datasource's contents.
     return _h(
         "addr",
         location,
         write_location,
-        str(address.quoted),
         address.type.name,
         # partition column order defines hive layout; keep it
         *address.partition_columns,

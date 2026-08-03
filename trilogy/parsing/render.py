@@ -724,6 +724,10 @@ class Renderer:
             if arg.write_location:
                 return f"file `{arg.location}`:`{arg.write_location}`"
             return f"file `{arg.location}`"
+        # Anything not a bare IDENTIFIER (hyphens, ``-``/``*``/``:``, spaces)
+        # only parses back as a backtick-quoted QUOTED_ADDRESS.
+        if arg.quoted or not _BARE_IDENTIFIER.fullmatch(arg.location):
+            return f"address `{arg.location}`"
         return f"address {arg.location}"
 
     @to_string.register
