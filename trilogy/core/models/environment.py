@@ -139,6 +139,12 @@ def _subsequence_gaps(needle: list[str], haystack: list[str]) -> int:
 
 class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
+        # Write counter for content-addressed caches over the AUTHOR
+        # environment (e.g. domain_graph's minted-edge cache): unlike a
+        # BuildEnvironment this dict mutates between statements, so identity
+        # alone cannot prove freshness. Set before super().__init__, which may
+        # already route initial data through __setitem__.
+        self.mutations: int = 0
         super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
@@ -197,11 +203,15 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             view: Mapping[str, Concept] = MappingProxyType(overlay)
         else:
             view = overlay
+        # Overlays redirect reads without touching self.data, so they count as
+        # writes for `mutations`-stamped caches (see the field's comment).
+        self.mutations += 1
         self._overlay_stack.append(view)
         try:
             yield view
         finally:
             popped = self._overlay_stack.pop()
+            self.mutations += 1
             assert popped is view, "overlay stack corrupted"
 
     @contextmanager
@@ -214,11 +224,21 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         ``merge_concept``'s equality shortcut reads a staged alias and
         skips rewiring a stale ``alias_origin_lookup`` entry.
         """
+        self.mutations += 1
         saved, self._overlay_stack = self._overlay_stack, []
         try:
             yield
         finally:
             self._overlay_stack = saved
+            self.mutations += 1
+
+    def __setitem__(self, key: str, item: Concept) -> None:
+        self.mutations += 1
+        super().__setitem__(key, item)
+
+    def __delitem__(self, key: str) -> None:
+        self.mutations += 1
+        super().__delitem__(key)
 
     def _overlay_lookup(self, key: str) -> Concept | None:
         if not self._overlay_stack:

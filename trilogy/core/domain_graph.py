@@ -32,7 +32,9 @@ deterministic in edge insertion order.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from typing import Any
+from weakref import ReferenceType, ref
 
 from trilogy.core.enums import JoinType
 
@@ -820,15 +822,59 @@ def mint_fd_edges(environment: Any) -> list[FDEdge]:
     return out
 
 
+# id(environment) -> (weak handle, mutation stamp, minted edge tuples). Same
+# identity idiom as functional_dependency._FACTS_CACHE, PLUS a mutation stamp:
+# the AUTHOR environment, unlike a BuildEnvironment, mutates between statements
+# (each parse adds concepts), so identity alone cannot prove freshness. The
+# stamp is the write counters of the two dicts minting reads — overlay
+# push/pop counts as a write (see EnvironmentConceptDict.mutations).
+_MINTED_CACHE: dict[
+    int,
+    tuple[
+        ReferenceType,
+        tuple[int, int],
+        tuple[
+            tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]
+        ],
+    ],
+] = {}
+
+
+def _evict_minted(key: int, _dead: ReferenceType) -> None:
+    _MINTED_CACHE.pop(key, None)
+
+
+def _minted_edges(
+    environment: Any,
+) -> tuple[tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]]:
+    key = id(environment)
+    stamp = (environment.concepts.mutations, environment.datasources.mutations)
+    cached = _MINTED_CACHE.get(key)
+    if cached is not None and cached[0]() is environment and cached[1] == stamp:
+        return cached[2]
+    minted = (
+        tuple(mint_structural_edges(environment)),
+        tuple(mint_binding_edges(environment)),
+        tuple(mint_fd_edges(environment)),
+    )
+    _MINTED_CACHE[key] = (ref(environment, partial(_evict_minted, key)), stamp, minted)
+    return minted
+
+
 def assemble_full_graph(environment: Any, declared: DomainGraph) -> DomainGraph:
     """The BuildEnvironment graph: the declared edges (global + this build's
     scoped overlay, already collected in `declared`) plus structural, binding
-    and FD edges minted from the author environment. Linear in model size."""
+    and FD edges minted from the author environment. Linear in model size —
+    and re-run once per materialization (11x on a nested-heavy statement), so
+    the minted parts are cached per environment state; only `declared`
+    varies per call. Edge objects are shared across graphs: they are plain
+    data no consumer mutates."""
     graph = DomainGraph(edges=declared.edges)
-    for edge in mint_structural_edges(environment):
+    structural, bindings, fds = _minted_edges(environment)
+    for edge in structural:
         graph.add_edge(edge)
-    for binding in mint_binding_edges(environment):
+    for binding in bindings:
         graph.add_binding(binding)
-    for fd in mint_fd_edges(environment):
+    for fd in fds:
         graph.add_fd(fd)
     return graph
