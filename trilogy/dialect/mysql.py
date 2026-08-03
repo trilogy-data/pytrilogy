@@ -178,6 +178,7 @@ class MySQLDialect(BaseDialect):
     SQL_TEMPLATE = MYSQL_SQL_TEMPLATE
     SUPPORTS_ALIAS_IN_HAVING = True
     SUPPORTS_FULL_JOIN = False
+    SUPPORTS_ARRAYS = False
     NULL_WRAPPER = staticmethod(null_safe_join_key)
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"

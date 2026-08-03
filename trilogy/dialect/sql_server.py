@@ -76,6 +76,7 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
+    SUPPORTS_ARRAYS = False
     # Msg 208: `Invalid object name 'dbo.orders'.`
     TABLE_NOT_FOUND_PATTERN = r"Invalid object name"
     # Msg 207: `Invalid column name 'updated_at'.` Msg 4104 (multi-part

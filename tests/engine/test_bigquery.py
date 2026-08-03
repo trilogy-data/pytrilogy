@@ -151,6 +151,9 @@ FROM
     sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
 )
 def test_in_with_array():
+    """An inlined array constant is a value list, so it splats to the portable
+    `in (…)` — `in [1,2,3,4]` is a syntax error on BigQuery, and `in unnest(…)`
+    would be a BigQuery-only spelling of something every engine can say."""
     environment = Environment()
     from trilogy.hooks import DebuggingHook
 
@@ -163,9 +166,9 @@ const list <- [1,2,3,4];
 const two <- 2;
 
 where two in list
-select 
+select
     two;
-    
+
     """)
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -176,7 +179,8 @@ select
     assert isinstance(listc.lineage.arguments[0], ListWrapper), type(
         listc.lineage.arguments[0]
     )
-    assert "unnest" in sql, sql
+    assert "in (1,2,3,4)" in sql, sql
+    assert "in [" not in sql, sql
 
 
 def test_datetime_functions():

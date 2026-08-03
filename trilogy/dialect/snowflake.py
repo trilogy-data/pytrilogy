@@ -110,6 +110,17 @@ class SnowflakeDialect(BaseDialect):
         # Snowflake treats backslash as an escape character in string literals.
         return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 
+    def render_array_member_source(
+        self, array_sql: str, from_clause: str | None
+    ) -> tuple[str, str]:
+        """FLATTEN is a table function; the element lands in its `value` column."""
+        alias = self.ARRAY_MEMBER_SOURCE_ALIAS
+        if from_clause:
+            source = f"{from_clause}, lateral flatten(input => {array_sql}) as {alias}"
+        else:
+            source = f"table(flatten(input => {array_sql})) as {alias}"
+        return source, f"{alias}.value"
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[TableColumn]:
