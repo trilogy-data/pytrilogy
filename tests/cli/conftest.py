@@ -22,6 +22,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Self
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs
 from urllib.request import Request
 
 import pytest
@@ -67,10 +68,16 @@ class Raw:
 @dataclass
 class RecordedCall:
     method: str
+    #: Path only. Routes are registered and matched without a query string —
+    #: the server distinguishes endpoints by path, and a route table keyed by
+    #: full URL would need re-registering for every filter combination.
     path: str
     body: Any
     headers: dict[str, str]
     data: bytes | None
+    #: Parsed query string, so a test can assert a filter was sent server-side
+    #: rather than applied after the fact.
+    query: dict[str, list[str]] = field(default_factory=dict)
 
 
 _MISSING = object()
@@ -93,8 +100,35 @@ def _job(job_id: str = "job-1", name: str = "nightly", **over: Any) -> dict:
         "name": name,
         "operation": "run",
         "timeout_seconds": 600,
+        "current_version_id": f"{job_id}-v1",
         "created_at": TS,
         "updated_at": TS,
+        **over,
+    }
+
+
+#: What a server that records push provenance answers with. Every deployed one
+#: drops the field today, so the CLI must read it as absent — the seed carries
+#: it so the rendering path is covered either way.
+_SOURCE_FINGERPRINT = {
+    "version": 1,
+    "content": "a" * 64,
+    "origin": "github.com/acme/models",
+    "origin_kind": "git",
+    "path": "etl",
+    "revision": "e05bdfb7" + "0" * 32,
+    "branch": "main",
+}
+
+
+def _job_version(number: int = 1, job_id: str = "job-1", **over: Any) -> dict:
+    return {
+        "id": f"{job_id}-v{number}",
+        "job_id": job_id,
+        "version_number": number,
+        "operation": "run",
+        "timeout_seconds": 600,
+        "created_at": TS,
         **over,
     }
 
@@ -174,6 +208,16 @@ class FakeCloudAPI:
                 ("GET", "/orgs"): [_org_summary()],
                 ("GET", f"/orgs/{ORG}/jobs"): [_job()],
                 ("POST", f"/orgs/{ORG}/jobs"): _job("job-new", "fresh"),
+                # A PUT that moved the job on: same id, a version id the
+                # caller did not already hold, which is how push tells an
+                # update from a content no-op.
+                ("PUT", f"/orgs/{ORG}/jobs/*"): _job(
+                    current_version_id="job-1-v2", updated_at=TS
+                ),
+                ("GET", f"/orgs/{ORG}/jobs/*/versions"): [
+                    _job_version(2, source_fingerprint=_SOURCE_FINGERPRINT),
+                    _job_version(1),
+                ],
                 ("POST", f"/orgs/{ORG}/jobs/*/run"): _run("run-new", status="queued"),
                 ("GET", f"/orgs/{ORG}/jobs/runs"): [_run(), _run("run-2")],
                 ("GET", f"/orgs/{ORG}/jobs/runs/*"): _run(
@@ -247,7 +291,7 @@ class FakeCloudAPI:
     def urlopen(self, req: Request, timeout: float | None = None) -> _FakeResponse:
         if self.offline:
             raise URLError("connection refused")
-        path = req.full_url[len(self.url) :]
+        path, _, query = req.full_url[len(self.url) :].partition("?")
         try:
             body = json.loads(req.data.decode("utf-8")) if req.data else None
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -259,6 +303,7 @@ class FakeCloudAPI:
                 body,
                 {k.lower(): v for k, v in req.header_items()},
                 req.data,
+                parse_qs(query),
             )
         )
         payload = self._lookup(req.get_method(), path)

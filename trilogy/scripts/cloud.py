@@ -23,6 +23,20 @@ paths relative to ``--source``, so the directory shape (relative imports,
 trilogy-cloud's ``development/scripts/bundle_project.py``, including the
 PubSub size budget: a bundle that cannot fit in a queue message is refused at
 push time, not an hour later by a broker error.
+
+**Push is an upsert, keyed by job name.** Jobs are versioned platform-side —
+the row is stable identity and its content is a copy of the newest version —
+so re-pushing a job ``PUT``s new content under the same id: run history and
+schedule bindings survive, and content the job already has mints no version at
+all. It used to only ever ``POST``, which silently minted a *second* job of
+the same name and left every schedule pointing at the first, so the edit never
+ran. ``--create`` asks for that old behaviour deliberately.
+
+Every push carries a ``source_fingerprint`` (see ``cloud_models``): the digest
+of the bytes sent, plus where they came from — the git remote and commit when
+the source directory is in a repository, and an opaque local token when it is
+not. Absolute paths never leave the machine. A server that does not record the
+field ignores it, so nothing here depends on reading it back.
 """
 
 from __future__ import annotations
@@ -42,7 +56,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import click
@@ -54,11 +68,13 @@ from trilogy.scripts.cloud_models import (
     Job,
     JobRun,
     JobRunExt,
+    JobVersion,
     Me,
     OrgSummary,
     Schedule,
     ScheduleExt,
     SecretMeta,
+    SourceFingerprint,
     TokenSummary,
 )
 from trilogy.scripts.display import (
@@ -69,6 +85,7 @@ from trilogy.scripts.display import (
     print_warning,
 )
 from trilogy.scripts.project_config import find_trilogy_config
+from trilogy.scripts.source_identity import content_digest, resolve_origin
 
 DEFAULT_API_URL = "https://trilogy-cloud-api.fly.dev"
 ENV_API_URL = "TRILOGY_CLOUD_API"
@@ -93,6 +110,13 @@ LOGIN_TIMEOUT_SECONDS = 300
 # How much of a run's stdout/stderr to echo. Full logs are an artifact
 # download, not a terminal dump.
 RUN_LOG_TAIL_CHARS = 4000
+# The runs route clamps to this itself; mirrored so `--limit 500` is reported
+# as the cap it will actually get rather than silently truncated.
+RUNS_MAX_LIMIT = 200
+# What the platform assumes when a job names no verb; spelled out here because
+# push has to distinguish "unspecified" from "explicitly run" to preserve an
+# existing job's operation across an update.
+DEFAULT_OPERATION = "run"
 
 M = TypeVar("M", bound=BaseModel)
 
@@ -240,6 +264,9 @@ class CloudClient:
     def post(self, path: str, body: dict | list | bytes | None = None) -> Any:
         return self.request("POST", path, body)
 
+    def put(self, path: str, body: dict | list | bytes | None = None) -> Any:
+        return self.request("PUT", path, body)
+
     def delete(self, path: str) -> None:
         self.request("DELETE", path)
 
@@ -256,6 +283,11 @@ class CloudClient:
         self, path: str, model: type[M], body: dict | list | bytes | None = None
     ) -> M:
         return self._validate("POST", path, model, self.post(path, body))
+
+    def put_one(
+        self, path: str, model: type[M], body: dict | list | bytes | None = None
+    ) -> M:
+        return self._validate("PUT", path, model, self.put(path, body))
 
     def _validate(self, method: str, path: str, model: type[M], payload: Any) -> M:
         try:
@@ -357,9 +389,22 @@ def _fmt_job(job: Job) -> str:
     )
 
 
-def _fmt_run(run: JobRunExt) -> str:
+def _fmt_version(version: JobVersion, current: bool) -> str:
+    source = version.source_fingerprint
+    # Only ever populated by a server that records push provenance; the field
+    # is dropped by every one that does not.
+    origin = f"  from: {source.origin}" if source else ""
     return (
-        f"{run.id}  {run.job_name!r}  {run.status}  "
+        f"v{version.version_number}{'  (current)' if current else ''}  "
+        f"{_ts(version.created_at)}  op: {version.operation}  "
+        f"timeout: {version.timeout_seconds or 'default'}{origin}"
+    )
+
+
+def _fmt_run(run: JobRunExt) -> str:
+    version = f"  v{run.job_version_number}" if run.job_version_number else ""
+    return (
+        f"{run.id}  {run.job_name!r}{version}  {run.status}  "
         f"created: {_ts(run.created_at)}  finished: {_ts(run.finished_at)}"
     )
 
@@ -760,8 +805,13 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
 )
 @click.option("--name", required=True, help="Job name.")
 @click.option("--description", default=None)
+# Every job setting defaults to "unspecified" rather than to its platform
+# default, so an update can tell "leave this alone" from "set it to run/none".
+# A PUT replaces content wholesale; without that distinction, pushing an edited
+# file to a job configured with --operation refresh and three secrets would
+# quietly reset it to a 300-second `run` with none.
 @click.option(
-    "--operation", default="run", type=click.Choice(["run", "refresh", "plan", "state"])
+    "--operation", default=None, type=click.Choice(["run", "refresh", "plan", "state"])
 )
 @click.option("--timeout-seconds", type=int, default=None)
 @click.option("--memory-mb", type=int, default=None)
@@ -769,7 +819,8 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
 @click.option(
     "--secret-env",
     multiple=True,
-    help="Org secret names to inject as env vars (repeatable).",
+    help="Org secret names to inject as env vars (repeatable). Replaces the "
+    "job's existing set; omit to keep it.",
 )
 @click.option(
     "--include",
@@ -791,7 +842,15 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
 @click.option(
     "--cron",
     default=None,
-    help="Also create a schedule with this cron expression (UTC).",
+    help="Also create a schedule with this cron expression (UTC). Ignored when "
+    "updating an existing job, which keeps the schedules it already has.",
+)
+@click.option(
+    "--create",
+    "force_create",
+    is_flag=True,
+    help="Always create a new job, even if one of this name exists — leaving "
+    "the existing job, its runs and its schedules untouched.",
 )
 @click.pass_context
 def jobs_push(
@@ -800,7 +859,7 @@ def jobs_push(
     config_path: Path | None,
     name: str,
     description: str | None,
-    operation: str,
+    operation: str | None,
     timeout_seconds: int | None,
     memory_mb: int | None,
     cpus: float | None,
@@ -810,8 +869,18 @@ def jobs_push(
     rewrite: list[tuple[str, str]],
     rewrite_glob: tuple[str, ...],
     cron: str | None,
+    force_create: bool,
 ) -> None:
-    """Create a job from a local project directory."""
+    """Push a local project directory to a job, creating or updating it.
+
+    An existing job of this name is *replaced in place*: same id, new version,
+    run history and schedule bindings intact. Pushing content the job already
+    has mints nothing, so re-running this is idempotent.
+
+    Settings not named on the command line are carried over from the job being
+    updated, so pushing an edited file is a change to the *source* and not a
+    silent reset of the job's operation, timeouts or secrets.
+    """
     client, org = _org_client(ctx)
 
     config_file = config_path or (source / "trilogy.toml")
@@ -843,45 +912,123 @@ def jobs_push(
         config_text = apply_rewrites(config_text, rewrite)
         print_info(f"Applied rewrites to {touched} file(s)")
 
-    if any(j.name == name for j in client.get_many(f"/orgs/{org}/jobs", Job)):
-        print_warning(
-            f"A job named {name!r} already exists in {org!r}; this push "
-            "creates another with the same name."
-        )
+    existing = None if force_create else _existing_job(client, org, name)
+
+    origin = resolve_origin(source.resolve())
+    fingerprint = SourceFingerprint.build(content_digest(config_text, files), origin)
 
     payload: dict = {
         "name": name,
         "config": config_text,
         "files": files,
-        "operation": operation,
+        "source_fingerprint": fingerprint.model_dump(mode="json", exclude_none=True),
+        "operation": _kept(operation, existing, "operation", DEFAULT_OPERATION),
     }
-    if description:
-        payload["description"] = description
-    if timeout_seconds is not None:
-        payload["timeout_seconds"] = timeout_seconds
-    if memory_mb is not None:
-        payload["memory_mb"] = memory_mb
-    if cpus is not None:
-        payload["cpus"] = cpus
-    if secret_env:
-        payload["secret_env"] = list(secret_env)
+    for field, value in (
+        ("description", description),
+        ("timeout_seconds", timeout_seconds),
+        ("memory_mb", memory_mb),
+        ("cpus", cpus),
+        ("secret_env", list(secret_env) or None),
+        # No flags of their own: whatever the job holds is all there is to
+        # keep, and dropping them here would clear them on every push.
+        ("parameters", None),
+        ("vm_class", None),
+    ):
+        kept = _kept(value, existing, field)
+        if kept is not None:
+            payload[field] = kept
 
     encoded = check_bundle_size(payload)
     print_info(f"Bundled {len(files)} files ({len(encoded):,} bytes) from {source}")
+    print_info(f"Source: {origin.describe()} (content {fingerprint.content[:12]}…)")
 
-    job = client.post_one(f"/orgs/{org}/jobs", Job, encoded)
-    if is_json_mode():
-        emit_event("job_created", org=org, job=job.model_dump(mode="json"))
+    if existing is None:
+        job = client.post_one(f"/orgs/{org}/jobs", Job, encoded)
+        outcome = "created"
     else:
-        print_success(f"Created job {job.name!r} ({job.id}) in org {org!r}")
+        # PUT replaces the job's *content* under its existing id. POSTing here
+        # would leave the original job in place with its schedules still bound
+        # to it, so the edit would never run — the failure mode this command
+        # had for as long as it only created.
+        job = client.put_one(f"/orgs/{org}/jobs/{existing.id}", Job, encoded)
+        outcome = (
+            "unchanged"
+            if job.current_version_id == existing.current_version_id
+            else "updated"
+        )
+
+    _report_push(org, job, outcome, fingerprint)
 
     if cron:
-        schedule = client.post_one(
-            f"/orgs/{org}/schedules",
-            Schedule,
-            {"name": f"{name}-schedule", "cron_expr": cron, "job_ids": [job.id]},
+        if existing is not None:
+            print_warning(
+                f"--cron ignored: {name!r} already exists and keeps its "
+                "schedules. Use `trilogy cloud schedules create` to add one."
+            )
+        else:
+            schedule = client.post_one(
+                f"/orgs/{org}/schedules",
+                Schedule,
+                {"name": f"{name}-schedule", "cron_expr": cron, "job_ids": [job.id]},
+            )
+            _report_schedule(org, schedule, "Scheduled")
+
+
+def _kept(value: Any, existing: Job | None, field: str, default: Any = None) -> Any:
+    """*value* if the command line supplied one, else what the job already has.
+
+    ``PUT`` replaces a job's content wholesale — an omitted field is *cleared*,
+    not left alone — so every setting the push was not told about has to be
+    read off the job being updated and sent back. Creates fall through to
+    *default*, which for everything but ``operation`` is "let the platform
+    decide".
+    """
+    if value is not None:
+        return value
+    return getattr(existing, field, None) if existing is not None else default
+
+
+def _existing_job(client: CloudClient, org: str, name: str) -> Job | None:
+    """The one job of this name to update, or ``None`` to create a new one.
+
+    Ambiguity is refused rather than resolved: the platform puts no unique
+    constraint on job names, and picking one of several by recency would edit
+    whichever job happened to be touched last. That is the same reasoning the
+    cloud's own declarative deploy applies to duplicate names.
+    """
+    matches = [j for j in client.get_many(f"/orgs/{org}/jobs", Job) if j.name == name]
+    if len(matches) > 1:
+        raise CloudError(
+            f"{len(matches)} jobs in {org!r} are named {name!r} "
+            f"({', '.join(j.id for j in matches)}); this push cannot tell which "
+            "to update. Delete the duplicates, or pass --create to add another."
         )
-        _report_schedule(org, schedule, "Scheduled")
+    return matches[0] if matches else None
+
+
+def _report_push(
+    org: str, job: Job, outcome: str, fingerprint: SourceFingerprint
+) -> None:
+    if is_json_mode():
+        emit_event(
+            f"job_{outcome}",
+            org=org,
+            outcome=outcome,
+            job=job.model_dump(mode="json"),
+            source_fingerprint=fingerprint.model_dump(mode="json"),
+        )
+        return
+    if outcome == "unchanged":
+        print_success(
+            f"Job {job.name!r} ({job.id}) already matches this content; "
+            "no new version"
+        )
+        return
+    verb = "Created" if outcome == "created" else "Updated"
+    version = job.current_version_id
+    suffix = f" as version {version[:8]}…" if version else ""
+    print_success(f"{verb} job {job.name!r} ({job.id}) in org {org!r}{suffix}")
 
 
 @jobs.command("run")
@@ -900,6 +1047,32 @@ def jobs_run(ctx: click.Context, job: str) -> None:
         )
 
 
+@jobs.command("versions")
+@click.argument("job")
+@click.option(
+    "--limit", type=int, default=10, help="How many versions to show, newest first."
+)
+@click.pass_context
+def jobs_versions(ctx: click.Context, job: str, limit: int) -> None:
+    """Version history of a job (by name or id), newest first.
+
+    A version is minted by every content-changing push; rolling back is
+    pushing an old version's content again, which mints a new version rather
+    than rewriting history.
+    """
+    client, org = _org_client(ctx)
+    found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+    rows = client.get_many(f"/orgs/{org}/jobs/{found.id}/versions", JobVersion)[:limit]
+    _show_rows(
+        "job_versions",
+        "versions",
+        rows,
+        f"No recorded versions for {found.name!r} (it predates versioning).",
+        lambda v: _fmt_version(v, current=v.id == found.current_version_id),
+        org=org,
+    )
+
+
 @cloud.group()
 def runs() -> None:
     """Inspect job runs."""
@@ -910,16 +1083,39 @@ def runs() -> None:
     "--limit",
     type=int,
     default=15,
-    help="How many recent runs to show. The API returns at most 50, so a "
-    "larger value cannot show more.",
+    help=f"How many recent runs to show (server cap: {RUNS_MAX_LIMIT}).",
+)
+@click.option(
+    "--status",
+    default=None,
+    help="Comma-separated run statuses to keep, e.g. 'failed' or "
+    "'queued,dispatched,running'.",
+)
+@click.option(
+    "--source",
+    "source_filter",
+    type=click.Choice(["manual", "scheduled"]),
+    default=None,
+    help="Only runs triggered by hand, or only ones born from a schedule tick.",
 )
 @click.pass_context
-def runs_list(ctx: click.Context, limit: int) -> None:
-    """Recent runs across the org's jobs."""
+def runs_list(
+    ctx: click.Context, limit: int, status: str | None, source_filter: str | None
+) -> None:
+    """Recent runs across the org's jobs.
+
+    Filtered server-side, because the route answers with the newest N runs:
+    a backfill or a burst of successes otherwise evicts every failure — and
+    every scheduled run — from the window before the client ever sees them.
+    """
     client, org = _org_client(ctx)
-    # Sliced here rather than server-side: the endpoint takes no limit
-    # parameter, and already caps its own result set.
-    rows = client.get_many(f"/orgs/{org}/jobs/runs", JobRunExt)[:limit]
+    query = {"limit": str(max(1, min(limit, RUNS_MAX_LIMIT)))}
+    if status:
+        query["status"] = status
+    if source_filter:
+        query["source"] = source_filter
+    path = f"/orgs/{org}/jobs/runs?{urlencode(query)}"
+    rows = client.get_many(path, JobRunExt)
     _show_rows("runs", "runs", rows, f"No runs in org {org!r}.", _fmt_run, org=org)
 
 
@@ -934,6 +1130,16 @@ def runs_show(ctx: click.Context, run_id: str) -> None:
         emit_event("run", org=org, run=run.model_dump(mode="json"))
         return
     print_info(f"Run {run.id} of {run.job_name!r}: {run.status}")
+    # What this run executed, which is not necessarily what the job holds now:
+    # the version is pinned at creation and the parameters are the rendered
+    # values, so both keep answering after the job is edited.
+    if run.job_version_number is not None:
+        print_info(f"Job version: v{run.job_version_number}")
+    if isinstance(run.parameters, dict) and run.parameters:
+        pairs = ", ".join(f"{k}={v}" for k, v in sorted(run.parameters.items()))
+        print_info(f"Parameters: {pairs}")
+    if run.scheduled_for is not None:
+        print_info(f"Scheduled for: {_ts(run.scheduled_for)}")
     if run.exit_code is not None:
         print_info(f"Exit code: {run.exit_code}")
     for event in run.events:

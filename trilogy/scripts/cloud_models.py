@@ -1,9 +1,12 @@
-"""Typed response models for the trilogy-cloud API.
+"""Typed models for the trilogy-cloud API.
 
 Mirrors the serialized shape of the Rust API's response types — each model
 below names its source struct. The API is the contract; when it changes, these
 follow. Pydantic ignores unknown fields by default, so a server that adds a
 field stays readable by an older CLI.
+
+``SourceFingerprint`` is the exception that goes the other way: the CLI writes
+it, and a server that does not yet know the field drops it. See its docstring.
 
 Two Rust patterns matter for reading these side by side:
 
@@ -19,6 +22,8 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
+
+from trilogy.scripts.source_identity import SOURCE_FINGERPRINT_VERSION, SourceOrigin
 
 # ============================================================================
 # Auth (api/src/auth)
@@ -76,12 +81,57 @@ class IssuedToken(BaseModel):
 # ============================================================================
 
 
+class SourceFingerprint(BaseModel):
+    """What a pushed bundle was, and where it came from.
+
+    Written by ``jobs push`` onto the create/update payload; built by
+    ``trilogy.scripts.source_identity``, which owns the rules. The one model
+    here the CLI *sends* — the API ignores unknown request fields, so a server
+    that does not store it yet accepts the push unchanged and simply answers
+    with ``source_fingerprint`` unset. Nothing may depend on the round trip.
+
+    ``content`` is the digest of the config text plus the exact file set sent
+    (after ``--rewrite``), so two pushes agree iff they carried the same bytes
+    — which is what makes "this job is running the code in my working
+    directory" answerable at all. ``origin`` is the git remote when there is
+    one, else an opaque local token: absolute paths never leave the machine.
+    """
+
+    version: int = SOURCE_FINGERPRINT_VERSION
+    content: str
+    origin: str
+    origin_kind: str
+    #: Directory within the repository, ``"."`` at its root. Unset for a local
+    #: origin, where there is no enclosing tree to be relative to.
+    path: str | None = None
+    revision: str | None = None
+    branch: str | None = None
+
+    @classmethod
+    def build(cls, content: str, origin: SourceOrigin) -> SourceFingerprint:
+        return cls(
+            content=content,
+            origin=origin.location,
+            origin_kind=origin.kind,
+            path=origin.subpath,
+            revision=origin.revision,
+            branch=origin.branch,
+        )
+
+
 class Job(BaseModel):
     """``models/job.rs::Job``.
 
     ``config`` is the job's trilogy.toml as raw text, carried in a JSON string
     rather than a parsed table — the platform stores it verbatim and hands it
     to the worker as a file.
+
+    The row is stable *identity*; the content fields are a copy of the newest
+    ``job_versions`` row, which ``current_version_id`` names. Editing content
+    (``PUT``) mints a version and moves that pointer under the same id, so run
+    history and schedule bindings survive an edit — the movement of
+    ``current_version_id`` across a write is how the CLI tells a real update
+    from a no-op push.
     """
 
     id: str
@@ -96,8 +146,48 @@ class Job(BaseModel):
     memory_mb: int | None = None
     cpus: float | None = None
     secret_env: Any | None = None
+    #: Workspace whose config/files/parameters this job inherits; `None` =
+    #: self-contained. Identity, not content: it is moved by `PATCH`, and a
+    #: content `PUT` leaves it alone.
+    workspace_id: str | None = None
+    #: `--param key=value` pairs, merged per key over the workspace chain's.
+    parameters: Any | None = None
+    #: `"shared"` (may colocate with the tenant's other shared jobs on one VM)
+    #: | `"exclusive"` | `None` (inherit down the workspace chain).
+    vm_class: str | None = None
+    #: `None` on rows that predate versioning and have never been PUT.
+    current_version_id: str | None = None
+    #: Unset by every server that does not record push provenance; see
+    #: `SourceFingerprint`.
+    source_fingerprint: SourceFingerprint | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class JobVersion(BaseModel):
+    """``models/job.rs::JobVersion`` — one immutable snapshot of a job's
+    content, from ``GET /orgs/{slug}/jobs/{id}/versions`` (newest first).
+
+    Content rides along: a version is small, and "what changed between v3 and
+    v4" is the whole reason to ask. Rolling back is re-``PUT``ing an old
+    version's content, which mints a *new* version — history is never
+    rewritten.
+    """
+
+    id: str
+    job_id: str
+    version_number: int
+    config: Any = None
+    files: Any | None = None
+    operation: str
+    timeout_seconds: int | None = None
+    memory_mb: int | None = None
+    cpus: float | None = None
+    secret_env: Any | None = None
+    parameters: Any | None = None
+    vm_class: str | None = None
+    source_fingerprint: SourceFingerprint | None = None
+    created_at: datetime
 
 
 class JobRunEvent(BaseModel):
@@ -127,7 +217,14 @@ class JobStep(BaseModel):
 
 
 class JobRun(BaseModel):
-    """``models/job.rs::JobRun`` — the bare run, as returned by triggering one."""
+    """``models/job.rs::JobRun`` — the bare run, as returned by triggering one.
+
+    A run pins the content it executes rather than re-reading the job:
+    ``job_version_id`` is stamped when the run is created and
+    ``workspace_versions`` (``[{workspace_id, version_id}]``, nearest first)
+    at its first dispatch. Both ``None`` means "resolve live" — a run that
+    predates versioning, or one not yet dispatched.
+    """
 
     id: str
     job_id: str
@@ -136,6 +233,17 @@ class JobRun(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     output: Any = None
+    #: The rendered `--param` *values* this run used — never the schedule's
+    #: templates. The row is the record of what actually ran.
+    parameters: Any | None = None
+    #: The tick's logical time for a scheduled run; `None` for a manual one.
+    #: With `schedule_id` it names the run's siblings from the same firing.
+    scheduled_for: datetime | None = None
+    job_version_id: str | None = None
+    workspace_versions: Any | None = None
+    #: Declared `--partition` selectors for a slice-scoped refresh; `None` =
+    #: unscoped.
+    partition_targets: Any | None = None
     error: str | None = None
     stdout: str | None = None
     stderr: str | None = None
@@ -149,6 +257,9 @@ class JobRunExt(JobRun):
 
     job_name: str
     schedule_name: str | None = None
+    #: The pinned version's ordinal, joined from `job_versions` — the id alone
+    #: means nothing to a reader. `None` = an unpinned, pre-versioning run.
+    job_version_number: int | None = None
     events: list[JobRunEvent] = []
     files: list[JobStep] = []
 

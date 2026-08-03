@@ -1,7 +1,6 @@
 """Serve command for Trilogy CLI."""
 
 import os
-import re
 import secrets
 import shutil
 import sys
@@ -26,6 +25,7 @@ from trilogy.scripts.serve_helpers import (
     get_relative_model_name,
     get_safe_model_name,
 )
+from trilogy.scripts.source_identity import path_token
 from trilogy.utility import utc_now_iso
 
 TOKEN_BYTES = 16  # 128-bit random token
@@ -124,17 +124,6 @@ def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
     return target_path
 
 
-_STORE_ID_DISALLOWED = re.compile(r"[^a-z0-9._-]+")
-
-
-def _store_id_label(value: str) -> str:
-    return (
-        _STORE_ID_DISALLOWED.sub("-", value.strip().lower())
-        .strip("-.")[:40]
-        .strip("-.")
-    )
-
-
 def build_store_id(directory_path: PathlibPath, project_name: str | None) -> str:
     """Stable, collision-resistant id for the studio's store registration.
 
@@ -149,13 +138,14 @@ def build_store_id(directory_path: PathlibPath, project_name: str | None) -> str
     distinguishes two projects, and it doesn't change when the port does. The
     digest rather than the path itself keeps the filesystem layout out of the
     client's storage keys.
-    """
-    import hashlib
 
-    canonical = os.path.normcase(os.path.realpath(directory_path))
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
-    label = _store_id_label(project_name or directory_path.name)
-    return f"{label}-{digest}" if label else digest
+    That construction is `source_identity.path_token`, shared with the local
+    half of `trilogy cloud`'s source fingerprint — the same directory names
+    itself the same way to a studio store and to a pushed job. Deliberately
+    *not* the git-aware `resolve_origin`: two checkouts of one repository are
+    two served projects and must not merge into one store.
+    """
+    return path_token(directory_path, project_name)
 
 
 def announce_studio_download(manifest: StudioManifest) -> None:
