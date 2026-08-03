@@ -21,7 +21,12 @@ from trilogy.core.models.build import BuildDatasource, BuildUnionDatasource
 COVER_LIMIT = 4096
 # Bounds the obligation search's visited states, independent of how many
 # complete covers it has found. A truncated search is reported, never silent.
-STATE_LIMIT = 100_000
+# Sized from the corpora (s66): the largest state count any successful tpc_ds /
+# tpc_h query reaches is 826 (q23, median 6), so 10k is a 12x margin — while an
+# UNSOURCEABLE request explores states until this budget stops it, so every
+# increment here is paid in full on the failure path before the fall-through
+# raises UnresolvableQueryException.
+STATE_LIMIT = 10_000
 
 CONNECTOR_NODE_PREFIX = "connector~"
 
@@ -220,6 +225,11 @@ class SourceNetwork:
     _adjacency_cache: dict[
         int, tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]
     ] = _memo()
+    _partner_cache: dict[
+        int, tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]
+    ] = _memo()
+    _binder_set_cache: dict[str, frozenset[str]] = _memo()
+    _bound_terminal_cache: dict[str, frozenset[str]] = _memo()
 
     def signature(self) -> tuple:
         """Everything `search_sources` reads, as a hashable value: two networks
@@ -291,6 +301,30 @@ class SourceNetwork:
             self._binder_cache[address] = cached
         return cached
 
+    def binder_set(self, address: str) -> frozenset[str]:
+        # `binders` as a set, for the per-state "is this terminal covered yet"
+        # test — one intersection against the cover instead of a `binds` per
+        # member.
+        cached = self._binder_set_cache.get(address)
+        if cached is None:
+            cached = frozenset(self.binders(address))
+            self._binder_set_cache[address] = cached
+        return cached
+
+    def bound_terminals(self, node: str) -> frozenset[str]:
+        # Transpose of `binder_set` over the request's terminals: the labelable
+        # scan asks "which terminals does this source contribute" per (state,
+        # source).
+        cached = self._bound_terminal_cache.get(node)
+        if cached is None:
+            cached = frozenset(
+                terminal
+                for terminal in self.terminals
+                if node in self.binder_set(terminal)
+            )
+            self._bound_terminal_cache[node] = cached
+        return cached
+
     def join_keys(self, left: str, right: str) -> frozenset[str]:
         # Memoized: the cover search asks this O(n^2) times per candidate cover, for
         # thousands of covers, and the operand sets are large (a wide fact scan).
@@ -353,6 +387,40 @@ class SourceNetwork:
             )
             self._adjacency_cache[0] = cached
         return cached
+
+    def _partners(self) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
+        """The two UNDIRECTED pair predicates as adjacency sets, built once:
+        `join_partners` is "shares any binding key" and `functional_partners`
+        is `joins_functionally`. The obligation scan asks both per (state,
+        source, candidate) — an unsourceable request walks the full state
+        budget, so a pairwise call per ask is the dominant cost of concluding
+        "no solution" (s66). Symmetric, so each unordered pair is asked once."""
+        cached = self._partner_cache.get(0)
+        if cached is None:
+            nodes = self.sorted_candidates()
+            joined: dict[str, set[str]] = {node: set() for node in nodes}
+            functional: dict[str, set[str]] = {node: set() for node in nodes}
+            for i, left in enumerate(nodes):
+                for right in nodes[i + 1 :]:
+                    if not self.join_keys(left, right):
+                        continue
+                    joined[left].add(right)
+                    joined[right].add(left)
+                    if self.joins_functionally(left, right):
+                        functional[left].add(right)
+                        functional[right].add(left)
+            cached = (
+                {node: frozenset(others) for node, others in joined.items()},
+                {node: frozenset(others) for node, others in functional.items()},
+            )
+            self._partner_cache[0] = cached
+        return cached
+
+    def join_partners(self, node: str) -> frozenset[str]:
+        return self._partners()[0][node]
+
+    def functional_partners(self, node: str) -> frozenset[str]:
+        return self._partners()[1][node]
 
     def functional_successors(self, node: str) -> frozenset[str]:
         return self._adjacency()[0][node]
@@ -460,6 +528,12 @@ class SourceSolution:
 class SearchResult:
     solution: SourceSolution | None = None
     unreachable: frozenset[str] = frozenset()
+    # Terminals no single join-component of the WHOLE candidate pool can cover
+    # alongside the rest. A cover's joins are a subgraph of the pool's, so this
+    # is a PROOF no connected cover exists — a considered decline, unlike
+    # `limit`, which is only an exhausted budget (s66: the proof is milliseconds
+    # where the budget walk is seconds).
+    split: frozenset[str] = frozenset()
     # The budget the enumeration ran out of, if any.
     limit: SearchLimit | None = None
 
@@ -536,9 +610,10 @@ def find(parent: dict[str, str], node: str) -> str:
     return node
 
 
-def union(parent: dict[str, str], left: str, right: str) -> None:
+def union(parent: dict[str, str], left: str, right: str) -> bool:
     a, b = find(parent, left), find(parent, right)
     if a == b:
-        return
+        return False
     lo, hi = sorted((a, b))
     parent[hi] = lo
+    return True

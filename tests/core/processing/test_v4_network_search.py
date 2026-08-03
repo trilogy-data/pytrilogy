@@ -116,6 +116,29 @@ grain (vehicle_id)
 query '''select 2 vehicle_id, 'falcon' vehicle_name''';
 """
 
+# Two islands sharing no key anywhere in the pool: nothing can ever join them,
+# so a request spanning both is decided by the split certificate, not a budget.
+SPLIT_POOL_MODEL = """
+key order_number int;
+property order_number.order_total float;
+key session_id int;
+property session_id.page_views int;
+
+datasource orders (
+    order_number: order_number,
+    order_total: order_total,
+)
+grain (order_number)
+query '''select 100 order_number, 5.0 order_total''';
+
+datasource sessions (
+    session_id: session_id,
+    page_views: page_views,
+)
+grain (session_id)
+query '''select 7 session_id, 3 page_views''';
+"""
+
 PARTITION_UNION_MODEL = """
 key sales_channel enum<string>['WEB', 'CATALOG'];
 key order_id int;
@@ -428,6 +451,31 @@ class TestNetworkSearch:
 
         assert result.solution is None
         assert result.unreachable == frozenset({"local.customer_id"})
+
+    def test_split_pool_declines_with_a_certificate_not_a_budget(self):
+        benv, graph = _build(SPLIT_POOL_MODEL)
+        network = build_source_network(
+            _terminals(benv, "local.order_total", "local.page_views"), benv, graph
+        )
+
+        result = search_sources(network)
+
+        assert result.solution is None
+        assert result.split == frozenset({"local.page_views"}) or result.split == (
+            frozenset({"local.order_total"})
+        )
+        assert result.limit is None  # a proof, not an exhausted budget
+
+    def test_split_pool_request_within_one_island_still_resolves(self):
+        benv, graph = _build(SPLIT_POOL_MODEL)
+        network = build_source_network(
+            _terminals(benv, "local.order_number", "local.order_total"), benv, graph
+        )
+
+        result = search_sources(network)
+
+        assert result.solution is not None
+        assert not result.split
 
     def test_redundant_source_is_dropped_not_merely_costed(self):
         benv, graph = _build(TWIN_SCAN_MODEL)

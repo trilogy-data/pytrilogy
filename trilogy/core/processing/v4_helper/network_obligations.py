@@ -101,7 +101,7 @@ def compute_pending_obligations(
     # cover: some source must bind each terminal (partial suffices here — the
     # upgrade to a full binder is a soft branch in `_enumerate_covers`).
     for address in network.terminals:
-        if any(network.candidates[node].binds(address) for node in chosen):
+        if not network.binder_set(address).isdisjoint(chosen):
             continue
         satisfiers = network.binders(address)
         if satisfiers:
@@ -148,6 +148,7 @@ def compute_pending_obligations(
                         satisfiers,
                     )
                 )
+    functional = network._partners()[1]
     for source in sorted(chosen):
         candidate = network.candidates[source]
         # labelable: a source contributing terminals must be able to label its
@@ -156,9 +157,10 @@ def compute_pending_obligations(
         # Directional and single-hop: a lookup off the source's own keys can
         # restrict or tag its rows but never multiply them, and the terminal
         # must be bound in the source's own key-class terms.
-        if any(candidate.binds(terminal) for terminal in network.terminals):
+        bound = network.bound_terminals(source)
+        if bound:
             for terminal in network.terminals:
-                if candidate.binds(terminal):
+                if terminal in bound:
                     continue
                 # `source` completes a chain for a terminal it does not bind
                 # exactly when its reach holds a full binder — the precondition
@@ -183,7 +185,7 @@ def compute_pending_obligations(
         # toward the blended source itself would move the blend, not close it.
         if len(chosen) >= 2 and candidate.grain:
             others = chosen - {source}
-            if not any(network.joins_functionally(source, other) for other in others):
+            if functional[source].isdisjoint(others):
                 satisfiers = tuple(
                     sorted(
                         (
@@ -191,10 +193,7 @@ def compute_pending_obligations(
                             for extra in network.candidates
                             if extra not in chosen
                             and candidate.grain <= network.binding_keys(extra)
-                            and any(
-                                network.joins_functionally(extra, other)
-                                for other in others
-                            )
+                            and not functional[extra].isdisjoint(others)
                         ),
                         key=lambda extra: (len(network.binding_keys(extra)), extra),
                     )
@@ -218,13 +217,12 @@ def compute_pending_obligations(
         comps = components(network, chosen)
         if len(comps) > 1:
             adjacency: dict[str, int] = {}
+            joined = network._partners()[0]
             for node in network.candidates:
                 if node in chosen:
                     continue
                 touched = sum(
-                    1
-                    for comp in comps
-                    if any(network.join_keys(node, member) for member in comp)
+                    1 for comp in comps if not joined[node].isdisjoint(comp)
                 )
                 if touched:
                     adjacency[node] = touched

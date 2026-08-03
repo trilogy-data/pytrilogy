@@ -363,6 +363,16 @@ def _network_source(
     result = _memoized_search(network, request.history)
     if result.truncated:
         _report_truncation(network, result)
+    if result.split:
+        # A proof, not a budget: no join-component of the candidate pool holds
+        # binders for every terminal, so no connected cover exists and the
+        # fall-through is evidence-based — contrast _report_truncation.
+        logger.info(
+            "[v4] source search declined: terminals %s share no join-component "
+            "with the rest of the request — no connected cover exists; falling "
+            "through to the single-scan planners",
+            ",".join(sorted(result.split)),
+        )
     if result.solution is None:
         return None
     if (

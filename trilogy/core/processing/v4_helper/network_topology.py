@@ -61,10 +61,11 @@ def joined_pairs(
     # ~2k distinct source sets).
     cached = network._pair_cache.get(sources)
     if cached is None:
+        joined = network._partners()[0]
         cached = tuple(
             (left, right)
             for left, right in combinations(sorted(sources), 2)
-            if network.join_keys(left, right)
+            if right in joined[left]
         )
         network._pair_cache[sources] = cached
     return cached
@@ -73,15 +74,22 @@ def joined_pairs(
 def components(
     network: SourceNetwork, sources: frozenset[str]
 ) -> tuple[frozenset[str], ...]:
-    """Components of the cover under "shares any binding", as union-find over
-    the same pair scan `blend_joins` uses. `union` roots a class at its minimum
+    """Components of the cover under "shares any binding" — the same predicate
+    `blend_joins`' pair scan reads, taken from the partner table since this
+    runs per enumeration state. `union` roots a class at its minimum
     member, so iterating sorted sources yields the components in
     ascending-minimum order. Memoized per source set (see `joined_pairs`)."""
     cached = network._component_cache.get(sources)
     if cached is None:
         parent: dict[str, str] = {node: node for node in sources}
-        for left, right in joined_pairs(network, sources):
-            union(parent, left, right)
+        joined = network._partners()[0]
+        pieces = len(sources)
+        for node in sorted(sources):
+            if pieces == 1:
+                break
+            for partner in joined[node] & sources:
+                if union(parent, node, partner):
+                    pieces -= 1
         groups: dict[str, set[str]] = {}
         for node in sorted(sources):
             groups.setdefault(find(parent, node), set()).add(node)
@@ -122,8 +130,9 @@ def blend_joins(network: SourceNetwork, sources: frozenset[str]) -> int:
         return cached
     parent: dict[str, str] = {node: node for node in sources}
     pairs = joined_pairs(network, sources)
+    functional = network._partners()[1]
     for left, right in pairs:
-        if network.joins_functionally(left, right):
+        if right in functional[left]:
             union(parent, left, right)
     blends = 0
     for left, right in pairs:

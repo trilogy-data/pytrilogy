@@ -274,6 +274,36 @@ def _solution_for(
     )
 
 
+def _split_terminals(
+    network: SourceNetwork, targets: list[str]
+) -> frozenset[str]:
+    """Terminals provably un-co-locatable: every emitted cover must be one
+    join-component (`search_sources` discards the rest), and a cover's joins
+    are a subgraph of the candidate pool's, so when no single component of the
+    WHOLE pool holds a binder for every terminal, no connected cover exists.
+    Returned as the best component's missing terminals — the two-alias
+    unmergeable-facts request (tpc-ds q64's nested membership) is decided here
+    in one union-find pass instead of a full state-budget walk (s66).
+
+    A certificate, not a heuristic: empty means only that this proof does not
+    apply, never that a solution exists."""
+    pool = components(network, frozenset(network.candidates))
+    if len(pool) <= 1:
+        return frozenset()
+    best: frozenset[str] | None = None
+    for comp in pool:
+        missing = frozenset(
+            address
+            for address in targets
+            if network.binder_set(address).isdisjoint(comp)
+        )
+        if not missing:
+            return frozenset()
+        if best is None or len(missing) < len(best):
+            best = missing
+    return best or frozenset()
+
+
 def search_sources(network: SourceNetwork) -> SearchResult:
     """Stages B + C: discharge obligations, connect, reduce, take the
     cost-order winner. The lexicographic minimum is always non-dominated, so
@@ -283,6 +313,9 @@ def search_sources(network: SourceNetwork) -> SearchResult:
     unreachable = frozenset(a for a in targets if not network.binders(a))
     if unreachable:
         return SearchResult(unreachable=unreachable)
+    split = _split_terminals(network, targets)
+    if split:
+        return SearchResult(split=split)
     covers, limit = _enumerate_covers(network)
     solutions: list[SourceSolution] = []
     seen: set[tuple[str, ...]] = set()
