@@ -87,6 +87,9 @@ pub struct DatasourceDeclaration {
     pub address_kind: AddressKind,
     /// `root datasource` — a source the script reads, not a managed asset it writes.
     pub is_root: bool,
+    /// `partial datasource` — covers only a subset of its grain, so it cannot
+    /// answer a query on its own.
+    pub is_partial: bool,
     /// Declares a `partition by` clause.
     pub is_partitioned: bool,
 }
@@ -231,11 +234,13 @@ fn extract_datasource(pair: Pair<Rule>) -> Result<DatasourceDeclaration, ParseEr
     let mut address: Option<String> = None;
     let mut address_kind: Option<AddressKind> = None;
     let mut is_root = false;
+    let mut is_partial = false;
     let mut is_partitioned = false;
 
     for child in pair.into_inner() {
         match child.as_rule() {
             Rule::DATASOURCE_ROOT => is_root = true,
+            Rule::DATASOURCE_PARTIAL => is_partial = true,
             Rule::IDENTIFIER if name.is_none() => name = Some(child.as_str().to_string()),
             // address = { "address" ~ (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) }
             Rule::address => {
@@ -285,6 +290,7 @@ fn extract_datasource(pair: Pair<Rule>) -> Result<DatasourceDeclaration, ParseEr
             address,
             address_kind,
             is_root,
+            is_partial,
             is_partitioned,
         }),
         _ => Err(ParseError::InvalidDatasourceStructure),
@@ -488,6 +494,134 @@ mod tests {
         let ds = &parsed.datasources[0];
         assert_eq!(ds.address_kind, AddressKind::Query);
         assert!(ds.address.is_none());
+    }
+
+    #[test]
+    fn test_file_datasource() {
+        let content = r#"
+            key launch_id int;
+            datasource launches (
+                launch_id: launch_id
+            )
+            grain (launch_id)
+            file `gcs://bucket/launch_report/launch.parquet`;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        let ds = &parsed.datasources[0];
+        assert_eq!(ds.address_kind, AddressKind::File);
+        // Raw spec: file paths may themselves contain `:` (`gcs://`), so the
+        // backticked form is kept verbatim rather than unquoted ambiguously.
+        assert_eq!(
+            ds.address.as_deref(),
+            Some("`gcs://bucket/launch_report/launch.parquet`")
+        );
+    }
+
+    #[test]
+    fn test_file_datasource_read_write_pair() {
+        let content = r#"
+            key launch_id int;
+            datasource launches (
+                launch_id: launch_id
+            )
+            grain (launch_id)
+            file `https://host/launch.parquet`:`gcs://bucket/launch.parquet`;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        let ds = &parsed.datasources[0];
+        assert_eq!(ds.address_kind, AddressKind::File);
+        assert_eq!(
+            ds.address.as_deref(),
+            Some("`https://host/launch.parquet`:`gcs://bucket/launch.parquet`")
+        );
+    }
+
+    #[test]
+    fn test_root_partial_file_datasource() {
+        let content = r#"
+            key a_id int;
+            root partial datasource a_raw (
+                a_id: a_id
+            )
+            grain (a_id)
+            file `./a_raw_source.py`;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        let ds = &parsed.datasources[0];
+        assert_eq!(ds.name, "a_raw");
+        assert!(ds.is_root);
+        assert!(ds.is_partial);
+        assert!(!ds.is_partitioned);
+        assert_eq!(ds.address_kind, AddressKind::File);
+    }
+
+    #[test]
+    fn test_partial_datasource_name_not_shadowed_by_modifier() {
+        let content = r#"
+            key customer_id int;
+            partial datasource customer_revenue (
+                customer_id: customer_id
+            )
+            grain (customer_id)
+            address db.customer_revenue;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        let ds = &parsed.datasources[0];
+        assert_eq!(ds.name, "customer_revenue");
+        assert!(ds.is_partial);
+        assert!(!ds.is_root);
+    }
+
+    #[test]
+    fn test_multiple_datasources_keep_independent_flags() {
+        let content = r#"
+            key order_id int;
+            root datasource raw_orders (
+                order_id: order_id
+            )
+            grain (order_id)
+            address raw.orders;
+
+            datasource orders (
+                order_id: order_id
+            )
+            grain (order_id)
+            address db.orders;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        assert_eq!(parsed.datasources.len(), 2);
+        assert!(parsed.datasources[0].is_root);
+        assert_eq!(parsed.datasources[0].address.as_deref(), Some("raw.orders"));
+        assert!(!parsed.datasources[1].is_root);
+        assert_eq!(parsed.datasources[1].address.as_deref(), Some("db.orders"));
+    }
+
+    #[test]
+    fn test_quoted_address_strips_inner_quote_layer() {
+        let content = r#"
+            key order_id int;
+            datasource orders (
+                order_id: order_id
+            )
+            grain (order_id)
+            address `'my project.my dataset.orders'`;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        let ds = &parsed.datasources[0];
+        assert_eq!(ds.address_kind, AddressKind::Literal);
+        assert_eq!(
+            ds.address.as_deref(),
+            Some("my project.my dataset.orders")
+        );
+    }
+
+    #[test]
+    fn test_address_kind_strings_are_stable() {
+        // These are the serialized `address_kind` values in CLI JSON output.
+        assert_eq!(AddressKind::Literal.to_string(), "literal");
+        assert_eq!(AddressKind::Templated.to_string(), "templated");
+        assert_eq!(AddressKind::Query.to_string(), "query");
+        assert_eq!(AddressKind::File.to_string(), "file");
     }
 
     #[test]

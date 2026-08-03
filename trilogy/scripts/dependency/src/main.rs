@@ -107,6 +107,7 @@ struct DatasourceOutput {
     address: Option<String>,
     address_kind: String,
     is_root: bool,
+    is_partial: bool,
     is_partitioned: bool,
 }
 
@@ -117,6 +118,7 @@ impl From<DatasourceDeclaration> for DatasourceOutput {
             address: d.address,
             address_kind: d.address_kind.to_string(),
             is_root: d.is_root,
+            is_partial: d.is_partial,
             is_partitioned: d.is_partitioned,
         }
     }

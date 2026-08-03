@@ -14,6 +14,60 @@ Exit codes:
 - `0`: Success
 - `1`: Error (parse error, file not found, circular dependency, etc.)
 
+## Installation
+
+```bash
+cargo add trilogy-parser          # library
+cargo install trilogy-parser      # CLI (installs `trilogy-parser-cli`)
+```
+
+Crate versions track [pytrilogy](https://pypi.org/project/pytrilogy/) releases: a
+published `trilogy-parser` version always carries the grammar of the pytrilogy
+release with the same number.
+
+### Feature flags
+
+| Feature | Default | Effect |
+| --- | --- | --- |
+| *(none)* | ✅ | Pure Rust. No Python toolchain required. |
+| `python` | | Builds the PyO3 bindings (`python_bindings`, `parse_trilogy_syntax*`). Used only by the wheel build. |
+
+Rust consumers should stay on default features; enabling `python` pulls in pyo3
+and requires a Python interpreter at build time.
+
+## Rust Library Usage
+
+```rust
+use pest::Parser;
+use std::path::Path;
+use trilogy_parser::{parse_file, AddressKind, ImportResolver, Rule, TrilogyParser};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Dependency-relevant extraction: imports, datasources, persists.
+    let parsed = parse_file("import models.orders; datasource o (id: key) address db.o;")?;
+    for ds in &parsed.datasources {
+        if ds.address_kind == AddressKind::Literal {
+            println!("{} -> {}", ds.name, ds.address.as_deref().unwrap_or(""));
+        }
+    }
+
+    // Transitive resolution across files, with ETL-aware ordering.
+    let mut resolver = ImportResolver::new();
+    let graph = resolver.resolve(Path::new("main.preql"))?;
+    println!("{:?}", graph.order);
+
+    // Or drive the full-language pest grammar directly.
+    let tree = TrilogyParser::parse(Rule::start, "const x <- 5; select x + 1 -> y;")?;
+    println!("{}", tree.count());
+    Ok(())
+}
+```
+
+`DatasourceDeclaration` / `DatasourceInfo` carry the backing of each datasource:
+`address` plus an `address_kind` of `literal`, `templated` (an `f`-string address
+resolved at run time), `query` (a view, no physical table), or `file`. Flags
+`is_root`, `is_partial`, and `is_partitioned` mirror the corresponding modifiers.
+
 ## CLI Usage
 
 ### Parse a single file
@@ -85,13 +139,16 @@ The `ETLDependencyStrategy` uses the Rust-based resolver under the hood for fast
 
 ```bash
 cd trilogy/scripts/dependency
-cargo test
+cargo test                                      # default (pure-Rust) features
+cargo check --features python --all-targets     # type-check the PyO3 layer
 ```
 
-All tests include:
-- Unit tests for parser (17 tests covering imports, datasources, persist statements)
-- Unit tests for resolver (5 tests covering dependency resolution logic)
-- Integration tests for CLI (12 tests covering all CLI commands)
+Test layout:
+- Unit tests for the parser — imports, datasource backings/modifiers, persist statements
+- Unit tests for the resolver — dependency resolution and ordering
+- `tests/cli_integration.rs` — every CLI command, including the JSON output contract
+- `tests/public_api.rs` — the crate's exported surface, reached only through
+  `trilogy_parser::*`, so a regression in what is actually published fails here
 
 ### Building the CLI
 
@@ -127,6 +184,13 @@ The resolver implements three key dependency rules:
 - Case 1: file A imports from file B → B must run before A for all datasources in B
 - Case 2: file A imports from file B, then updates datasource from file B → update takes precedence, so A runs before B.
 
-## Grammar Limitations
+## Scope
 
-The grammar is currently focused on dependency-relevant constructs (imports, datasources, persist statements). It does not parse all Trilogy syntax. It can be extended in the future.
+`src/trilogy.pest` is the full Trilogy grammar — the same one that backs
+pytrilogy's pest parser — so `TrilogyParser::parse(Rule::start, ..)` accepts any
+valid Trilogy source.
+
+The higher-level helpers (`parse_file`, `parse_imports`, `ImportResolver`) walk
+only the dependency-relevant constructs of that tree: imports, datasource
+declarations, and persist statements. Everything else in a file is parsed and
+skipped. For anything beyond dependency analysis, drive the grammar directly.
