@@ -1,12 +1,12 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use _preql_import_resolver::{parse_file, ImportResolver, ParsedFile};
+use trilogy_parser::{parse_file, DatasourceDeclaration, ImportResolver, ParsedFile};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "preql-import-resolver")]
+#[command(name = "trilogy-parser-cli")]
 #[command(author, version, about = "Parse PreQL files and resolve import/datasource dependencies")]
 struct Cli {
     #[command(subcommand)]
@@ -103,6 +103,23 @@ struct ImportOutput {
 #[derive(Serialize)]
 struct DatasourceOutput {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    address: Option<String>,
+    address_kind: String,
+    is_root: bool,
+    is_partitioned: bool,
+}
+
+impl From<DatasourceDeclaration> for DatasourceOutput {
+    fn from(d: DatasourceDeclaration) -> Self {
+        DatasourceOutput {
+            name: d.name,
+            address: d.address,
+            address_kind: d.address_kind.to_string(),
+            is_root: d.is_root,
+            is_partitioned: d.is_partitioned,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -249,7 +266,7 @@ fn handle_parse_file(
     let datasource_outputs: Vec<DatasourceOutput> = parsed
         .datasources
         .into_iter()
-        .map(|d| DatasourceOutput { name: d.name })
+        .map(DatasourceOutput::from)
         .collect();
 
     let persist_outputs: Vec<PersistOutput> = parsed
@@ -354,7 +371,7 @@ fn handle_parse_directory(
                     let datasource_outputs: Vec<DatasourceOutput> = parsed
                         .datasources
                         .into_iter()
-                        .map(|d| DatasourceOutput { name: d.name })
+                        .map(DatasourceOutput::from)
                         .collect();
 
                     let persist_outputs: Vec<PersistOutput> = parsed

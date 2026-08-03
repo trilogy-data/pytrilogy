@@ -1,14 +1,21 @@
-use pest::iterators::Pair;
-use pest::Parser;
 use pest_derive::Parser;
-use pyo3::prelude::*;
-use pyo3::types::{PyList, PyString, PyTuple};
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 #[derive(Parser)]
 #[grammar = "trilogy.pest"]
 pub struct TrilogyParser;
+
+// Everything below is the PyO3 conversion layer over the pest tree and only
+// exists in `python`-feature builds. `TrilogyParser`/`Rule` above stay
+// available to pure-Rust consumers (the CLI, downstream crates).
+#[cfg(feature = "python")]
+mod python_impl {
+use super::{Rule, TrilogyParser};
+use pest::iterators::Pair;
+use pest::Parser;
+use pyo3::prelude::*;
+use pyo3::types::{PyList, PyString, PyTuple};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 fn rename_rule(name: &str) -> &str {
     match name {
@@ -561,3 +568,10 @@ pub fn parse_trilogy_syntax_count(text: &str) -> PyResult<usize> {
     }
     Ok(walk(start))
 }
+}
+
+#[cfg(feature = "python")]
+pub use python_impl::{
+    parse_trilogy_syntax, parse_trilogy_syntax_count, parse_trilogy_syntax_tuple, PestNode,
+    PestToken,
+};

@@ -68,7 +68,7 @@ backend-path = [".scripts"]
 [tool.maturin]
 module-name = "_preql_import_resolver"
 manifest-path = "trilogy/scripts/dependency/Cargo.toml"
-features = ["pyo3/extension-module"]
+features = ["python", "pyo3/extension-module"]
 python-packages = ["trilogy"]
 include = [
   "trilogy/**/*.preql",

@@ -1,4 +1,4 @@
-# PreQL Import Resolver
+# Trilogy Parser (`trilogy-parser`)
 
 A Rust-based CLI tool and Python library for parsing PreQL (Trilogy) files and resolving import dependencies with ETL-aware dependency ordering.
 
@@ -19,25 +19,25 @@ Exit codes:
 ### Parse a single file
 
 ```bash
-preql-import-resolver parse path/to/file.preql --format pretty
+trilogy-parser-cli parse path/to/file.preql --format pretty
 ```
 
 ### Parse a directory
 
 ```bash
-preql-import-resolver parse path/to/directory --recursive --format json
+trilogy-parser-cli parse path/to/directory --recursive --format json
 ```
 
 ### Resolve dependencies
 
 ```bash
-preql-import-resolver resolve path/to/file.preql --format pretty
+trilogy-parser-cli resolve path/to/file.preql --format pretty
 ```
 
 ### Analyze datasources
 
 ```bash
-preql-import-resolver datasources path/to/directory --recursive
+trilogy-parser-cli datasources path/to/directory --recursive
 ```
 
 ## Python Integration
@@ -99,7 +99,7 @@ All tests include:
 cargo build --release
 ```
 
-The binary will be at `target/release/preql-import-resolver` (or `.exe` on Windows).
+The binary will be at `target/release/trilogy-parser-cli` (or `.exe` on Windows).
 
 ### Building for Python
 

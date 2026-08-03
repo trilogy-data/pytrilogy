@@ -6,8 +6,8 @@ use tempfile::TempDir;
 fn get_binary_path() -> PathBuf {
     // Find the compiled binary in either debug or release
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let debug_path = Path::new(manifest_dir).join("target/debug/preql-import-resolver");
-    let release_path = Path::new(manifest_dir).join("target/release/preql-import-resolver");
+    let debug_path = Path::new(manifest_dir).join("target/debug/trilogy-parser-cli");
+    let release_path = Path::new(manifest_dir).join("target/release/trilogy-parser-cli");
 
     #[cfg(target_os = "windows")]
     {

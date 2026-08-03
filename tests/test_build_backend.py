@@ -72,7 +72,7 @@ __version__ = "0.3.136"
     cargo_dir.mkdir(parents=True)
     cargo_file = cargo_dir / "Cargo.toml"
     cargo_file.write_text("""[package]
-name = "preql-import-resolver"
+name = "trilogy-parser"
 version = ""
 edition = "2021"
 """)
@@ -98,7 +98,7 @@ def test_sync_version_with_existing_version(tmp_path):
     cargo_dir.mkdir(parents=True)
     cargo_file = cargo_dir / "Cargo.toml"
     cargo_file.write_text("""[package]
-name = "preql-import-resolver"
+name = "trilogy-parser"
 version = "0.1.0"
 edition = "2021"
 """)
