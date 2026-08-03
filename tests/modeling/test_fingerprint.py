@@ -163,3 +163,12 @@ def test_datasource_address_change_is_definition_change():
     diff = diff_fingerprints(fingerprint(DERIVED), fingerprint(moved))
     assert diff.datasources.changed == {"customer_totals": ChangeKind.DEFINITION}
     assert diff.invalidated_datasources == ["customer_totals"]
+
+
+def test_backticking_an_address_is_not_a_change():
+    """Backticks are trilogy source syntax; the dialect applies its own quote
+    character, so the same table must not read as needing a rebuild."""
+    quoted = DERIVED.replace(
+        "address customer_totals_tbl;", "address `customer_totals_tbl`;"
+    )
+    assert fingerprint(DERIVED).root == fingerprint(quoted).root
