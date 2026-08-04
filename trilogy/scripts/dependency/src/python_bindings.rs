@@ -3,6 +3,7 @@ use pyo3::types::{PyDict, PyList};
 use std::path::PathBuf;
 
 use crate::graph::GraphCore;
+use crate::network_search::{enumerate_covers, CandidateSpec, LimitKind, NetworkSpec};
 use crate::resolver::ImportResolver;
 use crate::trilogy_parser::{
     parse_trilogy_syntax, parse_trilogy_syntax_count, parse_trilogy_syntax_tuple,
@@ -19,7 +20,48 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_tuple, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_count, m)?)?;
+    m.add_function(wrap_pyfunction!(enumerate_network_covers, m)?)?;
     Ok(())
+}
+
+/// The v4 network-search enumeration walk (`_enumerate_covers`). Takes the
+/// search-facing labels of a `SourceNetwork` as plain data and returns the
+/// emitted covers (node-name lists, in emission order) plus which budget
+/// truncated the walk (`"cover_limit"` / `"state_limit"`), if any.
+#[allow(clippy::type_complexity)]
+#[pyfunction]
+fn enumerate_network_covers(
+    terminals: Vec<String>,
+    candidates: Vec<(String, Vec<(String, bool)>, Vec<String>, bool)>,
+    axis_families: Vec<(String, Vec<Vec<String>>)>,
+    join_requirements: Vec<(String, Vec<String>, Vec<String>)>,
+    subsumed_arms: Vec<(String, String)>,
+    cover_limit: usize,
+    state_limit: usize,
+) -> (Vec<Vec<String>>, Option<&'static str>) {
+    let spec = NetworkSpec {
+        terminals,
+        candidates: candidates
+            .into_iter()
+            .map(|(node, bindings, grain, partial_is_full)| CandidateSpec {
+                node,
+                bindings,
+                grain,
+                partial_is_full,
+            })
+            .collect(),
+        axis_families,
+        join_requirements,
+        subsumed_arms,
+        cover_limit,
+        state_limit,
+    };
+    let (covers, limit) = enumerate_covers(&spec);
+    let limit = limit.map(|kind| match kind {
+        LimitKind::Covers => "cover_limit",
+        LimitKind::States => "state_limit",
+    });
+    (covers, limit)
 }
 
 #[pyclass]

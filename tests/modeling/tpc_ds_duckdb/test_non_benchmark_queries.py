@@ -1159,6 +1159,38 @@ limit 10;
     assert len(rows) == 10
 
 
+def test_truncated_search_seed_fallback_returns_correct_rows(engine, monkeypatch):
+    """Graceful degradation, proven: force the cover walk to truncate so the
+    lazy top-down seed (`_seed_cover`) plans the query, then check the
+    degraded plan returns exactly the untruncated plan's rows. Guards the
+    fallback's whole value claim — a truncated budget must yield a CORRECT
+    (if non-cost-minimal) plan, not just any plan."""
+    from trilogy.core.processing.v4_helper import network_search as ns
+
+    query = """import store_sales as ss;
+select ss.item.category, count(ss.ticket_number) as tickets
+order by ss.item.category asc nulls first;"""
+    engine.environment = Environment(working_path=working_path)
+    baseline = engine.execute_raw_sql(engine.generate_sql(query)[-1]).fetchall()
+    assert baseline
+
+    seeds = []
+    orig_seed = ns._seed_cover
+
+    def counting_seed(network, targets):
+        seed = orig_seed(network, targets)
+        seeds.append(seed)
+        return seed
+
+    monkeypatch.setattr(ns, "_seed_cover", counting_seed)
+    monkeypatch.setattr(ns, "STATE_LIMIT", 1)
+    engine.environment = Environment(working_path=working_path)
+    degraded = engine.execute_raw_sql(engine.generate_sql(query)[-1]).fetchall()
+
+    assert any(seed is not None for seed in seeds), "seed fallback never planned"
+    assert degraded == baseline
+
+
 def test_not_null_on_aggregate_grain_key_is_enforced(engine):
     """A `where key is not null` beside an aggregate grouped BY that key must
     restrict the output population.

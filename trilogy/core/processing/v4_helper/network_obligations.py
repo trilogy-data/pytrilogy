@@ -221,9 +221,7 @@ def compute_pending_obligations(
             for node in network.candidates:
                 if node in chosen:
                     continue
-                touched = sum(
-                    1 for comp in comps if not joined[node].isdisjoint(comp)
-                )
+                touched = sum(1 for comp in comps if not joined[node].isdisjoint(comp))
                 if touched:
                     adjacency[node] = touched
             mergers = tuple(

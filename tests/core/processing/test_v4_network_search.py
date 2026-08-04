@@ -897,10 +897,12 @@ class TestSearchBudget:
         assert not result.exhausted
 
     def test_budget_exhaustion_is_not_the_same_verdict_as_a_decline(self, monkeypatch):
-        """Truncation BEFORE the first cover: `solution is None`, but the search
-        made no claim that no solution exists. `exhausted` is what keeps the
-        fallbacks from reading a budget failure as evidence."""
+        """Truncation BEFORE the first cover, with no usable seed: `solution is
+        None`, but the search made no claim that no solution exists.
+        `exhausted` is what keeps the fallbacks from reading a budget failure
+        as evidence."""
         monkeypatch.setattr(ns, "STATE_LIMIT", 1)
+        monkeypatch.setattr(ns, "_seed_cover", lambda network, targets: None)
         benv, graph = _build(DIAMOND_MODEL)
         network = build_source_network(
             _terminals(benv, "local.week_seq", "local.qty", "local.qoh"), benv, graph
@@ -913,6 +915,22 @@ class TestSearchBudget:
         assert result.exhausted
         # a decline for lack of a binder is the OTHER verdict, and stays empty
         assert not result.unreachable
+
+    def test_budget_exhaustion_keeps_the_seed_solution(self, monkeypatch):
+        """The top-down seed outlives the budget: a truncated walk returns the
+        seed as a concrete (possibly non-cost-minimal) solution — reported as
+        truncated-but-not-exhausted — instead of exhausting into a guess."""
+        monkeypatch.setattr(ns, "STATE_LIMIT", 1)
+        benv, graph = _build(DIAMOND_MODEL)
+        network = build_source_network(
+            _terminals(benv, "local.week_seq", "local.qty", "local.qoh"), benv, graph
+        )
+
+        result = search_sources(network)
+
+        assert result.solution is not None
+        assert result.limit is SearchLimit.STATES
+        assert result.truncated and not result.exhausted
 
     def test_a_complete_search_reports_no_limit(self):
         benv, graph = _build(BRIDGE_MODEL)
@@ -1148,6 +1166,81 @@ class TestArmUnionBranching:
         result = search_sources(network)
         assert result.solution is not None
         assert result.solution.sources == ("ds~web_sales",)
+
+
+class TestRustWalkParity:
+    """`_enumerate_covers` runs in Rust; `_enumerate_covers_py` is the
+    executable spec it is held to. Parity is exact — same covers, same order,
+    same reported limit — including under truncation, where the push order
+    decides which covers survive."""
+
+    CASES = (
+        (BRIDGE_MODEL, ("local.item_id", "local.catalog_quantity")),
+        (
+            BRIDGE_MODEL,
+            ("local.catalog_quantity", "local.ticket_number", "local.customer_id"),
+        ),
+        (TWIN_SCAN_MODEL, ("local.ticket_number", "local.item_id", "local.quantity")),
+        (PARTIAL_DIMENSION_MODEL, ("local.launch_id", "local.vehicle_name")),
+        (
+            PARTITION_UNION_MODEL,
+            ("local.sales_channel", "local.order_id", "local.ext_sales_price"),
+        ),
+        (
+            DISCRIMINATOR_JOIN_MODEL,
+            ("local.return_amount", "local.site_id", "local.site_name"),
+        ),
+        (
+            AUTHORED_HOP_MODEL,
+            (
+                "local.a_amount",
+                "local.a_cust_sk",
+                "local.b_amount",
+                "local.b_cust_sk",
+                "local.b_cust_id",
+            ),
+        ),
+        (DIAMOND_MODEL, ("local.week_seq", "local.qty", "local.qoh")),
+        (DISCONNECTED_FACTS_MODEL + ONE_HOP_BRIDGE, ("local.a_val", "local.b_val")),
+        (DISCONNECTED_FACTS_MODEL + TWO_HOP_BRIDGE, ("local.a_val", "local.b_val")),
+        (ROW_PARTIAL_CHAIN_MODEL, ("local.launch_id", "local.maker_name")),
+        (
+            DERIVED_MERGE_MODEL,
+            ("local.l_id", "local.l_val", "local.r_id", "local.r_val"),
+        ),
+        (RECURSIVE_MERGE_MODEL, ("local.id", "local.plabel")),
+    )
+
+    def test_rust_walk_matches_the_python_spec(self):
+        for model, addresses in self.CASES:
+            benv, graph = _build(model)
+            network = build_source_network(_terminals(benv, *addresses), benv, graph)
+            assert ns._enumerate_covers(network) == ns._enumerate_covers_py(
+                network
+            ), addresses
+
+    def test_rust_walk_matches_under_truncation(self, monkeypatch):
+        for state_limit, cover_limit in ((1, 4096), (3, 4096), (10_000, 1), (7, 2)):
+            monkeypatch.setattr(ns, "STATE_LIMIT", state_limit)
+            monkeypatch.setattr(ns, "COVER_LIMIT", cover_limit)
+            for model, addresses in self.CASES:
+                benv, graph = _build(model)
+                network = build_source_network(
+                    _terminals(benv, *addresses), benv, graph
+                )
+                assert ns._enumerate_covers(network) == ns._enumerate_covers_py(
+                    network
+                ), (state_limit, cover_limit, addresses)
+
+    def test_rust_walk_matches_on_captured_axis_family_searches(self, monkeypatch):
+        captured = _captured_searches(
+            monkeypatch,
+            COALESCING_ARMS_MODEL,
+            "where s_cust is null select c_cust union join s_cust = c_cust;",
+        )
+        assert captured
+        for network, _result in captured:
+            assert ns._enumerate_covers(network) == ns._enumerate_covers_py(network)
 
 
 class TestCostAndObligationInvariants:

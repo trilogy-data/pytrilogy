@@ -35,6 +35,8 @@ and reports why, but builds no StrategyNodes.
 
 from __future__ import annotations
 
+from _preql_import_resolver import enumerate_network_covers
+
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -62,6 +64,52 @@ from trilogy.core.processing.v4_helper.network_topology import (
 def _enumerate_covers(
     network: SourceNetwork,
 ) -> tuple[list[frozenset[str]], SearchLimit | None]:
+    """The enumeration walk, run in Rust (`network_search.rs` in the parser
+    crate): the per-state machinery is bitset arithmetic there, while the
+    network's labels cross the boundary once per search as plain strings and
+    bools. `_enumerate_covers_py` is the executable spec the port is held to —
+    semantics live in its docstring, and the parity test in
+    `test_v4_network_search.py` pins the two together. The budget globals are
+    read at call time so test monkeypatching keeps working."""
+    covers, limit = enumerate_network_covers(
+        list(network.terminals),
+        [
+            (
+                node,
+                [
+                    (address, binding.partial)
+                    for address, binding in candidate.bindings.items()
+                ],
+                list(candidate.grain),
+                candidate.condition.partial_is_full,
+            )
+            for node, candidate in network.candidates.items()
+        ],
+        [
+            (representative, [list(nodes) for nodes in family])
+            for representative, family in network.axis_families.items()
+        ],
+        [
+            (
+                requirement.canonical,
+                list(requirement.left_keys),
+                list(requirement.right_keys),
+            )
+            for requirement in network.join_requirements
+        ],
+        list(network.subsumed_arms.items()),
+        COVER_LIMIT,
+        STATE_LIMIT,
+    )
+    return (
+        [frozenset(cover) for cover in covers],
+        SearchLimit(limit) if limit else None,
+    )
+
+
+def _enumerate_covers_py(
+    network: SourceNetwork,
+) -> tuple[list[frozenset[str]], SearchLimit | None]:
     """One pass, obligation-driven: branch on the scarcest pending obligation's
     satisfiers until none remain, then emit the cover. Coverage and the
     structural invariants are discharged by the same machinery, so every
@@ -73,38 +121,62 @@ def _enumerate_covers(
     completion join, so that cover is emitted too and the partiality and
     completion cost axes decide between them. Termination: every branch adds a
     source, obligations are monotone, and the candidate pool is finite. The
-    same source set reached along different discharge orders is one state."""
+    same source set reached along different discharge orders is one state.
+
+    The walk is LEVEL-ORDER over state size, with in-walk dominance: a state
+    containing an already-emitted cover with an identical binding profile is a
+    tower `_reduce` would only strip back down, so it is not expanded. Level
+    order is what arms the prune — every k-source cover is emitted before any
+    (k+1)-source state pops, so a dominated state always sees its dominator
+    (s66: q23's walk was 97% labelable-chain alternatives, emitting 534 covers
+    of 2..11 sources for a handful of distinct minimal answers). Profile
+    inequality keeps every upgrade path alive: a soft-branch state binds a
+    terminal MORE fully than the cover it extends, so it never reads as
+    dominated by it."""
+    targets = list(network.terminals)
     covers: list[frozenset[str]] = []
+    emitted: list[tuple[frozenset[str], dict[str, int]]] = []
     visited: set[frozenset[str]] = set()
-    stack: list[frozenset[str]] = [frozenset()]
-    while stack:
-        chosen = stack.pop()
-        if chosen in visited:
-            continue
-        if len(covers) >= COVER_LIMIT:
-            return covers, SearchLimit.COVERS
-        if len(visited) >= STATE_LIMIT:
-            return covers, SearchLimit.STATES
-        visited.add(chosen)
-        pending = pending_obligations(network, chosen)
-        if pending:
-            # Scarcest obligation first: the smallest branch factor, and a
-            # deterministic discharge order.
-            first = min(pending, key=lambda o: (len(o.satisfiers), o.identity))
-            for node in first.satisfiers:
-                stack.append(chosen | {node})
-            continue
-        # No dedupe needed: `visited` already admits each state exactly once.
-        covers.append(chosen)
-        for address in network.terminals:
-            full = network.full_binders(address)
-            if full & chosen:
+    level: list[frozenset[str]] = [frozenset()]
+    while level:
+        # Within a level, first-pushed pops first: the push order fixes which
+        # covers survive truncation, so it must stay deterministic.
+        next_level: list[frozenset[str]] = []
+        for chosen in level:
+            if chosen in visited:
                 continue
-            # `binders` is sorted; the push order fixes which covers survive
-            # truncation, so it must not become set-iteration order.
-            for node in network.binders(address):
-                if node in full:
-                    stack.append(chosen | {node})
+            if len(covers) >= COVER_LIMIT:
+                return covers, SearchLimit.COVERS
+            if len(visited) >= STATE_LIMIT:
+                return covers, SearchLimit.STATES
+            visited.add(chosen)
+            if emitted:
+                profile = _binding_profile(network, chosen, targets)
+                if any(
+                    prior < chosen and profile == prior_profile
+                    for prior, prior_profile in emitted
+                ):
+                    continue
+            pending = pending_obligations(network, chosen)
+            if pending:
+                # Scarcest obligation first: the smallest branch factor, and a
+                # deterministic discharge order.
+                first = min(pending, key=lambda o: (len(o.satisfiers), o.identity))
+                for node in first.satisfiers:
+                    next_level.append(chosen | {node})
+                continue
+            # No dedupe needed: `visited` already admits each state exactly once.
+            covers.append(chosen)
+            emitted.append((chosen, _binding_profile(network, chosen, targets)))
+            for address in network.terminals:
+                full = network.full_binders(address)
+                if full & chosen:
+                    continue
+                # `binders` is sorted; see the determinism note above.
+                for node in network.binders(address):
+                    if node in full:
+                        next_level.append(chosen | {node})
+        level = next_level
     return covers, None
 
 
@@ -274,9 +346,7 @@ def _solution_for(
     )
 
 
-def _split_terminals(
-    network: SourceNetwork, targets: list[str]
-) -> frozenset[str]:
+def _split_terminals(network: SourceNetwork, targets: list[str]) -> frozenset[str]:
     """Terminals provably un-co-locatable: every emitted cover must be one
     join-component (`search_sources` discards the rest), and a cover's joins
     are a subgraph of the candidate pool's, so when no single component of the
@@ -302,6 +372,33 @@ def _split_terminals(
         if best is None or len(missing) < len(best):
             best = missing
     return best or frozenset()
+
+
+def _seed_cover(network: SourceNetwork, targets: list[str]) -> frozenset[str] | None:
+    """Top-down fallback: reduce a terminal-covering pool component straight
+    to a minimal cover, without walking. Consulted only when the walk found
+    nothing — a truncated budget stops being a dead end — and never competes
+    with the walk's own solutions: gated s66, letting it compete changed four
+    corpus plans, all larger, because a top-down reduction is one drop-order
+    local minimum, not the cost-order winner.
+
+    Validated by the walk's own emit standard (no pending obligations, one
+    component): obligations are INVISIBLE at the top of the lattice —
+    satisfiers are defined as additions, and with everything chosen there is
+    nothing to add — so an unvalidated reduction can keep a stranded
+    labelable the walk would never emit. `pending_obligations` on the reduced
+    set sees the frontier again and catches exactly that."""
+    pool = components(network, frozenset(network.candidates))
+    for comp in pool:
+        if any(network.binder_set(a).isdisjoint(comp) for a in targets):
+            continue
+        seed = _reduce(network, comp, targets)
+        if pending_obligations(network, seed):
+            continue
+        if not is_connected(network, seed):
+            continue
+        return seed
+    return None
 
 
 def search_sources(network: SourceNetwork) -> SearchResult:
@@ -343,6 +440,19 @@ def search_sources(network: SourceNetwork) -> SearchResult:
         reduced.append((connected, _binding_profile(network, connected, targets)))
         solutions.append(_solution_for(network, connected, targets))
     if not solutions:
+        # Lazily probe top-down only when the walk came up empty (typically:
+        # budget truncation) — a validated seed is a concrete answer where
+        # the exhausted fall-through can only guess. Lazy on purpose: probing
+        # up front costs a full-component `_reduce` per search, which is more
+        # than the walk it would prune on every healthy request (s66: +0.2s
+        # on q23 for −0.05s of walk). Reported as truncated when the budget
+        # was hit, so `_report_truncation` still says the solution may not be
+        # cost-minimal.
+        seed = _seed_cover(network, targets)
+        if seed is not None:
+            return SearchResult(
+                solution=_solution_for(network, seed, targets), limit=limit
+            )
         return SearchResult(limit=limit)
     best = min(solutions, key=lambda s: (s.cost.axes(), s.sources))
     return SearchResult(solution=best, limit=limit)

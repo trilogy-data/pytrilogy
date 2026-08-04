@@ -833,9 +833,7 @@ _MINTED_CACHE: dict[
     tuple[
         ReferenceType,
         tuple[int, int],
-        tuple[
-            tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]
-        ],
+        tuple[tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]],
     ],
 ] = {}
 
