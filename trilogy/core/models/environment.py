@@ -145,6 +145,12 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # alone cannot prove freshness. Set before super().__init__, which may
         # already route initial data through __setitem__.
         self.mutations: int = 0
+        # Effective-content counter: bumps only when a key's VALUE OBJECT
+        # actually changes. Unlike `mutations` it ignores overlay push/pop and
+        # identical-object rewrites, so caches that only read the durable dict
+        # outside any overlay scope (the cross-statement BuildCaches store) can
+        # survive a re-parse of identical statements.
+        self.content_version: int = 0
         super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
@@ -234,11 +240,18 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
 
     def __setitem__(self, key: str, item: Concept) -> None:
         self.mutations += 1
+        if self.data.get(key) is not item:
+            self.content_version += 1
         super().__setitem__(key, item)
 
     def __delitem__(self, key: str) -> None:
         self.mutations += 1
+        self.content_version += 1
         super().__delitem__(key)
+
+    @property
+    def has_overlays(self) -> bool:
+        return bool(self._overlay_stack)
 
     def _overlay_lookup(self, key: str) -> Concept | None:
         if not self._overlay_stack:
@@ -552,6 +565,59 @@ def get_version():
     from trilogy import __version__
 
     return __version__
+
+
+def concept_structural_signature(concept: Concept) -> tuple:
+    """Declared identity of a concept: every author-layer field a build or
+    downstream cache can observe. Deliberately NOT ``Concept.__eq__``, which
+    is a weak name/type/grain comparison that ignores lineage, keys and
+    pseudonyms (see BuildConcept's matching contract)."""
+    meta = concept.metadata
+    return (
+        type(concept).__name__,
+        concept.name,
+        concept.namespace,
+        str(concept.datatype),
+        concept.purpose,
+        concept.derivation,
+        concept.granularity,
+        str(concept.lineage),
+        str(concept.grain),
+        frozenset(concept.keys or ()),
+        tuple(concept.modifiers),
+        frozenset(concept.pseudonyms),
+        (
+            (meta.line_number, meta.concept_source, meta.description, meta.hidden)
+            if meta
+            else None
+        ),
+    )
+
+
+def datasource_structural_signature(datasource: Datasource) -> tuple:
+    """Declared identity of a datasource, excluding runtime state: ``status``
+    flips in place at publish/persist time and must survive an identical
+    redeclaration rather than reset it."""
+    return (
+        datasource.identifier,
+        str(datasource.address),
+        str(datasource.grain),
+        tuple(
+            (str(c.alias), c.concept.address, tuple(c.modifiers))
+            for c in datasource.columns
+        ),
+        str(datasource.where) if datasource.where else None,
+        str(datasource.non_partial_for) if datasource.non_partial_for else None,
+        tuple(c.address for c in datasource.incremental_by),
+        tuple(c.address for c in datasource.partition_by),
+        tuple(c.address for c in datasource.freshness_by),
+        datasource.freshness_probe,
+        datasource.refresh_script,
+        str(datasource.allowed_lag) if datasource.allowed_lag else None,
+        datasource.is_root,
+        datasource.is_partial,
+        frozenset(datasource.column_level_partial_addresses),
+    )
 
 
 @dataclass
@@ -1049,16 +1115,19 @@ class Environment:
             ):
                 # excluded from public view — store in concepts but mark hidden
                 new = self.add_concept(namespaced)
-                self.concepts.data[target_k] = new
+                if self.concepts.data.get(target_k) is not new:
+                    self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             elif is_hidden:
                 # propagate hidden status from source
                 new = self.add_concept(namespaced)
-                self.concepts.data[target_k] = new
+                if self.concepts.data.get(target_k) is not new:
+                    self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             else:
                 new = self.add_concept(namespaced)
-                self.concepts[target_k] = new
+                if self.concepts.data.get(target_k) is not new:
+                    self.concepts[target_k] = new
 
         # Copy to list to avoid mutation issues during self-import
         for _, datasource in list(source.datasources.items()):
@@ -1195,7 +1264,27 @@ class Environment:
             if existing:
                 concept = existing
 
-        self.concepts[concept.address] = concept
+        # Identical redeclaration (a script re-parsed against a persistent
+        # environment): keep the durable object so no effective write occurs
+        # and content_version-stamped caches survive. Signature, not `==` —
+        # Concept.__eq__ ignores lineage. Rowset/multiselect concepts are
+        # exempt: their lineage embeds the statement's SelectLineage OBJECT,
+        # which planning matches by identity against named_statements — a
+        # re-parse must replace both together or the rowset can't be wired.
+        durable = self.concepts.data.get(concept.address)
+        if durable is not None and (
+            durable is concept
+            or (
+                not isinstance(durable, UndefinedConcept)
+                and concept.derivation
+                not in (Derivation.ROWSET, Derivation.MULTISELECT)
+                and concept_structural_signature(durable)
+                == concept_structural_signature(concept)
+            )
+        ):
+            concept = durable
+        else:
+            self.concepts[concept.address] = concept
         # `--`-prefixed declarations stay queryable but are omitted from public
         # listings (explore/agent metadata); route into the existing hidden set.
         if concept.metadata and concept.metadata.hidden:
@@ -1250,6 +1339,15 @@ class Environment:
             raise SyntaxError(
                 f"Root datasource '{datasource.identifier}' should not declare freshness or incremental by."
             )
+        # Identical redeclaration keeps the durable object (and its runtime
+        # status) — no effective write, content_version-stamped caches survive.
+        durable = dict.get(self.datasources, datasource.identifier)
+        if durable is not None and (
+            durable is datasource
+            or datasource_structural_signature(durable)
+            == datasource_structural_signature(datasource)
+        ):
+            return durable
         self.datasources[datasource.identifier] = datasource
         return datasource
 

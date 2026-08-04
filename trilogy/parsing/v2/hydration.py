@@ -116,6 +116,8 @@ class HydrationContext:
     symbol_table: SymbolTable | None = None
     semantic_state: SemanticState | None = None
     in_flight_imports: set[str] | None = None
+    closure_stack: list | None = None
+    local_closures: dict | None = None
     in_stdlib: bool = False
 
 
@@ -144,6 +146,12 @@ class NativeHydrator:
                 context.in_flight_imports
                 if context.in_flight_imports is not None
                 else set()
+            ),
+            closure_stack=(
+                context.closure_stack if context.closure_stack is not None else []
+            ),
+            local_closures=(
+                context.local_closures if context.local_closures is not None else {}
             ),
             in_stdlib=context.in_stdlib,
             semantic_state=self.semantic_state,

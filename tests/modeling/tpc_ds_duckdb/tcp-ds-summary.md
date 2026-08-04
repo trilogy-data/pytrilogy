@@ -25,23 +25,23 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 89 | 1,586 | 965 | +621 |
 | 64 | 4,382 | 3,783 | +599 |
 
-Trilogy execution is faster than the reference SQL for 49/99 queries. Total Trilogy execution time is 6.832s vs 6.520s reference SQL time.
+Trilogy execution is faster than the reference SQL for 49/99 queries. Total Trilogy execution time is 14.418s vs 13.539s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.028s | +0.000s | +0.036s |
-| Trilogy vs Reference SQL | -42.6% | +0.5% | +81.1% |
-| Trilogy / Reference SQL | 0.57x | 1.00x | 1.81x |
+| Trilogy - Reference SQL seconds | -0.059s | +0.000s | +0.081s |
+| Trilogy vs Reference SQL | -46.8% | +0.6% | +100.1% |
+| Trilogy / Reference SQL | 0.53x | 1.01x | 2.00x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 23 | 0.487s | 0.206s | +0.281s |
-| 05 | 0.251s | 0.043s | +0.208s |
-| 78 | 0.355s | 0.180s | +0.175s |
-| 70 | 0.166s | 0.034s | +0.132s |
-| 83 | 0.146s | 0.044s | +0.102s |
+| 01 | 1.059s | 0.051s | +1.008s |
+| 05 | 0.692s | 0.163s | +0.529s |
+| 23 | 0.752s | 0.395s | +0.357s |
+| 76 | 0.508s | 0.158s | +0.350s |
+| 70 | 0.373s | 0.061s | +0.312s |
 
 ## Alternative Queries
 
@@ -60,20 +60,20 @@ Top 5 queries where PreQL is longest vs reference SQL
 | --- | ---: | ---: | ---: |
 | 30.alt | 1,670 | 1,507 | +163 |
 
-Trilogy execution is faster than the reference SQL for 0/5 queries. Total Trilogy execution time is 1.024s vs 0.204s reference SQL time.
+Trilogy execution is faster than the reference SQL for 0/5 queries. Total Trilogy execution time is 1.678s vs 0.369s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | +0.002s | +0.020s | +0.399s |
-| Trilogy vs Reference SQL | +9.4% | +59.1% | +640.0% |
-| Trilogy / Reference SQL | 1.09x | 1.59x | 7.40x |
+| Trilogy - Reference SQL seconds | +0.015s | +0.042s | +0.620s |
+| Trilogy vs Reference SQL | +21.8% | +75.0% | +721.8% |
+| Trilogy / Reference SQL | 1.22x | 1.75x | 8.22x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 97.2 | 0.464s | 0.061s | +0.403s |
-| 97.1 | 0.456s | 0.064s | +0.392s |
-| 30.alt | 0.054s | 0.034s | +0.020s |
-| 2.2 | 0.025s | 0.022s | +0.002s |
-| 2.1 | 0.025s | 0.023s | +0.002s |
+| 97.1 | 0.713s | 0.085s | +0.628s |
+| 97.2 | 0.695s | 0.088s | +0.607s |
+| 30.alt | 0.097s | 0.055s | +0.042s |
+| 2.2 | 0.090s | 0.070s | +0.019s |
+| 2.1 | 0.083s | 0.071s | +0.013s |

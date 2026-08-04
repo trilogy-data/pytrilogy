@@ -894,17 +894,22 @@ def _session_build_caches(
     baselines, pseudonym map) is a pure function of the author environment and
     the folded join set, so it stays valid exactly until either changes. The
     stamp covers every author mutation channel a build reads: the concept and
-    datasource dict write counters, in-place datasource status flips (persist
+    datasource dict effective-write counters (content_version, not mutations —
+    overlay push/pop and identical re-registrations from a re-parsed script
+    must not evict the bundle), in-place datasource status flips (persist
     marks PUBLISHED without a dict write), and the alias map; env merges ride
-    in the join key. A statement with its own scoped joins gets its own bundle
+    in the join key. If a concept overlay is somehow live at generation time,
+    fall back to the raw mutation counter so overlay-visible state is covered.
+    A statement with its own scoped joins gets its own bundle
     — address/grain-keyed cache entries are only shareable under ONE join set
     (the same rule that gives nested arms fresh caches)."""
     from functools import partial
     from weakref import ref
 
     stamp = (
-        environment.concepts.mutations,
-        environment.datasources.mutations,
+        environment.concepts.content_version,
+        environment.datasources.content_version,
+        environment.concepts.mutations if environment.concepts.has_overlays else -1,
         len(environment.alias_origin_lookup),
         tuple(sorted((k, d.status.value) for k, d in environment.datasources.items())),
     )

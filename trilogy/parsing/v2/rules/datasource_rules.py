@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -783,7 +783,17 @@ def datasource_node(
                     eligible = False
             if not eligible:
                 continue
-            target_c.keys = {k.address for k in resolved_keys}  # type: ignore[union-attr]
+            new_keys = {k.address for k in resolved_keys}  # type: ignore[union-attr]
+            durable = context.environment.concepts.data.get(target_c.address)
+            if durable is target_c:
+                # The concept came from the durable env — for a bare import it
+                # may be SHARED with a cross-parse cached child environment, so
+                # re-key a copy scoped to this env instead of mutating in place.
+                context.environment.concepts[target_c.address] = replace(
+                    target_c, keys=new_keys
+                )
+            else:
+                target_c.keys = new_keys
     return datasource
 
 
