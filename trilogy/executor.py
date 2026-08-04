@@ -88,6 +88,7 @@ from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
     ResultProtocol,
+    SupportsNativePersist,
     escape_literal_colons,
 )
 from trilogy.hooks.base_hook import BaseHook
@@ -728,14 +729,6 @@ class Executor:
         self._prepare_query_sources(query)
         return self.generator.compile_statement(query)
 
-    def compile_statements_for_execution(
-        self, query: ProcessedQueryPersist
-    ) -> list[str]:
-        """``compile_for_execution`` for writers that need one statement per
-        driver call (see ``BaseDialect.compile_statements``)."""
-        self._prepare_query_sources(query)
-        return self.generator.compile_statements(query)
-
     @execute_query.register
     def _(self, query: ProcessedQuery) -> ResultProtocol | None:
         sql = self.compile_for_execution(query)
@@ -778,14 +771,28 @@ class Executor:
                 self.environment.add_datasource(query.datasource)
             return None
 
-        output = self.execute_write_statements(
-            self.compile_statements_for_execution(query),
-            local_concepts=query.local_concepts,
-        )
+        output = self._execute_persist(query)
 
         if query.persist_mode == PersistMode.OVERWRITE:
             self.environment.add_datasource(query.datasource)
         return output
+
+    def _execute_persist(self, query: ProcessedQueryPersist) -> ResultProtocol:
+        """Offer the write to the engine's own API, then fall back to SQL.
+
+        Source preparation runs first either way — a native writer still reads
+        through whatever the dialect had to stage (BigQuery's python datasources
+        land in GCS before any job can name them), and it renders its select
+        from the same processed statement."""
+        self._prepare_query_sources(query)
+        if isinstance(self.engine, SupportsNativePersist):
+            native = self.engine.execute_persist(query, self)
+            if native is not None:
+                return native
+        return self.execute_write_statements(
+            self.generator.compile_statements(query),
+            local_concepts=query.local_concepts,
+        )
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
         """Build SQL with column aliases for file output."""
@@ -1175,25 +1182,36 @@ class Executor:
     ) -> ResultProtocol:
         """Run a command against the raw underlying
         execution engine."""
-        from sqlalchemy import text
 
-        final_params = None
         if isinstance(command, Path):
             with safe_open(command) as f:
                 command = f.read()
-        command = escape_literal_colons(command)
-        q = text(command)
         if variables:
-            final_params = variables
-        else:
-            params = q.compile().params
-            if params:
-                final_params = {
-                    x: self._hydrate_param(x, local_concepts=local_concepts)
-                    for x in params
-                }
+            # Supplied bindings stand in for hydration: the markers need not
+            # name concepts at all, so do not try to resolve them.
+            return self._execute_with_retry(escape_literal_colons(command), variables)
+        return self._execute_with_retry(
+            *self.prepare_sql(command, local_concepts=local_concepts)
+        )
 
-        return self._execute_with_retry(command, final_params)
+    def prepare_sql(
+        self, command: str, local_concepts: Mapping[str, Concept] | None = None
+    ) -> tuple[str, dict | None]:
+        """Escape raw SQL and hydrate whatever bind markers it carries.
+
+        Shared with writers that bypass ``execute_raw_sql`` to run a statement
+        through an engine API instead (see ``SupportsNativePersist``): a
+        rendered select can carry bind markers, and they have to be hydrated the
+        same way whichever path ends up running it."""
+        from sqlalchemy import text
+
+        command = escape_literal_colons(command)
+        params = text(command).compile().params
+        if not params:
+            return command, None
+        return command, {
+            x: self._hydrate_param(x, local_concepts=local_concepts) for x in params
+        }
 
     def execute_write_statements(
         self,

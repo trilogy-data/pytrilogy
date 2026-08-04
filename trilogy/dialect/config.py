@@ -72,6 +72,7 @@ class BigQueryConfig(DialectConfig):
         staging_uri: str | None = None,
         enable_python_datasources: bool | None = None,
         use_sqlalchemy: bool | None = None,
+        native_partition_swap: bool | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.project = project
@@ -91,6 +92,13 @@ class BigQueryConfig(DialectConfig):
         # path, kept for one release. Left as None when unset so merge_config
         # does not clobber a file config with a CLI default.
         self._use_sqlalchemy = use_sqlalchemy
+        # Replace partitions with per-slice copy jobs instead of DML (see
+        # dialect/bigquery_persist.py). On by default: it is cheaper, atomic
+        # per slice, and declines to the SQL path for any shape it cannot
+        # prove. The switch exists so the same write can be run both ways and
+        # the rows compared — which is the only thing that shows the two
+        # implementations agree.
+        self._native_partition_swap = native_partition_swap
 
     @property
     def enable_python_datasources(self) -> bool:
@@ -99,6 +107,10 @@ class BigQueryConfig(DialectConfig):
     @property
     def use_sqlalchemy(self) -> bool:
         return self._use_sqlalchemy or False
+
+    @property
+    def native_partition_swap(self) -> bool:
+        return self._native_partition_swap is not False
 
     def connection_string(self) -> str:
         return f"bigquery://{self.project}?user_supplied_client=True"

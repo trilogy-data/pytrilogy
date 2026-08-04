@@ -2,7 +2,8 @@
 
 The portable form stages the new rows, deletes the partition keys they cover,
 and inserts — so re-running one partition is idempotent and never touches a
-neighbour. BigQuery keeps its own scripted equivalent.
+neighbour. BigQuery runs the same steps as one script, because its temp tables
+do not outlive the job that declared them.
 """
 
 from datetime import date
@@ -196,11 +197,37 @@ def test_repeated_partitioned_append_is_idempotent_including_the_null_slice():
     assert first == {date(2024, 1, 1): 1, date(2024, 1, 2): 1, None: 1}
 
 
-def test_bigquery_keeps_its_scripted_per_partition_delete():
+def test_bigquery_runs_the_staged_replace_as_one_script():
+    """A BigQuery temp table only outlives the job that declared it, so the
+    shared five statements have to travel as a single script. No per-partition
+    loop: the delete is one null-safe statement whatever the slice count."""
     renderer, processed = _persist(Dialects.BIGQUERY)
     (script,) = renderer.compile_statements(processed)
-    assert "EXECUTE IMMEDIATE" in script
-    assert "CREATE TEMPORARY TABLE" not in script
+    assert "EXECUTE IMMEDIATE" not in script
+    assert "WHILE" not in script
+    assert script.startswith("CREATE TEMP TABLE `_trilogy_stage_my_facts`")
+    assert "DELETE FROM `my_facts` WHERE EXISTS" in script
+    assert script.count(";") == 4
+
+
+def test_bigquery_partition_delete_is_null_safe_and_multi_key():
+    """The scripted loop it replaced could do neither: `ARRAY_AGG(DISTINCT k)`
+    drops the NULL slice, and it only ever read `partition_by[0]`."""
+    env = Environment()
+    _, statements = parse(
+        MODEL.replace("partition by created_at;", "partition by created_at, label;")
+        .replace(
+            "append into facts by created_at", "append into facts by created_at, label"
+        )
+        .replace("property id.label string;", "property id.label date;"),
+        env,
+    )
+    renderer = Dialects.BIGQUERY.default_renderer()
+    (processed,) = renderer.generate_queries(env, [statements[-1]])
+    (script,) = renderer.compile_statements(processed)
+    delete = next(x for x in script.split(";\n") if x.startswith("DELETE"))
+    assert delete.count("IS NULL") == 4
+    assert "`created_at`" in delete and "`label`" in delete
 
 
 SLICES = [

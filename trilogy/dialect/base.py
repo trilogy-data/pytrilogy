@@ -3272,10 +3272,13 @@ class BaseDialect:
 
         An empty select touches nothing: no keys stage, so no slice is cleared.
 
-        Dialects with a native primitive override the whole method — see
-        BigQuery's scripted per-partition delete. Dialects that only differ in
-        how they spell one step override that step instead (SQL Server has no
-        ``CREATE TEMPORARY TABLE ... AS`` and no row-value ``IN``).
+        Dialects that only differ in how they spell one step override that step
+        (SQL Server has no ``CREATE TEMPORARY TABLE ... AS`` and no row-value
+        ``IN``); BigQuery overrides the packaging, because its temp tables do
+        not outlive the job that declared them. Replacing the *mechanism*
+        belongs to the engine rather than here — see ``SupportsNativePersist``,
+        which lets a connected API perform the write while this stays the
+        renderable form and the fallback.
         """
         target = self.safe_quote(query.output_to.address.location)
         staged = self.quote(self.staging_table_name(query))
@@ -3489,6 +3492,14 @@ class BaseDialect:
 
     def _persist_insert_prefix(self, query: ProcessedQueryPersist) -> str:
         return f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+
+    def render_select_only(self, query: ProcessedQueryPersist) -> str:
+        """The rows a persist produces, with no write prefix.
+
+        For a writer that performs the write through an engine API rather than
+        by running SQL (see ``SupportsNativePersist``): it still needs the
+        select, and the dialect remains the only thing that renders one."""
+        return self._render_query(query, None)
 
     def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
         """The same SQL as ``compile_statement``, split into statements that can
