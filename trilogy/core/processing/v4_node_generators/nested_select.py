@@ -105,7 +105,26 @@ def build_nested_select(
         scoped_joins=scoped_joins,
     )
     built: BuildSelectLineage | BuildMultiSelectLineage = factory.build(select)
-    build_env = author_env.materialize_for_select(
+    # Materialized as baseline + overlay delta: the context-free build of the
+    # whole environment under these scoped joins is computed once per
+    # resolution (per join set) and each arm replays only the units its own
+    # overlay actually changes — measured 0-10 of ~1500 on the nested-heavy
+    # corpus queries. `materialize_for_select` is the reference spelling the
+    # delta must stay byte-equivalent to (test_nested_env_delta.py).
+    baseline_key = author_env.materialize_join_key(scoped_joins)
+    baseline = caches.env_baselines.get(baseline_key)
+    if baseline is None:
+        baseline = author_env.materialize_baseline(
+            build_cache=caches.build_cache,
+            pseudonym_map=factory.pseudonym_map,
+            grain_build_cache=caches.grain_build_cache,
+            canonical_build_cache=caches.canonical_build_cache,
+            datasource_build_cache=caches.datasource_build_cache,
+            scoped_joins=scoped_joins,
+        )
+        caches.env_baselines[baseline_key] = baseline
+    build_env = author_env.materialize_delta(
+        baseline,
         built.local_concepts,
         build_cache=caches.build_cache,
         pseudonym_map=factory.pseudonym_map,

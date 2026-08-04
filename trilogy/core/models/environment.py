@@ -635,6 +635,94 @@ class Environment:
         )
         return factory.build(self)
 
+    def materialize_join_key(
+        self, scoped_joins: list[tuple[str, str, JoinType]] | None
+    ) -> tuple[tuple[str, str, JoinType], ...]:
+        """The scoped-join tuple a materialization actually builds under (env
+        merges folded in, as `_materialize_factory` does) — the cache key for
+        `EnvBaseline` reuse across the statement and its nested arms."""
+        folded = list(scoped_joins or [])
+        folded.extend(merge for merge in self.merges if merge not in folded)
+        return tuple(folded)
+
+    def _materialize_factory(
+        self,
+        local_concepts: dict | None,
+        build_cache: dict | None,
+        pseudonym_map: dict[str, set[str]] | None,
+        grain_build_cache: dict | None,
+        canonical_build_cache: dict | None,
+        datasource_build_cache: dict | None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None,
+    ):
+        """The exact factory `materialize_for_select` builds (env merges folded
+        into the scoped joins) — one construction for the full, baseline and
+        delta materializations so the three cannot diverge."""
+        from trilogy.core.models.build import Factory
+
+        build_scoped_joins = list(scoped_joins or [])
+        build_scoped_joins.extend(
+            merge for merge in self.merges if merge not in build_scoped_joins
+        )
+        return Factory(
+            self,
+            local_concepts=local_concepts,
+            build_cache=build_cache,
+            pseudonym_map=pseudonym_map,
+            grain_build_cache=grain_build_cache,
+            canonical_build_cache=canonical_build_cache,
+            datasource_build_cache=datasource_build_cache,
+            scoped_joins=build_scoped_joins,
+        )
+
+    def materialize_baseline(
+        self,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ):
+        """Materialize with NO select overlay, recording per-unit footprints:
+        the reusable half of every nested-select materialization under this
+        scoped-join set. Pair with `materialize_delta`."""
+        factory = self._materialize_factory(
+            {},
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        return factory.build_environment_recorded(self)
+
+    def materialize_delta(
+        self,
+        baseline,
+        local_concepts: dict,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ) -> BuildEnvironment:
+        """`materialize_for_select`, computed as baseline + overlay delta.
+        Byte-equivalent to the full build (see `build_environment_delta` for
+        the soundness argument); the full spelling remains the reference."""
+        factory = self._materialize_factory(
+            local_concepts,
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        return factory.build_environment_delta(self, baseline)
+
     def add_rowset(self, name: str, lineage: SelectLineage):
         self.named_statements[name] = lineage
         self.concepts.rowset_namespaces.add(name)

@@ -23,11 +23,15 @@ modeling suites 484/484, ruff/mypy/black/cargo test clean.
 Measured (release build, same process A/B vs `_enumerate_covers_py`,
 best-of-3): q23 walk slice 0.061s -> 0.005s (12x; gen wall 0.267 -> 0.210s),
 and a 96-candidate soft-branch lattice that truncates at COVER_LIMIT (4096
-covers) 0.79s -> 0.033s (24x). Not yet ported (still Python, per the plan
-below): `_reduce`, cost, `_solution_for`, `_split_terminals`, `_seed_cover` —
-note `_reduce` no longer benefits from walk-warmed obligation memos (the Rust
-walk does not populate `network._obligation_cache`), which showed up nowhere
-on the corpus but is where to look first if a cover-heavy query regresses.
+covers) 0.79s -> 0.033s (24x). Corpus-wide walk slice 0.481s -> 0.105s;
+median query unmoved (~76ms), as predicted. Not yet ported (still Python, per
+the plan below): `_reduce`, cost, `_solution_for`, `_split_terminals`,
+`_seed_cover`. The Rust walk does not populate `network._obligation_cache`,
+so `_reduce` runs against a cold memo — MEASURED harmless (2026-08-03):
+corpus-wide `_reduce` wall is 16ms cold vs 15ms walk-warmed over 616 calls,
+with exactly 1 obligation recompute inside `_reduce` on the whole cold-cache
+corpus, because `_reduce` short-circuits on the profile and connectivity
+checks before ever asking `pending_obligations`. Not a lever for increment 2.
 
 ---
 

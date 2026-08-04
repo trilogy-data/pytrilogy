@@ -77,6 +77,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_filter_disconnected,
 )
 from trilogy.core.processing.nodes import (
+    BuildCaches,
     History,
     MergeNode,
     SelectNode,
@@ -875,6 +876,57 @@ def _authored_reference_addresses(
     return closure
 
 
+# id(environment) -> (weak handle, stamp, {join key: BuildCaches}). Same
+# identity idiom + mutation stamp as domain_graph._MINTED_CACHE.
+_SESSION_CACHE_STORE: dict[int, tuple] = {}
+
+
+def _evict_session_caches(key: int, _dead) -> None:
+    _SESSION_CACHE_STORE.pop(key, None)
+
+
+def _session_build_caches(
+    environment: Environment,
+    scoped_joins: list[tuple[str, str, JoinType]] | None,
+) -> BuildCaches:
+    """The BuildCaches bundle for this (environment state, scoped-join set),
+    reused across statements: every entry in the bundle (build caches, env
+    baselines, pseudonym map) is a pure function of the author environment and
+    the folded join set, so it stays valid exactly until either changes. The
+    stamp covers every author mutation channel a build reads: the concept and
+    datasource dict write counters, in-place datasource status flips (persist
+    marks PUBLISHED without a dict write), and the alias map; env merges ride
+    in the join key. A statement with its own scoped joins gets its own bundle
+    — address/grain-keyed cache entries are only shareable under ONE join set
+    (the same rule that gives nested arms fresh caches)."""
+    from functools import partial
+    from weakref import ref
+
+    stamp = (
+        environment.concepts.mutations,
+        environment.datasources.mutations,
+        len(environment.alias_origin_lookup),
+        tuple(sorted((k, d.status.value) for k, d in environment.datasources.items())),
+    )
+    store_key = id(environment)
+    cached = _SESSION_CACHE_STORE.get(store_key)
+    if cached is None or cached[0]() is not environment or cached[1] != stamp:
+        bundles: dict[tuple, BuildCaches] = {}
+        _SESSION_CACHE_STORE[store_key] = (
+            ref(environment, partial(_evict_session_caches, store_key)),
+            stamp,
+            bundles,
+        )
+    else:
+        bundles = cached[2]
+    key = environment.materialize_join_key(scoped_joins)
+    caches = bundles.get(key)
+    if caches is None:
+        caches = BuildCaches()
+        bundles[key] = caches
+    return caches
+
+
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
@@ -886,7 +938,10 @@ def get_query_node(
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    history = history or History(base_environment=environment)
+    history = history or History(
+        base_environment=environment,
+        build_caches=_session_build_caches(environment, scoped_joins),
+    )
     logger.info(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
@@ -915,7 +970,23 @@ def get_query_node(
     if build_lineage_sink is not None:
         build_lineage_sink.append(build_statement)
 
-    build_environment = environment.materialize_for_select(
+    # Baseline + overlay delta (see nested_select.build_nested_select): the
+    # statement's own materialization seeds the per-resolution baseline that
+    # nested arms under the same scoped joins then reuse.
+    baseline_key = environment.materialize_join_key(caches.scoped_joins)
+    baseline = caches.env_baselines.get(baseline_key)
+    if baseline is None:
+        baseline = environment.materialize_baseline(
+            build_cache=caches.build_cache,
+            pseudonym_map=base_factory.pseudonym_map,
+            grain_build_cache=base_factory.grain_build_cache,
+            canonical_build_cache=caches.canonical_build_cache,
+            datasource_build_cache=caches.datasource_build_cache,
+            scoped_joins=caches.scoped_joins,
+        )
+        caches.env_baselines[baseline_key] = baseline
+    build_environment = environment.materialize_delta(
+        baseline,
         build_statement.local_concepts,
         build_cache=caches.build_cache,
         pseudonym_map=base_factory.pseudonym_map,
