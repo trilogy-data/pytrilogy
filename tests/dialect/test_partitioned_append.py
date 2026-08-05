@@ -45,9 +45,9 @@ append into facts by created_at from select id, created_at, label;
 STAGED_DIALECTS = [Dialects.DUCK_DB, Dialects.POSTGRES, Dialects.SNOWFLAKE]
 
 
-def _persist(dialect: Dialects):
+def _persist(dialect: Dialects, model: str = MODEL):
     env = Environment()
-    _, statements = parse(MODEL, env)
+    _, statements = parse(model, env)
     renderer = dialect.default_renderer()
     (processed,) = renderer.generate_queries(env, [statements[-1]])
     assert processed.persist_mode == PersistMode.APPEND
@@ -244,6 +244,28 @@ def test_bigquery_partition_delete_is_null_safe_and_multi_key():
     delete = next(x for x in script.split(";\n") if x.startswith("DELETE"))
     assert delete.count("IS NULL") == 4
     assert "`created_at`" in delete and "`label`" in delete
+
+
+DATETIME_MODEL = MODEL.replace(
+    "property id.created_at date;", "property id.created_at datetime;"
+)
+
+
+def test_bigquery_appends_by_a_datetime_key():
+    """BigQuery partitions a DATETIME column in DDL, so an append may key on one:
+    `SUPPORTED_PARTITION_KEY_TYPES` and the DDL's partition expressions are the
+    same map."""
+    renderer, processed = _persist(Dialects.BIGQUERY, DATETIME_MODEL)
+    (script,) = renderer.compile_statements(processed)
+    delete = next(x for x in script.split(";\n") if x.startswith("DELETE"))
+    assert delete.count("trilogy_delete_target.`created_at`") == 2
+
+
+@pytest.mark.parametrize("dialect", STAGED_DIALECTS)
+def test_dialects_without_datetime_partitioning_reject_the_key(dialect):
+    """The check is the dialect's, not the parser's — the same model parses."""
+    with pytest.raises(ValueError, match="can partition only on DATE, TIMESTAMP"):
+        _persist(dialect, DATETIME_MODEL)
 
 
 SLICES = [

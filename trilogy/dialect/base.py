@@ -894,6 +894,14 @@ class BaseDialect:
     TABLE_NOT_FOUND_PATTERN: str | None = None
     HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None
+    # Types an APPEND may partition on. What can key a partition is a property
+    # of the engine, not of the language, so this is checked here rather than at
+    # parse time: BigQuery widens it to whatever its DDL can partition on, which
+    # is how a DATETIME column stays legal in both places.
+    SUPPORTED_PARTITION_KEY_TYPES: ClassVar[set[DataType]] = {
+        DataType.DATE,
+        DataType.TIMESTAMP,
+    }
 
     def render_string_literal(self, value: str) -> str:
         # Standard SQL: backslash is a plain character; only the quote needs
@@ -3020,6 +3028,7 @@ class BaseDialect:
                     for hook in hooks:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
+                self.validate_partition_keys(persist)
                 output.append(persist)
             elif isinstance(statement, ChartStatement):
                 if hooks:
@@ -3251,6 +3260,23 @@ class BaseDialect:
             else:
                 raise NotImplementedError(type(statement))
         return output
+
+    def validate_partition_keys(self, query: ProcessedQueryPersist) -> None:
+        """Reject an append whose partition keys this engine cannot partition on."""
+        if query.persist_mode != PersistMode.APPEND:
+            return
+        # str() rather than .value: a traited key renders through TraitDataType.
+        supported = ", ".join(
+            sorted(str(x) for x in self.SUPPORTED_PARTITION_KEY_TYPES)
+        )
+        for key, datatype in zip(query.partition_by, query.partition_types):
+            if datatype not in self.SUPPORTED_PARTITION_KEY_TYPES:
+                raise ValueError(
+                    f"Cannot partition an append to"
+                    f" {query.output_to.address.location} by {key}: it is"
+                    f" {datatype}, and {type(self).__name__} can partition"
+                    f" only on {supported}."
+                )
 
     def generate_partitioned_insert_statements(
         self,

@@ -63,14 +63,19 @@ APPEND = "append into facts by created_at from select id, created_at, label;"
 #: overwrite: rerunning the append with a new label must leave one row per id
 #: carrying the new value.
 #:
-#: DATETIME is absent deliberately — `SUPPORTED_INCREMENTAL_TYPES` admits only
-#: DATE and TIMESTAMP as partition keys, even though BigQuery can partition a
-#: DATETIME column in DDL.
+#: Every type BigQuery can partition on is covered, DATETIME included — the
+#: dialect's `SUPPORTED_PARTITION_KEY_TYPES` is the DDL's partition-expression
+#: map, so a type the CREATE can partition on must survive an append too.
 SOURCES = {
     "date": """
 SELECT 1 as id, DATE '2024-01-01' as created_at, '{label}' as label
 UNION ALL SELECT 2, DATE '2024-01-02', '{label}'
 UNION ALL SELECT 3, CAST(NULL AS DATE), '{label}'
+""",
+    "datetime": """
+SELECT 1 as id, DATETIME '2024-01-01 06:00:00' as created_at, '{label}' as label
+UNION ALL SELECT 2, DATETIME '2024-01-02 06:00:00', '{label}'
+UNION ALL SELECT 3, CAST(NULL AS DATETIME), '{label}'
 """,
     "timestamp": """
 SELECT 1 as id, TIMESTAMP '2024-01-01 06:00:00 UTC' as created_at, '{label}' as label

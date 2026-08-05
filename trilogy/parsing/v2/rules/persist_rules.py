@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import PersistMode
-from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.statements.author import PersistStatement, SelectStatement
 from trilogy.parsing.v2.rules.datasource_rules import DatasourcePartitionClause
@@ -15,8 +14,6 @@ from trilogy.parsing.v2.rules_context import (
 )
 from trilogy.parsing.v2.select_finalize import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
-
-SUPPORTED_INCREMENTAL_TYPES: set[DataType] = {DataType.DATE, DataType.TIMESTAMP}
 
 
 def persist_partition_clause(
@@ -103,13 +100,6 @@ def full_persist(
         new_datasource: Datasource = target
         if new_datasource.partition_by != partition_clause.columns:
             raise fail(node, "Partition mismatch for append")
-        for x in partition_clause.columns:
-            concept = context.concepts.require(x.address)
-            if concept.output_datatype not in SUPPORTED_INCREMENTAL_TYPES:
-                raise fail(
-                    node,
-                    f"Cannot incremental persist on {concept.address} of type {concept.output_datatype}",
-                )
     elif target:
         new_datasource = target
     else:

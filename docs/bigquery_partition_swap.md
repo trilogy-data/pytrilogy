@@ -5,6 +5,15 @@ replace exactly the slices its select produced. On BigQuery there are two
 implementations of that, and which one runs depends on the engine you are
 connected through.
 
+## Which key types are allowed
+
+`BaseDialect.SUPPORTED_PARTITION_KEY_TYPES` decides what an append may key on —
+`date` and `timestamp` by default. BigQuery sets it to the same map its DDL
+partitions with, so a `datetime` column is legal in both the `CREATE` and the
+append rather than only the first. The check runs where the persist is
+generated, not at parse time, because what can key a partition is a property of
+the engine being written to.
+
 ## The SQL form (renderable, always the fallback)
 
 The shared staged replace: create a temp table shaped like the target, insert

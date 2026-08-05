@@ -226,6 +226,9 @@ class BigqueryDialect(BaseDialect):
     # A staleness probe names a column the model declares, so a table built before
     # that column existed must read as stale rather than failing the probe.
     COLUMN_NOT_FOUND_PATTERN = r"Unrecognized name|Name .+ not found inside"
+    # Anything the DDL can partition on can also key an append, so both read the
+    # same map rather than drifting apart over DATETIME.
+    SUPPORTED_PARTITION_KEY_TYPES: ClassVar[set[DataType]] = set(PARTITION_EXPRESSIONS)
     # BigQuery requires an explicit DISTINCT on set operators.
     SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         **BaseDialect.SET_OPERATOR_MAP,
