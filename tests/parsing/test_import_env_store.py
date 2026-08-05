@@ -136,6 +136,86 @@ def test_datasource_fk_binding_never_rewrites_a_concept(tmp_path: Path):
     assert "child.code" not in env_b.fk_derived_keys()
 
 
+def _entry_for(name: str):
+    return next(e for e in isvc._IMPORT_ENV_STORE.values() if name in str(e.closure))
+
+
+def test_projection_shared_across_parses(model_dir: Path):
+    first = _fresh(model_dir)
+    second = _fresh(model_dir)
+    assert _sig(first) == _sig(second)
+    # the namespaced copies themselves are reused, not rebuilt per importer
+    assert first.concepts.data["mid.base.id"] is second.concepts.data["mid.base.id"]
+    entry = _entry_for("mid.preql")
+    assert list(entry.projections) == ["mid"]
+
+
+def test_distinct_aliases_get_distinct_projections(model_dir: Path):
+    env = Environment(working_path=str(model_dir))
+    parse("import base as a;\nimport base as b;\nselect a.id, b.id;", env)
+    assert env.concepts.data["a.id"] is not env.concepts.data["b.id"]
+    assert env.concepts.data["a.id"].address == "a.id"
+    assert env.concepts.data["b.id"].address == "b.id"
+    assert sorted(_entry_for("base.preql").projections) == ["a", "b"]
+
+
+def test_projection_rebuilt_after_importer_mutates_shared_datasource(model_dir: Path):
+    first = _fresh(model_dir)
+    ds = next(v for k, v in first.datasources.items() if k.endswith("base_ds"))
+    ds.columns = ds.columns[:-1]
+    # the next importer must not inherit the strip through the cached projection
+    second = _fresh(model_dir)
+    ds2 = next(v for k, v in second.datasources.items() if k.endswith("base_ds"))
+    assert len(ds2.columns) == 2
+
+
+def test_concept_filter_is_per_edge_over_a_shared_projection(model_dir: Path):
+    unfiltered = _fresh(model_dir)
+    assert "mid.base.name" in unfiltered.concepts
+
+    env = Environment(working_path=str(model_dir))
+    parse("from base as base import id;\nselect base.id;", env)
+    assert "base.name" in env.concepts.data
+    assert "base.name" in env.concepts.hidden
+    # the shared projection is not itself narrowed — a later unfiltered import
+    # of the same file still sees the full public surface
+    after = _fresh(model_dir)
+    assert "mid.base.name" in after.concepts
+
+
+def test_active_env_entries_never_reach_an_unprefixed_parse(model_dir: Path, tmp_path):
+    """`env` activation rewrites datasource Address objects in place, and those
+    objects are shared into every namespaced copy — so the activation is part of
+    the store key rather than something the integrity stamp has to catch."""
+    from trilogy import Dialects
+    from trilogy.execution.envs import (
+        EnvActivation,
+        EnvironmentManager,
+        datasource_transform_from_active,
+        env_activation_scope,
+    )
+
+    def parsed(model_dir: Path) -> Environment:
+        # mirrors scripts/common.py::create_executor, which is where the CLI
+        # installs the deployment-env address rewrite
+        env = Environment(working_path=str(model_dir))
+        executor = Dialects.DUCK_DB.default_executor(environment=env)
+        executor.datasource_transform = datasource_transform_from_active(model_dir)
+        executor.parse_text(ROOT_TEXT)
+        return env
+
+    manager = EnvironmentManager("proj", home=tmp_path / "home")
+    manager.create("dev")
+    with env_activation_scope(EnvActivation(name="dev", manager=manager)):
+        scoped = parsed(model_dir)
+    scoped_ds = next(v for k, v in scoped.datasources.items() if k.endswith("base_ds"))
+    assert scoped_ds.safe_address == "dev_base_tbl"
+
+    plain = parsed(model_dir)
+    plain_ds = next(v for k, v in plain.datasources.items() if k.endswith("base_ds"))
+    assert plain_ds.safe_address == "base_tbl"
+
+
 def test_distinct_parameters_get_distinct_entries(model_dir: Path):
     _fresh(model_dir)
     env = Environment(working_path=str(model_dir))

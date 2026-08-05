@@ -8,10 +8,13 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import Parsing
 from trilogy.core.models.environment import (
+    DEFAULT_NAMESPACE,
     DictImportResolver,
     Environment,
     FileSystemImportResolver,
     Import,
+    NamespaceProjection,
+    build_namespace_projection,
 )
 from trilogy.core.statements.author import ImportStatement
 from trilogy.utility import safe_open
@@ -136,6 +139,24 @@ class _ImportEnvEntry:
     env: Environment
     closure: dict[str, int]
     integrity: tuple
+    # `with_namespace(alias)` products of `env`, keyed by alias. Only valid
+    # while `env` itself is — they are dropped with the entry. Each is
+    # re-stamped on reuse because an importer that received one can edit the
+    # shared datasources in place (see NamespaceProjection.integrity).
+    projections: dict[str, NamespaceProjection] = field(default_factory=dict)
+    projection_integrity: dict[str, tuple] = field(default_factory=dict)
+
+    def projection_for(self, alias: str) -> NamespaceProjection:
+        cached = self.projections.get(alias)
+        if (
+            cached is not None
+            and self.projection_integrity[alias] == cached.integrity()
+        ):
+            return cached
+        built = build_namespace_projection(self.env, alias)
+        self.projections[alias] = built
+        self.projection_integrity[alias] = built.integrity()
+        return built
 
 
 _IMPORT_ENV_STORE: OrderedDict[tuple, _ImportEnvEntry] = OrderedDict()
@@ -300,23 +321,40 @@ class ImportHydrationService:
             or self.in_stdlib
             or isinstance(environment.config.import_resolver, FileSystemImportResolver)
         )
+        # The active deployment env is part of the key: its transform rewrites
+        # datasource Addresses in place, and those Address objects are shared
+        # into every namespaced copy, so an env-prefixed parse must not hand
+        # its entry to an unprefixed one.
+        from trilogy.execution.envs import active_env
+
+        activation = active_env()
         store_key = (
             str(request.target),
             root,
             environment.config.allow_duplicate_declaration,
             tuple(str(p) for p in environment.import_paths),
             _params_fingerprint(environment.parameters),
+            activation.name if activation else None,
         )
 
+        store_entry: _ImportEnvEntry | None = None
         if env_cache_key in self.parsed_environments:
             new_env = self.parsed_environments[env_cache_key]
             frame = self.local_closures.get(env_cache_key)
             if self.closure_stack and frame is not None:
                 self.closure_stack[-1].deps.update(frame.deps)
                 self.closure_stack[-1].tainted |= frame.tainted
+            # Re-importing a file already parsed in THIS parse (a second alias
+            # for it, or a diamond in the import graph). Recover the store entry
+            # so the per-alias projections still cache — identity against the
+            # env we already hold is the validation, so no closure re-hash.
+            local = _IMPORT_ENV_STORE.get(store_key)
+            if local is not None and local.env is new_env:
+                store_entry = local
         elif use_store and (
             entry := _store_lookup(store_key, hash(text), self.text_lookup)
         ):
+            store_entry = entry
             new_env = entry.env
             self.parsed_environments[env_cache_key] = new_env
             self.local_closures[env_cache_key] = _ClosureFrame(deps=dict(entry.closure))
@@ -361,14 +399,12 @@ class ImportHydrationService:
             frame.deps[str(request.target)] = hash(text)
             self.local_closures[env_cache_key] = frame
             if use_store and not frame.tainted:
-                _store_fill(
-                    store_key,
-                    _ImportEnvEntry(
-                        env=new_env,
-                        closure=dict(frame.deps),
-                        integrity=_env_integrity(new_env),
-                    ),
+                store_entry = _ImportEnvEntry(
+                    env=new_env,
+                    closure=dict(frame.deps),
+                    integrity=_env_integrity(new_env),
                 )
+                _store_fill(store_key, store_entry)
             if self.closure_stack:
                 self.closure_stack[-1].deps.update(frame.deps)
                 self.closure_stack[-1].tainted |= frame.tainted
@@ -377,6 +413,14 @@ class ImportHydrationService:
             environment.config.import_resolver, FileSystemImportResolver
         )
         parsed_path = Path(request.input_path)
+        # Aliased imports namespace-copy the whole source env; when it came from
+        # the store it is validated-unchanged, so that copy is reusable across
+        # every parse importing the same file under the same alias.
+        projection = (
+            store_entry.projection_for(request.alias)
+            if store_entry is not None and request.alias != DEFAULT_NAMESPACE
+            else None
+        )
         environment.add_import(
             request.alias,
             new_env,
@@ -387,6 +431,7 @@ class ImportHydrationService:
                 concepts=request.concepts,
                 description=request.description,
             ),
+            projection=projection,
         )
         return ImportStatement(
             alias=request.alias,

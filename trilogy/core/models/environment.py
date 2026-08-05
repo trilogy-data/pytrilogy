@@ -74,6 +74,95 @@ class Import:
 
 
 @dataclass
+class NamespaceProjection:
+    """Everything `import <source> as <alias>` contributes to an importer.
+
+    A pure function of (source environment, alias): `with_namespace(alias)`
+    rewrites the addresses *inside* every concept and datasource, so aliased
+    imports cannot share the source's objects the way bare imports do. Copying
+    that per import edge is the parse floor — over the TPC corpus, 143 aliased
+    edges resolve to 17 distinct (source env, alias) pairs. Callers holding a
+    validated-unchanged source env therefore cache this and hand it to
+    ``Environment.add_import``; see ``parsing/v2/import_service.py``.
+
+    Concept entries are ``(source_key, source_name, target_key, namespaced,
+    hidden)`` — the source key and name are kept because an import's explicit
+    concept filter is written against the un-namespaced names.
+    """
+
+    concepts: list[tuple[str, str, str, Concept, bool]]
+    datasources: list[Datasource]
+    alias_origins: list[tuple[str, Concept]]
+    merges: list[tuple[str, str, JoinType]]
+    functions: list[tuple[str, CustomFunctionFactory]]
+    data_types: list[tuple[str, CustomType]]
+    namespace_sources: list[tuple[str, Path]]
+
+    def integrity(self) -> tuple:
+        """Cheap stamp over the mutable surface a previous importer could have
+        written through. Shared datasources are edited in place by warehouse
+        metadata sync, persist status flips, `env` address prefixing, and
+        bound-source invalidation; a cached projection whose stamp moved is no
+        longer the pure product of the source env and must be rebuilt."""
+        return tuple(
+            (d.identifier, d.status.value, len(d.columns), str(d.address))
+            for d in self.datasources
+        )
+
+
+def build_namespace_projection(source: Environment, alias: str) -> NamespaceProjection:
+    concepts: list[tuple[str, str, str, Concept, bool]] = []
+    hidden = source.concepts.hidden
+    for k, concept in source.concepts.all_items():
+        if INTERNAL_NAMESPACE in concept.namespace:
+            continue
+        # don't overwrite working path
+        if concept.name == WORKING_PATH_CONCEPT:
+            continue
+        concepts.append(
+            (
+                k,
+                concept.name,
+                address_with_namespace(k, alias),
+                concept.with_namespace(alias),
+                k in hidden,
+            )
+        )
+    return NamespaceProjection(
+        concepts=concepts,
+        # list() on the source dicts tolerates self-import: `source is self`
+        # means these iterate a dict the merge is about to write.
+        datasources=[
+            d.with_namespace(alias) for _, d in list(source.datasources.items())
+        ],
+        alias_origins=[
+            (address_with_namespace(k, alias), v.with_namespace(alias))
+            for k, v in list(source.alias_origin_lookup.items())
+        ],
+        merges=[
+            (
+                address_with_namespace(s_addr, alias),
+                address_with_namespace(t_addr, alias),
+                jt,
+            )
+            for s_addr, t_addr, jt in list(source.merges)
+        ],
+        functions=[
+            (address_with_namespace(k, alias), f.with_namespace(alias))
+            for k, f in list(source.functions.items())
+        ],
+        data_types=[
+            (address_with_namespace(k, alias), t.with_namespace(alias))
+            for k, t in list(source.data_types.items())
+        ],
+        namespace_sources=[
+            (address_with_namespace(ns, alias), path)
+            for ns, path in list(source.namespace_source.items())
+        ],
+    )
+
+
+@dataclass
 class BaseImportResolver:
     pass
 
@@ -1096,6 +1185,7 @@ class Environment:
         source: Environment,
         imp_stm: Import | None = None,
         concepts: list[str] | None = None,
+        projection: NamespaceProjection | None = None,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -1128,89 +1218,93 @@ class Environment:
         # `billing_customer.first_sales_date` resolves to `raw/date.preql`.
         # Skip the default-namespace case (the file's own/std `import` lines):
         # those concepts are the importer's own, not a role-played dimension.
-        if not same_namespace:
+        # The aliased merge reads entirely off a NamespaceProjection — the
+        # `with_namespace(alias)` product of the source env. Callers that can
+        # prove the source env is unchanged (the import store) pass a cached
+        # one; everyone else builds it here, which is what the loop used to do
+        # inline. The bare merge shares source objects outright and needs none,
+        # so a projection handed in alongside DEFAULT_NAMESPACE is discarded
+        # rather than allowed to namespace concepts that must stay bare.
+        if same_namespace:
+            projection = None
+        elif projection is None:
+            projection = build_namespace_projection(source, alias)
+
+        if projection is not None:
             origin = imp_stm.input_path or imp_stm.path
             if origin is not None:
                 self.namespace_source[alias] = Path(origin)
-            # list() to tolerate self-import (source is self → we just mutated
-            # the dict we'd be iterating).
-            for sub_ns, sub_path in list(source.namespace_source.items()):
-                self.namespace_source[address_with_namespace(sub_ns, alias)] = sub_path
+            for sub_ns, sub_path in projection.namespace_sources:
+                self.namespace_source[sub_ns] = sub_path
         # we can't exit early
         # as there may be new concepts
-        iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
-        for k, concept in iteration:
-            if INTERNAL_NAMESPACE in concept.namespace:
-                continue
-            # don't overwrite working path
-            if concept.name == WORKING_PATH_CONCEPT:
-                continue
-            namespaced = concept if same_namespace else concept.with_namespace(alias)
-            target_k = k if same_namespace else address_with_namespace(k, alias)
-            is_hidden = k in source.concepts.hidden
-            if (
-                concepts is not None
-                and k not in concepts
-                and concept.name not in concepts
-            ):
-                # excluded from public view — store in concepts but mark hidden
-                new = self.add_concept(namespaced)
-                if self.concepts.data.get(target_k) is not new:
-                    self.concepts.data[target_k] = new
-                self.concepts.hidden.add(target_k)
-            elif is_hidden:
-                # propagate hidden status from source
-                new = self.add_concept(namespaced)
-                if self.concepts.data.get(target_k) is not new:
-                    self.concepts.data[target_k] = new
-                self.concepts.hidden.add(target_k)
-            else:
-                new = self.add_concept(namespaced)
-                if self.concepts.data.get(target_k) is not new:
-                    self.concepts[target_k] = new
+        if projection is None:
+            for k, concept in list(source.concepts.all_items()):
+                if INTERNAL_NAMESPACE in concept.namespace:
+                    continue
+                # don't overwrite working path
+                if concept.name == WORKING_PATH_CONCEPT:
+                    continue
+                self._merge_imported_concept(
+                    k, concept.name, k, concept, k in source.concepts.hidden, concepts
+                )
+        else:
+            for k, name, target_k, namespaced, is_hidden in projection.concepts:
+                self._merge_imported_concept(
+                    k, name, target_k, namespaced, is_hidden, concepts
+                )
 
         # Copy to list to avoid mutation issues during self-import
-        for _, datasource in list(source.datasources.items()):
-            if same_namespace:
+        if projection is None:
+            for _, datasource in list(source.datasources.items()):
                 self.add_datasource(datasource)
-            else:
-                self.add_datasource(datasource.with_namespace(alias))
-        for key, val in list(source.alias_origin_lookup.items()):
-
-            if same_namespace:
+            for key, val in list(source.alias_origin_lookup.items()):
                 self.alias_origin_lookup[key] = val
-            else:
-                self.alias_origin_lookup[address_with_namespace(key, alias)] = (
-                    val.with_namespace(alias)
-                )
-        for s_addr, t_addr, jt in source.merges:
-            pair = (
-                (s_addr, t_addr, jt)
-                if same_namespace
-                else (
-                    address_with_namespace(s_addr, alias),
-                    address_with_namespace(t_addr, alias),
-                    jt,
-                )
-            )
+            for pair in list(source.merges):
+                if pair not in self.merges:
+                    self.merges.append(pair)
+            for key, function in list(source.functions.items()):
+                self.functions[key] = function
+            for key, type in list(source.data_types.items()):
+                self.data_types[key] = type
+            return self
+
+        for datasource in projection.datasources:
+            self.add_datasource(datasource)
+        for key, val in projection.alias_origins:
+            self.alias_origin_lookup[key] = val
+        for pair in projection.merges:
             if pair not in self.merges:
                 self.merges.append(pair)
-
-        for key, function in list(source.functions.items()):
-            if same_namespace:
-                self.functions[key] = function
-            else:
-                self.functions[address_with_namespace(key, alias)] = (
-                    function.with_namespace(alias)
-                )
-        for key, type in list(source.data_types.items()):
-            if same_namespace:
-                self.data_types[key] = type
-            else:
-                self.data_types[address_with_namespace(key, alias)] = (
-                    type.with_namespace(alias)
-                )
+        for key, function in projection.functions:
+            self.functions[key] = function
+        for key, type in projection.data_types:
+            self.data_types[key] = type
         return self
+
+    def _merge_imported_concept(
+        self,
+        source_key: str,
+        source_name: str,
+        target_key: str,
+        concept: Concept,
+        is_hidden: bool,
+        concepts: list[str] | None,
+    ) -> None:
+        excluded = (
+            concepts is not None
+            and source_key not in concepts
+            and source_name not in concepts
+        )
+        new = self.add_concept(concept)
+        if excluded or is_hidden:
+            # excluded from public view (or hidden in the source): still stored,
+            # but marked hidden here rather than routed through __setitem__.
+            if self.concepts.data.get(target_key) is not new:
+                self.concepts.data[target_key] = new
+            self.concepts.hidden.add(target_key)
+        elif self.concepts.data.get(target_key) is not new:
+            self.concepts[target_key] = new
 
     def add_file_import(
         self, path: str | Path, alias: str, env: Environment | None = None

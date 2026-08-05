@@ -1,6 +1,49 @@
 # Handoff: immutable import environments + contextual overlays
 
-## STATUS: NOT STARTED (written 2026-08-04, s68)
+## STATUS: increment (1) LANDED 2026-08-04 (s70). (2) and (3) not started.
+
+Increment (1) — memoized namespaced projections — is done. `with_namespace`
+fan-out is now **zero** in steady state, so the parse floor this handoff was
+written against has moved; re-profile before starting (2) or (3).
+
+- `Environment.NamespaceProjection` + `build_namespace_projection` capture the
+  whole `with_namespace(alias)` product of a source env. `add_import` takes an
+  optional `projection=`; the aliased merge reads only off it, the bare merge
+  ignores it.
+- `_ImportEnvEntry.projections` caches one per alias, dropped with the entry
+  and re-stamped on reuse (`NamespaceProjection.integrity` — per-datasource
+  status/column-count/address, the mutable surface a prior importer can write
+  through). The parse-local reuse branch recovers its store entry by identity
+  so second-alias and diamond imports cache too.
+- **The deployment env is now part of the store key.** `transform_datasource`
+  rewrites `Address` objects in place and `Datasource.with_namespace` shares
+  the Address with its source, so an env-activated parse was already leaking
+  `dev_`-prefixed addresses into the next unprefixed parse through the store —
+  a pre-existing bug the integrity stamp could not see (it does not cover
+  address). Pinned by `test_active_env_entries_never_reach_an_unprefixed_parse`.
+
+Measured (steady state, TPC-DS + TPC-H, 132 queries, vs 471b85305):
+
+| metric | before | after |
+|---|---|---|
+| `address_with_namespace` calls | 379,233 | **0** |
+| `model_construct` calls | 58,796 | **0** |
+| `Datasource.with_namespace` calls | 58,796 | **0** |
+| other `with_namespace` calls | 247,575 | **0** |
+| total calls / corpus parse | 6.76M | 4.22M |
+| corpus parse wall | 1.398s | 0.655s (2.13x) |
+| q77 / q64 / q03 parse (median) | 35.8 / 30.4 / 6.9ms | 17.1 / 21.6 / 6.0ms |
+
+Controls unchanged: `parse_syntax` 132, `hydrate_rule` 38,940, `add_import`
+166, `add_concept` 52,775. 132/132 SQL byte-identical vs baseline and across
+store-off / cold / warm legs; full suite 7131 passed.
+
+`add_concept` (52,775 calls, ~0.27s) is what is left of the merge and is the
+next obvious target — the projection could carry the merge *effect* rather
+than just the objects, at the cost of re-deriving `validate_concept` collision
+semantics. Not attempted.
+
+## Original writeup (2026-08-04, s68)
 
 Audience: an agent starting fresh on restructuring how imported environments
 are shared and flattened. Read `docs/handoff_remove_parse_time_fk_rekey.md`
