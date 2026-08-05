@@ -26,14 +26,19 @@ API instead:
 
 1. one query job stages the select into a table partitioned like the target;
 2. `INFORMATION_SCHEMA.PARTITIONS` names the slices it produced — metadata
-   only, no scan, and it spells the NULL slice `__NULL__`, which is also that
-   slice's partition decorator;
+   only, no scan, and the ids it reports *are* the decorators;
 3. one **copy** job per slice, `staging$id` → `target$id`, with
    `WRITE_TRUNCATE`. A copy job is free, consumes no slots, and replaces that
    partition atomically.
 
 The target is read once instead of three times, the delete is not billed, and
 an interrupted run leaves each slice either wholly old or wholly new.
+
+**The null slice is the exception.** BigQuery reports it as `__NULL__` but
+rejects that as a decorator (`Invalid date partitioned partition key:
+__NULL__`), so there is no copy job for it. It is replaced by a `DELETE` +
+`INSERT` pair inside a `BEGIN/COMMIT TRANSACTION`, which keeps the replace
+atomic but does bill a scan of that partition.
 
 ### When it declines
 
@@ -59,6 +64,42 @@ Dialects.BIGQUERY.default_executor(conf=BigQueryConfig(native_partition_swap=Fal
 The switch exists so the same write can be run both ways and the rows compared;
 that comparison is `tests/engine/bigquery/test_bigquery_partition_swap.py`, and
 it is the only thing that shows the two implementations agree.
+
+## Measured
+
+Same append, same 200k-row source, run three ways against live BigQuery. "old"
+is the scripted `EXECUTE IMMEDIATE` loop this replaced. No null slice, because
+the old loop cannot represent one.
+
+| partitions | | wall clock | jobs | bytes billed |
+| --- | --- | --- | --- | --- |
+| 1  | old | 9.9s | 5 | 30 MiB |
+| 1  | new-sql | 9.3s | 5 | 40 MiB |
+| 1  | **native** | **5.2s** | 4 | **10 MiB** |
+| 10 | old | 50.9s | 23 | 210 MiB |
+| 10 | new-sql | 12.5s | 6 | 40 MiB |
+| 10 | **native** | **7.8s** | 12 | **10 MiB** |
+| 30 | old | 119.2s | 64 | 610 MiB |
+| 30 | new-sql | 10.0s | 6 | 40 MiB |
+| 30 | **native** | **9.5s** | 32 | **10 MiB** |
+
+The old loop scaled linearly in every column — 2 DML statements per partition —
+and is gone. Between the two survivors:
+
+- **Bytes are flat for native at 10 MiB** regardless of slice count: the source
+  is read once and the copy jobs are free. The SQL form costs 40 MiB because
+  the staged rows are written, scanned for the delete, and scanned again for
+  the insert.
+- **Wall clock is flat for both.** It is flat for the SQL form because its
+  statement count is fixed. It is flat for native only because copy jobs are
+  *submitted* concurrently — see `COPY_SUBMIT_WORKERS`. Submitting them in a
+  serial loop cost 0.5s of HTTP round-trip each and made native the slower
+  option past ~10 slices (22.6s at 30). BigQuery itself was never the limit:
+  measured over 30 slices, submission fell 13.7s -> 1.4s while the wait stayed
+  at ~6s, so the copies were always running concurrently.
+
+Native is therefore the better choice at every width measured, and there is no
+slice count at which the SQL form is worth choosing for speed.
 
 ### Quotas worth knowing
 

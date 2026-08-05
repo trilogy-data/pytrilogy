@@ -155,10 +155,12 @@ def test_one_copy_job_per_slice_truncates_that_partition_alone():
     client = FakeClient()
     _swap(client)
     staging = _staging_name(client)
-    assert [
+    # Sorted, not positional: submission is concurrent, so arrival order is not
+    # a property of the code under test.
+    assert sorted(
         (source.table_id, destination.table_id)
         for source, destination, _ in client.copies
-    ] == [
+    ) == [
         (f"{staging}$20240101", "my_facts$20240101"),
         (f"{staging}$20240102", "my_facts$20240102"),
     ]
@@ -167,12 +169,25 @@ def test_one_copy_job_per_slice_truncates_that_partition_alone():
     )
 
 
-def test_the_null_slice_is_copied_by_its_own_id():
-    """`__NULL__` is both the partition id and the decorator, so it needs no
-    special case — but it must not be dropped either."""
+def test_the_null_slice_is_replaced_by_dml_not_a_copy_job():
+    """BigQuery reports `__NULL__` in INFORMATION_SCHEMA but rejects it as a
+    decorator (`Invalid date partitioned partition key: __NULL__`), so it is the
+    one slice with no copy job. It must still be replaced, and atomically."""
     client = FakeClient(partition_ids=("20240101", "__NULL__"))
     _swap(client)
-    assert client.copies[1][1].table_id == "my_facts$__NULL__"
+    assert [d.table_id for _, d, _ in client.copies] == ["my_facts$20240101"]
+    dml = client.queries[-1][0]
+    assert dml.startswith("BEGIN TRANSACTION;")
+    assert "DELETE FROM `proj.my_ds.my_facts` WHERE `created_at` IS NULL" in dml
+    assert "WHERE `created_at` IS NULL" in dml.split("INSERT INTO")[1]
+    assert dml.rstrip().endswith("COMMIT TRANSACTION;")
+
+
+def test_a_null_only_select_still_replaces_that_slice():
+    client = FakeClient(partition_ids=("__NULL__",))
+    _swap(client)
+    assert client.copies == []
+    assert client.queries[-1][0].startswith("BEGIN TRANSACTION;")
 
 
 def test_an_empty_select_copies_nothing():

@@ -181,6 +181,10 @@ PARTITION_EXPRESSIONS: dict[DataType, str] = {
 
 MAX_IDENTIFIER_LENGTH = 50
 
+#: Alias for the target of a partitioned append's DELETE. BigQuery cannot
+#: correlate through a qualified table name, so the target needs a bare one.
+PARTITION_DELETE_ALIAS = "trilogy_delete_target"
+
 
 def parse_bigquery_table_name(
     table_name: str, schema: str | None = None
@@ -444,6 +448,22 @@ class BigqueryDialect(BaseDialect):
                 f"requires a date/time column, but {key} is {dtype}."
             )
         return f"PARTITION BY {expr.format(column=quoted)}"
+
+    def render_partition_delete(
+        self, target: str, staged: str, partition_by: list[str]
+    ) -> str:
+        """The shared correlated delete, with the target aliased.
+
+        BigQuery cannot correlate through a qualified table name: given
+        ``project.dataset.table.column`` inside the subquery it tries to resolve
+        ``project`` as a name and fails with ``Unrecognized name``. Aliasing the
+        delete target is the only spelling that works for a three-part address,
+        and it is harmless for a bare one."""
+        matches = self.partition_key_match(staged, PARTITION_DELETE_ALIAS, partition_by)
+        return (
+            f"DELETE FROM {target} AS {PARTITION_DELETE_ALIAS} WHERE EXISTS"
+            f" (SELECT 1 FROM {staged} WHERE {matches})"
+        )
 
     def render_staging_create(self, target: str, staged: str) -> str:
         """BigQuery spells the modifier ``TEMP``, and a temp table may not be

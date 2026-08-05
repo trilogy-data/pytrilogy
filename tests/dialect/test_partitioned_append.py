@@ -206,8 +206,24 @@ def test_bigquery_runs_the_staged_replace_as_one_script():
     assert "EXECUTE IMMEDIATE" not in script
     assert "WHILE" not in script
     assert script.startswith("CREATE TEMP TABLE `_trilogy_stage_my_facts`")
-    assert "DELETE FROM `my_facts` WHERE EXISTS" in script
+    assert "DELETE FROM `my_facts` AS trilogy_delete_target WHERE EXISTS" in script
     assert script.count(";") == 4
+
+
+def test_bigquery_aliases_the_delete_target_for_a_qualified_address():
+    """BigQuery resolves `project.dataset.table.column` inside a correlated
+    subquery as a *name*, not a column, and fails with `Unrecognized name:
+    project`. Only an alias on the delete target works for a three-part
+    address — which is what a real BigQuery table has."""
+    env = Environment()
+    _, statements = parse(MODEL.replace("address my_facts", "address proj.ds.tbl"), env)
+    renderer = Dialects.BIGQUERY.default_renderer()
+    (processed,) = renderer.generate_queries(env, [statements[-1]])
+    (script,) = renderer.compile_statements(processed)
+    delete = next(x for x in script.split(";\n") if x.startswith("DELETE"))
+    assert "DELETE FROM `proj`.`ds`.`tbl` AS trilogy_delete_target" in delete
+    assert "`proj`.`ds`.`tbl`.`created_at`" not in delete
+    assert delete.count("trilogy_delete_target.`created_at`") == 2
 
 
 def test_bigquery_partition_delete_is_null_safe_and_multi_key():
