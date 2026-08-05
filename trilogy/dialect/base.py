@@ -894,6 +894,14 @@ class BaseDialect:
     TABLE_NOT_FOUND_PATTERN: str | None = None
     HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None
+    # Types an APPEND may partition on. What can key a partition is a property
+    # of the engine, not of the language, so this is checked here rather than at
+    # parse time: BigQuery widens it to whatever its DDL can partition on, which
+    # is how a DATETIME column stays legal in both places.
+    SUPPORTED_PARTITION_KEY_TYPES: ClassVar[set[DataType]] = {
+        DataType.DATE,
+        DataType.TIMESTAMP,
+    }
 
     def render_string_literal(self, value: str) -> str:
         # Standard SQL: backslash is a plain character; only the quote needs
@@ -3020,6 +3028,7 @@ class BaseDialect:
                     for hook in hooks:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
+                self.validate_partition_keys(persist)
                 output.append(persist)
             elif isinstance(statement, ChartStatement):
                 if hooks:
@@ -3252,6 +3261,23 @@ class BaseDialect:
                 raise NotImplementedError(type(statement))
         return output
 
+    def validate_partition_keys(self, query: ProcessedQueryPersist) -> None:
+        """Reject an append whose partition keys this engine cannot partition on."""
+        if query.persist_mode != PersistMode.APPEND:
+            return
+        # str() rather than .value: a traited key renders through TraitDataType.
+        supported = ", ".join(
+            sorted(str(x) for x in self.SUPPORTED_PARTITION_KEY_TYPES)
+        )
+        for key, datatype in zip(query.partition_by, query.partition_types):
+            if datatype not in self.SUPPORTED_PARTITION_KEY_TYPES:
+                raise ValueError(
+                    f"Cannot partition an append to"
+                    f" {query.output_to.address.location} by {key}: it is"
+                    f" {datatype}, and {type(self).__name__} can partition"
+                    f" only on {supported}."
+                )
+
     def generate_partitioned_insert_statements(
         self,
         query: ProcessedQueryPersist,
@@ -3272,10 +3298,13 @@ class BaseDialect:
 
         An empty select touches nothing: no keys stage, so no slice is cleared.
 
-        Dialects with a native primitive override the whole method — see
-        BigQuery's scripted per-partition delete. Dialects that only differ in
-        how they spell one step override that step instead (SQL Server has no
-        ``CREATE TEMPORARY TABLE ... AS`` and no row-value ``IN``).
+        Dialects that only differ in how they spell one step override that step
+        (SQL Server has no ``CREATE TEMPORARY TABLE ... AS`` and no row-value
+        ``IN``); BigQuery overrides the packaging, because its temp tables do
+        not outlive the job that declared them. Replacing the *mechanism*
+        belongs to the engine rather than here — see ``SupportsNativePersist``,
+        which lets a connected API perform the write while this stays the
+        renderable form and the fallback.
         """
         target = self.safe_quote(query.output_to.address.location)
         staged = self.quote(self.staging_table_name(query))
@@ -3489,6 +3518,14 @@ class BaseDialect:
 
     def _persist_insert_prefix(self, query: ProcessedQueryPersist) -> str:
         return f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+
+    def render_select_only(self, query: ProcessedQueryPersist) -> str:
+        """The rows a persist produces, with no write prefix.
+
+        For a writer that performs the write through an engine API rather than
+        by running SQL (see ``SupportsNativePersist``): it still needs the
+        select, and the dialect remains the only thing that renders one."""
+        return self._render_query(query, None)
 
     def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
         """The same SQL as ``compile_statement``, split into statements that can

@@ -1,4 +1,3 @@
-import uuid
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, ClassVar
 
@@ -171,47 +170,6 @@ CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create
 {%- endif %};
 """.strip())
 
-PARTITIONED_INSERT_TEMPLATE = Template("""
--- Step 1: materialize results
-CREATE TEMP TABLE {{ tmp_table }} AS SELECT * FROM  {{ target_table }} limit 0;
-                                       
-INSERT INTO {{ tmp_table }}
-    {{ final_select }}
-;
-
--- Step 2: extract distinct partitions and generate dynamic statements
-BEGIN
-    DECLARE partition_values ARRAY<{{ partition_type }}>;
-    DECLARE current_partition {{ partition_type }};
-    DECLARE i INT64 DEFAULT 0;
-    
-    -- Get all distinct partition values
-    SET partition_values = (
-        SELECT ARRAY_AGG(DISTINCT {{ partition_key[0] }})
-        FROM {{ tmp_table }}
-    );
-    
-    -- Loop through each partition value
-    WHILE i < ARRAY_LENGTH(partition_values) DO
-        SET current_partition = partition_values[OFFSET(i)];
-        
-        -- Delete existing records for this partition
-        EXECUTE IMMEDIATE FORMAT(
-            'DELETE FROM {{ target_table }} WHERE {{ partition_key[0] }} = "%t"',
-            current_partition
-        );
-        
-        -- Insert new records for this partition
-        EXECUTE IMMEDIATE FORMAT(
-            'INSERT INTO {{ target_table }} SELECT * FROM {{ tmp_table }} WHERE {{ partition_key[0] }} = "%t"',
-            current_partition
-        );
-        
-        SET i = i + 1;
-    END WHILE;
-END;
-""")
-
 # BigQuery rejects a bare TIMESTAMP/DATETIME column in PARTITION BY; it must be
 # truncated to a partitionable granularity. Integer range partitioning needs
 # explicit bounds we have no way to declare, so it is not offered.
@@ -222,6 +180,10 @@ PARTITION_EXPRESSIONS: dict[DataType, str] = {
 }
 
 MAX_IDENTIFIER_LENGTH = 50
+
+#: Alias for the target of a partitioned append's DELETE. BigQuery cannot
+#: correlate through a qualified table name, so the target needs a bare one.
+PARTITION_DELETE_ALIAS = "trilogy_delete_target"
 
 
 def parse_bigquery_table_name(
@@ -264,6 +226,9 @@ class BigqueryDialect(BaseDialect):
     # A staleness probe names a column the model declares, so a table built before
     # that column existed must read as stale rather than failing the probe.
     COLUMN_NOT_FOUND_PATTERN = r"Unrecognized name|Name .+ not found inside"
+    # Anything the DDL can partition on can also key an append, so both read the
+    # same map rather than drifting apart over DATETIME.
+    SUPPORTED_PARTITION_KEY_TYPES: ClassVar[set[DataType]] = set(PARTITION_EXPRESSIONS)
     # BigQuery requires an explicit DISTINCT on set operators.
     SET_OPERATOR_MAP: ClassVar[dict[str, str]] = {
         **BaseDialect.SET_OPERATOR_MAP,
@@ -487,53 +452,51 @@ class BigqueryDialect(BaseDialect):
             )
         return f"PARTITION BY {expr.format(column=quoted)}"
 
+    def render_partition_delete(
+        self, target: str, staged: str, partition_by: list[str]
+    ) -> str:
+        """The shared correlated delete, with the target aliased.
+
+        BigQuery cannot correlate through a qualified table name: given
+        ``project.dataset.table.column`` inside the subquery it tries to resolve
+        ``project`` as a name and fails with ``Unrecognized name``. Aliasing the
+        delete target is the only spelling that works for a three-part address,
+        and it is harmless for a bare one."""
+        matches = self.partition_key_match(staged, PARTITION_DELETE_ALIAS, partition_by)
+        return (
+            f"DELETE FROM {target} AS {PARTITION_DELETE_ALIAS} WHERE EXISTS"
+            f" (SELECT 1 FROM {staged} WHERE {matches})"
+        )
+
+    def render_staging_create(self, target: str, staged: str) -> str:
+        """BigQuery spells the modifier ``TEMP``, and a temp table may not be
+        qualified — which the shared staging name already satisfies."""
+        return f"CREATE TEMP TABLE {staged} AS SELECT * FROM {target} LIMIT 0"
+
     def generate_partitioned_insert_statements(
         self,
         query: ProcessedQueryPersist,
         recursive: bool,
         compiled_ctes: list[CompiledCTE],
     ) -> list[str]:
-        """One scripted statement, not the portable staged sequence: BigQuery
-        drives the per-partition delete from a single BEGIN...END block."""
-        return [self.generate_partitioned_insert(query, recursive, compiled_ctes)]
+        """The shared staged replace, as a single script rather than five
+        statements.
 
-    def generate_partitioned_insert(
-        self,
-        query: ProcessedQueryPersist,
-        recursive: bool,
-        compiled_ctes: list[CompiledCTE],
-    ) -> str:
-        tmp_table = f"tmp__{uuid.uuid4().hex}"
-        final_select = compiled_ctes[-1].statement
-        ctes = compiled_ctes[:-1]
+        A BigQuery temp table lives for the length of the multi-statement query
+        that declared it, so the staged form only holds together when its steps
+        share one job — every other dialect can issue them as separate calls
+        against a session-scoped temp table.
 
-        if not query.partition_by:
-            raise ValueError("partition_by must be set for partitioned inserts.")
-
-        partition_key = query.partition_by
-        target_table = safe_quote(
-            query.output_to.address.location, self.QUOTE_CHARACTER
-        )
-
-        # render intermediate CTEs
-        ctes_sql = ""
-        if ctes:
-            rendered = []
-            for c in ctes:
-                rendered.append(f"{c.name} AS ({c.statement})")
-            ctes_sql = "WITH " + ",\n".join(rendered)
-
-        # create temp table first
-        full_select_with_ctes = (
-            final_select if not ctes_sql else f"{ctes_sql}\n{final_select}"
-        )
-
-        sql_script = PARTITIONED_INSERT_TEMPLATE.render(
-            tmp_table=tmp_table,
-            final_select=full_select_with_ctes,
-            partition_key=partition_key,
-            target_table=target_table,
-            partition_type=self.DATATYPE_MAP[query.partition_types[0]],
-        )
-
-        return sql_script
+        This replaced a scripted ``EXECUTE IMMEDIATE`` loop that ran a DELETE
+        and an INSERT per distinct partition value. Beyond costing 2N jobs, that
+        loop built its predicate with ``FORMAT('... = "%t"')`` — so it only ever
+        matched a DATE-shaped key, read the first partition column alone, and
+        could not clear the NULL slice that ``ARRAY_AGG(DISTINCT ...)`` drops.
+        The shared form is null-safe and multi-key by construction."""
+        return [
+            ";\n".join(
+                super().generate_partitioned_insert_statements(
+                    query, recursive, compiled_ctes
+                )
+            )
+        ]

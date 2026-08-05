@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import TextClause
+
+    from trilogy.core.statements.execute import ProcessedQueryPersist
+    from trilogy.executor import Executor
 
 from trilogy.core.models.environment import Environment
 
@@ -161,3 +164,26 @@ class ExecutionEngine(Protocol):
 
     def dispose(self, close: bool = True):
         pass
+
+
+@runtime_checkable
+class SupportsNativePersist(Protocol):
+    """An engine that can perform some writes through its own API rather than
+    by running the dialect's SQL.
+
+    The seam is deliberately the *processed statement*, not a new plan type:
+    ``ProcessedQueryPersist`` already carries the target, the persist mode, the
+    partition columns and their types, so a plan object would only re-encode it
+    — and would then be a second description of the write that could drift from
+    the SQL. The dialect stays the single renderer; an engine that wants the
+    rows without a write prefix asks it for them (``render_select_only``).
+
+    Returning ``None`` means "I do not handle this one", and the executor runs
+    the SQL instead. Implementations must be conservative: recognize the exact
+    shapes they optimize and decline everything else, because the fallback is
+    always correct and a wrong native write is not.
+    """
+
+    def execute_persist(
+        self, query: ProcessedQueryPersist, executor: Executor
+    ) -> ResultProtocol | None: ...

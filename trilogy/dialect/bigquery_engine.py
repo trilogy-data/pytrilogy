@@ -32,7 +32,9 @@ if TYPE_CHECKING:
     from google.cloud import bigquery
     from sqlalchemy.sql.elements import TextClause
 
+    from trilogy.core.statements.execute import ProcessedQueryPersist
     from trilogy.dialect.config import BigQueryConfig
+    from trilogy.executor import Executor
 
 LOGGER_PREFIX = "[BIGQUERY_ENGINE]"
 
@@ -141,19 +143,29 @@ class BigQueryConnection(NonTransactionalConnection):
     def register_external_table(self, name: str, config: Any) -> None:
         self.external_tables[name] = config
 
-    def _job_config(self, sql: str, query_parameters: list) -> Any | None:
-        referenced = {
+    def _referenced_tables(self, sql: str) -> dict[str, Any]:
+        return {
             name: config for name, config in self.external_tables.items() if name in sql
         }
-        if not referenced and not query_parameters:
-            return None
+
+    def query_job_config(self, sql: str, query_parameters: list | None = None) -> Any:
+        """A job config carrying whatever external tables ``sql`` names.
+
+        Always a config, unlike ``_job_config`` — a caller that adds
+        destination settings needs something to add them to."""
         from google.cloud import bigquery
 
         # QueryJobConfig rejects an explicit None for table_definitions
-        config = bigquery.QueryJobConfig(query_parameters=query_parameters)
+        config = bigquery.QueryJobConfig(query_parameters=query_parameters or [])
+        referenced = self._referenced_tables(sql)
         if referenced:
             config.table_definitions = referenced
         return config
+
+    def _job_config(self, sql: str, query_parameters: list) -> Any | None:
+        if not self._referenced_tables(sql) and not query_parameters:
+            return None
+        return self.query_job_config(sql, query_parameters)
 
     def execute(self, statement: Any, parameters: Any | None = None) -> ResultProtocol:
         sql, query_parameters = to_bigquery_sql(statement, parameters)
@@ -195,10 +207,27 @@ class BigQueryEngine(ExecutionEngine):
         self.config.project = self.config.client.project
         return self.config.client
 
-    def connect(self) -> EngineConnection:
+    def _bigquery_connection(self) -> BigQueryConnection:
         if self._connection is None:
             self._connection = BigQueryConnection(self._client())
         return self._connection
+
+    def connect(self) -> EngineConnection:
+        return self._bigquery_connection()
+
+    def execute_persist(
+        self, query: ProcessedQueryPersist, executor: Executor
+    ) -> ResultProtocol | None:
+        """Satisfies ``SupportsNativePersist``: a partitioned APPEND becomes
+        per-slice copy jobs instead of DML. Everything else declines to None and
+        runs the dialect's SQL — see ``bigquery_persist``."""
+        if not self.config.native_partition_swap:
+            return None
+        from trilogy.dialect.bigquery_persist import execute_partition_swap
+
+        return execute_partition_swap(
+            query, executor, self._bigquery_connection(), self.config.project
+        )
 
     def setup(self, env: Environment, connection: Any) -> None:
         return None
