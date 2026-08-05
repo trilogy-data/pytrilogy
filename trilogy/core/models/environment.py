@@ -660,6 +660,8 @@ class Environment:
     frozen: bool = False
     env_file_path: Path | str | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
+    # (content stamp, map) for fk_derived_keys.
+    _fk_derived_keys: tuple[tuple[int, int], dict[str, frozenset[str]]] | None = None
 
     def freeze(self):
         self.frozen = True
@@ -671,6 +673,44 @@ class Environment:
 
         self.parameters.update(kwargs)
         return self
+
+    def fk_derived_keys(self) -> dict[str, frozenset[str]]:
+        """Keys a datasource declaration implies for the KEY concepts it binds.
+
+        A datasource that binds a ``Purpose.KEY`` concept OUTSIDE its own grain
+        is asserting that its grain determines that key — the classic foreign
+        key on a fact table. The assertion belongs to the datasource, so it is
+        derived here on demand rather than written back onto the concept.
+        Two datasources can bind the same key at different grains; the later
+        declaration wins, matching the parse-time overwrite this replaced.
+        """
+        stamp = (self.datasources.content_version, self.concepts.content_version)
+        if self._fk_derived_keys is not None and self._fk_derived_keys[0] == stamp:
+            return self._fk_derived_keys[1]
+        out: dict[str, frozenset[str]] = {}
+        for datasource in self.datasources.values():
+            grain = datasource.grain
+            if not grain or not grain.components:
+                continue
+            resolved = [self.concepts.get(g) for g in grain.components]
+            if any(k is None for k in resolved):
+                continue
+            components = [k for k in resolved if k is not None]
+            new_keys = frozenset(k.address for k in components)
+            for column in datasource.columns:
+                address = column.concept.address
+                if address in grain.components:
+                    continue
+                target = self.concepts.get(address)
+                if target is None or target.purpose != Purpose.KEY:
+                    continue
+                # A grain component that already binds this key describes the
+                # opposite direction; inheriting would invert the relationship.
+                if any(address in (k.keys or set()) for k in components):
+                    continue
+                out[address] = new_keys
+        self._fk_derived_keys = (stamp, out)
+        return out
 
     def materialize_for_select(
         self,

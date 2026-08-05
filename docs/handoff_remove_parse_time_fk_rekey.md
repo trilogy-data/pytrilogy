@@ -1,110 +1,94 @@
 # Handoff: remove parse-time FK key re-assignment
 
-## STATUS: PROPOSED by maintainer (2026-08-04, s68). Feature currently CoW-patched, not removed.
+## STATUS: LANDED (2026-08-04, s69). The parse-time rewrite is deleted.
 
-Audience: an agent starting fresh. The hypothesis to prove or refute:
-**the parse-time rewrite of a KEY concept's `keys` from datasource grain is
-redundant in v4** — the build-time concept relationship machinery (FD
-closure / domain graph) can derive the same facts from the datasource
-declaration itself, so the author-layer mutation can be deleted.
+The hypothesis — **the parse-time rewrite of a KEY concept's `keys` from
+datasource grain is redundant in v4** — was CONFIRMED, but not in the shape the
+proposal predicted. The fact is not redundant; the *write* is. The datasource
+declaration already carries it, so it is now derived on demand from
+`Environment.fk_derived_keys()` instead of being written back onto the concept.
 
-## The feature
+## What the feature was
 
-`trilogy/parsing/v2/rules/datasource_rules.py::datasource_node`, tail block
-("Propagate keys from datasource grain to foreign key concepts", v1
-second-pass parity): when a datasource binds a `Purpose.KEY` concept that is
-NOT part of the datasource's grain, that concept's `keys` are REWRITTEN to
-the grain components (unless any grain component already lists it in its own
-keys).
+`trilogy/parsing/v2/rules/datasource_rules.py::datasource_node`, tail block:
+when a datasource bound a `Purpose.KEY` concept that was NOT part of the
+datasource's grain, that concept's `keys` were REWRITTEN to the grain
+components (unless a grain component already listed it in its own keys). s68
+had made this copy-on-write to stop it poisoning shared cached import envs.
 
-Concrete effect (gcat corpus): `vehicle.stage.engine.name` starts with
-`keys={'vehicle.stage.name'}`; parsing `fuel_dashboard.preql` (datasource
-`fuel_aggregates` at `grain (launch_tag, vehicle.stage_no, vehicle.name,
-vehicle.variant)` binding it as a non-grain column) rewrites its keys to
-`{'local.launch_tag', 'vehicle.name', 'vehicle.stage_no', 'vehicle.variant'}`.
+## What replaced it
 
-s68 found this mutating SHARED concept objects in place (bare imports share
-objects with the cross-parse cached child env), silently poisoning later
-parses. It is now copy-on-write: if the target concept is the durable env
-object, a `dataclasses.replace(target_c, keys=new_keys)` is registered on
-the parent env instead. Removal would delete this whole mutation class; the
-CoW branch and its regression test
-(`tests/parsing/test_import_env_store.py::
-test_datasource_key_propagation_does_not_poison_store`) become deletable.
+`Environment.fk_derived_keys()` (`core/models/environment.py`) computes the
+same map — `address -> frozenset(grain components)` — as a pure function of
+`environment.datasources`, cached on
+`(datasources.content_version, concepts.content_version)`.
 
-## Who consumes `concept.keys` (inventory starting points)
+`Concept.effective_keys(environment)` (`core/models/author.py`) is the single
+accessor: `keys` when the concept has them, the datasource-implied keys when it
+does not. **Every reader that treats `keys` as a functional dependency goes
+through it.** The five that mattered (found by instrumentation, see below):
 
-- **Grain reduction** — `trilogy/core/models/build.py::
-  concepts_to_build_grain_concepts` (~lines 341–354): drops a concept from a
-  grain when its keys are covered by the other components; three rules
-  (property-keys-subset, KEY-with-covered-keys, etc.). This is what the
-  canary test asserts (below). BuildConcept keys come straight from author
-  keys (`_build_keys(base.keys)` at build.py:3250/3380).
-- **FD closure** — `trilogy/core/processing/v4_helper/functional_dependency.py`:
-  fact tuples `(address, grain components, keys)` gathered for concepts AND
-  — critically — **datasource columns separately** (see the dedup comment at
-  ~line 85: a datasource column can carry a different grain than the env's
-  concept). So the closure ALREADY ingests datasource-level grain facts
-  without needing the author-concept rewrite. This is the strongest
-  evidence for the hypothesis; verify the closure actually derives the same
-  determinations for the gcat case.
-- **Domain graph** — `trilogy/core/domain_graph.py` structural edges read
-  key/grain relationships; check `structural_domain_edge`.
-- Planner enrichment paths that follow `keys` for property→key joins
-  (search `\.keys` under `trilogy/core/processing/`), window/property
-  handling in `concept_rules.py` (NumberingWindowItem widening — that site
-  mutates freshly minted concepts, unrelated, leave it).
-- Author-layer visibility: `explore`/LSP metadata may display keys; a
-  removal changes what users see for FK-bound concepts.
+- `Concept.get_select_grain_and_keys` — author-layer select grain/keys
+- `parsing/common.py::concept_is_relevant` — the KEY-with-covered-keys drop
+- `parsing/common.py::concept_list_to_keys` and `function_to_concept` (x2 sites)
+- `core/domain_graph.py::mint_fd_edges` — the DECLARED FD edge
+- `core/where_scope_normalization.py::_covered_by_grain`
+- `core/models/build.py::Factory.__build_concept` (both construction sites)
 
-## Validation protocol (instrumentation first — do NOT judge by coverage)
+and one snapshot site, `parsing/v2/rowset_semantics.py::_rowset_concept`: a
+rowset output copies its source's identity into a rowset namespace that has no
+datasource, so the derived keys must be baked in there rather than re-derived.
 
-Per the project rule (validate dead/removable code by instrumentation + a
-corpus sweep, and gate against the CURRENT tree in one process):
+## Evidence (the validation protocol, run as written)
 
-1. Instrument the rekey site: log `(datasource, concept address, old keys,
-   new keys)` and run the full corpus + modeling suites. This yields the
-   complete set of rewrites the corpora exercise. Expect gcat
-   (`fuel_dashboard*.preql`, `launch_dashboard.preql`) to dominate; the
-   tpc corpora may not trigger it at all (their models declare keys
-   explicitly) — an empty tpc log is NOT evidence of removability for gcat.
-2. Disable the rewrite (flag, not deletion) and diff generated SQL per-query
-   across both corpora in one process, plus run the result-validating
-   suites. Every plan change maps to a rewrite from step 1; for each,
-   determine whether the FD closure / BuildGrain reduction already knows the
-   relationship from the datasource column facts — if not, THAT is the gap
-   to close in build-time machinery before removing the parse-time write.
-3. Likely landing shape: extend `concepts_to_build_grain_concepts` (or the
-   FD closure it should consult) to use datasource-column key/grain facts,
-   then delete the parse block + CoW + regression test, keeping a NEW test
-   that pins the gcat reduction through the build-time path.
+**Step 1 — instrumentation.** The proposal guessed "the tpc corpora may not
+trigger it at all". That was wrong and it is the single most important
+correction: the corpora exercise **128 distinct rewrites**, dominated by
+`catalog_sales` (16), `catalog_returns` (15), `web_sales` (14) — the classic
+dimension FK on a fact table (`return_customer.sk` keyed to
+`(item.sk, order_number)`). gcat contributes 17.
 
-## Canaries
+**Step 2 — disable and diff.** With the rewrite off and nothing replacing it,
+**25 of 132** corpus queries changed, mostly much larger SQL (q64 +6080 chars,
+q81 +2873, q30 +2530). Three got *smaller* (q80 −564, q70 −79, q54 −38). So the
+rewrite is load-bearing, not dead.
 
-- `tests/modeling/gcat/test_gcat.py::test_should_group` — asserts
-  `vehicle.stage.engine.name` reduces OUT of a pregrain
-  (`BuildGrain.from_concepts`) AND validates row counts
-  (`launches == launch_count`). This is the test that caught the s68
-  poisoning; it must pass with the rewrite gone.
-- gcat suite broadly (36 tests) — the corpus that actually exercises
-  FK-bound datasources at wider grains.
-- `tests/parsing/test_import_env_store.py` — the poisoning regression stays
-  green during the transition, gets deleted with the feature.
+**The FD closure does already know the datasource facts.** Probing
+`build_fd_closure` against the built environment with the rewrite off: every
+non-grain KEY column of every datasource is derivable from its datasource's
+grain — 54/54 for q30, 86/86 for q64, 7/7 for tpc-h q17, 29/29 for gcat. What it
+cannot do is reach concepts the parse layer *derives* (rowset aliases,
+namespaced import copies), because those snapshot `keys` at creation and have no
+datasource of their own. That is why the answer is an accessor on the concept
+rather than a query against the closure at each use site.
 
-## Gates
+**Step 3 — landing gate.** With the rewrite deleted and every reader routed
+through `effective_keys`: **132/132 byte-identical** — both in one process
+against the same tree with the flag toggled, and against a `HEAD` worktree
+render with `PYTHONHASHSEED=0`.
 
-Same set as s68 (see `docs/handoff_immutable_import_envs.md`): corpus
-byte-identity in one process against the current tree — EXPECT diffs in
-step 2 while the flag is off (that is data, not failure); the landing gate
-is byte-identity between "rewrite removed + build-time derivation" and the
-current tree, 132/132, plus full repo suite, ruff/mypy/black.
+## Dead ends recorded so they are not re-tried
 
-## Why this is worth it
+- **An FD-closure-based reduction inside `concepts_to_build_grain_concepts`**
+  (drop a keyless KEY component when the rest of the grain FD-determines it)
+  fixes the gcat canary and 15 of the 25 diffs, but is a strict no-op once
+  `effective_keys` is in place. It was implemented, measured, and removed.
+- **Deriving keys only at build time** (in `Factory`) closes q30/q81/q18 but
+  cannot close q17/q64: the author layer computes select grain, domain-graph FD
+  edges and rowset identity *before* any build env exists.
 
-Deletes the last known parse-path in-place mutation of shared author
-objects, which unblocks the immutable-import-env work (sibling handoff)
-without CoW carve-outs; moves a semantic fact from a parse-order-dependent
-side effect into the declarative build-time relationship map where v4 keeps
-its other grain knowledge; and removes a behavior that is invisible in the
-source (a concept's declared keys silently change because a *different
-file* declared a datasource).
+## Canaries (all green)
+
+- `tests/modeling/gcat/test_gcat.py::test_should_group` — `vehicle.stage.engine.name`
+  still reduces out of the pregrain, and `launches == launch_count` still holds.
+- `tests/parsing/test_datasource_fk_derived_keys.py` — new: pins the derivation,
+  the grain reduction it drives, and that it tracks a datasource added later.
+- `tests/parsing/test_import_env_store.py::test_datasource_fk_binding_never_rewrites_a_concept`
+  — the s68 poisoning regression, rewritten: the concept is now never mutated in
+  either environment, so the hazard is structurally gone rather than patched.
+
+## Follow-on
+
+This deletes the last known parse-path mutation of author concept objects, so
+`docs/handoff_immutable_import_envs.md` no longer has to design around a
+copy-on-write carve-out.

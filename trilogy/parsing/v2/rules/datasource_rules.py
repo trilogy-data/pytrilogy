@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -761,39 +761,6 @@ def datasource_node(
         column_level_partial_addresses=column_level_partial_addresses,
     )
     datasource.metadata.line_no = node.line
-    # Propagate keys from datasource grain to foreign key concepts.
-    # A KEY concept on a datasource that isn't part of the grain
-    # gets the grain components as its keys (matching v1 second-pass behaviour).
-    if grain:
-        for column in columns:
-            if column.concept.address in grain.components:
-                continue
-            target_c = context.concepts.require(column.concept.address)
-            if target_c.purpose != Purpose.KEY:
-                continue
-            key_inputs = grain.components
-            resolved_keys = [context.concepts.get(g) for g in key_inputs]
-            # Skip inheritance if any grain component is a symbolic address
-            # that hasn't resolved to a real concept yet.
-            if any(k is None for k in resolved_keys):
-                continue
-            eligible = True
-            for k in resolved_keys:
-                if column.concept.address in (k.keys or set()):  # type: ignore[union-attr]
-                    eligible = False
-            if not eligible:
-                continue
-            new_keys = {k.address for k in resolved_keys}  # type: ignore[union-attr]
-            durable = context.environment.concepts.data.get(target_c.address)
-            if durable is target_c:
-                # The concept came from the durable env — for a bare import it
-                # may be SHARED with a cross-parse cached child environment, so
-                # re-key a copy scoped to this env instead of mutating in place.
-                context.environment.concepts[target_c.address] = replace(
-                    target_c, keys=new_keys
-                )
-            else:
-                target_c.keys = new_keys
     return datasource
 
 

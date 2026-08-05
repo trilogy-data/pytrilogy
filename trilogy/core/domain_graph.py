@@ -794,7 +794,7 @@ def mint_binding_edges(environment: Any) -> list[BindingEdge]:
 def mint_fd_edges(environment: Any) -> list[FDEdge]:
     out: list[FDEdge] = []
     for concept in _unique_concepts(environment):
-        keys = getattr(concept, "keys", None)
+        keys = concept.effective_keys(environment)
         if keys:
             out.append(
                 FDEdge(

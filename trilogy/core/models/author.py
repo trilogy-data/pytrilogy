@@ -1253,6 +1253,18 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
 
+    def effective_keys(self, environment: Environment | None) -> set[str] | None:
+        """``keys``, falling back to what a datasource declaration implies.
+
+        A datasource binding this KEY outside its own grain asserts that the
+        grain determines it (see ``Environment.fk_derived_keys``). The
+        assertion lives on the datasource, not on the concept, so every reader
+        that treats ``keys`` as a functional dependency resolves it here."""
+        if self.keys or environment is None or self.purpose != Purpose.KEY:
+            return self.keys
+        derived = environment.fk_derived_keys().get(self.address)
+        return set(derived) if derived else self.keys
+
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
     ) -> tuple[
@@ -1288,7 +1300,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             ),
         )
         final_grain = grain if not self.grain.components else self.grain
-        keys = self.keys
+        keys = self.effective_keys(environment)
         if not new_lineage:
             return new_lineage, final_grain, keys
 

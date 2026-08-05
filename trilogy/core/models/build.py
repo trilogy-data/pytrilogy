@@ -3247,7 +3247,7 @@ class Factory:
                 lineage=None,
                 grain=new_grain,
                 namespace=base.namespace,
-                keys=self._build_keys(base.keys),
+                keys=self._build_keys(base.effective_keys(self.environment)),
                 modifiers=base.modifiers,
                 pseudonyms=base_pseudonyms,
                 derivation=derivation,
@@ -3377,7 +3377,7 @@ class Factory:
             lineage=build_lineage,
             grain=new_grain,
             namespace=base.namespace,
-            keys=self._build_keys(base.keys),
+            keys=self._build_keys(base.effective_keys(self.environment)),
             modifiers=base.modifiers,
             pseudonyms=base_pseudonyms,
             ## instantiated values

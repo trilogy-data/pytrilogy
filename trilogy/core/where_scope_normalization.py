@@ -123,11 +123,10 @@ def _covered_by_grain(
         return False
     seen.add(address)
     concept = _resolve_in(address, local, environment)
-    if concept is None or not concept.keys:
+    keys = concept.effective_keys(environment) if concept is not None else None
+    if not keys:
         return False
-    return all(
-        _covered_by_grain(k, cover, local, environment, seen) for k in concept.keys
-    )
+    return all(_covered_by_grain(k, cover, local, environment, seen) for k in keys)
 
 
 def _where_is_group_atomic(

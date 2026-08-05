@@ -115,10 +115,10 @@ def test_store_disabled_flag(model_dir: Path, monkeypatch):
     assert _sig(reference) == _sig(warm)
 
 
-def test_datasource_key_propagation_does_not_poison_store(tmp_path: Path):
-    """A datasource declaring an imported KEY concept at a wider grain re-keys
-    that concept (FK propagation) — the rewrite must stay scoped to the
-    declaring environment, not leak into the shared cached child env."""
+def test_datasource_fk_binding_never_rewrites_a_concept(tmp_path: Path):
+    """A datasource binding an imported KEY at a wider grain declares an FK, and
+    that declaration is derived on demand — it never writes back onto the
+    concept, so it cannot leak into the shared cached child env."""
     (tmp_path / "child.preql").write_text("key code string;\n")
     (tmp_path / "root.preql").write_text(
         "import child;\n"
@@ -127,9 +127,13 @@ def test_datasource_key_propagation_does_not_poison_store(tmp_path: Path):
     )
     env_a = Environment(working_path=str(tmp_path))
     parse("import root as root;", env_a)
+    assert not env_a.concepts.data["root.code"].keys
+    assert env_a.fk_derived_keys()["root.code"] == frozenset({"root.tag"})
+
     env_b = Environment(working_path=str(tmp_path))
     parse("import child as child;", env_b)
     assert not env_b.concepts.data["child.code"].keys
+    assert "child.code" not in env_b.fk_derived_keys()
 
 
 def test_distinct_parameters_get_distinct_entries(model_dir: Path):
