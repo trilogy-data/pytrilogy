@@ -183,6 +183,55 @@ def test_concept_filter_is_per_edge_over_a_shared_projection(model_dir: Path):
     assert "mid.base.name" in after.concepts
 
 
+def test_bulk_merge_matches_the_per_concept_loop(model_dir: Path, monkeypatch):
+    """The bulk projection merge is only a fast path; forcing it to decline must
+    leave the same environment, and it must actually fire on an ordinary
+    import (otherwise this test would pass vacuously)."""
+    from trilogy.core.models.environment import Environment as Env
+
+    fired: list[bool] = []
+    real = Env._bulk_merge_projected_concepts
+
+    def spy(self, projection, concepts):
+        took = real(self, projection, concepts)
+        fired.append(took)
+        return took
+
+    monkeypatch.setattr(Env, "_bulk_merge_projected_concepts", spy)
+    bulk = _fresh(model_dir)
+    assert any(fired)
+
+    monkeypatch.setattr(
+        Env, "_bulk_merge_projected_concepts", lambda self, projection, concepts: False
+    )
+    isvc.clear_import_env_store()
+    looped = _fresh(model_dir)
+
+    assert _sig(bulk) == _sig(looped)
+    assert bulk.concepts.hidden == looped.concepts.hidden
+    assert {k: str(v.lineage) for k, v in bulk.concepts.data.items()} == {
+        k: str(v.lineage) for k, v in looped.concepts.data.items()
+    }
+
+
+def test_bulk_merge_declines_for_a_filtered_import(model_dir: Path, monkeypatch):
+    from trilogy.core.models.environment import Environment as Env
+
+    fired: list[bool] = []
+    real = Env._bulk_merge_projected_concepts
+
+    def spy(self, projection, concepts):
+        took = real(self, projection, concepts)
+        fired.append(took)
+        return took
+
+    monkeypatch.setattr(Env, "_bulk_merge_projected_concepts", spy)
+    env = Environment(working_path=str(model_dir))
+    parse("from base as base import id;\nselect base.id;", env)
+    assert fired == [False]
+    assert "base.name" in env.concepts.hidden
+
+
 def test_active_env_entries_never_reach_an_unprefixed_parse(model_dir: Path, tmp_path):
     """`env` activation rewrites datasource Address objects in place, and those
     objects are shared into every namespaced copy — so the activation is part of

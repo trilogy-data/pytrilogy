@@ -48,7 +48,7 @@ from trilogy.core.models.author import (
     UndefinedConceptFull,
     address_with_namespace,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, StructType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
 from trilogy.utility import safe_open
 
@@ -97,6 +97,17 @@ class NamespaceProjection:
     functions: list[tuple[str, CustomFunctionFactory]]
     data_types: list[tuple[str, CustomType]]
     namespace_sources: list[tuple[str, Path]]
+    # Precomputed form of the per-concept merge loop, for the case where every
+    # target key is absent from the importer: exactly the writes
+    # ``_merge_imported_concept`` would make, as one dict to ``update`` with and
+    # one set to union into ``hidden``. See ``Environment.add_import``.
+    bulk_concepts: dict[str, Concept]
+    bulk_hidden: set[str]
+    # False when the per-concept loop is not reducible to those two writes:
+    # a struct concept (``generate_related_concepts`` derives further concepts,
+    # order-sensitively) or a key written twice with different objects (the
+    # loop's durable-signature dedup decides which survives, a dict does not).
+    bulk_safe: bool
 
     def integrity(self) -> tuple:
         """Cheap stamp over the mutable surface a previous importer could have
@@ -112,6 +123,9 @@ class NamespaceProjection:
 
 def build_namespace_projection(source: Environment, alias: str) -> NamespaceProjection:
     concepts: list[tuple[str, str, str, Concept, bool]] = []
+    bulk_concepts: dict[str, Concept] = {}
+    bulk_hidden: set[str] = set()
+    bulk_safe = True
     hidden = source.concepts.hidden
     for k, concept in source.concepts.all_items():
         if INTERNAL_NAMESPACE in concept.namespace:
@@ -119,17 +133,26 @@ def build_namespace_projection(source: Environment, alias: str) -> NamespaceProj
         # don't overwrite working path
         if concept.name == WORKING_PATH_CONCEPT:
             continue
-        concepts.append(
-            (
-                k,
-                concept.name,
-                address_with_namespace(k, alias),
-                concept.with_namespace(alias),
-                k in hidden,
-            )
-        )
+        target_k = address_with_namespace(k, alias)
+        namespaced = concept.with_namespace(alias)
+        is_hidden = k in hidden
+        concepts.append((k, concept.name, target_k, namespaced, is_hidden))
+        if isinstance(namespaced.datatype, StructType):
+            bulk_safe = False
+        for target in (namespaced.address, target_k):
+            prior = bulk_concepts.get(target)
+            if prior is not None and prior is not namespaced:
+                bulk_safe = False
+            bulk_concepts[target] = namespaced
+        if is_hidden:
+            bulk_hidden.add(target_k)
+        if namespaced.metadata and namespaced.metadata.hidden:
+            bulk_hidden.add(namespaced.address)
     return NamespaceProjection(
         concepts=concepts,
+        bulk_concepts=bulk_concepts,
+        bulk_hidden=bulk_hidden,
+        bulk_safe=bulk_safe,
         # list() on the source dicts tolerates self-import: `source is self`
         # means these iterate a dict the merge is about to write.
         datasources=[
@@ -1248,7 +1271,7 @@ class Environment:
                 self._merge_imported_concept(
                     k, concept.name, k, concept, k in source.concepts.hidden, concepts
                 )
-        else:
+        elif not self._bulk_merge_projected_concepts(projection, concepts):
             for k, name, target_k, namespaced, is_hidden in projection.concepts:
                 self._merge_imported_concept(
                     k, name, target_k, namespaced, is_hidden, concepts
@@ -1281,6 +1304,41 @@ class Environment:
         for key, type in projection.data_types:
             self.data_types[key] = type
         return self
+
+    def _bulk_merge_projected_concepts(
+        self, projection: NamespaceProjection, concepts: list[str] | None
+    ) -> bool:
+        """Insert a whole projection with two writes, or decline.
+
+        The per-concept loop is a pure insert for essentially every imported
+        concept — `validate_concept` returns None the moment the address is
+        absent, and `add_concept`'s durable-signature dedup only has an opinion
+        when something is already there. So the collision semantics do not have
+        to be re-derived here, only *detected*: if no target key is already in
+        the importer, the loop reduces to `data.update` plus a `hidden` union.
+        Anything else falls back to the loop, which stays the definition of
+        correct behavior.
+
+        Declines when an explicit `concepts` filter is set (the filter is
+        per-edge and cannot ride on the shared projection), when an overlay is
+        installed (it changes what `validate_concept` considers present), or
+        when the projection itself is not reducible (`bulk_safe`).
+        """
+        if concepts is not None or not projection.bulk_safe:
+            return False
+        payload = projection.bulk_concepts
+        if not payload:
+            return True
+        data = self.concepts.data
+        if self.concepts.has_overlays or not data.keys().isdisjoint(payload.keys()):
+            return False
+        data.update(payload)
+        self.concepts.hidden |= projection.bulk_hidden
+        # One bump for the batch: both counters are compared for change, never
+        # for magnitude, and the batch is never empty here.
+        self.concepts.mutations += 1
+        self.concepts.content_version += 1
+        return True
 
     def _merge_imported_concept(
         self,
