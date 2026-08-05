@@ -162,15 +162,17 @@ def _emitted_addresses(graph: ReferenceGraph, node: str) -> set[str]:
     }
 
 
-def _probe_offers(graph: ReferenceGraph) -> dict[str, set[str]]:
+def _probe_offers(
+    graph: ReferenceGraph, emitted_by_node: dict[str, set[str]]
+) -> dict[str, set[str]]:
     """Presence-probe address -> the datasource identifiers this GRAPH offers it
     off. Distinct from who may legitimately carry it: the graph's offer is what
     the search can actually select."""
     out: dict[str, set[str]] = {}
     for node, datasource in graph.datasources.items():
-        if node not in graph:
+        if node not in emitted_by_node:
             continue
-        for address in _emitted_addresses(graph, node):
+        for address in emitted_by_node[node]:
             if is_presence_probe(address):
                 out.setdefault(address, set()).update(
                     datasource_identifiers(datasource)
@@ -214,17 +216,15 @@ def _candidate(
 
 
 def _candidate_for(
-    graph: ReferenceGraph,
     node: str,
     datasource: BuildDatasource | BuildUnionDatasource,
+    node_emitted: set[str],
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
     owners: dict[str, frozenset[str]],
 ) -> SourceCandidate | None:
     emitted = {
-        address
-        for address in _emitted_addresses(graph, node)
-        if _may_bind(datasource, address, owners)
+        address for address in node_emitted if _may_bind(datasource, address, owners)
     }
     if not emitted:
         return None
@@ -572,6 +572,9 @@ def build_source_network(
 ) -> SourceNetwork:
     addresses = _terminal_addresses(terminals)
     all_addresses = set(addresses)
+    # The one place a node's emitted set is derived; `_probe_offers` and
+    # `_candidate_for` read it rather than re-walking the graph's neighbors
+    # (three walks per node otherwise, and the graph does not change here).
     emitted_by_node: dict[str, set[str]] = {}
     for node in graph.datasources:
         if node in graph:
@@ -583,7 +586,7 @@ def build_source_network(
     owners = probe_owners(
         environment,
         all_addresses,
-        _probe_offers(graph),
+        _probe_offers(graph, emitted_by_node),
         {
             identifier
             for node, datasource in graph.datasources.items()
@@ -616,7 +619,7 @@ def build_source_network(
         if node not in relevant:
             continue
         candidate = _candidate_for(
-            graph, node, datasource, conditions, equivalence, owners
+            node, datasource, emitted_by_node[node], conditions, equivalence, owners
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate

@@ -90,6 +90,11 @@ class _FDFacts:
     # Address -> its equivalents, filled lazily for addresses that are not
     # environment keys (`concepts.get` resolves namespace-prefixed spellings).
     equivalents: dict[str, frozenset[str]]
+    # (determinants, include_empty_grain) -> closure. The closure is a pure
+    # function of these facts, so memoizing it here needs no soundness argument
+    # beyond the one `_FACTS_CACHE` already makes, and eviction rides on the
+    # facts entry.
+    closures: dict[tuple[frozenset[str], bool], frozenset[str]]
 
     def equivalents_for(
         self, environment: BuildEnvironment, address: str
@@ -149,6 +154,7 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
         entries=tuple(entries),
         rows=tuple(rows),
         equivalents=equivalents,
+        closures={},
     )
     _FACTS_CACHE[cache_key] = (
         ref(environment, partial(_evict_facts, cache_key)),
@@ -164,7 +170,12 @@ def build_fd_closure(
     include_empty_grain: bool = True,
 ) -> frozenset[str]:
     facts = _fd_facts(environment)
-    closure = set(determinants)
+    seed = frozenset(determinants)
+    memo_key = (seed, include_empty_grain)
+    memoized = facts.closures.get(memo_key)
+    if memoized is not None:
+        return memoized
+    closure = set(seed)
     changed = True
     while changed:
         changed = False
@@ -190,7 +201,9 @@ def build_fd_closure(
             if grain <= closure or (bool(keys) and keys <= closure):
                 closure.add(address)
                 changed = True
-    return frozenset(closure)
+    result = frozenset(closure)
+    facts.closures[memo_key] = result
+    return result
 
 
 def build_fd_determines(

@@ -567,6 +567,20 @@ class ReferenceGraph(DiGraph):
             del self.datasources[n]
         super().remove_node(n)
 
+    def remove_reference_nodes(self, nodes) -> None:
+        """`remove_node` for a batch, in one core crossing — pruning a graph to
+        a chosen cover drops hundreds of nodes at once.
+
+        NOT an override of `remove_nodes_from`: that inherited spelling leaves
+        `concepts`/`datasources` alone, and callers (select_merge_node,
+        node_merge_node) read those maps for nodes they have already dropped.
+        """
+        batch = list(nodes)
+        for n in batch:
+            self.concepts.pop(n, None)
+            self.datasources.pop(n, None)
+        super().remove_nodes_from(batch)
+
     def add_node(self, node_for_adding, **attr):
         return super().add_node(node_for_adding, **attr)
 

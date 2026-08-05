@@ -506,8 +506,7 @@ def _network_source(
 
     # Drop by node rather than taking a subgraph view: the emitter re-points missing
     # datasources into `plan.graph.datasources`, which a frozen view rejects.
-    for node in [n for n in list(graph.nodes) if not _keep(n)]:
-        graph.remove_node(node)
+    graph.remove_reference_nodes([n for n in list(graph.nodes) if not _keep(n)])
     if not graph.datasources:
         return None
     # §5 carry-over. The ladder gets this from inside `determine_induced_minimal_nodes`,
