@@ -410,15 +410,23 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
 
     def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore[override]
         try:
-            return self.__getitem__(key)
+            # `suggest=False`: this miss is answered with `default`, so the
+            # difflib pass behind the exception's "Suggestions:" text is built
+            # and thrown away. It is O(concepts) per miss and every call on a
+            # successful parse lands here.
+            return self.__getitem__(key, suggest=False)  # type: ignore[call-arg]
         except UndefinedConceptException:
             return default
 
     def raise_undefined(
-        self, key: str, line_no: int | None = None, file: Path | str | None = None
+        self,
+        key: str,
+        line_no: int | None = None,
+        file: Path | str | None = None,
+        suggest: bool = True,
     ) -> Never:
 
-        matches = self._find_similar_concepts(key)
+        matches = self._find_similar_concepts(key) if suggest else []
         message = f"Undefined concept: {key}."
         if matches:
             message += f" Suggestions: {matches}"
@@ -432,7 +440,11 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         raise UndefinedConceptException(message, matches)
 
     def __getitem__(
-        self, key: str, line_no: int | None = None, file: Path | None = None
+        self,
+        key: str,
+        line_no: int | None = None,
+        file: Path | None = None,
+        suggest: bool = True,
     ) -> Concept | UndefinedConceptFull:
         if self._overlay_stack:
             overlay_hit = self._overlay_lookup(key)
@@ -442,14 +454,16 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         if key in self.data:
             return self.data[key]
         if isinstance(key, ConceptRef):
-            return self.__getitem__(key.address, line_no=line_no, file=file)  # type: ignore[call-arg]
+            return self.__getitem__(key.address, line_no=line_no, file=file, suggest=suggest)  # type: ignore[call-arg]
         try:
             return self.data[key]
         except KeyError:
             if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".", 1)[1], line_no)
+                return self.__getitem__(key.split(".", 1)[1], line_no, suggest=suggest)  # type: ignore[call-arg]
             if DEFAULT_NAMESPACE + "." + key in self:
-                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
+                return self.__getitem__(  # type: ignore[call-arg]
+                    DEFAULT_NAMESPACE + "." + key, line_no, suggest=suggest
+                )
             # lazy resolution of derived concepts (e.g. signup_date.year)
             derived = self._try_resolve_derived(key)
             if derived is not None:
@@ -475,7 +489,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
                 )
                 self.undefined[key] = undefined
                 return undefined
-        self.raise_undefined(key, line_no, file)
+        self.raise_undefined(key, line_no, file, suggest=suggest)
 
     def _try_resolve_namespace_suffix(self, key: str) -> Concept | None:
         """Resolve `rs.col` to a rowset output `rs.<...>.col` when exactly one
