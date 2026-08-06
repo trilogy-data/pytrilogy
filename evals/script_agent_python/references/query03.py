@@ -1,12 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
-import sys
-
-import pyarrow as pa
+from trilogy.io import run
 
 
 def collatz(value: int) -> list[int]:
@@ -17,8 +20,9 @@ def collatz(value: int) -> list[int]:
     return values
 
 
-rows = [{"step": i, "value": value} for i, value in enumerate(collatz(27))]
+def rows() -> list[dict]:
+    return [{"step": i, "value": value} for i, value in enumerate(collatz(27))]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))

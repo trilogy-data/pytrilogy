@@ -28,10 +28,12 @@ _EXAMPLES: list[SyntaxExample] = [
         name="python-datasource",
         title="Python script datasource - Arrow IPC producer plus Trilogy model",
         summary=(
-            "run a local Python script as a datasource: the script writes ONLY an "
-            "Arrow IPC stream to stdout; declare concepts, map script columns in "
-            "`datasource (...)`, use `grain (...) file `path.py`;`, then reference "
-            "locally declared concepts WITHOUT the datasource name as a prefix"
+            "run a local Python script as a datasource: wrap a function in "
+            "`trilogy.io.run`, which writes the Arrow IPC stream to stdout for "
+            "you from a table, dataframe, or list of dicts; declare concepts, map "
+            "script columns in `datasource (...)`, use `grain (...) file "
+            "`path.py`;`, then reference locally declared concepts WITHOUT the "
+            "datasource name as a prefix"
         ),
         body="""\
 # Python datasources require `enable_python_datasources = true` under
@@ -42,18 +44,27 @@ _EXAMPLES: list[SyntaxExample] = [
 # #!/usr/bin/env -S uv run
 # # /// script
 # # requires-python = ">=3.11"
-# # dependencies = ["pyarrow>=16"]
+# # dependencies = ["pyarrow>=16", "pytrilogy"]
 # # ///
 #
-# import sys
-# import pyarrow as pa
+# from trilogy.io import run
 #
-# values = [0, 1]
-# while len(values) < 20:
-#     values.append(values[-1] + values[-2])
-# table = pa.table({"index": range(20), "value": values})
-# with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-#     writer.write_table(table)
+#
+# def fibonacci():
+#     values = [0, 1]
+#     while len(values) < 20:
+#         values.append(values[-1] + values[-2])
+#     return [{"index": i, "value": v} for i, v in enumerate(values)]
+#
+#
+# if __name__ == "__main__":
+#     raise SystemExit(run(fibonacci))
+#
+# `run` converts whatever you return -- a pyarrow table, a pandas/polars frame,
+# a list of dicts, or an iterator of those -- and gives the script a CLI
+# (`--limit`, `--filter`, `--columns`, `--describe`). Run
+# `trilogy source describe ./fibonacci.py` to print the datasource block below
+# instead of writing it against a guessed schema.
 #
 # IMPORTANT: stdout must contain ONLY the Arrow IPC stream. Send diagnostics
 # to stderr. A PEP 723 block lets `uv run` install script dependencies.

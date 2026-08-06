@@ -1,12 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
-import sys
-
-import pyarrow as pa
+from trilogy.io import run
 
 
 def cluster(points: list[int]) -> tuple[list[int], list[float]]:
@@ -29,11 +32,14 @@ def cluster(points: list[int]) -> tuple[list[int], list[float]]:
 
 points = [1, 2, 3, 10, 11, 12]
 assignments, centroids = cluster(points)
-rows = [
-    {"point": point, "cluster": group, "centroid": centroids[group]}
-    for point, group in zip(points, assignments)
-]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+
+def rows() -> list[dict]:
+    return [
+        {"point": point, "cluster": group, "centroid": centroids[group]}
+        for point, group in zip(points, assignments)
+    ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))
