@@ -296,6 +296,7 @@ dialect = "duck_db"
 
 [engine.config]
 db_location = "{spec.db_filename}"
+enable_python_datasources = {str(spec.enable_python_datasources).lower()}
 
 [agent]
 provider = "{provider}"

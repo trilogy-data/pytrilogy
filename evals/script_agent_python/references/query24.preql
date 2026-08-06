@@ -1,0 +1,14 @@
+key date string;
+property date.max_temperature_f float;
+
+datasource generated_data(
+    date: date,
+    max_temperature_f: max_temperature_f
+)
+grain (date)
+file `./query24.py`;
+
+select
+    date,
+    max_temperature_f;
+

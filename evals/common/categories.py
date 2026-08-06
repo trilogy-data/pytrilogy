@@ -48,6 +48,13 @@ class Category:
 def _setup_ingest(
     workspace: Path, spec: BenchmarkSpec, *, db_path, enriched_dir
 ) -> dict:
+    if spec.skip_model_setup:
+        return {
+            "exit_code": 0,
+            "duration": 0.0,
+            "stdout": "empty project: no source model setup required.\n",
+            "stderr": "",
+        }
     return agent_runner.run_pre_ingest(workspace)
 
 

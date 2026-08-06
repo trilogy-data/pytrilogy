@@ -1,0 +1,13 @@
+key user_id int;
+property user_id.album_count int;
+
+datasource generated_data(
+    user_id: user_id,
+    album_count: album_count
+)
+grain (user_id)
+file `./query25.py`;
+
+select
+    user_id,
+    album_count;

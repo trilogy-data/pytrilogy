@@ -1,0 +1,14 @@
+key step int;
+property step.value int;
+
+datasource generated_data(
+    step: step,
+    value: value
+)
+grain (step)
+file `./query03.py`;
+
+select
+    step,
+    value;
+

@@ -43,6 +43,7 @@ from trilogy.scripts.agent_sessions import (
 )
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
+    RETURN_CONTROL_TOOL,
     SHOW_MESSAGE_TOOL,
     TODO_TOOL,
     TOOL_HANDLERS,
@@ -621,13 +622,23 @@ def _run_turn_inner(
                 role="user",
             )
             continue
+        mixed_completion = len(response.tool_calls) > 1 and any(
+            call.name == RETURN_CONTROL_TOOL.name for call in response.tool_calls
+        )
         for call in response.tool_calls:
             print_info(_format_call(call))
             _log_event(
                 log_path,
                 {"type": "tool_call", "name": call.name, "arguments": call.arguments},
             )
-            if call.parse_error:
+            if call.name == RETURN_CONTROL_TOOL.name and mixed_completion:
+                result = (
+                    "return_control_to_user deferred: completion must be the only "
+                    "tool call in an assistant turn. Review the other tool "
+                    "result(s), fix any failures, then call "
+                    "return_control_to_user alone on a later turn."
+                )
+            elif call.parse_error:
                 result = (
                     f"Tool call '{call.name}' rejected: {call.parse_error}. "
                     "Re-issue the call with valid JSON arguments."

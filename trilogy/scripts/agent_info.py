@@ -250,9 +250,11 @@ trilogy database describe my_fact
 
 ## Authoring Datasources
 
-When you need to author or edit a model
+When you need to author or edit how a model
+gets data
 call `trilogy agent-info datasources` for 
-the full reference.
+the full reference. Scripts- python, rust, etc
+are integrated as datasources.
 
 ---
 

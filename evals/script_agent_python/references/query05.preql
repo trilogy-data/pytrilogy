@@ -1,0 +1,17 @@
+key index int;
+property index.value int;
+property index.moving_average float;
+
+datasource generated_data(
+    index: index,
+    value: value,
+    moving_average: moving_average
+)
+grain (index)
+file `./query05.py`;
+
+select
+    index,
+    value,
+    moving_average;
+

@@ -1,0 +1,14 @@
+key number int;
+property number.roman string;
+
+datasource generated_data(
+    number: number,
+    roman: roman
+)
+grain (number)
+file `./query11.py`;
+
+select
+    number,
+    roman;
+

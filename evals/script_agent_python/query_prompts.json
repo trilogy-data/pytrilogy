@@ -1,0 +1,127 @@
+[
+  {
+    "id": 1,
+    "grade": "easy",
+    "prompt": "Write a Python script that generates the first 20 Fibonacci numbers (starting with index 0 and values 0, 1), then expose it as a datasource. Return `index` and `value`, ordered by index."
+  },
+  {
+    "id": 2,
+    "grade": "easy",
+    "prompt": "Write a Python script that finds every prime number from 2 through 200 locally. Return `prime` and its one-based `ordinal`, ordered by prime."
+  },
+  {
+    "id": 3,
+    "grade": "medium",
+    "prompt": "Write a Python script that computes the Collatz sequence beginning at 27. Return each zero-based `step` and `value`, ordered by step, including the starting 27 and final 1."
+  },
+  {
+    "id": 4,
+    "grade": "medium",
+    "prompt": "Write a Python script that runs Dijkstra's algorithm on the directed weighted edges A→B=4, A→C=2, C→B=1, B→D=5, C→D=8, C→E=10, D→E=2, E→D=2, starting at A. Return `node` and integer `distance`, ordered by node."
+  },
+  {
+    "id": 5,
+    "grade": "easy",
+    "prompt": "Write a Python script that computes a trailing 3-value moving average over [4, 8, 15, 16, 23, 42], using all available values for the first two positions. Return zero-based `index`, `value`, and `moving_average`, ordered by index."
+  },
+  {
+    "id": 6,
+    "grade": "medium",
+    "prompt": "Write a Python script that fits ordinary least-squares y = slope*x + intercept to points (1,2), (2,3), (3,5), (4,4), (5,6). Return one row with `slope` and `intercept`."
+  },
+  {
+    "id": 7,
+    "grade": "hard",
+    "prompt": "Write a Python script that performs k-means clustering with k=2 on one-dimensional points [1, 2, 3, 10, 11, 12], initial centroids 1 and 10, iterating until assignments stabilize. Return each `point`, its zero-based `cluster`, and final `centroid`, ordered by point."
+  },
+  {
+    "id": 8,
+    "grade": "easy",
+    "prompt": "Write a Python script that calculates CRC32 checksums for the UTF-8 strings `trilogy`, `semantic`, and `datasource`. Return `text` and the unsigned integer `crc32`, ordered by text."
+  },
+  {
+    "id": 9,
+    "grade": "medium",
+    "prompt": "Write a Python script that tokenizes `To be, or not to be: that is the question.` case-insensitively into alphabetic words and counts them. Return `word` and `count`, ordered by count descending then word."
+  },
+  {
+    "id": 10,
+    "grade": "medium",
+    "prompt": "Write a Python script that multiplies matrices [[1,2,3],[4,5,6]] and [[7,8],[9,10],[11,12]]. Return `row`, `column`, and `value` for every output cell, ordered by row then column."
+  },
+  {
+    "id": 11,
+    "grade": "medium",
+    "prompt": "Write a Python script that converts integers 1 through 25 to uppercase Roman numerals. Return `number` and `roman`, ordered by number."
+  },
+  {
+    "id": 12,
+    "grade": "hard",
+    "prompt": "Write a Python script that topologically sorts dependencies clean→build, lint→test, build→test, and test→package. When multiple tasks are available, choose alphabetically. Return one-based `position` and `task`, ordered by position."
+  },
+  {
+    "id": 13,
+    "grade": "hard",
+    "prompt": "Write a Python script that solves the 0/1 knapsack problem for capacity 10 and items A(weight 6,value 30), B(3,14), C(4,16), D(2,9). Return one row with the selected item names joined alphabetically by commas as `items`, total `weight`, and total `value`; break ties lexicographically."
+  },
+  {
+    "id": 14,
+    "grade": "medium",
+    "prompt": "Write a Python script that calculates Levenshtein edit distance for pairs (`kitten`,`sitting`), (`flaw`,`lawn`), and (`trilogy`,`trilogy`). Return `left_text`, `right_text`, and `distance`, ordered by left_text."
+  },
+  {
+    "id": 15,
+    "grade": "medium",
+    "prompt": "Write a Python script that estimates pi with 100,000 Monte Carlo points using Python's `random.Random(2026)` and uniform x/y samples in [0,1). Return one row with `samples`, `inside_circle`, and `pi_estimate`."
+  },
+  {
+    "id": 16,
+    "grade": "easy",
+    "prompt": "Write a Python script using the standard library calendar to enumerate every Friday the 13th from 2020-01-01 through 2030-12-31. Return ISO `date` strings ordered ascending."
+  },
+  {
+    "id": 17,
+    "grade": "medium",
+    "prompt": "Write a Python script that parses the CSV text `product,quantity,price` with rows apple/3/1.20, banana/5/0.50, apple/2/1.20, pear/4/0.80. Aggregate by product and return `product`, total `quantity`, and `revenue`, ordered by product."
+  },
+  {
+    "id": 18,
+    "grade": "medium",
+    "prompt": "Write a Python script that flattens the nested JSON object `{departments:[{name:'engineering',employees:[{name:'Ada',level:3},{name:'Linus',level:4}]},{name:'sales',employees:[{name:'Grace',level:2}]}]}`. Return `department`, `employee`, and `level`, ordered by department then employee."
+  },
+  {
+    "id": 19,
+    "grade": "medium",
+    "prompt": "Write a Python script that downloads JSONPlaceholder users from `https://jsonplaceholder.typicode.com/users`, keeps users whose email ends in `.biz`, and returns `id`, `name`, and lowercased `email`, ordered by id."
+  },
+  {
+    "id": 20,
+    "grade": "medium",
+    "prompt": "Write a Python script that calls `https://jsonplaceholder.typicode.com/posts?userId=1`. For each post return `id`, `title`, and `body_word_count` where words are whitespace-separated, ordered by id."
+  },
+  {
+    "id": 21,
+    "grade": "medium",
+    "prompt": "Write a Python script that calls `https://jsonplaceholder.typicode.com/todos`, summarizes completed and incomplete todos per user, and returns `user_id`, `completed_count`, and `incomplete_count`, ordered by user_id."
+  },
+  {
+    "id": 22,
+    "grade": "hard",
+    "prompt": "Write a Python script that calls `https://date.nager.at/api/v3/PublicHolidays/2024/US` and returns each holiday's `date`, English `name`, and boolean `global` flag, ordered by date then name."
+  },
+  {
+    "id": 23,
+    "grade": "hard",
+    "prompt": "Write a Python script that downloads the Iris CSV from `https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv`, groups by species, and returns `species`, `row_count`, and average `sepal_length`, ordered by species."
+  },
+  {
+    "id": 24,
+    "grade": "hard",
+    "prompt": "Write a Python script that calls Open-Meteo's archive API for New York City (`latitude=40.7128`, `longitude=-74.0060`) for 2024-01-01 through 2024-01-07 with daily `temperature_2m_max` in Fahrenheit and timezone UTC. Return `date` and `max_temperature_f`, ordered by date."
+  },
+  {
+    "id": 25,
+    "grade": "hard",
+    "prompt": "Write a Python script that calls `https://jsonplaceholder.typicode.com/albums`, counts albums per user, and returns `user_id` and `album_count`, ordered by user_id."
+  }
+]

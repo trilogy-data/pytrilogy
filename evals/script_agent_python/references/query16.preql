@@ -1,0 +1,11 @@
+key date string;
+
+datasource generated_data(
+    date: date
+)
+grain (date)
+file `./query16.py`;
+
+select
+    date;
+
