@@ -31,6 +31,10 @@ CASES = [
     ["--limit", "4", "--filter", "state = CA"],
     ["--limit", "3", "--filter", "state = CA", "--columns", "id,state"],
     ["--filter", 'state not in ["CA"]', "--limit", "6"],
+    ["--order-by", "id:desc", "--limit", "5"],
+    ["--order-by", "state:asc,id:desc", "--limit", "8"],
+    ["--order-by", "name:asc", "--limit", "7"],
+    ["--filter", "state = CA", "--order-by", "id:desc", "--limit", "4"],
 ]
 
 
@@ -146,6 +150,34 @@ def test_both_fail_the_same_way(rust_binary: str):
     assert py_error["retryable"] == rs_error["retryable"] is False
     assert "Available columns" in py_error["message"]
     assert "Available columns" in rs_error["message"]
+
+
+def test_tie_order_is_unspecified_but_the_keys_agree(rust_binary: str):
+    """`state` repeats every four rows, so sorting on it alone is all ties.
+
+    pyarrow sorts stably; arrow-rs's `lexsort_to_indices` does not, so the two
+    return different -- equally valid -- members of each tie group. That is the
+    same non-determinism SQL has for an incomplete ORDER BY, and it is why
+    `source_pushdown` warns that pushing an ordered limit can change *which*
+    tied rows come back. What must agree is the ordering itself.
+    """
+    args = ["--order-by", "state:asc", "--limit", "12"]
+    py = [row["state"] for row in rows(run_python(args).stdout)]
+    rs = [row["state"] for row in rows(run_rust(rust_binary, args).stdout)]
+    assert py == rs
+    assert py == sorted(py)
+
+
+def test_a_total_ordering_agrees_exactly(rust_binary: str):
+    """With a unique tiebreaker there is one right answer, and both give it."""
+    args = ["--order-by", "state:asc,id:desc", "--limit", "12"]
+    assert rows(run_python(args).stdout) == rows(run_rust(rust_binary, args).stdout)
+
+
+def test_a_limit_under_an_ordering_returns_the_top_rows(rust_binary: str):
+    args = ["--order-by", "id:desc", "--limit", "3"]
+    for stdout in (run_python(args).stdout, run_rust(rust_binary, args).stdout):
+        assert [row["id"] for row in rows(stdout)] == [99, 98, 97]
 
 
 @pytest.mark.parametrize("fmt", ["csv", "json"])

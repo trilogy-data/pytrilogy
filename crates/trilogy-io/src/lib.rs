@@ -14,8 +14,8 @@
 //! }
 //! ```
 //!
-//! The program gets `--limit`, `--filter`, `--columns`, `--format`, `--output`
-//! and `--describe` for free, and writes an Arrow IPC stream to stdout. That
+//! The program gets `--limit`, `--filter`, `--columns`, `--order-by`, `--format`,
+//! `--output` and `--describe` for free, and writes an Arrow IPC stream to stdout. That
 //! command-line surface -- not this library -- is the actual contract, and it
 //! is byte-for-byte the one `trilogy.io` implements in python, so Trilogy does
 //! not care which language a source is written in.
@@ -44,7 +44,7 @@ pub mod transform;
 
 pub use adapters::{BatchReader, IntoBatchReader};
 pub use cli::{Cli, Invocation};
-pub use contract::{effective_pushdown, Field, Filter, Op, SourceRequest, CONTRACT_VERSION};
+pub use contract::{effective_pushdown, Field, Filter, Op, Sort, SourceRequest, CONTRACT_VERSION};
 pub use error::{Error, Result, ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE};
 pub use sinks::Format;
 
@@ -176,7 +176,10 @@ fn stamp(reader: BatchReader, pushdown: &[Field], watermark: Option<&str>) -> Ba
         reader.schema().fields().clone(),
         metadata,
     ));
-    Box::new(Restamped { inner: reader, schema })
+    Box::new(Restamped {
+        inner: reader,
+        schema,
+    })
 }
 
 struct Restamped {

@@ -66,10 +66,31 @@ def _parse_value(raw: str) -> Any:
 
 
 @dataclass(frozen=True)
+class Sort:
+    column: str
+    descending: bool = False
+
+    @classmethod
+    def parse(cls, text: str) -> Sort:
+        column, _, direction = text.partition(":")
+        normalized = direction.strip().lower() or "asc"
+        if normalized not in ("asc", "desc"):
+            raise ContractError(
+                f"Could not parse sort {text!r}. Expected '<column>' or "
+                "'<column>:asc' / '<column>:desc'."
+            )
+        return cls(column.strip(), normalized == "desc")
+
+    def render(self) -> str:
+        return f"{self.column}:{'desc' if self.descending else 'asc'}"
+
+
+@dataclass(frozen=True)
 class SourceRequest:
     limit: int | None = None
     columns: tuple[str, ...] | None = None
     filters: tuple[Filter, ...] = ()
+    order_by: tuple[Sort, ...] = ()
     since: Any | None = None
     partition: Mapping[str, str] = field(default_factory=dict)
 
@@ -78,6 +99,7 @@ class SourceRequest:
             "limit": self.limit,
             "columns": list(self.columns) if self.columns else None,
             "filters": [f.render() for f in self.filters],
+            "order_by": [s.render() for s in self.order_by],
             "since": self.since,
             "partition": dict(self.partition),
         }
@@ -104,11 +126,14 @@ def effective_pushdown(
     """Narrow ``declared`` to the fields it is safe to hand over for this request.
 
     ``limit`` only composes if it is applied last. A source that truncates to
-    ``limit`` rows and then has a filter applied to its output returns fewer
-    rows than asked for, so when there are filters to enforce locally the limit
-    has to come back to the fallback -- correctness over the wasted scan.
+    ``limit`` rows and then has a filter applied -- or has its output sorted --
+    returns the wrong rows, so whenever narrowing or ordering is still being
+    enforced locally the limit comes back to the fallback with them.
     """
-    if request.filters and "filters" not in declared:
+    narrowing_is_local = (request.filters and "filters" not in declared) or (
+        request.order_by and "order_by" not in declared
+    )
+    if narrowing_is_local:
         return tuple(name for name in declared if name != "limit")
     return declared
 
@@ -178,20 +203,52 @@ def apply(
     filters = () if "filters" in pushed_down else request.filters
     columns = None if "columns" in pushed_down else request.columns
     limit = None if "limit" in pushed_down else request.limit
+    order_by = () if "order_by" in pushed_down else request.order_by
 
     if filters:
         _validate_columns(schema, [f.column for f in filters], "filter on")
+    if order_by:
+        _validate_columns(schema, [s.column for s in order_by], "sort by")
     if columns:
         _validate_columns(schema, columns, "project")
         schema = pa.schema(
             [schema.field(name) for name in columns], metadata=schema.metadata
         )
 
-    if not (filters or columns or limit is not None):
+    if not (filters or columns or order_by or limit is not None):
         return reader
+    if order_by:
+        # Sorting cannot stream: the last batch can hold the first row. This is
+        # why a source that can order itself should claim ``order_by``.
+        return _sorted_reader(reader, filters, order_by, columns, limit, schema)
     return pa.RecordBatchReader.from_batches(
         schema, _transform(reader, filters, columns, limit)
     )
+
+
+def _sorted_reader(
+    reader: pa.RecordBatchReader,
+    filters: tuple[Filter, ...],
+    order_by: tuple[Sort, ...],
+    columns: tuple[str, ...] | None,
+    limit: int | None,
+    schema: pa.Schema,
+) -> pa.RecordBatchReader:
+    """Filter, then sort, then limit, then project -- in that order."""
+    batches = [b for b in _transform(reader, filters, None, None)]
+    table = (
+        pa.Table.from_batches(batches, reader.schema)
+        if batches
+        else reader.schema.empty_table()
+    )
+    table = table.sort_by(
+        [(s.column, "descending" if s.descending else "ascending") for s in order_by]
+    )
+    if limit is not None:
+        table = table.slice(0, limit)
+    if columns:
+        table = table.select(list(columns))
+    return pa.RecordBatchReader.from_batches(schema, table.to_batches())
 
 
 def _validate_columns(

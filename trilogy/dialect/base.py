@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
     from trilogy.engine import ResultProtocol
     from trilogy.executor import Executor
+    from trilogy.io.contract import SourceRequest
     from trilogy.staging import StagingConfig
 
 from jinja2 import Template
@@ -58,6 +59,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
+    BuildDatasource,
     BuildExpr,
     BuildFilterItem,
     BuildFunction,
@@ -92,6 +94,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
     CompiledCTE,
+    DatasourceCTE,
     InstantiatedUnnestJoin,
     Join,
     RecursiveCTE,
@@ -956,7 +959,12 @@ class BaseDialect:
         """Release whatever ``prepare_sources`` created. Called on executor close."""
         return
 
-    def render_source(self, address: Address) -> str:
+    def render_source(
+        self, address: Address, request: "SourceRequest | None" = None
+    ) -> str:
+        """``request`` is the contract pushdown for a script source (see
+        ``trilogy.dialect.source_pushdown``); dialects that cannot use it ignore
+        it, which is always safe because the caller keeps its own WHERE."""
         if address.type == AddressType.QUERY:
             return f"({address.location})"
         if address.is_file:
@@ -965,6 +973,29 @@ class BaseDialect:
                     return f"({f.read()})"
             return f"'{address.location}'"
         return self.safe_quote(address.location)
+
+    def source_pushdown(
+        self, cte: CTE | UnionCTE, address: Address
+    ) -> "SourceRequest | None":
+        """Predicates this CTE's WHERE lets a script source apply for itself.
+
+        Only script sources can act on a request, and only a CTE reading one
+        raw datasource can attribute its predicates to that datasource's own
+        columns. The rendered WHERE is unchanged either way, so returning None
+        only costs the optimization.
+        """
+        if address.type != AddressType.PYTHON_SCRIPT or not isinstance(cte, CTE):
+            return None
+        if isinstance(cte, DatasourceCTE):
+            datasource = cte.datasource
+        else:
+            base = cte.source.base_datasource
+            if not isinstance(base, BuildDatasource):
+                return None
+            datasource = base
+        from trilogy.dialect.source_pushdown import request_for_cte
+
+        return request_for_cte(cte, datasource)
 
     def make_table_column(
         self,
@@ -2901,7 +2932,7 @@ class BaseDialect:
             # path a non-inlined leaf datasource uses for its own FROM.
             addr = cte.source_address
             if isinstance(addr, Address):
-                source = self.render_source(addr)
+                source = self.render_source(addr, self.source_pushdown(cte, addr))
             elif cte.quote_address:
                 source = safe_quote(addr, self.QUOTE_CHARACTER)
             else:

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use clap::Parser;
 
-use crate::contract::{Filter, SourceRequest};
+use crate::contract::{Filter, Sort, SourceRequest};
 use crate::error::{Error, Result};
 use crate::sinks::Format;
 
@@ -26,6 +26,10 @@ pub struct Cli {
     /// Row predicate, repeatable (e.g. --filter 'state in ["CA"]').
     #[arg(long = "filter", value_name = "'col op value'")]
     pub filters: Vec<String>,
+
+    /// Comma-separated sort keys, e.g. 'score:desc,id'.
+    #[arg(long = "order-by")]
+    pub order_by: Option<String>,
 
     /// Watermark low bound.
     #[arg(long)]
@@ -72,6 +76,14 @@ impl Cli {
                     .filters
                     .iter()
                     .map(|f| Filter::parse(f))
+                    .collect::<Result<Vec<_>>>()?,
+                order_by: self
+                    .order_by
+                    .as_deref()
+                    .map(split_columns)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|s| Sort::parse(s))
                     .collect::<Result<Vec<_>>>()?,
                 since: self.since,
                 partition,

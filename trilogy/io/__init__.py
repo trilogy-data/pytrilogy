@@ -28,7 +28,7 @@ from typing import Any
 import pyarrow as pa
 
 from trilogy.io.adapters import register_adapter, to_reader
-from trilogy.io.contract import Filter, SourceRequest
+from trilogy.io.contract import Filter, Sort, SourceRequest
 from trilogy.io.errors import ContractError, TrilogyIOError
 from trilogy.io.runner import main, parse_args, resolve, run
 from trilogy.io.sinks import Format, write
@@ -37,6 +37,7 @@ __all__ = [
     "ContractError",
     "Filter",
     "Format",
+    "Sort",
     "SourceRequest",
     "TrilogyIOError",
     "emit",

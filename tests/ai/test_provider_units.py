@@ -548,6 +548,34 @@ def test_deepseek_posts_to_deepseek_url(monkeypatch):
     assert sink["json"]["model"] == "deepseek-v4-flash"
 
 
+def test_deepseek_errors_name_deepseek(monkeypatch):
+    import httpx
+
+    class _ErrorClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, headers, json):
+            raise httpx.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(httpx, "Client", lambda timeout: _ErrorClient())
+    provider = DeepSeekProvider(
+        name="ds",
+        model="deepseek-chat",
+        api_key="x",
+        retry_options=RetryOptions(max_retries=0, initial_delay_ms=1),
+    )
+
+    with pytest.raises(Exception, match="DeepSeek API error: read timed out"):
+        provider.generate_completion(
+            LLMRequestOptions(),
+            [LLMMessage(role="user", content="hi")],
+        )
+
+
 @pytest.mark.parametrize(
     "provider_cls, model",
     [

@@ -1021,12 +1021,12 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     from matplotlib.gridspec import GridSpec
 
     meta, summary = report["meta"], report["summary"]
-    fig = plt.figure(figsize=(14, 15))
+    fig = plt.figure(figsize=(14, 17))
     gs = GridSpec(
         4,
         2,
         figure=fig,
-        height_ratios=[1.15, 1.15, 1.1, 0.95],
+        height_ratios=[1.15, 1.15, 1.1, 1.35],
         hspace=0.5,
         wspace=0.22,
     )

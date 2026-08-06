@@ -44,7 +44,7 @@ invokes it gets the same answers as from a python source.
 
 ```
 --limit N            --columns a,b,c        --filter 'col op value'  (repeatable)
---since VALUE        --partition k=v        (repeatable)
+--order-by k:desc,k2 --since VALUE          --partition k=v          (repeatable)
 --format arrow|parquet|csv|json            --output URI
 --describe
 ```
@@ -59,9 +59,10 @@ Everything you do not claim is enforced on your output stream instead, so
 anything about them. Claim a field when you can do better than a scan-and-discard
 — an API-backed source claims `Filters` so it can push the predicate to the API.
 
-One rule is applied for you: if there are filters left for the wrapper to run,
-`limit` is taken back off your hands, because a source that truncates first and
-gets filtered second returns fewer rows than were asked for.
+One rule is applied for you: if there are filters *or an ordering* left for the
+wrapper to run, `limit` is taken back off your hands -- a source that truncates
+first and gets filtered or sorted second returns the wrong rows. Claim
+`Field::OrderBy` alongside `Field::Limit` if you want to do top-N yourself.
 
 ## Return types
 
