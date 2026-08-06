@@ -46,9 +46,8 @@ def _version_callback(ctx: click.Context, _param: click.Parameter, value: bool) 
 
 
 AGENT_NOTICE = """
-NOTE FOR AI AGENTS (Claude, Gemini, GPT, etc.): For comprehensive usage documentation,
-run 'trilogy agent-info' to get a detailed AGENTS.md-style guide with all
-commands, options, and usage examples.
+NOTE FOR AI AGENTS (Claude, Gemini, GPT, etc.): Run `trilogy agent-info` for a
+compact documentation directory, then call the drilldown matching your task.
 """
 
 LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {

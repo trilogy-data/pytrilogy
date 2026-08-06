@@ -30,13 +30,15 @@ fn main() -> std::process::ExitCode {
 }
 ```
 
-Then point a datasource at the compiled binary:
+The binary implements Trilogy's script-datasource contract, so
+`trilogy source describe|preview|check` work against it and any consumer that
+invokes it gets the same answers as from a python source.
 
-```
-datasource fib(value: fib_value)
-grain (fib_value)
-file `./target/release/fib`;
-```
+> **Not yet a `file` address.** pytrilogy currently maps a datasource address to
+> a type by file extension, so only `.py` is recognized as a script source and an
+> extensionless binary is rejected at parse. Pointing a `datasource ... file`
+> clause at a compiled program needs an engine-side runner abstraction that does
+> not exist yet.
 
 ## What you get
 

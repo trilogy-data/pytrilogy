@@ -177,7 +177,8 @@ Available tools:
       prefer explore for model files)."""
     base += """
     * Only documented subcommands work — do NOT invent `raw`, `shell`,
-      `read_file`, etc. `trilogy agent-info` lists everything that exists.
+      `read_file`, etc. Start with `trilogy agent-info`, then immediately call
+      the listed drilldown matching the task before authoring syntax.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
@@ -215,9 +216,8 @@ Discipline:
     return base
 
 
-# The Trilogy language reference is NOT inlined here — discipline rule #1
-# directs the agent to call `trilogy agent-info` first, which returns the
-# canonical reference. Inlining duplicated ~26KB of prompt tokens per run.
+# Detailed Trilogy references are not inlined here. Bare `agent-info` is a
+# compact directory; the agent follows it to the task-specific drilldown.
 SYSTEM_PROMPT = get_agent_instructions(True)
 QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
 QUIET_NO_TODO_SYSTEM_PROMPT = get_agent_instructions(False, include_todo=False)
