@@ -69,6 +69,7 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "render": ("trilogy.scripts.render", "render", None),
     "run": ("trilogy.scripts.run", "run", IGNORE_UNKNOWN),
     "serve": ("trilogy.scripts.serve", "serve", None),
+    "source": ("trilogy.scripts.source", "source", None),
     "state": ("trilogy.scripts.state", "state", IGNORE_UNKNOWN),
     "state-merge": ("trilogy.scripts.state", "state_merge", None),
     "unit": ("trilogy.scripts.testing", "unit", IGNORE_UNKNOWN),

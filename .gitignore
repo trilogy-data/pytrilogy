@@ -65,7 +65,9 @@ debug*.log
 
 .env.secrets
 
+# rust build output (one entry per crate; see .scripts/sync_version.py)
 trilogy/scripts/dependency/target
+crates/trilogy-io/target
 
 dependency_graph.png
 

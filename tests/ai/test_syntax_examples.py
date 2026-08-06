@@ -94,6 +94,19 @@ union all select 108, 'Math'
 ''';
 """
 
+PYTHON_DATASOURCE = """#!/usr/bin/env python
+import sys
+
+import pyarrow as pa
+
+values = [0, 1]
+while len(values) < 20:
+    values.append(values[-1] + values[-2])
+table = pa.table({"index": range(20), "value": values})
+with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
+    writer.write_table(table)
+"""
+
 
 @pytest.fixture(scope="module")
 def model_dir(tmp_path_factory):
@@ -101,6 +114,7 @@ def model_dir(tmp_path_factory):
     (d / "iris.preql").write_text(IRIS, encoding="utf-8")
     (d / "enrollments.preql").write_text(ENROLLMENTS, encoding="utf-8")
     (d / "students.preql").write_text(STUDENTS, encoding="utf-8")
+    (d / "fibonacci.py").write_text(PYTHON_DATASOURCE, encoding="utf-8")
     return d
 
 
@@ -108,7 +122,7 @@ def model_dir(tmp_path_factory):
 def executor(model_dir):
     return Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=model_dir),
-        conf=DuckDBConfig(),
+        conf=DuckDBConfig(enable_python_datasources=True),
     )
 
 
