@@ -38,6 +38,10 @@ def agent_metric_fields(metrics: scoring.AgentMetrics) -> dict:
         "tool_errors": metrics.tool_errors,
         "tool_success_rate": round(metrics.tool_success_rate, 3),
         "repeated_calls_by_name": metrics.repeated_calls_by_name,
+        "agent_info_sequences": metrics.agent_info_sequences,
+        "agent_info_transitions": metrics.agent_info_transitions,
+        "agent_info_directory_calls": metrics.agent_info_directory_calls,
+        "agent_info_directory_followups": metrics.agent_info_directory_followups,
         "tool_output_stats": {
             tool: {
                 "count": s.count,
@@ -157,6 +161,16 @@ def render_markdown(spec: BenchmarkSpec, report: dict) -> str:
         f"- Tool calls: {agent['tool_calls_total']}  →  {agent['tool_calls_by_name']}"
     )
     out.append(f"- `trilogy` subcommands: {agent['trilogy_subcommands']}")
+    info_calls = agent.get("agent_info_directory_calls", 0)
+    if info_calls:
+        followups = agent.get("agent_info_directory_followups", 0)
+        out.append(
+            f"- `agent-info` directory follow-through: {followups}/{info_calls} "
+            "directory calls immediately followed by a drilldown"
+        )
+        transitions = agent.get("agent_info_transitions") or {}
+        if transitions:
+            out.append(f"- `agent-info` transitions: {transitions}")
     ok = agent["tool_results_total"] - agent["tool_errors"]
     out.append(
         f"- Tool success rate: {agent['tool_success_rate'] * 100:.0f}% "

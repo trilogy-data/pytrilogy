@@ -67,8 +67,14 @@ fn main() -> std::process::ExitCode {
 }
 ```
 
-Point the datasource at the compiled binary. Trilogy dispatches on the address:
-`.py` runs under `uv run`, anything else is executed directly.
+The binary implements the same contract, so `trilogy source describe|preview|check`
+work against it and any consumer that invokes it directly gets the same answers
+as from a python source.
+
+**It cannot be a `file` address yet.** The parser maps a datasource address to a
+type by file extension (`.py` → python script), so an extensionless binary is
+rejected at parse time. Pointing a datasource at a compiled source needs a
+runner abstraction on the engine side — see [Not done yet](#not-done-yet).
 
 ## The contract
 
@@ -201,10 +207,22 @@ is documented in [bigquery_python_datasources.md](bigquery_python_datasources.md
 
 ## Not done yet
 
-The planner does not yet compute a `SourceRequest` from a query, so `--limit`
-and `--filter` reach a source only when a human passes them (`trilogy source
-preview`) or when a datasource declaration carries them. The scan side of that
--- flags, fallbacks, both implementations, `--describe` for capability
-discovery -- is in place; what is missing is the grammar for static arguments on
-a `file` address and the planner change that pushes a query's own limit and
-predicates into a script scan.
+Two engine-side pieces are missing. Both are additive; nothing below changes the
+contract a source implements.
+
+**The planner does not compute a `SourceRequest` from a query.** `--limit` and
+`--filter` reach a source only when a human passes them (`trilogy source
+preview`). The source side is finished -- flags, fallbacks, both
+implementations, `--describe` for capability discovery -- but pushing a query's
+own limit and predicates into a script scan needs grammar for static arguments
+on a `file` address plus the planner change itself. DuckDB's `uv_run` macro
+already threads an `args` parameter that nothing populates.
+
+**A compiled binary cannot be a datasource address.** `_FILE_TYPE_MAP` in
+`trilogy/parsing/v2/rules/datasource_rules.py` keys `AddressType` off the file
+extension, so only `.py` reaches `AddressType.PYTHON_SCRIPT` and an
+extensionless binary fails at parse. Making `trilogy-io` binaries first-class
+means generalizing `build_uv_command` into a runner chosen per address (`.py` →
+`uv run`, executable → exec directly) and giving the grammar a way to say "this
+address is a program". Until then the crate is usable through `trilogy source`
+and by downstream consumers, but not from a `file` clause.

@@ -303,8 +303,8 @@ provider = "{provider}"
 model = "{model}"
 api_key_env = "{api_key_env}"
 max_iterations = {max_iterations}
-# agent-info is ~26KB and carries the Trilogy language reference; the default
-# 8KB limit middle-truncates the syntax rules away, so give it real headroom.
+# Focused agent-info drilldowns can carry complete language/model references;
+# give them enough room to arrive without truncating load-bearing examples.
 tool_output_limit = 32768
 # Narration messages compound quadratically through history replays in long
 # unattended runs; the eval drops show_message entirely.
