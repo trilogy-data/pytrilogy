@@ -1,19 +1,25 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
-import sys
 import zlib
 
-import pyarrow as pa
+from trilogy.io import run
 
-rows = [
-    {"text": value, "crc32": zlib.crc32(value.encode())}
-    for value in sorted(["trilogy", "semantic", "datasource"])
-]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+def rows() -> list[dict]:
+    return [
+        {"text": value, "crc32": zlib.crc32(value.encode())}
+        for value in sorted(["trilogy", "semantic", "datasource"])
+    ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))

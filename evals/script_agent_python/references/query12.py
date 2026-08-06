@@ -1,12 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
-import sys
-
-import pyarrow as pa
+from trilogy.io import run
 
 
 def ordered_tasks() -> list[str]:
@@ -30,8 +33,9 @@ def ordered_tasks() -> list[str]:
     return result
 
 
-rows = [{"position": i + 1, "task": task} for i, task in enumerate(ordered_tasks())]
+def rows() -> list[dict]:
+    return [{"position": i + 1, "task": task} for i, task in enumerate(ordered_tasks())]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))

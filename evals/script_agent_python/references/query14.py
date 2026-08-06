@@ -1,12 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
-import sys
-
-import pyarrow as pa
+from trilogy.io import run
 
 
 def distance(left: str, right: str) -> int:
@@ -20,11 +23,14 @@ def distance(left: str, right: str) -> int:
 
 
 pairs = [("kitten", "sitting"), ("flaw", "lawn"), ("trilogy", "trilogy")]
-rows = [
-    {"left_text": left, "right_text": right, "distance": distance(left, right)}
-    for left, right in sorted(pairs)
-]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+
+def rows() -> list[dict]:
+    return [
+        {"left_text": left, "right_text": right, "distance": distance(left, right)}
+        for left, right in sorted(pairs)
+    ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))

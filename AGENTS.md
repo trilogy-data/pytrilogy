@@ -48,3 +48,20 @@ Project uses a build_backend defined in .scripts/build_backend.py, which mostly 
 ## CLI
 
 The trilogy/scripts/trilogy.py file is the CLI entrypoint. The CLI is used for management, interactions and other tasks. 
+
+## Script datasources (trilogy/io)
+
+`trilogy/io` is what makes a program a datasource: a function returns anything
+Arrow-convertible and the wrapper handles the stream, the CLI contract
+(`--limit`/`--filter`/`--columns`/`--describe`), and error reporting. `crates/trilogy-io`
+is the Rust twin. See `docs/script_io.md`.
+
+Two constraints that are easy to break:
+
+- **`trilogy/io` must stay leaf-level** - a pyarrow import and nothing else. It must
+  never import `trilogy.core`, and the script fast path must stay off `click`
+  (~270ms), because DuckDB runs these scripts once per query.
+- **The command line is the cross-language contract**, not either library. Flag
+  names, exit code 65, the `--describe` payload and the `trilogy.*` metadata keys
+  are held byte-identical by `tests/io/test_conformance.py`; change one side and
+  that suite must change with it.

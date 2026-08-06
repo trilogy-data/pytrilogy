@@ -1,15 +1,19 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow>=16"]
+# dependencies = ["pytrilogy"]
+#
+# # Resolved from this checkout, not PyPI: these references are ground truth
+# # for the current code, not whatever wheel was last published.
+# [tool.uv.sources]
+# pytrilogy = { path = "../../../" }
 # ///
 
 import json
-import sys
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-import pyarrow as pa
+from trilogy.io import run
 
 params = {
     "latitude": 40.7128,
@@ -24,11 +28,14 @@ with urlopen(
     "https://archive-api.open-meteo.com/v1/archive?" + urlencode(params), timeout=30
 ) as response:
     daily = json.load(response)["daily"]
-rows = [
-    {"date": day, "max_temperature_f": temperature}
-    for day, temperature in zip(daily["time"], daily["temperature_2m_max"])
-]
 
-table = pa.Table.from_pylist(rows)
-with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
-    writer.write_table(table)
+
+def rows() -> list[dict]:
+    return [
+        {"date": day, "max_temperature_f": temperature}
+        for day, temperature in zip(daily["time"], daily["temperature_2m_max"])
+    ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows))

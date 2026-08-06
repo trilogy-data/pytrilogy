@@ -128,6 +128,51 @@ def test_sync_version_missing_version(tmp_path):
         build_backend._sync_version()
 
 
+def _version_tree(tmp_path, version: str = "1.2.3") -> Path:
+    """A checkout with the wheel's own crate manifest and nothing else."""
+    trilogy_dir = tmp_path / "trilogy"
+    trilogy_dir.mkdir()
+    (trilogy_dir / "__init__.py").write_text(f'__version__ = "{version}"')
+    cargo_dir = trilogy_dir / "scripts" / "dependency"
+    cargo_dir.mkdir(parents=True)
+    (cargo_dir / "Cargo.toml").write_text(
+        '[package]\nname = "trilogy-parser"\nversion = "0.1.0"\n'
+    )
+    (tmp_path / ".scripts").mkdir()
+    return tmp_path / ".scripts" / "sync_version.py"
+
+
+def test_sync_version_syncs_companion_crates(tmp_path):
+    """Crates published on the same stream move with the wheel's version."""
+    fake = _version_tree(tmp_path)
+    companion = tmp_path / "crates" / "trilogy-io" / "Cargo.toml"
+    companion.parent.mkdir(parents=True)
+    companion.write_text(
+        '[package]\nname = "trilogy-io"\nversion = "0.0.1"\n'
+        '\n[dependencies]\narrow = { version = "59" }\n'
+    )
+
+    with patch.object(sync_version, "__file__", str(fake)):
+        assert sync_version.sync_version() == "1.2.3"
+
+    content = companion.read_text()
+    assert 'version = "1.2.3"' in content
+    # Only the package's own version moves; dependency pins are left alone.
+    assert 'arrow = { version = "59" }' in content
+
+
+def test_sync_version_tolerates_missing_companion_crates(tmp_path):
+    """`crates/` is not in the sdist, so a wheel build must not need it."""
+    fake = _version_tree(tmp_path)
+    assert not (tmp_path / "crates").exists()
+
+    with patch.object(sync_version, "__file__", str(fake)):
+        assert sync_version.sync_version() == "1.2.3"
+
+    cargo = tmp_path / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
+    assert 'version = "1.2.3"' in cargo.read_text()
+
+
 def test_patch_metadata_with_dependencies(tmp_path):
     """Test patching METADATA file with dependencies"""
     metadata_file = tmp_path / "METADATA"

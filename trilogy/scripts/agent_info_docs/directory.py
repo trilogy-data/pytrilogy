@@ -13,6 +13,8 @@ not guess syntax here; detailed guidance lives one level down.
 
 - `trilogy agent-info authoring` - model and datasource authoring, including Python scripts.
 - `trilogy agent-info datasources` - mappings, files, partial sources, and Python/Arrow sources.
+  Writing a Python source? Wrap the function in `trilogy.io.run`, then generate the
+  datasource block with `trilogy source describe <script.py>`.
 - `trilogy agent-info ingest` - bootstrap models from tables, files, or cloud objects.
 - `trilogy agent-info config` - trilogy.toml, engines, credentials, and feature flags.
 
