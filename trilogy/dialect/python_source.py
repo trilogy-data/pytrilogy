@@ -10,6 +10,7 @@ stage the stream to object storage first (see
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
 import subprocess
@@ -20,8 +21,29 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
+from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE
+from trilogy.io.runner import METADATA_PREFIX
+from trilogy.io.sinks import normalize_object_uri, open_uri_sink
+
 if TYPE_CHECKING:
     import pyarrow as pa
+
+__all__ = [
+    "MAX_ATTEMPTS",
+    "RETRYABLE_UV_ERROR_MARKERS",
+    "RETRY_DELAYS_SECONDS",
+    "ParquetStreamWriter",
+    "PythonDatasourceError",
+    "build_uv_command",
+    "is_retryable_uv_error",
+    "normalize_object_uri",
+    "open_uri_sink",
+    "retry_delay",
+    "script_metadata",
+    "source_key",
+    "staged_object_name",
+    "stream_script",
+]
 
 MAX_ATTEMPTS = 3
 RETRY_DELAYS_SECONDS = (0.5, 1.5)
@@ -56,16 +78,55 @@ class PythonDatasourceError(RuntimeError):
         self.script = script
         self.return_code = return_code
         self.stderr = stderr
-        detail = stderr.strip() or (str(cause) if cause else "no output")
+        self.reported = parse_script_error(stderr)
+        # A script using trilogy.io states its own failure on one line; falling
+        # back to raw stderr means dumping a traceback plus whatever uv logged.
+        if self.reported:
+            detail = f"{self.reported['type']}: {self.reported['message']}"
+        else:
+            detail = stderr.strip() or (str(cause) if cause else "no output")
         super().__init__(
             f"Python datasource script '{script}' failed "
             f"(exit code {return_code}): {detail}"
         )
 
 
+def parse_script_error(stderr: str) -> dict[str, Any] | None:
+    """The structured failure a ``trilogy.io`` script writes ahead of its traceback."""
+    for line in stderr.splitlines():
+        if line.startswith(ERROR_PREFIX):
+            try:
+                return json.loads(line[len(ERROR_PREFIX) :])
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
 def is_retryable_uv_error(message: str) -> bool:
     normalized = message.lower()
     return any(marker in normalized for marker in RETRYABLE_UV_ERROR_MARKERS)
+
+
+def is_retryable(return_code: int, stderr: str) -> bool:
+    """Whether a failed attempt is worth repeating.
+
+    A script that exits ``SCRIPT_ERROR_EXIT_CODE`` has told us directly whether
+    its own failure was transient, so believe it rather than pattern-matching
+    stderr. Everything else is uv's exit, where the marker list is all we have.
+    """
+    reported = parse_script_error(stderr)
+    if return_code == SCRIPT_ERROR_EXIT_CODE and reported is not None:
+        return bool(reported.get("retryable"))
+    return is_retryable_uv_error(stderr)
+
+
+def script_metadata(schema: pa.Schema) -> dict[str, str]:
+    """Sideband facts the script attached to its stream (contract, watermark)."""
+    return {
+        key.decode()[len(METADATA_PREFIX) :]: value.decode()
+        for key, value in (schema.metadata or {}).items()
+        if key.decode().startswith(METADATA_PREFIX)
+    }
 
 
 def build_uv_command(script: str, args: str = "") -> list[str]:
@@ -144,7 +205,7 @@ def stream_script(
         return_code, rows, stderr, failure = _stream_once(script, args, write)
         if return_code == 0 and failure is None:
             return rows
-        if attempt < max_attempts and is_retryable_uv_error(stderr):
+        if attempt < max_attempts and is_retryable(return_code, stderr):
             time.sleep(retry_delay(attempt))
             continue
         raise PythonDatasourceError(script, return_code, stderr, failure)
@@ -173,28 +234,3 @@ class ParquetStreamWriter:
                 writer.write_batch(batch)
                 rows += batch.num_rows
         return rows
-
-
-def open_uri_sink(uri: str) -> Callable[[], IO[bytes]]:
-    """Return a factory opening a writable binary stream at ``uri``.
-
-    Resolves local paths, ``gs://`` and ``s3://`` through pyarrow's filesystem
-    layer, which authenticates from the ambient environment (ADC for GCS).
-    """
-    from pyarrow import fs as pafs
-
-    filesystem, path = pafs.FileSystem.from_uri(normalize_object_uri(uri))
-    # Object stores have no directories, but a local filesystem will not create
-    # the parent of a nested staging path on its own.
-    if isinstance(filesystem, pafs.LocalFileSystem):
-        parent = path.rsplit("/", 1)[0]
-        if parent:
-            filesystem.create_dir(parent, recursive=True)
-    return lambda: filesystem.open_output_stream(path)
-
-
-def normalize_object_uri(uri: str) -> str:
-    """pyarrow registers GCS under the ``gs`` scheme only; accept ``gcs://`` too."""
-    if uri.startswith("gcs://"):
-        return "gs://" + uri[len("gcs://") :]
-    return uri
