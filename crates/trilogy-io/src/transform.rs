@@ -5,15 +5,20 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, BooleanArray, RecordBatch, RecordBatchReader, Scalar};
+use arrow::array::{
+    Array, ArrayRef, BooleanArray, RecordBatch, RecordBatchIterator, RecordBatchReader, Scalar,
+};
 use arrow::compute::kernels::cmp;
-use arrow::compute::{cast, filter_record_batch, like, or};
+use arrow::compute::{
+    cast, concat_batches, filter_record_batch, lexsort_to_indices, like, or, take, SortColumn,
+    SortOptions,
+};
 use arrow::datatypes::{DataType, Schema, SchemaRef};
 use arrow::error::ArrowError;
 use serde_json::Value;
 
 use crate::adapters::BatchReader;
-use crate::contract::{Field, Filter, Op, SourceRequest};
+use crate::contract::{Field, Filter, Op, Sort, SourceRequest};
 use crate::error::{Error, Result};
 
 pub fn apply(
@@ -32,7 +37,16 @@ pub fn apply(
     } else {
         request.columns.clone()
     };
-    let limit = if owned(Field::Limit) { None } else { request.limit };
+    let limit = if owned(Field::Limit) {
+        None
+    } else {
+        request.limit
+    };
+    let order_by: Vec<Sort> = if owned(Field::OrderBy) {
+        Vec::new()
+    } else {
+        request.order_by.clone()
+    };
 
     let input_schema = reader.schema();
     if !filters.is_empty() {
@@ -53,7 +67,12 @@ pub fn apply(
         None => None,
     };
 
-    if filters.is_empty() && indices.is_none() && limit.is_none() {
+    if !order_by.is_empty() {
+        let names: Vec<&str> = order_by.iter().map(|s| s.column.as_str()).collect();
+        validate(&input_schema, &names, "sort by")?;
+    }
+
+    if filters.is_empty() && indices.is_none() && limit.is_none() && order_by.is_empty() {
         return Ok(reader);
     }
 
@@ -68,6 +87,19 @@ pub fn apply(
         None => input_schema.clone(),
     };
 
+    if !order_by.is_empty() {
+        // Sorting cannot stream: the last batch can hold the first row. This is
+        // why a source that can order itself should claim `OrderBy`.
+        return sorted_reader(
+            reader,
+            &filters,
+            &order_by,
+            indices.as_deref(),
+            limit,
+            schema,
+        );
+    }
+
     Ok(Box::new(Transform {
         inner: reader,
         schema,
@@ -77,6 +109,59 @@ pub fn apply(
         emitted: 0,
         done: false,
     }))
+}
+
+/// Filter, then sort, then limit, then project -- in that order.
+fn sorted_reader(
+    reader: BatchReader,
+    filters: &[Filter],
+    order_by: &[Sort],
+    indices: Option<&[usize]>,
+    limit: Option<usize>,
+    schema: SchemaRef,
+) -> Result<BatchReader> {
+    let input_schema = reader.schema();
+    let mut collected: Vec<RecordBatch> = Vec::new();
+    for batch in reader {
+        let mut batch = batch?;
+        for predicate in filters {
+            let mask = mask(&batch, predicate)?;
+            batch = filter_record_batch(&batch, &mask)?;
+        }
+        if batch.num_rows() > 0 {
+            collected.push(batch);
+        }
+    }
+    let combined = concat_batches(&input_schema, &collected)?;
+    let columns: Vec<SortColumn> = order_by
+        .iter()
+        .map(|sort| {
+            Ok(SortColumn {
+                values: combined
+                    .column(input_schema.index_of(&sort.column)?)
+                    .clone(),
+                // nulls last in both directions, matching pyarrow's `at_end`.
+                options: Some(SortOptions {
+                    descending: sort.descending,
+                    nulls_first: false,
+                }),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let order = lexsort_to_indices(&columns, limit)?;
+    let sorted: Vec<arrow::array::ArrayRef> = combined
+        .columns()
+        .iter()
+        .map(|column| take(column, &order, None))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut batch = RecordBatch::try_new(input_schema, sorted)?;
+    if let Some(indices) = indices {
+        batch = batch.project(indices)?;
+    }
+    Ok(Box::new(RecordBatchIterator::new(
+        std::iter::once(Ok(batch)),
+        schema,
+    )))
 }
 
 fn validate(schema: &Schema, columns: &[&str], verb: &str) -> Result<()> {
@@ -185,7 +270,10 @@ fn mask(batch: &RecordBatch, predicate: &Filter) -> Result<BooleanArray> {
                 other => other.to_string(),
             };
             let column = cast(column, &DataType::Utf8)?;
-            Ok(like(&column, &scalar(&Value::String(pattern), &DataType::Utf8)?)?)
+            Ok(like(
+                &column,
+                &scalar(&Value::String(pattern), &DataType::Utf8)?,
+            )?)
         }
         op => {
             let value = scalar(&predicate.value, column.data_type())?;

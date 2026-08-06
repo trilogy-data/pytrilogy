@@ -49,11 +49,7 @@ pub fn write(reader: BatchReader, format: Format, output: Option<&str>) -> Resul
     }
 }
 
-pub fn write_to<W: Write + Send>(
-    reader: BatchReader,
-    format: Format,
-    sink: W,
-) -> Result<usize> {
+pub fn write_to<W: Write + Send>(reader: BatchReader, format: Format, sink: W) -> Result<usize> {
     match format {
         Format::Arrow => write_arrow(reader, sink),
         Format::Parquet => write_parquet(reader, sink),

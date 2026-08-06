@@ -174,10 +174,17 @@ class OpenAIProvider(LLMProvider):
             return fetch_with_retry(make_request, self.retry_options)
         except httpx.HTTPStatusError as error:
             raise ProviderError(
-                f"OpenAI API error ({error.response.status_code}): {error.response.text}"
+                f"{self._api_label} API error "
+                f"({error.response.status_code}): {error.response.text}"
             ) from error
         except Exception as error:
-            raise ProviderError(f"OpenAI API error: {error!s}") from error
+            raise ProviderError(f"{self._api_label} API error: {error!s}") from error
+
+    @property
+    def _api_label(self) -> str:
+        if self.type == Provider.DEEPSEEK:
+            return "DeepSeek"
+        return "OpenAI"
 
     def _generate_chat_completion(
         self, options: LLMRequestOptions, history: list[LLMMessage]

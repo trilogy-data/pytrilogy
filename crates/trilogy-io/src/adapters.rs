@@ -25,7 +25,10 @@ fn empty(schema: Option<SchemaRef>) -> Result<BatchReader> {
              source still describes its columns when it has no rows.",
         )
     })?;
-    Ok(Box::new(RecordBatchIterator::new(std::iter::empty(), schema)))
+    Ok(Box::new(RecordBatchIterator::new(
+        std::iter::empty(),
+        schema,
+    )))
 }
 
 impl IntoBatchReader for BatchReader {
@@ -109,7 +112,10 @@ mod tests {
     #[test]
     fn converts_the_supported_shapes() {
         assert_eq!(count(batch().into_batch_reader(None).unwrap()), 3);
-        assert_eq!(count(vec![batch(), batch()].into_batch_reader(None).unwrap()), 6);
+        assert_eq!(
+            count(vec![batch(), batch()].into_batch_reader(None).unwrap()),
+            6
+        );
         assert_eq!(count(Some(batch()).into_batch_reader(None).unwrap()), 3);
     }
 
@@ -128,7 +134,11 @@ mod tests {
         assert!(Vec::<RecordBatch>::new().into_batch_reader(None).is_err());
         let schema = batch().schema();
         assert_eq!(
-            count(Vec::<RecordBatch>::new().into_batch_reader(Some(schema)).unwrap()),
+            count(
+                Vec::<RecordBatch>::new()
+                    .into_batch_reader(Some(schema))
+                    .unwrap()
+            ),
             0
         );
     }

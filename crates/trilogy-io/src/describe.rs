@@ -47,7 +47,13 @@ fn identifier(program: &str) -> String {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "source".to_string());
     stem.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

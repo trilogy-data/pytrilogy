@@ -27,6 +27,7 @@ from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
 
 if TYPE_CHECKING:
     from trilogy.executor import Executor
+    from trilogy.io.contract import SourceRequest
 
 LOGGER_PREFIX = "[BIGQUERY_DIALECT]"
 
@@ -286,10 +287,12 @@ class BigqueryDialect(BaseDialect):
         )
         return self._python_staging
 
-    def render_source(self, address: Address) -> str:
+    def render_source(
+        self, address: Address, request: "SourceRequest | None" = None
+    ) -> str:
         if address.type == AddressType.PYTHON_SCRIPT:
             return self.python_staging().table_reference(address)
-        return super().render_source(address)
+        return super().render_source(address, request)
 
     def prepare_sources(
         self, addresses: Iterable[Address], executor: "Executor"

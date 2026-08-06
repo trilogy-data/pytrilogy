@@ -80,7 +80,7 @@ runner abstraction on the engine side — see [Not done yet](#not-done-yet).
 
 ```
 --limit N            --columns a,b,c        --filter 'col op value'  (repeatable)
---since VALUE        --partition k=v        (repeatable)
+--order-by k:desc,k2 --since VALUE          --partition k=v          (repeatable)
 --format arrow|parquet|csv|json            --output URI
 --describe
 ```
@@ -109,9 +109,9 @@ correctly.
 carries its watermark or how it is partitioned, so they have no fallback and are
 ignored when not pushed down.
 
-One rule is applied automatically. If filters are being enforced locally,
-`limit` is taken back from the source, because a source that truncates first and
-gets filtered second returns fewer rows than were asked for. Correctness over
+One rule is applied automatically. If filters *or an ordering* are being enforced
+locally, `limit` is taken back from the source, because a source that truncates
+first and gets filtered or sorted second returns the wrong rows. Correctness over
 the wasted scan.
 
 ### Sideband metadata
@@ -178,11 +178,13 @@ so narrowing flags are ignored.
 
 The libraries are conveniences. The flag names, exit codes, `--describe` payload
 and metadata keys are what Trilogy actually depends on, and the python and rust
-implementations are held byte-identical by `tests/io/test_conformance.py`, which
-runs the same flags through
+implementations are held to identical answers by `tests/io/test_conformance.py`,
+which runs the same flags through
 [`tests/io/conformance/landmarks.py`](../tests/io/conformance/landmarks.py) and
 the crate's `landmarks` example and compares rows, schema, metadata, describe
-output, error payloads and the csv/json bytes.
+output, error payloads and the csv/json bytes. The one place they are allowed to
+differ is which member of a tie group an incomplete ORDER BY returns -- pyarrow
+sorts stably and arrow-rs does not, and SQL does not specify it either.
 
 That is why the engine does not need to know what language a source is written
 in, and why extending the contract is additive: a new field means a new flag
@@ -205,18 +207,71 @@ plus a fallback, after which existing sources keep working and silently gain it.
 Engine-specific execution -- DuckDB's `uv_run` macro, BigQuery's GCS staging --
 is documented in [bigquery_python_datasources.md](bigquery_python_datasources.md).
 
+## Planner pushdown
+
+A query's own `WHERE` reaches the script automatically on DuckDB
+(`trilogy/dialect/source_pushdown.py`):
+
+```
+where state = 'CA' and id > 10
+select id, state;
+```
+
+renders as
+
+```sql
+uv_run('/abs/path/src.py', args := '--filter state=CA --filter id>10')
+```
+
+**Pushdown is a hint, and that is the whole safety argument.** The rendered SQL
+keeps its `WHERE` unchanged, so anything the script receives is redundant; the
+only way pushdown could change an answer is if the script dropped a row SQL
+would have kept. So a predicate is pushed only when it is:
+
+- a conjunct of a top-level `AND` -- a disjunct is not implied by the whole
+- `<column> <op> <literal>`, where the concept is a real column of *this*
+  datasource (a derived concept is never pushed)
+- one of `=` `!=` `<` `<=` `>` `>=`, whose pyarrow semantics match SQL's for
+  non-null operands. `like` is excluded (escaping differs), `in` too (the list
+  would have to survive shell splitting), and a NULL literal never qualifies
+- **transport-safe**: `args` is embedded in a SQL string literal, concatenated
+  into a shell command (`shellfs` pipe, or a `cmd.exe` call on Windows) and then
+  `shlex.split`. Rather than escape correctly for three layers, only values
+  needing no escaping at all are pushed -- so `state = 'new york'` is filtered
+  by SQL alone
+
+Anything not pushed is simply filtered by SQL as before. `tests/engine/scripts/test_source_pushdown.py`
+runs each case with pushdown on and off and requires identical rows.
+
+### The limit travels with its ordering
+
+A limit is *not* redundant -- truncating the source changes which rows exist --
+so unlike a filter it can only be pushed when everything that decides *which*
+rows goes with it:
+
+- the condition serialized **completely** (a leftover predicate applied after
+  truncation returns fewer than N)
+- the `order_by` serialized completely. `LIMIT` renders after `ORDER BY`, so
+  rather than refuse the limit, the ordering is pushed *too* and the source
+  returns the same top N:
+
+  ```sql
+  uv_run('/abs/src.py', args := '--filter state=CA --order-by id:asc --limit 3')
+  ```
+- no joins or parent CTEs (a join can drop rows, so SQL would have read past N)
+- no grouping (N groups is not N input rows)
+
+Only plain `asc`/`desc` travel; every nulls-first/last variant changes which rows
+survive a limit and would have to be matched against pyarrow's null placement
+rather than assumed.
+
+**Ties are the one visible non-determinism.** `order by state limit 5` over
+duplicate states has no single right answer, and the source's five need not be
+the ones SQL would have picked. That is SQL's own non-determinism for an
+incomplete ORDER BY, but it does mean pushdown can change *which* equally-valid
+rows come back. Add a unique tiebreaker if that matters.
+
 ## Not done yet
-
-Two engine-side pieces are missing. Both are additive; nothing below changes the
-contract a source implements.
-
-**The planner does not compute a `SourceRequest` from a query.** `--limit` and
-`--filter` reach a source only when a human passes them (`trilogy source
-preview`). The source side is finished -- flags, fallbacks, both
-implementations, `--describe` for capability discovery -- but pushing a query's
-own limit and predicates into a script scan needs grammar for static arguments
-on a `file` address plus the planner change itself. DuckDB's `uv_run` macro
-already threads an `args` parameter that nothing populates.
 
 **A compiled binary cannot be a datasource address.** `_FILE_TYPE_MAP` in
 `trilogy/parsing/v2/rules/datasource_rules.py` keys `AddressType` off the file

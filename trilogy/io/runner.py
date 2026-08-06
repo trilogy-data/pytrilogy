@@ -23,6 +23,7 @@ from trilogy.io.adapters import to_reader
 from trilogy.io.contract import (
     CONTRACT_VERSION,
     Filter,
+    Sort,
     SourceRequest,
     apply,
     bind,
@@ -61,6 +62,11 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         metavar="'col op value'",
         help="row predicate, repeatable (e.g. --filter 'state in [\"CA\"]')",
     )
+    parser.add_argument(
+        "--order-by",
+        dest="order_by",
+        help="comma-separated sort keys, e.g. 'score:desc,id'",
+    )
     parser.add_argument("--since", help="watermark low bound")
     parser.add_argument(
         "--partition",
@@ -93,6 +99,9 @@ def parse_args(
             limit=parsed.limit,
             columns=_split_columns(parsed.columns),
             filters=tuple(Filter.parse(f) for f in parsed.filters),
+            order_by=tuple(
+                Sort.parse(s) for s in _split_columns(parsed.order_by) or ()
+            ),
             since=parsed.since,
             partition=dict(_split_pair(p) for p in parsed.partition),
         ),
