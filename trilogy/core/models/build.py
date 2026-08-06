@@ -2560,7 +2560,7 @@ class EnvBaseline:
     across environments or join sets."""
 
     environment: Any
-    end_locals: dict[str, "BuildConcept"]
+    end_locals: dict[str, BuildConcept]
     units: list[EnvUnit]
 
 
