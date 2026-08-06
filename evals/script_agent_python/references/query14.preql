@@ -1,0 +1,17 @@
+key left_text string;
+property left_text.right_text string;
+property left_text.distance int;
+
+datasource generated_data(
+    left_text: left_text,
+    right_text: right_text,
+    distance: distance
+)
+grain (left_text)
+file `./query14.py`;
+
+select
+    left_text,
+    right_text,
+    distance;
+

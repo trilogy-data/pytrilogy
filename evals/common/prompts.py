@@ -136,6 +136,16 @@ def stage_candidate_for_scoring(
         shutil.copy2(source, destination)
         if remove_source:
             source.unlink()
+    for sidecar_ext in spec.candidate_sidecar_extensions:
+        sidecar = source.with_suffix(sidecar_ext)
+        if not sidecar.exists():
+            continue
+        # The query body names the opaque agent-facing sidecar, so retain that
+        # basename when moving it out of the worker workspace.
+        sidecar_destination = scoring_workspace / sidecar.name
+        shutil.copy2(sidecar, sidecar_destination)
+        if remove_source:
+            sidecar.unlink()
     return destination
 
 
@@ -181,6 +191,14 @@ def _render_params_block(params: dict) -> tuple[str, str]:
 
 
 def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
+    if spec.task_template is not None:
+        filename = candidate_filename(spec, entry["id"], ".preql")
+        return spec.task_template.format(
+            opaque_id=opaque_query_id(spec, entry["id"]),
+            filename=filename,
+            script_filename=Path(filename).with_suffix(".py").name,
+            prompt=entry["prompt"],
+        )
     template = _SINGLE_QUERY_TEMPLATE
     params_block, validate_params = _render_params_block(entry.get("params") or {})
     return template.format(

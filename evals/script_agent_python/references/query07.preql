@@ -1,0 +1,17 @@
+key point int;
+property point.cluster int;
+property point.centroid float;
+
+datasource generated_data(
+    point: point,
+    cluster: cluster,
+    centroid: centroid
+)
+grain (point)
+file `./query07.py`;
+
+select
+    point,
+    cluster,
+    centroid;
+

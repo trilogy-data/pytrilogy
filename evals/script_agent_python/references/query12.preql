@@ -1,0 +1,14 @@
+key position int;
+property position.task string;
+
+datasource generated_data(
+    position: position,
+    task: task
+)
+grain (position)
+file `./query12.py`;
+
+select
+    position,
+    task;
+

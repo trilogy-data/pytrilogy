@@ -1,0 +1,14 @@
+key node string;
+property node.distance int;
+
+datasource generated_data(
+    node: node,
+    distance: distance
+)
+grain (node)
+file `./query04.py`;
+
+select
+    node,
+    distance;
+

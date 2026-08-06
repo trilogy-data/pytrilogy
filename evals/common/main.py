@@ -700,6 +700,7 @@ def run(spec: BenchmarkSpec) -> int:
                             SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
+                            enable_python_datasources=spec.enable_python_datasources,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -767,6 +768,7 @@ def run(spec: BenchmarkSpec) -> int:
                             SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
+                            enable_python_datasources=spec.enable_python_datasources,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(

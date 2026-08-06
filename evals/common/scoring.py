@@ -315,21 +315,30 @@ def _last_sql_statement(text: str) -> str:
     return nonempty[-1] if nonempty else ""
 
 
-def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
+def make_scoring_engine(
+    db_path: Path,
+    workspace: Path,
+    extension: str,
+    enable_python_datasources: bool = False,
+):
     """Build a Trilogy executor on the workspace's duckdb, with the benchmark's
     extension loaded. Reusable across per-query scoring calls so we don't pay
     engine setup + extension load on every query.
 
-    Opened read-only: scoring only runs SELECTs, and a read-only DuckDB handle
-    is shareable, so concurrent scorers (and ad-hoc probes against a live run's
-    workspace db) coexist instead of fighting over the single-writer file lock."""
+    Ordinary benchmark scoring opens read-only. Python datasources need a
+    writable connection to install DuckDB's ``uv_run`` macro, so script suites
+    opt into a writable scorer; the caller already serialises scoring."""
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
 
     engine = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=workspace),
-        conf=DuckDBConfig(path=str(db_path), read_only=True),
+        conf=DuckDBConfig(
+            path=str(db_path),
+            read_only=not enable_python_datasources,
+            enable_python_datasources=enable_python_datasources,
+        ),
     )
     if extension:
         engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
@@ -365,6 +374,7 @@ def _score_subprocess_target(
     extension: str,
     params: dict | None,
     custom_refs_dir: str | None,
+    enable_python_datasources: bool,
     conn,
 ) -> None:
     """Run in a spawned child: build a fresh engine and score one query. Sends
@@ -372,7 +382,12 @@ def _score_subprocess_target(
     scoring in a killable process is what lets the parent bound a hung
     `generate_sql` loop or a runaway DuckDB query with a hard timeout."""
     try:
-        engine = make_scoring_engine(Path(db_path), Path(workspace), extension)
+        engine = make_scoring_engine(
+            Path(db_path),
+            Path(workspace),
+            extension,
+            enable_python_datasources=enable_python_datasources,
+        )
         result = _score_one(
             engine,
             Path(workspace),
@@ -396,6 +411,7 @@ def score_query_timed(
     timeout: float,
     params: dict | None = None,
     custom_refs_dir: Path | None = None,
+    enable_python_datasources: bool = False,
 ) -> QueryResult:
     """Score one query in a child process bounded by ``timeout`` seconds. A
     hang in `generate_sql` (planner loop) or DuckDB execution can no longer
@@ -414,6 +430,7 @@ def score_query_timed(
             extension,
             params,
             str(custom_refs_dir) if custom_refs_dir else None,
+            enable_python_datasources,
             child_conn,
         ),
         daemon=True,
@@ -532,6 +549,16 @@ def _load_reference(
             if sql_path.exists():
                 sql = sql_path.read_text(encoding="utf-8")
                 return list(engine.execute_raw_sql(sql).fetchall())
+        for name in (f"query{idx:02d}.preql", f"query{idx}.preql"):
+            query_path = custom_refs_dir / name
+            if query_path.exists():
+                from trilogy.core.models.environment import Environment
+
+                engine.environment = Environment(working_path=custom_refs_dir)
+                statements = engine.generate_sql(query_path.read_text(encoding="utf-8"))
+                if not statements:
+                    raise ValueError(f"{query_path.name} produced no SQL")
+                return list(engine.execute_raw_sql(statements[-1]).fetchall())
     return list(engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall())
 
 
