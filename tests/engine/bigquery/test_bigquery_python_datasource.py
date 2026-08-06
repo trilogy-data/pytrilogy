@@ -13,7 +13,10 @@ from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
 from trilogy.dialect.config import BigQueryConfig, DuckDBConfig
 from trilogy.staging import StagingConfig
 
-SCRIPTS = Path(__file__).parent.parent / "scripts"
+# Resolved because the parser stores datasource paths as `path.resolve()`;
+# on Windows that canonicalizes the drive letter, so an unresolved literal
+# here would only match when pytest was invoked with the same casing.
+SCRIPTS = (Path(__file__).parent.parent / "scripts").resolve()
 FIB = SCRIPTS / "fib.py"
 
 MODEL = """
