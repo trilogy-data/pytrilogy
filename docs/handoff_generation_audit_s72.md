@@ -196,10 +196,67 @@ the ordering invariant breaks for a plan where no phase ever fires.
   re-insertion on top, and the assembled graph is a pure function of
   `(declared, minted)`. Worth ~0.2s.
 
+## Rust: where the boundary stands
+
+Measured off the post-change corpus profile (`modsum.py`), 25.80s profiled:
+
+**Total Rust = 0.824s (3.2%) over 686,046 crossings. Nothing in Rust is a
+bottleneck.** The largest single call is `add_edges` at 0.144s (0.6%); the s67
+walk port (`enumerate_network_covers`) is 0.086s for 252 searches — it has
+disappeared into the noise, exactly as that handoff predicted.
+
+**The cost is the boundary, not the code.**
+
+- `_enumerate_covers`, the Python wrapper whose entire body is marshaling
+  labels in and `frozenset`s out, is **0.204s against 0.086s inside Rust — the
+  boundary costs 2.4x the compute it feeds.**
+- The `PyGraphCore` wrapper layer (`graph.py` 0.517s + `graph_models.py`
+  0.315s = **0.832s**) costs slightly more than *all* Rust work combined.
+- 358,603 `has_node` and 140,517 `add_node` crossings, one node at a time.
+  `generate_adhoc_graph` already batches its edge inserts (`add_edges_from`,
+  12,921 calls) — the node inserts were never batched, and `add_nodes` is used
+  only 2,341 times. That is the one item on this page needing no Rust code:
+  ~0.19s of wrapper + 0.08s of Rust for inserts that could be one call per
+  datasource.
+
+### Best remaining port candidates (pure over strings/sets/ints)
+
+| candidate | Python self-time | note |
+|---|---:|---|
+| search topology — `_partners` / `components` / `join_keys` | **0.77s** | `join_keys` called **285,209x**, 263,310 of them from `_partners`' O(n²) pair scan |
+| `build_fd_closure` + `_fd_facts` | 0.62s | textbook bitset fixpoint; upside is now only ~0.5s, post-memo |
+| `domain_graph` edge store — `add_fd` (212,249x), `canon` (274,607x), `applies`, `determines` | ~0.9s of 1.09s | pure once `mint_*` has produced the records; minting itself reads BuildConcepts and stays Python |
+
+Ceiling if all three land: ~2.3s of 25.8s profiled (~9%), less in wall terms.
+
+**The topology layer, not `_reduce`, is what increment 2 should target.**
+`docs/handoff_rust_network_search.md` lists `_reduce` first — but `_reduce` is
+now 0.047s cum, while the topology it queries is 0.77s. Increment 1 ported
+topology *internally* for the walk; the Python copy survives because the
+post-walk phases (`_reduce`, `_solution_for`, `search_sources`) still ask it
+questions.
+
+**Do it as a resident handle, not another call-with-labels.** At 0.204s of
+marshaling for 0.086s of compute, a second labels-in/labels-out boundary would
+eat the win before it arrived. Intern the `SourceNetwork` once, return an
+opaque handle, and run walk + topology + reduce + cost as methods on it. The
+same rule applies to `_fd_facts`: marshal ~1,500 fact rows per call and the
+fixpoint is cheaper in Python.
+
+### Not portable
+
+- `build.py` — **5.04s self (20%), the largest module in the profile.** It
+  exists to construct Python model objects; there is nothing to move.
+- `optimize_ctes` (3.47s cum) — mutates Python `CTE` objects in place.
+- `generate_adhoc_graph` (2.05s cum) — its product is a dict of Python
+  `BuildConcept`s keyed by node name. Only the edge computation is data, and
+  that is already the batched `add_edges` call.
+
 ## Harnesses (session scratchpad)
 
 `sweep.py` (layer split), `corpus_prof.py` (aggregate cProfile), `prof.py`
 (one query's process phase), `floor.py` / `floor_prof.py` (the trivial-query
 floor), `hashes.py` (byte-identity gate, run in a worktree for the base leg),
 `probe_fd.py`, `probe_baseline.py`, `probe_joinset.py`, `probe_render_map.py`
-(the censuses quoted above).
+(the censuses quoted above), `modsum.py` (per-module self-time + the Rust
+surface, from any `.prof`).
