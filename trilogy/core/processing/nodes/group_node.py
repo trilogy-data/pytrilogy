@@ -1,11 +1,11 @@
 from trilogy.constants import logger
-from trilogy.core.enums import AggregateGroupingMode, SourceType
+from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
     BoolExpr,
-    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
@@ -167,11 +167,8 @@ class GroupNode(StrategyNode):
         # and preserve the rollup rows instead of dropping or doubling them.
         rollup_by_addresses: set[str] = set()
         for c in self.output_concepts:
-            if (
-                isinstance(c.lineage, BuildAggregateWrapper)
-                and c.lineage.grouping != AggregateGroupingMode.STANDARD
-            ):
-                rollup_by_addresses.update(b.address for b in c.lineage.by)
+            if (wrapper := nonstandard_grouping_lineage(c)) is not None:
+                rollup_by_addresses.update(b.address for b in wrapper.by)
         if rollup_by_addresses:
             from trilogy.core.processing.discovery_utility import (
                 get_upstream_concepts,
