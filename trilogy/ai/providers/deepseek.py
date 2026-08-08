@@ -38,7 +38,7 @@ class DeepSeekProvider(OpenAIProvider):
         # Bypass OpenAIProvider's __init__ env-var lookup by passing the resolved
         # key. We still want OpenAIProvider's request-building behavior; only the
         # base URL + retry posture change.
-        super().__init__(name=name, model=model, api_key=api_key)
+        super().__init__(name=name, model=model, api_key=api_key, request_timeout=45.0)
         self.base_completion_url = "https://api.deepseek.com/v1/chat/completions"
         self.base_model_url = "https://api.deepseek.com/v1/models"
         self.use_responses_api = False

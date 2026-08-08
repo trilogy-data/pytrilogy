@@ -2939,8 +2939,11 @@ class Factory:
         self,
         base: (
             # int is NOT redundant with float here: singledispatch reads this
-            # union at runtime to register the int handler (bool via subclass)
-            int
+            # union at runtime to register the int handler (bool via subclass).
+            # PYI041's `int | float -> float` fix is a type-checker-only
+            # equivalence; applying it drops `int` from the registry and every
+            # int/bool literal raises `Cannot build <class 'int'>`.
+            int  # noqa: PYI041
             | str
             | float
             | Decimal
