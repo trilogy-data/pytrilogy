@@ -115,6 +115,32 @@ Choose and test one explicit contract:
 In either case, generated aggregate SQL must never project non-grouped backing
 keys solely to support a later internal stitch.
 
+## Resolution (2026-08-06)
+
+Contract chosen: **(1)** — the already-documented one. `_apply_grouping_to_passthroughs`
+in `trilogy/parsing/v2/select_finalize.py` states it explicitly: a plain dim at
+another grain is "fetched through a join-back at the leaf grain (NULL on subtotal
+rows)". `by rollup (channel)` selecting `entity` is legal; it groups at `channel`
+and broadcasts each level over the leaf `entity` rows. No new semantic error.
+
+Two independent defects blocked that:
+
+1. `MergeNode._inject_scoped_join_key_exposure` surfaced the coalescing
+   (`union join`) key group's members on whichever parent could reach them —
+   including the ROLLUP node, whose GROUP BY is the wrapper's `by` list verbatim.
+   `r_a_channel`/`r_entity` became bare ungrouped projections. Fixed by skipping
+   parents that render a non-standard GROUP BY (`_renders_nonstandard_grouping`),
+   alongside the existing abstract-grain skip.
+2. With those keys gone the stitch paired on the rollup key itself, and
+   `get_join_type` returns INNER when both sides are nullable — silently dropping
+   the grand-total row. A grouping-set NULL is padding, not a value, so it can
+   never find a partner on a side that does not pad the same key. `get_node_joins`
+   now tracks rollup-padded keys per source (`rollup_padded_addresses`) and
+   `get_join_type` preserves toward the padded side.
+
+`repro_q05_rollup_rowset_binding.py` now raises its own "the known ungrouped
+backing key was not generated" assertion — that is the fixed state.
+
 ## Regression coverage
 
 Use the standalone query shape as an execution test and assert:
@@ -125,3 +151,9 @@ Use the standalone query shape as an execution test and assert:
 - `rollup(channel, entity)` continues to execute and returns leaf, subtotal,
   and grand-total rows;
 - unmatched sales-only and returns-only entities survive the `union join`.
+
+Landed as `tests/engine/test_duckdb_rollup_rowset_binding.py` (all five points)
+plus a new `grouping_placement` family in the differential fuzzer
+(`local_scripts/fuzzer`, 24 cases over two seeds) that varies rollup placement
+against DuckDB oracles. Only the coalescing-key cases in that family fail
+without the fixes — ordinary rollup placement was already correct.
