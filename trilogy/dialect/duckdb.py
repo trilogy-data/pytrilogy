@@ -491,9 +491,12 @@ class DuckDBDialect(BaseDialect):
             args = render_args(request)
             if not args:
                 return f"uv_run('{address.location}')"
-            # render_args only emits shell- and SQL-safe tokens, so the literal
-            # needs no escaping; see source_pushdown._is_transport_safe.
-            return f"uv_run('{address.location}', args := '{args}')"
+            # Filter tokens are single-quoted for the shell (see
+            # source_pushdown.render_args), so the SQL literal doubles them.
+            # Everything else render_args emits is already SQL-safe; see
+            # source_pushdown._is_transport_safe.
+            escaped = args.replace("'", "''")
+            return f"uv_run('{address.location}', args := '{escaped}')"
         if address.type == AddressType.SQL:
             with safe_open(address.location) as f:
                 sql_content = f.read().strip()

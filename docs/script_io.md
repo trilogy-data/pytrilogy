@@ -220,8 +220,12 @@ select id, state;
 renders as
 
 ```sql
-uv_run('/abs/path/src.py', args := '--filter state=CA --filter id>10')
+uv_run('/abs/path/src.py', args := '--filter ''state=CA'' --filter ''id>10''')
 ```
+
+Each filter is single-quoted because the DuckDB transport concatenates `args`
+into a shell command line, where the `<` and `>` operators would otherwise be
+redirects; the doubling is that quote surviving the enclosing SQL literal.
 
 **Pushdown is a hint, and that is the whole safety argument.** The rendered SQL
 keeps its `WHERE` unchanged, so anything the script receives is redundant; the
@@ -256,7 +260,7 @@ rows goes with it:
   returns the same top N:
 
   ```sql
-  uv_run('/abs/src.py', args := '--filter state=CA --order-by id:asc --limit 3')
+  uv_run('/abs/src.py', args := '--filter ''state=CA'' --order-by id:asc --limit 3')
   ```
 - no joins or parent CTEs (a join can drop rows, so SQL would have read past N)
 - no grouping (N groups is not N input rows)

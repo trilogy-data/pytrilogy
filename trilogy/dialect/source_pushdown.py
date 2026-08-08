@@ -228,7 +228,13 @@ def render_args(request: SourceRequest | None) -> str:
         rendered = _literal(predicate.value)
         if rendered is None:
             continue
-        parts.append(f"--filter {predicate.column}{predicate.op}{rendered}")
+        # Quoted because the operator glyphs `<` and `>` are redirects to the
+        # POSIX shell that runs the shellfs pipe -- unquoted, `--filter id>30`
+        # reaches the script as `id` plus a file named `30`. Single quotes, not
+        # double: the Windows transport wraps the whole arg string in double
+        # quotes for cmd.exe. Column and value are transport-safe, so the token
+        # can never carry a quote of its own.
+        parts.append(f"--filter '{predicate.column}{predicate.op}{rendered}'")
     if request.order_by:
         # Must accompany the limit: without it the source truncates an
         # arbitrary N rows rather than the top N.

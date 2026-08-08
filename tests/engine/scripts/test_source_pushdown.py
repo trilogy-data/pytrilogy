@@ -6,6 +6,7 @@ same query with pushdown on and off and requires identical rows -- shape asserts
 alone would only prove the feature fired, not that it was right.
 """
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -80,14 +81,12 @@ def test_bool_is_not_rendered_as_an_int():
 
 
 def test_render_args_produces_one_shlex_token_per_filter():
-    import shlex
-
     args = render_args(
         SourceRequest(
             filters=(Filter("state", "=", "CA"), Filter("id", ">", 10)), limit=5
         )
     )
-    assert args == "--filter state=CA --filter id>10 --limit 5"
+    assert args == "--filter 'state=CA' --filter 'id>10' --limit 5"
     assert shlex.split(args) == [
         "--filter",
         "state=CA",
@@ -101,11 +100,35 @@ def test_render_args_produces_one_shlex_token_per_filter():
 def test_render_args_round_trips_through_the_script_parser():
     """What the planner emits must be what the script's parser accepts."""
     args = render_args(SourceRequest(filters=(Filter("state", "=", "CA"),)))
-    assert Filter.parse(args.split(" ", 1)[1]) == Filter("state", "=", "CA")
+    assert Filter.parse(shlex.split(args)[1]) == Filter("state", "=", "CA")
 
 
 def test_render_args_empty_for_no_request():
     assert render_args(None) == ""
+
+
+def test_render_args_survives_a_posix_shell():
+    """The shellfs pipe is a shell command line, so `<` and `>` are redirects.
+
+    shlex alone does not model that layer: it was green while the DuckDB
+    transport truncated `--filter id>30` to `id` and wrote a file named `30`.
+    """
+    import shutil
+    import subprocess
+
+    sh = shutil.which("sh")
+    if sh is None:
+        pytest.skip("no POSIX shell")
+    args = render_args(
+        SourceRequest(filters=(Filter("id", ">", 30), Filter("state", "=", "CA")))
+    )
+    printed = subprocess.run(
+        [sh, "-c", f"for a in {args}; do echo $a; done"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert printed.stdout.split() == ["--filter", "id>30", "--filter", "state=CA"]
 
 
 # --- integration ------------------------------------------------------------
@@ -144,6 +167,22 @@ def rows_for(workspace: Path, query: str, pushdown: bool) -> list[tuple]:
         return [tuple(row) for row in cursor.fetchall()]
     finally:
         BaseDialect.source_pushdown = original
+
+
+def pushed_args(sql: str) -> str:
+    """The command line inside ``args := '...'``, with SQL quote-doubling and
+    shell quoting undone, so expectations read as the script's own argv."""
+    literal = sql.split("args := '")[1]
+    decoded: list[str] = []
+    i = 0
+    while i < len(literal):
+        if literal[i] == "'":
+            if literal[i + 1 : i + 2] != "'":
+                break
+            i += 1
+        decoded.append(literal[i])
+        i += 1
+    return " ".join(shlex.split("".join(decoded)))
 
 
 CASES = [
@@ -188,14 +227,14 @@ def test_pushdown_fires_exactly_where_expected(workspace, query, expected_arg):
     if expected_arg is None:
         assert "args :=" not in sql, sql
     else:
-        assert expected_arg in sql, sql
+        assert expected_arg in pushed_args(sql), sql
 
 
 def test_a_limit_never_travels_without_its_ordering(workspace):
     """The bug this guards: pushing `--limit N` alone under an ORDER BY makes
     the source truncate an arbitrary N rows instead of the top N."""
     sql = sql_for(workspace, "select id order by id desc limit 5;")
-    args = sql.split("args := '")[1].split("'")[0]
+    args = pushed_args(sql)
     assert "--limit" in args
     assert args.index("--order-by") < args.index("--limit"), args
 
@@ -226,8 +265,8 @@ def test_partial_pushdown_leaves_the_rest_to_sql(workspace):
         "select id, state, label order by id asc;"
     )
     sql = sql_for(workspace, query)
-    assert "--filter state=CA" in sql
-    assert "label" not in sql.split("args :=")[1].split("'")[1]
+    assert "--filter state=CA" in pushed_args(sql)
+    assert "label" not in pushed_args(sql)
     rows = rows_for(workspace, query, pushdown=True)
     assert rows == rows_for(workspace, query, pushdown=False)
     assert all(row[1] == "CA" and row[2] == "north side" for row in rows)
