@@ -1756,9 +1756,9 @@ def _resolve_sync_environment(
     if not label:
         return None, None, True
     if not create:
-        for env in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
-            if env.name == label:
-                return env.id, env.name, True
+        for existing in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
+            if existing.name == label:
+                return existing.id, existing.name, True
         return None, label, False
     env = client.post_one(
         f"/orgs/{org}/environments",
@@ -1851,7 +1851,11 @@ def cloud_sync(
     # `--environment` is the manual override for a parallel namespace with no
     # branch behind it.
     env_id, env_name, env_exists = _resolve_sync_environment(
-        client, org, resolve_origin(root.resolve()), environment_flag, create=not dry_run
+        client,
+        org,
+        resolve_origin(root.resolve()),
+        environment_flag,
+        create=not dry_run,
     )
     target = env_name or "production"
     print_info(f"Syncing {len(projects)} project(s) to {org!r} / {target}")
