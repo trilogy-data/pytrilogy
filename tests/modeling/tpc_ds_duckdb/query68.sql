@@ -4,8 +4,8 @@ SELECT c_last_name,
        bought_city,
        ss_ticket_number,
        extended_price,
-       extended_tax,
-       list_price
+       list_price,
+       extended_tax
 FROM
   (SELECT ss_ticket_number,
           ss_customer_sk,

@@ -12,8 +12,9 @@ or datasources (DATASOURCE). There are other quality/validation statements
 covered in more detail in drilldown; most of this focuses on the SELECT query syntax.
 
 
-import <model> as <alias>; makes a model's fields available. When an imported model imports others (a fact table with imported dimensions); those are exposed as dot paths. `import enrollments as enroll;` enables accessing `enroll.student.name` if enroll imports students as studen. 
-Typical usage only imports facts; dimensions will then be accessed through the nested import. Nested dimensions have all values; order.customers returns all customers, even those without orders. 
+import <model> as <alias>; makes a model's fields available. <model> is a DOT-SEPARATED MODULE PATH relative to the project root (where trilogy.toml lives), never a file path: the file `raw/store_sales.preql` is imported as `import raw.store_sales as ss;` — replace each `/` with `.` and drop the `.preql`. Keep the folder segment; `import store_sales as ss;` looks for a file next to trilogy.toml and fails.
+When an imported model imports others (a fact table with imported dimensions); those are exposed as dot paths. `import enrollments as enroll;` enables accessing `enroll.student.name` if enroll imports students as student.
+Typical usage only imports facts; dimensions will then be accessed through the nested import. Nested dimensions have all values; order.customers returns all customers, even those without orders.
 
 key | property | auto | metric; defines new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
 

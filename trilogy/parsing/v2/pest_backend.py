@@ -14,6 +14,7 @@ from trilogy.parsing.v2.errors import (
     detect_definition_after_clause,
     detect_derivation_as_connector,
     detect_group_by,
+    detect_import_file_path,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
@@ -269,6 +270,13 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
         trailing = text[pos + 4 : pos + 5]
         if not trailing or not (trailing.isalnum() or trailing == "_"):
             return create_syntax_error(101, pos, text)
+
+    # 229: an import written as a file path (`import raw/store_sales as ss;`).
+    # First among the shared detectors — it is the most specific, and pest
+    # reports it as a bare `expected IMPORT_DOT` on the path's first segment.
+    import_path_pos = detect_import_file_path(text, pos)
+    if import_path_pos is not None:
+        return create_syntax_error(229, import_path_pos, text)
 
     # 211: BY clause with an unparenthesized expression (e.g. `by substring(x,1,2)`).
     # Detect by probing with parens around the run after `by`.
