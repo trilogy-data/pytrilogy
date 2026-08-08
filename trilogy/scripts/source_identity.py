@@ -8,7 +8,14 @@ separately:
   what makes it comparable across machines, checkouts and clock skew.
 * **Where did they come from?** ``resolve_origin`` — the repository the
   directory sits in (remote URL, commit, path within the repo) or, with no
-  repository, a stable opaque token for the local directory.
+  repository, a stable opaque token for the local directory. Answered by an
+  ordered registry of ``SourceProvider``s, git first, with the path provider
+  as a fallback that always answers.
+
+Two things are derived from an origin and are load-bearing beyond provenance:
+``SourceOrigin.source_key()``, the identity a declarative sync upserts jobs
+against, and ``SourceOrigin.environment_label()``, the deployment namespace a
+non-default branch builds into.
 
 Deliberately stdlib-only and subprocess-free, for the same reason
 ``project_config`` is: ``trilogy cloud`` must not pay for the executor stack
@@ -40,6 +47,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlsplit
 
 #: Bumped when the digest construction or the origin encoding changes, so a
@@ -59,6 +67,31 @@ _LABEL_MAX_CHARS = 40
 #: it. "origin" is the convention; past that, alphabetical beats
 #: file-order-in-.git/config, which is insertion order and differs per clone.
 _PREFERRED_REMOTE = "origin"
+
+#: Branches that mean "this is the mainline" and so map to *no* environment:
+#: the default environment builds unprefixed addresses, which is what makes a
+#: main-branch deploy write production's own tables.
+DEFAULT_BRANCHES: tuple[str, ...] = ("main", "master")
+
+#: An environment label becomes an unquoted SQL identifier prefix and a
+#: filename suffix, so it must satisfy ``execution.envs._VALID_ENV_NAME``
+#: (``^[A-Za-z_][A-Za-z0-9_]*$``). That rule is *not* imported: this module is
+#: deliberately stdlib-only (see the module docstring), and `execution.envs`
+#: pulls the datasource/engine stack that `trilogy cloud` must not pay for.
+#: `tests/cli/test_source_identity.py` imports both and asserts they agree,
+#: which is what keeps the duplication from drifting.
+_ENV_LABEL_DISALLOWED = re.compile(r"[^a-z0-9]+")
+
+#: Slug length before the disambiguating digest. Kept short because the label
+#: is prepended to every managed table name and appended to every managed
+#: filename, and some warehouses cap identifiers well below 128 characters.
+ENV_LABEL_SLUG_CHARS = 24
+
+#: Two different branches must never share a namespace — `feature/x` and
+#: `feature-x` both slugify to `feature_x`, and would otherwise build into each
+#: other's tables. The digest is over the *original* branch name, so it
+#: separates them; it is a collision guard, not a security boundary.
+ENV_LABEL_DIGEST_CHARS = 6
 
 
 @dataclass(frozen=True)
@@ -94,6 +127,26 @@ class SourceOrigin:
         detail = [part for part in (self.branch, (self.revision or "")[:12]) if part]
         return f"{text} ({' @ '.join(detail)})" if detail else text
 
+    def source_key(self) -> str:
+        """Stable identity for the *thing* this directory defines, across every
+        branch and checkout of it.
+
+        ``{location}#{subpath}`` — deliberately excluding revision and branch,
+        which are what a job varies *over*. This is what lets a branch's job be
+        grouped under the mainline job it forked from, and what a declarative
+        sync upserts against: a job's display name is derived from its path and
+        is free to change, but its identity must not.
+        """
+        return f"{self.location}#{self.subpath or '.'}"
+
+    def environment_label(
+        self, default_branches: Iterable[str] = DEFAULT_BRANCHES
+    ) -> str | None:
+        """The deployment-environment name this checkout builds into, or
+        ``None`` for the mainline (which builds unprefixed production
+        addresses). See :func:`environment_label`."""
+        return environment_label(self.branch, default_branches)
+
 
 # ============================================================================
 # Path identity
@@ -107,6 +160,46 @@ def label_token(value: str) -> str:
         .strip("-.")[:_LABEL_MAX_CHARS]
         .strip("-.")
     )
+
+
+def environment_label(
+    branch: str | None, default_branches: Iterable[str] = DEFAULT_BRANCHES
+) -> str | None:
+    """The deployment-environment name a branch builds into.
+
+    ``None`` for a default branch, and for no branch at all (a detached HEAD or
+    a non-repository directory has no branch to scope to). ``None`` means the
+    *production* namespace — unprefixed addresses — so the mapping is
+    deliberately conservative: an unrecognized state builds where it always did
+    rather than inventing a namespace nobody will think to clean up.
+
+    Everything else becomes ``<slug>_<digest>``, which is guaranteed to satisfy
+    the identifier rule the environment machinery enforces:
+
+    * lowercased, with every run of non-alphanumerics collapsed to one ``_``
+    * trimmed of leading/trailing ``_`` (so it cannot start with one and read
+      as a private identifier) and capped at ``ENV_LABEL_SLUG_CHARS``
+    * prefixed ``b_`` when what survives starts with a digit, since an
+      identifier may not
+    * suffixed with a digest of the *original* branch name, because the
+      collapsing is lossy and two branches must never share a namespace
+
+    A branch that sanitizes away entirely (``---``, or a non-Latin name) is not
+    an error: it keeps the digest alone, which is still a valid, unique label.
+    """
+    if branch is None:
+        return None
+    text = branch.strip()
+    if not text or text in set(default_branches):
+        return None
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:ENV_LABEL_DIGEST_CHARS]
+    slug = _ENV_LABEL_DISALLOWED.sub("_", text.lower()).strip("_")
+    slug = slug[:ENV_LABEL_SLUG_CHARS].strip("_")
+    if not slug:
+        return f"b_{digest}"
+    if slug[0].isdigit():
+        slug = f"b_{slug}"
+    return f"{slug}_{digest}"
 
 
 def path_digest(directory: Path) -> str:
@@ -326,35 +419,112 @@ def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str | None]
     return None, branch
 
 
-def resolve_origin(directory: Path) -> SourceOrigin:
-    """Best available identity for *directory*: its git remote, or its path.
+# ============================================================================
+# Providers: one per kind of source that can name a directory
+# ============================================================================
 
-    Never raises and never blocks: every unreadable or unexpected piece of
-    ``.git`` degrades to the path identity, which always exists. Provenance is
-    a nice-to-have on a push, and must not be able to fail one.
+
+class SourceProvider(Protocol):
+    """One way of answering "where did this directory come from?".
+
+    Providers are consulted in order and the first non-``None`` answer wins.
+    A provider **never raises**: an unreadable, half-written or unrecognized
+    source of truth means "I cannot name this directory", which is the next
+    provider's problem. Provenance is a nice-to-have on a push and must never
+    be able to fail one.
     """
-    resolved = _resolve_git_dir(directory)
-    if resolved is not None:
+
+    #: Matches ``SourceOrigin.kind`` for the origins this returns.
+    kind: str
+
+    def detect(self, directory: Path) -> SourceOrigin | None: ...
+
+
+class GitSourceProvider:
+    """Identity from a git checkout, read straight out of ``.git``.
+
+    Answers ``None`` — rather than a half-populated origin — when the directory
+    is not in a repository, or when the repository names no remote that
+    identifies a *host*. A remote that names only a filesystem is not an
+    identity worth publishing; see :func:`normalize_remote`.
+    """
+
+    kind = "git"
+
+    def detect(self, directory: Path) -> SourceOrigin | None:
+        resolved = _resolve_git_dir(directory)
+        if resolved is None:
+            return None
         git_dir, common_dir = resolved
         remote = _remote_url(_parse_git_config(common_dir / "config"))
         location = normalize_remote(remote) if remote else None
-        if location:
-            revision, branch = _read_head(git_dir, common_dir)
-            root = repository_root(directory)
-            subpath = None
-            if root is not None:
-                try:
-                    subpath = directory.resolve().relative_to(root).as_posix() or "."
-                except (OSError, ValueError):
-                    subpath = None
-            return SourceOrigin(
-                kind="git",
-                location=location,
-                subpath=subpath or ".",
-                revision=revision,
-                branch=branch,
-            )
-    return SourceOrigin(kind="path", location=f"local:{path_token(directory)}")
+        if not location:
+            return None
+        revision, branch = _read_head(git_dir, common_dir)
+        root = repository_root(directory)
+        subpath = None
+        if root is not None:
+            try:
+                subpath = directory.resolve().relative_to(root).as_posix() or "."
+            except (OSError, ValueError):
+                subpath = None
+        return SourceOrigin(
+            kind=self.kind,
+            location=location,
+            subpath=subpath or ".",
+            revision=revision,
+            branch=branch,
+        )
+
+
+class PathSourceProvider:
+    """The terminal fallback: a directory always has a path identity.
+
+    Never returns ``None``, which is what makes :func:`resolve_origin` total.
+    Kept out of the registry for exactly that reason — a registered provider
+    could otherwise be appended after it and never be reached.
+    """
+
+    kind = "path"
+
+    def detect(self, directory: Path) -> SourceOrigin:
+        return SourceOrigin(kind=self.kind, location=f"local:{path_token(directory)}")
+
+
+#: Ordered, most specific first. Extend with :func:`register_source_provider`
+#: (a mercurial or svn reader, a CI environment that knows its own checkout).
+_PROVIDERS: list[SourceProvider] = [GitSourceProvider()]
+
+#: Deliberately not in ``_PROVIDERS``: see PathSourceProvider.
+_FALLBACK_PROVIDER = PathSourceProvider()
+
+
+def register_source_provider(provider: SourceProvider, first: bool = False) -> None:
+    """Add a provider ahead of the path fallback, which always stays last."""
+    if first:
+        _PROVIDERS.insert(0, provider)
+    else:
+        _PROVIDERS.append(provider)
+
+
+def source_providers() -> tuple[SourceProvider, ...]:
+    """The registered providers, in the order they are consulted. The path
+    fallback is not among them — it is not optional and cannot be displaced."""
+    return tuple(_PROVIDERS)
+
+
+def resolve_origin(directory: Path) -> SourceOrigin:
+    """Best available identity for *directory*: the first provider that can
+    name it, else its path.
+
+    Never raises and never blocks. Total by construction — the path fallback
+    always answers.
+    """
+    for provider in _PROVIDERS:
+        origin = provider.detect(directory)
+        if origin is not None:
+            return origin
+    return _FALLBACK_PROVIDER.detect(directory)
 
 
 # ============================================================================

@@ -14,13 +14,20 @@ import pytest
 
 from trilogy.scripts.serve import build_store_id
 from trilogy.scripts.source_identity import (
+    ENV_LABEL_DIGEST_CHARS,
+    ENV_LABEL_SLUG_CHARS,
     SOURCE_FINGERPRINT_VERSION,
+    GitSourceProvider,
+    PathSourceProvider,
+    SourceOrigin,
     content_digest,
+    environment_label,
     label_token,
     normalize_remote,
     path_token,
     repository_root,
     resolve_origin,
+    source_providers,
 )
 
 
@@ -269,3 +276,127 @@ class TestPathIdentity:
         left = _git_repo(tmp_path / "one", "git@github.com:acme/etl.git")
         right = _git_repo(tmp_path / "two", "git@github.com:acme/etl.git")
         assert build_store_id(left, None) != build_store_id(right, None)
+
+
+class TestEnvironmentLabel:
+    """The branch -> deployment-namespace mapping.
+
+    ``None`` is the production namespace, so anything that returns it writes
+    over the tables main writes over. That makes the negative cases as
+    load-bearing as the positive ones.
+    """
+
+    @pytest.mark.parametrize("branch", ["main", "master"])
+    def test_a_default_branch_has_no_namespace(self, branch):
+        assert environment_label(branch) is None
+
+    def test_no_branch_has_no_namespace(self):
+        """A detached HEAD and a non-repository directory both land here. They
+        build where they always did rather than inventing a namespace."""
+        assert environment_label(None) is None
+        assert environment_label("") is None
+        assert environment_label("   ") is None
+
+    def test_the_default_branch_set_is_overridable(self):
+        assert environment_label("trunk", default_branches=("trunk",)) is None
+        assert environment_label("main", default_branches=("trunk",)) is not None
+
+    def test_a_feature_branch_becomes_a_slug_plus_digest(self):
+        label = environment_label("fix_covid_ingest")
+        assert label.startswith("fix_covid_ingest_")
+        assert len(label.rsplit("_", 1)[1]) == ENV_LABEL_DIGEST_CHARS
+
+    def test_separators_collapse_to_single_underscores(self):
+        assert environment_label("feature/add--thing").startswith("feature_add_thing_")
+
+    def test_branches_that_slugify_alike_do_not_share_a_namespace(self):
+        """The whole reason for the digest: these would otherwise build into
+        each other's tables."""
+        assert environment_label("feature/x") != environment_label("feature-x")
+
+    def test_a_long_branch_is_capped(self):
+        label = environment_label("release/" + "x" * 200)
+        assert len(label) <= ENV_LABEL_SLUG_CHARS + 1 + ENV_LABEL_DIGEST_CHARS
+
+    def test_a_leading_digit_is_prefixed(self):
+        """An identifier may not start with a digit."""
+        assert environment_label("2026-rewrite").startswith("b_2026_rewrite")
+
+    def test_a_branch_that_sanitizes_away_keeps_the_digest(self):
+        label = environment_label("---")
+        assert label == f"b_{label.rsplit('_', 1)[1]}"
+
+    def test_non_latin_branches_still_produce_a_valid_label(self):
+        assert environment_label("功能/新模型") is not None
+
+    @pytest.mark.parametrize(
+        "branch",
+        [
+            "feature/x",
+            "2026-rewrite",
+            "---",
+            "release/" + "x" * 200,
+            "功能/新模型",
+            "UPPER_Case",
+            "_leading_underscore",
+        ],
+    )
+    def test_every_label_satisfies_the_environment_identifier_rule(self, branch):
+        """The rule lives in `execution.envs`, which this module cannot import
+        (stdlib-only, no engine stack). This test is the pin that keeps the two
+        spellings from drifting apart."""
+        from trilogy.execution.envs import validate_env_name
+
+        validate_env_name(environment_label(branch))
+
+    def test_the_origin_method_agrees_with_the_function(self):
+        origin = SourceOrigin(kind="git", location="h/o/r", branch="feature/x")
+        assert origin.environment_label() == environment_label("feature/x")
+
+
+class TestSourceKey:
+    def test_identity_is_the_repo_plus_the_directory(self):
+        origin = SourceOrigin(
+            kind="git", location="github.com/acme/models", subpath="duckdb/covid/data"
+        )
+        assert origin.source_key() == "github.com/acme/models#duckdb/covid/data"
+
+    def test_identity_does_not_move_with_the_branch_or_commit(self):
+        """A branch's job has to group under the job it forked from, so the
+        thing they are keyed on cannot vary over what the branch varies."""
+        base = {"kind": "git", "location": "github.com/acme/models", "subpath": "etl"}
+        main = SourceOrigin(**base, branch="main", revision="a" * 40)
+        feature = SourceOrigin(**base, branch="feature/x", revision="b" * 40)
+        assert main.source_key() == feature.source_key()
+
+    def test_two_directories_in_one_repo_are_two_identities(self):
+        base = {"kind": "git", "location": "github.com/acme/models"}
+        left = SourceOrigin(**base, subpath="duckdb/covid/data")
+        right = SourceOrigin(**base, subpath="duckdb/gcat/data")
+        assert left.source_key() != right.source_key()
+
+    def test_a_repository_root_has_a_key(self):
+        origin = SourceOrigin(kind="git", location="github.com/acme/models")
+        assert origin.source_key() == "github.com/acme/models#."
+
+
+class TestSourceProviders:
+    def test_git_wins_over_the_path_fallback(self, tmp_path):
+        repo = _git_repo(tmp_path, "git@github.com:acme/etl.git")
+        assert resolve_origin(repo).kind == "git"
+
+    def test_the_git_provider_declines_a_plain_directory(self, tmp_path):
+        assert GitSourceProvider().detect(tmp_path) is None
+
+    def test_the_git_provider_declines_a_remote_that_names_no_host(self, tmp_path):
+        """A remote naming only a filesystem is not an identity worth
+        publishing, so the path fallback answers instead."""
+        repo = _git_repo(tmp_path, "/srv/git/etl.git")
+        assert GitSourceProvider().detect(repo) is None
+        assert resolve_origin(repo).kind == "path"
+
+    def test_the_path_provider_always_answers(self, tmp_path):
+        assert PathSourceProvider().detect(tmp_path) is not None
+
+    def test_the_fallback_is_not_registered_and_so_cannot_be_displaced(self):
+        assert not any(p.kind == "path" for p in source_providers())
