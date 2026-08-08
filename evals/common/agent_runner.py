@@ -10,6 +10,7 @@ import argparse
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -67,6 +68,31 @@ def _pump_output(stream, sink: list[str], echo: bool) -> None:
     stream.close()
 
 
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill an agent and any tool subprocesses it still owns."""
+    if proc.poll() is not None:
+        return
+    if sys.platform == "win32":
+        result = subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return
+        except OSError:
+            pass
+    proc.kill()
+
+
 def run_agent(
     workspace: Path,
     log_path: Path,
@@ -109,6 +135,7 @@ def run_agent(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        start_new_session=sys.platform != "win32",
     )
     out_lines: list[str] = []
     pump = threading.Thread(
@@ -136,7 +163,7 @@ def run_agent(
             last_beat = time.perf_counter()
         if time.perf_counter() - start > timeout:
             timed_out = True
-            proc.kill()
+            _kill_process_tree(proc)
             break
         time.sleep(POLL_INTERVAL)
 
@@ -162,19 +189,23 @@ def prepare_worker_workspace(src: Path, worker_idx: int, db_filename: str) -> Pa
 
     DuckDB takes an exclusive file lock on open; parallel agents pointing at the
     same database would serialise. Each worker gets its own copy of the duckdb,
-    its own ``raw/``, and its own ``trilogy.toml``."""
+    generated model directory, and ``trilogy.toml``."""
     worker_dir = src / f"_worker_{worker_idx}"
     worker_dir.mkdir(exist_ok=True)
     shutil.copy2(src / db_filename, worker_dir / db_filename)
     shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
-    # raw/ (Trilogy categories) is copied only when present — SQL baselines
-    # have none. Top-level *.md covers schema.md (sql_schema) plus any
-    # spec.doc_files installed in the parent workspace (DABstep's manual.md).
-    if (src / "raw").exists():
-        worker_raw = worker_dir / "raw"
-        if worker_raw.exists():
-            shutil.rmtree(worker_raw)
-        shutil.copytree(src / "raw", worker_raw)
+    from trilogy.scripts.project_config import MODEL_ROOT_DIR
+
+    # Enriched models currently live in raw/; discovery-engine ingest uses the
+    # shared project model-root constant. SQL baselines have neither.
+    for model_dir_name in ("raw", MODEL_ROOT_DIR):
+        source_model = src / model_dir_name
+        if not source_model.exists():
+            continue
+        worker_model = worker_dir / model_dir_name
+        if worker_model.exists():
+            shutil.rmtree(worker_model)
+        shutil.copytree(source_model, worker_model)
     for md in src.glob("*.md"):
         shutil.copy2(md, worker_dir / md.name)
     return worker_dir
