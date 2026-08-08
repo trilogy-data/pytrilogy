@@ -12,17 +12,18 @@ import shutil
 from hashlib import blake2s
 from pathlib import Path
 
+from trilogy.scripts.project_config import MODEL_ROOT_DIR
+
 from .spec import BenchmarkSpec
 
 _SINGLE_QUERY_TEMPLATE = """\
 Trilogy project in this directory. `trilogy.toml` configures an already-loaded
-DuckDB database, and `raw/` is already populated with ingested Trilogy model
-files — do NOT re-run `trilogy ingest`
-and do NOT edit files in `raw/`.
+DuckDB database, and `{model_dir}/` is already populated with Trilogy model
+files — do NOT re-run `trilogy ingest` and do NOT edit files in `{model_dir}/`.
 
 Answer the ONE business question below by writing a Trilogy query file to
 `{filename}` in the working directory (alongside `trilogy.toml`, NOT inside
-`raw/`). Validate with `trilogy run {filename}{validate_params}`.
+`{model_dir}/`). Validate with `trilogy run {filename}{validate_params}`.
 
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
@@ -190,7 +191,9 @@ def _render_params_block(params: dict) -> tuple[str, str]:
     return "\n".join(lines), suffix
 
 
-def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
+def build_single_query_task(
+    spec: BenchmarkSpec, entry: dict, model_dir: str = MODEL_ROOT_DIR
+) -> str:
     if spec.task_template is not None:
         filename = candidate_filename(spec, entry["id"], ".preql")
         return spec.task_template.format(
@@ -207,6 +210,7 @@ def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
         prompt=entry["prompt"],
         params_block=params_block,
         validate_params=validate_params,
+        model_dir=model_dir,
     )
 
 
