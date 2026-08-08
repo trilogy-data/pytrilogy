@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from trilogy.constants import logger
-from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -12,9 +12,9 @@ from trilogy.core.models.author import (
     UndefinedConcept,
 )
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildConcept,
     BuildWhereClause,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
@@ -217,10 +217,7 @@ def initialize_loop_context(
         # the far side's address is a filter on the rollup's own input dim.
         nonstandard_grouping_upstream: set[str] = set()
         for m in mandatory_list:
-            if (
-                isinstance(m.lineage, BuildAggregateWrapper)
-                and m.lineage.grouping != AggregateGroupingMode.STANDARD
-            ):
+            if nonstandard_grouping_lineage(m) is not None:
                 nonstandard_grouping_upstream |= get_upstream_concepts(m, nested=True)
         pushed_below_grouping: set[str] = set()
         candidate_filters = []

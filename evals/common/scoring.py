@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 
 # Row comparison lives in the trilogy package so the eval harness and the
@@ -63,6 +64,14 @@ class AgentMetrics:
     # Per-tool count of calls whose arguments matched a prior call in the same
     # query (signal: the agent is looping on the same exploration step).
     repeated_calls_by_name: dict[str, int] = field(default_factory=dict)
+    # Maximal runs of consecutive `trilogy agent-info ...` calls. Each item is
+    # the routed topic (`index`, `query`, `authoring`, `syntax example ...`).
+    # This exposes whether an agent followed the root directory into a useful
+    # drilldown before doing unrelated work.
+    agent_info_sequences: list[list[str]] = field(default_factory=list)
+    agent_info_transitions: dict[str, int] = field(default_factory=dict)
+    agent_info_directory_calls: int = 0
+    agent_info_directory_followups: int = 0
 
     @property
     def tool_success_rate(self) -> float:
@@ -121,6 +130,16 @@ def _call_signature(name: str, args: dict) -> str:
     return json.dumps({"name": name, "args": args}, sort_keys=True, default=str)
 
 
+def _agent_info_topic(name: str, args: dict) -> str | None:
+    if name != "trilogy":
+        return None
+    cli_args = args.get("args") or []
+    if not isinstance(cli_args, list) or not cli_args or cli_args[0] != "agent-info":
+        return None
+    parts = [str(part).strip() for part in cli_args[1:] if str(part).strip()]
+    return " ".join(parts) if parts else "index"
+
+
 def parse_agent_log(log_path: Path) -> AgentMetrics:
     """Aggregate the agent's ``--log-file`` JSONL trace into harness metrics."""
     m = AgentMetrics()
@@ -130,6 +149,14 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
     repeated: Counter[str] = Counter()
     seen_signatures: dict[str, str] = {}
     pending_call_name: list[tuple[str, str]] = []  # (name, signature) queue
+    agent_info_chain: list[str] = []
+
+    def flush_agent_info_chain() -> None:
+        if not agent_info_chain:
+            return
+        m.agent_info_sequences.append(list(agent_info_chain))
+        agent_info_chain.clear()
+
     if not log_path.exists():
         return m
 
@@ -154,17 +181,23 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
             by_name[name] += 1
             m.tool_calls_total += 1
             args = event.get("arguments") or {}
-            sig = _call_signature(name, args if isinstance(args, dict) else {})
+            safe_args = args if isinstance(args, dict) else {}
+            topic = _agent_info_topic(name, safe_args)
+            if topic is None:
+                flush_agent_info_chain()
+            else:
+                agent_info_chain.append(topic)
+            sig = _call_signature(name, safe_args)
             if sig in seen_signatures.values():
                 repeated[name] += 1
             seen_signatures[f"{name}#{m.tool_calls_total}"] = sig
             pending_call_name.append((name, sig))
             if name == "trilogy":
-                cli_args = args.get("args") or []
+                cli_args = safe_args.get("args") or []
                 if isinstance(cli_args, list) and cli_args:
                     subcommands[str(cli_args[0])] += 1
             elif name == "return_control_to_user":
-                msg = args.get("message")
+                msg = safe_args.get("message")
                 if isinstance(msg, str):
                     m.farewell = msg
         elif etype == "reviewer_verdict":
@@ -188,6 +221,17 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
             if pending_call_name:
                 pending_call_name.pop(0)
 
+    flush_agent_info_chain()
+    transitions: Counter[str] = Counter()
+    for sequence in m.agent_info_sequences:
+        for source, destination in pairwise(sequence):
+            transitions[f"{source} -> {destination}"] += 1
+        m.agent_info_directory_calls += sequence.count("index")
+        m.agent_info_directory_followups += sum(
+            source == "index" and destination != "index"
+            for source, destination in pairwise(sequence)
+        )
+    m.agent_info_transitions = dict(transitions)
     m.tool_calls_by_name = dict(by_name)
     m.trilogy_subcommands = dict(subcommands)
     m.tool_output_stats = stats
@@ -217,6 +261,9 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
         by_name.update(m.tool_calls_by_name)
         subcmds.update(m.trilogy_subcommands)
         repeated.update(m.repeated_calls_by_name)
+        agg.agent_info_sequences.extend(m.agent_info_sequences)
+        agg.agent_info_directory_calls += m.agent_info_directory_calls
+        agg.agent_info_directory_followups += m.agent_info_directory_followups
         for tool, s in m.tool_output_stats.items():
             bucket = output_stats.setdefault(tool, ToolOutputStats())
             bucket.count += s.count
@@ -228,6 +275,10 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
     agg.tool_calls_by_name = dict(by_name)
     agg.trilogy_subcommands = dict(subcmds)
     agg.repeated_calls_by_name = dict(repeated)
+    info_transitions: Counter[str] = Counter()
+    for m in metrics_list:
+        info_transitions.update(m.agent_info_transitions)
+    agg.agent_info_transitions = dict(info_transitions)
     agg.tool_output_stats = output_stats
     return agg
 
@@ -249,6 +300,10 @@ def metrics_to_dict(m: AgentMetrics) -> dict:
         "reviewer_kickbacks": m.reviewer_kickbacks,
         "farewell": m.farewell,
         "repeated_calls_by_name": dict(m.repeated_calls_by_name),
+        "agent_info_sequences": [list(sequence) for sequence in m.agent_info_sequences],
+        "agent_info_transitions": dict(m.agent_info_transitions),
+        "agent_info_directory_calls": m.agent_info_directory_calls,
+        "agent_info_directory_followups": m.agent_info_directory_followups,
         "tool_output_stats": {
             tool: {
                 "count": s.count,
@@ -277,6 +332,12 @@ def metrics_from_dict(d: dict) -> AgentMetrics:
         reviewer_kickbacks=d.get("reviewer_kickbacks", 0),
         farewell=d.get("farewell", ""),
         repeated_calls_by_name=dict(d.get("repeated_calls_by_name", {})),
+        agent_info_sequences=[
+            list(sequence) for sequence in d.get("agent_info_sequences", [])
+        ],
+        agent_info_transitions=dict(d.get("agent_info_transitions", {})),
+        agent_info_directory_calls=d.get("agent_info_directory_calls", 0),
+        agent_info_directory_followups=d.get("agent_info_directory_followups", 0),
         tool_output_stats={
             tool: ToolOutputStats(
                 count=s.get("count", 0),
@@ -315,21 +376,30 @@ def _last_sql_statement(text: str) -> str:
     return nonempty[-1] if nonempty else ""
 
 
-def make_scoring_engine(db_path: Path, workspace: Path, extension: str):
+def make_scoring_engine(
+    db_path: Path,
+    workspace: Path,
+    extension: str,
+    enable_python_datasources: bool = False,
+):
     """Build a Trilogy executor on the workspace's duckdb, with the benchmark's
     extension loaded. Reusable across per-query scoring calls so we don't pay
     engine setup + extension load on every query.
 
-    Opened read-only: scoring only runs SELECTs, and a read-only DuckDB handle
-    is shareable, so concurrent scorers (and ad-hoc probes against a live run's
-    workspace db) coexist instead of fighting over the single-writer file lock."""
+    Ordinary benchmark scoring opens read-only. Python datasources need a
+    writable connection to install DuckDB's ``uv_run`` macro, so script suites
+    opt into a writable scorer; the caller already serialises scoring."""
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
 
     engine = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=workspace),
-        conf=DuckDBConfig(path=str(db_path), read_only=True),
+        conf=DuckDBConfig(
+            path=str(db_path),
+            read_only=not enable_python_datasources,
+            enable_python_datasources=enable_python_datasources,
+        ),
     )
     if extension:
         engine.execute_raw_sql(f"INSTALL {extension}; LOAD {extension};")
@@ -365,6 +435,7 @@ def _score_subprocess_target(
     extension: str,
     params: dict | None,
     custom_refs_dir: str | None,
+    enable_python_datasources: bool,
     conn,
 ) -> None:
     """Run in a spawned child: build a fresh engine and score one query. Sends
@@ -372,7 +443,12 @@ def _score_subprocess_target(
     scoring in a killable process is what lets the parent bound a hung
     `generate_sql` loop or a runaway DuckDB query with a hard timeout."""
     try:
-        engine = make_scoring_engine(Path(db_path), Path(workspace), extension)
+        engine = make_scoring_engine(
+            Path(db_path),
+            Path(workspace),
+            extension,
+            enable_python_datasources=enable_python_datasources,
+        )
         result = _score_one(
             engine,
             Path(workspace),
@@ -396,6 +472,7 @@ def score_query_timed(
     timeout: float,
     params: dict | None = None,
     custom_refs_dir: Path | None = None,
+    enable_python_datasources: bool = False,
 ) -> QueryResult:
     """Score one query in a child process bounded by ``timeout`` seconds. A
     hang in `generate_sql` (planner loop) or DuckDB execution can no longer
@@ -414,6 +491,7 @@ def score_query_timed(
             extension,
             params,
             str(custom_refs_dir) if custom_refs_dir else None,
+            enable_python_datasources,
             child_conn,
         ),
         daemon=True,
@@ -532,6 +610,16 @@ def _load_reference(
             if sql_path.exists():
                 sql = sql_path.read_text(encoding="utf-8")
                 return list(engine.execute_raw_sql(sql).fetchall())
+        for name in (f"query{idx:02d}.preql", f"query{idx}.preql"):
+            query_path = custom_refs_dir / name
+            if query_path.exists():
+                from trilogy.core.models.environment import Environment
+
+                engine.environment = Environment(working_path=custom_refs_dir)
+                statements = engine.generate_sql(query_path.read_text(encoding="utf-8"))
+                if not statements:
+                    raise ValueError(f"{query_path.name} produced no SQL")
+                return list(engine.execute_raw_sql(statements[-1]).fetchall())
     return list(engine.execute_raw_sql(f"PRAGMA {extension}({idx});").fetchall())
 
 

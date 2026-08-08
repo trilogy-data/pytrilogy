@@ -1,0 +1,17 @@
+key user_id int;
+property user_id.completed_count int;
+property user_id.incomplete_count int;
+
+datasource generated_data(
+    user_id: user_id,
+    completed_count: completed_count,
+    incomplete_count: incomplete_count
+)
+grain (user_id)
+file `./query21.py`;
+
+select
+    user_id,
+    completed_count,
+    incomplete_count;
+

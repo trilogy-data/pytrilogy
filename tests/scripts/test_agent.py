@@ -633,6 +633,35 @@ def test_run_turn_happy_path_returns_control():
     assert provider.call_count == 1
 
 
+def test_run_turn_defers_completion_mixed_with_another_tool():
+    provider = ScriptedProvider(
+        responses=[
+            make_response(
+                call("trilogy", args=["run", "answer.preql"]),
+                call("return_control_to_user", message="verified and done"),
+            ),
+            make_response(call("return_control_to_user", message="fixed and done")),
+        ]
+    )
+    conv = make_conv(provider)
+    state = AgentState()
+    handlers = {
+        "trilogy": lambda state, args: "exit_code: 1\nvalidation failed",
+        "return_control_to_user": handle_return_control,
+    }
+
+    _run_turn(conv, state, max_iterations=5, handlers=handlers)
+
+    assert provider.call_count == 2
+    assert state.done is True
+    assert state.farewell == "fixed and done"
+    assert any(
+        "completion must be the only tool call" in message.content
+        for message in conv.messages
+        if message.role == "user"
+    )
+
+
 def test_run_turn_reprompts_when_no_tool_calls():
     provider = ScriptedProvider(
         responses=[

@@ -8,11 +8,12 @@ if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import JoinType, Modifier, SourceType
+from trilogy.core.enums import AggregateGroupingMode, JoinType, Modifier, SourceType
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import (
@@ -108,6 +109,29 @@ def _has_any(keys: set[str], source: str, lookup: dict[str, list[str]]) -> bool:
     return any(key in lookup.get(source, []) for key in keys)
 
 
+def rollup_padded_addresses(datasource: DataSource) -> set[str]:
+    """Grouping-key addresses this source NULL-pads because it renders
+    `GROUP BY ROLLUP/CUBE/GROUPING SETS` itself. A wrapper already computed
+    upstream is a passthrough — it re-emits the padded rows, it does not
+    create them."""
+    if not isinstance(datasource, QueryDatasource):
+        return set()
+    upstream = {
+        c.address for parent in datasource.datasources for c in parent.output_concepts
+    }
+    padded: set[str] = set()
+    for concept in datasource.output_concepts:
+        wrapper = get_grouped_aggregate_wrapper(concept)
+        if (
+            wrapper is None
+            or wrapper.grouping == AggregateGroupingMode.STANDARD
+            or concept.address in upstream
+        ):
+            continue
+        padded.update(b.address for b in wrapper.by)
+    return padded
+
+
 def get_join_type(
     left: str,
     right: str,
@@ -115,6 +139,7 @@ def get_join_type(
     nullables: dict[str, list[str]],
     all_connecting_keys: set[str],
     full_join_keys: set[str] | None = None,
+    rollup_padded: dict[str, list[str]] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -141,6 +166,17 @@ def get_join_type(
     # subset side's NULLs have a null-safe partner.
     if left_is_partial or right_is_partial:
         return JoinType.FULL
+    # A grouping-set NULL is padding, not a value: the subtotal/grand-total row
+    # a ROLLUP/CUBE/GROUPING SETS emits has no counterpart on a side that does
+    # not pad the same key, so null-safe equality has nothing to pair it with
+    # and the INNER form below would silently drop it. Preserve toward the
+    # padded side. Both sides padded is the ordinary case again — same grouping
+    # sets, so the NULL groups do pair.
+    if rollup_padded:
+        left_pads = _has_any(all_connecting_keys, left, rollup_padded)
+        right_pads = _has_any(all_connecting_keys, right, rollup_padded)
+        if left_pads != right_pads:
+            return JoinType.LEFT_OUTER if left_pads else JoinType.RIGHT_OUTER
     # Neither side partial: each binding declares the key's full domain
     # (EQUAL — mutual subset), whose narrowed form is INNER. NULL-key rows
     # must still never drop: when both sides are nullable the null-safe
@@ -249,6 +285,7 @@ def resolve_join_order_v2(
     full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
     authored_key_nodes: set[str] | None = None,
+    rollup_padded: dict[str, list[str]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -393,6 +430,7 @@ def resolve_join_order_v2(
                     nullables,
                     all_connecting_keys,
                     full_join_keys,
+                    rollup_padded,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -669,6 +707,7 @@ def get_node_joins(
     grain_size: dict[str, int] = {}
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
+    rollup_padded: dict[str, list[str]] = {}
 
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
@@ -693,8 +732,10 @@ def get_node_joins(
                 if c.address in environment.scoped_partial_derived
             }
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
+        padded_nodes = {canon_node(a) for a in rollup_padded_addresses(datasource)}
         p_list: list[str] = []
         n_list: list[str] = []
+        r_list: list[str] = []
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
@@ -706,8 +747,11 @@ def get_node_joins(
                 p_list.append(node)
             if node in nullable_nodes and node not in n_list:
                 n_list.append(node)
+            if node in padded_nodes and node not in r_list:
+                r_list.append(node)
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
+        rollup_padded[ds_node] = r_list
 
     # Canonical keys of query-scoped FULL joins (EQUAL/∦ declared edges),
     # mapped into graph concept nodes.
@@ -743,6 +787,7 @@ def get_node_joins(
         full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
         authored_key_nodes=authored_key_nodes,
+        rollup_padded=rollup_padded,
     )
     return [
         BaseJoin(

@@ -43,6 +43,7 @@ from trilogy.scripts.agent_sessions import (
 )
 from trilogy.scripts.agent_tools import (
     ALL_TOOLS,
+    RETURN_CONTROL_TOOL,
     SHOW_MESSAGE_TOOL,
     TODO_TOOL,
     TOOL_HANDLERS,
@@ -176,7 +177,8 @@ Available tools:
       prefer explore for model files)."""
     base += """
     * Only documented subcommands work — do NOT invent `raw`, `shell`,
-      `read_file`, etc. `trilogy agent-info` lists everything that exists.
+      `read_file`, etc. Start with `trilogy agent-info`, then immediately call
+      the listed drilldown matching the task before authoring syntax.
 
 To create or overwrite a file (every .preql query file you write), use
 `trilogy file write <path> --content <full body>`. Pass the complete file
@@ -214,9 +216,8 @@ Discipline:
     return base
 
 
-# The Trilogy language reference is NOT inlined here — discipline rule #1
-# directs the agent to call `trilogy agent-info` first, which returns the
-# canonical reference. Inlining duplicated ~26KB of prompt tokens per run.
+# Detailed Trilogy references are not inlined here. Bare `agent-info` is a
+# compact directory; the agent follows it to the task-specific drilldown.
 SYSTEM_PROMPT = get_agent_instructions(True)
 QUIET_SYSTEM_PROMPT = get_agent_instructions(False)
 QUIET_NO_TODO_SYSTEM_PROMPT = get_agent_instructions(False, include_todo=False)
@@ -621,13 +622,23 @@ def _run_turn_inner(
                 role="user",
             )
             continue
+        mixed_completion = len(response.tool_calls) > 1 and any(
+            call.name == RETURN_CONTROL_TOOL.name for call in response.tool_calls
+        )
         for call in response.tool_calls:
             print_info(_format_call(call))
             _log_event(
                 log_path,
                 {"type": "tool_call", "name": call.name, "arguments": call.arguments},
             )
-            if call.parse_error:
+            if call.name == RETURN_CONTROL_TOOL.name and mixed_completion:
+                result = (
+                    "return_control_to_user deferred: completion must be the only "
+                    "tool call in an assistant turn. Review the other tool "
+                    "result(s), fix any failures, then call "
+                    "return_control_to_user alone on a later turn."
+                )
+            elif call.parse_error:
                 result = (
                     f"Tool call '{call.name}' rejected: {call.parse_error}. "
                     "Re-issue the call with valid JSON arguments."

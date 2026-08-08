@@ -23,7 +23,15 @@ single-key fanout and plain/derived composite keys. Complex WHERE predicates
 cover nested boolean trees, three-valued null logic, derived expressions,
 membership, and filters crossing join, window, and chasm boundaries.
 Coalescing-join presence cases assert per-side NULL markers under plain,
-cast, and concat keys for both UNION and FULL relations.
+cast, and concat keys of a `union join` (the only coalescing query-scoped
+join — `full join a = b` is rejected at hydration in favour of it).
+The `grouping_placement` family varies where the grouped node lands relative to
+everything around it — a leaf dimension, nullable property, `grouping()`
+indicator or `having` outside the grouping key list; ROLLUP over a rowset, a
+subset join, and one or both keys of a two-key `union join`. Its oracles spell
+out the contract for a projection outside the grouping: group at the key list,
+then LEFT JOIN the leaf dims back on it, so both a backing key leaking into the
+grouped CTE and a join-back that drops subtotal/grand-total rows show up.
 Derived-rowset controls distinguish base-model WHERE enrichment from equivalent
 no-WHERE and rowset-output-WHERE forms.
 

@@ -1,0 +1,14 @@
+key text string;
+property text.crc32 int;
+
+datasource generated_data(
+    text: text,
+    crc32: crc32
+)
+grain (text)
+file `./query08.py`;
+
+select
+    text,
+    crc32;
+

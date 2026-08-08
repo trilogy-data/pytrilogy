@@ -1,11 +1,17 @@
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
+from trilogy.core.enums import (
+    Derivation,
+    JoinType,
+    Modifier,
+    SourceType,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
+    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
@@ -65,6 +71,23 @@ def _feeds_only_existence(parent: StrategyNode, grandparent: StrategyNode) -> bo
         c.address for c in parent.output_concepts
     }
     return all(addr in existence for addr in outputs & demand)
+
+
+def _renders_nonstandard_grouping(parent: StrategyNode) -> bool:
+    """A parent that renders `GROUP BY ROLLUP/CUBE/GROUPING SETS` takes its
+    GROUP BY from the aggregate wrapper's `by` list verbatim, so any column
+    surfaced on it that isn't one of those keys becomes a bare, ungrouped
+    projection — a binder error (q05). The key still reaches join inference
+    from the other side; this side keeps only its grouping keys."""
+    upstream = {
+        c.address for grandparent in parent.parents for c in grandparent.output_concepts
+    }
+    return any(
+        (wrapper := get_grouped_aggregate_wrapper(c)) is not None
+        and wrapper.grouping.nulls_grouping_keys
+        and c.address not in upstream
+        for c in parent.output_concepts
+    )
 
 
 def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
@@ -361,6 +384,8 @@ class MergeNode(StrategyNode):
             return
         for parent in self.parents:
             if _abstract_output_grain(parent, self.environment):
+                continue
+            if _renders_nonstandard_grouping(parent):
                 continue
             outputs = {c.address for c in parent.output_concepts}
             changed = False

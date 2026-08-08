@@ -1,0 +1,17 @@
+key product string;
+property product.quantity int;
+property product.revenue float;
+
+datasource generated_data(
+    product: product,
+    quantity: quantity,
+    revenue: revenue
+)
+grain (product)
+file `./query17.py`;
+
+select
+    product,
+    quantity,
+    revenue;
+

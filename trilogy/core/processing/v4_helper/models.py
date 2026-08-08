@@ -24,7 +24,7 @@ def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
     keys as unusable: a WHERE, a join axis, or a re-aggregation keyed on them
     silently drops the subtotals. This is the single question the planner
     should ask — not "what does the group id string look like"."""
-    return mode is not None and mode != AggregateGroupingMode.STANDARD
+    return mode is not None and mode.nulls_grouping_keys
 
 
 @dataclass

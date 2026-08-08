@@ -1,0 +1,17 @@
+key department string;
+property department.employee string;
+property department.level int;
+
+datasource generated_data(
+    department: department,
+    employee: employee,
+    level: level
+)
+grain (department)
+file `./query18.py`;
+
+select
+    department,
+    employee,
+    level;
+

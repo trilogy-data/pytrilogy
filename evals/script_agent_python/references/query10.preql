@@ -1,0 +1,17 @@
+key row int;
+property row.column int;
+property row.value int;
+
+datasource generated_data(
+    row: row,
+    column: column,
+    value: value
+)
+grain (row)
+file `./query10.py`;
+
+select
+    row,
+    column,
+    value;
+

@@ -25,8 +25,11 @@ null-rejects any member of the key's equivalence family.
 
 from __future__ import annotations
 
-from trilogy.core.enums import AggregateGroupingMode, JoinType, Modifier
-from trilogy.core.models.build import BuildAggregateWrapper, BuildConcept
+from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.models.build import (
+    BuildConcept,
+    nonstandard_grouping_lineage,
+)
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import condition_proves_non_null
@@ -118,9 +121,7 @@ def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
     from proving a rollup key non-null via the upstream source where it *is*
     non-null — the rollup is the source of the NULLs at subtotal rows."""
     has_rollup = any(
-        isinstance(c.lineage, BuildAggregateWrapper)
-        and c.lineage.grouping != AggregateGroupingMode.STANDARD
-        for c in cte.output_columns
+        nonstandard_grouping_lineage(c) is not None for c in cte.output_columns
     )
     if not has_rollup:
         return False

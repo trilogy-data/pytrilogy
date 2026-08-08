@@ -106,6 +106,13 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         help="agent subprocess timeout PER QUERY (seconds)",
     )
     parser.add_argument(
+        "--provider-crash-retries",
+        type=int,
+        default=1,
+        help="fresh-agent retries after an LLM provider exhausts its own "
+        "request retries without producing a candidate",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=None,
@@ -660,18 +667,56 @@ def run(spec: BenchmarkSpec) -> int:
             task = category.build_task(spec, entry, include_docs=bool(leg_docs))
             (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
             print(f"  [q{qid:02d}] starting (worker {worker.name})", flush=True)
-            result = agent_runner.run_agent(
-                worker,
-                log_path,
-                args.provider,
-                args.model,
-                task,
-                args.timeout,
-                monitor_mode,
-                toolset=category.harness,
-                scope_diagnostics=args.scope_diagnostics,
-                scope_warnings=args.scope_warnings,
-            )
+            attempt_results: list[dict] = []
+            attempt_metrics: list[scoring.AgentMetrics] = []
+            max_attempts = 1 + max(0, args.provider_crash_retries)
+            for attempt in range(1, max_attempts + 1):
+                attempt_log = (
+                    log_path
+                    if attempt == 1
+                    else run_dir
+                    / f"agent_log.q{qid:02d}.provider_retry{attempt - 1}.jsonl"
+                )
+                result = agent_runner.run_agent(
+                    worker,
+                    attempt_log,
+                    args.provider,
+                    args.model,
+                    task,
+                    args.timeout,
+                    monitor_mode,
+                    toolset=category.harness,
+                    scope_diagnostics=args.scope_diagnostics,
+                    scope_warnings=args.scope_warnings,
+                )
+                attempt_results.append(result)
+                attempt_metrics.append(scoring.parse_agent_log(attempt_log))
+                produced = prompts.candidate_path(
+                    worker, spec, qid, category.candidate_ext
+                ).exists()
+                if (
+                    attempt == max_attempts
+                    or produced
+                    or not agent_runner.is_provider_crash(result)
+                ):
+                    break
+                (run_dir / f"crash.q{qid:02d}.attempt{attempt}.txt").write_text(
+                    result.get("output", ""), encoding="utf-8"
+                )
+                print(
+                    f"  [q{qid:02d}] provider crashed; retrying with a fresh "
+                    f"agent ({attempt}/{args.provider_crash_retries})",
+                    flush=True,
+                )
+            result = {
+                **attempt_results[-1],
+                "duration": sum(r["duration"] for r in attempt_results),
+                "output": "\n".join(
+                    f"=== provider attempt {i} ===\n{r.get('output', '')}"
+                    for i, r in enumerate(attempt_results, 1)
+                ),
+                "provider_attempts": len(attempt_results),
+            }
             result["id"] = qid
             # Persist the subprocess stdout/stderr on a non-zero exit — it holds
             # the crash traceback, which the structured jsonl log never captures.
@@ -688,7 +733,7 @@ def run(spec: BenchmarkSpec) -> int:
                 remove_source=True,
             )
             per_query_runs[index] = result
-            per_query_metrics[index] = scoring.parse_agent_log(log_path)
+            per_query_metrics[index] = scoring.aggregate_metrics(attempt_metrics)
             if scoring_available:
                 try:
                     with scoring_lock:
@@ -700,6 +745,7 @@ def run(spec: BenchmarkSpec) -> int:
                             SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
+                            enable_python_datasources=spec.enable_python_datasources,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -767,6 +813,7 @@ def run(spec: BenchmarkSpec) -> int:
                             SCORE_TIMEOUT,
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
+                            enable_python_datasources=spec.enable_python_datasources,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(

@@ -1321,6 +1321,435 @@ order by grouping_level, level_rank, gid asc nulls last
     ]
 
 
+def _grouping_placement_cases(seed: SeedData) -> list[FuzzCase]:
+    """Where the grouped node lands relative to everything around it.
+
+    The grouping clause pins the GROUP BY to its own key list, so anything
+    else the select projects has to be sourced somewhere else and stitched
+    back. Two things go wrong when that stitch is planned badly: a backing
+    column leaks into the grouped CTE as a bare, ungrouped projection
+    (BinderException), or the join-back drops the subtotal/grand-total rows,
+    whose key NULL is grouping-set padding and never has a partner on the
+    leaf side. Every oracle here spells that contract out: group at the key
+    list, then LEFT JOIN the leaf dims back on it.
+    """
+    cases: list[FuzzCase] = []
+
+    extra_dim_variants = (
+        ("rollup_extra_leaf_dim", "rollup", "group_id", "active", "gid", "e.active"),
+        (
+            "cube_extra_leaf_dim",
+            "cube",
+            "group_id",
+            "active",
+            "gid",
+            "e.active",
+        ),
+        (
+            "rollup_extra_nullable_property",
+            "rollup",
+            "group_id",
+            "nullable_name",
+            "gid",
+            "g.nullable_name",
+        ),
+    )
+    for name, mode, key, extra, sql_key, sql_extra in extra_dim_variants:
+        body = f"""
+select {key}, {extra}, sum(event_amount) as total
+by {mode} ({key})
+order by {key} asc nulls last, {extra} asc nulls last;
+"""
+        oracle = f"""
+select roll.k, leaf.x, roll.total
+from (
+    select e.{sql_key} as k, sum(e.amount) as total
+    from events e
+    join groups g on e.gid = g.gid
+    group by {mode} (e.{sql_key})
+) roll
+left join (
+    select distinct e.{sql_key} as k, {sql_extra} as x
+    from events e
+    join groups g on e.gid = g.gid
+) leaf on roll.k = leaf.k
+order by roll.k asc nulls last, leaf.x asc nulls last
+"""
+        cases.append(
+            _case(
+                seed,
+                "grouping_placement",
+                name,
+                (
+                    f"{mode.upper()} over `{key}` while `{extra}` stays a leaf "
+                    "dimension outside the grouping."
+                ),
+                ("grouping", mode, "aggregate", "placement", "extra_dim", "nullable"),
+                body,
+                oracle,
+            )
+        )
+
+    grouping_sets_body = """
+select group_id, active, sum(event_amount) as total
+by grouping sets ((group_id), ())
+order by group_id asc nulls last, active asc nulls last;
+"""
+    grouping_sets_oracle = """
+select roll.k, leaf.x, roll.total
+from (
+    select gid as k, sum(amount) as total
+    from events
+    group by grouping sets ((gid), ())
+) roll
+left join (select distinct gid as k, active as x from events) leaf
+    on roll.k = leaf.k
+order by roll.k asc nulls last, leaf.x asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "grouping_sets_extra_leaf_dim",
+            "Explicit GROUPING SETS with a leaf dimension outside the grouping.",
+            ("grouping", "grouping_sets", "aggregate", "placement", "extra_dim"),
+            grouping_sets_body,
+            grouping_sets_oracle,
+        )
+    )
+
+    rowset_body = """
+rowset per_pair <-
+select group_id as g, active as a, sum(event_amount) as amt;
+
+select per_pair.g, sum(per_pair.amt) as total
+by rollup (per_pair.g)
+order by per_pair.g asc nulls last;
+"""
+    rowset_oracle = """
+select gid, sum(amt)
+from (select gid, active, sum(amount) as amt from events group by gid, active) pre
+group by rollup (gid)
+order by gid asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_over_rowset",
+            "ROLLUP re-aggregates a pre-aggregated rowset.",
+            ("grouping", "rollup", "aggregate", "placement", "rowset"),
+            rowset_body,
+            rowset_oracle,
+        )
+    )
+
+    rowset_extra_body = """
+rowset per_pair <-
+select group_id as g, active as a, sum(event_amount) as amt;
+
+select per_pair.g, per_pair.a, sum(per_pair.amt) as total
+by rollup (per_pair.g)
+order by per_pair.g asc nulls last, per_pair.a asc nulls last;
+"""
+    rowset_extra_oracle = """
+select roll.g, leaf.a, roll.total
+from (
+    select gid as g, sum(amt) as total
+    from (select gid, active, sum(amount) as amt from events group by gid, active) pre
+    group by rollup (gid)
+) roll
+left join (select distinct gid as g, active as a from events) leaf on roll.g = leaf.g
+order by roll.g asc nulls last, leaf.a asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_over_rowset_extra_dim",
+            "ROLLUP over a rowset while a second rowset column stays at leaf grain.",
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "rowset",
+                "extra_dim",
+            ),
+            rowset_extra_body,
+            rowset_extra_oracle,
+        )
+    )
+
+    union_rowsets = """
+rowset sale_side <-
+select group_id as g, sum(sale_amount) as sales;
+rowset return_side <-
+select group_id as g, sum(return_amount) as returns;
+"""
+    # sales/returns bind group_id partially (`~`), so each rowset ranges over
+    # the COMPLETE group domain (factless groups carry NULL totals) — the same
+    # convention `_chasm_cases` encodes. The union join of two full-domain
+    # rowsets is therefore just the group domain.
+    union_sql = """
+from groups g
+left join (select gid, sum(amount) as sales from sales group by gid) s
+    on g.gid = s.gid
+left join (select gid, sum(amount) as returns from returns group by gid) r
+    on g.gid = r.gid
+"""
+    union_body = union_rowsets + """
+select
+    coalesce(sale_side.g, return_side.g) as g,
+    sum(coalesce(sale_side.sales, 0)) as sales,
+    sum(coalesce(return_side.returns, 0)) as returns
+union join sale_side.g = return_side.g
+by rollup (g)
+order by g asc nulls last;
+"""
+    union_oracle = f"""
+select g.gid, sum(coalesce(s.sales, 0)), sum(coalesce(r.returns, 0))
+{union_sql}
+group by rollup (1)
+order by 1 asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_over_union_joined_rowsets",
+            "ROLLUP over the coalesced key of two union-joined rowsets.",
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "rowset",
+                "union",
+                "join",
+            ),
+            union_body,
+            union_oracle,
+        )
+    )
+
+    union_label_body = union_rowsets + """
+select
+    'g' || coalesce(sale_side.g, return_side.g)::string as label,
+    coalesce(sale_side.g, return_side.g) as g,
+    sum(coalesce(sale_side.sales, 0)) as sales,
+    sum(coalesce(return_side.returns, 0)) as returns
+union join sale_side.g = return_side.g
+by rollup (label)
+order by label asc nulls last, g asc nulls last;
+"""
+    union_label_oracle = f"""
+select roll.label, leaf.g, roll.sales, roll.returns
+from (
+    select
+        'g' || cast(g.gid as varchar) as label,
+        sum(coalesce(s.sales, 0)) as sales,
+        sum(coalesce(r.returns, 0)) as returns
+    {union_sql}
+    group by rollup (1)
+) roll
+left join (
+    select distinct 'g' || cast(g.gid as varchar) as label, g.gid as g
+    {union_sql}
+) leaf on roll.label = leaf.label
+order by roll.label asc nulls last, leaf.g asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_label_over_union_joined_rowsets",
+            (
+                "ROLLUP over a derived label off two union-joined rowsets while "
+                "the backing key stays a leaf dimension (the q05 shape)."
+            ),
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "rowset",
+                "union",
+                "join",
+                "extra_dim",
+                "derived",
+            ),
+            union_label_body,
+            union_label_oracle,
+        )
+    )
+
+    two_key_rowsets = """
+rowset sale_side <- where left_key is not null
+select left_key as k, left_id as e, sum(left_value) as sv;
+rowset return_side <- where union_key is not null
+select union_key as k, union_id as e, sum(union_value) as rv;
+"""
+    two_key_sql = """
+from (select k, id as e, value from left_facts where k is not null) l
+full join (select k, id as e, value from union_facts where k is not null) u
+    on l.k is not distinct from u.k and l.e is not distinct from u.e
+"""
+    two_key_body = two_key_rowsets + """
+select
+    coalesce(sale_side.k, return_side.k) as k,
+    coalesce(sale_side.e, return_side.e) as e,
+    sum(coalesce(sale_side.sv, 0)) as sv,
+    sum(coalesce(return_side.rv, 0)) as rv
+union join sale_side.k = return_side.k
+union join sale_side.e = return_side.e
+by rollup (k)
+order by k asc nulls last, e asc nulls last;
+"""
+    two_key_oracle = f"""
+select roll.k, leaf.e, roll.sv, roll.rv
+from (
+    select
+        coalesce(l.k, u.k) as k,
+        sum(coalesce(l.value, 0)) as sv,
+        sum(coalesce(u.value, 0)) as rv
+    {two_key_sql}
+    group by rollup (1)
+) roll
+left join (
+    select distinct coalesce(l.k, u.k) as k, coalesce(l.e, u.e) as e
+    {two_key_sql}
+) leaf on roll.k = leaf.k
+order by roll.k asc nulls last, leaf.e asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_one_of_two_union_join_keys",
+            (
+                "Two rowsets union-joined on two keys, ROLLUP over one of them "
+                "while the other stays a leaf dimension."
+            ),
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "rowset",
+                "union",
+                "join",
+                "composite",
+                "extra_dim",
+            ),
+            two_key_body,
+            two_key_oracle,
+        )
+    )
+
+    indicator_body = """
+select group_id, active, grouping(group_id) as level, sum(event_amount) as total
+by rollup (group_id)
+order by group_id asc nulls last, active asc nulls last;
+"""
+    indicator_oracle = """
+select roll.k, leaf.x, roll.level, roll.total
+from (
+    select gid as k, grouping(gid) as level, sum(amount) as total
+    from events group by rollup (gid)
+) roll
+left join (select distinct gid as k, active as x from events) leaf
+    on roll.k = leaf.k
+order by roll.k asc nulls last, leaf.x asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_extra_dim_with_indicator",
+            "A grouping() indicator rides the same pass as an outside leaf dim.",
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "extra_dim",
+                "indicator",
+            ),
+            indicator_body,
+            indicator_oracle,
+        )
+    )
+
+    having_body = """
+select group_id, active, sum(event_amount) as total
+by rollup (group_id)
+having sum(event_amount) > 5
+order by group_id asc nulls last, active asc nulls last;
+"""
+    having_oracle = """
+select roll.k, leaf.x, roll.total
+from (
+    select gid as k, sum(amount) as total
+    from events group by rollup (gid) having sum(amount) > 5
+) roll
+left join (select distinct gid as k, active as x from events) leaf
+    on roll.k = leaf.k
+order by roll.k asc nulls last, leaf.x asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_extra_dim_having",
+            "HAVING filters every grouping level before the leaf dim joins back.",
+            (
+                "grouping",
+                "rollup",
+                "aggregate",
+                "placement",
+                "extra_dim",
+                "having",
+            ),
+            having_body,
+            having_oracle,
+        )
+    )
+
+    subset_body = """
+rowset left_rows <-
+select left_id as row_id, left_key as k, left_value as v;
+rowset kept <- where subset_value >= 20
+select subset_key as k;
+
+select left_rows.k, sum(left_rows.v) as total
+subset join left_rows.k = kept.k
+where kept.k is not null
+by rollup (left_rows.k)
+order by left_rows.k asc nulls last;
+"""
+    subset_oracle = """
+select l.k, sum(l.value)
+from left_facts l
+where l.k in (select distinct k from subset_facts where value >= 20 and k is not null)
+group by rollup (l.k)
+order by l.k asc nulls last
+"""
+    cases.append(
+        _case(
+            seed,
+            "grouping_placement",
+            "rollup_over_subset_join",
+            "ROLLUP over rows restricted by a declared subset join.",
+            ("grouping", "rollup", "aggregate", "placement", "join", "subset"),
+            subset_body,
+            subset_oracle,
+        )
+    )
+
+    return cases
+
+
 def _join_cases(seed: SeedData) -> list[FuzzCase]:
     cases = []
     joins = (
@@ -1809,43 +2238,44 @@ select
             ("derived", "concat", "composite"),
         ),
     )
+    # `union` is the only coalescing query-scoped join (`full join a = b` is
+    # rejected at hydration in favour of it — docs/subset_union_join_design.md).
     cases = []
-    for join_type in ("union", "full"):
-        for name, trilogy_keys, sql_keys, variant_tags in key_variants:
-            body = f"""
+    for name, trilogy_keys, sql_keys, variant_tags in key_variants:
+        body = f"""
 {rowsets}
 
 {presence_projection}
-{join_type} join {trilogy_keys};
+union join {trilogy_keys};
 """
-            oracle = f"""
+        oracle = f"""
 {sql_presence_projection}
 {sql_rowsets}
 {sql_keys}
 """
-            cases.append(
-                _case(
-                    seed,
-                    "coalescing_presence",
-                    f"{join_type}_{name}",
-                    (
-                        "Presence aggregates retain each side's NULL marker "
-                        f"across a {join_type} join on {name.replace('_', ' ')} keys."
-                    ),
-                    (
-                        "join",
-                        join_type,
-                        "rowset",
-                        "independent_sources",
-                        "presence",
-                        "nullable",
-                        "aggregate",
-                        *variant_tags,
-                    ),
-                    body,
-                    oracle,
-                )
+        cases.append(
+            _case(
+                seed,
+                "coalescing_presence",
+                f"union_{name}",
+                (
+                    "Presence aggregates retain each side's NULL marker "
+                    f"across a union join on {name.replace('_', ' ')} keys."
+                ),
+                (
+                    "join",
+                    "union",
+                    "rowset",
+                    "independent_sources",
+                    "presence",
+                    "nullable",
+                    "aggregate",
+                    *variant_tags,
+                ),
+                body,
+                oracle,
             )
+        )
     return cases
 
 
@@ -2459,6 +2889,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _union_cases,
         _membership_cases,
         _grouping_cases,
+        _grouping_placement_cases,
         _join_cases,
         _multiway_join_cases,
         _composite_join_cases,

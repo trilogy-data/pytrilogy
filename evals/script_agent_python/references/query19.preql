@@ -1,0 +1,17 @@
+key id int;
+property id.name string;
+property id.email string;
+
+datasource generated_data(
+    id: id,
+    name: name,
+    email: email
+)
+grain (id)
+file `./query19.py`;
+
+select
+    id,
+    name,
+    email;
+

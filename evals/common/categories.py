@@ -21,6 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from trilogy.scripts.project_config import MODEL_ROOT_DIR
+
 from . import agent_runner, prompts, schema_md
 from .spec import BenchmarkSpec
 
@@ -42,12 +44,20 @@ class Category:
             entry = {**entry, "prompt": f"{spec.docs_preamble}\n\n{entry['prompt']}"}
         if self.harness == "sql":
             return prompts.build_single_query_task_sql(spec, entry)
-        return prompts.build_single_query_task(spec, entry)
+        model_dir = "raw" if self.key == "enriched" else MODEL_ROOT_DIR
+        return prompts.build_single_query_task(spec, entry, model_dir=model_dir)
 
 
 def _setup_ingest(
     workspace: Path, spec: BenchmarkSpec, *, db_path, enriched_dir
 ) -> dict:
+    if spec.skip_model_setup:
+        return {
+            "exit_code": 0,
+            "duration": 0.0,
+            "stdout": "empty project: no source model setup required.\n",
+            "stderr": "",
+        }
     return agent_runner.run_pre_ingest(workspace)
 
 

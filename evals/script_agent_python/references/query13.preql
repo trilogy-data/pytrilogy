@@ -1,0 +1,17 @@
+key items string;
+property items.weight int;
+property items.value int;
+
+datasource generated_data(
+    items: items,
+    weight: weight,
+    value: value
+)
+grain (items)
+file `./query13.py`;
+
+select
+    items,
+    weight,
+    value;
+

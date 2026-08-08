@@ -234,13 +234,30 @@ def nonstandard_grouping_spec(lineage: Any) -> GroupingSpec | None:
     they must co-source in that pass rather than be joined back on the dims."""
     if not isinstance(lineage, BuildAggregateWrapper):
         return None
-    if lineage.grouping == AggregateGroupingMode.STANDARD:
+    if not lineage.grouping.nulls_grouping_keys:
         return None
     return (
         lineage.grouping,
         tuple(c.address for c in lineage.by),
         tuple(tuple(c.address for c in gs) for gs in lineage.grouping_sets),
     )
+
+
+def nonstandard_grouping_lineage(concept: Any) -> BuildAggregateWrapper | None:
+    """The concept's aggregate lineage when that aggregate emits ROLLUP/CUBE/
+    GROUPING SETS rows, else None. The concept-level companion to
+    `nonstandard_grouping_spec`.
+
+    Returns the wrapper rather than a bool so callers that go on to read `by`
+    or `grouping_sets` keep the narrowed type — the reason this predicate kept
+    being open-coded at each site instead of shared."""
+    lineage = concept.lineage
+    if (
+        isinstance(lineage, BuildAggregateWrapper)
+        and lineage.grouping.nulls_grouping_keys
+    ):
+        return lineage
+    return None
 
 
 def _trace_grouping_passes(
@@ -2939,8 +2956,11 @@ class Factory:
         self,
         base: (
             # int is NOT redundant with float here: singledispatch reads this
-            # union at runtime to register the int handler (bool via subclass)
-            int
+            # union at runtime to register the int handler (bool via subclass).
+            # PYI041's `int | float -> float` fix is a type-checker-only
+            # equivalence; applying it drops `int` from the registry and every
+            # int/bool literal raises `Cannot build <class 'int'>`.
+            int  # noqa: PYI041
             | str
             | float
             | Decimal

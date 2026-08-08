@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
-from trilogy.core.enums import AggregateGroupingMode, Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -10,13 +10,13 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     BoolExpr,
-    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
+    nonstandard_grouping_lineage,
     union_unhealed_partial_addresses,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -278,9 +278,7 @@ def create_datasource_node(
             x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
         )
     if any(
-        c.is_aggregate
-        and isinstance(c.lineage, BuildAggregateWrapper)
-        and c.lineage.grouping != AggregateGroupingMode.STANDARD
+        c.is_aggregate and nonstandard_grouping_lineage(c) is not None
         for c in all_concepts
     ):
         force_group = True

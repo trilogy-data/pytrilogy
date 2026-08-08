@@ -2,7 +2,6 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from trilogy.core.enums import (
-    AggregateGroupingMode,
     Derivation,
     SourceType,
 )
@@ -12,6 +11,7 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
     BuildRowsetItem,
     BuildWindowItem,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -222,12 +222,9 @@ def lineage_contains_aggregate(concept: BuildConcept, seen: set[str]) -> bool:
 
 
 def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
-    lineage = concept.lineage
-    if isinstance(lineage, BuildAggregateWrapper):
-        return lineage.grouping != AggregateGroupingMode.STANDARD
-    if isinstance(lineage, BuildRowsetItem):
-        return has_nonstandard_aggregate_grouping(lineage.content)
-    return False
+    if isinstance(concept.lineage, BuildRowsetItem):
+        return has_nonstandard_aggregate_grouping(concept.lineage.content)
+    return nonstandard_grouping_lineage(concept) is not None
 
 
 def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:

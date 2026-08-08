@@ -1,0 +1,14 @@
+key prime int;
+property prime.ordinal int;
+
+datasource generated_data(
+    prime: prime,
+    ordinal: ordinal
+)
+grain (prime)
+file `./query02.py`;
+
+select
+    prime,
+    ordinal;
+

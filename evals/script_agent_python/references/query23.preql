@@ -1,0 +1,17 @@
+key species string;
+property species.row_count int;
+property species.average_sepal_length float;
+
+datasource generated_data(
+    species: species,
+    row_count: row_count,
+    average_sepal_length: average_sepal_length
+)
+grain (species)
+file `./query23.py`;
+
+select
+    species,
+    row_count,
+    average_sepal_length;
+

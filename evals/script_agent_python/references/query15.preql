@@ -1,0 +1,17 @@
+key samples int;
+property samples.inside_circle int;
+property samples.pi_estimate float;
+
+datasource generated_data(
+    samples: samples,
+    inside_circle: inside_circle,
+    pi_estimate: pi_estimate
+)
+grain (samples)
+file `./query15.py`;
+
+select
+    samples,
+    inside_circle,
+    pi_estimate;
+
