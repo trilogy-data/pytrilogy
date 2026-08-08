@@ -1,17 +1,15 @@
 import os
 import platform
-import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
 
 import tomli_w
 import tomllib
 from pytest import raises
 
+from tests.modeling._benchmark_timing import benchmark_query
 from tests.modeling._row_compare import rows_match
 from tests.modeling.tpc_h.query_size import query_size
-from trilogy import Executor, parse
+from trilogy import Dialects, Executor, parse
 from trilogy.constants import CONFIG
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
@@ -28,14 +26,6 @@ working_path = Path(__file__).parent
 
 REPEAT_TIME_CUTOFF = 0.15
 REPEAT_COUNT = 3
-
-T = TypeVar("T")
-
-
-def _time(fn: Callable[[], T]) -> tuple[float, T]:
-    start = time.perf_counter()
-    value = fn()
-    return time.perf_counter() - start, value
 
 
 def _load_toml_mapping(path: Path) -> dict[str, object]:
@@ -63,6 +53,7 @@ def run_query(
     sql_override: bool = False,
     preql_file: str | None = None,
     label: str | None = None,
+    sql_file: str | None = None,
 ):
     engine.environment = Environment(working_path=working_path)
     filename = preql_file or f"query{idx:02d}.preql"
@@ -71,28 +62,29 @@ def run_query(
         text = f.read()
     preql_size = query_size(text, "preql")
 
-    if sql_override:
-        rquery = (working_path / f"query{idx:02d}.sql").read_text()
+    if sql_file or sql_override:
+        rquery = (working_path / (sql_file or f"query{idx:02d}.sql")).read_text()
     else:
         rquery = f"PRAGMA tpch({idx});"
-
-    def _exec_trilogy() -> list:
-        return list(engine.execute_raw_sql(query).fetchall())
 
     def _exec_reference() -> list:
         return list(engine.execute_raw_sql(rquery).fetchall())
 
-    parse_time, query = _time(lambda: engine.generate_sql(text)[-1])
-    exec_time, comp_results = _time(_exec_trilogy)
-    comp_time, base_results = _time(_exec_reference)
+    benchmark = benchmark_query(
+        generate=lambda: engine.generate_sql(text)[-1],
+        execute_candidate=lambda query: list(engine.execute_raw_sql(query).fetchall()),
+        execute_reference=_exec_reference,
+        repeat_time_cutoff=REPEAT_TIME_CUTOFF,
+        repeat_count=REPEAT_COUNT,
+    )
+    parse_time = benchmark.parse_time
+    query = benchmark.query
+    exec_time = benchmark.candidate_time
+    comp_results = benchmark.candidate_result
+    comp_time = benchmark.reference_time
+    base_results = benchmark.reference_result
 
-    if min(exec_time, comp_time) < REPEAT_TIME_CUTOFF:
-        for _ in range(REPEAT_COUNT):
-            parse_time = min(parse_time, _time(lambda: engine.generate_sql(text))[0])
-            exec_time = min(exec_time, _time(_exec_trilogy)[0])
-            comp_time = min(comp_time, _time(_exec_reference)[0])
-
-    sql_path = working_path / f"query{idx:02d}.sql"
+    sql_path = working_path / (sql_file or f"query{idx:02d}.sql")
     comp_source = sql_path.read_text() if sql_path.exists() else rquery
     comp_size = query_size(comp_source, "sql")
 
@@ -205,19 +197,61 @@ def test_one(engine):
 
 
 def test_two(engine):
-    run_query(engine, 2, sql_override=True)
+    query = run_query(engine, 2, sql_override=True)
+    assert ' as "supplier_nation_region_name"' not in query
+    assert ' as "supplier_nation_region_id"' not in query
+    assert ' as "supplier_nation_id"' not in query
+
+
+def test_two_region_predicate(engine):
+    # Same shape as q02, but the aggregate comparison is a tolerance rather than
+    # equality, so the `region = 'EUROPE'` predicate admits/excludes many rows
+    # instead of being masked by the min. Spec q02 cannot catch a dropped region
+    # filter: it needs a non-European supplier whose cost ties the European
+    # minimum, which dbgen produces at neither sf=0.1 nor sf=1.
+    run_query(
+        engine,
+        2,
+        preql_file="query02-region.preql",
+        sql_file="query02-region.sql",
+        label="02.region",
+    )
 
 
 def test_three(engine):
-    run_query(engine, 3)
+    query = run_query(engine, 3)
+    assert query.count("SELECT") == 2, query
+    assert "OUTER JOIN" not in query
 
 
 def test_four(engine):
-    run_query(engine, 4)
+    query = run_query(engine, 4)
+    assert query.count("SELECT") == 2, query
 
 
 def test_five(engine):
     run_query(engine, 5)
+
+
+def test_five_fuses_identity_group_into_aggregate():
+    text = (working_path / "query05.preql").read_text()
+    prior = CONFIG.use_v4_discovery
+    try:
+        sql: dict[bool, str] = {}
+        for use_v4 in (False, True):
+            CONFIG.use_v4_discovery = use_v4
+            environment = Environment(working_path=working_path)
+            executor = Dialects.DUCK_DB.default_executor(environment=environment)
+            sql[use_v4] = executor.generate_sql(text)[-1]
+    finally:
+        CONFIG.use_v4_discovery = prior
+
+    assert sql[True] == sql[False]
+    assert sql[True].count("SELECT") == 1
+    assert sql[True].count("GROUP BY") == 1
+    assert 'sum("lineitem"."l_extendedprice" *' in sql[True]
+    assert ' as "discount"' not in sql[True]
+    assert ' as "extended_price"' not in sql[True]
 
 
 def test_six(engine):
@@ -237,11 +271,15 @@ def test_nine(engine):
 
 
 def test_ten(engine):
-    run_query(engine, 10)
+    query = run_query(engine, 10)
+    assert "OUTER JOIN" not in query
 
 
 def test_eleven(engine):
-    run_query(engine, 11, sql_override=True)
+    query = run_query(engine, 11, sql_override=True)
+    assert "CASE WHEN" not in query
+    assert query.count('"memory"."partsupp"') == 1
+    assert query.count("GROUP BY") == 1
 
 
 def test_twelve(engine):
@@ -249,7 +287,9 @@ def test_twelve(engine):
 
 
 def test_thirteen(engine):
-    run_query(engine, 13)
+    query = run_query(engine, 13)
+    assert query.lower().count("not like") == 1
+    assert "count(CASE" not in query
 
 
 def test_fourteen(engine):
@@ -257,7 +297,10 @@ def test_fourteen(engine):
 
 
 def test_fifteen(engine):
-    run_query(engine, 15, sql_override=True)
+    query = run_query(engine, 15, sql_override=True)
+    assert "sum(CASE" not in query
+    assert query.count('INNER JOIN "cheerful"') == 1
+    assert query.count("GROUP BY") == 1
 
 
 def test_sixteen(engine):
@@ -265,7 +308,9 @@ def test_sixteen(engine):
 
 
 def test_seventeen(engine):
-    run_query(engine, 17)
+    query = run_query(engine, 17)
+    assert query.count('"memory"."part"') == 1
+    assert query.count('"memory"."lineitem"') == 1
 
 
 def test_eighteen(engine):
@@ -277,7 +322,8 @@ def test_nineteen(engine):
 
 
 def test_twenty(engine):
-    run_query(engine, 20)
+    query = run_query(engine, 20)
+    assert "sum(CASE" not in query
 
 
 def test_twenty_one(engine):
@@ -285,4 +331,15 @@ def test_twenty_one(engine):
 
 
 def test_twenty_two(engine):
-    run_query(engine, 22)
+    query = run_query(engine, 22)
+    # Shape is already minimal: 2 CTEs, 3 SELECTs, one GROUP BY. The residual
+    # size is duplicated predicate text, not extra scans -- the outer WHERE
+    # repeats the filters `thoughtful` already applied and recomputes
+    # SUBSTRING(phone,1,2) rather than reusing the projected cntrycode, and
+    # every membership atom carries a redundant `IS NOT NULL` beside an IN over
+    # non-null literals. Measured 1755 here (v3 is 1773, main 1791); the 1600
+    # this once asserted has never been met by any planner. Guard the shape and
+    # keep ~45 chars of headroom so a real regression still trips it.
+    assert len(query) < 1800, query
+    assert query.count("GROUP BY") == 1, query
+    assert query.count("SELECT") == 3, query

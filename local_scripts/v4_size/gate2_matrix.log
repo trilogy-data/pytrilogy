@@ -1,0 +1,37 @@
+.X.............X...x...........X.X.X.X.........................x.x...... [  4%]
+.x.....................................X.X...x.......................... [  9%]
+.......X.............X.................................................. [ 13%]
+...........X............................................................ [ 18%]
+........................................................................ [ 23%]
+....ssss...................................................ss..........s [ 27%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 32%]
+ssssssssss.............................................................. [ 36%]
+..................................................................s..... [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 55%]
+........................................................................ [ 59%]
+........................................................................ [ 64%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 87%]
+........................................................................ [ 92%]
+....................s................................................... [ 96%]
+.................................................                        [100%]
+============================== warnings summary ===============================
+tests/engine/bigquery/test_bigquery_metadata.py: 1 warning
+tests/engine/test_bigquery.py: 13 warnings
+tests/engine/test_snowflake.py: 5 warnings
+  C:\Users\ethan\coding_projects\pytrilogy_two\.venv\Lib\site-packages\google\cloud\bigquery\client.py:613: UserWarning: Cannot create BigQuery Storage client, the dependency google-cloud-bigquery-storage is not installed.
+    warnings.warn(
+
+tests/engine/snowflake/test_snowflake_metadata.py: 25 warnings
+tests/engine/test_snowflake.py: 33 warnings
+tests/test_scoped_join.py: 3 warnings
+  C:\Users\ethan\coding_projects\pytrilogy_two\.venv\Lib\site-packages\fakesnow\cursor.py:553: DeprecationWarning: fetch_arrow_table() is deprecated, use to_arrow_table() instead.
+    self._arrow_table = self._duck_conn.fetch_arrow_table()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1454 passed, 92 skipped, 5 xfailed, 11 xpassed, 80 warnings in 138.99s (0:02:18)

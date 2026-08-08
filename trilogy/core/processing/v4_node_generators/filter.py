@@ -105,15 +105,28 @@ def gen_filter(
         if not _has_concept_existence(where) and is_scalar_condition(cond):
             intrinsic_atoms = [cond]
 
-    # Aggregate predicate (`filter X where count(...) by X > 1`): can't push as a
-    # row WHERE, but when the parent already groups to the content's grain and
-    # exposes the aggregate as a column, the predicate is a post-group HAVING.
-    # Push it referencing the precomputed column instead of rendering a
-    # `CASE WHEN agg THEN X ELSE NULL` projection, which leaks non-matching
-    # groups as NULL rows. Gated: single predicate, no existence/semijoin arg,
-    # every referenced concept already a parent output (so we never re-aggregate),
-    # every aggregate grouped at the content grain (a true HAVING), and the
-    # non-filter siblings all at that group grain.
+    # Aggregate predicate (`filter X where count(...) by ... > 1`): can't push as
+    # a re-derived row WHERE, but when the parent already exposes the aggregate as
+    # a precomputed column the predicate is a row filter over the joined stream.
+    # Push it referencing that column instead of rendering a
+    # `CASE WHEN agg THEN X ELSE NULL` projection, which leaks non-matching rows as
+    # NULL groups. The aggregate need not be at the content's own grain — it may be
+    # a coarser value bridged in through a fact (`product_name ? count(order) by
+    # customer > 1` filters product rows by their customers' counts); applying the
+    # predicate as a WHERE before the output dedup is still a correct row filter.
+    # Gated: single predicate, no existence/semijoin arg, every referenced concept
+    # already a parent output (so we never re-aggregate), and the predicate is
+    # constant across the rows of every non-filter sibling — i.e. the grain the
+    # predicate varies over (`pred_grain`, the union of its row args' grains) is a
+    # subset of each sibling's grain. When it is, WHERE and the preserving CASE
+    # agree, so pushing to WHERE just drops non-matching rows the dedup would drop
+    # anyway (`customer ? count(order) by customer > 1`: pred at customer grain,
+    # sibling customer). When the predicate reaches a FINER grain than a sibling
+    # (`customer ? count > 1 and product_name = 'Mouse', customer`: pred spans
+    # customer×product, sibling customer) a single customer can have both matching
+    # and non-matching product rows — WHERE would drop the customer entirely, so we
+    # must leave a preserving CASE. A sole filter output (no siblings) always
+    # pushes.
     if not intrinsic_atoms and intrinsic_filter_pushdown and len(distinct) == 1:
         where = next(iter(distinct.values()))
         cond = where.conditional
@@ -121,14 +134,19 @@ def gen_filter(
         agg_args = [
             r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE
         ]
+        pred_grain: set[str] = set()
+        for r in where.row_arguments:
+            if r.grain:
+                pred_grain |= set(r.grain.components)
+        siblings_constant = all(
+            (sib.grain is not None) and pred_grain <= set(sib.grain.components)
+            for sib in (environment.concepts[a] for a in non_filter_addrs)
+        )
         if (
             not _has_concept_existence(where)
             and agg_args
             and all(r.address in parent_outputs for r in where.row_arguments)
-            and all(
-                a.grain and set(a.grain.components) == content_grain for a in agg_args
-            )
-            and non_filter_addrs <= (content_grain | content_args)
+            and siblings_constant
         ):
             intrinsic_atoms = [cond]
 

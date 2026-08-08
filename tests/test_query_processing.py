@@ -1,3 +1,4 @@
+from trilogy.constants import CONFIG
 from trilogy.core.enums import (
     SourceType,
 )
@@ -167,8 +168,13 @@ def test_query_aggregation(test_environment, test_environment_graph):
         "revenue_at_local_order_id_grouped_by__at_abstract"
     }
     check = datasource
-    assert len(check.input_concepts) == 2
-    assert check.input_concepts[0].name == "revenue"
+    # v4 projects only the aggregate's argument; v3 also carried the (unused)
+    # order_id grain key. Rendered SQL is identical under both planners.
+    input_names = {c.name for c in check.input_concepts}
+    if CONFIG.use_v4_discovery:
+        assert input_names == {"revenue"}
+    else:
+        assert input_names == {"revenue", "order_id"}
     assert len(check.output_concepts) == 1
     assert check.output_concepts[0].name == "total_revenue"
 

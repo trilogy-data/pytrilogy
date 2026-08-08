@@ -1,0 +1,117 @@
+
+WITH 
+juicy as (
+SELECT
+    "cs_return_customer_current_address_customer_address"."CA_CITY" as "cs_return_customer_current_address_city",
+    "cs_return_customer_current_address_customer_address"."CA_COUNTRY" as "cs_return_customer_current_address_country",
+    "cs_return_customer_current_address_customer_address"."CA_COUNTY" as "cs_return_customer_current_address_county",
+    "cs_return_customer_current_address_customer_address"."CA_GMT_OFFSET" as "cs_return_customer_current_address_gmt_offset",
+    "cs_return_customer_current_address_customer_address"."CA_LOCATION_TYPE" as "cs_return_customer_current_address_location_type",
+    "cs_return_customer_current_address_customer_address"."CA_STATE" as "cs_return_customer_current_address_state",
+    "cs_return_customer_current_address_customer_address"."CA_STREET_NAME" as "cs_return_customer_current_address_street_name",
+    "cs_return_customer_current_address_customer_address"."CA_STREET_NUMBER" as "cs_return_customer_current_address_street_number",
+    "cs_return_customer_current_address_customer_address"."CA_STREET_TYPE" as "cs_return_customer_current_address_street_type",
+    "cs_return_customer_current_address_customer_address"."CA_SUITE_NUMBER" as "cs_return_customer_current_address_suite_number",
+    "cs_return_customer_current_address_customer_address"."CA_ZIP" as "cs_return_customer_current_address_zip",
+    "cs_return_customer_customers"."C_CUSTOMER_ID" as "cs_return_customer_id",
+    "cs_return_customer_customers"."C_CUSTOMER_SK" as "cs_return_customer_sk",
+    "cs_return_customer_customers"."C_FIRST_NAME" as "cs_return_customer_first_name",
+    "cs_return_customer_customers"."C_LAST_NAME" as "cs_return_customer_last_name",
+    "cs_return_customer_customers"."C_SALUTATION" as "cs_return_customer_salutation"
+FROM
+    "memory"."customer" as "cs_return_customer_customers"
+    INNER JOIN "memory"."customer_address" as "cs_return_customer_current_address_customer_address" on "cs_return_customer_customers"."C_CURRENT_ADDR_SK" = "cs_return_customer_current_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cs_return_customer_current_address_customer_address"."CA_STATE" = 'GA'
+),
+thoughtful as (
+SELECT
+    "cs_catalog_returns"."CR_RETURNING_CUSTOMER_SK" as "cs_return_customer_sk",
+    "cs_return_address_customer_address"."CA_STATE" as "cs_return_address_state",
+    sum(CASE WHEN "cs_return_date_date"."D_YEAR" = 2000 and "cs_return_address_customer_address"."CA_STATE" is not null THEN "cs_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "_virt_agg_sum_2893965424206230_wscope",
+    sum(CASE WHEN "cs_return_date_date"."D_YEAR" = 2000 and "cs_return_address_customer_address"."CA_STATE" is not null THEN "cs_catalog_returns"."CR_RETURN_AMT_INC_TAX" ELSE NULL END) as "customer_state"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    LEFT OUTER JOIN "memory"."catalog_returns" as "cs_catalog_returns" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_catalog_returns"."CR_ITEM_SK" AND "cs_catalog_sales"."CS_ORDER_NUMBER" = "cs_catalog_returns"."CR_ORDER_NUMBER"
+    FULL JOIN "memory"."date_dim" as "cs_return_date_date" on "cs_catalog_returns"."CR_RETURNED_DATE_SK" = "cs_return_date_date"."D_DATE_SK"
+    RIGHT OUTER JOIN "memory"."customer_address" as "cs_return_address_customer_address" on "cs_catalog_returns"."CR_RETURNING_ADDR_SK" = "cs_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "cs_return_address_customer_address"."CA_STATE" is not null
+
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    "juicy"."cs_return_customer_current_address_city" as "cs_return_customer_current_address_city",
+    "juicy"."cs_return_customer_current_address_country" as "cs_return_customer_current_address_country",
+    "juicy"."cs_return_customer_current_address_county" as "cs_return_customer_current_address_county",
+    "juicy"."cs_return_customer_current_address_gmt_offset" as "cs_return_customer_current_address_gmt_offset",
+    "juicy"."cs_return_customer_current_address_location_type" as "cs_return_customer_current_address_location_type",
+    "juicy"."cs_return_customer_current_address_state" as "cs_return_customer_current_address_state",
+    "juicy"."cs_return_customer_current_address_street_name" as "cs_return_customer_current_address_street_name",
+    "juicy"."cs_return_customer_current_address_street_number" as "cs_return_customer_current_address_street_number",
+    "juicy"."cs_return_customer_current_address_street_type" as "cs_return_customer_current_address_street_type",
+    "juicy"."cs_return_customer_current_address_suite_number" as "cs_return_customer_current_address_suite_number",
+    "juicy"."cs_return_customer_current_address_zip" as "cs_return_customer_current_address_zip",
+    "juicy"."cs_return_customer_first_name" as "cs_return_customer_first_name",
+    "juicy"."cs_return_customer_id" as "cs_return_customer_id",
+    "juicy"."cs_return_customer_last_name" as "cs_return_customer_last_name",
+    "juicy"."cs_return_customer_salutation" as "cs_return_customer_salutation",
+    "thoughtful"."cs_return_address_state" as "cs_return_address_state",
+    "thoughtful"."customer_state" as "customer_state"
+FROM
+    "thoughtful"
+    INNER JOIN "juicy" on "thoughtful"."cs_return_customer_sk" = "juicy"."cs_return_customer_sk"
+WHERE
+    "juicy"."cs_return_customer_current_address_state" = 'GA'
+),
+abundant as (
+SELECT
+    "thoughtful"."cs_return_address_state" as "cs_return_address_state",
+    avg("thoughtful"."_virt_agg_sum_2893965424206230_wscope") as "_virt_agg_avg_4753711405653170_wscope"
+FROM
+    "thoughtful"
+GROUP BY
+    1)
+SELECT
+    "vacuous"."cs_return_customer_id" as "cs_return_customer_id",
+    "vacuous"."cs_return_customer_salutation" as "cs_return_customer_salutation",
+    "vacuous"."cs_return_customer_first_name" as "cs_return_customer_first_name",
+    "vacuous"."cs_return_customer_last_name" as "cs_return_customer_last_name",
+    "vacuous"."cs_return_customer_current_address_street_number" as "cs_return_customer_current_address_street_number",
+    "vacuous"."cs_return_customer_current_address_street_name" as "cs_return_customer_current_address_street_name",
+    "vacuous"."cs_return_customer_current_address_street_type" as "cs_return_customer_current_address_street_type",
+    "vacuous"."cs_return_customer_current_address_suite_number" as "cs_return_customer_current_address_suite_number",
+    "vacuous"."cs_return_customer_current_address_city" as "cs_return_customer_current_address_city",
+    "vacuous"."cs_return_customer_current_address_county" as "cs_return_customer_current_address_county",
+    "vacuous"."cs_return_customer_current_address_state" as "cs_return_customer_current_address_state",
+    "vacuous"."cs_return_customer_current_address_zip" as "cs_return_customer_current_address_zip",
+    "vacuous"."cs_return_customer_current_address_country" as "cs_return_customer_current_address_country",
+    "vacuous"."cs_return_customer_current_address_gmt_offset" as "cs_return_customer_current_address_gmt_offset",
+    "vacuous"."cs_return_customer_current_address_location_type" as "cs_return_customer_current_address_location_type",
+    "vacuous"."customer_state" as "customer_state"
+FROM
+    "vacuous"
+    INNER JOIN "abundant" on "vacuous"."cs_return_address_state" is not distinct from "abundant"."cs_return_address_state"
+WHERE
+    "vacuous"."customer_state" > 1.2 * "abundant"."_virt_agg_avg_4753711405653170_wscope"
+
+ORDER BY 
+    "vacuous"."cs_return_customer_id" asc nulls first,
+    "vacuous"."cs_return_customer_salutation" asc nulls first,
+    "vacuous"."cs_return_customer_first_name" asc nulls first,
+    "vacuous"."cs_return_customer_last_name" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_street_number" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_street_name" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_street_type" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_suite_number" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_city" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_county" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_state" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_zip" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_country" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_gmt_offset" asc nulls first,
+    "vacuous"."cs_return_customer_current_address_location_type" asc nulls first,
+    "vacuous"."customer_state" asc nulls first
+LIMIT (100)

@@ -1,68 +1,11 @@
 query_id = "80"
-generator = "v3"
-gen_length = 6844
+generator = "v4"
+gen_length = 7797
 preql_size = 1137
 comp_size = 3674
 generated_sql = """
 
 WITH 
-cheerful as (
-SELECT
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
-    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" as \"sales_channel_dim_text_id\"
-FROM
-    \"memory\".\"catalog_page\" as \"sales_catalog_dim_unified\"
-WHERE
-    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" is not null
-
-UNION ALL
-SELECT
-     'STORE'  as \"sales_channel\",
-    \"sales_store_dim_unified\".\"S_STORE_SK\" as \"sales_channel_dim_id\",
-    \"sales_store_dim_unified\".\"S_STORE_ID\" as \"sales_channel_dim_text_id\"
-FROM
-    \"memory\".\"store\" as \"sales_store_dim_unified\"
-WHERE
-    \"sales_store_dim_unified\".\"S_STORE_ID\" is not null
-
-UNION ALL
-SELECT
-     'WEB'  as \"sales_channel\",
-    \"sales_web_dim_unified\".\"web_site_sk\" as \"sales_channel_dim_id\",
-    \"sales_web_dim_unified\".\"web_site_id\" as \"sales_channel_dim_text_id\"
-FROM
-    \"memory\".\"web_site\" as \"sales_web_dim_unified\"
-WHERE
-    \"sales_web_dim_unified\".\"web_site_id\" is not null
-),
-abundant as (
-SELECT
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
-    \"sales_catalog_returns_unified\".\"CR_NET_LOSS\" as \"sales_return_net_loss\"
-FROM
-    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
-UNION ALL
-SELECT
-     'STORE'  as \"sales_channel\",
-    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
-    \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
-    \"sales_store_returns_unified\".\"SR_NET_LOSS\" as \"sales_return_net_loss\"
-FROM
-    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
-UNION ALL
-SELECT
-     'WEB'  as \"sales_channel\",
-    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
-    \"sales_web_returns_unified\".\"WR_RETURN_AMT\" as \"sales_return_amount\",
-    \"sales_web_returns_unified\".\"WR_NET_LOSS\" as \"sales_return_net_loss\"
-FROM
-    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
 vacuous as (
 SELECT
      'CATALOG'  as \"sales_channel\",
@@ -99,11 +42,74 @@ SELECT
     \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
+abundant as (
+SELECT
+     'CATALOG'  as \"sales_channel\",
+    \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_catalog_returns_unified\".\"CR_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_catalog_returns_unified\".\"CR_RETURN_AMOUNT\" as \"sales_return_amount\",
+    \"sales_catalog_returns_unified\".\"CR_NET_LOSS\" as \"sales_return_net_loss\"
+FROM
+    \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
+UNION ALL
+SELECT
+     'STORE'  as \"sales_channel\",
+    \"sales_store_returns_unified\".\"SR_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_returns_unified\".\"SR_TICKET_NUMBER\" as \"sales_order_id\",
+    \"sales_store_returns_unified\".\"SR_RETURN_AMT\" as \"sales_return_amount\",
+    \"sales_store_returns_unified\".\"SR_NET_LOSS\" as \"sales_return_net_loss\"
+FROM
+    \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
+UNION ALL
+SELECT
+     'WEB'  as \"sales_channel\",
+    \"sales_web_returns_unified\".\"WR_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_returns_unified\".\"WR_ORDER_NUMBER\" as \"sales_order_id\",
+    \"sales_web_returns_unified\".\"WR_RETURN_AMT\" as \"sales_return_amount\",
+    \"sales_web_returns_unified\".\"WR_NET_LOSS\" as \"sales_return_net_loss\"
+FROM
+    \"memory\".\"web_returns\" as \"sales_web_returns_unified\"),
+cheerful as (
+SELECT
+     'CATALOG'  as \"sales_channel\",
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_SK\" as \"sales_channel_dim_id\",
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" as \"sales_channel_dim_text_id\"
+FROM
+    \"memory\".\"catalog_page\" as \"sales_catalog_dim_unified\"
+WHERE
+    \"sales_catalog_dim_unified\".\"CP_CATALOG_PAGE_ID\" is not null
+
+UNION ALL
+SELECT
+     'STORE'  as \"sales_channel\",
+    \"sales_store_dim_unified\".\"S_STORE_SK\" as \"sales_channel_dim_id\",
+    \"sales_store_dim_unified\".\"S_STORE_ID\" as \"sales_channel_dim_text_id\"
+FROM
+    \"memory\".\"store\" as \"sales_store_dim_unified\"
+WHERE
+    \"sales_store_dim_unified\".\"S_STORE_ID\" is not null
+
+UNION ALL
+SELECT
+     'WEB'  as \"sales_channel\",
+    \"sales_web_dim_unified\".\"web_site_sk\" as \"sales_channel_dim_id\",
+    \"sales_web_dim_unified\".\"web_site_id\" as \"sales_channel_dim_text_id\"
+FROM
+    \"memory\".\"web_site\" as \"sales_web_dim_unified\"
+WHERE
+    \"sales_web_dim_unified\".\"web_site_id\" is not null
+),
 abhorrent as (
 SELECT
     \"abundant\".\"sales_return_amount\" as \"sales_return_amount\",
     \"vacuous\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"vacuous\".\"sales_net_profit\" - coalesce(\"abundant\".\"sales_return_net_loss\",0) as \"profit_minus_loss\",
+    CASE
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN 'store channel'
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN 'web channel'
+	ELSE null
+	END as \"channel\",
     CASE
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN 'store channel'
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN 'catalog channel'
@@ -115,7 +121,13 @@ SELECT
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
 	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
 	ELSE null
-	END as \"id_label\"
+	END as \"id_label\",
+    CASE
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'STORE' THEN ('store' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'CATALOG' THEN ('catalog_page' || \"cheerful\".\"sales_channel_dim_text_id\")
+	WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\",\"vacuous\".\"sales_channel\") = 'WEB' THEN ('web_site' || \"cheerful\".\"sales_channel_dim_text_id\")
+	ELSE null
+	END as \"sk\"
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"promotion\" as \"sales_promotion_promotion\" on \"vacuous\".\"sales_promotion_sk\" = \"sales_promotion_promotion\".\"P_PROMO_SK\"

@@ -439,7 +439,11 @@ def _self_referential_joins(sql: str) -> list[str]:
     """CTE names whose own join ON clause references the CTE itself — invalid
     SQL (a CTE can't alias itself in its own body)."""
     bad = []
-    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+    # stop the last CTE's body at the WITH-list boundary (`)\nSELECT` opens the
+    # main query) — else the final select's own joins are misread as the CTE's
+    for m in re.finditer(
+        r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\)\nSELECT\b|\Z)", sql, re.DOTALL
+    ):
         name, body = m.group(1), m.group(2)
         for jref in re.findall(
             r'JOIN\s+"?[\w".]+"?\s+(?:as\s+"\w+"\s+)?on "(\w+)"', body
@@ -453,7 +457,9 @@ def _out_of_scope_join_aliases(sql: str) -> list[tuple[str, str]]:
     """(cte, alias) pairs where a join ON references a table alias not introduced
     by that CTE's own FROM/JOIN — invalid SQL (alias bound in a sibling CTE)."""
     bad: list[tuple[str, str]] = []
-    for m in re.finditer(r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\Z)", sql, re.DOTALL):
+    for m in re.finditer(
+        r"(\w+) as \(\n(.*?)(?=\n\w+ as \(|\)\nSELECT\b|\Z)", sql, re.DOTALL
+    ):
         name, body = m.group(1), m.group(2)
         in_scope = set(re.findall(r'(?:FROM|JOIN)\s+"?[\w".]+"?\s+as\s+"(\w+)"', body))
         in_scope |= set(re.findall(r'(?:FROM|JOIN)\s+"(\w+)"(?!\."|\s+as)', body))
@@ -1151,3 +1157,59 @@ limit 10;
     # DuckDB BinderException (table "ss_item_items" not found) before the fix
     rows = engine.execute_text(query)[0].fetchall()
     assert len(rows) == 10
+
+
+def test_truncated_search_seed_fallback_returns_correct_rows(engine, monkeypatch):
+    """Graceful degradation, proven: force the cover walk to truncate so the
+    lazy top-down seed (`_seed_cover`) plans the query, then check the
+    degraded plan returns exactly the untruncated plan's rows. Guards the
+    fallback's whole value claim — a truncated budget must yield a CORRECT
+    (if non-cost-minimal) plan, not just any plan."""
+    from trilogy.core.processing.v4_helper import network_search as ns
+
+    query = """import store_sales as ss;
+select ss.item.category, count(ss.ticket_number) as tickets
+order by ss.item.category asc nulls first;"""
+    engine.environment = Environment(working_path=working_path)
+    baseline = engine.execute_raw_sql(engine.generate_sql(query)[-1]).fetchall()
+    assert baseline
+
+    seeds = []
+    orig_seed = ns._seed_cover
+
+    def counting_seed(network, targets):
+        seed = orig_seed(network, targets)
+        seeds.append(seed)
+        return seed
+
+    monkeypatch.setattr(ns, "_seed_cover", counting_seed)
+    monkeypatch.setattr(ns, "STATE_LIMIT", 1)
+    engine.environment = Environment(working_path=working_path)
+    degraded = engine.execute_raw_sql(engine.generate_sql(query)[-1]).fetchall()
+
+    assert any(seed is not None for seed in seeds), "seed fallback never planned"
+    assert degraded == baseline
+
+
+def test_not_null_on_aggregate_grain_key_is_enforced(engine):
+    """A `where key is not null` beside an aggregate grouped BY that key must
+    restrict the output population.
+
+    Distilled from tpc-ds q11. The atom used to vanish: the ROOT group that
+    applies `total > 0` re-plans the derived `total` through a fresh sub-search
+    (gen_root sources from datasources, not from its `parents`), and that
+    sub-search ran unconditioned — so the ancestor's not-null never reached the
+    rebuilt aggregate and the NULL-key group survived the LEFT join to the
+    dimension. The fix threads `preexisting_conditions` into that sub-search.
+    """
+    text = """import all_sales as sales;
+auto total <- sum(sales.ext_list_price) by sales.billing_customer.sk;
+where sales.billing_customer.sk is not null and total > 0
+select sales.billing_customer.id
+order by sales.billing_customer.id asc nulls first;"""
+    engine.environment = Environment(working_path=working_path)
+    rows = list(engine.execute_raw_sql(engine.generate_sql(text)[-1]).fetchall())
+    assert rows, "no rows returned"
+    assert all(
+        row[0] is not None for row in rows
+    ), "NULL customer survived `billing_customer.sk is not null`"

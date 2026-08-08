@@ -95,6 +95,7 @@ from trilogy.core.models.execute import (
     InstantiatedUnnestJoin,
     Join,
     RecursiveCTE,
+    SemiJoinFilter,
     UnionCTE,
 )
 from trilogy.core.processing.condition_utility import (
@@ -1748,16 +1749,62 @@ class BaseDialect:
         operator needs translation (e.g. SQLite ``ILIKE``)."""
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
 
+    def _common_existence_source(
+        self,
+        concepts: list[BuildConcept],
+        cte: CTE | UnionCTE | None,
+        cte_map: dict[str, CTE | UnionCTE] | None,
+    ) -> str | None:
+        """A single source name able to supply EVERY component of a composite
+        membership tuple. Each component resolves independently, so a shared row
+        parent can shadow the tuple's common feeder for a subset of components
+        (q29: the leading key doubles as a coalesced join axis) — but composite
+        membership must render against ONE subselect source. Prefer a name common
+        to every component's candidate list; else a parent CTE carrying all
+        components. None when no common source exists (caller raises)."""
+        candidate_lists: list[list[str]] = []
+        for rc in concepts:
+            lookup_cte = cte
+            if cte_map and not lookup_cte:
+                lookup_cte = cte_map.get(rc.address)
+            if not lookup_cte:
+                return None
+            candidates = list(
+                lookup_cte.existence_source_map.get(rc.address)
+                or lookup_cte.source_map.get(rc.address)
+                or []
+            )
+            if not candidates:
+                return None
+            candidate_lists.append(candidates)
+        if not candidate_lists:
+            return None
+        common = [
+            name
+            for name in candidate_lists[0]
+            if all(name in others for others in candidate_lists[1:])
+        ]
+        if common:
+            return common[0]
+        if isinstance(cte, CTE):
+            addresses = {rc.address for rc in concepts}
+            for parent in cte.parent_ctes:
+                if addresses <= {o.address for o in parent.output_columns}:
+                    return parent.name
+        return None
+
     def _resolve_existence_column(
         self,
         rc: BuildConcept,
         cte: CTE | UnionCTE | None,
         cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
+        preferred: str | None = None,
     ) -> tuple[str, str]:
         """Resolve a right-hand membership concept to (from_clause, column_ref)
         against its existence source, mirroring the single-column path (including
-        inlined-parent physical columns)."""
+        inlined-parent physical columns). ``preferred`` pins the source (a
+        composite tuple's common source, validated by the caller)."""
         lookup_cte = cte
         if cte_map and not lookup_cte:
             lookup_cte = cte_map.get(rc.address)
@@ -1769,11 +1816,14 @@ class BaseDialect:
             )
         else:
             lookup = lookup_cte.existence_source_map[rc.address]
-        target = (
-            lookup[0]
-            if lookup
-            else INVALID_REFERENCE_STRING(f"Missing source CTE for {rc.address}")
-        )
+        if preferred is not None:
+            target = preferred
+        else:
+            target = (
+                lookup[0]
+                if lookup
+                else INVALID_REFERENCE_STRING(f"Missing source CTE for {rc.address}")
+            )
         inlined_parent = (
             cte.inlined_parent_for_source(target) if isinstance(cte, CTE) else None
         )
@@ -1829,12 +1879,19 @@ class BaseDialect:
             )
             for a in left.arguments
         ]
+        resolved_concepts: list[BuildConcept] = []
+        for rc in right.arguments:
+            if isinstance(rc, BuildConcept):
+                resolved_concepts.append(rc)
+            elif isinstance(rc, BuildFunction):
+                resolved_concepts.extend(rc.concept_arguments)
+        preferred = self._common_existence_source(resolved_concepts, cte, cte_map)
         from_clauses: set[str] = set()
         cols: list[str] = []
         for rc in right.arguments:
             if isinstance(rc, BuildConcept):
                 from_clause, col_ref = self._resolve_existence_column(
-                    rc, cte, cte_map, raise_invalid
+                    rc, cte, cte_map, raise_invalid, preferred=preferred
                 )
                 from_clauses.add(from_clause)
                 cols.append(col_ref)
@@ -1849,7 +1906,7 @@ class BaseDialect:
             overrides: dict[str, str] = {}
             for inner in concepts:
                 from_clause, col_ref = self._resolve_existence_column(
-                    inner, cte, cte_map, raise_invalid
+                    inner, cte, cte_map, raise_invalid, preferred=preferred
                 )
                 from_clauses.add(from_clause)
                 overrides[inner.address] = col_ref
@@ -1900,6 +1957,17 @@ class BaseDialect:
             for col, lval in zip(cols, left_sql)
         )
         return f"{prefix}exists (select 1 from {from_clause} where {pairs})"
+
+    def render_semi_join_filter(self, cte: CTE, semi: SemiJoinFilter) -> str:
+        """A generated semi-join restriction as ``probe IN (SELECT member FROM
+        feeder)``. The probe renders in ``cte``'s scope; the member is a plain
+        column of the feeder CTE, which is referenced by name."""
+        q = self.QUOTE_CHARACTER
+        probes = [self.render_expr(probe, cte) for probe, _ in semi.keys]
+        members = [f"{q}{member.safe_address}{q}" for _, member in semi.keys]
+        self.used_map[semi.feeder].update(member.address for _, member in semi.keys)
+        left = probes[0] if len(probes) == 1 else f"({', '.join(probes)})"
+        return f"{left} in (select {', '.join(members)} from {q}{semi.feeder}{q})"
 
     def _render_membership_exists(
         self,
@@ -2890,6 +2958,16 @@ class BaseDialect:
             )
 
         rendered_where = self.render_expr(where, cte) if where else None
+        # Generated semi-join restrictions always belong in WHERE: they probe
+        # group keys, which are available before aggregation.
+        if isinstance(cte, CTE) and cte.semi_join_filters:
+            rendered_semi = [
+                self.render_semi_join_filter(cte, semi)
+                for semi in cte.semi_join_filters
+            ]
+            rendered_where = " and ".join(
+                ([rendered_where] if rendered_where else []) + rendered_semi
+            )
         rendered_qualify = self.render_expr(qualify, cte) if qualify else None
         if having is not None and self.SUPPORTS_ALIAS_IN_HAVING:
             # reference the SELECT alias rather than re-inlining the aggregate.

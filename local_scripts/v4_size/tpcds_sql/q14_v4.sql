@@ -1,0 +1,148 @@
+
+WITH 
+cheerful as (
+SELECT
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_sale_date_sk",
+     1  as "sales_sale_line_item_counter"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_sale_date_sk",
+     1  as "sales_sale_line_item_counter"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_sk",
+    "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_sale_date_sk",
+     1  as "sales_sale_line_item_counter"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+sweltering as (
+SELECT
+    avg("cheerful"."sales_quantity" * "cheerful"."sales_list_price") as "avg_sales_average_sales"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "cheerful"."sales_sale_date_sk" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001
+),
+abundant as (
+SELECT
+    "cheerful"."sales_channel" as "sales_channel",
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_sk" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "cheerful"."sales_sale_date_sk" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001 and "sales_item_items"."I_BRAND_ID" is not null and "sales_item_items"."I_CLASS_ID" is not null and "sales_item_items"."I_CATEGORY_ID" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+yummy as (
+SELECT
+    "abundant"."sales_item_brand_id" as "cross_tuples_ci_brand_id",
+    "abundant"."sales_item_category_id" as "cross_tuples_ci_category_id",
+    "abundant"."sales_item_class_id" as "cross_tuples_ci_class_id"
+FROM
+    "abundant"
+GROUP BY
+    1,
+    2,
+    3
+HAVING
+    count(distinct "abundant"."sales_channel") = 3
+),
+questionable as (
+SELECT
+    "cheerful"."sales_channel" as "sales_channel",
+    "cheerful"."sales_list_price" as "sales_list_price",
+    "cheerful"."sales_quantity" as "sales_quantity",
+    "cheerful"."sales_sale_line_item_counter" as "sales_sale_line_item_counter",
+    "sales_item_items"."I_BRAND_ID" as "sales_item_brand_id",
+    "sales_item_items"."I_CATEGORY_ID" as "sales_item_category_id",
+    "sales_item_items"."I_CLASS_ID" as "sales_item_class_id"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."item" as "sales_item_items" on "cheerful"."sales_item_sk" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "cheerful"."sales_sale_date_sk" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" = 11 and exists (select 1 from yummy where yummy."cross_tuples_ci_brand_id" is not distinct from "sales_item_items"."I_BRAND_ID" and yummy."cross_tuples_ci_class_id" is not distinct from "sales_item_items"."I_CLASS_ID" and yummy."cross_tuples_ci_category_id" is not distinct from "sales_item_items"."I_CATEGORY_ID")
+),
+young as (
+SELECT
+    "questionable"."sales_item_brand_id" as "_l0_filtered_brand_l0",
+    "questionable"."sales_item_category_id" as "_l0_filtered_category_l0",
+    "questionable"."sales_item_class_id" as "_l0_filtered_class_l0",
+    LOWER("questionable"."sales_channel")  as "_l0_filtered_channel_l0",
+    sum("questionable"."sales_quantity" * "questionable"."sales_list_price") as "_l0_filtered_bucket_sum_l0",
+    sum("questionable"."sales_sale_line_item_counter") as "_l0_filtered_bucket_count_l0"
+FROM
+    "questionable"
+WHERE
+    exists (select 1 from yummy where yummy."cross_tuples_ci_brand_id" is not distinct from "questionable"."sales_item_brand_id" and yummy."cross_tuples_ci_class_id" is not distinct from "questionable"."sales_item_class_id" and yummy."cross_tuples_ci_category_id" is not distinct from "questionable"."sales_item_category_id")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+scrawny as (
+SELECT
+    "young"."_l0_filtered_brand_l0" as "_l0_filtered_brand_l0",
+    "young"."_l0_filtered_bucket_count_l0" as "_l0_filtered_bucket_count_l0",
+    "young"."_l0_filtered_bucket_sum_l0" as "_l0_filtered_bucket_sum_l0",
+    "young"."_l0_filtered_category_l0" as "_l0_filtered_category_l0",
+    "young"."_l0_filtered_channel_l0" as "_l0_filtered_channel_l0",
+    "young"."_l0_filtered_class_l0" as "_l0_filtered_class_l0"
+FROM
+    "sweltering"
+    INNER JOIN "young" on 1=1
+WHERE
+    "young"."_l0_filtered_bucket_sum_l0" > "sweltering"."avg_sales_average_sales"
+),
+friendly as (
+SELECT
+    "scrawny"."_l0_filtered_brand_l0" as "l0_filtered_brand_l0",
+    "scrawny"."_l0_filtered_bucket_count_l0" as "l0_filtered_bucket_count_l0",
+    "scrawny"."_l0_filtered_bucket_sum_l0" as "l0_filtered_bucket_sum_l0",
+    "scrawny"."_l0_filtered_category_l0" as "l0_filtered_category_l0",
+    "scrawny"."_l0_filtered_channel_l0" as "l0_filtered_channel_l0",
+    "scrawny"."_l0_filtered_class_l0" as "l0_filtered_class_l0"
+FROM
+    "scrawny")
+SELECT
+    "friendly"."l0_filtered_channel_l0" as "channel",
+    "friendly"."l0_filtered_brand_l0" as "i_brand_id",
+    "friendly"."l0_filtered_class_l0" as "i_class_id",
+    "friendly"."l0_filtered_category_l0" as "i_category_id",
+    sum("friendly"."l0_filtered_bucket_sum_l0") as "sum_sales",
+    sum("friendly"."l0_filtered_bucket_count_l0") as "sum_number_sales"
+FROM
+    "friendly"
+GROUP BY
+    ROLLUP (1, 2, 3, 4)
+ORDER BY 
+    "channel" asc nulls first,
+    "i_brand_id" asc nulls first,
+    "i_class_id" asc nulls first,
+    "i_category_id" asc nulls first
+LIMIT (100)

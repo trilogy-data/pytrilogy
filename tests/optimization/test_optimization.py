@@ -10,6 +10,7 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -321,6 +322,74 @@ def test_predicate_pushdown_remove_drops_existence_only_parent():
     assert consumer.parent_ctes == [filtered_parent]
 
 
+def test_predicate_remove_prunes_unused_global_aggregate_cross_join(monkeypatch):
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    scalar = BuildConcept(
+        name="scalar",
+        canonical_name="scalar",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        build_is_aggregate=True,
+        grain=BuildGrain(),
+        lineage=BuildAggregateWrapper(
+            function=BuildFunction(
+                operator=FunctionType.MAX,
+                arguments=[row],
+                output_data_type=DataType.INTEGER,
+                output_purpose=Purpose.METRIC,
+                arg_count=1,
+            )
+        ),
+    )
+    condition = BuildComparison(left=row, right=1, operator=ComparisonOperator.GT)
+    parent = _simple_cte("filtered", [row], condition=condition)
+    global_aggregate = _simple_cte("global_aggregate", [scalar], group_to_grain=True)
+    global_aggregate.source_map[scalar.address] = []
+    consumer = _simple_cte(
+        "consumer",
+        [row],
+        condition=condition,
+        parent_ctes=[parent, global_aggregate],
+        source_map={row.address: [parent.name]},
+        joins=[
+            Join(
+                right_cte=global_aggregate,
+                jointype=JoinType.INNER,
+                joinkey_pairs=[],
+            )
+        ],
+    )
+    consumer.source.datasources = [parent.source, global_aggregate.source]
+    consumer.source.source_map = {row.address: {parent.source}}
+    monkeypatch.setattr(
+        "trilogy.core.optimizations.predicate_pushdown.render_cte_used_map",
+        lambda cte: {parent.name: {row.address}},
+    )
+    assert PredicatePushdownRemove()._prune_unused_single_row_parents(consumer) is True
+    consumer.parent_ctes.append(global_aggregate)
+    consumer.joins.append(
+        Join(
+            right_cte=global_aggregate,
+            jointype=JoinType.INNER,
+            joinkey_pairs=[],
+        )
+    )
+
+    optimized, _ = PredicatePushdownRemove().optimize(consumer, {})
+
+    assert optimized is True
+    assert consumer.condition is None
+    assert consumer.parent_ctes == [parent]
+    assert consumer.joins == []
+
+
 def test_predicate_pushdown_union_branch_propagates_existence_dependency():
     row = BuildConcept(
         name="row_id",
@@ -430,6 +499,64 @@ def test_predicate_pushdown_parent_propagates_existence_dependency():
 
     assert optimized is True
     assert parent.condition == condition
+    # a row-sourced existence concept keeps its source_map promotion — the
+    # renderer's WHERE/QUALIFY split and materialized checks read source_map
+    # (a window arg absent from it mis-renders the pushed subselect as QUALIFY)
+    assert parent.source_map[exists.address] == [existence_parent.name]
+    assert parent.parent_ctes == [existence_parent]
+
+
+def test_predicate_pushdown_existence_promotion_registers_in_existence_map():
+    """A membership feeder must register in the parent's existence_source_map
+    (the map the sibling-feeder chaining guard reads) even when the consumer
+    double-lists it in source_map — source_map-only promotion blinds the guard
+    and re-chains membership semijoins O(n^2). The source_map entry is also
+    kept: the renderer's WHERE/QUALIFY split reads it."""
+    row = BuildConcept(
+        name="row_id",
+        canonical_name="row_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    exists = BuildConcept(
+        name="exists_id",
+        canonical_name="exists_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    condition = BuildSubselectComparison(
+        left=row,
+        right=exists,
+        operator=ComparisonOperator.IN,
+    )
+    parent = _simple_cte("parent", [row])
+    existence_parent = _simple_cte("existence_parent", [exists])
+    consumer = _simple_cte(
+        "consumer",
+        [row],
+        condition=condition,
+        parent_ctes=[parent, existence_parent],
+        source_map={
+            row.address: [parent.name],
+            exists.address: [existence_parent.name],
+        },
+    )
+    consumer.existence_source_map[exists.address] = [existence_parent.name]
+
+    optimized = PredicatePushdown()._check_parent(
+        consumer,
+        parent,
+        condition,
+        {parent.name: [consumer]},
+    )
+
+    assert optimized is True
+    assert parent.condition == condition
+    assert parent.existence_source_map[exists.address] == [existence_parent.name]
     assert parent.source_map[exists.address] == [existence_parent.name]
     assert parent.parent_ctes == [existence_parent]
 

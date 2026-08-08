@@ -9,7 +9,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.grain_utility import (
+    anti_join_preserved_grain,
     calculate_joined_pregrain,
     condition_key_grain,
     downgrade_join_for_condition,
@@ -44,6 +46,25 @@ def _abstract_output_grain(parent: StrategyNode, environment: BuildEnvironment) 
     renderer's grain-match collapse would then silently strip the aggregate
     function (q23)."""
     return BuildGrain.from_concepts(parent.output_concepts, environment).abstract
+
+
+def _feeds_only_existence(parent: StrategyNode, grandparent: StrategyNode) -> bool:
+    """Whether `grandparent` is reachable from `parent` only through an
+    existence subselect (a membership feeder) — a side channel, never a row
+    join, so nothing it carries counts as row availability on `parent`.
+    Mirrors ``StrategyNode._repoint_feeder_only_rows``'s feeder test: every
+    concept it supplies that `parent` demands is an existence concept (q29's
+    coalescing key member carried only by the membership rowset)."""
+    if not parent.existence_concepts:
+        return False
+    existence = {c.address for c in parent.existence_concepts}
+    outputs = {c.address for c in grandparent.output_concepts}
+    if not outputs & existence:
+        return False
+    demand = {c.address for c in parent.input_concepts} | {
+        c.address for c in parent.output_concepts
+    }
+    return all(addr in existence for addr in outputs & demand)
 
 
 def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
@@ -355,6 +376,7 @@ class MergeNode(StrategyNode):
                 available = any(
                     c.address == member and c.address not in grandparent.hidden_concepts
                     for grandparent in parent.parents
+                    if not _feeds_only_existence(parent, grandparent)
                     for c in grandparent.output_concepts
                 )
                 if available:
@@ -364,6 +386,72 @@ class MergeNode(StrategyNode):
                         changed = True
             if changed:
                 parent.rebuild_cache()
+
+    def _tighten_joins_for_filtered_branches(
+        self,
+        joins: list[BaseJoin | UnnestJoin],
+        final_datasets: list[QueryDatasource | BuildDatasource],
+    ) -> None:
+        if self.preexisting_conditions is None:
+            return
+        rendered = list(decompose_condition(self.conditions)) if self.conditions else []
+        request_atoms = [
+            atom
+            for atom in decompose_condition(self.preexisting_conditions)
+            if not any(atom == r for r in rendered)
+        ]
+        if not request_atoms:
+            return
+        filtered_ids: set[str] = set()
+        for source in final_datasets:
+            applied = [
+                atom
+                for condition in _collect_applied_conditions(source)
+                for atom in decompose_condition(condition)
+            ]
+            if any(any(atom == a for a in applied) for atom in request_atoms):
+                filtered_ids.add(source.identifier)
+        if not filtered_ids:
+            return
+        # Authored coalescing (union/full) relations declare row intent: their
+        # arms are preserved BY DESIGN, and only the provably-row-identical
+        # narrowing pass may tighten them — the same registry veto
+        # `get_join_type` honors (the composite union-join rowset family keeps
+        # its return-arm rows against a sales-side filter).
+        coalescing = self.environment.domain_graph.outer_relation_keys() | set(
+            self.environment.domain_graph.coalescing_relation_members()
+        )
+        for join in joins:
+            if not isinstance(join, BaseJoin):
+                continue
+            join_addresses = {
+                address
+                for pair in join.concept_pairs or []
+                for address in (pair.left.address, pair.right.address)
+            } | {concept.address for concept in join.concepts or []}
+            if join_addresses & coalescing:
+                continue
+            left_ids = set()
+            if join.left_datasource is not None:
+                left_ids.add(join.left_datasource.identifier)
+            for pair in join.concept_pairs or []:
+                left_ids.add(pair.existing_datasource.identifier)
+            right_filtered = join.right_datasource.identifier in filtered_ids
+            left_filtered = bool(left_ids & filtered_ids)
+            if join.join_type == JoinType.FULL:
+                if right_filtered and left_filtered:
+                    join.join_type = JoinType.INNER
+                elif right_filtered:
+                    join.join_type = JoinType.RIGHT_OUTER
+                elif left_filtered:
+                    join.join_type = JoinType.LEFT_OUTER
+            elif (
+                join.join_type == JoinType.LEFT_OUTER
+                and right_filtered
+                or join.join_type == JoinType.RIGHT_OUTER
+                and left_filtered
+            ):
+                join.join_type = JoinType.INNER
 
     def _resolve(self) -> QueryDatasource:
         self._inject_scoped_join_key_exposure()
@@ -562,6 +650,15 @@ class MergeNode(StrategyNode):
             if branch_proofs:
                 for join in joins:
                     downgrade_join_for_proofs(join, branch_proofs, final_datasets)
+            # A branch that carries an atom of this merge's PRE-APPLIED request
+            # WHERE (preexisting_conditions the merge itself does not
+            # re-render) is the population: every final row must have a match
+            # there, so a join that null-extends that branch resurrects rows
+            # the WHERE rejected (q30: the `state = 'GA'` branch outer-joined
+            # once its key's honest nullability stopped the INNER typing).
+            # Branch-local filters (a rowset's internal WHERE) are not request
+            # atoms and keep their deliberate preservation.
+            self._tighten_joins_for_filtered_branches(joins, final_datasets)
         # Compute per-datasource NULL-ability based on the resolved join graph.
         # Used to (a) order ``final_datasets`` so the preserved side wins
         # ``resolve_concept_map``'s first-pass for shared concepts and
@@ -583,6 +680,10 @@ class MergeNode(StrategyNode):
             environment=self.environment,
         )
         pregrain += condition_key_grain(self.conditions, self.environment)
+        anti_grain = anti_join_preserved_grain(final_datasets, joins, self.conditions)
+        if anti_grain is not None:
+            grain = anti_grain
+            pregrain = anti_grain
         logger.debug(
             f"{self.logging_prefix}{LOGGER_PREFIX} effective joined pregrain is {pregrain}"
         )

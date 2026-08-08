@@ -1,0 +1,158 @@
+
+WITH 
+concerned as (
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "web_buyers_web_cust_id"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2002 and "sales_sale_date_date"."D_QOY" < 4 and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "store_buyers_store_cust_id"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2002 and "sales_sale_date_date"."D_QOY" < 4 and "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2002 and "sales_sale_date_date"."D_QOY" < 4 and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+macho as (
+SELECT
+    "customer_current_address_customer_address"."CA_STATE" as "customer_current_address_state",
+    "customer_current_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_current_demographics_college_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_DEP_COUNT" as "customer_current_demographics_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_DEP_EMPLOYED_COUNT" as "customer_current_demographics_employed_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_GENDER" as "customer_current_demographics_gender",
+    "customer_current_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_current_demographics_marital_status",
+    "customer_customers"."C_CUSTOMER_SK" as "customer_sk"
+FROM
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_current_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_current_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_demographics" as "customer_current_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_current_demographics_customer_demographics"."CD_DEMO_SK"
+WHERE
+    exists (select 1 from uneven where uneven."store_buyers_store_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") and ( exists (select 1 from concerned where concerned."web_buyers_web_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") or exists (select 1 from cheerful where cheerful."catalog_buyers_cat_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") ) and "customer_customers"."C_CURRENT_CDEMO_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7),
+scrawny as (
+SELECT
+    "macho"."customer_current_address_state" as "customer_current_address_state",
+    "macho"."customer_current_demographics_college_dependent_count" as "customer_current_demographics_college_dependent_count",
+    "macho"."customer_current_demographics_dependent_count" as "customer_current_demographics_dependent_count",
+    "macho"."customer_current_demographics_employed_dependent_count" as "customer_current_demographics_employed_dependent_count",
+    "macho"."customer_current_demographics_gender" as "customer_current_demographics_gender",
+    "macho"."customer_current_demographics_marital_status" as "customer_current_demographics_marital_status",
+    count("macho"."customer_sk") as "cnt1",
+    count("macho"."customer_sk") as "cnt2",
+    count("macho"."customer_sk") as "cnt3"
+FROM
+    "macho"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6),
+sweltering as (
+SELECT
+    "customer_current_address_customer_address"."CA_STATE" as "customer_current_address_state",
+    "customer_current_demographics_customer_demographics"."CD_DEP_COLLEGE_COUNT" as "customer_current_demographics_college_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_DEP_COUNT" as "customer_current_demographics_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_DEP_EMPLOYED_COUNT" as "customer_current_demographics_employed_dependent_count",
+    "customer_current_demographics_customer_demographics"."CD_GENDER" as "customer_current_demographics_gender",
+    "customer_current_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_current_demographics_marital_status"
+FROM
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_current_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_current_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."customer_demographics" as "customer_current_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_current_demographics_customer_demographics"."CD_DEMO_SK"
+WHERE
+    exists (select 1 from uneven where uneven."store_buyers_store_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") and ( exists (select 1 from concerned where concerned."web_buyers_web_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") or exists (select 1 from cheerful where cheerful."catalog_buyers_cat_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") ) and "customer_customers"."C_CURRENT_CDEMO_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    "customer_customers"."C_CURRENT_CDEMO_SK"),
+late as (
+SELECT
+    "sweltering"."customer_current_address_state" as "customer_current_address_state",
+    "sweltering"."customer_current_demographics_college_dependent_count" as "customer_current_demographics_college_dependent_count",
+    "sweltering"."customer_current_demographics_dependent_count" as "customer_current_demographics_dependent_count",
+    "sweltering"."customer_current_demographics_employed_dependent_count" as "customer_current_demographics_employed_dependent_count",
+    "sweltering"."customer_current_demographics_gender" as "customer_current_demographics_gender",
+    "sweltering"."customer_current_demographics_marital_status" as "customer_current_demographics_marital_status",
+    avg("sweltering"."customer_current_demographics_college_dependent_count") as "avg3",
+    avg("sweltering"."customer_current_demographics_dependent_count") as "avg1",
+    avg("sweltering"."customer_current_demographics_employed_dependent_count") as "avg2",
+    max("sweltering"."customer_current_demographics_college_dependent_count") as "max3",
+    max("sweltering"."customer_current_demographics_dependent_count") as "max1",
+    max("sweltering"."customer_current_demographics_employed_dependent_count") as "max2",
+    min("sweltering"."customer_current_demographics_college_dependent_count") as "min3",
+    min("sweltering"."customer_current_demographics_dependent_count") as "min1",
+    min("sweltering"."customer_current_demographics_employed_dependent_count") as "min2"
+FROM
+    "sweltering"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6)
+SELECT
+    "late"."customer_current_address_state" as "customer_current_address_state",
+    "late"."customer_current_demographics_gender" as "customer_current_demographics_gender",
+    "late"."customer_current_demographics_marital_status" as "customer_current_demographics_marital_status",
+    "late"."customer_current_demographics_dependent_count" as "customer_current_demographics_dependent_count",
+    "scrawny"."cnt1" as "cnt1",
+    "late"."min1" as "min1",
+    "late"."max1" as "max1",
+    "late"."avg1" as "avg1",
+    "late"."customer_current_demographics_employed_dependent_count" as "customer_current_demographics_employed_dependent_count",
+    "scrawny"."cnt2" as "cnt2",
+    "late"."min2" as "min2",
+    "late"."max2" as "max2",
+    "late"."avg2" as "avg2",
+    "late"."customer_current_demographics_college_dependent_count" as "customer_current_demographics_college_dependent_count",
+    "scrawny"."cnt3" as "cnt3",
+    "late"."min3" as "min3",
+    "late"."max3" as "max3",
+    "late"."avg3" as "avg3"
+FROM
+    "scrawny"
+    INNER JOIN "late" on "scrawny"."customer_current_address_state" is not distinct from "late"."customer_current_address_state" AND "scrawny"."customer_current_demographics_college_dependent_count" is not distinct from "late"."customer_current_demographics_college_dependent_count" AND "scrawny"."customer_current_demographics_dependent_count" is not distinct from "late"."customer_current_demographics_dependent_count" AND "scrawny"."customer_current_demographics_employed_dependent_count" is not distinct from "late"."customer_current_demographics_employed_dependent_count" AND "scrawny"."customer_current_demographics_gender" is not distinct from "late"."customer_current_demographics_gender" AND "scrawny"."customer_current_demographics_marital_status" is not distinct from "late"."customer_current_demographics_marital_status"
+ORDER BY 
+    "late"."customer_current_address_state" asc nulls first,
+    "late"."customer_current_demographics_gender" asc nulls first,
+    "late"."customer_current_demographics_marital_status" asc nulls first,
+    "late"."customer_current_demographics_dependent_count" asc nulls first,
+    "late"."customer_current_demographics_employed_dependent_count" asc nulls first,
+    "late"."customer_current_demographics_college_dependent_count" asc nulls first
+LIMIT (100)

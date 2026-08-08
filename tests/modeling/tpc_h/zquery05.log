@@ -1,15 +1,12 @@
 query_id = "05"
-generator = "v3"
-gen_length = 1482
+generator = "v4"
+gen_length = 1224
 preql_size = 305
 comp_size = 521
 generated_sql = """
-
-WITH 
-questionable as (
 SELECT
-    \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") as \"revenue\",
-    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\"
+    UPPER(\"part_supplier_nation_nation\".\"n_name\")  as \"part_supplier_nation_name\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
@@ -20,16 +17,6 @@ FROM
 WHERE
     \"part_supplier_nation_region_region\".\"r_name\" = 'ASIA' and \"order_customer_customers\".\"c_nationkey\" = \"part_supplier_nation_nation\".\"n_nationkey\" and \"order_orders\".\"o_orderdate\" >= date '1994-01-01' and \"order_orders\".\"o_orderdate\" < date '1995-01-01'
 
-GROUP BY
-    1,
-    2,
-    \"lineitem\".\"l_linenumber\",
-    \"lineitem\".\"l_orderkey\")
-SELECT
-    \"questionable\".\"part_supplier_nation_name\" as \"part_supplier_nation_name\",
-    sum(\"questionable\".\"revenue\") as \"q_revenue\"
-FROM
-    \"questionable\"
 GROUP BY
     1
 ORDER BY 

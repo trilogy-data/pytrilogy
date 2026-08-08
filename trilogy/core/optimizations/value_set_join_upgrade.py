@@ -44,6 +44,7 @@ from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildRowsetItem,
 )
 from trilogy.core.models.execute import CTE, BuildDatasource, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -210,22 +211,39 @@ def _rowset_definition_boundary(
     address (not the ``_key_addresses`` pseudonym closure): a scoped-join merge
     pseudonym-links the two join sides' keys, and using that closure would let
     the OTHER side's address leak into the parent-exclusion test. A
-    datasource-bound rowset key (no parent CTEs) makes no such claim."""
+    boundary CTE with the body's scans INLINED (no parent CTEs at all) is the
+    same boundary — nothing above it can have been folded in unless it filters
+    the rowset's OWN outputs, which the body's WHERE never names (it is written
+    pre-rename), so that is the test there."""
     if not isinstance(side_cte, CTE):
         return False
     if concept.derivation != Derivation.ROWSET:
         return False
-    if not side_cte.parent_ctes:
-        return False
     addr = concept.address
     if not any(out.address == addr for out in side_cte.output_columns):
         return False
+    if not side_cte.parent_ctes:
+        return not _filters_own_rowset_outputs(concept, side_cte)
     return not any(
         out.address == addr
         for parent in side_cte.parent_ctes
         if isinstance(parent, CTE)
         for out in parent.output_columns
     )
+
+
+def _filters_own_rowset_outputs(concept: BuildConcept, side_cte: CTE) -> bool:
+    """A condition on this CTE references one of the rowset's own output
+    handles — an EXTERNAL filter on the materialized rows folded in, not the
+    body's definitional WHERE."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return True
+    condition = _accumulate_filter(side_cte)
+    if condition is None:
+        return False
+    derived = set(lineage.rowset.derived_concepts)
+    return any(arg.address in derived for arg in condition.concept_arguments)
 
 
 def _accumulate_filter(
@@ -578,17 +596,23 @@ def _genuine_partial_stamp(
 ) -> bool:
     """A coverage-speaking partial stamp on the sub side that the sup side
     lacks. Stamps at declared-relation subset endpoints speak to the RELATION
-    and smear symmetrically across a canonical group; any other stamp is an
-    authored coverage fact (a `~` binding: projection ⊑ concept), so its
-    one-sided presence proves the subset direction — the author declared BOTH
-    sides' relations to the domain (`~` on the sub, a complete binding on the
-    sup, verified by ``_complete_values`` after)."""
+    and smear symmetrically across a canonical group, and a stamp on a ROWSET
+    handle is the planner's own relation-driven marking (a carried boundary
+    re-exposure the scan under-covers — `_carried_handle_is_partial`), never
+    an authored fact; any other stamp is an authored coverage fact (a `~`
+    binding: projection ⊑ concept — including one respelled onto a declared
+    anchor by canonical substitution), so its one-sided presence proves the
+    subset direction — the author declared BOTH sides' relations to the
+    domain (`~` on the sub, a complete binding on the sup, verified by
+    ``_complete_values`` after)."""
     keys = _key_addresses(sub_concept)
     subset_endpoints = graph.subset_sources()
     genuine = {
         p.address
         for p in sub_cte.partial_concepts
-        if p.address not in subset_endpoints and _key_addresses(p) & keys
+        if p.address not in subset_endpoints
+        and p.derivation != Derivation.ROWSET
+        and _key_addresses(p) & keys
     }
     if not genuine:
         return False
@@ -686,6 +710,139 @@ def _pair_side_fully_matches(
     if not _complete_values(sup_concept, sup_cte, domain_graph):
         return False
     return _accumulate_filter(sup_cte) is None
+
+
+def _datasource_ids_for_key(cte: CTE, concept: BuildConcept) -> set[str]:
+    providers = set(cte.source_map.get(concept.address, ()))
+    return {
+        datasource.identifier
+        for datasource in cte.source.datasources
+        if isinstance(datasource, BuildDatasource)
+        and datasource.safe_identifier in providers
+        and set(datasource.grain.components) & _key_addresses(concept)
+    }
+
+
+def _cte_contains_datasource(cte: CTE | UnionCTE, identifier: str) -> bool:
+    return isinstance(cte, CTE) and any(
+        isinstance(datasource, BuildDatasource) and datasource.identifier == identifier
+        for datasource in cte.source.datasources
+    )
+
+
+def _provider_joins_preserve_rows(
+    cte: CTE,
+    provider_ids: set[str],
+    graph: DomainGraph,
+    subset_join_map: dict[str, str],
+    scoped_canonical: dict[str, str],
+) -> bool:
+    def complete_domain_match(
+        sub_concept: BuildConcept,
+        sub_cte: CTE | UnionCTE,
+        sup_concept: BuildConcept,
+        sup_cte: CTE | UnionCTE,
+    ) -> bool:
+        return (
+            isinstance(sup_cte, CTE)
+            and _source_address(sub_concept) == _source_address(sup_concept)
+            and bool(set(sup_cte.grain.components) & _key_addresses(sup_concept))
+            and _complete_values(sub_concept, sub_cte, graph)
+            and _complete_values(sup_concept, sup_cte, graph)
+            and _accumulate_filter(sup_cte) is None
+        )
+
+    for join in cte.joins:
+        if not isinstance(join, Join) or join.jointype != JoinType.INNER:
+            return False
+        if not join.joinkey_pairs:
+            return False
+        if not all(
+            (
+                _cte_contains_datasource(pair.cte, source)
+                and _pair_side_fully_matches(
+                    pair.left,
+                    pair.cte,
+                    pair.right,
+                    join.right_cte,
+                    graph,
+                    subset_join_map,
+                    scoped_canonical,
+                )
+                or _cte_contains_datasource(pair.cte, source)
+                and complete_domain_match(
+                    pair.left, pair.cte, pair.right, join.right_cte
+                )
+                or _cte_contains_datasource(join.right_cte, source)
+                and _pair_side_fully_matches(
+                    pair.right,
+                    join.right_cte,
+                    pair.left,
+                    pair.cte,
+                    graph,
+                    subset_join_map,
+                    scoped_canonical,
+                )
+                or _cte_contains_datasource(join.right_cte, source)
+                and complete_domain_match(
+                    pair.right, join.right_cte, pair.left, pair.cte
+                )
+            )
+            for pair in join.joinkey_pairs
+            for source in provider_ids
+        ):
+            return False
+    return bool(provider_ids)
+
+
+def _relative_key_subset(
+    sub_concept: BuildConcept,
+    sub_cte: CTE | UnionCTE,
+    sup_concept: BuildConcept,
+    sup_cte: CTE | UnionCTE,
+    graph: DomainGraph,
+    subset_join_map: dict[str, str],
+    scoped_canonical: dict[str, str],
+) -> bool:
+    """Whether `sub_cte`'s keys are covered by a filtered key provider."""
+    if not isinstance(sub_cte, CTE) or not isinstance(sup_cte, CTE):
+        return False
+    if _source_address(sub_concept) != _source_address(sup_concept):
+        return False
+    if not set(sup_cte.grain.components) & _key_addresses(sup_concept):
+        return False
+    sub_filter = _accumulate_filter(sub_cte)
+    sup_filter = _accumulate_filter(sup_cte)
+    if sup_filter is not None and (
+        sub_filter is None or not condition_implies(sub_filter, sup_filter)
+    ):
+        return False
+    provider_ids = _datasource_ids_for_key(sup_cte, sup_concept)
+    if not _provider_joins_preserve_rows(
+        sup_cte,
+        provider_ids,
+        graph,
+        subset_join_map,
+        scoped_canonical,
+    ):
+        return False
+    if not any(_cte_contains_datasource(sub_cte, source) for source in provider_ids):
+        return False
+    return any(
+        isinstance(join, Join)
+        and join.jointype == JoinType.INNER
+        and any(
+            _key_addresses(pair.left) & _key_addresses(sub_concept)
+            and _key_addresses(pair.right) & _key_addresses(sup_concept)
+            and (
+                _cte_contains_datasource(pair.cte, source)
+                or _cte_contains_datasource(join.right_cte, source)
+            )
+            for pair in join.joinkey_pairs or []
+            for source in provider_ids
+        )
+        for join in sub_cte.joins
+    )
 
 
 class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
@@ -911,35 +1068,73 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         stay (``_null_extended_before``)."""
         assert join.joinkey_pairs
 
+        def relative_right(pair) -> bool:
+            return not graph_proof_only and _relative_key_subset(
+                pair.right,
+                right_cte,
+                pair.left,
+                pair.cte,
+                self.domain_graph,
+                self.subset_join_map,
+                self.scoped_canonical,
+            )
+
+        def relative_left(pair) -> bool:
+            return not graph_proof_only and _relative_key_subset(
+                pair.left,
+                pair.cte,
+                pair.right,
+                right_cte,
+                self.domain_graph,
+                self.subset_join_map,
+                self.scoped_canonical,
+            )
+
         def right_matches_left() -> bool:
             return all(
-                _pair_side_fully_matches(
-                    pair.right,
-                    right_cte,
-                    pair.left,
-                    pair.cte,
-                    self.domain_graph,
-                    self.subset_join_map,
-                    self.scoped_canonical,
-                    graph_proof_only=graph_proof_only,
+                (
+                    _pair_side_fully_matches(
+                        pair.right,
+                        right_cte,
+                        pair.left,
+                        pair.cte,
+                        self.domain_graph,
+                        self.subset_join_map,
+                        self.scoped_canonical,
+                        graph_proof_only=graph_proof_only,
+                    )
+                    or relative_right(pair)
                 )
-                and (pair.is_nullable or not _key_nullable(pair.right, right_cte))
+                and (
+                    pair.is_nullable
+                    or not _key_nullable(pair.right, right_cte)
+                    or relative_right(pair)
+                    and not _key_nullable(pair.left, pair.cte)
+                )
                 for pair in join.joinkey_pairs or []
             )
 
         def left_matches_right() -> bool:
             return all(
-                _pair_side_fully_matches(
-                    pair.left,
-                    pair.cte,
-                    pair.right,
-                    right_cte,
-                    self.domain_graph,
-                    self.subset_join_map,
-                    self.scoped_canonical,
-                    graph_proof_only=graph_proof_only,
+                (
+                    _pair_side_fully_matches(
+                        pair.left,
+                        pair.cte,
+                        pair.right,
+                        right_cte,
+                        self.domain_graph,
+                        self.subset_join_map,
+                        self.scoped_canonical,
+                        graph_proof_only=graph_proof_only,
+                    )
+                    or relative_left(pair)
                 )
-                and (pair.is_nullable or not _key_nullable(pair.left, pair.cte))
+                and (
+                    pair.is_nullable
+                    or not _key_nullable(pair.left, pair.cte)
+                    or relative_left(pair)
+                    and not _key_nullable(pair.right, right_cte)
+                )
                 and not _null_extended_before(cte, join, pair.cte.name)
                 for pair in join.joinkey_pairs or []
             )

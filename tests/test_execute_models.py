@@ -354,7 +354,10 @@ def test_join_unique_id_includes_sorted_join_key_pairs():
         joinkey_pairs=[pair],
     )
 
-    assert join.unique_id == "inner join source on source.local.left_id=local.right_id"
+    # INNER unique_id is orientation-normalized (no per-side source prefix, so
+    # mirrored joins between the same partners coalesce) and carries the
+    # intersected per-pair modifier suffix.
+    assert join.unique_id == "inner join source on local.left_id=local.right_id[]"
 
 
 def test_join_unique_id_without_pairs_uses_string_form():

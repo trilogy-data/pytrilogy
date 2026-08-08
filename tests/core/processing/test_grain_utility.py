@@ -5,9 +5,18 @@ naturally hit by the higher-level merge-node tests, so we get full coverage
 without contriving end-to-end queries.
 """
 
-from trilogy.core.enums import Derivation, FunctionType, JoinType, Purpose
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import (
+    ComparisonOperator,
+    Derivation,
+    FunctionType,
+    JoinType,
+    Modifier,
+    Purpose,
+)
 from trilogy.core.models.build import (
     BuildColumnAssignment,
+    BuildComparison,
     BuildConcept,
     BuildDatasource,
     BuildFunction,
@@ -21,8 +30,37 @@ from trilogy.core.processing.grain_utility import (
     _join_left_keys_covered_by_grain,
     _join_right_preserves_cardinality,
     _left_join_addresses,
+    anti_join_preserved_grain,
     downgrade_join_for_condition,
 )
+
+
+def test_anti_join_preserves_retained_side_grain():
+    customer_id = _concept("customer_id")
+    order_id = _concept("order_id")
+    customer = _datasource(
+        "customer", [customer_id], BuildGrain(components={customer_id.address})
+    )
+    orders = _datasource(
+        "orders", [order_id], BuildGrain(components={order_id.address})
+    )
+    join = BaseJoin(
+        right_datasource=orders,
+        join_type=JoinType.LEFT_OUTER,
+        concepts=[],
+    )
+    condition = BuildComparison(
+        left=order_id,
+        operator=ComparisonOperator.IS,
+        right=MagicConstants.NULL,
+    )
+
+    assert anti_join_preserved_grain([customer, orders], [join], condition) == (
+        customer.effective_grain
+    )
+
+    orders.columns[0].modifiers.add(Modifier.NULLABLE)
+    assert anti_join_preserved_grain([customer, orders], [join], condition) is None
 
 
 def _concept(

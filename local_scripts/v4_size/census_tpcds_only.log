@@ -1,0 +1,144 @@
+tpcds/query-1 0.40s
+tpcds/query-2 0.22s
+tpcds/query-3 0.41s
+tpcds/query01 0.15s
+tpcds/query01_agg 0.10s
+tpcds/query02-one 1.13s
+tpcds/query02-two 1.04s
+tpcds/query02 0.66s
+tpcds/query03 0.10s
+tpcds/query04 2.95s
+[v4] source search hit cover_limit over 46 candidates for terminals s.channel,s.channel_dim_id,s.channel_dim_text_id,s.ext_sales_price,s.item.sk,s.net_profit,s.order_id,s.return_amount,s.return_channel_dim_id,s.return_channel_dim_text_id,s.return_date.date,s.return_date.sk,s.return_net_loss,s.sale_date.date,s.sale_date.sk: solution kept but it may not be cost-minimal
+tpcds/query05 8.69s
+tpcds/query06 0.15s
+tpcds/query07 0.15s
+tpcds/query08 1.67s
+tpcds/query09 0.58s
+tpcds/query10 0.55s
+tpcds/query11 2.49s
+tpcds/query12 0.17s
+tpcds/query13 0.15s
+tpcds/query14 0.92s
+tpcds/query15 0.15s
+tpcds/query16 0.27s
+tpcds/query17 0.23s
+tpcds/query18 0.37s
+tpcds/query19 0.13s
+tpcds/query20 0.21s
+tpcds/query21 0.22s
+tpcds/query22 0.03s
+tpcds/query23 2.49s
+tpcds/query24 0.32s
+tpcds/query25 0.18s
+tpcds/query26 0.16s
+tpcds/query27 0.21s
+tpcds/query28 0.29s
+tpcds/query29 0.41s
+tpcds/query30-alt 0.32s
+tpcds/query30 0.36s
+tpcds/query31 0.78s
+tpcds/query32 0.20s
+tpcds/query33 0.32s
+tpcds/query34 0.44s
+tpcds/query35 1.35s
+tpcds/query36 0.17s
+tpcds/query37 0.22s
+tpcds/query38 0.98s
+tpcds/query39 0.10s
+tpcds/query40 0.68s
+tpcds/query41 0.34s
+tpcds/query42 0.13s
+tpcds/query43 0.27s
+tpcds/query44 0.32s
+tpcds/query45 0.26s
+tpcds/query46 0.27s
+tpcds/query47 0.21s
+tpcds/query48 0.12s
+tpcds/query49 0.21s
+tpcds/query50 0.34s
+tpcds/query51 0.84s
+tpcds/query52 0.09s
+tpcds/query53 0.29s
+tpcds/query54 0.73s
+tpcds/query55 0.11s
+tpcds/query56 0.30s
+tpcds/query57 0.35s
+tpcds/query58 0.35s
+tpcds/query59 0.50s
+tpcds/query60 0.32s
+tpcds/query61 0.14s
+tpcds/query62 0.76s
+tpcds/query63 0.25s
+tpcds/query64 2.30s
+tpcds/query65 0.15s
+tpcds/query66 2.24s
+tpcds/query67 0.20s
+tpcds/query68 0.26s
+tpcds/query69 1.21s
+tpcds/query70 0.32s
+tpcds/query71 0.45s
+tpcds/query72 0.53s
+tpcds/query73 2.46s
+tpcds/query74 1.33s
+tpcds/query75 0.46s
+tpcds/query76 1.78s
+tpcds/query77 3.83s
+tpcds/query78 0.38s
+tpcds/query79 0.30s
+tpcds/query80 1.32s
+tpcds/query81 0.34s
+tpcds/query82.1 0.19s
+tpcds/query82 0.14s
+tpcds/query83 0.45s
+tpcds/query84 0.18s
+tpcds/query85 0.22s
+tpcds/query86 0.23s
+tpcds/query87 1.03s
+tpcds/query88 0.44s
+tpcds/query89 0.20s
+tpcds/query90 0.25s
+tpcds/query91 0.42s
+tpcds/query92 0.20s
+tpcds/query93 0.16s
+tpcds/query94 0.39s
+tpcds/query95 0.45s
+tpcds/query96 0.25s
+tpcds/query97-one 0.68s
+tpcds/query97-two 0.79s
+tpcds/query97 1.29s
+tpcds/query98 0.22s
+tpcds/query99 0.50s
+
+== planner census ==
+direct_hit	63
+direct_miss	5
+network_bridge	273
+network_none	2
+network_single_scan	64
+search_calls	224
+search_declined	2
+search_truncated_cover_limit	1
+
+== slowest searches ==
+tpcds/query05	cands=46	covers=4096	trunc=True	8.33s
+tpcds/query66	cands=46	covers=1417	trunc=False	1.26s
+tpcds/query04	cands=46	covers=2833	trunc=False	1.16s
+tpcds/query80	cands=46	covers=1023	trunc=False	1.07s
+tpcds/query23	cands=46	covers=2714	trunc=False	0.75s
+tpcds/query04	cands=46	covers=1417	trunc=False	0.63s
+tpcds/query23	cands=46	covers=2714	trunc=False	0.56s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.53s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.51s
+tpcds/query04	cands=46	covers=709	trunc=False	0.51s
+tpcds/query31	cands=46	covers=709	trunc=False	0.51s
+tpcds/query97	cands=46	covers=1418	trunc=False	0.50s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.49s
+tpcds/query74	cands=46	covers=1417	trunc=False	0.49s
+tpcds/query74	cands=46	covers=709	trunc=False	0.48s
+tpcds/query23	cands=46	covers=709	trunc=False	0.35s
+tpcds/query23	cands=46	covers=1386	trunc=False	0.32s
+tpcds/query02	cands=46	covers=709	trunc=False	0.31s
+tpcds/query54	cands=79	covers=703	trunc=False	0.30s
+tpcds/query51	cands=46	covers=758	trunc=False	0.28s
+
+total search seconds: 24.9 over 224 searches

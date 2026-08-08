@@ -1,32 +1,19 @@
 query_id = "68"
-generator = "v3"
-gen_length = 4089
+generator = "v4"
+gen_length = 3735
 preql_size = 1181
 comp_size = 1453
 generated_sql = """
 
 WITH 
-highfalutin as (
-SELECT
-    \"customer_customers\".\"C_CURRENT_ADDR_SK\" as \"customer_current_address_sk\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
-    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
-    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
-FROM
-    \"memory\".\"customer\" as \"customer_customers\"
-GROUP BY
-    1,
-    2,
-    3,
-    4),
 yummy as (
 SELECT
-    \"store_sales_pos_address_customer_address\".\"CA_CITY\" as \"_bought_bought_city\",
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_sk\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"_bought_list_price\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"_bought_extended_price\",
-    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"_bought_extended_tax\"
+    \"store_sales_pos_address_customer_address\".\"CA_CITY\" as \"bought_bought_city\",
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"bought_store_sales_customer_sk\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"bought_store_sales_ticket_number\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_LIST_PRICE\") as \"bought_list_price\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"bought_extended_price\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_TAX\") as \"bought_extended_tax\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
@@ -40,41 +27,45 @@ GROUP BY
     1,
     2,
     3),
+highfalutin as (
+SELECT
+    \"customer_customers\".\"C_CURRENT_ADDR_SK\" as \"customer_current_address_sk\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
+    \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+FROM
+    \"memory\".\"customer\" as \"customer_customers\"
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 cheerful as (
 SELECT
     \"customer_current_address_customer_address\".\"CA_CITY\" as \"customer_current_address_city\",
     \"highfalutin\".\"customer_first_name\" as \"customer_first_name\",
     \"highfalutin\".\"customer_last_name\" as \"customer_last_name\",
+    \"highfalutin\".\"customer_sk\" as \"bought_store_sales_customer_sk\",
     \"highfalutin\".\"customer_sk\" as \"customer_sk\"
 FROM
     \"highfalutin\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"highfalutin\".\"customer_current_address_sk\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-vacuous as (
-SELECT
-    \"yummy\".\"_bought_bought_city\" as \"bought_bought_city\",
-    \"yummy\".\"_bought_extended_price\" as \"bought_extended_price\",
-    \"yummy\".\"_bought_extended_tax\" as \"bought_extended_tax\",
-    \"yummy\".\"_bought_list_price\" as \"bought_list_price\",
-    \"yummy\".\"store_sales_customer_sk\" as \"bought_store_sales_customer_sk\",
-    \"yummy\".\"store_sales_ticket_number\" as \"bought_store_sales_ticket_number\"
-FROM
-    \"yummy\")
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"highfalutin\".\"customer_current_address_sk\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\")
 SELECT
     \"cheerful\".\"customer_last_name\" as \"customer_last_name\",
     \"cheerful\".\"customer_first_name\" as \"customer_first_name\",
     \"cheerful\".\"customer_current_address_city\" as \"customer_current_address_city\",
-    \"vacuous\".\"bought_bought_city\" as \"bought_bought_city\",
-    \"vacuous\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
-    \"vacuous\".\"bought_extended_price\" as \"bought_extended_price\",
-    \"vacuous\".\"bought_extended_tax\" as \"bought_extended_tax\",
-    \"vacuous\".\"bought_list_price\" as \"bought_list_price\"
+    \"yummy\".\"bought_bought_city\" as \"bought_bought_city\",
+    \"yummy\".\"bought_store_sales_ticket_number\" as \"bought_store_sales_ticket_number\",
+    \"yummy\".\"bought_extended_price\" as \"bought_extended_price\",
+    \"yummy\".\"bought_extended_tax\" as \"bought_extended_tax\",
+    \"yummy\".\"bought_list_price\" as \"bought_list_price\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"cheerful\" on \"vacuous\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"customer_sk\"
+    \"yummy\"
+    INNER JOIN \"cheerful\" on \"yummy\".\"bought_store_sales_customer_sk\" = \"cheerful\".\"bought_store_sales_customer_sk\"
 WHERE
-    \"cheerful\".\"customer_current_address_city\" != \"vacuous\".\"bought_bought_city\"
+    \"cheerful\".\"customer_current_address_city\" != \"yummy\".\"bought_bought_city\"
 
 ORDER BY 
     \"cheerful\".\"customer_last_name\" asc nulls first,
-    \"vacuous\".\"bought_store_sales_ticket_number\" asc nulls first
+    \"yummy\".\"bought_store_sales_ticket_number\" asc nulls first
 LIMIT (100)"""

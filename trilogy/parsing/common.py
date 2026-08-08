@@ -480,8 +480,9 @@ def concept_list_to_keys(
             concept = environment.concepts[concept.address]
         if isinstance(concept, UndefinedConcept):
             continue
-        if concept.keys:
-            final_keys += list(concept.keys)
+        concept_keys = concept.effective_keys(environment)
+        if concept_keys:
+            final_keys += list(concept_keys)
         elif concept.purpose != Purpose.PROPERTY:
             final_keys.append(concept.address)
     return set(final_keys)
@@ -678,12 +679,10 @@ def concept_is_relevant(
         and all(c in other_addresses for c in concept.keys)
     ):
         return False
-    if (
-        concept.purpose == Purpose.KEY
-        and concept.keys
-        and all(c in other_addresses for c in concept.keys)
-    ):
-        return False
+    if concept.purpose == Purpose.KEY:
+        key_keys = concept.effective_keys(environment)
+        if key_keys and all(c in other_addresses for c in key_keys):
+            return False
     if concept.purpose in (Purpose.METRIC,) and all(
         c in other_addresses for c in concept.grain.components
     ):
@@ -1024,8 +1023,8 @@ def function_to_concept(
         if is_metric:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
-        elif x.keys:
-            key_grain += [*x.keys]
+        elif x_keys := x.effective_keys(environment):
+            key_grain += [*x_keys]
         else:
             key_grain.append(x.address)
     keys = Grain.from_concepts(set(key_grain), environment).components
@@ -1827,8 +1826,8 @@ def comparison_to_concept(
         if is_metric:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
-        elif x.keys:
-            key_grain += [*x.keys]
+        elif x_keys := x.effective_keys(environment):
+            key_grain += [*x_keys]
         else:
             key_grain.append(x.address)
     keys = set(key_grain)

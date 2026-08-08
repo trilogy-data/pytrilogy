@@ -48,7 +48,7 @@ from trilogy.core.models.author import (
     UndefinedConceptFull,
     address_with_namespace,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, StructType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
 from trilogy.utility import safe_open
 
@@ -71,6 +71,118 @@ class Import:
     # Surfaced under the namespace header in `trilogy explore` to disambiguate
     # otherwise-identical-looking imports (sale-time vs customer-current, etc.).
     description: str | None = None
+
+
+@dataclass
+class NamespaceProjection:
+    """Everything `import <source> as <alias>` contributes to an importer.
+
+    A pure function of (source environment, alias): `with_namespace(alias)`
+    rewrites the addresses *inside* every concept and datasource, so aliased
+    imports cannot share the source's objects the way bare imports do. Copying
+    that per import edge is the parse floor — over the TPC corpus, 143 aliased
+    edges resolve to 17 distinct (source env, alias) pairs. Callers holding a
+    validated-unchanged source env therefore cache this and hand it to
+    ``Environment.add_import``; see ``parsing/v2/import_service.py``.
+
+    Concept entries are ``(source_key, source_name, target_key, namespaced,
+    hidden)`` — the source key and name are kept because an import's explicit
+    concept filter is written against the un-namespaced names.
+    """
+
+    concepts: list[tuple[str, str, str, Concept, bool]]
+    datasources: list[Datasource]
+    alias_origins: list[tuple[str, Concept]]
+    merges: list[tuple[str, str, JoinType]]
+    functions: list[tuple[str, CustomFunctionFactory]]
+    data_types: list[tuple[str, CustomType]]
+    namespace_sources: list[tuple[str, Path]]
+    # Precomputed form of the per-concept merge loop, for the case where every
+    # target key is absent from the importer: exactly the writes
+    # ``_merge_imported_concept`` would make, as one dict to ``update`` with and
+    # one set to union into ``hidden``. See ``Environment.add_import``.
+    bulk_concepts: dict[str, Concept]
+    bulk_hidden: set[str]
+    # False when the per-concept loop is not reducible to those two writes:
+    # a struct concept (``generate_related_concepts`` derives further concepts,
+    # order-sensitively) or a key written twice with different objects (the
+    # loop's durable-signature dedup decides which survives, a dict does not).
+    bulk_safe: bool
+
+    def integrity(self) -> tuple:
+        """Cheap stamp over the mutable surface a previous importer could have
+        written through. Shared datasources are edited in place by warehouse
+        metadata sync, persist status flips, `env` address prefixing, and
+        bound-source invalidation; a cached projection whose stamp moved is no
+        longer the pure product of the source env and must be rebuilt."""
+        return tuple(
+            (d.identifier, d.status.value, len(d.columns), str(d.address))
+            for d in self.datasources
+        )
+
+
+def build_namespace_projection(source: Environment, alias: str) -> NamespaceProjection:
+    concepts: list[tuple[str, str, str, Concept, bool]] = []
+    bulk_concepts: dict[str, Concept] = {}
+    bulk_hidden: set[str] = set()
+    bulk_safe = True
+    hidden = source.concepts.hidden
+    for k, concept in source.concepts.all_items():
+        if INTERNAL_NAMESPACE in concept.namespace:
+            continue
+        # don't overwrite working path
+        if concept.name == WORKING_PATH_CONCEPT:
+            continue
+        target_k = address_with_namespace(k, alias)
+        namespaced = concept.with_namespace(alias)
+        is_hidden = k in hidden
+        concepts.append((k, concept.name, target_k, namespaced, is_hidden))
+        if isinstance(namespaced.datatype, StructType):
+            bulk_safe = False
+        for target in (namespaced.address, target_k):
+            prior = bulk_concepts.get(target)
+            if prior is not None and prior is not namespaced:
+                bulk_safe = False
+            bulk_concepts[target] = namespaced
+        if is_hidden:
+            bulk_hidden.add(target_k)
+        if namespaced.metadata and namespaced.metadata.hidden:
+            bulk_hidden.add(namespaced.address)
+    return NamespaceProjection(
+        concepts=concepts,
+        bulk_concepts=bulk_concepts,
+        bulk_hidden=bulk_hidden,
+        bulk_safe=bulk_safe,
+        # list() on the source dicts tolerates self-import: `source is self`
+        # means these iterate a dict the merge is about to write.
+        datasources=[
+            d.with_namespace(alias) for _, d in list(source.datasources.items())
+        ],
+        alias_origins=[
+            (address_with_namespace(k, alias), v.with_namespace(alias))
+            for k, v in list(source.alias_origin_lookup.items())
+        ],
+        merges=[
+            (
+                address_with_namespace(s_addr, alias),
+                address_with_namespace(t_addr, alias),
+                jt,
+            )
+            for s_addr, t_addr, jt in list(source.merges)
+        ],
+        functions=[
+            (address_with_namespace(k, alias), f.with_namespace(alias))
+            for k, f in list(source.functions.items())
+        ],
+        data_types=[
+            (address_with_namespace(k, alias), t.with_namespace(alias))
+            for k, t in list(source.data_types.items())
+        ],
+        namespace_sources=[
+            (address_with_namespace(ns, alias), path)
+            for ns, path in list(source.namespace_source.items())
+        ],
+    )
 
 
 @dataclass
@@ -139,6 +251,18 @@ def _subsequence_gaps(needle: list[str], haystack: list[str]) -> int:
 
 class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
+        # Write counter for content-addressed caches over the AUTHOR
+        # environment (e.g. domain_graph's minted-edge cache): unlike a
+        # BuildEnvironment this dict mutates between statements, so identity
+        # alone cannot prove freshness. Set before super().__init__, which may
+        # already route initial data through __setitem__.
+        self.mutations: int = 0
+        # Effective-content counter: bumps only when a key's VALUE OBJECT
+        # actually changes. Unlike `mutations` it ignores overlay push/pop and
+        # identical-object rewrites, so caches that only read the durable dict
+        # outside any overlay scope (the cross-statement BuildCaches store) can
+        # survive a re-parse of identical statements.
+        self.content_version: int = 0
         super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
@@ -197,11 +321,15 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             view: Mapping[str, Concept] = MappingProxyType(overlay)
         else:
             view = overlay
+        # Overlays redirect reads without touching self.data, so they count as
+        # writes for `mutations`-stamped caches (see the field's comment).
+        self.mutations += 1
         self._overlay_stack.append(view)
         try:
             yield view
         finally:
             popped = self._overlay_stack.pop()
+            self.mutations += 1
             assert popped is view, "overlay stack corrupted"
 
     @contextmanager
@@ -214,11 +342,28 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         ``merge_concept``'s equality shortcut reads a staged alias and
         skips rewiring a stale ``alias_origin_lookup`` entry.
         """
+        self.mutations += 1
         saved, self._overlay_stack = self._overlay_stack, []
         try:
             yield
         finally:
             self._overlay_stack = saved
+            self.mutations += 1
+
+    def __setitem__(self, key: str, item: Concept) -> None:
+        self.mutations += 1
+        if self.data.get(key) is not item:
+            self.content_version += 1
+        super().__setitem__(key, item)
+
+    def __delitem__(self, key: str) -> None:
+        self.mutations += 1
+        self.content_version += 1
+        super().__delitem__(key)
+
+    @property
+    def has_overlays(self) -> bool:
+        return bool(self._overlay_stack)
 
     def _overlay_lookup(self, key: str) -> Concept | None:
         if not self._overlay_stack:
@@ -265,15 +410,23 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
 
     def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore[override]
         try:
-            return self.__getitem__(key)
+            # `suggest=False`: this miss is answered with `default`, so the
+            # difflib pass behind the exception's "Suggestions:" text is built
+            # and thrown away. It is O(concepts) per miss and every call on a
+            # successful parse lands here.
+            return self.__getitem__(key, suggest=False)  # type: ignore[call-arg]
         except UndefinedConceptException:
             return default
 
     def raise_undefined(
-        self, key: str, line_no: int | None = None, file: Path | str | None = None
+        self,
+        key: str,
+        line_no: int | None = None,
+        file: Path | str | None = None,
+        suggest: bool = True,
     ) -> Never:
 
-        matches = self._find_similar_concepts(key)
+        matches = self._find_similar_concepts(key) if suggest else []
         message = f"Undefined concept: {key}."
         if matches:
             message += f" Suggestions: {matches}"
@@ -287,7 +440,11 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         raise UndefinedConceptException(message, matches)
 
     def __getitem__(
-        self, key: str, line_no: int | None = None, file: Path | None = None
+        self,
+        key: str,
+        line_no: int | None = None,
+        file: Path | None = None,
+        suggest: bool = True,
     ) -> Concept | UndefinedConceptFull:
         if self._overlay_stack:
             overlay_hit = self._overlay_lookup(key)
@@ -297,14 +454,16 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         if key in self.data:
             return self.data[key]
         if isinstance(key, ConceptRef):
-            return self.__getitem__(key.address, line_no=line_no, file=file)  # type: ignore[call-arg]
+            return self.__getitem__(key.address, line_no=line_no, file=file, suggest=suggest)  # type: ignore[call-arg]
         try:
             return self.data[key]
         except KeyError:
             if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".", 1)[1], line_no)
+                return self.__getitem__(key.split(".", 1)[1], line_no, suggest=suggest)  # type: ignore[call-arg]
             if DEFAULT_NAMESPACE + "." + key in self:
-                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
+                return self.__getitem__(  # type: ignore[call-arg]
+                    DEFAULT_NAMESPACE + "." + key, line_no, suggest=suggest
+                )
             # lazy resolution of derived concepts (e.g. signup_date.year)
             derived = self._try_resolve_derived(key)
             if derived is not None:
@@ -330,7 +489,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
                 )
                 self.undefined[key] = undefined
                 return undefined
-        self.raise_undefined(key, line_no, file)
+        self.raise_undefined(key, line_no, file, suggest=suggest)
 
     def _try_resolve_namespace_suffix(self, key: str) -> Concept | None:
         """Resolve `rs.col` to a rowset output `rs.<...>.col` when exactly one
@@ -534,6 +693,59 @@ def get_version():
     return __version__
 
 
+def concept_structural_signature(concept: Concept) -> tuple:
+    """Declared identity of a concept: every author-layer field a build or
+    downstream cache can observe. Deliberately NOT ``Concept.__eq__``, which
+    is a weak name/type/grain comparison that ignores lineage, keys and
+    pseudonyms (see BuildConcept's matching contract)."""
+    meta = concept.metadata
+    return (
+        type(concept).__name__,
+        concept.name,
+        concept.namespace,
+        str(concept.datatype),
+        concept.purpose,
+        concept.derivation,
+        concept.granularity,
+        str(concept.lineage),
+        str(concept.grain),
+        frozenset(concept.keys or ()),
+        tuple(concept.modifiers),
+        frozenset(concept.pseudonyms),
+        (
+            (meta.line_number, meta.concept_source, meta.description, meta.hidden)
+            if meta
+            else None
+        ),
+    )
+
+
+def datasource_structural_signature(datasource: Datasource) -> tuple:
+    """Declared identity of a datasource, excluding runtime state: ``status``
+    flips in place at publish/persist time and must survive an identical
+    redeclaration rather than reset it."""
+    return (
+        datasource.identifier,
+        str(datasource.address),
+        str(datasource.grain),
+        tuple(
+            (str(c.alias), c.concept.address, tuple(c.modifiers))
+            for c in datasource.columns
+        ),
+        str(datasource.where) if datasource.where else None,
+        str(datasource.non_partial_for) if datasource.non_partial_for else None,
+        tuple(c.address for c in datasource.incremental_by),
+        tuple(c.address for c in datasource.partition_by),
+        tuple(c.address for c in datasource.freshness_by),
+        datasource.freshness_probe,
+        datasource.refresh_script,
+        str(datasource.allowed_lag) if datasource.allowed_lag else None,
+        datasource.is_root,
+        datasource.is_partial,
+        frozenset(datasource.column_level_partial_addresses),
+    )
+
+
 @dataclass
 class Environment:
     concepts: EnvironmentConceptDict = field(default_factory=EnvironmentConceptDict)
@@ -574,6 +786,8 @@ class Environment:
     frozen: bool = False
     env_file_path: Path | str | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
+    # (content stamp, map) for fk_derived_keys.
+    _fk_derived_keys: tuple[tuple[int, int], dict[str, frozenset[str]]] | None = None
 
     def freeze(self):
         self.frozen = True
@@ -585,6 +799,44 @@ class Environment:
 
         self.parameters.update(kwargs)
         return self
+
+    def fk_derived_keys(self) -> dict[str, frozenset[str]]:
+        """Keys a datasource declaration implies for the KEY concepts it binds.
+
+        A datasource that binds a ``Purpose.KEY`` concept OUTSIDE its own grain
+        is asserting that its grain determines that key — the classic foreign
+        key on a fact table. The assertion belongs to the datasource, so it is
+        derived here on demand rather than written back onto the concept.
+        Two datasources can bind the same key at different grains; the later
+        declaration wins, matching the parse-time overwrite this replaced.
+        """
+        stamp = (self.datasources.content_version, self.concepts.content_version)
+        if self._fk_derived_keys is not None and self._fk_derived_keys[0] == stamp:
+            return self._fk_derived_keys[1]
+        out: dict[str, frozenset[str]] = {}
+        for datasource in self.datasources.values():
+            grain = datasource.grain
+            if not grain or not grain.components:
+                continue
+            resolved = [self.concepts.get(g) for g in grain.components]
+            if any(k is None for k in resolved):
+                continue
+            components = [k for k in resolved if k is not None]
+            new_keys = frozenset(k.address for k in components)
+            for column in datasource.columns:
+                address = column.concept.address
+                if address in grain.components:
+                    continue
+                target = self.concepts.get(address)
+                if target is None or target.purpose != Purpose.KEY:
+                    continue
+                # A grain component that already binds this key describes the
+                # opposite direction; inheriting would invert the relationship.
+                if any(address in (k.keys or set()) for k in components):
+                    continue
+                out[address] = new_keys
+        self._fk_derived_keys = (stamp, out)
+        return out
 
     def materialize_for_select(
         self,
@@ -614,6 +866,94 @@ class Environment:
             scoped_joins=build_scoped_joins,
         )
         return factory.build(self)
+
+    def materialize_join_key(
+        self, scoped_joins: list[tuple[str, str, JoinType]] | None
+    ) -> tuple[tuple[str, str, JoinType], ...]:
+        """The scoped-join tuple a materialization actually builds under (env
+        merges folded in, as `_materialize_factory` does) — the cache key for
+        `EnvBaseline` reuse across the statement and its nested arms."""
+        folded = list(scoped_joins or [])
+        folded.extend(merge for merge in self.merges if merge not in folded)
+        return tuple(folded)
+
+    def _materialize_factory(
+        self,
+        local_concepts: dict | None,
+        build_cache: dict | None,
+        pseudonym_map: dict[str, set[str]] | None,
+        grain_build_cache: dict | None,
+        canonical_build_cache: dict | None,
+        datasource_build_cache: dict | None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None,
+    ):
+        """The exact factory `materialize_for_select` builds (env merges folded
+        into the scoped joins) — one construction for the full, baseline and
+        delta materializations so the three cannot diverge."""
+        from trilogy.core.models.build import Factory
+
+        build_scoped_joins = list(scoped_joins or [])
+        build_scoped_joins.extend(
+            merge for merge in self.merges if merge not in build_scoped_joins
+        )
+        return Factory(
+            self,
+            local_concepts=local_concepts,
+            build_cache=build_cache,
+            pseudonym_map=pseudonym_map,
+            grain_build_cache=grain_build_cache,
+            canonical_build_cache=canonical_build_cache,
+            datasource_build_cache=datasource_build_cache,
+            scoped_joins=build_scoped_joins,
+        )
+
+    def materialize_baseline(
+        self,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ):
+        """Materialize with NO select overlay, recording per-unit footprints:
+        the reusable half of every nested-select materialization under this
+        scoped-join set. Pair with `materialize_delta`."""
+        factory = self._materialize_factory(
+            {},
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        return factory.build_environment_recorded(self)
+
+    def materialize_delta(
+        self,
+        baseline,
+        local_concepts: dict,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ) -> BuildEnvironment:
+        """`materialize_for_select`, computed as baseline + overlay delta.
+        Byte-equivalent to the full build (see `build_environment_delta` for
+        the soundness argument); the full spelling remains the reference."""
+        factory = self._materialize_factory(
+            local_concepts,
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        return factory.build_environment_delta(self, baseline)
 
     def add_rowset(self, name: str, lineage: SelectLineage):
         self.named_statements[name] = lineage
@@ -882,6 +1222,7 @@ class Environment:
         source: Environment,
         imp_stm: Import | None = None,
         concepts: list[str] | None = None,
+        projection: NamespaceProjection | None = None,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -914,86 +1255,128 @@ class Environment:
         # `billing_customer.first_sales_date` resolves to `raw/date.preql`.
         # Skip the default-namespace case (the file's own/std `import` lines):
         # those concepts are the importer's own, not a role-played dimension.
-        if not same_namespace:
+        # The aliased merge reads entirely off a NamespaceProjection — the
+        # `with_namespace(alias)` product of the source env. Callers that can
+        # prove the source env is unchanged (the import store) pass a cached
+        # one; everyone else builds it here, which is what the loop used to do
+        # inline. The bare merge shares source objects outright and needs none,
+        # so a projection handed in alongside DEFAULT_NAMESPACE is discarded
+        # rather than allowed to namespace concepts that must stay bare.
+        if same_namespace:
+            projection = None
+        elif projection is None:
+            projection = build_namespace_projection(source, alias)
+
+        if projection is not None:
             origin = imp_stm.input_path or imp_stm.path
             if origin is not None:
                 self.namespace_source[alias] = Path(origin)
-            # list() to tolerate self-import (source is self → we just mutated
-            # the dict we'd be iterating).
-            for sub_ns, sub_path in list(source.namespace_source.items()):
-                self.namespace_source[address_with_namespace(sub_ns, alias)] = sub_path
+            for sub_ns, sub_path in projection.namespace_sources:
+                self.namespace_source[sub_ns] = sub_path
         # we can't exit early
         # as there may be new concepts
-        iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
-        for k, concept in iteration:
-            if INTERNAL_NAMESPACE in concept.namespace:
-                continue
-            # don't overwrite working path
-            if concept.name == WORKING_PATH_CONCEPT:
-                continue
-            namespaced = concept if same_namespace else concept.with_namespace(alias)
-            target_k = k if same_namespace else address_with_namespace(k, alias)
-            is_hidden = k in source.concepts.hidden
-            if (
-                concepts is not None
-                and k not in concepts
-                and concept.name not in concepts
-            ):
-                # excluded from public view — store in concepts but mark hidden
-                new = self.add_concept(namespaced)
-                self.concepts.data[target_k] = new
-                self.concepts.hidden.add(target_k)
-            elif is_hidden:
-                # propagate hidden status from source
-                new = self.add_concept(namespaced)
-                self.concepts.data[target_k] = new
-                self.concepts.hidden.add(target_k)
-            else:
-                new = self.add_concept(namespaced)
-                self.concepts[target_k] = new
+        if projection is None:
+            for k, concept in list(source.concepts.all_items()):
+                if INTERNAL_NAMESPACE in concept.namespace:
+                    continue
+                # don't overwrite working path
+                if concept.name == WORKING_PATH_CONCEPT:
+                    continue
+                self._merge_imported_concept(
+                    k, concept.name, k, concept, k in source.concepts.hidden, concepts
+                )
+        elif not self._bulk_merge_projected_concepts(projection, concepts):
+            for k, name, target_k, namespaced, is_hidden in projection.concepts:
+                self._merge_imported_concept(
+                    k, name, target_k, namespaced, is_hidden, concepts
+                )
 
         # Copy to list to avoid mutation issues during self-import
-        for _, datasource in list(source.datasources.items()):
-            if same_namespace:
+        if projection is None:
+            for _, datasource in list(source.datasources.items()):
                 self.add_datasource(datasource)
-            else:
-                self.add_datasource(datasource.with_namespace(alias))
-        for key, val in list(source.alias_origin_lookup.items()):
-
-            if same_namespace:
+            for key, val in list(source.alias_origin_lookup.items()):
                 self.alias_origin_lookup[key] = val
-            else:
-                self.alias_origin_lookup[address_with_namespace(key, alias)] = (
-                    val.with_namespace(alias)
-                )
-        for s_addr, t_addr, jt in source.merges:
-            pair = (
-                (s_addr, t_addr, jt)
-                if same_namespace
-                else (
-                    address_with_namespace(s_addr, alias),
-                    address_with_namespace(t_addr, alias),
-                    jt,
-                )
-            )
+            for pair in list(source.merges):
+                if pair not in self.merges:
+                    self.merges.append(pair)
+            for key, function in list(source.functions.items()):
+                self.functions[key] = function
+            for key, type in list(source.data_types.items()):
+                self.data_types[key] = type
+            return self
+
+        for datasource in projection.datasources:
+            self.add_datasource(datasource)
+        for key, val in projection.alias_origins:
+            self.alias_origin_lookup[key] = val
+        for pair in projection.merges:
             if pair not in self.merges:
                 self.merges.append(pair)
-
-        for key, function in list(source.functions.items()):
-            if same_namespace:
-                self.functions[key] = function
-            else:
-                self.functions[address_with_namespace(key, alias)] = (
-                    function.with_namespace(alias)
-                )
-        for key, type in list(source.data_types.items()):
-            if same_namespace:
-                self.data_types[key] = type
-            else:
-                self.data_types[address_with_namespace(key, alias)] = (
-                    type.with_namespace(alias)
-                )
+        for key, function in projection.functions:
+            self.functions[key] = function
+        for key, type in projection.data_types:
+            self.data_types[key] = type
         return self
+
+    def _bulk_merge_projected_concepts(
+        self, projection: NamespaceProjection, concepts: list[str] | None
+    ) -> bool:
+        """Insert a whole projection with two writes, or decline.
+
+        The per-concept loop is a pure insert for essentially every imported
+        concept — `validate_concept` returns None the moment the address is
+        absent, and `add_concept`'s durable-signature dedup only has an opinion
+        when something is already there. So the collision semantics do not have
+        to be re-derived here, only *detected*: if no target key is already in
+        the importer, the loop reduces to `data.update` plus a `hidden` union.
+        Anything else falls back to the loop, which stays the definition of
+        correct behavior.
+
+        Declines when an explicit `concepts` filter is set (the filter is
+        per-edge and cannot ride on the shared projection), when an overlay is
+        installed (it changes what `validate_concept` considers present), or
+        when the projection itself is not reducible (`bulk_safe`).
+        """
+        if concepts is not None or not projection.bulk_safe:
+            return False
+        payload = projection.bulk_concepts
+        if not payload:
+            return True
+        data = self.concepts.data
+        if self.concepts.has_overlays or not data.keys().isdisjoint(payload.keys()):
+            return False
+        data.update(payload)
+        self.concepts.hidden |= projection.bulk_hidden
+        # One bump for the batch: both counters are compared for change, never
+        # for magnitude, and the batch is never empty here.
+        self.concepts.mutations += 1
+        self.concepts.content_version += 1
+        return True
+
+    def _merge_imported_concept(
+        self,
+        source_key: str,
+        source_name: str,
+        target_key: str,
+        concept: Concept,
+        is_hidden: bool,
+        concepts: list[str] | None,
+    ) -> None:
+        excluded = (
+            concepts is not None
+            and source_key not in concepts
+            and source_name not in concepts
+        )
+        new = self.add_concept(concept)
+        if excluded or is_hidden:
+            # excluded from public view (or hidden in the source): still stored,
+            # but marked hidden here rather than routed through __setitem__.
+            if self.concepts.data.get(target_key) is not new:
+                self.concepts.data[target_key] = new
+            self.concepts.hidden.add(target_key)
+        elif self.concepts.data.get(target_key) is not new:
+            self.concepts[target_key] = new
 
     def add_file_import(
         self, path: str | Path, alias: str, env: Environment | None = None
@@ -1087,7 +1470,27 @@ class Environment:
             if existing:
                 concept = existing
 
-        self.concepts[concept.address] = concept
+        # Identical redeclaration (a script re-parsed against a persistent
+        # environment): keep the durable object so no effective write occurs
+        # and content_version-stamped caches survive. Signature, not `==` —
+        # Concept.__eq__ ignores lineage. Rowset/multiselect concepts are
+        # exempt: their lineage embeds the statement's SelectLineage OBJECT,
+        # which planning matches by identity against named_statements — a
+        # re-parse must replace both together or the rowset can't be wired.
+        durable = self.concepts.data.get(concept.address)
+        if durable is not None and (
+            durable is concept
+            or (
+                not isinstance(durable, UndefinedConcept)
+                and concept.derivation
+                not in (Derivation.ROWSET, Derivation.MULTISELECT)
+                and concept_structural_signature(durable)
+                == concept_structural_signature(concept)
+            )
+        ):
+            concept = durable
+        else:
+            self.concepts[concept.address] = concept
         # `--`-prefixed declarations stay queryable but are omitted from public
         # listings (explore/agent metadata); route into the existing hidden set.
         if concept.metadata and concept.metadata.hidden:
@@ -1142,6 +1545,15 @@ class Environment:
             raise SyntaxError(
                 f"Root datasource '{datasource.identifier}' should not declare freshness or incremental by."
             )
+        # Identical redeclaration keeps the durable object (and its runtime
+        # status) — no effective write, content_version-stamped caches survive.
+        durable = dict.get(self.datasources, datasource.identifier)
+        if durable is not None and (
+            durable is datasource
+            or datasource_structural_signature(durable)
+            == datasource_structural_signature(datasource)
+        ):
+            return durable
         self.datasources[datasource.identifier] = datasource
         return datasource
 

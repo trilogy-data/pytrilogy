@@ -32,7 +32,9 @@ deterministic in edge insertion order.
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from typing import Any
+from weakref import ReferenceType, ref
 
 from trilogy.core.enums import JoinType
 
@@ -792,7 +794,7 @@ def mint_binding_edges(environment: Any) -> list[BindingEdge]:
 def mint_fd_edges(environment: Any) -> list[FDEdge]:
     out: list[FDEdge] = []
     for concept in _unique_concepts(environment):
-        keys = getattr(concept, "keys", None)
+        keys = concept.effective_keys(environment)
         if keys:
             out.append(
                 FDEdge(
@@ -820,15 +822,87 @@ def mint_fd_edges(environment: Any) -> list[FDEdge]:
     return out
 
 
+# id(environment) -> (weak handle, mutation stamp, minted edge tuples). Same
+# identity idiom as functional_dependency._FACTS_CACHE, PLUS a mutation stamp:
+# the AUTHOR environment, unlike a BuildEnvironment, mutates between statements
+# (each parse adds concepts), so identity alone cannot prove freshness. The
+# stamp is the write counters of the two dicts minting reads — overlay
+# push/pop counts as a write (see EnvironmentConceptDict.mutations).
+_MINTED_CACHE: dict[
+    int,
+    tuple[
+        ReferenceType,
+        tuple[int, int],
+        tuple[tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]],
+    ],
+] = {}
+
+
+def _evict_minted(key: int, _dead: ReferenceType) -> None:
+    _MINTED_CACHE.pop(key, None)
+    _ASSEMBLED_CACHE.pop(key, None)
+
+
+def _minted_edges(
+    environment: Any,
+) -> tuple[tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]]:
+    key = id(environment)
+    stamp = (environment.concepts.mutations, environment.datasources.mutations)
+    cached = _MINTED_CACHE.get(key)
+    if cached is not None and cached[0]() is environment and cached[1] == stamp:
+        return cached[2]
+    minted = (
+        tuple(mint_structural_edges(environment)),
+        tuple(mint_binding_edges(environment)),
+        tuple(mint_fd_edges(environment)),
+    )
+    _MINTED_CACHE[key] = (ref(environment, partial(_evict_minted, key)), stamp, minted)
+    return minted
+
+
+# id(environment) -> (minted tuple the entry was built against, declared edge
+# identities -> assembled graph). Freshness rides on the minted tuple's object
+# identity: `_minted_edges` returns a new tuple whenever the environment state
+# stamp moves, so `entry minted is current minted` proves the whole entry.
+# Evicted alongside _MINTED_CACHE by the same weakref callback. Holds no
+# reference to the environment (edges are plain address strings), so the entry
+# cannot keep its own key alive.
+_ASSEMBLED_CACHE: dict[
+    int,
+    tuple[
+        tuple[tuple[DomainEdge, ...], tuple[BindingEdge, ...], tuple[FDEdge, ...]],
+        dict[tuple[tuple, ...], DomainGraph],
+    ],
+] = {}
+
+
 def assemble_full_graph(environment: Any, declared: DomainGraph) -> DomainGraph:
     """The BuildEnvironment graph: the declared edges (global + this build's
     scoped overlay, already collected in `declared`) plus structural, binding
-    and FD edges minted from the author environment. Linear in model size."""
+    and FD edges minted from the author environment. Linear in model size —
+    and re-run once per materialization (11x on a nested-heavy statement), so
+    the assembled graph is cached per (environment state, declared edge set):
+    it is a pure function of the two, no consumer mutates a built graph
+    (`with_overlay` copies), and edge objects are plain shared data."""
+    minted = _minted_edges(environment)
+    key = id(environment)
+    entry = _ASSEMBLED_CACHE.get(key)
+    if entry is None or entry[0] is not minted:
+        entry = (minted, {})
+        _ASSEMBLED_CACHE[key] = entry
+    # Only `declared.edges` is consumed below, so it alone keys the entry —
+    # widen this if the assembly ever starts reading declared bindings/FDs.
+    declared_key = tuple(e.identity() for e in declared.edges)
+    cached = entry[1].get(declared_key)
+    if cached is not None:
+        return cached
     graph = DomainGraph(edges=declared.edges)
-    for edge in mint_structural_edges(environment):
+    structural, bindings, fds = minted
+    for edge in structural:
         graph.add_edge(edge)
-    for binding in mint_binding_edges(environment):
+    for binding in bindings:
         graph.add_binding(binding)
-    for fd in mint_fd_edges(environment):
+    for fd in fds:
         graph.add_fd(fd)
+    entry[1][declared_key] = graph
     return graph

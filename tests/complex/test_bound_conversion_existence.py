@@ -139,8 +139,15 @@ select
 ;
 """)[-1]
 
-    assert """WHERE
-    "quizzical"."date_converted" = "cheerful"."latest_date" and True
-GROUP BY
-    1,
-    2)""" in results, results
+    # The essence guarded: the latest_date bound joins in and filters BEFORE
+    # the count aggregation, over a (date_converted, id) dedup. CTE names are
+    # planner-specific (v4's plan is shorter than v3's — no re-applied final
+    # WHERE; rows execution-verified equal on duckdb 2026-07-28), so match
+    # structure, not names.
+    import re
+
+    assert re.search(
+        r'WHERE\s+"\w+"\."date_converted" = "\w+"\."latest_date" and True\s+'
+        r"GROUP BY\s+1,\s+2\)",
+        results,
+    ), results

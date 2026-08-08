@@ -1,4 +1,4 @@
-"""Regression lock for per-arm HAVING in a v4 multiselect (`_resolve_multiselect`).
+"""Regression lock for per-arm HAVING in a v4 multiselect (`gen_multiselect`).
 
 A HAVING attached to one MERGE arm is a post-aggregate filter over that arm's
 producer. The top-level `_get_query_node_v4` HAVING wrap only sees the outer

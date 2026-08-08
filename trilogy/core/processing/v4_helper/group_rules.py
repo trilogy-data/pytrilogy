@@ -10,16 +10,28 @@ and key its buckets by the set of non-BASIC stopping groups.
 One registry per shape concern, lookup by derivation, fallback to a default.
 """
 
+import hashlib
 from collections import defaultdict
 from collections.abc import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind
-from .models import ConceptAttrs, GroupBucket
+from .models import ConceptAttrs, GroupBucket, nulls_grouping_keys
+
+
+def _sig_digest(sig_repr: str) -> str:
+    """Stable across processes — group ids must not vary with hash salting."""
+    return hashlib.sha256(sig_repr.encode("utf-8")).hexdigest()[:12]
+
 
 NodeItem = tuple[str, ConceptAttrs]
 EnsureAssignedFn = Callable[[Derivation], None]
@@ -49,6 +61,29 @@ def _bucket_for(
         grain_components=grain,
         label=label,
     )
+
+
+def _apply_grouping_mode(
+    bucket: GroupBucket,
+    grouping_mode: AggregateGroupingMode | None,
+    *extra: str,
+) -> None:
+    """Record an aggregate's GROUP BY mode on its bucket.
+
+    Two things fall out of one mode and must not drift apart: the SEMANTICS
+    consumers ask about (`bucket.nulls_grouping_keys`) and the IDENTITY that
+    keeps a non-standard bucket from colliding with a STANDARD one of the same
+    (label, depth, grain) — one CTE cannot carry both GROUP BY clauses.
+    ``extra`` appends further discriminator segments for rules that also split
+    on their own signature."""
+    segments: list[str] = []
+    if grouping_mode is not None:
+        bucket.grouping_mode = grouping_mode
+        if nulls_grouping_keys(grouping_mode):
+            segments.append(f"grp:{grouping_mode.value}")
+    segments += extra
+    if segments:
+        bucket.discriminator = ":".join(segments)
 
 
 def _split_by_label(items: list[NodeItem]) -> dict[str, list[NodeItem]]:
@@ -88,7 +123,7 @@ def partition_by_depth_and_grain(
     aggregate concepts and harmlessly collapses to a single value
     there."""
     by_key: dict[
-        tuple[str, DepthLabel, frozenset[str], str | None],
+        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
         GroupBucket,
     ] = {}
     for node, data in items:
@@ -101,11 +136,7 @@ def partition_by_depth_and_grain(
         bucket = by_key.get(key)
         if bucket is None:
             bucket = _bucket_for(depth_label, derivation, grain, label=label)
-            # Encode grouping mode in the bucket discriminator so distinct
-            # modes map to distinct group ids (and survive the topo/edge
-            # walks below as separate nodes).
-            if grouping_mode and grouping_mode != "standard":
-                bucket.discriminator = f"grp:{grouping_mode}"
+            _apply_grouping_mode(bucket, grouping_mode)
             by_key[key] = bucket
         _add_member(bucket, node, data)
     return list(by_key.values())
@@ -138,13 +169,11 @@ def partition_aggregates(
     while agg6/7 read ``group(..) by order_number, item.id`` values at that same
     row grain). Splitting them into one ROLLUP CTE per source — rejoined on the
     grouping dims — is fragile (null-safety on rolled-up keys) and slower."""
-    standard = [
-        (n, d) for n, d in items if not d.grouping_mode or d.grouping_mode == "standard"
-    ]
-    grouped = [
-        (n, d) for n, d in items if d.grouping_mode and d.grouping_mode != "standard"
-    ]
-    buckets = _partition_standard_aggregates(standard)
+    standard = [(n, d) for n, d in items if not nulls_grouping_keys(d.grouping_mode)]
+    grouped = [(n, d) for n, d in items if nulls_grouping_keys(d.grouping_mode)]
+    buckets = _partition_standard_aggregates(
+        standard, concept_graph, concept_edges, concept_attrs
+    )
     buckets += _partition_grouped_aggregates(
         grouped,
         concept_graph,
@@ -156,28 +185,132 @@ def partition_aggregates(
     return buckets
 
 
-def _partition_standard_aggregates(items: list[NodeItem]) -> list[GroupBucket]:
-    by_key: dict[
-        tuple[str, DepthLabel, frozenset[str], frozenset[str]], GroupBucket
-    ] = {}
+def _arg_rowset_populations(
+    node: str,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> frozenset[str]:
+    """Rowset labels an aggregate's arguments read from. A rowset is an opaque
+    row population: two same-grain aggregates whose arguments live in different
+    rowsets cannot share one input stream — the shared scan would cross-join
+    the bodies and fan each argument by the other side's cardinality (the two
+    global counts over an `except(...)` and a `union(...)` rowset). The walk
+    stops AT a rowset member; the body behind it is a separate planning scope."""
+    pops: set[str] = set()
+    visited: set[str] = {node}
+    stack: list[str] = [node]
+    while stack:
+        current = stack.pop()
+        for pred, _ in concept_graph.in_edges(current):
+            if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
+                continue
+            if pred in visited:
+                continue
+            visited.add(pred)
+            rowset = concept_attrs[pred].rowset_name
+            if rowset is not None:
+                pops.add(rowset)
+                continue
+            stack.append(pred)
+    return frozenset(pops)
+
+
+AggKey = tuple[str, DepthLabel, frozenset[str], frozenset[str], frozenset[str]]
+
+
+def _fold_distinct_rewritable_buckets(
+    entries: dict[AggKey, list[NodeItem]],
+    concept_attrs: dict[str, ConceptAttrs],
+) -> dict[AggKey, set[str]]:
+    """Fold a coarser-input-grain bucket whose every member is a
+    distinct-rewritable COUNT into a sibling bucket whose input grain nests
+    it, returning the target-key -> member-address map of counts that must
+    render COUNT(DISTINCT ...) there.
+
+    Two same-output-grain aggregates normally split when their arguments need
+    different row grains (`sum(return_quantity)` reads return lines,
+    `count(order_id)` reads deduped orders — q83). But a count OF A KEY is
+    DISTINCT-counting by definition, so its dedup folds into the aggregate and
+    the split (sibling CTE + re-join at the output grain) is pure overhead.
+
+    Nesting is LITERAL membership in the finer stream's row identity (its
+    input grain plus the shared output grain — q83's `item.id` rides as the
+    GROUP BY key beside the `item.sk`-grain rows). Deliberately NOT an FD
+    closure: `post_id` FD-determines `user_id`, but a count of `user_id`
+    beside post-grain sums must still count over the USER population, not the
+    users reachable through posts."""
+    distinct_by_key: dict[AggKey, set[str]] = defaultdict(set)
+    changed = True
+    while changed:
+        changed = False
+        for key in sorted(entries, key=repr):
+            _label, _depth_label, grain, input_grain, populations = key
+            if not input_grain or input_grain == grain:
+                continue
+            members = entries[key]
+            if not all(d.aggregate_distinct_rewritable for _, d in members):
+                continue
+            for target in sorted(entries, key=repr):
+                if target == key or target[:3] != key[:3] or target[4] != populations:
+                    continue
+                target_grain = target[3]
+                # Only fold onto a genuine finer row stream — never onto a
+                # bucket already at its output grain (no shared dedup to save,
+                # and an out-grain stream rarely determines the counted key).
+                if not target_grain or target_grain == target[2]:
+                    continue
+                if not (set(input_grain) <= set(target_grain) | set(target[2])):
+                    continue
+                entries[target].extend(members)
+                distinct_by_key[target] |= {d.address for _, d in members}
+                distinct_by_key[target] |= distinct_by_key.pop(key, set())
+                del entries[key]
+                changed = True
+                break
+            if changed:
+                break
+    return distinct_by_key
+
+
+def _partition_standard_aggregates(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+) -> list[GroupBucket]:
+    entries: dict[AggKey, list[NodeItem]] = {}
     for node, data in items:
-        grain = data.grain_components
-        input_grain = data.aggregate_input_grain
-        key = (data.label, data.depth_label, grain, input_grain)
-        bucket = by_key.get(key)
-        if bucket is None:
-            bucket = _bucket_for(
-                data.depth_label, data.derivation, grain, label=data.label
-            )
-            if input_grain and input_grain != grain:
-                bucket.discriminator = "input:" + "|".join(sorted(input_grain))
-            by_key[key] = bucket
+        populations = _arg_rowset_populations(
+            node, concept_graph, concept_edges, concept_attrs
+        )
+        key = (
+            data.label,
+            data.depth_label,
+            data.grain_components,
+            data.aggregate_input_grain,
+            populations,
+        )
+        entries.setdefault(key, []).append((node, data))
+    distinct_by_key = _fold_distinct_rewritable_buckets(entries, concept_attrs)
+    buckets: list[GroupBucket] = []
+    for key, members in entries.items():
+        label, depth_label, grain, input_grain, populations = key
+        bucket = _bucket_for(depth_label, members[0][1].derivation, grain, label=label)
+        segments: list[str] = []
+        if input_grain and input_grain != grain:
+            segments.append("input:" + "|".join(sorted(input_grain)))
+        if populations:
+            segments.append("pop:" + "|".join(sorted(populations)))
+        if segments:
+            bucket.discriminator = ":".join(segments)
         if input_grain:
-            bucket.aggregate_input_grain = frozenset(
-                set(bucket.aggregate_input_grain) | set(input_grain)
-            )
-        _add_member(bucket, node, data)
-    return list(by_key.values())
+            bucket.aggregate_input_grain = input_grain
+        bucket.aggregate_distinct_addrs = distinct_by_key.get(key, set())
+        for node, data in members:
+            _add_member(bucket, node, data)
+        buckets.append(bucket)
+    return buckets
 
 
 def _partition_grouped_aggregates(
@@ -192,7 +325,8 @@ def _partition_grouped_aggregates(
     (label, depth, grain, mode) whose stop-signatures are equal or nest."""
     buckets: list[GroupBucket] = []
     by_shape: dict[
-        tuple[str, DepthLabel, frozenset[str], str | None], list[NodeItem]
+        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
+        list[NodeItem],
     ] = defaultdict(list)
     for node, data in items:
         by_shape[
@@ -234,8 +368,7 @@ def _partition_grouped_aggregates(
                 *(sigs[i] for i in member_indices)
             )
             sig_repr = "|".join(sorted(shared_sig)) or "none"
-            disc = [f"grp:{grouping_mode}", f"sig:{abs(hash(sig_repr)) % (16**6):06x}"]
-            bucket.discriminator = ":".join(disc)
+            _apply_grouping_mode(bucket, grouping_mode, f"sig:{_sig_digest(sig_repr)}")
             for i in member_indices:
                 node, data = members[i]
                 if data.aggregate_input_grain:
@@ -246,6 +379,183 @@ def _partition_grouped_aggregates(
                 _add_member(bucket, node, data)
             buckets.append(bucket)
     return buckets
+
+
+def _relation_side_partitions(
+    main_items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+) -> list[list[NodeItem]]:
+    """Partition roots by graph connectivity EXCLUDING relation edges.
+
+    A RELATION edge is an authored join-axis equality between two DIFFERENT
+    lineages (`union join rank orders.oid order by orders.amt desc =
+    customers.rnk`): its sides recombine at a merge ABOVE the computed
+    member, never inside one scan. So the axis must not license co-bucketing,
+    and the zero-reach bailout in `_cosource_component_groups` must apply per
+    side rather than swallowing both sides into one scan bucket (which
+    degrades the join to a cross product — no scan can render the computed
+    member as a column). Property roots sharing a declared key are FD-related
+    (one entity row, one scan) and stay together even when the key itself is
+    not demanded. With no relation edges in the graph this returns a single
+    partition, leaving the existing behavior untouched."""
+    relation_pairs = {
+        frozenset((u, v))
+        for u, v in concept_graph.edges
+        if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
+    }
+    if not relation_pairs or len(main_items) < 2:
+        return [main_items]
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for u, v in concept_graph.edges:
+        if frozenset((u, v)) in relation_pairs:
+            continue
+        adjacency[u].add(v)
+        adjacency[v].add(u)
+    node_by_addr = {data.address: node for node, data in main_items}
+    node_by_pseudonym: dict[str, str] = {}
+    for node, data in main_items:
+        for pseudonym in data.pseudonyms:
+            node_by_pseudonym.setdefault(pseudonym, node)
+    by_key: dict[str, list[str]] = defaultdict(list)
+    for node, data in main_items:
+        if data.purpose != Purpose.PROPERTY:
+            continue
+        for key_addr in data.keys:
+            by_key[key_addr].append(node)
+            key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
+            if key_node is not None and key_node != node:
+                adjacency[node].add(key_node)
+                adjacency[key_node].add(node)
+    for key_mates in by_key.values():
+        for other in key_mates[1:]:
+            adjacency[key_mates[0]].add(other)
+            adjacency[other].add(key_mates[0])
+    partitions: list[list[NodeItem]] = []
+    assigned: set[str] = set()
+    for seed, _ in main_items:
+        if seed in assigned:
+            continue
+        component = {seed}
+        frontier = [seed]
+        while frontier:
+            current = frontier.pop()
+            for neighbor in adjacency.get(current, ()):
+                if neighbor not in component:
+                    component.add(neighbor)
+                    frontier.append(neighbor)
+        members = [item for item in main_items if item[0] in component]
+        assigned.update(item[0] for item in members)
+        partitions.append(members)
+    return partitions
+
+
+def _cosource_component_groups(
+    main_items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> list[list[NodeItem]]:
+    """The co-source decision for one side-partition of root concepts: reach
+    overlap unions, the zero-reach single-bucket bailout, and output-converging
+    co-sourcing. See `partition_roots` for the full rules."""
+    addr_of = {node: data.address for node, data in main_items}
+    # Forward lineage reach per root, following only LINEAGE edges (a
+    # d1→d0 ordering rides its own CONSTRAINT edge and is excluded here).
+    reaches: list[set[str]] = []
+    for node, _ in main_items:
+        seen: set[str] = set()
+        stack = [node]
+        while stack:
+            cur = stack.pop()
+            for nxt in concept_graph.successors(cur):
+                if nxt in seen:
+                    continue
+                if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
+                    continue
+                seen.add(nxt)
+                stack.append(nxt)
+        reaches.append(seen)
+
+    # Bail out to one bucket if any root has zero reach — see partition_roots.
+    can_split = bool(main_items) and all(reaches)
+    if not can_split:
+        return [list(main_items)] if main_items else []
+
+    n = len(main_items)
+    parent = list(range(n))
+
+    def find(x: int, _parent=parent) -> int:
+        while _parent[x] != x:
+            _parent[x] = _parent[_parent[x]]
+            x = _parent[x]
+        return x
+
+    def union(a: int, b: int, _parent=parent) -> None:
+        ra, rb = find(a, _parent), find(b, _parent)
+        if ra != rb:
+            _parent[rb] = ra
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if reaches[i] & reaches[j]:
+                union(i, j)
+
+    # Co-source roots that converge at the query output projection.
+    # `reaches` holds node ids; map to addresses to test membership.
+    if output_addresses:
+        output_roots = [
+            i
+            for i in range(n)
+            if addr_of[main_items[i][0]] in output_addresses
+            or any(concept_attrs[x].address in output_addresses for x in reaches[i])
+        ]
+        # Only co-source output-converging roots that lie in the same
+        # weakly-connected component of the concept graph. Roots in
+        # different components (unrelated models, no join/merge path) only
+        # meet at a cross-product of single-row aggregates; forcing them
+        # into one scan yields an unsourceable disconnected root group
+        # (`select sum(av), sum(bv)` over two unrelated models).
+        undirected = concept_graph.to_undirected()
+        # A PROPERTY root and its KEY root are FD-related even when the
+        # lineage graph never joins them (a pure two-alias projection
+        # `select cust_id as x, cname as y` has one BASIC per root and
+        # no shared consumer) — the table binding both is what relates
+        # them, and splitting them cross-joins ON 1=1 (cartesian rows).
+        # Properties only: two KEYS related through a fact FK (user_id
+        # on posts) must NOT co-source — `count(user_id)` reads the
+        # users table, not the post FK column's deduped domain.
+        node_by_addr = {data.address: node for node, data in main_items}
+        # A key collapsed onto another identity (scoped join `left join
+        # a.aid = b.bid`, `merge into`) is present under the canonical
+        # address only; the mate's pseudonyms declare the identity.
+        node_by_pseudonym: dict[str, str] = {}
+        for node, data in main_items:
+            for pseudonym in data.pseudonyms:
+                node_by_pseudonym.setdefault(pseudonym, node)
+        for node, data in main_items:
+            if data.purpose != Purpose.PROPERTY:
+                continue
+            for key_addr in data.keys:
+                key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
+                if key_node is not None and key_node != node:
+                    undirected.add_edge(node, key_node)
+        comp_of: dict[str, int] = {}
+        for ci, comp in enumerate(nx.connected_components(undirected)):
+            for node in comp:
+                comp_of[node] = ci
+        by_component: dict[int, list[int]] = defaultdict(list)
+        for i in output_roots:
+            by_component[comp_of.get(main_items[i][0], -1 - i)].append(i)
+        for component_roots in by_component.values():
+            for k in range(1, len(component_roots)):
+                union(component_roots[0], component_roots[k])
+
+    components: dict[int, list[NodeItem]] = defaultdict(list)
+    for i, item in enumerate(main_items):
+        components[find(i)].append(item)
+    return list(components.values())
 
 
 def partition_roots(
@@ -311,101 +621,22 @@ def partition_roots(
             (n, d) for n, d in main_items if d.granularity != Granularity.SINGLE_ROW
         ]
 
-        # Forward lineage reach per root, following only LINEAGE edges (a
-        # d1→d0 ordering rides its own CONSTRAINT edge and is excluded here).
-        reaches: list[set[str]] = []
-        for node, _ in main_items:
-            seen: set[str] = set()
-            stack = [node]
-            while stack:
-                cur = stack.pop()
-                for nxt in concept_graph.successors(cur):
-                    if nxt in seen:
-                        continue
-                    if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
-                        continue
-                    seen.add(nxt)
-                    stack.append(nxt)
-            reaches.append(seen)
+        component_groups: list[list[NodeItem]] = []
+        for side_items in _relation_side_partitions(
+            main_items, concept_graph, concept_edges
+        ):
+            component_groups.extend(
+                _cosource_component_groups(
+                    side_items,
+                    concept_graph,
+                    concept_edges,
+                    concept_attrs,
+                    output_addresses,
+                )
+            )
 
-        # Bail out to one bucket if any root has zero reach — see docstring.
-        can_split = bool(main_items) and all(reaches)
-
-        if can_split:
-            n = len(main_items)
-            parent = list(range(n))
-
-            def find(x: int, _parent=parent) -> int:
-                while _parent[x] != x:
-                    _parent[x] = _parent[_parent[x]]
-                    x = _parent[x]
-                return x
-
-            def union(a: int, b: int, _parent=parent) -> None:
-                ra, rb = find(a, _parent), find(b, _parent)
-                if ra != rb:
-                    _parent[rb] = ra
-
-            for i in range(n):
-                for j in range(i + 1, n):
-                    if reaches[i] & reaches[j]:
-                        union(i, j)
-
-            # Co-source roots that converge at the query output projection.
-            # `reaches` holds node ids; map to addresses to test membership.
-            if output_addresses:
-                output_roots = [
-                    i
-                    for i in range(n)
-                    if addr_of[main_items[i][0]] in output_addresses
-                    or any(
-                        concept_attrs[x].address in output_addresses for x in reaches[i]
-                    )
-                ]
-                # Only co-source output-converging roots that lie in the same
-                # weakly-connected component of the concept graph. Roots in
-                # different components (unrelated models, no join/merge path) only
-                # meet at a cross-product of single-row aggregates; forcing them
-                # into one scan yields an unsourceable disconnected root group
-                # (`select sum(av), sum(bv)` over two unrelated models).
-                undirected = concept_graph.to_undirected()
-                # A PROPERTY root and its KEY root are FD-related even when the
-                # lineage graph never joins them (a pure two-alias projection
-                # `select cust_id as x, cname as y` has one BASIC per root and
-                # no shared consumer) — the table binding both is what relates
-                # them, and splitting them cross-joins ON 1=1 (cartesian rows).
-                # Properties only: two KEYS related through a fact FK (user_id
-                # on posts) must NOT co-source — `count(user_id)` reads the
-                # users table, not the post FK column's deduped domain.
-                node_by_addr = {data.address: node for node, data in main_items}
-                for node, data in main_items:
-                    if data.purpose != Purpose.PROPERTY:
-                        continue
-                    for key_addr in data.keys:
-                        key_node = node_by_addr.get(key_addr)
-                        if key_node is not None and key_node != node:
-                            undirected.add_edge(node, key_node)
-                comp_of: dict[str, int] = {}
-                for ci, comp in enumerate(nx.connected_components(undirected)):
-                    for node in comp:
-                        comp_of[node] = ci
-                by_component: dict[int, list[int]] = defaultdict(list)
-                for i in output_roots:
-                    by_component[comp_of.get(main_items[i][0], -1 - i)].append(i)
-                for component_roots in by_component.values():
-                    for k in range(1, len(component_roots)):
-                        union(component_roots[0], component_roots[k])
-
-            components: dict[int, list[NodeItem]] = defaultdict(list)
-            for i, item in enumerate(main_items):
-                components[find(i)].append(item)
-        else:
-            components = defaultdict(list)
-            if main_items:
-                components[0] = list(main_items)
-
-        multi = len(components) > 1
-        for members in components.values():
+        multi = len(component_groups) > 1
+        for members in component_groups:
             bucket = _bucket_for(
                 depth_label=DepthLabel.ROOT,
                 derivation=Derivation.ROOT,
@@ -414,7 +645,7 @@ def partition_roots(
             )
             if multi:
                 sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
-                bucket.discriminator = f"split:{abs(hash(sig_repr)) % (16**6):06x}"
+                bucket.discriminator = f"split:{_sig_digest(sig_repr)}"
             for node, data in members:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
@@ -635,7 +866,7 @@ def _partition_by_signature_and_grain(
             # the discriminator so colliding (label, depth, grain) buckets
             # stay distinct.
             sig_repr = "|".join(sorted(shared_sig)) or "none"
-            discriminator = f"sig:{abs(hash(sig_repr)) % (16**6):06x}"
+            discriminator = f"sig:{_sig_digest(sig_repr)}"
             bucket = _bucket_for(
                 depth_label=group_depth,
                 derivation=own_derivation,
@@ -808,10 +1039,9 @@ def partition_constants(
     the full label so the `@condition` phase suffix doesn't re-split them — and
     surface the bucket at its most-downstream member depth so it produces the
     SELECT output AND carries the WHERE. Mirrors `partition_rowsets`."""
-    by_key: dict[tuple[str, frozenset[str], str | None], GroupBucket] = {}
-    members_by_key: dict[tuple[str, frozenset[str], str | None], list[NodeItem]] = (
-        defaultdict(list)
-    )
+    ConstantKey = tuple[str, frozenset[str], AggregateGroupingMode | None]
+    by_key: dict[ConstantKey, GroupBucket] = {}
+    members_by_key: dict[ConstantKey, list[NodeItem]] = defaultdict(list)
     for node, data in items:
         scope = _scope_and_phase(data.label)[0]
         members_by_key[(scope, data.grain_components, data.grouping_mode)].append(
@@ -826,8 +1056,7 @@ def partition_constants(
             else DepthLabel.D0 if DepthLabel.D0 in depths else DepthLabel.D1
         )
         bucket = _bucket_for(depth_label, Derivation.CONSTANT, grain, label=scope)
-        if grouping_mode and grouping_mode != "standard":
-            bucket.discriminator = f"grp:{grouping_mode}"
+        _apply_grouping_mode(bucket, grouping_mode)
         for node, data in members:
             _add_member(bucket, node, data)
         by_key[key] = bucket

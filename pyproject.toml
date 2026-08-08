@@ -18,6 +18,12 @@ lint.ignore = ["BLE001", "DTZ001", "DTZ005", "DTZ006", "DTZ011", "DTZ901"]
 "trilogy/__init__.py" = ["E402"]
 # N999: dot-prefixed dir is required by the custom build backend (backend-path)
 ".scripts/__init__.py" = ["N999"]
+# RUF009: `_memo()` returns a `dataclasses.field(default_factory=dict, ...)`
+# sentinel, so every SourceNetwork gets its OWN memo table -- the shared-mutable
+# default the rule guards against cannot happen. Ruff special-cases a literal
+# `field(...)` default but cannot see through the helper, and the helper exists
+# so the spec of ten memo tables cannot drift.
+"trilogy/core/processing/v4_helper/network_model.py" = ["RUF009"]
 
 [project]
 name = "pytrilogy"

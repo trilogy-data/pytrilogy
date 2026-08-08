@@ -14,7 +14,12 @@ from typing import cast
 import pytest
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
@@ -73,7 +78,6 @@ from trilogy.core.processing.v4_helper.models import (
     GroupInputContract,
     InputChannel,
 )
-from trilogy.core.processing.v4_helper.source_policy import STRICT_SOURCE_POLICY
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
@@ -1068,7 +1072,7 @@ def test_partition_rollup_aggregates_share_bucket():
             "local.total_sum",
             derivation=Derivation.AGGREGATE,
             grain={"local.category", "local.class"},
-            grouping_mode="rollup",
+            grouping_mode=AggregateGroupingMode.ROLLUP,
             aggregate_input_grain={
                 "local.category",
                 "local.class",
@@ -1080,7 +1084,7 @@ def test_partition_rollup_aggregates_share_bucket():
             "local.g_class",
             derivation=Derivation.AGGREGATE,
             grain={"local.category", "local.class"},
-            grouping_mode="rollup",
+            grouping_mode=AggregateGroupingMode.ROLLUP,
             aggregate_input_grain={"local.category", "local.class", "local.item_id"},
         ),
     ]
@@ -1101,14 +1105,14 @@ def test_partition_rollup_aggregates_split_by_source_signature():
             "local.store_total",
             derivation=Derivation.AGGREGATE,
             grain={"local.category", "local.class"},
-            grouping_mode="rollup",
+            grouping_mode=AggregateGroupingMode.ROLLUP,
             aggregate_input_grain={"local.category", "local.class", "store.line_id"},
         ),
         _item(
             "local.web_total",
             derivation=Derivation.AGGREGATE,
             grain={"local.category", "local.class"},
-            grouping_mode="rollup",
+            grouping_mode=AggregateGroupingMode.ROLLUP,
             aggregate_input_grain={"local.category", "local.class", "web.line_id"},
         ),
     ]
@@ -1558,7 +1562,6 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         env,
         ReferenceGraph(),
         History(base_environment=Environment()),
-        STRICT_SOURCE_POLICY,
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
     )
 

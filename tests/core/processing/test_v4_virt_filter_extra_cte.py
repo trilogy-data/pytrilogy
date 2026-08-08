@@ -159,6 +159,37 @@ order by region_name asc;
 
 _COMBINED_EXPECTED_ROWS = [("east", 2, 9.0, 0.0), ("west", 1, 6.0, 9.0)]
 
+_ROW_FILTER_MODEL = """
+key line_id int;
+property line_id.ship int;
+property line_id.ord int;
+property line_id.days <- ship - ord;
+property line_id.region_name string;
+
+datasource facts (
+    lid: line_id,
+    ship: ship,
+    ord: ord,
+    rname: region_name,
+)
+grain (line_id)
+query '''
+select 1 lid, 40 ship, 10 ord, 'east' rname union all
+select 2 lid, 20 ship, 10 ord, 'east' rname union all
+select 3 lid, 60 ship, 10 ord, 'west' rname
+''';
+"""
+
+_ROW_FILTER_QUERY = """
+where days > 30
+select
+    region_name,
+    count(line_id) -> line_count,
+order by region_name asc;
+"""
+
+_ROW_FILTER_EXPECTED_ROWS = [("west", 1)]
+
 _HAVING_BASIC_KEY_MODEL = """
 key order_id int;
 key item_id int;
@@ -279,6 +310,30 @@ def _run_combined(v4: bool):
         CONFIG.use_v4_discovery = prior
 
 
+def _gen_row_filter_sql(v4: bool) -> str:
+    prior = CONFIG.use_v4_discovery
+    CONFIG.use_v4_discovery = v4
+    try:
+        env = Environment()
+        env, _ = env.parse(_ROW_FILTER_MODEL)
+        engine = Dialects.DUCK_DB.default_executor(environment=env)
+        return engine.generate_sql(_ROW_FILTER_QUERY)[-1]
+    finally:
+        CONFIG.use_v4_discovery = prior
+
+
+def _run_row_filter(v4: bool) -> list[tuple[str, int]]:
+    prior = CONFIG.use_v4_discovery
+    CONFIG.use_v4_discovery = v4
+    try:
+        env = Environment()
+        env, _ = env.parse(_ROW_FILTER_MODEL)
+        engine = Dialects.DUCK_DB.default_executor(environment=env)
+        return engine.execute_text(_ROW_FILTER_QUERY)[-1].fetchall()
+    finally:
+        CONFIG.use_v4_discovery = prior
+
+
 def _gen_having_basic_key_sql() -> str:
     prior = CONFIG.use_v4_discovery
     CONFIG.use_v4_discovery = True
@@ -346,6 +401,18 @@ def test_root_basic_and_filter_inputs_share_compatible_aggregate():
     assert ' as "_virt_filter' not in v4_sql
     assert "count(" in v4_sql
     assert '"quizzical"."ship" - "quizzical"."ord"' in v4_sql
+    assert v4_sql.lower().count("select") == v3_sql.lower().count("select")
+
+
+def test_basic_row_filter_stays_on_shared_preaggregate_scan():
+    assert _run_row_filter(v4=False) == _ROW_FILTER_EXPECTED_ROWS
+    assert _run_row_filter(v4=True) == _ROW_FILTER_EXPECTED_ROWS
+
+    v3_sql = _gen_row_filter_sql(v4=False)
+    v4_sql = _gen_row_filter_sql(v4=True)
+
+    assert ' as "days"' not in v4_sql
+    assert "JOIN" not in v4_sql
     assert v4_sql.lower().count("select") == v3_sql.lower().count("select")
 
 

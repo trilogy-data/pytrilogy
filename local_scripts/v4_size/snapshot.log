@@ -1,0 +1,113 @@
+q-1: ok
+q-2: ok
+q-3: ok
+q01: ok
+q01_agg: ok
+q02-one: ok
+q02-two: ok
+q02: ok
+q03: ok
+q04: CHANGED (-193 chars)
+q05: ok
+q06: ok
+q07: ok
+q08: ok
+q09: ok
+q10: ok
+q11: CHANGED (+2001 chars)
+q12: ok
+q13: ok
+q14: ok
+q15: ok
+q16: ok
+q17: ok
+q18: ok
+q19: ok
+q20: ok
+q21: ok
+q22: ok
+q23: ok
+q24: ok
+q25: ok
+q26: ok
+q27: ok
+q28: ok
+q29: ok
+q30-alt: CHANGED (+1243 chars)
+q30: CHANGED (+1243 chars)
+q31: ok
+q32: ok
+q33: ok
+q34: ok
+q35: ok
+q36: ok
+q37: ok
+q38: ok
+q39: ok
+q40: ok
+q41: ok
+q42: ok
+q43: ok
+q44: ok
+q45: ok
+q46: ok
+q47: ok
+q48: ok
+q49: ok
+q50: ok
+q51: ok
+q52: ok
+q53: ok
+q54: ok
+q55: ok
+q56: ok
+q57: ok
+q58: ok
+q59: ok
+q60: ok
+q61: ok
+q62: ok
+q63: ok
+q64: ok
+q65: ok
+q66: ok
+q67: ok
+q68: ok
+q69: ok
+q70: ok
+q71: ok
+q72: ok
+q73: ok
+q74: CHANGED (-1748 chars)
+q75: ok
+q76: ok
+q77: ok
+q78: ok
+q79: ok
+q80: ok
+q81: CHANGED (+1287 chars)
+q82.1: ok
+q82: ok
+q83: ok
+q84: ok
+q85: ok
+q86: ok
+q87: ok
+q88: ok
+q89: ok
+q90: ok
+q91: ok
+q92: ok
+q93: ok
+q94: ok
+q95: ok
+q96: ok
+q97-one: ok
+q97-two: ok
+q97: ok
+q98: ok
+q99: ok
+
+103 identical, 6 changed, 0 missing golden
+changed: 04, 11, 30-alt, 30, 74, 81
+drift SQL in C:\Users\ethan\coding_projects\pytrilogy_two\local_scripts\v4_sql_drift — diff vs C:\Users\ethan\coding_projects\pytrilogy_two\local_scripts\v4_sql_golden

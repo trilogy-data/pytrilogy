@@ -82,6 +82,33 @@ class SourceBinding:
 
 
 @dataclass
+class SemiJoinFilter:
+    """A generated ``key IN (SELECT key FROM <feeder>)`` restriction on an
+    aggregate CTE, mirroring an INNER join that a downstream consumer applies to
+    that CTE's group key.
+
+    Restricting the *set of groups* an aggregate produces can never change a
+    surviving group's value, so this is sound wherever the consuming join is an
+    INNER equi-join on (a subset of) the group key — unlike pushing the
+    consumer's predicate itself, which is only sound at the predicate's own
+    grain. Emitted as a plain uncorrelated ``IN (SELECT ...)`` rather than
+    reusing the null-safe existence render: engines plan the semi-join form
+    substantially better (TPC-H q21 measures 6x vs 3x for the ``EXISTS`` form),
+    and the mirrored INNER join already drops NULL keys, so the null-safe
+    identity semantics that shape exists for is not what is being expressed."""
+
+    feeder: str
+    # (probe rendered in the hosting CTE, member exposed by ``feeder``)
+    keys: list[tuple[BuildConcept, BuildConcept]]
+
+    @property
+    def identity(self) -> tuple[str, tuple[tuple[str, str], ...]]:
+        return self.feeder, tuple(
+            (probe.address, member.address) for probe, member in self.keys
+        )
+
+
+@dataclass
 class CTE:
     name: str
     source: QueryDatasource
@@ -91,6 +118,11 @@ class CTE:
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: dict[str, list[str]] = field(default_factory=dict)
+    # Generated semi-join restrictions (see SemiJoinFilter). Deliberately not
+    # part of ``condition``: these are derived row restrictions, not authored
+    # predicates, and must stay invisible to the condition-rewriting rules
+    # (pushdown, dedup, nullability refinement) that reason about author intent.
+    semi_join_filters: list[SemiJoinFilter] = field(default_factory=list)
     parent_ctes: list[CTE | UnionCTE] = field(default_factory=list)
     joins: list[Join | InstantiatedUnnestJoin] = field(default_factory=list)
     condition: BoolExpr | None = None
@@ -312,6 +344,9 @@ class CTE:
             **self.existence_source_map,
             **other.existence_source_map,
         }
+        self.semi_join_filters = unique(
+            self.semi_join_filters + other.semi_join_filters, "identity"
+        )
         # copies of one logical CTE carry the same limit; keep it
         if self.limit is None:
             self.limit = other.limit
@@ -965,7 +1000,22 @@ class BaseJoin:
         # BaseJoins with the same pairs in different order produce identical
         # SQL. Dedupe on the sorted form so set-iteration nondeterminism in
         # upstream pair construction can't slip a duplicate past `unique()`.
+        # INNER is additionally orientation-independent: `a JOIN b ON x=y` and
+        # `b JOIN a ON y=x` are one join, and two independently-built merges
+        # over the same parents can legitimately pick opposite bases — kept
+        # both, the merged plan joins the same partner twice (duplicate alias).
         if self.concept_pairs:
+            if self.join_type == JoinType.INNER:
+                partners = sorted(
+                    {p.existing_datasource.name for p in self.concept_pairs}
+                    | {self.right_datasource.name}
+                )
+                pair_keys = sorted(
+                    "=".join(sorted((str(p.left), str(p.right))))
+                    + f"[{','.join(sorted(m.value for m in p.modifiers))}]"
+                    for p in self.concept_pairs
+                )
+                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}"
             pair_keys = sorted(
                 f"{p.existing_datasource.name}.{p.left}={p.right}"
                 for p in self.concept_pairs
@@ -1320,11 +1370,23 @@ class QueryDatasource:
         # grain/filter suffixes — keeps A_join_B and B_join_A one identity so
         # get_datasource_cte can find the built CTE. (UNION path above keeps
         # list order on purpose for EXCEPT arm semantics.)
+        # A row LIMIT is identity: a limited source is a proper row SUBSET of
+        # the same shape unlimited, so the two must never collide and merge
+        # (a multiselect arm's `limit 1` merged into its unlimited sibling and
+        # the limit vanished from the plan). The ordering rides along — under a
+        # limit it selects WHICH rows survive. Same rule as the row-limited veto
+        # in ``deduplicate_nodes``.
+        limited = ""
+        if self.limit is not None:
+            limited = f"_limited_{self.limit}"
+            if self.ordering:
+                limited += f"_{string_to_hash(str(self.ordering))}"
         return (
             "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
+            + limited
         )
 
     def get_alias(
@@ -1822,8 +1884,19 @@ class Join:
 
     @property
     def unique_id(self) -> str:
-        # Order-independent — see BaseJoin.unique_id for rationale.
+        # Order- and (for INNER) orientation-independent — see
+        # BaseJoin.unique_id for rationale.
         if self.joinkey_pairs:
+            if self.jointype == JoinType.INNER:
+                partners = sorted(
+                    {k.cte.name for k in self.joinkey_pairs} | {self.right_name}
+                )
+                pair_keys = sorted(
+                    "=".join(sorted((k.left.address, k.right.address)))
+                    + f"[{','.join(sorted(m.value for m in k.modifiers))}]"
+                    for k in self.joinkey_pairs
+                )
+                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}"
             pair_keys = sorted(
                 f"{k.cte.name}.{k.left.address}={k.right.address}"
                 for k in self.joinkey_pairs
@@ -1861,6 +1934,18 @@ def coalesce_duplicate_joins(
     redundant column). Both copies are plans for the same logical relation, so
     the joined rows must satisfy the union of their pairings."""
     merged: dict[tuple[JoinType, str | None, str], Join] = {}
+    # INNER joins additionally merge orientation-independently: two
+    # independently-built plans for the same logical merge can pick opposite
+    # bases (`a JOIN b` vs `b JOIN a` on the mirrored pairs), and CTE-level
+    # joins have no aliasing, so keeping both renders a duplicate table
+    # reference. A pair present in both orientations keeps the INTERSECTION of
+    # its modifiers — rendering both joins would AND both conditions, and the
+    # conjunction of `=` with `is not distinct from` is `=`.
+    inner_merged: dict[frozenset[str], Join] = {}
+
+    def _pair_norm(right_name: str, p: CTEConceptPair) -> frozenset[tuple[str, str]]:
+        return frozenset({(p.cte.name, p.left.address), (right_name, p.right.address)})
+
     out: list[Join | InstantiatedUnnestJoin] = []
     for join in joins:
         if (
@@ -1869,6 +1954,59 @@ def coalesce_duplicate_joins(
             or not join.joinkey_pairs
         ):
             out.append(join)
+            continue
+        if join.jointype == JoinType.INNER:
+            partners = frozenset(
+                {join.right_cte.name} | {p.cte.name for p in join.joinkey_pairs}
+            )
+            inner_existing = inner_merged.get(partners)
+            if inner_existing is None:
+                inner_merged[partners] = join
+                out.append(join)
+                continue
+            assert inner_existing.joinkey_pairs is not None
+            existing_right = inner_existing.right_cte.name
+            by_norm = {
+                _pair_norm(existing_right, p): p for p in inner_existing.joinkey_pairs
+            }
+            additions: list[CTEConceptPair] = []
+            mergeable = True
+            for pair in join.joinkey_pairs:
+                norm = _pair_norm(join.right_cte.name, pair)
+                match = by_norm.get(norm)
+                if match is not None:
+                    continue
+                # A new pair must orient against the surviving join's right CTE.
+                if pair.cte.name == existing_right:
+                    additions.append(
+                        CTEConceptPair(
+                            left=pair.right,
+                            right=pair.left,
+                            existing_datasource=join.right_cte.source,
+                            modifiers=pair.modifiers,
+                            cte=join.right_cte,
+                        )
+                    )
+                elif join.right_cte.name == existing_right:
+                    additions.append(pair)
+                else:
+                    mergeable = False
+                    break
+            if not mergeable:
+                out.append(join)
+                continue
+            for pair in join.joinkey_pairs:
+                match = by_norm.get(_pair_norm(join.right_cte.name, pair))
+                if match is not None:
+                    match.modifiers = [
+                        m for m in match.modifiers if m in pair.modifiers
+                    ]
+            for addition in additions:
+                inner_existing.joinkey_pairs.append(addition)
+                by_norm[_pair_norm(existing_right, addition)] = addition
+            for modifier in join.modifiers:
+                if modifier not in inner_existing.modifiers:
+                    inner_existing.modifiers.append(modifier)
             continue
         key = (
             join.jointype,

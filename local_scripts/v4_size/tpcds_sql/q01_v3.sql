@@ -1,0 +1,45 @@
+
+WITH 
+cooperative as (
+SELECT
+    "ss_return_store_store"."S_STORE_SK" as "ss_return_store_sk",
+    "ss_store_returns"."SR_CUSTOMER_SK" as "ss_return_customer_sk",
+    sum("ss_store_returns"."SR_RETURN_AMT") as "total_returns"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    INNER JOIN "memory"."date_dim" as "ss_return_date_date" on "ss_store_returns"."SR_RETURNED_DATE_SK" = "ss_return_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."store" as "ss_return_store_store" on "ss_store_returns"."SR_STORE_SK" = "ss_return_store_store"."S_STORE_SK"
+WHERE
+    "ss_return_store_store"."S_STATE" = 'TN' and "ss_return_date_date"."D_YEAR" = 2000
+
+GROUP BY
+    1,
+    2),
+uneven as (
+SELECT
+    "cooperative"."ss_return_store_sk" as "ss_return_store_sk",
+    avg("cooperative"."total_returns") as "avg_store_returns"
+FROM
+    "cooperative"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "cooperative"."ss_return_store_sk" as "ss_return_store_sk",
+    "cooperative"."total_returns" as "total_returns",
+    "ss_return_customer_customers"."C_CUSTOMER_ID" as "ss_return_customer_id"
+FROM
+    "cooperative"
+    INNER JOIN "memory"."customer" as "ss_return_customer_customers" on "cooperative"."ss_return_customer_sk" = "ss_return_customer_customers"."C_CUSTOMER_SK")
+SELECT
+    "abundant"."ss_return_customer_id" as "ss_return_customer_id"
+FROM
+    "abundant"
+    INNER JOIN "uneven" on "abundant"."ss_return_store_sk" is not distinct from "uneven"."ss_return_store_sk"
+WHERE
+    "abundant"."total_returns" > ( 1.2 * "uneven"."avg_store_returns" )
+
+ORDER BY 
+    "abundant"."ss_return_customer_id" asc
+LIMIT (100)

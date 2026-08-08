@@ -1,7 +1,7 @@
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -112,24 +112,53 @@ def get_derivable_concepts(
                     to_check.append(dependent)
 
 
+@dataclass(slots=True)
+class _GraphSink:
+    """Accumulates the concept-recursion's node/edge inserts so the graph core
+    sees two batched calls instead of one crossing per insert. Records nodes in
+    first-touch order (an edge endpoint counts as a touch, matching the core's
+    on-demand endpoint creation) so the flushed node order is identical to the
+    per-call order."""
+
+    nodes: list[str] = field(default_factory=list)
+    node_set: set[str] = field(default_factory=set)
+    edges: list[tuple[str, str]] = field(default_factory=list)
+    edge_set: set[tuple[str, str]] = field(default_factory=set)
+
+    def add_node(self, node: str) -> None:
+        if node not in self.node_set:
+            self.node_set.add(node)
+            self.nodes.append(node)
+
+    def add_edge(self, left: str, right: str) -> None:
+        self.add_node(left)
+        self.add_node(right)
+        key = (left, right)
+        if key not in self.edge_set:
+            self.edge_set.add(key)
+            self.edges.append(key)
+
+    def flush(self, g: ReferenceGraph) -> None:
+        g.add_nodes_from(self.nodes)
+        g.add_edges_from(self.edges)
+
+
 def add_concept(
     concept: BuildConcept,
     g: ReferenceGraph,
     concept_mapping: dict[str, BuildConcept],
     default_concept_graph: dict[str, BuildConcept],
     seen: set[str],
-    node_stash: dict[str, str] | None = None,
+    node_stash: dict[str, str],
+    sink: _GraphSink,
 ):
-
     # if we have sources, recursively add them
-    if node_stash is None:
-        node_stash = {}
     node_name = concept_to_node(concept, node_stash)
     if node_name in seen:
         return
     seen.add(node_name)
     g.concepts[node_name] = concept
-    g.add_node(node_name)
+    sink.add_node(node_name)
     root_name = node_name.split("@", 1)[0]
     # A FILTER concept's `? <cond>` args are not join inputs — the filtered value
     # is sourced from its content alone, and the condition may legitimately
@@ -139,6 +168,16 @@ def add_concept(
     # restrict edges to the content side.
     if isinstance(concept.lineage, BuildFilterItem):
         sources: Sequence[BuildConcept] = concept.lineage.content_concept_arguments
+        # A filter over grainless content (`sum(1 ? cond)`) has no content-side
+        # row identity: its mask varies per row of the condition's row args, so
+        # those args ARE its source rows. Without them the filter node floats
+        # disconnected from the model whose rows it counts.
+        if not any(
+            s.derivation != Derivation.CONSTANT
+            and s.granularity != Granularity.SINGLE_ROW
+            for s in sources
+        ):
+            sources = list(concept.lineage.where.row_arguments)
     else:
         sources = concept.concept_arguments
     if sources:
@@ -150,29 +189,35 @@ def add_concept(
             generic = get_default_grain_concept(source, default_concept_graph)
             generic_node = concept_to_node(generic, stash=node_stash)
             add_concept(
-                generic, g, concept_mapping, default_concept_graph, seen, node_stash
+                generic,
+                g,
+                concept_mapping,
+                default_concept_graph,
+                seen,
+                node_stash,
+                sink,
             )
 
-            g.add_edge(generic_node, node_name)
+            sink.add_edge(generic_node, node_name)
     for ps_address in concept.pseudonyms:
         if ps_address not in concept_mapping:
             raise SyntaxError(f"Concept {concept} has invalid pseudonym {ps_address}")
         pseudonym = concept_mapping[ps_address]
         pseudonym = get_default_grain_concept(pseudonym, default_concept_graph)
         pseudonym_node = concept_to_node(pseudonym, stash=node_stash)
-        if (pseudonym_node, node_name) in g.edges and (
+        if (pseudonym_node, node_name) in sink.edge_set and (
             node_name,
             pseudonym_node,
-        ) in g.edges:
+        ) in sink.edge_set:
             continue
         if pseudonym_node.split("@", 1)[0] == root_name:
             continue
-        g.add_edge(pseudonym_node, node_name)
-        g.add_edge(node_name, pseudonym_node)
+        sink.add_edge(pseudonym_node, node_name)
+        sink.add_edge(node_name, pseudonym_node)
         g.pseudonyms.add((pseudonym_node, node_name))
         g.pseudonyms.add((node_name, pseudonym_node))
         add_concept(
-            pseudonym, g, concept_mapping, default_concept_graph, seen, node_stash
+            pseudonym, g, concept_mapping, default_concept_graph, seen, node_stash, sink
         )
 
 
@@ -200,11 +245,14 @@ def generate_adhoc_graph(
         if not isinstance(concept, BuildConcept):
             raise TypeError(f"Invalid non-build concept {concept}")
 
-    # add all parsed concepts
+    # add all parsed concepts; node/edge inserts accumulate in the sink and
+    # land in two batched core calls
+    sink = _GraphSink()
     for concept in concepts:
         add_concept(
-            concept, g, concept_mapping, default_concept_graph, seen, node_stash
+            concept, g, concept_mapping, default_concept_graph, seen, node_stash, sink
         )
+    sink.flush(g)
 
     # A rowset has no datasource node, so its outputs are otherwise uncoordinated
     # in the graph — unlike a datasource's columns, which the datasource node

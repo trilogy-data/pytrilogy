@@ -495,7 +495,33 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
 class EnvironmentDatasourceDict(dict):
     def __init__(self, *args, **kwargs) -> None:
+        # See EnvironmentConceptDict.mutations — same contract. A plain-dict
+        # subclass must also hook update(): dict.update bypasses __setitem__.
+        self.mutations: int = 0
+        # See EnvironmentConceptDict.content_version — effective writes only.
+        self.content_version: int = 0
         super().__init__(self, *args, **kwargs)
+
+    def __setitem__(self, key: str, value: Datasource) -> None:
+        self.mutations += 1
+        if dict.get(self, key) is not value:
+            self.content_version += 1
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key: str) -> None:
+        self.mutations += 1
+        self.content_version += 1
+        super().__delitem__(key)
+
+    def update(self, *args, **kwargs) -> None:  # type: ignore[override]
+        self.mutations += 1
+        self.content_version += 1
+        super().update(*args, **kwargs)
+
+    def pop(self, *args):
+        self.mutations += 1
+        self.content_version += 1
+        return super().pop(*args)
 
     def __getitem__(self, key: str) -> Datasource:
         try:

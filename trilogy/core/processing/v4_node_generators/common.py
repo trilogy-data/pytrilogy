@@ -1,9 +1,56 @@
 """Shared helpers for v4 node generators."""
 
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.graph_models import ReferenceGraph
+from trilogy.core.models.build import BoolExpr, BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
+from trilogy.core.processing.v4_helper.history import V4History
+
+
+def collapse_conditions(
+    conditions: BuildWhereClause | None,
+    preexisting_conditions: BuildWhereClause | None,
+) -> BoolExpr | None:
+    """AND the atoms new at this group with the ones an ancestor already applied.
+
+    For node types with no `conditions` slot of their own (window, union,
+    subselect) the distinction has nowhere to live, so both collapse into the
+    single `preexisting_conditions` the node does carry."""
+    new = conditions.conditional if conditions else None
+    pre = preexisting_conditions.conditional if preexisting_conditions else None
+    if pre is None:
+        return new
+    if new is None:
+        return pre
+    return new + pre
+
+
+def search_parent(
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+    history: V4History,
+    g: ReferenceGraph,
+    depth: int = 0,
+    conditions: list[BuildWhereClause] | None = None,
+    complete_partials: bool = True,
+) -> StrategyNode | None:
+    """Plan `concepts` as an independent sub-search and return its producer.
+
+    The single re-entry point into the planner for generators that source
+    something the group graph did not hand them as a parent (a union arm, a
+    correlated subselect's inner select, a condition feeder)."""
+    from trilogy.core.processing.concept_strategies_v4 import search_concepts
+
+    return search_concepts(
+        mandatory_list=concepts,
+        history=history,
+        environment=environment,
+        depth=depth,
+        g=g,
+        conditions=conditions or [],
+        complete_partials=complete_partials,
+    ).strategy_node
 
 
 def parent_outputs_needed(

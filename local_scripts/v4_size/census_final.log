@@ -1,0 +1,167 @@
+tpcds/query-1 0.46s
+tpcds/query-2 0.49s
+tpcds/query-3 0.68s
+tpcds/query01 0.28s
+tpcds/query01_agg 0.21s
+tpcds/query02-one 1.03s
+tpcds/query02-two 0.88s
+tpcds/query02 0.47s
+tpcds/query03 0.10s
+tpcds/query04 2.45s
+[v4] source search hit cover_limit over 46 candidates for terminals s.channel,s.channel_dim_id,s.channel_dim_text_id,s.ext_sales_price,s.item.sk,s.net_profit,s.order_id,s.return_amount,s.return_channel_dim_id,s.return_channel_dim_text_id,s.return_date.date,s.return_date.sk,s.return_net_loss,s.sale_date.date,s.sale_date.sk: solution kept but it may not be cost-minimal
+tpcds/query05 7.53s
+tpcds/query06 0.12s
+tpcds/query07 0.15s
+tpcds/query08 1.43s
+tpcds/query09 1.13s
+tpcds/query10 1.20s
+tpcds/query11 2.36s
+tpcds/query12 0.18s
+tpcds/query13 0.18s
+tpcds/query14 0.92s
+tpcds/query15 0.15s
+tpcds/query16 0.26s
+tpcds/query17 1.30s
+tpcds/query18 0.36s
+tpcds/query19 0.13s
+tpcds/query20 0.23s
+tpcds/query21 0.23s
+tpcds/query22 0.05s
+tpcds/query23 2.33s
+tpcds/query24 1.12s
+tpcds/query25 0.15s
+tpcds/query26 0.18s
+tpcds/query27 0.19s
+tpcds/query28 0.24s
+tpcds/query29 0.38s
+tpcds/query30-alt 0.31s
+tpcds/query30 1.23s
+tpcds/query31 1.53s
+tpcds/query32 0.20s
+tpcds/query33 0.30s
+tpcds/query34 0.39s
+tpcds/query35 1.17s
+tpcds/query36 0.15s
+tpcds/query37 0.16s
+tpcds/query38 0.55s
+tpcds/query39 0.11s
+tpcds/query40 0.60s
+tpcds/query41 0.27s
+tpcds/query42 0.10s
+tpcds/query43 1.10s
+tpcds/query44 0.30s
+tpcds/query45 0.23s
+tpcds/query46 0.23s
+tpcds/query47 0.25s
+tpcds/query48 0.13s
+tpcds/query49 0.26s
+tpcds/query50 1.32s
+tpcds/query51 0.68s
+tpcds/query52 0.11s
+tpcds/query53 0.19s
+tpcds/query54 0.69s
+tpcds/query55 0.10s
+tpcds/query56 0.28s
+tpcds/query57 0.32s
+tpcds/query58 0.32s
+tpcds/query59 0.39s
+tpcds/query60 0.29s
+tpcds/query61 0.15s
+tpcds/query62 0.70s
+tpcds/query63 0.20s
+tpcds/query64 2.08s
+tpcds/query65 0.16s
+tpcds/query66 1.69s
+tpcds/query67 1.05s
+tpcds/query68 0.25s
+tpcds/query69 0.88s
+tpcds/query70 0.24s
+tpcds/query71 0.33s
+tpcds/query72 0.43s
+tpcds/query73 1.88s
+tpcds/query74 1.20s
+tpcds/query75 0.43s
+tpcds/query76 2.05s
+tpcds/query77 2.72s
+tpcds/query78 0.40s
+tpcds/query79 0.20s
+tpcds/query80 1.14s
+tpcds/query81 0.34s
+tpcds/query82.1 0.16s
+tpcds/query82 0.11s
+tpcds/query83 0.42s
+tpcds/query84 0.15s
+tpcds/query85 0.21s
+tpcds/query86 0.22s
+tpcds/query87 0.71s
+tpcds/query88 0.38s
+tpcds/query89 1.17s
+tpcds/query90 0.22s
+tpcds/query91 0.21s
+tpcds/query92 0.18s
+tpcds/query93 0.13s
+tpcds/query94 0.28s
+tpcds/query95 0.29s
+tpcds/query96 0.25s
+tpcds/query97-one 0.57s
+tpcds/query97-two 0.49s
+tpcds/query97 0.98s
+tpcds/query98 0.17s
+tpcds/query99 0.41s
+tpch/query01 2.33s
+tpch/query02-region 0.07s
+tpch/query02 0.09s
+tpch/query03 0.05s
+tpch/query04 0.06s
+tpch/query05 0.05s
+tpch/query06 0.05s
+tpch/query07 0.06s
+tpch/query08 0.08s
+tpch/query09 0.11s
+tpch/query10 0.06s
+tpch/query11 0.07s
+tpch/query12 0.13s
+tpch/query13 0.05s
+tpch/query14 0.08s
+tpch/query15 0.10s
+tpch/query16 0.06s
+tpch/query17 0.05s
+tpch/query18 0.06s
+tpch/query19 0.08s
+tpch/query20 0.10s
+tpch/query21 0.08s
+tpch/query22 0.16s
+
+== planner census ==
+direct_hit	82
+direct_miss	17
+network_bridge	318
+network_none	8
+network_single_scan	83
+search_calls	274
+search_declined	8
+search_truncated_cover_limit	1
+
+== slowest searches ==
+tpcds/query05	cands=46	covers=4096	trunc=True	7.24s
+tpcds/query04	cands=46	covers=2833	trunc=False	1.06s
+tpcds/query66	cands=46	covers=1417	trunc=False	0.96s
+tpcds/query80	cands=46	covers=1023	trunc=False	0.93s
+tpcds/query23	cands=46	covers=2714	trunc=False	0.72s
+tpcds/query23	cands=46	covers=2714	trunc=False	0.57s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.55s
+tpcds/query04	cands=46	covers=1417	trunc=False	0.50s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.48s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.46s
+tpcds/query74	cands=46	covers=1417	trunc=False	0.43s
+tpcds/query74	cands=46	covers=709	trunc=False	0.42s
+tpcds/query97	cands=46	covers=1418	trunc=False	0.41s
+tpcds/query04	cands=46	covers=709	trunc=False	0.38s
+tpcds/query23	cands=46	covers=709	trunc=False	0.32s
+tpcds/query31	cands=46	covers=709	trunc=False	0.31s
+tpcds/query54	cands=79	covers=703	trunc=False	0.30s
+tpcds/query23	cands=46	covers=1386	trunc=False	0.29s
+tpcds/query11	cands=46	covers=1417	trunc=False	0.27s
+tpcds/query35	cands=53	covers=1048	trunc=False	0.22s
+
+total search seconds: 21.4 over 274 searches

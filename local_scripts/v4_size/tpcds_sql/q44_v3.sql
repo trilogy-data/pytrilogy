@@ -1,0 +1,109 @@
+
+WITH 
+cooperative as (
+SELECT
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_sk",
+    avg(CASE WHEN "ss_store_sales"."SS_STORE_SK" = 1 THEN "ss_store_sales"."SS_NET_PROFIT" ELSE NULL END) as "_virt_agg_avg_7707029941687820_wscope"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "cooperative"."_virt_agg_avg_7707029941687820_wscope" as "_virt_agg_avg_7707029941687820_wscope",
+    "ss_store_sales"."SS_ITEM_SK" as "ss_item_sk",
+    "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+    "ss_store_sales"."SS_STORE_SK" as "ss_store_sk",
+    "ss_store_sales"."SS_TICKET_NUMBER" as "ss_ticket_number"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "cooperative" on "ss_store_sales"."SS_ITEM_SK" = "cooperative"."ss_item_sk"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 1
+),
+highfalutin as (
+SELECT
+    avg("ss_store_sales"."SS_NET_PROFIT") as "addr_null_threshold_threshold"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+WHERE
+    "ss_store_sales"."SS_STORE_SK" = 1 and "ss_store_sales"."SS_ADDR_SK" is null
+),
+uneven as (
+SELECT
+    "abundant"."ss_item_sk" as "ss_item_sk",
+    "abundant"."ss_net_profit" as "ss_net_profit",
+    "abundant"."ss_store_sk" as "ss_store_sk"
+FROM
+    "highfalutin"
+    INNER JOIN "abundant" on 1=1
+WHERE
+    "abundant"."_virt_agg_avg_7707029941687820_wscope" > 0.9 * "highfalutin"."addr_null_threshold_threshold"
+
+GROUP BY
+    1,
+    2,
+    3,
+    "abundant"."ss_ticket_number"),
+yummy as (
+SELECT
+    "uneven"."ss_item_sk" as "ss_item_sk",
+    avg(CASE WHEN "uneven"."ss_store_sk" = 1 THEN "uneven"."ss_net_profit" ELSE NULL END) as "item_avg_profit"
+FROM
+    "uneven"
+GROUP BY
+    1),
+vacuous as (
+SELECT
+    "yummy"."ss_item_sk" as "ss_item_sk",
+    rank() over (order by "yummy"."item_avg_profit" asc ) as "_ascending_rnk_a",
+    rank() over (order by "yummy"."item_avg_profit" desc ) as "_descending_rnk_d"
+FROM
+    "yummy"),
+sparkling as (
+SELECT
+    "ss_item_items"."I_PRODUCT_NAME" as "_descending_worst_performing",
+    "vacuous"."_descending_rnk_d" as "_descending_rnk_d"
+FROM
+    "vacuous"
+    INNER JOIN "memory"."item" as "ss_item_items" on "vacuous"."ss_item_sk" = "ss_item_items"."I_ITEM_SK"
+GROUP BY
+    1,
+    2),
+abhorrent as (
+SELECT
+    "sparkling"."_descending_rnk_d" as "descending_rnk_d",
+    "sparkling"."_descending_worst_performing" as "descending_worst_performing"
+FROM
+    "sparkling"),
+concerned as (
+SELECT
+    "ss_item_items"."I_PRODUCT_NAME" as "_ascending_best_performing",
+    "vacuous"."_ascending_rnk_a" as "_ascending_rnk_a"
+FROM
+    "vacuous"
+    INNER JOIN "memory"."item" as "ss_item_items" on "vacuous"."ss_item_sk" = "ss_item_items"."I_ITEM_SK"
+GROUP BY
+    1,
+    2),
+young as (
+SELECT
+    "concerned"."_ascending_best_performing" as "ascending_best_performing",
+    "concerned"."_ascending_rnk_a" as "ascending_rnk_a"
+FROM
+    "concerned")
+SELECT
+    coalesce("abhorrent"."descending_rnk_d","young"."ascending_rnk_a") as "rnk",
+    "young"."ascending_best_performing" as "ascending_best_performing",
+    "abhorrent"."descending_worst_performing" as "descending_worst_performing"
+FROM
+    "young"
+    LEFT OUTER JOIN "abhorrent" on "young"."ascending_rnk_a" = "abhorrent"."descending_rnk_d"
+WHERE
+    coalesce("abhorrent"."descending_rnk_d","young"."ascending_rnk_a") < 11
+
+ORDER BY 
+    "rnk" asc nulls first,
+    "young"."ascending_best_performing" desc nulls first,
+    "abhorrent"."descending_worst_performing" desc nulls first
+LIMIT (100)

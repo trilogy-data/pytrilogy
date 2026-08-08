@@ -1,0 +1,81 @@
+
+WITH 
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" is not null and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity' and "sales_sale_date_date"."D_YEAR" = 1998 and "sales_sale_date_date"."D_MOY" = 12
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null and "sales_item_items"."I_CATEGORY" = 'Women' and "sales_item_items"."I_CLASS" = 'maternity' and "sales_sale_date_date"."D_YEAR" = 1998 and "sales_sale_date_date"."D_MOY" = 12
+),
+thoughtful as (
+SELECT
+    "cheerful"."sales_billing_customer_sk" as "my_customers_my_cust_id"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+sparkling as (
+SELECT
+    "ss_store_sales"."SS_CUSTOMER_SK" as "ss_customer_sk",
+    "ss_store_sales"."SS_EXT_SALES_PRICE" as "ss_ext_sales_price"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ss_customer_current_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_current_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    exists (select 1 from thoughtful where thoughtful."my_customers_my_cust_id" is not distinct from "ss_store_sales"."SS_CUSTOMER_SK") and "ss_sale_date_date"."D_MONTH_SEQ" >= 1188 and "ss_sale_date_date"."D_MONTH_SEQ" <= 1190 and "ss_store_store"."S_COUNTY" = "ss_customer_current_address_customer_address"."CA_COUNTY" and "ss_store_store"."S_STATE" = "ss_customer_current_address_customer_address"."CA_STATE" and "ss_store_sales"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1,
+    2,
+    "ss_store_sales"."SS_ITEM_SK",
+    "ss_store_sales"."SS_TICKET_NUMBER"),
+abhorrent as (
+SELECT
+    "sparkling"."ss_customer_sk" as "my_revenue_rev_cust_id",
+    sum("sparkling"."ss_ext_sales_price") as "my_revenue_revenue"
+FROM
+    "sparkling"
+GROUP BY
+    1),
+macho as (
+SELECT
+    cast(round("abhorrent"."my_revenue_revenue" / 50,0) as int) * 50 as "segment_base",
+    cast(round("abhorrent"."my_revenue_revenue" / 50,0) as int) as "segment"
+FROM
+    "abhorrent"
+GROUP BY
+    1,
+    2),
+late as (
+SELECT
+    count("abhorrent"."my_revenue_rev_cust_id") as "num_customers"
+FROM
+    "abhorrent")
+SELECT
+    "macho"."segment" as "segment",
+    coalesce("late"."num_customers",0) as "num_customers",
+    "macho"."segment_base" as "segment_base"
+FROM
+    "late"
+    FULL JOIN "macho" on 1=1
+ORDER BY 
+    "macho"."segment" asc nulls first,
+    coalesce("late"."num_customers",0) asc nulls first,
+    "macho"."segment_base" asc nulls first
+LIMIT (100)

@@ -1,0 +1,72 @@
+
+WITH 
+questionable as (
+SELECT
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number",
+    "ws_web_sales"."WS_WAREHOUSE_SK" as "ws_warehouse_sk"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    "questionable"."ws_order_number" as "multi_warehouse_orders"
+FROM
+    "questionable"
+GROUP BY
+    1
+HAVING
+    count("questionable"."ws_warehouse_sk") > 1
+),
+thoughtful as (
+SELECT
+    coalesce("ws_web_returns"."WR_ORDER_NUMBER","ws_web_sales"."WS_ORDER_NUMBER") as "returned_orders"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_returns" as "ws_web_returns" on "ws_web_sales"."WS_ITEM_SK" = "ws_web_returns"."WR_ITEM_SK" AND "ws_web_sales"."WS_ORDER_NUMBER" = "ws_web_returns"."WR_ORDER_NUMBER"
+WHERE
+    ("ws_web_returns"."WR_ORDER_NUMBER" is not null) = True
+
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("ws_web_sales"."WS_EXT_SHIP_COST") as "total_shipping_cost",
+    sum("ws_web_sales"."WS_NET_PROFIT") as "total_net_profit"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ws_pos_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_pos_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_pos_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri' and exists (select 1 from abundant where abundant."multi_warehouse_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER") and not exists (select 1 from thoughtful where thoughtful."returned_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER")
+),
+cooperative as (
+SELECT
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ws_pos_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_pos_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "ws_web_site_web_site"."web_company_name" = 'pri' and cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_pos_ship_address_customer_address"."CA_STATE" = 'IL' and exists (select 1 from abundant where abundant."multi_warehouse_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER") and not exists (select 1 from thoughtful where thoughtful."returned_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER")
+
+GROUP BY
+    1),
+vacuous as (
+SELECT
+    count(distinct "cooperative"."ws_order_number") as "order_count"
+FROM
+    "cooperative")
+SELECT
+    "vacuous"."order_count" as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "vacuous"
+    INNER JOIN "concerned" on 1=1
+ORDER BY 
+    "vacuous"."order_count" asc
+LIMIT (100)

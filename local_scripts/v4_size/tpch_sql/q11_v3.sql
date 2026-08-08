@@ -1,0 +1,55 @@
+
+WITH 
+cheerful as (
+SELECT
+    "partsupp"."ps_availqty" as "available_quantity",
+    "partsupp"."ps_partkey" as "id",
+    "partsupp"."ps_supplycost" as "supply_cost",
+    UPPER("supplier_nation_nation"."n_name")  as "supplier_nation_name"
+FROM
+    "memory"."partsupp" as "partsupp"
+    INNER JOIN "memory"."supplier" as "supplier_supplier" on "partsupp"."ps_suppkey" = "supplier_supplier"."s_suppkey"
+    INNER JOIN "memory"."nation" as "supplier_nation_nation" on "supplier_supplier"."s_nationkey" = "supplier_nation_nation"."n_nationkey"),
+thoughtful as (
+SELECT
+    "cheerful"."id" as "id",
+    "cheerful"."supply_cost" as "supply_cost",
+    CASE WHEN "cheerful"."supplier_nation_name" = 'GERMANY' THEN "cheerful"."available_quantity" ELSE NULL END as "_virt_filter_available_quantity_5442867613516720"
+FROM
+    "cheerful"),
+questionable as (
+SELECT
+    "thoughtful"."id" as "id",
+    sum("thoughtful"."supply_cost" * "thoughtful"."_virt_filter_available_quantity_5442867613516720") as "_virt_agg_sum_7056827604753688_wscope"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+abundant as (
+SELECT
+    "cheerful"."available_quantity" as "available_quantity",
+    "cheerful"."id" as "id",
+    "cheerful"."supplier_nation_name" as "supplier_nation_name",
+    "cheerful"."supply_cost" as "supply_cost",
+    "questionable"."_virt_agg_sum_7056827604753688_wscope" as "_virt_agg_sum_7056827604753688_wscope"
+FROM
+    "cheerful"
+    INNER JOIN "questionable" on "cheerful"."id" = "questionable"."id"),
+cooperative as (
+SELECT
+    sum("thoughtful"."supply_cost" * "thoughtful"."_virt_filter_available_quantity_5442867613516720") as "germany_total_value"
+FROM
+    "thoughtful")
+SELECT
+    "abundant"."id" as "id",
+    sum("abundant"."supply_cost" * CASE WHEN "abundant"."supplier_nation_name" = 'GERMANY' THEN "abundant"."available_quantity" ELSE NULL END) as "total_value"
+FROM
+    "abundant"
+    INNER JOIN "cooperative" on 1=1
+WHERE
+    "abundant"."_virt_agg_sum_7056827604753688_wscope" > "cooperative"."germany_total_value" * 0.0001
+
+GROUP BY
+    1
+ORDER BY 
+    "total_value" desc

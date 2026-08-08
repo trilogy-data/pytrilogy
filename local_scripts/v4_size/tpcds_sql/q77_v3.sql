@@ -1,0 +1,215 @@
+
+WITH 
+hard as (
+SELECT
+    "ws_web_sales"."WS_WEB_PAGE_SK" as "_ws_grouped_ws_wp_id",
+    sum("ws_web_sales"."WS_EXT_SALES_PRICE") as "_ws_grouped_ws_sales",
+    sum("ws_web_sales"."WS_NET_PROFIT") as "_ws_grouped_ws_profit"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."date_dim" as "ws_sale_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_sale_date_date"."D_DATE_SK"
+WHERE
+    cast("ws_sale_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end and "ws_web_sales"."WS_WEB_PAGE_SK" is not null
+
+GROUP BY
+    1),
+yellow as (
+SELECT
+    "hard"."_ws_grouped_ws_profit" as "ws_grouped_ws_profit",
+    "hard"."_ws_grouped_ws_sales" as "ws_grouped_ws_sales",
+    "hard"."_ws_grouped_ws_wp_id" as "ws_grouped_ws_wp_id"
+FROM
+    "hard"),
+puzzled as (
+SELECT
+    "ws_web_returns"."WR_WEB_PAGE_SK" as "_wr_grouped_wr_wp_id",
+    sum("ws_web_returns"."WR_NET_LOSS") as "_wr_grouped_wr_loss",
+    sum("ws_web_returns"."WR_RETURN_AMT") as "_wr_grouped_wr_returns"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    LEFT OUTER JOIN "memory"."web_returns" as "ws_web_returns" on "ws_web_sales"."WS_ITEM_SK" = "ws_web_returns"."WR_ITEM_SK" AND "ws_web_sales"."WS_ORDER_NUMBER" = "ws_web_returns"."WR_ORDER_NUMBER"
+    RIGHT OUTER JOIN "memory"."date_dim" as "ws_return_date_date" on "ws_web_returns"."WR_RETURNED_DATE_SK" = "ws_return_date_date"."D_DATE_SK"
+WHERE
+    cast("ws_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+rambunctious as (
+SELECT
+    "puzzled"."_wr_grouped_wr_loss" as "wr_grouped_wr_loss",
+    "puzzled"."_wr_grouped_wr_returns" as "wr_grouped_wr_returns",
+    "puzzled"."_wr_grouped_wr_wp_id" as "wr_grouped_wr_wp_id"
+FROM
+    "puzzled"),
+resonant as (
+SELECT
+    "yellow"."ws_grouped_ws_profit" - cast(coalesce("rambunctious"."wr_grouped_wr_loss",0) as numeric(15,2)) as "___tvf_arm_2_u_profit",
+    :___tvf_arm_2_u_channel as "___tvf_arm_2_u_channel",
+    cast("yellow"."ws_grouped_ws_sales" as numeric(15,2)) as "___tvf_arm_2_u_sales",
+    cast(coalesce("rambunctious"."wr_grouped_wr_returns",0) as numeric(15,2)) as "___tvf_arm_2_u_returns",
+    coalesce("rambunctious"."wr_grouped_wr_wp_id","yellow"."ws_grouped_ws_wp_id") as "___tvf_arm_2_u_id"
+FROM
+    "yellow"
+    LEFT OUTER JOIN "rambunctious" on "yellow"."ws_grouped_ws_wp_id" is not distinct from "rambunctious"."wr_grouped_wr_wp_id"
+WHERE
+    "yellow"."ws_grouped_ws_sales" is not null
+),
+scrawny as (
+SELECT
+    "ss_store_sales"."SS_STORE_SK" as "_ss_grouped_ss_store_id",
+    sum("ss_store_sales"."SS_EXT_SALES_PRICE") as "_ss_grouped_ss_sales",
+    sum("ss_store_sales"."SS_NET_PROFIT") as "_ss_grouped_ss_profit"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    INNER JOIN "memory"."date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+WHERE
+    cast("ss_sale_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end and "ss_store_sales"."SS_STORE_SK" is not null
+
+GROUP BY
+    1),
+kaput as (
+SELECT
+    "scrawny"."_ss_grouped_ss_profit" as "ss_grouped_ss_profit",
+    "scrawny"."_ss_grouped_ss_sales" as "ss_grouped_ss_sales",
+    "scrawny"."_ss_grouped_ss_store_id" as "ss_grouped_ss_store_id"
+FROM
+    "scrawny"),
+abhorrent as (
+SELECT
+    "ss_store_returns"."SR_STORE_SK" as "_sr_grouped_sr_store_id",
+    sum("ss_store_returns"."SR_NET_LOSS") as "_sr_grouped_sr_loss",
+    sum("ss_store_returns"."SR_RETURN_AMT") as "_sr_grouped_sr_returns"
+FROM
+    "memory"."store_sales" as "ss_store_sales"
+    LEFT OUTER JOIN "memory"."store_returns" as "ss_store_returns" on "ss_store_sales"."SS_ITEM_SK" = "ss_store_returns"."SR_ITEM_SK" AND "ss_store_sales"."SS_TICKET_NUMBER" = "ss_store_returns"."SR_TICKET_NUMBER"
+    RIGHT OUTER JOIN "memory"."date_dim" as "ss_return_date_date" on "ss_store_returns"."SR_RETURNED_DATE_SK" = "ss_return_date_date"."D_DATE_SK"
+WHERE
+    cast("ss_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+late as (
+SELECT
+    "abhorrent"."_sr_grouped_sr_loss" as "sr_grouped_sr_loss",
+    "abhorrent"."_sr_grouped_sr_returns" as "sr_grouped_sr_returns",
+    "abhorrent"."_sr_grouped_sr_store_id" as "sr_grouped_sr_store_id"
+FROM
+    "abhorrent"),
+divergent as (
+SELECT
+    "kaput"."ss_grouped_ss_profit" - cast(coalesce("late"."sr_grouped_sr_loss",0) as numeric(15,2)) as "___tvf_arm_1_u_profit",
+    :___tvf_arm_1_u_channel as "___tvf_arm_1_u_channel",
+    cast("kaput"."ss_grouped_ss_sales" as numeric(15,2)) as "___tvf_arm_1_u_sales",
+    cast(coalesce("late"."sr_grouped_sr_returns",0) as numeric(15,2)) as "___tvf_arm_1_u_returns",
+    coalesce("kaput"."ss_grouped_ss_store_id","late"."sr_grouped_sr_store_id") as "___tvf_arm_1_u_id"
+FROM
+    "kaput"
+    LEFT OUTER JOIN "late" on "kaput"."ss_grouped_ss_store_id" is not distinct from "late"."sr_grouped_sr_store_id"
+WHERE
+    "kaput"."ss_grouped_ss_sales" is not null
+),
+abundant as (
+SELECT
+    "cs_catalog_sales"."CS_CALL_CENTER_SK" as "_cs_grouped_cs_cc_id",
+    sum("cs_catalog_sales"."CS_EXT_SALES_PRICE") as "_cs_grouped_cs_sales",
+    sum("cs_catalog_sales"."CS_NET_PROFIT") as "_cs_grouped_cs_profit"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_sale_date_date" on "cs_catalog_sales"."CS_SOLD_DATE_SK" = "cs_sale_date_date"."D_DATE_SK"
+WHERE
+    cast("cs_sale_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end and "cs_catalog_sales"."CS_CALL_CENTER_SK" is not null
+
+GROUP BY
+    1),
+yummy as (
+SELECT
+    "abundant"."_cs_grouped_cs_cc_id" as "cs_grouped_cs_cc_id",
+    "abundant"."_cs_grouped_cs_profit" as "cs_grouped_cs_profit",
+    "abundant"."_cs_grouped_cs_sales" as "cs_grouped_cs_sales"
+FROM
+    "abundant"),
+cheerful as (
+SELECT
+    "cs_catalog_returns"."CR_CALL_CENTER_SK" as "_cr_grouped_cr_cc_id",
+    sum("cs_catalog_returns"."CR_NET_LOSS") as "_cr_grouped_cr_loss",
+    sum("cs_catalog_returns"."CR_RETURN_AMOUNT") as "_cr_grouped_cr_returns"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    LEFT OUTER JOIN "memory"."catalog_returns" as "cs_catalog_returns" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_catalog_returns"."CR_ITEM_SK" AND "cs_catalog_sales"."CS_ORDER_NUMBER" = "cs_catalog_returns"."CR_ORDER_NUMBER"
+    RIGHT OUTER JOIN "memory"."date_dim" as "cs_return_date_date" on "cs_catalog_returns"."CR_RETURNED_DATE_SK" = "cs_return_date_date"."D_DATE_SK"
+WHERE
+    cast("cs_return_date_date"."D_DATE" as date) BETWEEN :period_start AND :period_end
+
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "cheerful"."_cr_grouped_cr_cc_id" as "cr_grouped_cr_cc_id",
+    "cheerful"."_cr_grouped_cr_loss" as "cr_grouped_cr_loss",
+    "cheerful"."_cr_grouped_cr_returns" as "cr_grouped_cr_returns"
+FROM
+    "cheerful"),
+juicy as (
+SELECT
+    "yummy"."cs_grouped_cs_profit" - cast(coalesce("cooperative"."cr_grouped_cr_loss",0) as numeric(15,2)) as "___tvf_arm_0_u_profit",
+    :___tvf_arm_0_u_channel as "___tvf_arm_0_u_channel",
+    cast("yummy"."cs_grouped_cs_sales" as numeric(15,2)) as "___tvf_arm_0_u_sales",
+    cast(coalesce("cooperative"."cr_grouped_cr_returns",0) as numeric(15,2)) as "___tvf_arm_0_u_returns",
+    coalesce("cooperative"."cr_grouped_cr_cc_id","yummy"."cs_grouped_cs_cc_id") as "___tvf_arm_0_u_id"
+FROM
+    "yummy"
+    LEFT OUTER JOIN "cooperative" on "yummy"."cs_grouped_cs_cc_id" is not distinct from "cooperative"."cr_grouped_cr_cc_id"
+WHERE
+    "yummy"."cs_grouped_cs_sales" is not null
+),
+courageous as (
+SELECT
+    "juicy"."___tvf_arm_0_u_channel" as "_l0_union_u_channel",
+    "juicy"."___tvf_arm_0_u_id" as "_l0_union_u_id",
+    "juicy"."___tvf_arm_0_u_sales" as "_l0_union_u_sales",
+    "juicy"."___tvf_arm_0_u_returns" as "_l0_union_u_returns",
+    "juicy"."___tvf_arm_0_u_profit" as "_l0_union_u_profit"
+FROM
+    "juicy"
+UNION ALL
+SELECT
+    "divergent"."___tvf_arm_1_u_channel" as "_l0_union_u_channel",
+    "divergent"."___tvf_arm_1_u_id" as "_l0_union_u_id",
+    "divergent"."___tvf_arm_1_u_sales" as "_l0_union_u_sales",
+    "divergent"."___tvf_arm_1_u_returns" as "_l0_union_u_returns",
+    "divergent"."___tvf_arm_1_u_profit" as "_l0_union_u_profit"
+FROM
+    "divergent"
+UNION ALL
+SELECT
+    "resonant"."___tvf_arm_2_u_channel" as "_l0_union_u_channel",
+    "resonant"."___tvf_arm_2_u_id" as "_l0_union_u_id",
+    "resonant"."___tvf_arm_2_u_sales" as "_l0_union_u_sales",
+    "resonant"."___tvf_arm_2_u_returns" as "_l0_union_u_returns",
+    "resonant"."___tvf_arm_2_u_profit" as "_l0_union_u_profit"
+FROM
+    "resonant"),
+vast as (
+SELECT
+    "courageous"."_l0_union_u_channel" as "l0_union_u_channel",
+    "courageous"."_l0_union_u_id" as "l0_union_u_id",
+    "courageous"."_l0_union_u_profit" as "l0_union_u_profit",
+    "courageous"."_l0_union_u_returns" as "l0_union_u_returns",
+    "courageous"."_l0_union_u_sales" as "l0_union_u_sales"
+FROM
+    "courageous")
+SELECT
+    "vast"."l0_union_u_channel" as "channel",
+    "vast"."l0_union_u_id" as "sk",
+    sum("vast"."l0_union_u_sales") as "sales",
+    sum("vast"."l0_union_u_returns") as "returns_",
+    sum("vast"."l0_union_u_profit") as "profit"
+FROM
+    "vast"
+GROUP BY
+    ROLLUP (1, 2)
+ORDER BY 
+    "channel" asc nulls first,
+    "sk" asc nulls first,
+    "returns_" desc
+LIMIT (100)

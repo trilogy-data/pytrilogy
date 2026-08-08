@@ -1,0 +1,71 @@
+
+WITH 
+thoughtful as (
+SELECT
+    "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
+    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_sk",
+    "store_sales_store_sales"."SS_EXT_SALES_PRICE" as "store_sales_ext_sales_price"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "store_sales_store_sales"."SS_ITEM_SK" = "store_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."date_dim" as "store_sales_sale_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_sale_date_date"."D_DATE_SK"
+WHERE
+    ("store_sales_item_items"."I_CATEGORY" is not null and "store_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home')) and cast("store_sales_sale_date_date"."D_DATE" as date) BETWEEN date '1999-02-22' AND date '1999-03-24'
+),
+abundant as (
+SELECT
+    "thoughtful"."store_sales_item_class" as "store_sales_item_class",
+    sum("thoughtful"."store_sales_ext_sales_price") as "_virt_agg_sum_7595906549305205"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+cooperative as (
+SELECT
+    "thoughtful"."store_sales_item_sk" as "store_sales_item_sk",
+    sum("thoughtful"."store_sales_ext_sales_price") as "item_revenue"
+FROM
+    "thoughtful"
+GROUP BY
+    1),
+quizzical as (
+SELECT
+    "store_sales_item_items"."I_CATEGORY" as "store_sales_item_category",
+    "store_sales_item_items"."I_CLASS" as "store_sales_item_class",
+    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
+    "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
+    "store_sales_item_items"."I_ITEM_ID" as "store_sales_item_id",
+    "store_sales_item_items"."I_ITEM_SK" as "store_sales_item_sk"
+FROM
+    "memory"."item" as "store_sales_item_items"
+WHERE
+    ("store_sales_item_items"."I_CATEGORY" is not null and "store_sales_item_items"."I_CATEGORY" in ('Sports','Books','Home'))
+),
+questionable as (
+SELECT
+    "cooperative"."item_revenue" as "item_revenue",
+    "quizzical"."store_sales_item_category" as "store_sales_item_category",
+    "quizzical"."store_sales_item_class" as "store_sales_item_class",
+    "quizzical"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "quizzical"."store_sales_item_desc" as "store_sales_item_desc",
+    "quizzical"."store_sales_item_id" as "store_sales_item_id"
+FROM
+    "cooperative"
+    INNER JOIN "quizzical" on "cooperative"."store_sales_item_sk" = "quizzical"."store_sales_item_sk")
+SELECT
+    "questionable"."store_sales_item_id" as "store_sales_item_id",
+    "questionable"."store_sales_item_desc" as "store_sales_item_desc",
+    "questionable"."store_sales_item_category" as "store_sales_item_category",
+    "questionable"."store_sales_item_class" as "store_sales_item_class",
+    "questionable"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "questionable"."item_revenue" as "item_revenue",
+    ( "questionable"."item_revenue" * 100.0 ) / ("abundant"."_virt_agg_sum_7595906549305205") as "revenueratio"
+FROM
+    "abundant"
+    INNER JOIN "questionable" on "abundant"."store_sales_item_class" is not distinct from "questionable"."store_sales_item_class"
+ORDER BY 
+    "questionable"."store_sales_item_category" asc nulls first,
+    "questionable"."store_sales_item_class" asc nulls first,
+    "questionable"."store_sales_item_id" asc nulls first,
+    "questionable"."store_sales_item_desc" asc nulls first,
+    "revenueratio" asc nulls first

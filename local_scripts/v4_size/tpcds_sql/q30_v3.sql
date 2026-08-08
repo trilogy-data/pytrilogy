@@ -1,0 +1,106 @@
+
+WITH 
+juicy as (
+SELECT
+    "ws_return_customer_current_address_customer_address"."CA_STATE" as "ws_return_customer_current_address_state",
+    "ws_return_customer_customers"."C_BIRTH_COUNTRY" as "ws_return_customer_birth_country",
+    "ws_return_customer_customers"."C_BIRTH_DAY" as "ws_return_customer_birth_day",
+    "ws_return_customer_customers"."C_BIRTH_MONTH" as "ws_return_customer_birth_month",
+    "ws_return_customer_customers"."C_BIRTH_YEAR" as "ws_return_customer_birth_year",
+    "ws_return_customer_customers"."C_CUSTOMER_ID" as "ws_return_customer_id",
+    "ws_return_customer_customers"."C_CUSTOMER_SK" as "ws_return_customer_sk",
+    "ws_return_customer_customers"."C_EMAIL_ADDRESS" as "ws_return_customer_email_address",
+    "ws_return_customer_customers"."C_FIRST_NAME" as "ws_return_customer_first_name",
+    "ws_return_customer_customers"."C_LAST_NAME" as "ws_return_customer_last_name",
+    "ws_return_customer_customers"."C_LAST_REVIEW_DATE_SK" as "ws_return_customer_last_review_date",
+    "ws_return_customer_customers"."C_LOGIN" as "ws_return_customer_login",
+    "ws_return_customer_customers"."C_PREFERRED_CUST_FLAG" as "ws_return_customer_preferred_cust_flag",
+    "ws_return_customer_customers"."C_SALUTATION" as "ws_return_customer_salutation"
+FROM
+    "memory"."customer" as "ws_return_customer_customers"
+    INNER JOIN "memory"."customer_address" as "ws_return_customer_current_address_customer_address" on "ws_return_customer_customers"."C_CURRENT_ADDR_SK" = "ws_return_customer_current_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "ws_return_customer_current_address_customer_address"."CA_STATE" = 'GA'
+),
+thoughtful as (
+SELECT
+    "ws_return_address_customer_address"."CA_STATE" as "ws_return_address_state",
+    "ws_web_returns"."WR_RETURNING_CUSTOMER_SK" as "ws_return_customer_sk",
+    sum(CASE WHEN "ws_return_date_date"."D_YEAR" = 2002 and "ws_return_address_customer_address"."CA_STATE" is not null THEN "ws_web_returns"."WR_RETURN_AMT" ELSE NULL END) as "_virt_agg_sum_1425260143648354_wscope",
+    sum(CASE WHEN "ws_return_date_date"."D_YEAR" = 2002 and "ws_return_address_customer_address"."CA_STATE" is not null THEN "ws_web_returns"."WR_RETURN_AMT" ELSE NULL END) as "customer_state_returns_2002"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    LEFT OUTER JOIN "memory"."web_returns" as "ws_web_returns" on "ws_web_sales"."WS_ITEM_SK" = "ws_web_returns"."WR_ITEM_SK" AND "ws_web_sales"."WS_ORDER_NUMBER" = "ws_web_returns"."WR_ORDER_NUMBER"
+    FULL JOIN "memory"."date_dim" as "ws_return_date_date" on "ws_web_returns"."WR_RETURNED_DATE_SK" = "ws_return_date_date"."D_DATE_SK"
+    RIGHT OUTER JOIN "memory"."customer_address" as "ws_return_address_customer_address" on "ws_web_returns"."WR_RETURNING_ADDR_SK" = "ws_return_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    "ws_return_address_customer_address"."CA_STATE" is not null
+
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    "juicy"."ws_return_customer_birth_country" as "ws_return_customer_birth_country",
+    "juicy"."ws_return_customer_birth_day" as "ws_return_customer_birth_day",
+    "juicy"."ws_return_customer_birth_month" as "ws_return_customer_birth_month",
+    "juicy"."ws_return_customer_birth_year" as "ws_return_customer_birth_year",
+    "juicy"."ws_return_customer_email_address" as "ws_return_customer_email_address",
+    "juicy"."ws_return_customer_first_name" as "ws_return_customer_first_name",
+    "juicy"."ws_return_customer_id" as "ws_return_customer_id",
+    "juicy"."ws_return_customer_last_name" as "ws_return_customer_last_name",
+    "juicy"."ws_return_customer_last_review_date" as "ws_return_customer_last_review_date",
+    "juicy"."ws_return_customer_login" as "ws_return_customer_login",
+    "juicy"."ws_return_customer_preferred_cust_flag" as "ws_return_customer_preferred_cust_flag",
+    "juicy"."ws_return_customer_salutation" as "ws_return_customer_salutation",
+    "thoughtful"."customer_state_returns_2002" as "customer_state_returns_2002",
+    "thoughtful"."ws_return_address_state" as "ws_return_address_state"
+FROM
+    "thoughtful"
+    INNER JOIN "juicy" on "thoughtful"."ws_return_customer_sk" = "juicy"."ws_return_customer_sk"
+WHERE
+    "juicy"."ws_return_customer_current_address_state" = 'GA'
+),
+abundant as (
+SELECT
+    "thoughtful"."ws_return_address_state" as "ws_return_address_state",
+    avg("thoughtful"."_virt_agg_sum_1425260143648354_wscope") as "_virt_agg_avg_5377761533038264_wscope"
+FROM
+    "thoughtful"
+GROUP BY
+    1)
+SELECT
+    "vacuous"."ws_return_customer_id" as "ws_return_customer_id",
+    "vacuous"."ws_return_customer_salutation" as "ws_return_customer_salutation",
+    "vacuous"."ws_return_customer_first_name" as "ws_return_customer_first_name",
+    "vacuous"."ws_return_customer_last_name" as "ws_return_customer_last_name",
+    "vacuous"."ws_return_customer_preferred_cust_flag" as "ws_return_customer_preferred_cust_flag",
+    "vacuous"."ws_return_customer_birth_day" as "ws_return_customer_birth_day",
+    "vacuous"."ws_return_customer_birth_month" as "ws_return_customer_birth_month",
+    "vacuous"."ws_return_customer_birth_year" as "ws_return_customer_birth_year",
+    "vacuous"."ws_return_customer_birth_country" as "ws_return_customer_birth_country",
+    "vacuous"."ws_return_customer_login" as "ws_return_customer_login",
+    "vacuous"."ws_return_customer_email_address" as "ws_return_customer_email_address",
+    "vacuous"."ws_return_customer_last_review_date" as "ws_return_customer_last_review_date",
+    "vacuous"."customer_state_returns_2002" as "customer_state_returns_2002"
+FROM
+    "vacuous"
+    INNER JOIN "abundant" on "vacuous"."ws_return_address_state" is not distinct from "abundant"."ws_return_address_state"
+WHERE
+    "vacuous"."customer_state_returns_2002" > 1.2 * "abundant"."_virt_agg_avg_5377761533038264_wscope"
+
+ORDER BY 
+    "vacuous"."ws_return_customer_id" asc nulls first,
+    "vacuous"."ws_return_customer_salutation" asc nulls first,
+    "vacuous"."ws_return_customer_first_name" asc nulls first,
+    "vacuous"."ws_return_customer_last_name" asc nulls first,
+    "vacuous"."ws_return_customer_preferred_cust_flag" asc nulls first,
+    "vacuous"."ws_return_customer_birth_day" asc nulls first,
+    "vacuous"."ws_return_customer_birth_month" asc nulls first,
+    "vacuous"."ws_return_customer_birth_year" asc nulls first,
+    "vacuous"."ws_return_customer_birth_country" asc nulls first,
+    "vacuous"."ws_return_customer_login" asc nulls first,
+    "vacuous"."ws_return_customer_email_address" asc nulls first,
+    "vacuous"."ws_return_customer_last_review_date" asc nulls first,
+    "vacuous"."customer_state_returns_2002" asc nulls first
+LIMIT (100)

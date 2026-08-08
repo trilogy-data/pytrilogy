@@ -1,0 +1,302 @@
+== query-1.preql
+== query-2.preql
+== query-3.preql
+== query01.preql
+== query01_agg.preql
+== query02-one.preql
+== query02-two.preql
+== query02.preql
+== query03.preql
+== query04.preql
+== query05.preql
+== query06.preql
+== query07.preql
+== query08.preql
+== query09.preql
+== query10.preql
+== query11.preql
+== query12.preql
+== query13.preql
+== query14.preql
+== query15.preql
+== query16.preql
+== query17.preql
+== query18.preql
+== query19.preql
+== query20.preql
+== query21.preql
+== query22.preql
+== query23.preql
+== query24.preql
+== query25.preql
+== query26.preql
+== query27.preql
+== query28.preql
+== query29.preql
+== query30-alt.preql
+== query30.preql
+== query31.preql
+== query32.preql
+== query33.preql
+== query34.preql
+== query35.preql
+== query36.preql
+== query37.preql
+== query38.preql
+== query39.preql
+== query40.preql
+== query41.preql
+== query42.preql
+== query43.preql
+== query44.preql
+== query45.preql
+== query46.preql
+== query47.preql
+== query48.preql
+== query49.preql
+== query50.preql
+== query51.preql
+== query52.preql
+== query53.preql
+== query54.preql
+== query55.preql
+== query56.preql
+== query57.preql
+== query58.preql
+== query59.preql
+== query60.preql
+== query61.preql
+== query62.preql
+== query63.preql
+== query64.preql
+== query65.preql
+== query66.preql
+== query67.preql
+== query68.preql
+== query69.preql
+== query70.preql
+== query71.preql
+== query72.preql
+== query73.preql
+== query74.preql
+== query75.preql
+== query76.preql
+== query77.preql
+== query78.preql
+== query79.preql
+== query80.preql
+== query81.preql
+== query82.1.preql
+== query82.preql
+== query83.preql
+== query84.preql
+== query85.preql
+== query86.preql
+== query87.preql
+== query88.preql
+== query89.preql
+== query90.preql
+== query91.preql
+== query92.preql
+== query93.preql
+== query94.preql
+== query95.preql
+== query96.preql
+== query97-one.preql
+== query97-two.preql
+== query97.preql
+== query98.preql
+== query99.preql
+
+=== divergences ===
+cost axes: partial_terminals, completions, fanout_sources, sources, connectors, derived_joins
+
+query02.preql: network-dominates 
+  terminals: sales.channel, sales.ext_sales_price, sales.item.sk, sales.order_id, sales.sale_date.day_of_week, sales.sale_date.sk, sales.sale_date.week_seq
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query04.preql: network-dominates 
+  terminals: sales.billing_customer.first_name, sales.billing_customer.id, sales.billing_customer.last_name, sales.billing_customer.preferred_cust_flag, sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.ext_sales_price, sales.ext_wholesale_cost, sales.item.sk, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query04.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.ext_sales_price, sales.ext_wholesale_cost, sales.item.sk, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query04.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.ext_sales_price, sales.ext_wholesale_cost, sales.item.sk, sales.order_id, sales.sale_date.sk
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 1, 0, 0)
+query05.preql: network-dominates truncated
+  terminals: s.channel, s.channel_dim_id, s.channel_dim_text_id, s.ext_sales_price, s.item.sk, s.net_profit, s.order_id, s.return_amount, s.return_channel_dim_id, s.return_channel_dim_text_id, s.return_date.date, s.return_date.sk, s.return_net_loss, s.sale_date.date, s.sale_date.sk
+  legacy   : ds~s.catalog_dim_return_unified, ds~s.catalog_dim_unified, ds~s.catalog_returns_unified, ds~s.catalog_sales_unified, ds~s.item.items, ds~s.return_date.date, ds~s.sale_date.date, ds~s.store_dim_return_unified, ds~s.store_dim_unified, ds~s.store_returns_unified, ds~s.store_sales_unified, ds~s.web_dim_return_unified, ds~s.web_dim_unified, ds~s.web_returns_unified, ds~s.web_sales_unified  (0, 0, 1, 7, 0, 0)
+  network  : ds~s.catalog_dim_return_unified, ds~s.catalog_dim_unified, ds~s.catalog_returns_unified, ds~s.catalog_sales_unified, ds~s.return_date.date, ds~s.sale_date.date, ds~s.store_dim_return_unified, ds~s.store_dim_unified, ds~s.store_returns_unified, ds~s.store_sales_unified, ds~s.web_dim_return_unified, ds~s.web_dim_unified, ds~s.web_returns_unified, ds~s.web_sales_unified  (0, 0, 1, 6, 0, 0)
+query10.preql: network-dominates 
+  terminals: sales.channel, sales.purchasing_customer.sk, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.purchasing_customer.customers, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 2, 0, 0)
+query10.preql: network-dominates 
+  terminals: sales.channel, sales.purchasing_customer.sk, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.purchasing_customer.customers, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 2, 0, 0)
+query10.preql: network-dominates 
+  terminals: sales.channel, sales.purchasing_customer.sk, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.purchasing_customer.customers, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 2, 0, 0)
+query11.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.item.sk, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query11.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.item.sk, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query11.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_list_price, sales.item.sk, sales.order_id
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 1, 0, 0)
+query11.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.ext_discount_amount, sales.ext_list_price, sales.item.sk, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query14.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.list_price, sales.order_id, sales.quantity, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query14.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.list_price, sales.order_id, sales.quantity, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query23.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.order_id, sales.sale_date.date, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.sale_date.date, ds~sales.store_sales_unified  (0, 0, 0, 2, 0, 0)
+query23.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.order_id, sales.sale_date.date, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.sale_date.date, ds~sales.store_sales_unified  (0, 0, 0, 2, 0, 0)
+query23.preql: network-dominates 
+  terminals: sales.billing_customer.first_name, sales.billing_customer.last_name, sales.billing_customer.sk, sales.channel, sales.item.sk, sales.list_price, sales.order_id, sales.quantity, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query29.preql: legacy-uncovered ['catalog_sales.order_number', 'store_sales.item.sk', 'store_sales.return_customer.sk', 'store_sales.ticket_number'] 
+  terminals: catalog_sales.order_number, store_sales.item.sk, store_sales.return_customer.sk, store_sales.ticket_number
+  legacy   : (none)  
+  network  : ds~catalog_sales.catalog_sales, ds~store_sales.return_customer.customers, ds~store_sales.store_sales  (0, 0, 1, 3, 0, 0)
+query29.preql: incomparable(needs axis) 
+  terminals: catalog_sales.order_number, store_sales._returned_ticket, store_sales.item.sk, store_sales.return_customer.sk, store_sales.ticket_number
+  legacy   : ds~catalog_sales.catalog_returns, ds~store_sales.store_returns  (3, 3, 1, 2, 0, 0)
+  network  : ds~catalog_sales.catalog_sales, ds~store_sales.store_returns, ds~store_sales.store_sales  (0, 0, 1, 3, 0, 0)
+query31.preql: network-dominates 
+  terminals: sales.channel, sales.ext_sales_price, sales.item.sk, sales.order_id, sales.pos_bill_address.county, sales.pos_bill_address.sk, sales.sale_date.quarter, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.pos_bill_address.customer_address, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.pos_bill_address.customer_address, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query31.preql: network-dominates 
+  terminals: sales.channel, sales.ext_sales_price, sales.item.sk, sales.order_id, sales.pos_bill_address.county, sales.pos_bill_address.sk, sales.sale_date.quarter, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.pos_bill_address.customer_address, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.pos_bill_address.customer_address, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query49.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.net_paid, sales.net_profit, sales.order_id, sales.quantity, sales.return_amount, sales.return_quantity, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query49.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.net_paid, sales.net_profit, sales.order_id, sales.quantity, sales.return_amount, sales.return_quantity, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query51.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.order_id, sales.sale_date.date, sales.sale_date.month_seq, sales.sale_date.sk, sales.sales_price
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query51.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.sale_date.date, sales.sale_date.month_seq, sales.sale_date.sk
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 2, 0, 0)
+query51.preql: network-dominates 
+  terminals: sales.channel, sales.item.sk, sales.order_id, sales.sale_date.date, sales.sale_date.month_seq, sales.sale_date.sk, sales.sales_price
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query54.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.item.category, sales.item.class, sales.item.sk, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 3, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.item.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 0, 12, 10, 1)
+  network  : ds~ss.item.items  (0, 0, 0, 1, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.item.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 0, 12, 10, 1)
+  network  : ds~ss.item.items  (0, 0, 0, 1, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.customer.current_address.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 1, 12, 11, 1)
+  network  : ds~ss.customer.current_address.customer_address  (0, 0, 0, 1, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.store.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 1, 12, 11, 1)
+  network  : ds~ss.store.store  (0, 0, 0, 1, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.store.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 1, 12, 11, 1)
+  network  : ds~ss.store.store  (0, 0, 0, 1, 0, 0)
+query64.preql: network-dominates 
+  terminals: ss.pos_address.sk
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 1, 12, 11, 1)
+  network  : ds~ss.pos_address.customer_address  (0, 0, 0, 1, 0, 0)
+query64.preql: incomparable(needs axis) 
+  terminals: ss.customer.current_address.city, ss.customer.current_address.sk, ss.customer.current_address.street_name, ss.customer.current_address.street_number, ss.customer.current_address.zip, ss.item.product_name, ss.item.sk, ss.pos_address.city, ss.pos_address.sk, ss.pos_address.street_name, ss.pos_address.street_number, ss.pos_address.zip, ss.store.name, ss.store.sk, ss.store.zip
+  legacy   : ds~cs.catalog_returns, ds~cs.catalog_sales, ds~cs.item.items, ds~ss.customer.current_address.customer_address, ds~ss.customer.current_demographics.customer_demographics, ds~ss.customer.customers, ds~ss.customer.first_sales_date.date, ds~ss.customer.first_shipto_date.date, ds~ss.item.items, ds~ss.pos_address.customer_address, ds~ss.pos_customer_demographic.customer_demographics, ds~ss.sale_date.date, ds~ss.store.store, ds~ss.store_returns, ds~ss.store_sales  (0, 0, 0, 15, 10, 1)
+  network  : ds~ss.customer.current_address.customer_address, ds~ss.customer.customers, ds~ss.item.items, ds~ss.pos_address.customer_address, ds~ss.store.store, ds~ss.store_sales  (0, 0, 1, 6, 1, 0)
+query66.preql: network-dominates 
+  terminals: sales.channel, sales.ext_sales_price, sales.item.sk, sales.net_paid, sales.net_paid_inc_tax, sales.order_id, sales.quantity, sales.sale_date.month_of_year, sales.sale_date.sk, sales.sale_date.year, sales.sale_time.sk, sales.sale_time.time, sales.sales_price, sales.ship_mode.carrier, sales.ship_mode.sk, sales.warehouse.sk, sales.warehouse.square_feet
+  legacy   : ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.sale_time.time, ds~sales.ship_mode.ship_mode, ds~sales.store_sales_unified, ds~sales.warehouse.warehouse, ds~sales.web_sales_unified  (0, 0, 0, 6, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.sale_time.time, ds~sales.ship_mode.ship_mode, ds~sales.store_sales_unified, ds~sales.warehouse.warehouse, ds~sales.web_sales_unified  (0, 0, 0, 5, 0, 0)
+query74.preql: network-dominates 
+  terminals: sales.billing_customer.first_name, sales.billing_customer.id, sales.billing_customer.last_name, sales.billing_customer.sk, sales.channel, sales.item.sk, sales.net_paid, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query74.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.item.sk, sales.net_paid, sales.order_id, sales.sale_date.sk, sales.sale_date.year
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query78.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.is_returned, sales.item.sk, sales.order_id, sales.quantity, sales.sale_date.sk, sales.sale_date.year, sales.sales_price, sales.wholesale_cost
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 5, 0, 0)
+  network  : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query78.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.is_returned, sales.item.sk, sales.order_id, sales.quantity, sales.sale_date.sk, sales.sale_date.year, sales.sales_price, sales.wholesale_cost
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 5, 0, 0)
+  network  : ds~sales.catalog_returns_unified, ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_returns_unified, ds~sales.store_sales_unified, ds~sales.web_returns_unified, ds~sales.web_sales_unified  (0, 0, 0, 3, 0, 0)
+query97-one.preql: legacy-uncovered ['customer.sk', 'item.sk'] 
+  terminals: customer.sk, item.sk
+  legacy   : (none)  
+  network  : ds~catalog_sales.catalog_sales, ds~customer.customers, ds~item.items  (0, 0, 1, 3, 0, 0)
+query97-one.preql: incomparable(needs axis) 
+  terminals: catalog_sales.sale_date.month_seq, catalog_sales.sale_date.sk, customer.sk, item.sk, store_sales.sale_date.month_seq, store_sales.sale_date.sk
+  legacy   : ds~catalog_sales.catalog_sales, ds~catalog_sales.sale_date.date, ds~store_sales.sale_date.date, ds~store_sales.store_sales  (2, 2, 2, 4, 0, 0)
+  network  : ds~catalog_sales.catalog_sales, ds~catalog_sales.sale_date.date, ds~customer.customers, ds~item.items, ds~store_sales.sale_date.date, ds~store_sales.store_sales  (0, 0, 2, 6, 0, 0)
+query97-two.preql: legacy-uncovered ['customer.sk', 'item.sk'] 
+  terminals: customer.sk, item.sk
+  legacy   : (none)  
+  network  : ds~catalog_sales.catalog_sales, ds~customer.customers, ds~item.items  (0, 0, 1, 3, 0, 0)
+query97-two.preql: incomparable(needs axis) 
+  terminals: catalog_sales.sale_date.month_seq, catalog_sales.sale_date.sk, customer.sk, item.sk, store_sales.sale_date.month_seq, store_sales.sale_date.sk
+  legacy   : ds~catalog_sales.catalog_sales, ds~catalog_sales.sale_date.date, ds~store_sales.sale_date.date, ds~store_sales.store_sales  (2, 2, 2, 4, 0, 0)
+  network  : ds~catalog_sales.catalog_sales, ds~catalog_sales.sale_date.date, ds~customer.customers, ds~item.items, ds~store_sales.sale_date.date, ds~store_sales.store_sales  (0, 0, 2, 6, 0, 0)
+query97.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.item.sk, sales.order_id, sales.sale_date.month_seq, sales.sale_date.sk
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+query97.preql: network-dominates 
+  terminals: sales.billing_customer.sk, sales.channel, sales.item.sk, sales.order_id, sales.sale_date.month_seq, sales.sale_date.sk
+  legacy   : ds~sales.billing_customer.customers, ds~sales.catalog_sales_unified, ds~sales.item.items, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 1, 4, 0, 0)
+  network  : ds~sales.catalog_sales_unified, ds~sales.sale_date.date, ds~sales.store_sales_unified, ds~sales.web_sales_unified  (0, 0, 0, 2, 0, 0)
+
+=== summary ===
+both_decline             2
+diverge                  45
+match                    315
+requests                 362
+verdict:incomparable     4
+verdict:legacy-uncovered 3
+verdict:network-dominates 38

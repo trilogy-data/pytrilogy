@@ -1,0 +1,54 @@
+
+WITH 
+cheerful as (
+SELECT
+    "store_sales_store_sales"."SS_ITEM_SK" as "store_sales_item_sk",
+    "store_sales_store_sales"."SS_STORE_SK" as "store_sales_store_sk",
+    sum("store_sales_store_sales"."SS_SALES_PRICE") as "item_revenue"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."date_dim" as "store_sales_sale_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "store_sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1176 AND 1187 and "store_sales_store_sales"."SS_STORE_SK" is not null
+
+GROUP BY
+    1,
+    2),
+abundant as (
+SELECT
+    "cheerful"."store_sales_store_sk" as "store_sales_store_sk",
+    avg("cheerful"."item_revenue") as "store_avg_revenue"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    "cheerful"."item_revenue" as "item_revenue",
+    "cheerful"."store_sales_store_sk" as "store_sales_store_sk",
+    "store_sales_item_items"."I_BRAND" as "store_sales_item_brand_name",
+    "store_sales_item_items"."I_CURRENT_PRICE" as "store_sales_item_current_price",
+    "store_sales_item_items"."I_ITEM_DESC" as "store_sales_item_desc",
+    "store_sales_item_items"."I_WHOLESALE_COST" as "store_sales_item_wholesale_cost",
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."item" as "store_sales_item_items" on "cheerful"."store_sales_item_sk" = "store_sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "cheerful"."store_sales_store_sk" = "store_sales_store_store"."S_STORE_SK")
+SELECT
+    "questionable"."store_sales_store_name" as "store_sales_store_name",
+    "questionable"."store_sales_item_desc" as "store_sales_item_desc",
+    "questionable"."item_revenue" as "revenue",
+    "questionable"."store_sales_item_current_price" as "store_sales_item_current_price",
+    "questionable"."store_sales_item_wholesale_cost" as "store_sales_item_wholesale_cost",
+    "questionable"."store_sales_item_brand_name" as "store_sales_item_brand_name"
+FROM
+    "questionable"
+    INNER JOIN "abundant" on "questionable"."store_sales_store_sk" = "abundant"."store_sales_store_sk"
+WHERE
+    "questionable"."item_revenue" <= 0.1 * "abundant"."store_avg_revenue"
+
+ORDER BY 
+    "questionable"."store_sales_store_name" asc nulls first,
+    "questionable"."store_sales_item_desc" asc nulls first
+LIMIT (100)

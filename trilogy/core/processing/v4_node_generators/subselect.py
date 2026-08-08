@@ -1,7 +1,3 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
@@ -10,17 +6,11 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import StrategyNode, SubselectNode
-from trilogy.core.processing.v4_helper.source_policy import (
-    STRICT_SOURCE_POLICY,
-    SourcePolicy,
-)
+from trilogy.core.processing.nodes import GroupNode, StrategyNode, SubselectNode
+from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.utility import unique
 
-from .common import parent_outputs_needed
-
-if TYPE_CHECKING:
-    from trilogy.core.processing.concept_strategies_v4 import V4History
+from .common import collapse_conditions, parent_outputs_needed, search_parent
 
 
 def gen_subselect(
@@ -32,7 +22,6 @@ def gen_subselect(
     *,
     history: V4History,
     g: ReferenceGraph,
-    source_policy: SourcePolicy = STRICT_SOURCE_POLICY,
 ) -> StrategyNode | None:
     """Correlated subselect: the group graph supplies the OUTER (correlation)
     parent. For a cross-datasource subselect (`outer_arguments` set), the INNER
@@ -43,11 +32,7 @@ def gen_subselect(
 
     SubselectNode has no `conditions` arg — both this-level and inherited atoms
     collapse into `preexisting_conditions`."""
-    from trilogy.core.processing.concept_strategies_v4 import search_concepts
-
-    new = conditions.conditional if conditions else None
-    pre = preexisting_conditions.conditional if preexisting_conditions else None
-    combined = new if pre is None else (pre if new is None else (new + pre))
+    combined = collapse_conditions(conditions, preexisting_conditions)
 
     inner_parents: list[StrategyNode] = []
     inner_inputs: list[BuildConcept] = []
@@ -61,18 +46,10 @@ def gen_subselect(
         inner_concepts = unique(concept.lineage.inner_concept_arguments, "address")
         if not inner_concepts:
             continue
-        info = search_concepts(
-            mandatory_list=inner_concepts,
-            history=history,
-            environment=environment,
-            depth=0,
-            g=g,
-            conditions=[],
-            source_policy=source_policy,
-        )
-        if info.strategy_node is None:
+        inner = search_parent(inner_concepts, environment, history, g)
+        if inner is None:
             return None
-        inner_parents.append(info.strategy_node)
+        inner_parents.append(inner)
         inner_inputs.extend(inner_concepts)
 
     # The inner select's columns are referenced only INSIDE the correlated
@@ -85,10 +62,28 @@ def gen_subselect(
         parent_outputs_needed(outputs, parents, conditions) + inner_inputs,
         "address",
     )
-    return SubselectNode(
+    node: StrategyNode = SubselectNode(
         input_concepts=input_concepts,
         output_concepts=list(outputs),
         environment=environment,
         parents=all_parents,
         preexisting_conditions=combined,
     )
+    # A non-correlated subselect is one global value, but the node computes it
+    # once per parent row and its QDS grain (from the outputs) hides that — so
+    # when NO output carries the parent's row grain, dedup to the output set
+    # (v3's shape: per-row compute CTE, then a GROUP BY collapse CTE).
+    if outputs and all(
+        c.derivation == Derivation.SUBSELECT
+        and isinstance(c.lineage, BuildSubselectItem)
+        and not c.lineage.outer_arguments
+        for c in outputs
+    ):
+        node = GroupNode(
+            output_concepts=list(outputs),
+            input_concepts=list(outputs),
+            environment=environment,
+            parents=[node],
+            preexisting_conditions=combined,
+        )
+    return node

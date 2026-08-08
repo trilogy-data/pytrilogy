@@ -55,6 +55,9 @@ class Optimizations:
     hide_unused_concepts: bool = True
     merge_aggregate: bool = True
     merge_irrelevant_group_by: bool = True
+    push_filtered_aggregate_input: bool = True
+    push_filtered_count_into_join: bool = True
+    push_semi_join_into_aggregate: bool = True
     upgrade_condition_joins: bool = True
     upgrade_outer_key_set_equivalence: bool = True
     # Trust EQUAL domain declarations (non-partial `merge a into b`) when
@@ -144,9 +147,10 @@ class Config:
     human_identifiers: bool = True
     randomize_cte_names: bool = False
     validate_missing: bool = True
-    # Route discovery through the v4 planner instead of the v3 search. Opt-in
-    # while v4 is stabilizing; v3 remains the default.
-    use_v4_discovery: bool = False
+    # Route discovery through the v4 planner instead of the v3 search. v4 is
+    # the DEFAULT as of 2026-07-26 (s38, the ladder purge); set False to run
+    # the legacy v3 planner for comparison while it remains in-tree.
+    use_v4_discovery: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)

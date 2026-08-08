@@ -729,6 +729,14 @@ def combine_condition_atoms(
     return result
 
 
+def combine_where_clauses(
+    clauses: list[BuildWhereClause],
+) -> BuildWhereClause | None:
+    """AND-combine whole where clauses into one (None if empty)."""
+    combined = combine_condition_atoms([clause.conditional for clause in clauses])
+    return BuildWhereClause(conditional=combined) if combined is not None else None
+
+
 def merge_conditions_and_dedup(
     conditions: BoolExpr,
     preexisting: BoolExpr,

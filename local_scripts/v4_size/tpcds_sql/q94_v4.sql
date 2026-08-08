@@ -1,0 +1,88 @@
+
+WITH 
+juicy as (
+SELECT
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number",
+    "ws_web_sales"."WS_WAREHOUSE_SK" as "ws_warehouse_sk"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+GROUP BY
+    1,
+    2),
+vacuous as (
+SELECT
+    "juicy"."ws_order_number" as "ws_order_number"
+FROM
+    "juicy"
+GROUP BY
+    1
+HAVING
+    count("juicy"."ws_warehouse_sk") > 1
+),
+concerned as (
+SELECT
+    "vacuous"."ws_order_number" as "multi_warehouse_orders"
+FROM
+    "vacuous"),
+questionable as (
+SELECT
+    coalesce("ws_web_returns"."WR_ORDER_NUMBER","ws_web_sales"."WS_ORDER_NUMBER") as "returned_orders"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_returns" as "ws_web_returns" on "ws_web_sales"."WS_ITEM_SK" = "ws_web_returns"."WR_ITEM_SK" AND "ws_web_sales"."WS_ORDER_NUMBER" = "ws_web_returns"."WR_ORDER_NUMBER"
+WHERE
+    ("ws_web_returns"."WR_ORDER_NUMBER" is not null) = True
+
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "ws_web_sales"."WS_EXT_SHIP_COST" as "ws_ext_ship_cost",
+    "ws_web_sales"."WS_NET_PROFIT" as "ws_net_profit",
+    "ws_web_sales"."WS_ORDER_NUMBER" as "ws_order_number"
+FROM
+    "memory"."web_sales" as "ws_web_sales"
+    INNER JOIN "memory"."web_site" as "ws_web_site_web_site" on "ws_web_sales"."WS_WEB_SITE_SK" = "ws_web_site_web_site"."web_site_sk"
+    INNER JOIN "memory"."date_dim" as "ws_ship_date_date" on "ws_web_sales"."WS_SHIP_DATE_SK" = "ws_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."customer_address" as "ws_pos_ship_address_customer_address" on "ws_web_sales"."WS_SHIP_ADDR_SK" = "ws_pos_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("ws_ship_date_date"."D_DATE" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and "ws_pos_ship_address_customer_address"."CA_STATE" = 'IL' and "ws_web_site_web_site"."web_company_name" = 'pri' and exists (select 1 from concerned where concerned."multi_warehouse_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER") and not exists (select 1 from questionable where questionable."returned_orders" is not distinct from "ws_web_sales"."WS_ORDER_NUMBER")
+),
+young as (
+SELECT
+    "thoughtful"."ws_ext_ship_cost" as "ws_ext_ship_cost",
+    "thoughtful"."ws_net_profit" as "ws_net_profit",
+    "thoughtful"."ws_order_number" as "ws_order_number"
+FROM
+    "thoughtful"
+WHERE
+    exists (select 1 from concerned where concerned."multi_warehouse_orders" is not distinct from "thoughtful"."ws_order_number") and not exists (select 1 from questionable where questionable."returned_orders" is not distinct from "thoughtful"."ws_order_number")
+),
+abhorrent as (
+SELECT
+    "young"."ws_order_number" as "ws_order_number"
+FROM
+    "young"
+GROUP BY
+    1),
+sweltering as (
+SELECT
+    count(distinct "abhorrent"."ws_order_number") as "order_count"
+FROM
+    "abhorrent"),
+sparkling as (
+SELECT
+    sum("young"."ws_ext_ship_cost") as "total_shipping_cost",
+    sum("young"."ws_net_profit") as "total_net_profit"
+FROM
+    "young")
+SELECT
+    "sweltering"."order_count" as "order_count",
+    "sparkling"."total_shipping_cost" as "total_shipping_cost",
+    "sparkling"."total_net_profit" as "total_net_profit"
+FROM
+    "sparkling"
+    INNER JOIN "sweltering" on 1=1
+ORDER BY 
+    "sweltering"."order_count" asc
+LIMIT (100)

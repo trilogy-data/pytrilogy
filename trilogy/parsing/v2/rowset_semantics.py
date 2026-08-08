@@ -123,7 +123,10 @@ def _rowset_concept(
         grain=orig_concept.grain,
         metadata=Metadata(concept_source=ConceptSource.CTE),
         namespace=base_namespace,
-        keys=orig_concept.keys,
+        # A rowset output snapshots its source's identity, including keys a
+        # datasource declaration implies — the rowset namespace has no
+        # datasource of its own to re-derive them from later.
+        keys=orig_concept.effective_keys(context.environment),
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
         pseudonyms={

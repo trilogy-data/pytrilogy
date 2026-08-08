@@ -1,0 +1,174 @@
+
+WITH 
+young as (
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_sk",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity",
+    "sales_store_sales_unified"."SS_SALES_PRICE" as "sales_sales_price",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_sale_date_sk"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+WHERE
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+),
+macho as (
+SELECT
+    "young"."sales_billing_customer_sk" as "_best_customers_best_customer_id",
+    sum("young"."sales_quantity" * "young"."sales_sales_price") as "customer_total_overall"
+FROM
+    "young"
+GROUP BY
+    1),
+questionable as (
+SELECT
+    "sales_sale_date_date"."D_DATE_SK" as "sales_sale_date_sk",
+    cast("sales_sale_date_date"."D_DATE" as date) as "sales_sale_date_date"
+FROM
+    "memory"."date_dim" as "sales_sale_date_date"
+WHERE
+    ("sales_sale_date_date"."D_YEAR" is not null and "sales_sale_date_date"."D_YEAR" in (2000,2001,2002,2003))
+),
+sparkling as (
+SELECT
+    sum("young"."sales_quantity" * "young"."sales_sales_price") as "customer_total_in_window"
+FROM
+    "young"
+    INNER JOIN "questionable" on "young"."sales_sale_date_sk" = "questionable"."sales_sale_date_sk"
+WHERE
+    "young"."sales_channel" = 'STORE'
+
+GROUP BY
+    "young"."sales_billing_customer_sk"),
+sweltering as (
+SELECT
+    max("sparkling"."customer_total_in_window") as "max_total_cmax"
+FROM
+    "sparkling"),
+scrawny as (
+SELECT
+    "macho"."_best_customers_best_customer_id" as "best_customers_best_customer_id"
+FROM
+    "macho"
+    INNER JOIN "sweltering" on 1=1
+WHERE
+    "macho"."customer_total_overall" > 0.5 * "sweltering"."max_total_cmax"
+),
+abundant as (
+SELECT
+    "questionable"."sales_sale_date_date" as "sales_sale_date_date",
+    "sales_item_items"."I_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    SUBSTRING("sales_item_items"."I_ITEM_DESC",1,30) as "sales_item_desc_truncated"
+FROM
+    "memory"."item" as "sales_item_items"
+    INNER JOIN "memory"."store_sales" as "sales_store_sales_unified" on "sales_item_items"."I_ITEM_SK" = "sales_store_sales_unified"."SS_ITEM_SK"
+    INNER JOIN "questionable" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "questionable"."sales_sale_date_sk"
+WHERE
+     'STORE'  = 'STORE'
+
+GROUP BY
+    1,
+    2,
+    3,
+    4),
+uneven as (
+SELECT
+    "abundant"."sales_item_sk" as "_frequent_items_frequent_item_id"
+FROM
+    "abundant"
+GROUP BY
+    1,
+    "abundant"."sales_item_desc_truncated",
+    "abundant"."sales_sale_date_date"
+HAVING
+    count("abundant"."sales_order_id") > 4
+),
+yummy as (
+SELECT
+    "uneven"."_frequent_items_frequent_item_id" as "frequent_items_frequent_item_id"
+FROM
+    "uneven"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_sales_unified"."CS_LIST_PRICE" as "sales_list_price",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_catalog_sales_unified"."CS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from yummy where yummy."frequent_items_frequent_item_id" is not distinct from "sales_catalog_sales_unified"."CS_ITEM_SK") and exists (select 1 from scrawny where scrawny."best_customers_best_customer_id" is not distinct from "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK") and "sales_sale_date_date"."D_YEAR" = 2000 and "sales_sale_date_date"."D_MOY" = 2
+
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_LIST_PRICE" as "sales_list_price",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_store_sales_unified"."SS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_store_sales_unified"."SS_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from yummy where yummy."frequent_items_frequent_item_id" is not distinct from "sales_store_sales_unified"."SS_ITEM_SK") and exists (select 1 from scrawny where scrawny."best_customers_best_customer_id" is not distinct from "sales_store_sales_unified"."SS_CUSTOMER_SK") and "sales_sale_date_date"."D_YEAR" = 2000 and "sales_sale_date_date"."D_MOY" = 2
+
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_sk",
+    "sales_web_sales_unified"."WS_LIST_PRICE" as "sales_list_price",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_web_sales_unified"."WS_QUANTITY" as "sales_quantity"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."customer" as "sales_billing_customer_customers" on "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from yummy where yummy."frequent_items_frequent_item_id" is not distinct from "sales_web_sales_unified"."WS_ITEM_SK") and exists (select 1 from scrawny where scrawny."best_customers_best_customer_id" is not distinct from "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK") and "sales_sale_date_date"."D_YEAR" = 2000 and "sales_sale_date_date"."D_MOY" = 2
+),
+kaput as (
+SELECT
+    "sales_billing_customer_customers"."C_FIRST_NAME" as "sales_billing_customer_first_name",
+    "sales_billing_customer_customers"."C_LAST_NAME" as "sales_billing_customer_last_name",
+    "thoughtful"."sales_channel" as "sales_channel",
+    "thoughtful"."sales_quantity" * "thoughtful"."sales_list_price" as "_virt_func_multiply_8507033399516423"
+FROM
+    "thoughtful"
+    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "thoughtful"."sales_billing_customer_sk" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    exists (select 1 from yummy where yummy."frequent_items_frequent_item_id" is not distinct from "thoughtful"."sales_item_sk")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    "thoughtful"."sales_item_sk",
+    "thoughtful"."sales_order_id")
+SELECT
+    "kaput"."sales_billing_customer_last_name" as "c_last_name",
+    "kaput"."sales_billing_customer_first_name" as "c_first_name",
+    sum(CASE WHEN ("kaput"."sales_channel" is not null and "kaput"."sales_channel" in ('WEB','CATALOG')) THEN "kaput"."_virt_func_multiply_8507033399516423" ELSE NULL END) as "sales_total"
+FROM
+    "kaput"
+GROUP BY
+    1,
+    2
+HAVING
+    "sales_total" > 0
+
+ORDER BY 
+    "c_last_name" asc nulls first,
+    "c_first_name" asc nulls first,
+    "sales_total" asc nulls first
+LIMIT (100)

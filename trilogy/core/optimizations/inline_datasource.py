@@ -1,9 +1,72 @@
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
-from trilogy.core.models.build import BuildDatasource
-from trilogy.core.models.execute import CTE, DatasourceCTE, RecursiveCTE, UnionCTE
+from trilogy.core.enums import JoinType
+from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.execute import CTE, DatasourceCTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import (
+    append_condition,
+    consumed_parent_column,
+    is_sole_consumer,
+    rebind_rename_to_consumed,
+    rename_reference,
+    render_cte_used_map,
+)
+
+
+def _can_inline_filtered_parent(
+    cte: CTE,
+    parent: DatasourceCTE,
+    inverse_map: dict[str, list[CTE | UnionCTE]],
+) -> bool:
+    if not parent.condition or not is_sole_consumer(cte, parent, inverse_map):
+        return False
+    return all(
+        isinstance(join, Join) and join.jointype == JoinType.INNER for join in cte.joins
+    )
+
+
+def _rename_fold_plan(
+    cte: CTE,
+    parent: DatasourceCTE,
+    missing: set[str],
+    root_outputs: set[str],
+) -> list[tuple[int, BuildConcept]] | None:
+    """Plan to render consumer outputs that read a parent-scan RENAME — an
+    address the raw datasource cannot supply — from lineage after the fold.
+
+    Each qualifying output is a bare reference to a parent column that is
+    itself a single-hop rename of a datasource column (`S_STORE_ID as
+    "s_store_id1"`): pin the consumer's column to the rename's base object
+    (see rebind_rename_to_consumed) and drop its source_map entry, so the
+    merged CTE renders `<raw column> as <name>` exactly as the scan did.
+    Returns None when any missing address is not such a rename (a derived
+    expression like `x is not null` needs re-derivation this fold cannot
+    prove), which keeps the historical refusal."""
+    by_address: dict[str, tuple[int, BuildConcept]] = {}
+    for i, col in enumerate(cte.output_columns):
+        by_address.setdefault(col.address, (i, col))
+    plan: list[tuple[int, BuildConcept]] = []
+    for address in missing:
+        # An existence subselect resolves through existence_source_map against
+        # a named CTE; a lineage render can't satisfy it.
+        if address in cte.existence_source_map:
+            return None
+        entry = by_address.get(address)
+        if entry is None:
+            return None
+        i, col = entry
+        consumed = consumed_parent_column(col, cte, parent)
+        if consumed is None:
+            return None
+        base = rename_reference(consumed)
+        if base is None or (
+            base.address not in root_outputs and not (base.pseudonyms & root_outputs)
+        ):
+            return None
+        plan.append((i, rebind_rename_to_consumed(col, base)))
+    return plan
 
 
 class InlineDatasource(OptimizationRule):
@@ -29,7 +92,7 @@ class InlineDatasource(OptimizationRule):
         self.debug(
             f"Checking {cte.name} for consolidating inline tables with {len(parents)} parents"
         )
-        to_inline: list[CTE] = []
+        to_inline: list[DatasourceCTE] = []
         for parent_cte in parents:
             if isinstance(parent_cte, UnionCTE):
                 continue
@@ -46,7 +109,8 @@ class InlineDatasource(OptimizationRule):
             if parent_cte.dependency_nodes():
                 self.debug(f"Cannot inline: parent {parent_cte.name} has parents")
                 continue
-            if parent_cte.condition:
+            filtered_inline = _can_inline_filtered_parent(cte, parent_cte, inverse_map)
+            if parent_cte.condition and not filtered_inline:
                 self.debug(
                     f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined"
                 )
@@ -86,11 +150,24 @@ class InlineDatasource(OptimizationRule):
                 x for x, v in cte.source_map.items() if v and parent_cte.name in v
             }
             if not inherited.issubset(root_outputs):
-                cte_missing = inherited - root_outputs
-                self.log(
-                    f"Cannot inline: Not all required inputs to {parent_cte.name} are found on datasource, missing {cte_missing}"
-                )
-                continue
+                # A source_map entry the consumer never renders from this parent
+                # is metadata, not a requirement: the bridge attaches derived
+                # concepts (e.g. gcat's `org.flag` / `vehicle.full_name`) to the
+                # scan that COULD compute them, but the consumer computes them
+                # from raw columns itself and later hides them as unused —
+                # hide runs after this rule, so consult the rendered used-map
+                # (what the consumer actually reads per parent) instead.
+                consumed = render_cte_used_map(cte).get(parent_cte.name, set())
+                cte_missing = (inherited & consumed) - root_outputs
+                if (
+                    cte_missing
+                    and _rename_fold_plan(cte, parent_cte, cte_missing, root_outputs)
+                    is None
+                ):
+                    self.log(
+                        f"Cannot inline: Not all required inputs to {parent_cte.name} are found on datasource, missing {cte_missing}"
+                    )
+                    continue
             if not root.grain.issubset(parent_cte.grain):
                 self.log(
                     f"Cannot inline: {parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})"
@@ -114,8 +191,43 @@ class InlineDatasource(OptimizationRule):
                 continue
             replaceable_base = replaceable.source.base_datasource
             assert replaceable_base is not None  # checked above
+            # Recompute the rename-fold plan at apply time — candidacy was
+            # established on a prior visit and other merges may have shifted
+            # this CTE's source_map since.
+            root_outputs = {x.address for x in replaceable_base.output_concepts}
+            if len(inverse_map.get(replaceable.name, [])) <= 1:
+                for x in replaceable_base.output_concepts:
+                    root_outputs |= x.pseudonyms
+            inherited = {
+                x for x, v in cte.source_map.items() if v and replaceable.name in v
+            }
+            missing: set[str] = set()
+            if not inherited.issubset(root_outputs):
+                consumed = render_cte_used_map(cte).get(replaceable.name, set())
+                missing = (inherited & consumed) - root_outputs
+            plan = (
+                _rename_fold_plan(cte, replaceable, missing, root_outputs)
+                if missing
+                else []
+            )
+            if plan is None:
+                self.log(
+                    f"Failed to inline {replaceable.name}: rename fold no longer provable"
+                )
+                continue
             result = cte.inline_parent_datasource(replaceable, force_group=False)
             if result:
+                for i, new_col in plan:
+                    # Render the rename from lineage post-fold: the pinned base
+                    # object resolves against the inlined datasource; a stale
+                    # source_map entry would win over lineage and point at a
+                    # column the raw table does not have.
+                    cte.output_columns[i] = new_col
+                    cte.source_map.pop(new_col.address, None)
+                if replaceable.condition is not None:
+                    cte.condition = append_condition(
+                        cte.condition, replaceable.condition
+                    )
                 self.log(
                     f"Inlined parent {replaceable.name} with {replaceable.source.safe_identifier}"
                 )

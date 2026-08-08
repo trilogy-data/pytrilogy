@@ -2045,6 +2045,32 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 return f"{item.namespace}.{item.alias}"
         return None
 
+    def get_merge_concept_resolved(self, check: BuildConcept) -> str | None:
+        """`get_merge_concept`, but tolerant of a scoped-join partner or
+        pseudonym standing in for the authored align member. A subset/union
+        join inside an arm canonicalizes the authored key onto its partner's
+        address (`wr.order_number` emitted as `ws.order_number`), so the arm
+        node exposes the partner column; the pairing is the same merged key by
+        declaration. Mirrors `find_source`'s partner recovery on the planning
+        side, so the arm re-exposes its i-th column under the union output."""
+        direct = self.get_merge_concept(check)
+        if direct is not None:
+            return direct
+        joined: set[frozenset[str]] = {
+            frozenset((s, t))
+            for select in self.selects
+            for s, t, _ in select.scoped_joins
+        }
+        for item in self.align.items:
+            for c in item.concepts:
+                if (
+                    frozenset((c.address, check.address)) in joined
+                    or check.address in c.pseudonyms
+                    or c.address in check.pseudonyms
+                ):
+                    return f"{item.namespace}.{item.alias}"
+        return None
+
     def find_source(self, concept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept:
         for x in self.align.items:
             if concept.name == x.alias:
@@ -2508,6 +2534,36 @@ def _is_cross_row_instantiation(arg: Any) -> bool:
     return isinstance(arg, Function) and arg.operator == FunctionType.GROUP
 
 
+@dataclass
+class EnvUnit:
+    """One top-level step of `Factory._build_environment`, with the
+    `local_concepts` names its build READ (footprint) and WROTE. The footprint
+    is the exact overlay-sensitivity set: under a fixed (environment,
+    scoped-join set), a unit's result can differ between materializations only
+    through a `local_concepts` lookup — address lookups in `__build_concept`,
+    minted-name lookups in `instantiate_concept` — so a unit whose footprint
+    misses every changed name reproduces the baseline result."""
+
+    section: str
+    key: str
+    author_ref: Any
+    canonical_addr: str | None
+    footprint: frozenset[str]
+    written: tuple[str, ...]
+
+
+@dataclass
+class EnvBaseline:
+    """A context-free (no select overlay) environment materialization plus the
+    per-unit footprints needed to replay only what an overlay changes. Scoped
+    to one resolution's `BuildCaches` under one scoped-join set — never reused
+    across environments or join sets."""
+
+    environment: Any
+    end_locals: dict[str, BuildConcept]
+    units: list[EnvUnit]
+
+
 class Factory:
 
     def __init__(
@@ -2707,6 +2763,11 @@ class Factory:
             {} if local_concepts is None else local_concepts
         )
         self.local_non_build_concepts: dict[str, Concept] = {}
+        # Environment-materialization footprint recording (see EnvBaseline):
+        # while set, every `local_concepts` lookup name is added to
+        # `_env_footprint` and every write name to `_env_writes`.
+        self._env_footprint: set[str] | None = None
+        self._env_writes: set[str] | None = None
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
         if self.scoped_merge_map:
             # A scoped join collapses source->target like a global `merge`, but
@@ -2836,6 +2897,8 @@ class Factory:
         salted = bool(self.virtual_scope_salt) and _is_cross_row_instantiation(arg)
         if salted:
             name = f"{name}_{self.virtual_scope_salt}"
+        if self._env_footprint is not None:
+            self._env_footprint.add(name)
         if name in self.local_concepts and name in self.local_non_build_concepts:
             # if we already have this concept, return it
             return self.local_non_build_concepts[name], self.local_concepts[name]
@@ -2846,6 +2909,8 @@ class Factory:
         )
         built = self._build_concept(new)
         self.local_concepts[name] = built
+        if self._env_writes is not None:
+            self._env_writes.add(name)
         self.local_non_build_concepts[name] = new
         return new, built
 
@@ -2875,7 +2940,7 @@ class Factory:
         base: (
             # int is NOT redundant with float here: singledispatch reads this
             # union at runtime to register the int handler (bool via subclass)
-            int  # noqa: PYI041
+            int
             | str
             | float
             | Decimal
@@ -3105,6 +3170,8 @@ class Factory:
         return Grain(components=set(out), component_order=out)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
+        if self._env_footprint is not None:
+            self._env_footprint.add(base.address)
         # Build-scoped merge collapse: build the canonical target instead of a
         # merged-away source. Every concept lookup (refs, grain components,
         # lineage args) funnels through here, so this collapses the source
@@ -3118,6 +3185,8 @@ class Factory:
             canonical = self.scoped_merge_map.get(base.address)
             if canonical is not None:
                 base = self.environment.concepts[canonical]
+                if self._env_footprint is not None:
+                    self._env_footprint.add(base.address)
         self._building.append(base.address)
         try:
             return self.__build_concept(base)
@@ -3178,7 +3247,7 @@ class Factory:
                 lineage=None,
                 grain=new_grain,
                 namespace=base.namespace,
-                keys=self._build_keys(base.keys),
+                keys=self._build_keys(base.effective_keys(self.environment)),
                 modifiers=base.modifiers,
                 pseudonyms=base_pseudonyms,
                 derivation=derivation,
@@ -3186,6 +3255,8 @@ class Factory:
                 build_is_aggregate=False,
             )
             self.local_concepts[base.address] = rval
+            if self._env_writes is not None:
+                self._env_writes.add(base.address)
             self.canonical_build_cache[base.address] = rval
             return rval
         resolution_grain = (
@@ -3306,7 +3377,7 @@ class Factory:
             lineage=build_lineage,
             grain=new_grain,
             namespace=base.namespace,
-            keys=self._build_keys(base.keys),
+            keys=self._build_keys(base.effective_keys(self.environment)),
             modifiers=base.modifiers,
             pseudonyms=base_pseudonyms,
             ## instantiated values
@@ -3318,6 +3389,8 @@ class Factory:
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
+        if self._env_writes is not None:
+            self._env_writes.add(base.address)
         # this is a global cache that can be reused across Factory instances
         self.build_cache[cache_address] = rval
         return rval
@@ -3991,9 +4064,10 @@ class Factory:
         self, where: WhereClause, content: BuildExpr
     ) -> BuildWhereClause:
         """Build a filter's `? <condition>` so a bare (no `by`) aggregate in it
-        co-grains to the FILTERED CONTENT's grain — the rows being filtered —
-        rather than inheriting the outer consuming grain. Mirrors how a SELECT's
-        WHERE co-grains its aggregates to the select grain (HAVING semantics).
+        co-grains to the FILTERED CONTENT — the rows being filtered — rather than
+        inheriting the outer consuming grain. Mirrors how a SELECT's WHERE
+        co-grains its aggregates to the select grain (HAVING semantics): the
+        content is the filter's implicit `SELECT`, so the aggregate groups by it.
 
         Without this, `auto f <- p ? (count(x) > 4)` consumed in another model
         groups the count by the consumer's key (e.g. a foreign `catalog.item.id`
@@ -4002,7 +4076,17 @@ class Factory:
         # A non-concept content (e.g. a literal) has no grain to co-grain to.
         if not isinstance(content, BuildConcept):
             return self.build(where)
-        content_grain = Grain(components=set(content.grain.components))
+        # Group by the content's OWN grain — i.e. the grain of `SELECT <content>`.
+        # For a scalar that is the content itself (`{content.address}`): `select sp`
+        # / `select name` dedupe to the value. NOT `content.grain`, which is the
+        # finer definitional/FD grain a property or derived scalar descends to
+        # (`sp`/`name` -> `s_item`) and would over-partition the count. An
+        # already-grouped content (aggregate/window) is the exception: there the
+        # declared grain IS its grouping identity, so keep it.
+        if content.derivation in (Derivation.AGGREGATE, Derivation.WINDOW):
+            content_grain = Grain(components=set(content.grain.components))
+        else:
+            content_grain = Grain(components={content.address})
         if self.aggregate_grain == content_grain:
             return self.build(where)
         saved = self.aggregate_grain
@@ -4275,9 +4359,15 @@ class Factory:
         return self._build_environment(base)
 
     def _build_environment(self, base: Environment):
+        new = self._env_shell(base)
+        for section, key, author_ref, canonical_addr in self._env_units(base):
+            self._env_run_unit(new, base, section, key, author_ref, canonical_addr)
+        return self._env_finish(new)
+
+    def _env_shell(self, base: Environment):
         from trilogy.core.models.build_environment import BuildEnvironment
 
-        new = BuildEnvironment(
+        return BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
             scoped_partial_derived=(
@@ -4288,62 +4378,76 @@ class Factory:
             domain_graph=assemble_full_graph(base, self.domain_graph),
         )
 
+    def _env_units(self, base: Environment):
+        """The top-level steps of an environment materialization, in build
+        order. One definition serves the plain build, the recorded (baseline)
+        build and the delta replay, so the three cannot drift."""
         for k, v in base.concepts.all_items():
-            v_build = self._build_concept(v)
-            new.concepts[k] = v_build
-            new.canonical_concepts[v_build.canonical_address] = v_build
-        for (
-            k,
-            d,
-        ) in base.datasources.items():
+            yield "concept", k, v, None
+        for k, d in base.datasources.items():
             if d.status != DatasourceState.PUBLISHED:
                 continue
-            new.datasources[k] = self._build_datasource(d)
+            yield "datasource", k, d, None
         for k, a in base.alias_origin_lookup.items():
-            a_build = self._build_concept(a)
-            new.alias_origin_lookup[k] = a_build
-            new.canonical_concepts[a_build.canonical_address] = a_build
+            yield "alias", k, a, None
         # Build-scoped joins collapse each source to its canonical target in
         # new.concepts. Populate alias_origin_lookup for joined sources so
         # references / output aliases to a merged-away source still resolve. The
         # entry is the source built as ITSELF (its own identity), pointed at the
-        # canonical target as a pseudonym.
+        # canonical target as a pseudonym. Legacy direct merge_concept calls may
+        # have rewritten concepts[source] = target, so prefer the original
+        # source from alias_origin_lookup when present.
         for source_addr, canonical_addr in self.scoped_merge_map.items():
-            # Build the source as ITSELF. Legacy direct merge_concept calls may
-            # have rewritten concepts[source] = target, so prefer the original
-            # source from alias_origin_lookup when present.
             src = base.alias_origin_lookup.get(source_addr) or base.concepts.data.get(
                 source_addr
             )
             if src is None:
                 continue
+            yield "merge", source_addr, src, canonical_addr
+
+    def _env_run_unit(self, new, base, section, key, author_ref, canonical_addr):
+        if section == "concept":
+            v_build = self._build_concept(author_ref)
+            new.concepts[key] = v_build
+            new.canonical_concepts[v_build.canonical_address] = v_build
+        elif section == "datasource":
+            new.datasources[key] = self._build_datasource(author_ref)
+        elif section == "alias":
+            a_build = self._build_concept(author_ref)
+            new.alias_origin_lookup[key] = a_build
+            new.canonical_concepts[a_build.canonical_address] = a_build
+        else:
+            if self._env_footprint is not None:
+                self._env_footprint.add(key)
             # Build the collapsed-away source as its OWN identity (its lineage +
             # address), not the collapsed target, so the joined key stays
             # sourceable from the collapsed side. The main build loop already
             # cached source_addr -> the collapsed target in local_concepts and
             # __build_concept would early-exit on it; evict it across this build
             # and restore the collapse mapping after.
-            if source_addr in self.scoped_merge_sources:
-                collapsed = self.local_concepts.pop(source_addr, None)
+            if key in self.scoped_merge_sources:
+                collapsed = self.local_concepts.pop(key, None)
                 previous_identity_addresses = self._source_identity_addresses
                 self._source_identity_addresses = (
                     previous_identity_addresses | self.scoped_merge_sources
                 )
                 try:
-                    alias_build = self.__build_concept(src)
+                    alias_build = self.__build_concept(author_ref)
                 finally:
                     self._source_identity_addresses = previous_identity_addresses
                 if collapsed is not None:
-                    self.local_concepts[source_addr] = collapsed
+                    self.local_concepts[key] = collapsed
             else:
-                alias_build = self.__build_concept(src)
+                alias_build = self.__build_concept(author_ref)
             if canonical_addr not in alias_build.pseudonyms:
                 alias_build = dc_replace(
                     alias_build,
                     pseudonyms={canonical_addr, *alias_build.pseudonyms},
                 )
-            new.alias_origin_lookup[source_addr] = alias_build
+            new.alias_origin_lookup[key] = alias_build
             new.canonical_concepts[alias_build.canonical_address] = alias_build
+
+    def _env_finish(self, new):
         # add in anything that was built as a side-effect
         for bk, bv in self.local_concepts.items():
             if bk not in new.concepts:
@@ -4351,6 +4455,108 @@ class Factory:
                 new.canonical_concepts[bv.canonical_address] = bv
         new.gen_concept_list_caches()
         return new
+
+    def build_environment_recorded(self, base: Environment) -> EnvBaseline:
+        """`_build_environment` with per-unit footprints captured: the baseline
+        for `build_environment_delta`. Built with NO select overlay, so every
+        unit's result is context-free for this (environment, scoped-join set)."""
+        new = self._env_shell(base)
+        units: list[EnvUnit] = []
+        for section, key, author_ref, canonical_addr in self._env_units(base):
+            footprint: set[str] = set()
+            writes: set[str] = set()
+            self._env_footprint = footprint
+            self._env_writes = writes
+            try:
+                self._env_run_unit(new, base, section, key, author_ref, canonical_addr)
+            finally:
+                self._env_footprint = None
+                self._env_writes = None
+            units.append(
+                EnvUnit(
+                    section=section,
+                    key=key,
+                    author_ref=author_ref,
+                    canonical_addr=canonical_addr,
+                    footprint=frozenset(footprint),
+                    written=tuple(writes),
+                )
+            )
+        return EnvBaseline(
+            environment=self._env_finish(new),
+            end_locals=self.local_concepts,
+            units=units,
+        )
+
+    def build_environment_delta(self, base: Environment, baseline: EnvBaseline):
+        """Materialize this factory's overlay (its `local_concepts`) as
+        baseline + delta: replay only the units whose footprint touches a name
+        the overlay actually CHANGES relative to the baseline's builds, copy
+        the rest. Change propagates: a replayed unit's writes are re-diffed so
+        a downstream unit reading them replays too.
+
+        Sound because a unit's result can differ between two materializations
+        of one (environment, scoped-join set) only through a `local_concepts`
+        lookup — the footprint records exactly those — and because an
+        end-state read is deterministic: any name a unit would have built on
+        demand resolves to the same value the baseline recorded for it."""
+        from trilogy.core.models.build_environment import BuildEnvironment
+
+        overlay = dict(self.local_concepts)
+        end = baseline.end_locals
+        # Changed = IDENTITY mismatch, never `==`: BuildConcept equality is
+        # deliberately weak (name/type/purpose/namespace/grain — it ignores
+        # lineage and canonical_name), so two builds of one address can compare
+        # equal while carrying different lineage hashes. Identity is exact
+        # here: the shared build caches return the baseline's own object
+        # whenever the build context truly matches, so a distinct object means
+        # a (possibly) different build and the unit replays.
+        changed: set[str] = set()
+        for name, value in overlay.items():
+            if end.get(name) is not value:
+                changed.add(name)
+        # Working locals: overlay first (its insertion order is what a full
+        # build would start from), then the baseline's builds for everything
+        # the overlay does not shadow.
+        for name, value in end.items():
+            self.local_concepts.setdefault(name, value)
+        b_env = baseline.environment
+        new = BuildEnvironment(
+            namespace=b_env.namespace,
+            cte_name_map=b_env.cte_name_map,
+            scoped_partial_derived=b_env.scoped_partial_derived,
+            scoped_join_key_groups=b_env.scoped_join_key_groups,
+            domain_graph=b_env.domain_graph,
+        )
+        for unit in baseline.units:
+            if changed and not unit.footprint.isdisjoint(changed):
+                writes: set[str] = set()
+                self._env_writes = writes
+                try:
+                    self._env_run_unit(
+                        new,
+                        base,
+                        unit.section,
+                        unit.key,
+                        unit.author_ref,
+                        unit.canonical_addr,
+                    )
+                finally:
+                    self._env_writes = None
+                for name in writes:
+                    if end.get(name) is not self.local_concepts.get(name):
+                        changed.add(name)
+            elif unit.section == "concept":
+                v_build = b_env.concepts[unit.key]
+                new.concepts[unit.key] = v_build
+                new.canonical_concepts[v_build.canonical_address] = v_build
+            elif unit.section == "datasource":
+                new.datasources[unit.key] = b_env.datasources[unit.key]
+            else:  # alias / merge both land in alias_origin_lookup
+                a_build = b_env.alias_origin_lookup[unit.key]
+                new.alias_origin_lookup[unit.key] = a_build
+                new.canonical_concepts[a_build.canonical_address] = a_build
+        return self._env_finish(new)
 
     @_build_dispatch.register
     def _(self, base: TraitDataType):

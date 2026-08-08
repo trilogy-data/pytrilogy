@@ -544,11 +544,34 @@ def get_priority_concept(
 
 
 def _crossjoinable(concept: BuildConcept) -> bool:
-    """Single-row / constant concepts cross-join into any component, so they
-    never cause a disconnection (mirrors calculate_graph_relevance)."""
+    """Single-row / constant / literal-derived concepts cross-join into any
+    component, so they never cause a disconnection (mirrors
+    calculate_graph_relevance; the literal-derived extension covers multi-row
+    generated values like ``unnest([1,2])`` and derivations over them)."""
     return (
         concept.granularity == Granularity.SINGLE_ROW
         or concept.derivation == Derivation.CONSTANT
+        or _literal_derived(concept)
+    )
+
+
+def _literal_derived(concept: BuildConcept, _seen: set[str] | None = None) -> bool:
+    """Generated purely from literals, transitively: ``unnest([1,2])``, ``sum(1)``,
+    a window over either. No datasource anywhere in the derivation means the value
+    can be produced beside any component without a join (v3 plans these as cross
+    joins), so it must not count toward disconnection."""
+    if concept.derivation == Derivation.CONSTANT:
+        return True
+    if concept.derivation == Derivation.ROOT or concept.lineage is None:
+        return False
+    seen = _seen if _seen is not None else set()
+    if concept.address in seen:
+        return True
+    seen.add(concept.address)
+    return all(
+        _literal_derived(arg, seen)
+        for arg in concept.concept_arguments
+        if isinstance(arg, BuildConcept)
     )
 
 
@@ -597,6 +620,11 @@ def _aggregate_grain_only_parents(
         else:
             measure = []
         measure_addrs = {a.address for a in measure if isinstance(a, BuildConcept)}
+        if not measure_addrs:
+            # Literal measure (sum(1), count(1)): the grain keys ARE the row
+            # demand — the aggregate cannot be computed anywhere but over its
+            # grain's row set, so those edges are real join relationships.
+            continue
         grain_only = set(c.grain.components) - measure_addrs
         if grain_only:
             out[c.address] = grain_only
@@ -607,11 +635,20 @@ def _component_map(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
+    excluded_addresses: frozenset[str] = frozenset(),
 ) -> "tuple[dict[str, int], ReferenceGraph]":
     """Build the connectivity map node -> weakly-connected-component id, dropping
     aggregate grain-only edges (and optionally islanding rowsets) first. Shared by
     ``disconnected_components`` and the connected-equivalent suggestion path so both
-    judge reachability identically. Returns the map and the graph it was built on."""
+    judge reachability identically. Returns the map and the graph it was built on.
+
+    ``excluded_addresses`` are treated as absent for reachability only. A nested
+    select must not reach connectivity through the outputs of the construct it is
+    the body of: `yr -> rs.yr -> rowset~rs -> rs.oname -> oname` otherwise makes
+    two unrelated models look joined, and the gate can never fire on the very
+    query defining `rs`. Dropped from the undirected COPY, so no shared concept,
+    pseudonym or graph is touched -- narrowing the environment instead is not an
+    option, since surviving concepts still name these addresses as pseudonyms."""
     from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
 
@@ -634,6 +671,11 @@ def _component_map(
     if island_rowsets:
         island_rowsets_for_connectivity(g, cg, grain_only)
 
+    if excluded_addresses:
+        for node, concept in g.concepts.items():
+            if concept.address in excluded_addresses and node in cg:
+                cg.remove_node(node)
+
     comp_of: dict[str, int] = {}
     for i, component in enumerate(gx.connected_components(cg)):
         for node in component:
@@ -646,6 +688,7 @@ def disconnected_components(
     concepts: list[BuildConcept],
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
+    excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component
@@ -666,8 +709,10 @@ def disconnected_components(
     a *pre-check gate* it false-positives on legitimate rowset join-backs (a base
     key that IS a rowset output, or a concept DERIVED from one) — so the v4
     pre-gate disables it and lets discovery decide. Defaults to the v3 behaviour.
+
+    See ``_component_map`` for ``excluded_addresses``.
     """
-    comp_of, _ = _component_map(environment, g, island_rowsets)
+    comp_of, _ = _component_map(environment, g, island_rowsets, excluded_addresses)
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
@@ -831,6 +876,7 @@ def raise_if_disconnected_for(
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
     line_number: int | None = None,
+    excluded_addresses: frozenset[str] = frozenset(),
 ) -> None:
     """Connectivity gate for a select's required concepts (its outputs plus any
     WHERE row args): raise the typed subgraph error when they span unconnected
@@ -850,7 +896,11 @@ def raise_if_disconnected_for(
             c for c in conditions.row_arguments if c.address not in output_addresses
         ]
     subgraphs = disconnected_components(
-        environment, concepts, g, island_rowsets=island_rowsets
+        environment,
+        concepts,
+        g,
+        island_rowsets=island_rowsets,
+        excluded_addresses=excluded_addresses,
     )
     outputs_rootless = _output_is_rootless(outputs)
     subgraphs = [
@@ -862,7 +912,9 @@ def raise_if_disconnected_for(
         )
     ]
     if len(subgraphs) > 1:
-        message = format_disconnected_subgraphs_error(subgraphs)
+        message = format_disconnected_subgraphs_error(
+            subgraphs, environment, g, island_rowsets, line_number
+        )
         note = membership_span_note(
             conditions, subgraphs, environment, g, island_rowsets
         )
@@ -1069,12 +1121,14 @@ def raise_if_filter_disconnected(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     extra_required: list[BuildConcept] | None = None,
+    island_rowsets: bool = True,
 ) -> None:
     """Re-run the reachability check with FILTER outputs' hidden condition concepts
     surfaced (see ``_filter_hidden_concepts``). When that splits the set, raise the
     standard named-subgraph error — same 'add a join or merge' diagnostic as any
     disconnected grouping — plus a rowset-filter-specific hint. No-op otherwise, so
-    the caller falls through to the generic connectivity error."""
+    the caller falls through to the generic connectivity error. ``island_rowsets``
+    as in ``disconnected_components`` — pre-check gates must pass False."""
     # Drop the FILTER outputs themselves: their connectivity is fully captured by
     # the surfaced content + condition concepts, and the virtual filter concept
     # has no condition edges in the graph (see add_concept), so keeping it would
@@ -1088,7 +1142,7 @@ def raise_if_filter_disconnected(
         + _filter_hidden_concepts(output_concepts),
         "address",
     )
-    groups = disconnected_components(environment, required, g)
+    groups = disconnected_components(environment, required, g, island_rowsets)
     if len(groups) > 1:
         raise DisconnectedConceptsException(
             format_disconnected_subgraphs_error(groups, environment, g)

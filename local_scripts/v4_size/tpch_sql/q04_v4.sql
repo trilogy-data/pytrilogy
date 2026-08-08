@@ -1,0 +1,31 @@
+
+WITH 
+wakeful as (
+SELECT
+    "order_orders"."o_orderkey" as "order_id",
+    "order_orders"."o_orderpriority" as "order_priority"
+FROM
+    "memory"."orders" as "order_orders"
+WHERE
+    "order_orders"."o_orderdate" >= date '1993-07-01' and "order_orders"."o_orderdate" < date '1993-10-01'
+),
+quizzical as (
+SELECT
+    "lineitem"."l_orderkey" as "order_id"
+FROM
+    "memory"."lineitem" as "lineitem"
+GROUP BY
+    1
+HAVING
+    count(CASE WHEN "lineitem"."l_commitdate" < "lineitem"."l_receiptdate" THEN "lineitem"."l_linenumber" ELSE NULL END) > 0
+)
+SELECT
+    "wakeful"."order_priority" as "order_priority",
+    count("quizzical"."order_id") as "order_count"
+FROM
+    "wakeful"
+    INNER JOIN "quizzical" on "wakeful"."order_id" = "quizzical"."order_id"
+GROUP BY
+    1
+ORDER BY 
+    "wakeful"."order_priority" asc

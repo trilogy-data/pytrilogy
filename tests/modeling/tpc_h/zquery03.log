@@ -1,6 +1,6 @@
 query_id = "03"
-generator = "v3"
-gen_length = 1304
+generator = "v4"
+gen_length = 1099
 preql_size = 298
 comp_size = 467
 generated_sql = """
@@ -15,29 +15,22 @@ FROM
     INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
     INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
 WHERE
-    \"order_customer_customers\".\"c_mktsegment\" = 'BUILDING' and \"order_orders\".\"o_orderdate\" < date '1995-03-15' and \"lineitem\".\"l_shipdate\" > date '1995-03-15'
+    \"order_customer_customers\".\"c_mktsegment\" = 'BUILDING' and \"lineitem\".\"l_shipdate\" > date '1995-03-15' and \"order_orders\".\"o_orderdate\" < date '1995-03-15'
 
 GROUP BY
-    1),
-cooperative as (
-SELECT
-    \"order_orders\".\"o_orderdate\" as \"order_date\",
-    \"order_orders\".\"o_orderkey\" as \"order_id\",
-    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
-FROM
-    \"memory\".\"orders\" as \"order_orders\"
-WHERE
-    \"order_orders\".\"o_orderdate\" < date '1995-03-15'
-)
+    1)
 SELECT
     \"cheerful\".\"order_id\" as \"order_id\",
     \"cheerful\".\"q_revenue\" as \"q_revenue\",
-    \"cooperative\".\"order_date\" as \"order_date\",
-    \"cooperative\".\"order_ship_priority\" as \"order_ship_priority\"
+    \"order_orders\".\"o_orderdate\" as \"order_date\",
+    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
 FROM
     \"cheerful\"
-    INNER JOIN \"cooperative\" on \"cheerful\".\"order_id\" = \"cooperative\".\"order_id\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"cheerful\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+WHERE
+    \"order_orders\".\"o_orderdate\" < date '1995-03-15'
+
 ORDER BY 
     \"cheerful\".\"q_revenue\" desc,
-    \"cooperative\".\"order_date\" asc
+    \"order_orders\".\"o_orderdate\" asc
 LIMIT (10)"""

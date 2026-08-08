@@ -1,3 +1,4 @@
+import heapq
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -16,12 +17,18 @@ from trilogy.core.optimizations import (
     OrderInnerJoinsFirst,
     PredicatePushdown,
     PredicatePushdownRemove,
+    PushFilteredAggregateInput,
+    PushFilteredCountIntoJoin,
+    PushSemiJoinIntoAggregate,
     SimplifyNullSafeJoins,
     StripRedundantNotNull,
     UnionDimPushdown,
     UpgradeJoinOnGuards,
     UpgradeOuterFromKeySetEquivalence,
     optimization_log,
+)
+from trilogy.core.optimizations.collapse_single_parent import (
+    grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
@@ -183,38 +190,70 @@ def canonicalize_graph(input: list[CTE]) -> None:
                         b.hidden_concepts = set(ref.hidden_concepts)
 
 
+def subquery_sources(
+    cte: CTE | UnionCTE,
+    lookup: dict[str, CTE] | dict[str, CTE | UnionCTE],
+) -> list[CTE | UnionCTE]:
+    """CTEs `cte` reads only from inside a subquery — existence membership
+    feeders and generated semi-join feeders. They are real references (the
+    rendered SQL names them) but not row sources, so they never appear in
+    ``dependency_nodes``."""
+    if not isinstance(cte, CTE):
+        return []
+    names: list[str] = [
+        source
+        for sources in cte.existence_source_map.values()
+        for source in sources or []
+    ]
+    names.extend(semi.feeder for semi in cte.semi_join_filters)
+    out: list[CTE | UnionCTE] = []
+    seen: set[str] = set()
+    for name in names:
+        node = lookup.get(name)
+        if node is not None and name not in seen:
+            seen.add(name)
+            out.append(node)
+    return out
+
+
 def reorder_ctes(
     input: list[CTE],
 ):
-    from trilogy.core import graph as nx
-
     canonicalize_graph(input)
-    # Create a directed graph
-    G = nx.DiGraph()
-    mapping: dict[str, CTE] = {}
+    # STABLE topological order: among ready CTEs, earliest input position
+    # first. The result is a pure function of the input order and the
+    # dependency EDGE SET — never of edge/hash iteration order, which is what
+    # let sibling CTEs swap emission order between runs (PYTHONHASHSEED).
+    # Only nodes in the working set participate; a parent that isn't is
+    # sourced elsewhere (inlined/merged) and not emitted.
+    position = {cte.name: index for index, cte in enumerate(input)}
+    mapping: dict[str, CTE] = {cte.name: cte for cte in input}
+    children: dict[str, set[str]] = {name: set() for name in mapping}
+    indegree: dict[str, int] = {name: 0 for name in mapping}
     for cte in input:
-        mapping[cte.name] = cte
-    for cte in input:
-        for parent in cte.dependency_nodes():
-            # Only order nodes that are in the working set; a parent that
-            # isn't is sourced elsewhere (inlined/merged) and not emitted.
-            if parent.name in mapping:
-                G.add_edge(parent.name, cte.name)
-    # Perform topological sort (only works for DAGs)
-    try:
-        topological_order = list(nx.topological_sort(G))
-        if not topological_order:
-            return input
-        ordered = [mapping[x] for x in topological_order if x in mapping]
-        # never silently drop a working-set CTE that had no graph edges
-        ordered_names = {c.name for c in ordered}
-        ordered.extend(c for c in input if c.name not in ordered_names)
-        return ordered
-    except nx.NetworkXUnfeasible:
+        # A CTE read only through a subquery — an existence membership's feeder
+        # or a generated semi-join's — still has to be DECLARED first: a WITH
+        # list is sequential, so an unordered reference is "table not found".
+        for parent in [*cte.dependency_nodes(), *subquery_sources(cte, mapping)]:
+            if parent.name in mapping and cte.name not in children[parent.name]:
+                children[parent.name].add(cte.name)
+                indegree[cte.name] += 1
+    ready = [(position[name], name) for name, deg in indegree.items() if deg == 0]
+    heapq.heapify(ready)
+    ordered: list[CTE] = []
+    while ready:
+        _, name = heapq.heappop(ready)
+        ordered.append(mapping[name])
+        for child in children[name]:
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                heapq.heappush(ready, (position[child], child))
+    if len(ordered) != len(input):
         logger.error(
             "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
         )
-        raise
+        raise ValueError("CTE dependency graph contains a cycle")
+    return ordered
 
 
 def filter_irrelevant_ctes(
@@ -262,6 +301,11 @@ def filter_irrelevant_ctes(
 
         for parent in cte.dependency_nodes():
             recurse(parent, inverse_map)
+        # A subquery renders `FROM <feeder>` for CTEs referenced only through
+        # existence_source_map or a generated semi-join — those need WITH
+        # entries too.
+        for node in subquery_sources(cte, by_name):
+            recurse(node, inverse_map)
         if isinstance(cte, UnionCTE):
             for binding in cte.source_bindings(include_branches=True):
                 if not binding.branch or binding.node is None:
@@ -270,6 +314,7 @@ def filter_irrelevant_ctes(
                 # standalone WITH entries.
                 recurse(binding.node, inverse_map, emit=False)
 
+    by_name: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
     final = [cte for cte in input if cte.name in relevant_ctes]
@@ -288,11 +333,22 @@ def filter_irrelevant_ctes(
 
 def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCTE]]:
     inverse_map: dict[str, list[CTE | UnionCTE]] = {}
+    by_name = {c.name: c for c in input}
     for cte in input:
         if isinstance(cte, UnionCTE):
             dependencies = cte.dependency_nodes(include_branches=True)
         else:
             dependencies = cte.dependency_nodes()
+        seen = {parent.name for parent in dependencies}
+        # A source referenced ONLY from inside a subquery (existence membership
+        # or generated semi-join) is a real consumer relationship: a merge that
+        # repoints just the row consumers leaves that reference naming a dead
+        # CTE. Count it so is_sole_consumer sees it and repoint_consumers (via
+        # replace_dependency) rewrites it.
+        for node in subquery_sources(cte, by_name):
+            if node.name not in seen:
+                dependencies.append(node)
+                seen.add(node.name)
         for parent in dependencies:
             if parent.name not in inverse_map:
                 inverse_map[parent.name] = []
@@ -426,6 +482,13 @@ def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
     upstream.hidden_concepts = downstream.hidden_concepts.union(
         upstream.hidden_concepts
     )
+    # An existence subselect on the collapsed root resolves its set columns
+    # through existence_source_map; dropping the entries strands the
+    # membership and lets the feeder CTE be pruned as unreferenced.
+    if isinstance(downstream, CTE) and isinstance(upstream, CTE):
+        for address, sources in downstream.existence_source_map.items():
+            if address not in upstream.existence_source_map:
+                upstream.existence_source_map[address] = sources
     if downstream.condition:
         if upstream.condition:
             # Dedup on AND-atoms: a root remap can re-pass a predicate the
@@ -476,7 +539,7 @@ def build_optimization_rule_plan(
                 name="join_hoist",
                 rule_factory=JoinHoist,
                 depends_on=_enabled_dependencies(
-                    ("inline_datasource", opts.datasource_inlining)
+                    ("inline_datasource", opts.datasource_inlining),
                 ),
                 reason=(
                     "runs after datasource inlining so joins that target folded "
@@ -583,7 +646,13 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="collapse_single_parent.after_pushdown",
-                rule_factory=CollapseSingleParent,
+                # Must carry the domain graph like the other two phases: without
+                # it `produces_unbound_rowset` cannot tell a bound rowset key
+                # from an unbound one and conservatively treats EVERY aliased
+                # rowset output as unbound, so this phase collapses nothing that
+                # crosses a rowset boundary — which is most of what it exists to
+                # collapse.
+                rule_factory=lambda: CollapseSingleParent(domain_graph=domain_graph),
                 depends_on=("predicate_pushdown.remove",),
                 refires_after=("predicate_pushdown.remove",),
                 reason=(
@@ -646,6 +715,20 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+        plan.append(
+            OptimizationRulePlan(
+                name="predicate_pushdown.remove.after_join_upgrades",
+                rule_factory=PredicatePushdownRemove,
+                depends_on=("predicate_pushdown.after_final_upgrade",),
+                refires_after=("predicate_pushdown.after_final_upgrade",),
+                reason=(
+                    "the earlier remove pass runs before the final join "
+                    "upgrade, so predicates relocated by "
+                    "predicate_pushdown.after_final_upgrade keep a redundant "
+                    "copy at their origin; strip those too"
+                ),
+            )
+        )
     if opts.upgrade_outer_key_set_equivalence:
         plan.append(
             OptimizationRulePlan(
@@ -660,6 +743,84 @@ def build_optimization_rule_plan(
                 reason=(
                     "needs upstream filters in their final position so the "
                     "accumulated-filter signatures on each side are stable"
+                ),
+            )
+        )
+    if opts.datasource_inlining and (
+        opts.upgrade_outer_key_set_equivalence or opts.upgrade_condition_joins
+    ):
+        upgrade_phases = _enabled_dependencies(
+            (
+                "upgrade_outer_key_set_equivalence",
+                opts.upgrade_outer_key_set_equivalence,
+            ),
+            ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+        )
+        plan.append(
+            OptimizationRulePlan(
+                name="inline_datasource.after_join_upgrades",
+                rule_factory=InlineDatasource,
+                depends_on=upgrade_phases,
+                refires_after=upgrade_phases,
+                reason=(
+                    "a filtered raw scan only folds into a consumer whose joins "
+                    "are all INNER; the first inline pass runs before the outer "
+                    "joins are narrowed, so a scan behind a not-yet-upgraded "
+                    "outer join stays an extra CTE (tpc-h q3)"
+                ),
+            )
+        )
+    if opts.narrow_keyless_full_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="narrow_keyless_full_joins",
+                rule_factory=NarrowKeylessFullJoins,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "runs once the key-based narrowing passes have settled, so "
+                    "only genuinely keyless FULL joins are left to inspect"
+                ),
+            )
+        )
+    if opts.push_filtered_count_into_join:
+        plan.append(
+            OptimizationRulePlan(
+                name="push_filtered_count_into_join",
+                rule_factory=PushFilteredCountIntoJoin,
+                depends_on=_enabled_dependencies(
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                ),
+                reason=(
+                    "runs after join types settle; a sole filtered COUNT over a "
+                    "left-joined side can move its filter into the join predicate"
+                ),
+            )
+        )
+    if opts.push_filtered_aggregate_input:
+        plan.append(
+            OptimizationRulePlan(
+                name="push_filtered_aggregate_input",
+                rule_factory=PushFilteredAggregateInput,
+                depends_on=_enabled_dependencies(
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                ),
+                reason=(
+                    "runs after consumers settle; filtered aggregate input can "
+                    "move before grouping when all consumers reject empty groups"
                 ),
             )
         )
@@ -722,6 +883,27 @@ def build_optimization_rule_plan(
                 rule_factory=HideUnusedConcepts,
             )
         )
+    if opts.push_semi_join_into_aggregate:
+        plan.append(
+            OptimizationRulePlan(
+                name="push_semi_join_into_aggregate",
+                rule_factory=PushSemiJoinIntoAggregate,
+                depends_on=_enabled_dependencies(
+                    ("hide_unused_concepts", opts.hide_unused_concepts),
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "the mirror is only sound for a settled INNER join, and it "
+                    "reads the feeder's visible outputs — so it runs after join "
+                    "types and output pruning are final. Adds no CTE and rewrites "
+                    "no condition, so nothing downstream needs to re-fire"
+                ),
+            )
+        )
     if opts.order_inner_joins_first:
         plan.append(
             OptimizationRulePlan(
@@ -758,6 +940,20 @@ def log_optimization_rule_plan(plan: list[OptimizationRulePlan]) -> None:
     logger.info("\n".join(lines))
 
 
+def _optimization_visit_order(
+    rule: OptimizationRule, ctes: list[CTE | UnionCTE]
+) -> list[CTE | UnionCTE]:
+    if not isinstance(rule, CollapseSingleParent):
+        return ctes
+    return sorted(
+        ctes,
+        key=lambda cte: (
+            isinstance(cte, CTE)
+            and grouped_unbound_passthrough_should_wait(cte, rule.domain_graph)
+        ),
+    )
+
+
 def optimize_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
@@ -774,6 +970,11 @@ def optimize_ctes(
         root_cte = direct_parent
 
         sort_select_output(root_cte, select)
+
+    # Materialize the statement's output contract before demand-driven rules run.
+    # Rendering applies the same projection, but doing it only at render time makes
+    # carried, non-selected root columns appear live to their parent CTEs.
+    sort_select_output(root_cte, select)
 
     cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
     cte_lookup[root_cte.name] = root_cte
@@ -805,6 +1006,7 @@ def optimize_ctes(
             actions_taken = False
             # assume we go through all CTEs once
             look_at = unique([root_cte, *reversed(input)], property="name")
+            look_at = _optimization_visit_order(rule, look_at)
             inverse_map = gen_inverse_map(look_at)
             for cte in look_at:
                 opt, merged = rule.optimize(cte, inverse_map)

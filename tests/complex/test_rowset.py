@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse
 
@@ -157,27 +156,28 @@ SELECT
     env = Environment()
     engine = Dialects.DUCK_DB.default_executor(environment=env, conf=DuckDBConfig())
     sql = engine.generate_sql(declarations)[-1]
-    # Each rowset body is wrapped in a translation node, so the source columns are
-    # projected under the rowset-local names (`_buyers_a_cust_id`) and renamed to
-    # the rowset outputs in the wrapper. Assert the full non-swapped chain:
-    # bill -> buyers_a -> a_cust, ship -> buyers_b -> b_cust.
-    assert (
-        '"orders"."bill" as "_buyers_a_cust_id"' in sql
+    # Each rowset body projects the source column under a rowset-scoped name —
+    # the mangled body-local (`_buyers_a_cust_id`), the handle name
+    # (`buyers_a_cust_id`), or straight to the outer alias (`a_cust`) when
+    # CollapseSingleParent folds the rename chain into the scan. Any depth
+    # keeps the invariant this test pins: the chains never SWAP — bill only
+    # ever renders under an a-side name, ship only under a b-side name. The
+    # executing row check lives in
+    # local_scripts/v4_evals/cases/rowset_alias_collision.
+    a_names = ["_buyers_a_cust_id", "buyers_a_cust_id", "a_cust"]
+    b_names = ["_buyers_b_cust_id", "buyers_b_cust_id", "b_cust"]
+    assert any(
+        f'"orders"."bill" as "{name}"' in sql for name in a_names
     ), f"buyers_a.cust_id should project bill, sql was:\n{sql}"
-    assert (
-        '"orders"."ship" as "_buyers_b_cust_id"' in sql
+    assert any(
+        f'"orders"."ship" as "{name}"' in sql for name in b_names
     ), f"buyers_b.cust_id should project ship, sql was:\n{sql}"
-    # v3 renames the rowset-local column through an intermediate (`buyers_a_cust_id`)
-    # before the outer alias; v4 projects the rowset-local column straight to the
-    # outer alias (one fewer rename, and joins the rowsets on the shared `id` grain
-    # key instead of v3's cross-join risk). Both keep the non-swapped lineage; the
-    # executing row check lives in local_scripts/v4_evals/cases/rowset_alias_collision.
-    if CONFIG.use_v4_discovery:
-        assert '"_buyers_a_cust_id" as "a_cust"' in sql, sql
-        assert '"_buyers_b_cust_id" as "b_cust"' in sql, sql
-    else:
-        assert '"buyers_a_cust_id" as "a_cust"' in sql, sql
-        assert '"buyers_b_cust_id" as "b_cust"' in sql, sql
+    assert not any(
+        f'"orders"."ship" as "{name}"' in sql for name in a_names
+    ), f"ship leaked into the a-side chain:\n{sql}"
+    assert not any(
+        f'"orders"."bill" as "{name}"' in sql for name in b_names
+    ), f"bill leaked into the b-side chain:\n{sql}"
 
 
 def test_rowset_alias_name_collision_lineage() -> None:

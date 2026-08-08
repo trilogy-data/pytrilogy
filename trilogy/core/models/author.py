@@ -1253,6 +1253,18 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
 
+    def effective_keys(self, environment: Environment | None) -> set[str] | None:
+        """``keys``, falling back to what a datasource declaration implies.
+
+        A datasource binding this KEY outside its own grain asserts that the
+        grain determines it (see ``Environment.fk_derived_keys``). The
+        assertion lives on the datasource, not on the concept, so every reader
+        that treats ``keys`` as a functional dependency resolves it here."""
+        if self.keys or environment is None or self.purpose != Purpose.KEY:
+            return self.keys
+        derived = environment.fk_derived_keys().get(self.address)
+        return set(derived) if derived else self.keys
+
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
     ) -> tuple[
@@ -1288,7 +1300,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             ),
         )
         final_grain = grain if not self.grain.components else self.grain
-        keys = self.keys
+        keys = self.effective_keys(environment)
         if not new_lineage:
             return new_lineage, final_grain, keys
 
@@ -1346,11 +1358,22 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             if has_by_aggregate:
                 # A row-wise combination of aggregates is a metric whose grain is
                 # the union of its aggregates' `by` keys — not the keys of the
-                # aggregate inputs (see `_aggregate_by_grain_refs`).
-                final_grain = Grain.from_concepts(by_refs, environment)
+                # aggregate inputs (see `_aggregate_by_grain_refs`). A row-scalar
+                # PEER of those aggregates (`sum(z) by x + w`, w at id grain)
+                # keeps its own row identity in the grain: the sum is constant
+                # within x but the expression still varies per w's row.
+                pkeys: set[str] = set(by_refs)
+                for x_ref in _non_aggregate_row_refs(new_lineage, environment):
+                    x = environment.concepts[x_ref.address]
+                    if isinstance(x, UndefinedConcept):
+                        continue
+                    _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                    if parent_keys:
+                        pkeys.update(parent_keys)
+                final_grain = Grain.from_concepts(pkeys, environment)
                 keys = final_grain.components
             else:
-                pkeys: set[str] = set()
+                pkeys = set()
                 for x_ref in _row_grain_concept_refs(new_lineage):
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
@@ -2427,6 +2450,33 @@ def _row_grain_concept_refs(expr) -> list[ConceptRef]:
             + _row_grain_concept_refs(expr.high)
         )
     return list(get_concept_arguments(expr))
+
+
+def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
+    """Concept refs of an expression's NON-aggregate row-scalar parts. Aggregate
+    boundaries (inline wrappers and refs to aggregate concepts) contribute
+    nothing — their inputs are already collapsed and their grain arrives via
+    `_aggregate_by_grain_refs`. Unhandled node types (windows, subselects)
+    contribute nothing, preserving prior grain inference for those shapes."""
+    if isinstance(expr, AggregateWrapper):
+        return []
+    if isinstance(expr, ConceptRef):
+        concept = environment.concepts.get(expr.address)
+        if concept is None or concept.is_aggregate:
+            return []
+        return [expr]
+    if isinstance(expr, (FunctionCallWrapper, Parenthetical)):
+        return _non_aggregate_row_refs(expr.content, environment)
+    if isinstance(expr, Function):
+        out: list[ConceptRef] = []
+        for arg in expr.arguments:
+            out += _non_aggregate_row_refs(arg, environment)
+        return out
+    if isinstance(expr, (Comparison, Conditional)):
+        return _non_aggregate_row_refs(
+            expr.left, environment
+        ) + _non_aggregate_row_refs(expr.right, environment)
+    return []
 
 
 def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str], bool]:

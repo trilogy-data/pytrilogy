@@ -1,0 +1,78 @@
+
+WITH 
+cheerful as (
+SELECT
+    "customer_current_address_customer_address"."CA_ZIP" as "customer_current_address_zip",
+    count(CASE WHEN "customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' THEN "customer_customers"."C_CUSTOMER_SK" ELSE NULL END) as "zip_p_count"
+FROM
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_current_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_current_address_customer_address"."CA_ADDRESS_SK"
+GROUP BY
+    1
+HAVING
+    "zip_p_count" > 10
+),
+questionable as (
+SELECT
+    "cheerful"."zip_p_count" as "zip_p_count",
+    "customer_current_address_customer_address"."CA_ZIP" as "customer_current_address_zip"
+FROM
+    "cheerful"
+    INNER JOIN "memory"."customer_address" as "customer_current_address_customer_address" on "cheerful"."customer_current_address_zip" is not distinct from "customer_current_address_customer_address"."CA_ZIP"),
+abundant as (
+SELECT
+    CASE WHEN "questionable"."zip_p_count" > 10 THEN "questionable"."customer_current_address_zip" ELSE NULL END as "p_cust_zip"
+FROM
+    "questionable"),
+uneven as (
+SELECT
+    SUBSTRING("abundant"."p_cust_zip",1,5) as "_virt_func_substring_4293448550966409"
+FROM
+    "abundant"
+GROUP BY
+    1),
+quizzical as (
+SELECT
+    unnest(:_virt_7180871482901048) as "zips_pre"
+),
+juicy as (
+SELECT
+    SUBSTRING(cast("quizzical"."zips_pre" as string),1,5) as "_virt_filter_zips_2159288073185462"
+FROM
+    "quizzical"
+WHERE
+    exists (select 1 from uneven where uneven."_virt_func_substring_4293448550966409" is not distinct from SUBSTRING(cast("quizzical"."zips_pre" as string),1,5))
+),
+vacuous as (
+SELECT
+    SUBSTRING("juicy"."_virt_filter_zips_2159288073185462",1,2) as "final_zips"
+FROM
+    "juicy"
+GROUP BY
+    1),
+sweltering as (
+SELECT
+    "store_sales_store_sales"."SS_NET_PROFIT" as "store_sales_net_profit",
+    "store_sales_store_store"."S_STORE_NAME" as "store_sales_store_name"
+FROM
+    "memory"."store_sales" as "store_sales_store_sales"
+    INNER JOIN "memory"."store" as "store_sales_store_store" on "store_sales_store_sales"."SS_STORE_SK" = "store_sales_store_store"."S_STORE_SK"
+    INNER JOIN "memory"."date_dim" as "store_sales_sale_date_date" on "store_sales_store_sales"."SS_SOLD_DATE_SK" = "store_sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "store_sales_sale_date_date"."D_QOY" = 2 and "store_sales_sale_date_date"."D_YEAR" = 1998 and exists (select 1 from vacuous where vacuous."final_zips" is not distinct from SUBSTRING("store_sales_store_store"."S_ZIP",1,2))
+
+GROUP BY
+    1,
+    2,
+    "store_sales_store_sales"."SS_ITEM_SK",
+    "store_sales_store_sales"."SS_TICKET_NUMBER")
+SELECT
+    "sweltering"."store_sales_store_name" as "store_sales_store_name",
+    sum("sweltering"."store_sales_net_profit") as "store_net_profit"
+FROM
+    "sweltering"
+GROUP BY
+    1
+ORDER BY 
+    "sweltering"."store_sales_store_name" asc
+LIMIT (100)

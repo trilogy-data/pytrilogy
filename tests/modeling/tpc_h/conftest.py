@@ -51,6 +51,7 @@ def _make_engine(sf: float, subdir: str) -> Executor:
     # tpch PRAGMA requires the extension to be loaded in this connection too.
     engine.execute_raw_sql("INSTALL tpch; LOAD tpch;")
     engine.execute_raw_sql("SET enable_progress_bar=false;")
+    engine.connection.commit()
     return engine
 
 

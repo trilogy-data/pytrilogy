@@ -29,6 +29,7 @@ def gen_basic(
             input_concepts=[],
             output_concepts=outputs,
             environment=environment,
+            conditions=conditions.conditional if conditions else None,
             preexisting_conditions=pre,
         )
     full_outputs = outputs_with_parent_grain_keys(outputs, parents)

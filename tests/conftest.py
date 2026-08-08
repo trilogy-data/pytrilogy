@@ -31,11 +31,13 @@ from trilogy.core.models.environment import Environment
 
 @fixture(scope="session", autouse=True)
 def _maybe_enable_v4_discovery():
-    """Opt-in v4 discovery for a full-suite parity sweep:
-    `TRILOGY_V4_DISCOVERY=1 pytest ...`. Default off, so normal runs are v3."""
-    if os.environ.get("TRILOGY_V4_DISCOVERY") == "1":
+    """v4 discovery is the DEFAULT (s38 ladder purge). The env var remains as
+    an explicit override for comparison sweeps: `TRILOGY_V4_DISCOVERY=0` forces
+    the legacy v3 planner, `=1` forces v4 (now redundant)."""
+    override = os.environ.get("TRILOGY_V4_DISCOVERY")
+    if override in ("0", "1"):
         prior = CONFIG.use_v4_discovery
-        CONFIG.use_v4_discovery = True
+        CONFIG.use_v4_discovery = override == "1"
         yield
         CONFIG.use_v4_discovery = prior
     else:
@@ -62,17 +64,18 @@ def _restore_global_config():
 
 
 def pytest_collection_modifyitems(config, items):
-    """Under a v4 sweep (`TRILOGY_V4_DISCOVERY=1`), turn each test in the v4
-    known-failing registry into an xfail. Keeps the suite green on the v4 planner
-    while every gap stays tracked, and a real regression (a test NOT in the
-    registry) still fails loudly. No-op under v3.
+    """Turn each test in the v4 known-failing registry into an xfail whenever
+    the suite runs the v4 planner (the default; only `TRILOGY_V4_DISCOVERY=0`
+    opts a run back to v3). Keeps the suite green on the v4 planner while every
+    gap stays tracked, and a real regression (a test NOT in the registry) still
+    fails loudly.
 
     Non-strict on purpose: the suite has pre-existing cross-test state leakage
     (tests sharing a module-level `default_executor`), so a registered test can
     XPASS in a full-suite run yet fail in isolation. strict=True would turn those
     contamination-driven xpasses into hard failures and make the v4 gate flaky.
     Re-check candidates for promotion in isolation, not from a full-suite xpass."""
-    if os.environ.get("TRILOGY_V4_DISCOVERY") != "1":
+    if os.environ.get("TRILOGY_V4_DISCOVERY") == "0":
         return
     from tests.v4_known_failing import V4_KNOWN_FAILING
 

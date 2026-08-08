@@ -2,6 +2,7 @@ mod parser;
 mod resolver;
 mod directory_resolver;
 mod graph;
+mod network_search;
 mod trilogy_parser;
 #[cfg(feature = "python")]
 pub mod python_bindings;
@@ -24,3 +25,4 @@ pub use directory_resolver::{
     process_directory_with_imports, build_edges, DirectoryGraph, Edge, EdgeReason, FileInfo,
 };
 pub use graph::GraphCore;
+pub use network_search::{enumerate_covers, CandidateSpec, LimitKind, NetworkSpec};

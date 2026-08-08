@@ -8,8 +8,46 @@ from trilogy.core.optimizations.utils import render_cte_used_map
 
 
 class HideUnusedConcepts(OptimizationRule):
+    """Rule instances are phase-local (``make_rule`` per phase), so the
+    used-map cache below lives exactly one phase: it survives the fixpoint
+    loops (the confirming last loop and multi-parent repeats hit it). The only
+    mutations that can occur while the phase runs are this rule's own
+    ``hidden_concepts`` writes, each of which evicts the mutated object and
+    any cached union whose render included it."""
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        # id -> (the CTE itself, its map). The entry holds the object so the
+        # id cannot be recycled under the cache, and the identity re-check on
+        # read makes a stale hit impossible rather than merely unlikely.
+        self._used_maps: dict[int, tuple[CTE | UnionCTE, dict[str, set[str]]]] = {}
+        # branch id -> cached-union ids whose render included that branch; a
+        # union's used map depends on its branches' renders, so mutating a
+        # branch must evict the union too (transitively for nested unions).
+        self._unions_of: dict[int, set[int]] = {}
+
+    def _register_members(self, union_key: int, cte: UnionCTE) -> None:
+        for branch in cte.internal_ctes:
+            self._unions_of.setdefault(id(branch), set()).add(union_key)
+            if isinstance(branch, UnionCTE):
+                self._register_members(union_key, branch)
+
+    def _used_map(self, cte: CTE | UnionCTE) -> dict[str, set[str]]:
+        key = id(cte)
+        entry = self._used_maps.get(key)
+        if entry is not None and entry[0] is cte:
+            return entry[1]
+        used = render_cte_used_map(cte)
+        self._used_maps[key] = (cte, used)
+        if isinstance(cte, UnionCTE):
+            self._register_members(key, cte)
+        return used
+
+    def _evict(self, cte: CTE | UnionCTE) -> None:
+        key = id(cte)
+        self._used_maps.pop(key, None)
+        for union_key in self._unions_of.get(key, ()):
+            self._used_maps.pop(union_key, None)
 
     def _hide_branch_only_outputs(self, cte: UnionCTE) -> bool:
         """Hide any concept that appears in a branch's ``output_columns`` but
@@ -43,6 +81,7 @@ class HideUnusedConcepts(OptimizationRule):
                 # SELECT renders.
                 continue
             branch.hidden_concepts |= to_hide
+            self._evict(branch)
             self.log(
                 f"Hiding branch-only outputs {sorted(to_hide)} from {branch.name} "
                 f"(union {cte.name} doesn't expose them)"
@@ -66,7 +105,7 @@ class HideUnusedConcepts(OptimizationRule):
         used: set[str] = set()
         for v in children:
             self.debug(f"Analyzing usage of {cte.name} in {v.name}")
-            child_used_map = render_cte_used_map(v)
+            child_used_map = self._used_map(v)
             used.update(child_used_map.get(cte.name, set()))
         # A child may consume a concept this CTE only carries under a pseudonym
         # (e.g. a union merge exposes ``web_sales.date.id`` whose pseudonym is the
@@ -116,6 +155,7 @@ class HideUnusedConcepts(OptimizationRule):
                 f"(used: {used}, all: {[x.address for x in cte.output_columns]})"
             )
             cte.hidden_concepts = new_hidden
+            self._evict(cte)
         # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
         # branch's SELECT list is filtered by *that branch's* hidden_concepts,
         # not the union's. Propagate the hide so the branches also drop the
@@ -133,6 +173,7 @@ class HideUnusedConcepts(OptimizationRule):
                 } - branch.hidden_concepts
                 if to_hide:
                     branch.hidden_concepts |= to_hide
+                    self._evict(branch)
                     changed = True
         # Report True only on a real change: returning True on a no-op (the set
         # is already applied) keeps the driver re-running this phase until

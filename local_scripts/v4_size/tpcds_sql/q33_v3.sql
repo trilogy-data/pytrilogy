@@ -1,0 +1,80 @@
+
+WITH 
+quizzical as (
+SELECT
+    "items_items"."I_MANUFACT_ID" as "electronics_manuf_ids"
+FROM
+    "memory"."item" as "items_items"
+WHERE
+    "items_items"."I_CATEGORY" = 'Electronics'
+
+GROUP BY
+    1),
+questionable as (
+SELECT
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_catalog_sales_unified"."CS_ITEM_SK" as "sales_item_sk",
+    "sales_catalog_sales_unified"."CS_ORDER_NUMBER" as "sales_order_id",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_catalog_sales_unified"."CS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer_address" as "sales_pos_bill_address_customer_address" on "sales_catalog_sales_unified"."CS_BILL_ADDR_SK" = "sales_pos_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from quizzical where quizzical."electronics_manuf_ids" is not distinct from "sales_item_items"."I_MANUFACT_ID") and "sales_pos_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_sale_date_date"."D_YEAR" = 1998 and "sales_sale_date_date"."D_MOY" = 5
+
+UNION ALL
+SELECT
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_store_sales_unified"."SS_ITEM_SK" as "sales_item_sk",
+    "sales_store_sales_unified"."SS_TICKET_NUMBER" as "sales_order_id",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_store_sales_unified"."SS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer_address" as "sales_pos_bill_address_customer_address" on "sales_store_sales_unified"."SS_ADDR_SK" = "sales_pos_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from quizzical where quizzical."electronics_manuf_ids" is not distinct from "sales_item_items"."I_MANUFACT_ID") and "sales_pos_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_sale_date_date"."D_YEAR" = 1998 and "sales_sale_date_date"."D_MOY" = 5
+
+UNION ALL
+SELECT
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_EXT_SALES_PRICE" as "sales_ext_sales_price",
+    "sales_web_sales_unified"."WS_ITEM_SK" as "sales_item_sk",
+    "sales_web_sales_unified"."WS_ORDER_NUMBER" as "sales_order_id",
+    "sales_item_items"."I_MANUFACT_ID" as "sales_item_manufacturer_id"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."item" as "sales_item_items" on "sales_web_sales_unified"."WS_ITEM_SK" = "sales_item_items"."I_ITEM_SK"
+    INNER JOIN "memory"."customer_address" as "sales_pos_bill_address_customer_address" on "sales_web_sales_unified"."WS_BILL_ADDR_SK" = "sales_pos_bill_address_customer_address"."CA_ADDRESS_SK"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    exists (select 1 from quizzical where quizzical."electronics_manuf_ids" is not distinct from "sales_item_items"."I_MANUFACT_ID") and "sales_pos_bill_address_customer_address"."CA_GMT_OFFSET" = -5 and "sales_sale_date_date"."D_YEAR" = 1998 and "sales_sale_date_date"."D_MOY" = 5
+),
+juicy as (
+SELECT
+    "questionable"."sales_ext_sales_price" as "sales_ext_sales_price",
+    "questionable"."sales_item_manufacturer_id" as "sales_item_manufacturer_id"
+FROM
+    "questionable"
+GROUP BY
+    1,
+    2,
+    "questionable"."sales_channel",
+    "questionable"."sales_item_sk",
+    "questionable"."sales_order_id")
+SELECT
+    "juicy"."sales_item_manufacturer_id" as "sales_item_manufacturer_id",
+    sum("juicy"."sales_ext_sales_price") as "total_sales"
+FROM
+    "juicy"
+GROUP BY
+    1
+ORDER BY 
+    "total_sales" asc nulls first,
+    "juicy"."sales_item_manufacturer_id" asc nulls first
+LIMIT (100)

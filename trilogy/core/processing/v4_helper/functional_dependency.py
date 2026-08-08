@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from functools import partial
+from weakref import ReferenceType, ref
 
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -66,46 +69,141 @@ def _build_fd_concepts(environment: BuildEnvironment) -> Iterator[BuildConcept]:
         yield from datasource.output_concepts
 
 
+@dataclass(frozen=True)
+class _FDFacts:
+    """The FD-relevant attributes of one environment, as plain data.
+
+    `build_fd_closure` is a fixpoint over a set of addresses, but every
+    attribute it tests is immutable for the life of the environment. Reading
+    them off the BuildConcepts inside the loop re-derived them once per
+    ITERATION, and two of them allocate per read: `equivalent_addresses` builds
+    `{address, *pseudonyms}` fresh, and the keys set was rebuilt per row."""
+
+    # (environment key, concept address, equivalent addresses). The key can
+    # differ from the concept's own address, and the closure carries both.
+    entries: tuple[tuple[str, str, frozenset[str]], ...]
+    # (address, grain components, keys) for concepts AND datasource columns.
+    # Deduplicated on the whole triple, never on address alone: a datasource
+    # column can carry a different grain than the environment's concept of the
+    # same address, and each spelling is its own FD.
+    rows: tuple[tuple[str, frozenset[str], frozenset[str]], ...]
+    # Address -> its equivalents, filled lazily for addresses that are not
+    # environment keys (`concepts.get` resolves namespace-prefixed spellings).
+    equivalents: dict[str, frozenset[str]]
+    # (determinants, include_empty_grain) -> closure. The closure is a pure
+    # function of these facts, so memoizing it here needs no soundness argument
+    # beyond the one `_FACTS_CACHE` already makes, and eviction rides on the
+    # facts entry.
+    closures: dict[tuple[frozenset[str], bool], frozenset[str]]
+
+    def equivalents_for(
+        self, environment: BuildEnvironment, address: str
+    ) -> frozenset[str]:
+        # The environment is passed in rather than held: the table outlives the
+        # call (see `_FACTS_CACHE`), and a field here would pin every
+        # environment it was ever built for.
+        cached = self.equivalents.get(address)
+        if cached is None:
+            concept = environment.concepts.get(address)
+            cached = (
+                frozenset(concept.equivalent_addresses)
+                if concept is not None
+                else frozenset()
+            )
+            self.equivalents[address] = cached
+        return cached
+
+
+# id(environment) -> (weak handle, table). A BuildEnvironment's concepts and
+# datasources are fixed when `BuildEnvironment` is constructed — every later
+# write in the codebase is to the ReferenceGraph, the authored Environment or a
+# StrategyNode — so a table can never go stale, only be discarded with its
+# environment. The weak handle makes the identity check exact: a recycled id
+# cannot false-hit, because a dead referent is never the live environment.
+_FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _FDFacts]] = {}
+
+
+def _evict_facts(key: int, _dead: ReferenceType) -> None:
+    _FACTS_CACHE.pop(key, None)
+
+
+def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
+    cache_key = id(environment)
+    cached = _FACTS_CACHE.get(cache_key)
+    if cached is not None and cached[0]() is environment:
+        return cached[1]
+    entries: list[tuple[str, str, frozenset[str]]] = []
+    equivalents: dict[str, frozenset[str]] = {}
+    for key, concept in environment.concepts.items():
+        equivalent = frozenset(concept.equivalent_addresses)
+        entries.append((key, concept.address, equivalent))
+        equivalents[key] = equivalent
+    rows: list[tuple[str, frozenset[str], frozenset[str]]] = []
+    seen: set[tuple[str, frozenset[str], frozenset[str]]] = set()
+    for concept in _build_fd_concepts(environment):
+        row = (
+            concept.address,
+            frozenset(concept.grain.components) if concept.grain else frozenset(),
+            frozenset(concept.keys or ()),
+        )
+        if row in seen:
+            continue
+        seen.add(row)
+        rows.append(row)
+    facts = _FDFacts(
+        entries=tuple(entries),
+        rows=tuple(rows),
+        equivalents=equivalents,
+        closures={},
+    )
+    _FACTS_CACHE[cache_key] = (
+        ref(environment, partial(_evict_facts, cache_key)),
+        facts,
+    )
+    return facts
+
+
 def build_fd_closure(
     environment: BuildEnvironment,
     determinants: Iterable[str],
     *,
     include_empty_grain: bool = True,
 ) -> frozenset[str]:
-    closure = set(determinants)
+    facts = _fd_facts(environment)
+    seed = frozenset(determinants)
+    memo_key = (seed, include_empty_grain)
+    memoized = facts.closures.get(memo_key)
+    if memoized is not None:
+        return memoized
+    closure = set(seed)
     changed = True
     while changed:
         changed = False
         for address in list(closure):
-            concept = environment.concepts.get(address)
-            if concept is None:
-                continue
-            for equivalent in concept.equivalent_addresses:
+            for equivalent in facts.equivalents_for(environment, address):
                 if equivalent not in closure:
                     closure.add(equivalent)
                     changed = True
-        for address, concept in environment.concepts.items():
+        for key, own, equivalents in facts.entries:
+            if key in closure:
+                continue
+            if own in closure or bool(equivalents & closure):
+                closure.add(key)
+                changed = True
+        for address, grain, keys in facts.rows:
             if address in closure:
                 continue
-            if concept.address in closure or bool(
-                concept.equivalent_addresses & closure
-            ):
-                closure.add(address)
-                changed = True
-        for concept in _build_fd_concepts(environment):
-            if concept.address in closure:
-                continue
-            grain = concept.grain.components if concept.grain else frozenset()
             if not grain:
                 if include_empty_grain:
-                    closure.add(concept.address)
+                    closure.add(address)
                     changed = True
                 continue
-            keys = frozenset(concept.keys or set())
             if grain <= closure or (bool(keys) and keys <= closure):
-                closure.add(concept.address)
+                closure.add(address)
                 changed = True
-    return frozenset(closure)
+    result = frozenset(closure)
+    facts.closures[memo_key] = result
+    return result
 
 
 def build_fd_determines(

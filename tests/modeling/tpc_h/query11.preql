@@ -1,11 +1,22 @@
 import part;
 
-auto germany_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY') by *;
-auto part_total_value <- sum(supply_cost * available_quantity ? supplier.nation.name = 'GERMANY') by id;
-
-where part_total_value > germany_total_value * 0.0001
+rowset germany_partsupp <- where supplier.nation.name = 'GERMANY'
 select
-    id,
-    part_total_value -> total_value
+    id as part_id,
+    supplier.id as supplier_id,
+    supply_cost * available_quantity as supply_value,
+;
+
+auto germany_total_value <- sum(germany_partsupp.supply_value) by *;
+
+rowset part_values <- select
+    germany_partsupp.part_id,
+    sum(germany_partsupp.supply_value) as total_value,
+;
+
+where part_values.total_value > germany_total_value * 0.0001
+select
+    part_values.germany_partsupp.part_id,
+    part_values.total_value,
 order by
-    total_value desc;
+    part_values.total_value desc;

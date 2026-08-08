@@ -20,7 +20,13 @@ from collections.abc import Callable
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Derivation,
+    FunctionType,
+    Purpose,
+)
+from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -28,6 +34,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildRowsetItem,
+    BuildRowsetLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -46,10 +53,10 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeMap, add_edge
+from .edges import EdgeMap, add_edge, edge_kind
 from .functional_dependency import minimize_build_grain
 from .models import ConceptAttrs
-from .projection import concept_satisfiable
+from .projection import concept_satisfiable, lineage_existence_only
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 
@@ -154,7 +161,257 @@ def _lineage_args(
 def _upstream_default(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    return _lineage_args(concept, environment)
+    existence_only = lineage_existence_only(concept)
+    if not existence_only:
+        return _lineage_args(concept, environment)
+    return [
+        c
+        for c in _lineage_args(concept, environment)
+        if c.address not in existence_only
+    ]
+
+
+def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
+    """The other members of every scoped-join relation `address` belongs to."""
+    mates: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        if address == canonical:
+            mates |= members
+        elif address in members:
+            mates |= (members | {canonical}) - {address}
+    return mates
+
+
+def _relation_crosses_rowset_boundary(
+    address: str, environment: BuildEnvironment
+) -> bool:
+    """Whether a scoped-join relation member is paired with a ROWSET handle.
+
+    Only then is the coalesced axis exclusively post-merge: the rowset is an
+    opaque body whose row identity exists no earlier than its boundary, so an
+    aggregate riding the relation must sit above the join. When every member is
+    a plain concept the axis is a native column of each side's own fact, and
+    each side aggregates at its authored grain BEFORE the merge coalesces —
+    widening there would leak the axis into the GROUP BY and split the answer
+    per joined row (the multileg `union join ss.ticket = sr.ticket` shape).
+
+    The property is the RELATION's, not the member's, so it holds whichever
+    side is named — the handle itself answers True as readily as its mate.
+    """
+    for member in {address, *_relation_mates(address, environment)}:
+        member_concept = environment.concepts.get(member)
+        if member_concept is not None and isinstance(
+            member_concept.lineage, BuildRowsetItem
+        ):
+            return True
+    return False
+
+
+def _collapsible_anchor(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """An anchor member eligible for the grain-identity redirect: a handle of
+    a plain reprojection rowset (single SelectLineage body) the statement
+    never references outside the join declaration. A union / multiselect
+    anchor (`subset join x = all_combos.b`) participates for real at its own
+    multi-arm grain — its outputs span arms, so the relation axis carries
+    multiplicity a reprojection at key grain cannot (pinned by the
+    union_reproject direct-RHS cell: fan-out + NULL-extension expected). An
+    OUTPUT-authored anchor (any of its handles in the select closure —
+    the outputs-only closure excludes the join declarations and WHERE) is a
+    first-class row contributor whose canonical co-grain siblings must keep
+    sharing (redirecting breaks same-key zip narrowing, both-plain LEFT
+    control)."""
+    lineage = concept.lineage
+    if not (
+        isinstance(lineage, BuildRowsetItem)
+        and isinstance(lineage.rowset.select, SelectLineage)
+    ):
+        return False
+    rowset_name = lineage.rowset.name
+    for addr in environment.statement_output_addresses or ():
+        authored = environment.concepts.get(addr)
+        if (
+            authored is not None
+            and isinstance(authored.lineage, BuildRowsetItem)
+            and authored.lineage.rowset.name == rowset_name
+        ):
+            return False
+    return True
+
+
+def _rowset_local_grain_identity(
+    grain_concept: BuildConcept,
+    rowset_name: str,
+    environment: BuildEnvironment,
+    keep_rowsets: frozenset[str],
+) -> BuildConcept:
+    """Map a rowset handle's grain key back to the handle's OWN rowset member
+    when the scoped-merge canonicalization re-grained it onto the relation's
+    other side (`subset join nov_data.k = qualifying.k` leaves nov_data
+    handles at Grain<qualifying.k>). Demanding the canonical would drag the
+    anchor rowset in as a real row contributor even when the query never
+    references it (union_reproject family); the row identity of a rowset
+    handle is its rowset's grain expressed in its own handles. Only an
+    identity-path mate redirects — a substituted member (address mismatch)
+    is owned by the substitution plan and its canonical stays demanded.
+    `keep_rowsets` names anchor rowsets the consuming aggregate already
+    groups BY: those are first-class row contributors whose canonical the
+    co-grain siblings must keep sharing (redirecting breaks the zip's
+    same-key narrowing evidence — both-plain LEFT control cell)."""
+    lineage = grain_concept.lineage
+    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name == rowset_name:
+        return grain_concept
+    if not _collapsible_anchor(grain_concept, environment):
+        return grain_concept
+    if isinstance(lineage, BuildRowsetItem) and lineage.rowset.name in keep_rowsets:
+        return grain_concept
+    for mate in sorted(_relation_mates(grain_concept.address, environment)):
+        mate_concept = environment.concepts.get(mate)
+        if (
+            mate_concept is not None
+            and mate_concept.address == mate
+            and isinstance(mate_concept.lineage, BuildRowsetItem)
+            and mate_concept.lineage.rowset.name == rowset_name
+        ):
+            return mate_concept
+    return grain_concept
+
+
+def _aggregate_by_rowsets(aggregate: BuildConcept) -> frozenset[str]:
+    """Rowset names the aggregate's authored `by` keys belong to."""
+    lineage = aggregate.lineage
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return frozenset()
+    return frozenset(
+        by.lineage.rowset.name
+        for by in lineage.by
+        if isinstance(by.lineage, BuildRowsetItem)
+    )
+
+
+def _rowset_row_identity(
+    rowset: BuildRowsetLineage, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """A rowset's row identity expressed in its own members: the authored
+    select's grain, prefix-mapped into the rowset namespace.
+
+    Every member of one rowset shares this identity — an aggregate over any
+    member consumes the rowset's ROWS, so per-member inherited FD grains must
+    not stand in for it (q29: catalog-order vs store-row FD grains split three
+    same-output-grain sums into sibling aggregate buckets re-joined null-safe
+    on the dim tuple, and dedup'd a deliberately fanned-out member). Empty when
+    the select is grainless or a grain key has no member handle — callers fall
+    back to the per-member walk."""
+    out: list[BuildConcept] = []
+    for comp in sorted(rowset.select.grain.components):
+        member = environment.concepts.get(f"{rowset.name}.{comp}")
+        if member is None:
+            return []
+        out.append(member)
+    return out
+
+
+def _scoped_canonical(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> BuildConcept:
+    """The canonical a scoped-relation member coalesces to. An inherited member
+    grain carries the canonical (the scoped-merge canonicalization re-grains
+    handles onto it), so row-identity members must enter the redirect in the
+    same space — handing the redirect a side member directly skips the
+    `keep_rowsets` guard and breaks the zip's same-key narrowing evidence
+    (both-plain LEFT control: the plan widens to FULL)."""
+    for canonical, members in environment.scoped_join_key_groups.items():
+        if concept.address in members:
+            canon = environment.concepts.get(canonical)
+            if canon is not None and canon.address == canonical:
+                return canon
+    return concept
+
+
+def _expand_aggregate_row_identities(
+    inputs: list[BuildConcept], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """A row-identity concept that is itself an aggregate stands in for that
+    aggregate's output rows, which are keyed by its grouping grain — so its
+    usable row identity is those grain keys (`max(lp_avg ? bucket_id = 1)`
+    reads bucket-grain rows, not "one row per lp_avg"). Substituting the grain
+    lets same-row-grain aggregates over sibling metrics share one input stream
+    (q28: the avg/cnt/cntd pivot families all read bucket-grain rows), matching
+    how a DIRECT inner-aggregate arg already contributes its output grain in
+    `_upstream_aggregate`. The abstract all-rows marker is never a real column;
+    a grainless (global) aggregate is one row and contributes nothing."""
+    out: list[BuildConcept] = []
+    for c in inputs:
+        if c.derivation != Derivation.AGGREGATE:
+            out.append(c)
+            continue
+        out.extend(
+            environment.concepts[g]
+            for g in sorted(c.grain.components)
+            if g in environment.concepts
+            and environment.concepts[g].name != ALL_ROWS_CONCEPT
+        )
+    return out
+
+
+def _walk_scoped_aggregate_grain_inputs(
+    aggregate: BuildConcept, concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """`_walk_aggregate_grain_inputs`, with a rowset member contributing its
+    rowset's row identity (not its own inherited FD grain) and a rowset
+    handle's grain keys redirected to its own rowset members (see
+    `_rowset_local_grain_identity`)."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return _expand_aggregate_row_identities(
+            _walk_aggregate_grain_inputs(concept, environment), environment
+        )
+    inputs = _rowset_row_identity(lineage.rowset, environment)
+    if inputs and environment.scoped_join_key_groups:
+        inputs = [_scoped_canonical(c, environment) for c in inputs]
+    if not inputs:
+        inputs = _walk_aggregate_grain_inputs(concept, environment)
+    if not inputs or not environment.scoped_join_key_groups:
+        return inputs
+    keep_rowsets = _aggregate_by_rowsets(aggregate) - {lineage.rowset.name}
+    return [
+        _rowset_local_grain_identity(c, lineage.rowset.name, environment, keep_rowsets)
+        for c in inputs
+    ]
+
+
+def _aggregate_authored_grain(
+    concept: BuildConcept, out_grain: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Redirect an aggregate's grain component the scoped-merge
+    canonicalization moved onto the relation's other side back to the
+    aggregate's own authored `by` key. `sum(x) by nov_data.k` under
+    `subset join nov_data.k = qualifying.k` builds with
+    Grain<qualifying.k> even though its `by` args stay `nov_data.k` (the
+    identity path keeps both addresses alive); grouping the bucket on the
+    canonical demands the anchor rowset as a real input. A SUBSTITUTED `by`
+    arg already reads as the canonical itself, so a participating relation
+    (union direct-join) keeps its coalesced-axis grain."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildAggregateWrapper):
+        return out_grain
+    by_addrs = {c.address for c in lineage.by}
+    if not by_addrs:
+        return out_grain
+    redirected: set[str] = set()
+    for g in out_grain:
+        if g in by_addrs:
+            redirected.add(g)
+            continue
+        chosen = g
+        g_concept = environment.concepts.get(g)
+        if g_concept is not None and _collapsible_anchor(g_concept, environment):
+            for mate in sorted(_relation_mates(g, environment) & by_addrs):
+                mate_concept = environment.concepts.get(mate)
+                if mate_concept is not None and mate_concept.address == mate:
+                    chosen = mate
+                    break
+        redirected.add(chosen)
+    return frozenset(redirected)
 
 
 def _upstream_aggregate(
@@ -183,7 +440,9 @@ def _upstream_aggregate(
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
             if isinstance(arg, BuildConcept):
-                grain_inputs = _walk_aggregate_grain_inputs(arg, environment)
+                grain_inputs = _walk_scoped_aggregate_grain_inputs(
+                    concept, arg, environment
+                )
                 if grain_inputs:
                     base.extend(grain_inputs)
                 elif arg.derivation == Derivation.AGGREGATE and arg.grain:
@@ -198,17 +457,6 @@ def _upstream_aggregate(
     return base
 
 
-def _filter_existence_only(concept: BuildConcept) -> set[str]:
-    """Addresses that appear ONLY as existence args in a filter's where (a
-    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
-    side-channel subselect, not the filter's row stream."""
-    if not isinstance(concept.lineage, BuildFilterItem):
-        return set()
-    where = concept.lineage.where
-    existence = {ec.address for grp in (where.existence_arguments or []) for ec in grp}
-    return existence - {r.address for r in where.row_arguments}
-
-
 def _upstream_filter(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -218,7 +466,7 @@ def _upstream_filter(
 
     Existence-only args (semijoin RHS) are dropped from the row lineage — they
     get a side-channel `existence` edge instead (see `build_concept_graph`)."""
-    existence_only = _filter_existence_only(concept)
+    existence_only = lineage_existence_only(concept)
     base = [
         c
         for c in _lineage_args(concept, environment)
@@ -334,6 +582,150 @@ def node_id(label: str, address: str) -> str:
     return f"[{label}]{address}" if label else address
 
 
+def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozenset[str]:
+    """All addresses of scoped-join relations declared at STATEMENT scope
+    (query-level `union/left/full/subset join a = b`). Global `merge`
+    identities are excluded — they pair INNER and never redefine row
+    identity."""
+    from trilogy.core.domain_graph import EdgeScope
+
+    if not environment.scoped_join_key_groups:
+        return frozenset()
+    statement_addrs = {
+        addr
+        for e in environment.domain_graph.edges
+        if e.scope is EdgeScope.STATEMENT
+        for addr in (e.source, e.target)
+    }
+    out: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members}
+        if relation & statement_addrs:
+            out |= relation
+    return frozenset(out)
+
+
+def _unsourced_relation_mates(
+    mandatory_list: list[BuildConcept],
+    conditions: list[BuildWhereClause],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Rowset-handle key-group mates the statement never references, requested
+    so their scope enters the plan (the requesting half of v3's
+    `rowset_node._relation_key_group_mates`). Without this the mate's rowset is
+    absent entirely: a coalescing axis silently collapses to the demanded
+    side's own domain, and a subset-declared RAW member stays partial and trips
+    the final no-complete-source guard.
+
+    - COALESCING (`union`/`full`) member demanded: projecting one member of the
+      group yields the unified axis, so its unauthored rowset mates are
+      requested (bare-member projection cell).
+    - SUBSET side demanded as a RAW (datasource-bound) member: its only binding
+      is partial under the declaration and only the anchor rowset carries the
+      axis domain (rowset-anchor `subset join cust = members.mid` cells). A
+      demanded ROWSET member never requests its anchor — complete at its own
+      opaque boundary, the declaration is pure domain metadata and the plan
+      collapses to that side alone (union-reproject rowset-LHS cells). A
+      COMPOSITE relation onto one anchor rowset is withheld too: the composite
+      raw-LHS shape is a pinned clean error (union-reproject clean-error).
+
+    AUTHORED mates are never requested here: a member the author references
+    (projects, null-tests) sources per-side values and presence from its own
+    scope via the probe machinery (q35/q44), and the walk already carries it.
+    """
+    if not environment.scoped_join_key_groups:
+        return []
+    demanded = {c.address for c in mandatory_list} | {
+        c.address for clause in conditions for c in clause.concept_arguments
+    }
+    authored = environment.statement_authored_addresses
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    subset_map = environment.domain_graph.subset_join_map()
+
+    def _rowset_mate(address: str) -> BuildConcept | None:
+        mate = environment.concepts.get(address)
+        if (
+            mate is None
+            or mate.address != address
+            or not isinstance(mate.lineage, BuildRowsetItem)
+            or address in demanded
+            or (authored is not None and address in authored)
+        ):
+            return None
+        return mate
+
+    def _anchor_rowset_name(address: str) -> str | None:
+        concept = environment.concepts.get(address)
+        if concept is None or not isinstance(concept.lineage, BuildRowsetItem):
+            return None
+        return concept.lineage.rowset.name
+
+    out: dict[str, BuildConcept] = {}
+    anchor_rowset_counts: dict[str, int] = {}
+    for anchor in set(subset_map.values()):
+        name = _anchor_rowset_name(anchor)
+        if name is not None:
+            anchor_rowset_counts[name] = anchor_rowset_counts.get(name, 0) + 1
+    for canonical, members in environment.scoped_join_key_groups.items():
+        for member in sorted({canonical, *members} & demanded):
+            member_concept = environment.concepts.get(member)
+            if member_concept is None or member_concept.address != member:
+                continue
+            if member in coalescing:
+                for other in sorted({canonical, *members} - {member}):
+                    mate = _rowset_mate(other)
+                    if mate is not None:
+                        out[mate.address] = mate
+            member_anchor = subset_map.get(member)
+            if (
+                member_anchor is not None
+                and not isinstance(member_concept.lineage, BuildRowsetItem)
+                and anchor_rowset_counts.get(
+                    _anchor_rowset_name(member_anchor) or "", 0
+                )
+                == 1
+            ):
+                mate = _rowset_mate(member_anchor)
+                if mate is not None:
+                    out[mate.address] = mate
+    return [out[addr] for addr in sorted(out)]
+
+
+def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset[str]:
+    """Members of relations — ANY scope — whose collapse left a ROW-SHAPE
+    computed origin in `alias_origin_lookup` (`merge recursive_parent into
+    root_parent.id`, the origin a RECURSIVE).
+
+    Such a relation is an equality between two DIFFERENT lineages, exactly like
+    a statement-scoped computed join key: the collapsed side's computation IS
+    the join, the completion merge null-extends, and the axis must surface as
+    graph structure. Spelling-identity merges (both sides bare keys) stay
+    excluded — they pair INNER and never redefine row identity. So does a
+    scalar-derived origin (`merge ka into kb` with `ka <- a.l_key + 1`): each
+    side renders its own variant inline on its scan through the derived
+    merge-key rail (`_datasource_renders_derived`), and routing it through the
+    relation axis instead loses the preserving FULL's null-extended rows
+    (join_matrix derived/union/merge nullable cell)."""
+    if not environment.scoped_join_key_groups:
+        return frozenset()
+    out: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members}
+        for member in relation:
+            resolved = environment.concepts.get(member)
+            origin = environment.alias_origin_lookup.get(member)
+            if (
+                resolved is not None
+                and resolved.address != member
+                and origin is not None
+                and origin.lineage is not None
+                and origin.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+            ):
+                out |= relation
+                break
+    return frozenset(out)
+
+
 def _aggregate_input_grain(
     concept: BuildConcept, environment: BuildEnvironment, out_grain: frozenset[str]
 ) -> frozenset[str]:
@@ -370,12 +762,71 @@ def _aggregate_input_grain(
         else:
             continue
         for sub in sub_args:
-            grain_inputs = _walk_aggregate_grain_inputs(sub, environment)
+            grain_inputs = _walk_scoped_aggregate_grain_inputs(
+                concept, sub, environment
+            )
             if grain_inputs:
                 input_grain.update(c.address for c in grain_inputs)
+            elif (
+                sub.purpose == Purpose.KEY
+                and sub.derivation != Derivation.ROOT
+                and sub.keys
+            ):
+                # Aggregating a DERIVED key ranges over the key's distinct
+                # domain, not its host scan's rows: its authored grain is the
+                # row grain of the scan that computes it, but its identity is
+                # its defining keys (gcat array_agg(launch_filter): one entry
+                # per distinct _launch_code, v3 parity).
+                input_grain.update(sub.keys)
             elif sub.grain:
                 input_grain.update(sub.grain.components)
     return minimize_build_grain(environment, input_grain)
+
+
+def _aggregate_distinct_rewritable(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    input_grain: frozenset[str],
+    out_grain: frozenset[str],
+) -> bool:
+    """True for a COUNT whose argument's VALUE is the key that carries the
+    aggregate's residual input grain: `count(order_id) by item` or
+    `count(order_id ? cond) by item`. Counting a key means counting at the
+    key's grain, so the dedup its coarser input stream would perform is
+    exactly DISTINCT on the counted value — the bucket may instead share a
+    finer-grain sibling stream and render COUNT(DISTINCT ...).
+
+    A key with a HOME datasource (a table whose grain is exactly that key) is
+    never rewritable: its count population is that table's full key set, while
+    a sibling fact stream only carries the key values present in the fact
+    (`count(user_id)` beside post-fact sums must still count post-less
+    users)."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    function = concept.lineage.function
+    if function.operator != FunctionType.COUNT:
+        return False
+    if len(function.arguments) != 1:
+        return False
+    arg = function.arguments[0]
+    if not isinstance(arg, BuildConcept):
+        return False
+    content = arg
+    if arg.derivation == Derivation.FILTER and isinstance(arg.lineage, BuildFilterItem):
+        inner = arg.lineage.content
+        if not isinstance(inner, BuildConcept):
+            return False
+        content = inner
+    if content.purpose != Purpose.KEY:
+        return False
+    if input_grain - out_grain != frozenset({content.address}):
+        return False
+    content_identities = {content.address, *content.pseudonyms}
+    return not any(
+        set(datasource.grain.components) <= content_identities
+        and datasource.grain.components
+        for datasource in environment.datasources.values()
+    )
 
 
 def _derivable_pseudonym_origins(
@@ -513,9 +964,9 @@ def _add_concept(
     # modes into their own buckets — two AGGREGATEs sharing grain but
     # using different grouping modes need separate CTEs (one emits GROUP
     # BY, the other GROUP BY ROLLUP).
-    grouping_mode = None
+    grouping_mode: AggregateGroupingMode | None = None
     if not is_materialized_root and isinstance(concept.lineage, BuildAggregateWrapper):
-        grouping_mode = concept.lineage.grouping.value
+        grouping_mode = concept.lineage.grouping
     # Rowset identity: every handle of one rowset shares a row population (the
     # rowset is one sub-query, planned in full by `gen_rowset`), so the rowset
     # grouping rule buckets them into a single boundary group by name. This
@@ -528,6 +979,20 @@ def _add_concept(
     rowset_name = None
     if isinstance(concept.lineage, BuildRowsetItem):
         rowset_name = concept.lineage.rowset.name
+    elif concept.derivation in (Derivation.TVF_UNION, Derivation.MULTISELECT):
+        # A demanded multiselect/union OUTPUT itself (`local._combined_sort_k`
+        # — e.g. the ORDER-BY carry of a union column the select groups away)
+        # has no independent source: only the boundary wrapping the multiselect
+        # can produce it. Tag it with that rowset so it buckets into the
+        # boundary and `resolve_rowset` exposes it as a demanded content.
+        for handle_concept in environment.concepts.values():
+            hlineage = handle_concept.lineage
+            if (
+                isinstance(hlineage, BuildRowsetItem)
+                and hlineage.content.address == concept.address
+            ):
+                rowset_name = hlineage.rowset.name
+                break
     elif is_presence_probe(concept.address):
         # A presence probe over a ROWSET member has no datasource to pin to —
         # its value must be computed INSIDE the member's rowset boundary,
@@ -546,6 +1011,77 @@ def _add_concept(
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.AGGREGATE
+        and environment.scoped_join_key_groups
+    ):
+        out_grain = _aggregate_authored_grain(concept, out_grain, environment)
+    aggregate_input_grain = (
+        frozenset()
+        if is_materialized_root
+        else _aggregate_input_grain(concept, environment, out_grain)
+    )
+    # Under a STATEMENT-scoped preserving join to a ROWSET (`union join ticket
+    # = r_filtered.r_ticket`), row identity is the coalesced relation axis: an
+    # aggregate whose inputs ride the relation computes per axis row, not per
+    # its authored dimension grain (v3 renders it at the joined relation's
+    # grain via the grain-match formulas; the outer select then dedups).
+    # Widen the grouping grain by the relation members its inputs carry.
+    # Global `merge` identities pair INNER 1:1 and are excluded, as are
+    # GLOBAL aggregates (empty/all_rows grain — the q97 presence counts stay
+    # one total row over the joined relation, never per-axis).
+    dimension_grain = {
+        addr for addr in out_grain if not addr.endswith(f".{ALL_ROWS_CONCEPT}")
+    }
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.AGGREGATE
+        and aggregate_input_grain
+        and dimension_grain
+    ):
+        # The MEASURE the aggregate reads can itself be a relation member
+        # (`count(r_filtered.return_quantity)` under `union join quantity =
+        # r_filtered.return_quantity`). It never enters `aggregate_input_grain`
+        # — an argument contributes its own grain, not itself — but a measure
+        # the relation pairs on is an axis column like any other: the aggregate
+        # reads it per coalesced axis row, so the axis has to be in the grain or
+        # the merge above loses that leg of the pairing. Only the FUNCTION's
+        # arguments: the wrapper's `by` grain is already the output grain, and
+        # feeding those back through here re-adds them as axis members and
+        # splits the answer per joined row (union_reproject direct-RHS).
+        candidates = set(aggregate_input_grain)
+        if isinstance(concept.lineage, BuildAggregateWrapper):
+            candidates |= {
+                arg.address
+                for arg in concept.lineage.function.concept_arguments
+                if isinstance(arg, BuildConcept)
+            }
+        # ...but never the ANCHOR-side member the aggregate itself reads. A
+        # rowset handle read per axis row is a presence measure — it is NULL on
+        # axis rows the boundary never matched, so `count(handle)` per axis is a
+        # meaningful 0/1 (q17). The anchor-side key is the axis, so grouping by
+        # the very key being counted is degenerate: `count(cust_id)` beside
+        # `region` becomes 1 per customer instead of the customers per region
+        # (q35 `store AND (web OR catalog)`).
+        own_anchor_args = {
+            arg.address
+            for arg in (
+                concept.lineage.function.concept_arguments
+                if isinstance(concept.lineage, BuildAggregateWrapper)
+                else ()
+            )
+            if isinstance(arg, BuildConcept)
+            and not isinstance(arg.lineage, BuildRowsetItem)
+        }
+        axis_members = {
+            addr
+            for addr in candidates & _statement_scoped_relation_members(environment)
+            if _relation_crosses_rowset_boundary(addr, environment)
+            and addr not in own_anchor_args
+        }
+        if axis_members:
+            out_grain |= axis_members
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
         address=concept.address,
@@ -561,12 +1097,15 @@ def _add_concept(
         grain_components=out_grain,
         grouping_mode=grouping_mode,
         rowset_name=rowset_name,
-        aggregate_input_grain=(
-            frozenset()
-            if is_materialized_root
-            else _aggregate_input_grain(concept, environment, out_grain)
+        aggregate_input_grain=aggregate_input_grain,
+        aggregate_distinct_rewritable=(
+            bool(aggregate_input_grain)
+            and _aggregate_distinct_rewritable(
+                concept, environment, aggregate_input_grain, out_grain
+            )
         ),
         keys=frozenset(concept.keys or set()),
+        pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,
     )
 
@@ -625,7 +1164,33 @@ def _add_concept(
     # partition keys and filter property keys. So every fetcher result
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
-    for upstream in fetcher(concept, environment):
+    upstreams = list(fetcher(concept, environment))
+    # A non-rename BASIC whose grain is the coalesced axis of a rowset-crossing
+    # preserving relation reads the COMPLETED axis row: a null-sensitive scalar
+    # (`coalesce(web.qty, 0) + ...`) computed on only the sides it reads gets
+    # NULL-padded by the merge above instead of evaluating on the padded row
+    # (multi_partial_anchor: store-only customers came back NULL, not 0). Wire
+    # the axis member itself as an upstream so the axis-owning boundary parents
+    # this group and the completion merge sits below the computation. Renames
+    # are null-transparent — they commute with the padding and keep the
+    # existing axis-advertising machinery (q44) untouched.
+    if (
+        not is_materialized_root
+        and concept.derivation == Derivation.BASIC
+        and not is_rename
+        and environment.scoped_join_key_groups
+    ):
+        upstream_addrs = {u.address for u in upstreams}
+        scoped = _statement_scoped_relation_members(environment)
+        for addr in sorted(out_grain & scoped):
+            axis = environment.concepts.get(addr)
+            if (
+                axis is not None
+                and addr not in upstream_addrs
+                and _relation_crosses_rowset_boundary(addr, environment)
+            ):
+                upstreams.append(axis)
+    for upstream in upstreams:
         # Substitute here too so the edge wires to the origin's node (the
         # recursive call below adds the origin, not the bare key) — otherwise
         # the bare key gets an implicit graph node with no attrs entry. A
@@ -917,6 +1482,113 @@ def build_concept_graph(
                 pinned_probes=pinned_probes,
             )
 
+    # Unreferenced rowset-handle key-group mates of demanded members (see
+    # `_unsourced_relation_mates`): without a node here the mate's rowset never
+    # enters the plan and the relation axis collapses to one side's domain.
+    for mate in _unsourced_relation_mates(mandatory_list, conditions, environment):
+        _add_concept(
+            mate,
+            environment,
+            graph,
+            edges,
+            attrs,
+            materialized_roots=materialized_roots,
+            datasource_addresses=datasource_addresses,
+            pinned_probes=pinned_probes,
+        )
+
+    # A statement-scoped join key authored as a computed expression (`union
+    # join rank orders.oid order by orders.amt desc = customers.rnk`) is
+    # canonicalized onto the relation's other side by the build-scope merge
+    # collapse, leaving the member address a bare redirect whose computed
+    # lineage survives only in `alias_origin_lookup`. The axis is an EQUALITY
+    # between two different lineages, not two spellings of one lineage — so
+    # the collapsed side's computation is still load-bearing: without it the
+    # relation has no computable member on its side and the plan degrades to
+    # an axis-less cross join. Re-inject every collapsed member's origin as a
+    # first-class node; the relation itself (scoped_join_key_groups) supplies
+    # the equivalence downstream. Rowset members are untouched — they are
+    # carved out of the collapse and their computation lives behind the
+    # rowset boundary already.
+    #
+    # GLOBAL merge members with a computed origin ride the same rail: `merge
+    # recursive_parent into root_parent.id` is likewise an equality between two
+    # different lineages (the collapsed side's RECURSIVE computation IS the
+    # join), so its origin must be re-injected too or the plan degrades to the
+    # same cross join (hackernews adhoc03). Gated on the relation being
+    # DEMANDED (a member is an output or condition arg): a query that merely
+    # filters on a side's property (`where parent.label = 'A' select
+    # count(id)`) is served by the condition-feeder fallback joining below
+    # the consumer, and restructuring its graph into relation-partitioned
+    # sides breaks that path (recursive-enrichment over-count). Statement
+    # relations stay unconditional — declared in the query, always in play.
+    if environment.scoped_join_key_groups:
+        demanded_addresses = {c.address for c in mandatory_list} | {
+            c.address for clause in conditions for c in clause.concept_arguments
+        }
+        relation_members = set(_statement_scoped_relation_members(environment))
+        computed_members = computed_origin_relation_members(environment)
+        for canonical_addr, group in environment.scoped_join_key_groups.items():
+            relation = {canonical_addr, *group}
+            if relation & computed_members and relation & demanded_addresses:
+                relation_members |= relation
+        for member in sorted(relation_members):
+            if member in datasource_addresses:
+                continue
+            resolved_member = environment.concepts.get(member)
+            if resolved_member is None or resolved_member.address == member:
+                continue
+            origin = environment.alias_origin_lookup.get(member)
+            if origin is None or origin.lineage is None:
+                continue
+            # A collapsed ROWSET handle (a composite leg paired through the
+            # anonymous canonical) is not re-injected: its computation lives
+            # behind its rowset boundary, and demanding the handle here
+            # re-enters the rowset's own build with the scoped join still in
+            # scope (the self-weld recursion, join_matrix composite subset).
+            # Same for a computed key OVER rowset handles (`fut.period + 2 =
+            # agg.period + 1`): walking its lineage re-enters the rowsets one
+            # level down (scoped_derived_rowset deriv_both cells), and the
+            # rowset-boundary + inline-render machinery already own those.
+            if isinstance(origin.lineage, BuildRowsetItem) or any(
+                isinstance(source.lineage, BuildRowsetItem) for source in origin.sources
+            ):
+                continue
+            canonical = resolved_member
+            _add_concept(
+                origin,
+                environment,
+                graph,
+                edges,
+                attrs,
+                materialized_roots=materialized_roots,
+                datasource_addresses=datasource_addresses,
+                pinned_probes=pinned_probes,
+            )
+            _add_concept(
+                canonical,
+                environment,
+                graph,
+                edges,
+                attrs,
+                materialized_roots=materialized_roots,
+                datasource_addresses=datasource_addresses,
+                pinned_probes=pinned_probes,
+            )
+            origin_nid = node_id(
+                _effective_label(origin, "", root_like), origin.address
+            )
+            canonical_nid = node_id(
+                _effective_label(canonical, "", root_like), canonical.address
+            )
+            if (
+                origin_nid in graph
+                and canonical_nid in graph
+                and origin_nid != canonical_nid
+                and not graph.has_edge(origin_nid, canonical_nid)
+            ):
+                add_edge(graph, edges, origin_nid, canonical_nid, EdgeKind.RELATION)
+
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
     # its inner select is a self-contained sub-query that the native
     # `gen_rowset` generator plans recursively through v4's own
@@ -938,7 +1610,7 @@ def build_concept_graph(
         fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
             continue
-        existence_only = _filter_existence_only(fconcept)
+        existence_only = lineage_existence_only(fconcept)
         if not existence_only:
             continue
         flabel = attrs[nid].label
@@ -1002,6 +1674,27 @@ def build_concept_graph(
         if attrs[n].address in existence_only_addresses:
             attrs[n].existence_only = True
 
+    # Lineage-level existence sources: the filter-nested pass above wired an
+    # EXISTENCE edge from a derived membership's RHS (`auto f <- a in b` — b)
+    # to its consumer, but b appears in no statement-WHERE atom, so the
+    # address sweep can't see it. The graph itself carries the classification:
+    # an address consumed ONLY through EXISTENCE edges and demanded by no sink
+    # feeds side-channel subselects exclusively.
+    feeds_existence: set[str] = set()
+    row_demanded: set[str] = set(row_arg_addresses)
+    for n in graph.nodes:
+        addr = attrs[n].address
+        if n in sink_ids:
+            row_demanded.add(addr)
+        for succ in graph.successors(n):
+            if edge_kind(edges, n, succ) == EdgeKind.EXISTENCE:
+                feeds_existence.add(addr)
+            else:
+                row_demanded.add(addr)
+    for n in graph.nodes:
+        if attrs[n].address in feeds_existence - row_demanded:
+            attrs[n].existence_only = True
+
     # Group nodes by scope-and-phase. Condition-phase nodes are d1 by
     # construction; the only d0 candidates live in the matching blank-phase
     # scope. Constraint edges flow strictly from condition-phase ROW-ARG
@@ -1046,17 +1739,20 @@ def build_concept_graph(
                     and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
                 ):
                     continue
-                # A rowset-member presence probe is computed inside ITS member's
-                # boundary and its null test only applies above the completion
-                # merge (FINAL). Constraining it onto ANOTHER rowset's boundary
-                # would force that independent scope to consume a value it
-                # cannot see, polluting its output contract (the b-side
-                # boundary "output" the a-side's probe and lost its own
-                # handles).
+                # A rowset-scoped condition value is computed inside ITS own
+                # rowset's boundary and its test only applies above the
+                # completion merge (FINAL). Constraining it onto ANOTHER
+                # rowset's boundary would force that independent scope to consume
+                # a value it cannot see, polluting its output contract (the
+                # b-side boundary "output" the a-side's value and lost its own
+                # handles). Two forms: a rowset-member presence probe, and a
+                # plain rowset handle used in a post-merge filter (`where a.amt
+                # is not null and b.amt is not null` over two independent rowsets
+                # — each null test lands at FINAL, never inside the sibling's
+                # scan; a mutual constraint would 2-cycle the two rowset groups).
                 if (
                     attrs[src].rowset_name
                     and attrs[src].rowset_name != attrs[dst].rowset_name
-                    and is_presence_probe(attrs[src].address)
                     and attrs[dst].derivation == Derivation.ROWSET
                 ):
                     continue
@@ -1128,13 +1824,12 @@ def build_concept_graph(
                 and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
             ):
                 continue
-            # Same cross-boundary probe guard as the main constraint pass: a
-            # rowset-member probe's null test lands at FINAL, never inside a
-            # sibling rowset's independent scope.
+            # Same cross-rowset guard as the main constraint pass: a
+            # rowset-scoped value's test lands at FINAL, never inside a sibling
+            # rowset's independent scope.
             if (
                 attrs[src].rowset_name
                 and attrs[src].rowset_name != attrs[dst].rowset_name
-                and is_presence_probe(attrs[src].address)
                 and attrs[dst].derivation == Derivation.ROWSET
             ):
                 continue

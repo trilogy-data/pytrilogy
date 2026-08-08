@@ -1,0 +1,47 @@
+
+WITH 
+cheerful as (
+SELECT
+    "lineitem"."l_discount" as "discount",
+    "lineitem"."l_extendedprice" as "extended_price",
+    "lineitem"."l_orderkey" as "order_id",
+    "order_orders"."o_orderdate" as "order_date",
+    "order_orders"."o_shippriority" as "order_ship_priority"
+FROM
+    "memory"."lineitem" as "lineitem"
+    INNER JOIN "memory"."orders" as "order_orders" on "lineitem"."l_orderkey" = "order_orders"."o_orderkey"
+    INNER JOIN "memory"."customer" as "order_customer_customers" on "order_orders"."o_custkey" = "order_customer_customers"."c_custkey"
+WHERE
+    "order_customer_customers"."c_mktsegment" = 'BUILDING' and "order_orders"."o_orderdate" < date '1995-03-15' and "lineitem"."l_shipdate" > date '1995-03-15'
+),
+questionable as (
+SELECT
+    "cheerful"."order_id" as "order_id",
+    sum("cheerful"."extended_price" * (1 - "cheerful"."discount")) as "q_revenue"
+FROM
+    "cheerful"
+GROUP BY
+    1),
+thoughtful as (
+SELECT
+    "cheerful"."order_date" as "order_date",
+    "cheerful"."order_id" as "order_id",
+    "cheerful"."order_ship_priority" as "order_ship_priority"
+FROM
+    "cheerful"
+GROUP BY
+    1,
+    2,
+    3)
+SELECT
+    "thoughtful"."order_id" as "order_id",
+    "questionable"."q_revenue" as "q_revenue",
+    "thoughtful"."order_date" as "order_date",
+    "thoughtful"."order_ship_priority" as "order_ship_priority"
+FROM
+    "questionable"
+    INNER JOIN "thoughtful" on "questionable"."order_id" = "thoughtful"."order_id"
+ORDER BY 
+    "questionable"."q_revenue" desc,
+    "thoughtful"."order_date" asc
+LIMIT (10)

@@ -1,0 +1,67 @@
+
+WITH 
+thoughtful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'CATALOG'  as "sales_channel",
+    "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" as "sales_sale_date_sk"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+UNION ALL
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'STORE'  as "sales_channel",
+    "sales_store_sales_unified"."SS_SOLD_DATE_SK" as "sales_sale_date_sk"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+UNION ALL
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "sales_billing_customer_sk",
+     'WEB'  as "sales_channel",
+    "sales_web_sales_unified"."WS_SOLD_DATE_SK" as "sales_sale_date_sk"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"),
+cooperative as (
+SELECT
+    "thoughtful"."sales_billing_customer_sk" as "sales_billing_customer_sk",
+    "thoughtful"."sales_channel" as "sales_channel",
+    "thoughtful"."sales_sale_date_sk" as "sales_sale_date_sk"
+FROM
+    "thoughtful"
+GROUP BY
+    1,
+    2,
+    3),
+abundant as (
+SELECT
+    sum(CASE
+	WHEN "cooperative"."sales_channel" = 'CATALOG' and "sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "cooperative"."sales_billing_customer_sk" is not null THEN 1
+	ELSE 0
+	END) as "catalog_in_window",
+    sum(CASE
+	WHEN "cooperative"."sales_channel" = 'STORE' and "sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "cooperative"."sales_billing_customer_sk" is not null THEN 1
+	ELSE 0
+	END) as "store_in_window",
+    sum(CASE
+	WHEN "cooperative"."sales_channel" = 'WEB' and "sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11 and "cooperative"."sales_billing_customer_sk" is not null THEN 1
+	ELSE 0
+	END) as "web_in_window"
+FROM
+    "cooperative"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "cooperative"."sales_sale_date_sk" = "sales_sale_date_date"."D_DATE_SK"
+    LEFT OUTER JOIN "memory"."customer" as "sales_billing_customer_customers" on "cooperative"."sales_billing_customer_sk" = "sales_billing_customer_customers"."C_CUSTOMER_SK"
+WHERE
+    "sales_sale_date_date"."D_MONTH_SEQ" BETWEEN 1200 AND 1200 + 11
+
+GROUP BY
+    "sales_billing_customer_customers"."C_FIRST_NAME",
+    "sales_billing_customer_customers"."C_LAST_NAME",
+    cast("sales_sale_date_date"."D_DATE" as date))
+SELECT
+    sum(CASE
+	WHEN "abundant"."store_in_window" > 0 and "abundant"."catalog_in_window" > 0 and "abundant"."web_in_window" > 0 THEN 1
+	ELSE 0
+	END) as "cnt"
+FROM
+    "abundant"
+LIMIT (100)

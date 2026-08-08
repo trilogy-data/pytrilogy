@@ -1,0 +1,5 @@
+query11.preql: gen 8.76s, 7 searches, 4 distinct, 3 repeats, ~4.73s repeated
+query80.preql: gen 10.96s, 2 searches, 1 distinct, 1 repeats, ~5.37s repeated
+query23.preql: gen 13.80s, 7 searches, 5 distinct, 2 repeats, ~4.76s repeated
+query04.preql: gen 10.12s, 4 searches, 4 distinct, 0 repeats, ~0.00s repeated
+query05.preql: gen 38.56s, 1 searches, 1 distinct, 0 repeats, ~0.00s repeated

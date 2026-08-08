@@ -512,3 +512,25 @@ def test_aggregate_by_grain_with_derived_of_key():
     # Each (prefix, item_sk) group is a single item row, so sum(1) == 1.
     assert len(rows) == 3, rows
     assert all(r.pair == 1 for r in rows), rows
+
+
+def test_literal_measure_aggregate_beside_key():
+    """A literal-measure aggregate (`sum(1)`) beside a real key: the grain keys
+    are its only tie to the model, so connectivity must keep those edges (a
+    literal measure has no functional inputs to anchor it otherwise). Was a
+    DisconnectedConceptsException: {cnt}; {store}."""
+    exec = Dialects.DUCK_DB.default_executor()
+    rows = exec.execute_text("""
+key id int;
+property id.store int;
+datasource t(id: id, store: store)
+grain (id)
+query '''
+select 1 id, 1 store
+union all select 2, 1
+union all select 3, 2
+''';
+
+select store, sum(1) -> cnt;
+""")[-1].fetchall()
+    assert sorted((r.store, r.cnt) for r in rows) == [(1, 1), (2, 1)]

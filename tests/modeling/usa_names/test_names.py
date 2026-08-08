@@ -78,9 +78,10 @@ def test_aggregate_filter_anonymous():
     # The aggregate-result predicate is relocated into the by-name group's
     # HAVING (PredicatePushdown), so the qualifying-name filter runs during
     # aggregation -- before the join back to the base table -- and the
-    # redundant downstream WHERE copy is stripped.
+    # redundant downstream WHERE copy is stripped. (Unanchored: v4 orders the
+    # HAVING group after a base-scan CTE; v3 emits it first. Both must carry
+    # the HAVING shape and no WHERE.)
     pattern = r"""
-WITH\s+
 [a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name"

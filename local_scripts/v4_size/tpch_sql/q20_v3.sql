@@ -1,0 +1,40 @@
+
+WITH 
+uneven as (
+SELECT
+    "part_supplier_supplier"."s_address" as "part_supplier_address",
+    "part_supplier_supplier"."s_name" as "part_supplier_name",
+    "part_supplier_supplier"."s_suppkey" as "part_supplier_id"
+FROM
+    "memory"."supplier" as "part_supplier_supplier"
+    INNER JOIN "memory"."nation" as "part_supplier_nation_nation" on "part_supplier_supplier"."s_nationkey" = "part_supplier_nation_nation"."n_nationkey"
+WHERE
+    UPPER("part_supplier_nation_nation"."n_name")  = 'CANADA'
+),
+wakeful as (
+SELECT
+    coalesce("lineitem"."l_partkey","part_partsupp"."ps_partkey") as "part_id",
+    coalesce("lineitem"."l_suppkey","part_partsupp"."ps_suppkey") as "part_supplier_id",
+    sum(CASE WHEN "lineitem"."l_shipdate" >= date '1994-01-01' and "lineitem"."l_shipdate" < date '1995-01-01' THEN "lineitem"."l_quantity" ELSE NULL END) as "qty_per_partsupp_1994"
+FROM
+    "memory"."partsupp" as "part_partsupp"
+    FULL JOIN "memory"."lineitem" as "lineitem" on "part_partsupp"."ps_partkey" = "lineitem"."l_partkey" AND "part_partsupp"."ps_suppkey" = "lineitem"."l_suppkey"
+GROUP BY
+    1,
+    2)
+SELECT
+    "uneven"."part_supplier_name" as "part_supplier_name",
+    "uneven"."part_supplier_address" as "part_supplier_address"
+FROM
+    "memory"."partsupp" as "part_partsupp"
+    INNER JOIN "wakeful" on "part_partsupp"."ps_partkey" = "wakeful"."part_id" AND "part_partsupp"."ps_suppkey" = "wakeful"."part_supplier_id"
+    INNER JOIN "memory"."part" as "part_part" on "part_partsupp"."ps_partkey" = "part_part"."p_partkey"
+    INNER JOIN "uneven" on "wakeful"."part_supplier_id" = "uneven"."part_supplier_id"
+WHERE
+    "part_part"."p_name" like 'forest%' and "part_partsupp"."ps_availqty" > 0.5 * "wakeful"."qty_per_partsupp_1994"
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    "uneven"."part_supplier_name" asc

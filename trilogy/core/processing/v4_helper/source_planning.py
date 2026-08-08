@@ -12,13 +12,9 @@ from collections import deque
 from dataclasses import dataclass
 from typing import cast
 
-from trilogy.core import graph as nx
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity, JoinType
-from trilogy.core.graph_models import (
-    ReferenceGraph,
-    concept_to_node,
-    prune_sources_for_conditions,
-)
+from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -36,13 +32,10 @@ from trilogy.core.processing.condition_utility import (
     condition_implies,
     merge_conditions,
 )
+from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
     inject_authored_join_key_terminals,
-)
-from trilogy.core.processing.node_generators.node_merge_node import (
-    AMBIGUITY_CHECK_LIMIT,
-    detect_ambiguity_and_raise,
-    determine_induced_minimal_nodes,
+    reinject_common_join_keys_v2,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
@@ -50,9 +43,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
-)
-from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
-    covered_conditions,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -64,11 +54,14 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 )
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
-from trilogy.core.processing.v4_helper.source_policy import (
-    STRICT_SOURCE_POLICY,
-    SourceAttempt,
-    SourcePolicy,
+from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.core.processing.v4_helper.network_build import build_source_network
+from trilogy.core.processing.v4_helper.network_model import (
+    CONNECTOR_NODE_PREFIX,
+    SearchResult,
+    SourceNetwork,
 )
+from trilogy.core.processing.v4_helper.network_search import search_sources
 from trilogy.utility import unique
 
 
@@ -80,7 +73,12 @@ class SourceRequest:
     history: History
     conditions: BuildWhereClause | None = None
     depth: int = 0
-    source_policy: SourcePolicy = STRICT_SOURCE_POLICY
+    # The ONE partiality constraint left in v4: this request's answer must
+    # bind every requested output FULLY. Set only by the partial-completion
+    # sub-call — completing a partial output with another partial read would
+    # complete nothing. Everywhere else the search prices partiality per
+    # binding and no outer mode exists.
+    require_full: bool = False
     # False inside a partial-completion sub-call, so completing a partial output
     # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
     # the concept has no complete source).
@@ -88,17 +86,31 @@ class SourceRequest:
 
 
 @dataclass(frozen=True)
+class NetworkDecision:
+    """What the network search concluded for a request.
+
+    `None` from `_network_source` means the search DECLINED — it found no
+    solution, or found one the emitter cannot express. A decision with
+    `bridge=None` is not a decline: the search succeeded and the answer is a
+    single scan, which `_direct_source` renders (design §4). Keeping the two
+    apart is what lets the ladder go: a decline needs another home, a
+    single-scan does not."""
+
+    bridge: BridgePlan | None
+
+
+@dataclass(frozen=True)
 class BridgePlan:
     concepts: list[BuildConcept]
     graph: ReferenceGraph
-    # True when the graph added no connector concept and was accepted only
-    # because it spans multiple datasources covering the full request — a
-    # last-resort join `_direct_source` should get first shot at beating.
-    full_cover_fallback: bool = False
 
 
 def _concept_node_address(node: str) -> str:
     return node.split("~", maxsplit=1)[1].split("@", maxsplit=1)[0]
+
+
+def _graph_neighbors(graph: ReferenceGraph, node: str) -> set[str]:
+    return set(graph.predecessors(node)) | set(graph.successors(node))
 
 
 def _concept_node_grain_addresses(node: str) -> set[str]:
@@ -149,8 +161,28 @@ def _concepts_with_grain_keys(
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     expanded: list[BuildConcept] = []
+    # A requested aggregate pins the population at its own grain: its axis
+    # members join BY THEMSELVES, so their authored host-row keys are not
+    # requirements of the request. Expanding them would demand the finer key
+    # and force the raw table into a cover that a materialized rollup source
+    # answers alone (daily_fact: `select ride_year, ride_month, total_rides`
+    # dragging `ride_id` in).
+    aggregate_axes: set[str] = set()
+    for concept in concepts:
+        if concept.derivation == Derivation.AGGREGATE:
+            aggregate_axes.update(concept.grain.components)
     for concept in concepts:
         expanded.append(concept)
+        # A coalescing (`full`/`union` join) axis canonical inherits the
+        # SURVIVING arm's grain, but the unified axis spans every arm's domain:
+        # expanding that grain would drag the surviving arm's row key into an
+        # arm-scoped request and force the other arm into its cover (a second
+        # assembly axis where the final merge already coalesces the arms).
+        axis = coalescing_axis_group(concept.address, environment)
+        if axis is not None and axis[0] == concept.address:
+            continue
+        if concept.address in aggregate_axes:
+            continue
         expanded.extend(
             environment.concepts[address]
             for address in concept.grain.components
@@ -159,9 +191,7 @@ def _concepts_with_grain_keys(
     return unique(expanded, "address")
 
 
-def _direct_source(
-    request: SourceRequest, attempt: SourceAttempt
-) -> StrategyNode | None:
+def _direct_source(request: SourceRequest, accept_partial: bool) -> StrategyNode | None:
     outputs = unique(
         request.outputs + _condition_row_concepts(request.conditions),
         "address",
@@ -173,7 +203,7 @@ def _direct_source(
         request.depth,
         fail_if_not_found=False,
         conditions=request.conditions,
-        accept_partial=attempt.accepts_partial,
+        accept_partial=accept_partial,
     )
     if node is None or {c.address for c in outputs} == {
         c.address for c in request.outputs
@@ -215,7 +245,7 @@ def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
 
 
 def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
-    return _concepts_with_grain_keys(
+    concepts = _concepts_with_grain_keys(
         inject_authored_join_key_terminals(
             unique(
                 _requested_concepts(request) + _condition_arg_lineage_roots(request),
@@ -225,209 +255,10 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
         ),
         request.environment,
     )
-
-
-def _single_source_covers_completely(request: SourceRequest) -> bool:
-    """One datasource binds every requested concept (and filter column) as a
-    non-partial output.
-
-    When such a source exists no join connector is needed, so a bridge that
-    "adds" one is routing the requested columns through an unnecessary finer
-    source (e.g. base `flight` via its `id` key) instead of the summary table
-    that carries them directly. Let `_direct_source`'s grain-aware scoring pick
-    the better single source. A partial coverage still needs the bridge (the
-    partial key must be upgraded against its dimension), so non-partial is
-    required here."""
-    requested = {c.canonical_address for c in _requested_concepts(request)}
-    for ds in request.environment.datasources.values():
-        if not isinstance(ds, BuildDatasource):
-            continue
-        non_partial = {c.canonical_address for c in ds.output_concepts} - {
-            c.canonical_address for c in ds.partial_concepts
-        }
-        if requested.issubset(non_partial):
-            return True
-    return False
-
-
-def _bridge_plan(request: SourceRequest, attempt: SourceAttempt) -> BridgePlan | None:
-    if _single_source_covers_completely(request):
-        return None
-    search_concepts = _search_concepts_for_bridge(request)
-    requested = {c.address for c in _requested_concepts(request)}
-    # (search_conditions, allow_intersection), most-specific first. The covered
-    # option mirrors v3's complete-where retry: when the full condition spans
-    # datasources (e.g. `city='USSFO' AND native_status IS NOT NULL`, with city
-    # owned by a `complete where` partial and native_status by a joined table),
-    # pruning on the full condition disconnects the joined table. Retrying on
-    # only the *covered* atoms (those implied by some datasource's
-    # `non_partial_for`) with `allow_intersection` keeps the foreign table and
-    # promotes the complete-where partial over the full union.
-    condition_options: list[tuple[BuildWhereClause | None, bool]]
-    if request.conditions is not None:
-        condition_options = [(request.conditions, False)]
-        covered = covered_conditions(request.conditions, request.environment)
-        if covered is not None:
-            condition_options.append((covered, True))
-        condition_options.append((None, False))
-    else:
-        condition_options = [(None, False)]
-    for filter_downstream in (True, False):
-        for search_conditions, allow_intersection in condition_options:
-            graph = _resolve_bridge_graph(
-                search_concepts,
-                request,
-                attempt=attempt,
-                filter_downstream=filter_downstream,
-                search_conditions=search_conditions,
-                allow_intersection=allow_intersection,
-            )
-            if graph is None:
-                continue
-            bridged = unique(_concepts_in_graph(graph, request.environment), "address")
-            # The bridge is only worth preferring over `_direct_source` when it
-            # ADDED connector concepts (a superset of what was requested) or a
-            # union. A bridged set that is a strict *subset* of `requested` is
-            # not a connector — it just means single-row/abstract concepts were
-            # excluded from the bridge search (`_resolve_bridge_graph`). Treating
-            # that subset as a connector would route the remaining concepts
-            # through a single partial datasource, dropping the complete-key
-            # merge `_direct_source` would otherwise build (refresh of a
-            # count-by-X persist whose output also carries a `data_through`).
-            # ...or when it selected a `complete where` partial whose predicate
-            # the query implies (an exact-match source). `_direct_source` would
-            # otherwise fall through to the full table, since the partial is
-            # rejected by the strict attempt and the full condition disconnects
-            # the partial's join partner from the graph (q geography exact-match).
-            # A multi-datasource graph that covers the full request is likewise
-            # a genuine connector even when it adds no new concept — the join
-            # key was simply already requested (`st as store` under `merge st
-            # into store_id`: sales ⋈ stores on the requested store_id).
-            # Flagged as a FALLBACK: `_direct_source` gets first shot, since a
-            # request it can satisfy already had a good single plan (q64 join
-            # hoist, two_merge window compaction) — the flagged bridge only
-            # rescues requests no direct source can cover.
-            bridged_addresses = {c.address for c in bridged}
-            if (
-                (bridged_addresses - requested)
-                or _has_union_datasource(graph)
-                or _graph_has_condition_matched_partial(
-                    graph, request.conditions, request.environment
-                )
-            ):
-                return BridgePlan(concepts=bridged, graph=graph)
-            if len(graph.datasources) > 1 and requested <= bridged_addresses:
-                return BridgePlan(
-                    concepts=bridged, graph=graph, full_cover_fallback=True
-                )
-    return None
-
-
-def _graph_has_condition_matched_partial(
-    graph: ReferenceGraph,
-    conditions: BuildWhereClause | None,
-    environment: BuildEnvironment,
-) -> bool:
-    """A `complete where <c>` partial datasource in `graph` whose predicate the
-    query conditions imply — pre-filtered to exactly the requested rows, so it
-    is the authoritative (and smaller) source over a full table."""
-    if conditions is None:
-        return False
-    for ds in graph.datasources.values():
-        if (
-            isinstance(ds, BuildDatasource)
-            and ds.non_partial_for is not None
-            and condition_implies(
-                conditions.conditional, ds.non_partial_for.conditional
-            )
-        ):
-            return True
-    return False
-
-
-def _has_union_datasource(graph: ReferenceGraph) -> bool:
-    return any(
-        node in graph and isinstance(datasource, BuildUnionDatasource)
-        for node, datasource in graph.datasources.items()
-    )
-
-
-def _resolve_bridge_graph(
-    concepts: list[BuildConcept],
-    request: SourceRequest,
-    *,
-    attempt: SourceAttempt,
-    filter_downstream: bool,
-    search_conditions: BuildWhereClause | None,
-    allow_intersection: bool = False,
-) -> ReferenceGraph | None:
-    search_graph = request.graph.copy()
-    _inject_union_datasources(search_graph, concepts, request.environment)
-    prune_sources_for_conditions(
-        search_graph,
-        attempt.criteria,
-        conditions=search_conditions,
-        allow_intersection=allow_intersection,
-    )
-    # Single-row / abstract-grain concepts (a `<*>` watermark, a constant) join
-    # by cross product, never by a key, so they must not drive the connectivity
-    # search — otherwise the Steiner walk invents a spurious intermediate join
-    # key to attach them and two equal candidates raise a false ambiguity
-    # (refresh of a count-by-X persist with a shared `data_through`). They fall
-    # through to `_direct_source`, which sources constants as a cross-join.
-    bridge_concepts = [
-        concept for concept in concepts if concept.granularity != Granularity.SINGLE_ROW
-    ]
-    node_list = sorted(
-        concept_to_node(concept.with_default_grain())
-        for concept in bridge_concepts
-        if "__preql_internal" not in concept.address
-    )
-    synonyms: dict[str, str] = {}
-    for concept in bridge_concepts:
-        for pseudonym in concept.pseudonyms:
-            synonyms[pseudonym] = concept.address
-
-    found: list[ReferenceGraph] = []
-    reduced_concept_sets: list[set[str]] = []
-    requested_addresses = {concept.address for concept in bridge_concepts}
-    for _ in range(AMBIGUITY_CHECK_LIMIT):
-        try:
-            graph = determine_induced_minimal_nodes(
-                search_graph,
-                node_list,
-                filter_downstream=filter_downstream,
-                accept_partial=attempt.accepts_partial,
-                environment=request.environment,
-                synonyms=synonyms,
-            )
-        except nx.exception.NetworkXNoPath:
-            break
-        if graph is None or not graph.nodes or not nx.is_weakly_connected(graph):
-            break
-        bridge_graph = cast(ReferenceGraph, graph)
-        all_graph_concepts = _concepts_in_graph(bridge_graph, request.environment)
-        new = [
-            concept
-            for concept in all_graph_concepts
-            if concept.address not in requested_addresses
-        ]
-        found.append(bridge_graph)
-        reduced_concept_sets.append(
-            {concept.address for concept in new if concept.address not in synonyms}
-        )
-        if not new:
-            break
-        for concept in new:
-            node = concept_to_node(concept)
-            if node in search_graph:
-                search_graph.remove_node(node)
-    if not found:
-        return None
-    detect_ambiguity_and_raise(
-        bridge_concepts, reduced_concept_sets, request.environment
-    )
-    return found[0]
+    # Static model-path validation, BEFORE any source search: an ambiguous
+    # relation is a model/request defect the search must never arbitrate.
+    validate_relation_paths(request.environment, concepts)
+    return concepts
 
 
 def _inject_union_datasources(
@@ -473,6 +304,225 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
+    """The search, memoized for this build request on the network's structural
+    signature. The ROOT planner re-asks the same question several times per
+    query — the same terminals reached through the condition retry, the
+    partial-completion sub-call and the single-scan re-ask — and the search is
+    the dominant cost of v4 generation. Nothing build-scoped is stored: the key
+    is addresses and node names, the value node names and integers."""
+    if not isinstance(history, V4History):
+        return search_sources(network)
+    key = network.signature()
+    cached = history.search_cache.get(key)
+    if cached is None:
+        cached = search_sources(network)
+        history.search_cache[key] = cached
+    return cached
+
+
+def _report_truncation(network: SourceNetwork, result: SearchResult) -> None:
+    """A search that ran out of budget must not read as a considered verdict.
+
+    With a solution in hand the plan is valid but need not be cost-minimal.
+    Without one the search DECLINED FOR LACK OF BUDGET, which is not the same
+    claim as "no solution exists" — yet `plan_source` falls through to
+    `_direct_source` and the unconditioned retry identically for both. Until
+    branch-and-bound removes the truncation, saying so is the difference between
+    a known limitation and a silent one."""
+    logger.warning(
+        "[v4] source search hit %s over %d candidates for terminals %s: %s",
+        result.limit.value if result.limit else "no limit",
+        len(network.candidates),
+        ",".join(network.terminals),
+        (
+            "no solution emitted — falling through to the single-scan planners, "
+            "which is a guess, not evidence that none exists"
+            if result.exhausted
+            else "solution kept but it may not be cost-minimal"
+        ),
+    )
+
+
+def _network_source(
+    request: SourceRequest, defer_single_scan: bool = True
+) -> NetworkDecision | None:
+    """Stage D, as an adapter: let the network search PICK the sources, and keep the
+    existing bridge machinery as the emitter.
+
+    The solution is expressed as a `BridgePlan` — a graph holding exactly the chosen
+    datasources plus the concept nodes it binds — so `_datasource_nodes_for_bridge`,
+    `_merge_component_sources` and `_complete_partial_requested` are unchanged and every
+    §5 carry-over they implement stays in force. That keeps the cutover diff to "who
+    chose the sources", which is the only thing under test.
+    """
+    concepts = _search_concepts_for_bridge(request)
+    v4_history = request.history if isinstance(request.history, V4History) else None
+    verdict_key: tuple[str, str, bool] | None = None
+    if v4_history is not None:
+        verdict_key = (
+            "-".join(sorted(c.address for c in concepts)),
+            str(request.conditions),
+            defer_single_scan,
+        )
+        cached_verdict = v4_history.network_verdicts.get(verdict_key)
+        if cached_verdict == "none":
+            return None
+        if cached_verdict == "defer":
+            return NetworkDecision(bridge=None)
+    network = build_source_network(
+        concepts, request.environment, request.graph, request.conditions
+    )
+    result = _memoized_search(network, request.history)
+    if result.truncated:
+        _report_truncation(network, result)
+    if result.split:
+        # A proof, not a budget: no join-component of the candidate pool holds
+        # binders for every terminal, so no connected cover exists and the
+        # fall-through is evidence-based — contrast _report_truncation.
+        logger.info(
+            "[v4] source search declined: terminals %s share no join-component "
+            "with the rest of the request — no connected cover exists; falling "
+            "through to the single-scan planners",
+            ",".join(sorted(result.split)),
+        )
+    if result.solution is None:
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "none"
+        return None
+    if (
+        defer_single_scan
+        and len(result.solution.sources) == 1
+        and not network.candidates[result.solution.sources[0]].is_union
+        and not any(
+            binding.injected
+            for binding in network.candidates[
+                result.solution.sources[0]
+            ].bindings.values()
+        )
+    ):
+        # A one-scan solution is `_direct_source`'s job (design §4): it is the
+        # renderer for a single assignment and knows the grain-aware scoring and
+        # the force-group the bridge emitter has no reason to apply. Routing it
+        # through the bridge drops the GROUP BY that collapses a scan at finer
+        # grain than the request. A union stays here — `_direct_source` cannot
+        # render one. A solution leaning on an INJECTED binding (a pinned probe
+        # the graph never offered) is the exception: `_direct_source`'s
+        # graph-scored select cannot see it, only the bridge emitter's
+        # `_datasource_renders_probe` path renders it.
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "defer"
+        return NetworkDecision(bridge=None)
+    graph = request.graph.copy()
+    # The network mints union candidates itself and names them with the same
+    # convention, so injecting here makes its chosen node addresses resolvable.
+    _inject_union_datasources(graph, concepts, request.environment)
+    chosen = set(result.solution.sources)
+    # A derived-connector choice (`connector~<alias>`) is not a scan: its alias
+    # concept rides in `plan.concepts` and `_derived_connector_nodes` plans the
+    # `alias_origin_lookup` origin as a parent. Only real scans face the
+    # datasource-registry checks.
+    connector_aliases = sorted(
+        node.removeprefix(CONNECTOR_NODE_PREFIX)
+        for node in chosen
+        if node.startswith(CONNECTOR_NODE_PREFIX)
+    )
+    chosen -= {f"{CONNECTOR_NODE_PREFIX}{alias}" for alias in connector_aliases}
+    if not chosen <= set(graph.datasources):
+        if v4_history is not None and verdict_key is not None:
+            v4_history.network_verdicts[verdict_key] = "none"
+        return None
+    for node in [n for n in graph.datasources if n not in chosen]:
+        del graph.datasources[node]
+    keep_addresses = set(network.terminals) | result.solution.connectors
+    bridge_concepts = [
+        concept
+        for concept in concepts
+        if network.equivalence.get(concept.address, concept.address) in keep_addresses
+    ]
+    for address in sorted(keep_addresses):
+        if any(concept.address == address for concept in bridge_concepts):
+            continue
+        connector = request.environment.concepts.get(address)
+        if connector is not None:
+            bridge_concepts.append(connector)
+            continue
+        # A connector labeled by a canonical (`_virt_*`) address is a derived
+        # merge key: each side of the declared equality owns one variant, known
+        # only to `canonical_concepts` (the demoted side's real lineage lives in
+        # `alias_origin_lookup`). Carry, per CHOSEN source, the concept behind
+        # the binding that source actually reads — its own side's variant — so
+        # each scan materializes its side and the merge joins them on the
+        # pseudonym equivalence (the `renders_derived_key` contract downstream).
+        # Never the whole equivalence class: an unread member (gcat's
+        # `first_org`, a second declared alias for the same key) would hand the
+        # join a column the authored FK already provides, changing the join.
+        for node in result.solution.sources:
+            binding = network.candidates[node].bindings.get(address)
+            if binding is None:
+                continue
+            resolved = request.environment.concepts.get(
+                binding.address
+            ) or request.environment.canonical_concepts.get(binding.address)
+            if resolved is not None and not any(
+                concept.address == resolved.address for concept in bridge_concepts
+            ):
+                bridge_concepts.append(resolved)
+    for alias in connector_aliases:
+        concept = request.environment.concepts.get(alias)
+        if concept is not None and not any(
+            existing.address == alias for existing in bridge_concepts
+        ):
+            bridge_concepts.append(concept)
+    # A requested concept the bridge cannot carry means the bridge is not an
+    # answer to THIS request, however good its source pick is: a single-row `<*>`
+    # watermark (excluded from the search because it joins by cross product, and
+    # the bridge emitter has no cross join) or a rowset output with no backing
+    # scan both render as INVALID_REFERENCE. `_direct_source` handles them, and
+    # the ladder reaches the same conclusion through its own
+    # `requested <= bridged_addresses` gate.
+    #
+    # No carve-out for the terminals the search drops as DECOMPOSABLE, tempting
+    # as it is: "the emitter can compute this inline" is a claim about lineage,
+    # and it does not survive a parent that is itself only reachable through a
+    # rowset body. Measured — exempting them costs `test_rowset_shape` and buys
+    # one request back from the ladder.
+    bridged_addresses = {concept.address for concept in bridge_concepts}
+    if not {c.address for c in _requested_concepts(request)} <= bridged_addresses:
+        return NetworkDecision(bridge=None)
+
+    # Keep concept nodes by ADDRESS, not by `concept_to_node`: a graph concept node
+    # carries an `@grain` suffix that need not match the default-grain spelling, and
+    # deleting the graph's own node severs the datasource edge that binds it.
+    def _keep(node: str) -> bool:
+        if node in chosen:
+            return True
+        if not node.startswith("c~"):
+            return False
+        address = _concept_node_address(node)
+        # `keep_addresses` is in equivalence-class terms; a graph node may spell a
+        # non-canonical member of the same class.
+        return network.equivalence.get(address, address) in keep_addresses
+
+    # Drop by node rather than taking a subgraph view: the emitter re-points missing
+    # datasources into `plan.graph.datasources`, which a frozen view rejects.
+    graph.remove_reference_nodes([n for n in list(graph.nodes) if not _keep(n)])
+    if not graph.datasources:
+        return None
+    # §5 carry-over. The ladder gets this from inside `determine_induced_minimal_nodes`,
+    # which this path bypasses: a key two chosen sources share must be an edge on BOTH
+    # of them, or the side that never materializes its own member drops out of the
+    # merge join's equality and the join degrades to the keys that remain (the q05
+    # fan-out — `s.return_channel_dim_id` falling out left `cheerful` joined on
+    # `s.channel` alone).
+    synonyms: dict[str, str] = {}
+    for concept in bridge_concepts:
+        for pseudonym in concept.pseudonyms:
+            synonyms[pseudonym] = concept.address
+    reinject_common_join_keys_v2(request.graph, graph, synonyms)
+    return NetworkDecision(bridge=BridgePlan(concepts=bridge_concepts, graph=graph))
+
+
 def _concept_has_non_basic_merge_origin(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> bool:
@@ -510,7 +560,7 @@ def _bridge_has_non_basic_merge(
 def _datasource_nodes_for_bridge(
     request: SourceRequest,
     plan: BridgePlan,
-    attempt: SourceAttempt,
+    accept_partial: bool,
 ) -> list[StrategyNode] | None:
     parents: list[StrategyNode] = []
     bridge_addresses = {concept.address for concept in plan.concepts}
@@ -598,7 +648,7 @@ def _datasource_nodes_for_bridge(
         candidate = create_select_node_candidate(
             ds_node,
             concept_nodes,
-            accept_partial=attempt.accepts_partial,
+            accept_partial=accept_partial,
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
@@ -611,10 +661,35 @@ def _datasource_nodes_for_bridge(
                 depth=request.depth + 1,
             )
         )
+    if accept_partial and not request.complete_partials:
+        parents = _drop_redundant_subset_sources(parents)
     parents.extend(_derived_connector_nodes(request, plan, parents))
     if not parents:
         return None
     return parents
+
+
+def _drop_redundant_subset_sources(
+    parents: list[StrategyNode],
+) -> list[StrategyNode]:
+    """Drop a permissive bridge source wholly covered by one richer source.
+
+    The caller limits this to aggregate fact-population searches. A key-only
+    dimension cannot connect anything the richer fact source does not already
+    connect, and completing its domain would add groups outside the aggregate's
+    observed population.
+    """
+    kept: list[StrategyNode] = []
+    for index, parent in enumerate(parents):
+        outputs = {concept.address for concept in parent.usable_outputs}
+        if outputs and any(
+            outputs <= {concept.address for concept in other.usable_outputs}
+            for other_index, other in enumerate(parents)
+            if other_index != index
+        ):
+            continue
+        kept.append(parent)
+    return kept
 
 
 def _derived_connector_nodes(
@@ -639,10 +714,7 @@ def _derived_connector_nodes(
     if {c.address for c in plan.concepts} <= covered:
         return []
     # Imported lazily: `concept_strategies_v4` imports this module's package.
-    from trilogy.core.processing.concept_strategies_v4 import (
-        V4History,
-        search_concepts,
-    )
+    from trilogy.core.processing.concept_strategies_v4 import search_concepts
 
     env = request.environment
     history = cast(V4History, request.history)
@@ -670,13 +742,29 @@ def _derived_connector_nodes(
             # even when another parent already covers it — it IS the join column;
             # dropping it leaves the merge with no shared key and a 1=1 cross join
             # (hackernews: the recursion's `id` is also the post scan's `id`).
+            # An uncovered bridge concept FD-riding the connector's grain must
+            # ride the connector too: the datasource gap-fill stands down for
+            # non-BASIC merge bridges, so no raw scan will ever supply it
+            # (window-key join: `orders.amt` rides the rank connector at oid
+            # grain — v3 computes the window inline on the amt-carrying scan).
+            grain_components = set(origin.grain.components)
+            carried = [
+                c
+                for c in plan.concepts
+                if c.address not in covered
+                and c.address != origin.address
+                and c.address not in grain_components
+                and c.grain.components
+                and set(c.grain.components) <= grain_components
+            ]
             mandatory = unique(
                 [origin]
                 + [
                     env.concepts[address]
                     for address in origin.grain.components
                     if address in env.concepts
-                ],
+                ]
+                + carried,
                 "address",
             )
             history.connectors_in_progress.add(origin.address)
@@ -688,7 +776,6 @@ def _derived_connector_nodes(
                     depth=request.depth + 1,
                     g=request.graph,
                     conditions=[],
-                    source_policy=request.source_policy,
                 )
             finally:
                 history.connectors_in_progress.discard(origin.address)
@@ -893,9 +980,31 @@ def _local_concept_nodes_for_datasource(
                 and canonical.address in bridge_addresses
                 and _datasource_renders_derived(datasource, canonical)
             )
+            # A datasource-materialized aggregate/window (`customer_order_count`
+            # in a summary table) is requested by its `.address` but reaches this
+            # scan under its `_virt_agg_*` canonical node -- match the canonical
+            # too, but only when the scan physically BINDS it as a column. Without
+            # the binding guard a fact scan would emit the aggregate via its
+            # reverse-lineage edge (order_id -> count) and recompute it wrongly;
+            # with it, only the summary table that owns the column emits it.
+            # Restricted to AGGREGATE/WINDOW: a plain root concept already matches
+            # via `address in bridge_addresses` (its canonical IS its address), and
+            # widening this to every derivation re-sources probe/filter members off
+            # the wrong scan (gcat decom_spine).
+            renders_materialized_canonical = (
+                canonical is not None
+                and canonical.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
+                and canonical.address in bridge_addresses
+                and datasource is not None
+                and _datasource_can_output(datasource, canonical.address)
+            )
             if (
                 canonical is not None
-                and (address in bridge_addresses or renders_derived_key)
+                and (
+                    address in bridge_addresses
+                    or renders_derived_key
+                    or renders_materialized_canonical
+                )
                 and _datasource_renders_probe(datasource, address, environment)
             ):
                 concepts.setdefault(address, neighbor)
@@ -981,7 +1090,7 @@ def _complete_partial_requested(
             history=request.history,
             conditions=completion_conditions,
             depth=request.depth + 1,
-            source_policy=STRICT_SOURCE_POLICY,
+            require_full=True,
             complete_partials=False,
         )
     )
@@ -1004,20 +1113,6 @@ def _complete_partial_requested(
         parents=[completion, node],
         depth=request.depth,
     )
-
-
-def _bridge_parents_cover(parents: list[StrategyNode], required: set[str]) -> bool:
-    """Every requested concept is actually emitted by some bridge datasource.
-
-    The graph Steiner solver can route a requested root concept through a
-    *derived* concept's lineage (a window/aggregate output that shares a key
-    with it), yielding a bridge whose datasource set never sources the concept
-    — e.g. `country` (on `users`) "reached" from `posts` via a window keyed by
-    `user_id`. `_merge_component_sources` would then promise `country` off a
-    posts-only scan and render INVALID_REFERENCE. Reject such a bridge so
-    `_direct_source` (which merges both datasources) is used instead."""
-    available = {c.address for parent in parents for c in parent.usable_outputs}
-    return required <= available
 
 
 def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | None:
@@ -1203,7 +1298,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
             history=request.history,
             conditions=None,
             depth=request.depth + 1,
-            source_policy=request.source_policy,
+            require_full=request.require_full,
         )
     )
     if key_node is None:
@@ -1248,10 +1343,8 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     if len(canonicals) != 1 or any(c.address not in allowed for c in requested):
         return None
 
-    from trilogy.core.processing.concept_strategies_v4 import (
-        V4History,
-        search_concepts,
-    )
+    # Imported lazily: `concept_strategies_v4` imports this module's package.
+    from trilogy.core.processing.concept_strategies_v4 import search_concepts
 
     def _v4_member_source(
         mandatory_list: list[BuildConcept],
@@ -1293,6 +1386,141 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     )
 
 
+def _uf_find(parent: dict[str, str], node: str) -> str:
+    while parent.get(node, node) != node:
+        parent[node] = parent.get(parent[node], parent[node])
+        node = parent[node]
+    return node
+
+
+def _uf_union(parent: dict[str, str], left: str, right: str) -> None:
+    a, b = _uf_find(parent, left), _uf_find(parent, right)
+    if a != b:
+        lo, hi = sorted((a, b))
+        parent[hi] = lo
+
+
+def _terminal_components(network) -> list[set[str]]:
+    """Terminals grouped by join-connectivity of the candidates binding them.
+    Empty when some terminal has no binder at all."""
+    parent: dict[str, str] = {node: node for node in network.candidates}
+    nodes = sorted(network.candidates)
+    for index, left in enumerate(nodes):
+        for right in nodes[index + 1 :]:
+            if network.join_keys(left, right):
+                _uf_union(parent, left, right)
+    for address in network.terminals:
+        binders = network.binders(address)
+        for other in binders[1:]:
+            _uf_union(parent, binders[0], other)
+    groups: dict[str, set[str]] = {}
+    for address in network.terminals:
+        binders = network.binders(address)
+        if not binders:
+            return []
+        groups.setdefault(_uf_find(parent, binders[0]), set()).add(address)
+    return [groups[key] for key in sorted(groups)]
+
+
+def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bool:
+    """Every output is reachable from every other in the reference graph,
+    lineage edges included. This is the ladder's real criterion for assembling
+    a join-disconnected request: the Steiner walk crossed component boundaries
+    exactly when a derivation's lineage related them (`overall <- sum(samt) +
+    sum(wamt)`), and failed loudly when nothing did — the q75/q64/q35 correct
+    disconnects, which must stay errors."""
+    targets: list[set[str]] = []
+    for concept in outputs:
+        matches = {
+            node
+            for node in graph.nodes
+            if node.startswith("c~")
+            and _concept_node_address(node)
+            in (concept.address, concept.canonical_address)
+        }
+        if not matches:
+            return False
+        targets.append(matches)
+    frontier = list(targets[0])
+    seen = set(frontier)
+    while frontier:
+        current = frontier.pop()
+        for neighbor in _graph_neighbors(graph, current):
+            if neighbor not in seen:
+                seen.add(neighbor)
+                frontier.append(neighbor)
+    return all(matches & seen for matches in targets)
+
+
+def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
+    """Assemble a lineage-related but join-disconnected request from its
+    components — the `sum(samt) + sum(wamt)` scalar shape: two facts related
+    only through a derived expression's lineage, with no key to join on. The
+    ladder's Steiner walk answered these by scanning each component and letting
+    the aggregate machinery collapse each side before a single-row cross join
+    (design §0.1: a disconnected cover is a CROSS PRODUCT, and the merge
+    renders exactly that); the network search correctly refuses to call such a
+    cover JOINED, so the assembly lives here as an explicit fallback.
+
+    Gated on `_lineage_connected`, which separates "the query itself relates
+    these components" from "nothing does" — the latter must stay a loud
+    disconnect error."""
+    if len(request.outputs) < 2:
+        return None
+    concepts = _search_concepts_for_bridge(request)
+    network = build_source_network(
+        concepts, request.environment, request.graph, request.conditions
+    )
+    groups = _terminal_components(network)
+    if len(groups) < 2:
+        return None
+    rep_to_group: dict[str, int] = {}
+    for index, group in enumerate(groups):
+        for address in group:
+            rep_to_group[address] = index
+    grouped: dict[int, list[BuildConcept]] = {}
+    for concept in request.outputs:
+        representative = network.equivalence.get(concept.address, concept.address)
+        group_index = rep_to_group.get(representative)
+        if group_index is None:
+            return None
+        grouped.setdefault(group_index, []).append(concept)
+    if len(grouped) < 2:
+        return None
+    if not _lineage_connected(request.graph, request.outputs):
+        return None
+    parents: list[StrategyNode] = []
+    for index in sorted(grouped):
+        component = plan_source(
+            SourceRequest(
+                outputs=grouped[index],
+                environment=request.environment,
+                graph=request.graph,
+                history=request.history,
+                conditions=None,
+                depth=request.depth + 1,
+                require_full=request.require_full,
+                complete_partials=request.complete_partials,
+            )
+        )
+        if component is None:
+            return None
+        parents.append(component)
+    return _merge_component_sources(request, parents)
+
+
+def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | None:
+    # The search already priced partiality, so there is no escalation to do:
+    # render at the request's own permissiveness and let the solution speak.
+    parents = _datasource_nodes_for_bridge(request, bridge, not request.require_full)
+    if parents is None:
+        return None
+    merged = _merge_component_sources(request, parents, bridge.concepts)
+    if merged is not None and request.complete_partials:
+        merged = _complete_partial_requested(request, merged)
+    return merged
+
+
 def plan_source(request: SourceRequest) -> StrategyNode | None:
     """Source ROOT-level concepts through one v4 path.
 
@@ -1309,38 +1537,33 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     pinned_rollup = _plan_finer_filter_rollup(request)
     if pinned_rollup is not None:
         return pinned_rollup
-    requested_addresses = {c.address for c in _requested_concepts(request)}
-    fallback_bridge: tuple[BridgePlan, SourceAttempt] | None = None
-    for attempt in request.source_policy.attempts:
-        bridge_plan = _bridge_plan(request, attempt)
-        if bridge_plan is not None and bridge_plan.full_cover_fallback:
-            # A no-new-concepts multi-source join is a dead-last resort: any
-            # plan another path can produce (a direct source at some attempt,
-            # the unconditioned retry) wins first — see the fallback block at
-            # the bottom.
-            if fallback_bridge is None:
-                fallback_bridge = (bridge_plan, attempt)
-            bridge_plan = None
-        if bridge_plan is not None:
-            parents = _datasource_nodes_for_bridge(request, bridge_plan, attempt)
-            if parents is not None and (
-                attempt.accepts_partial
-                or _bridge_parents_cover(parents, requested_addresses)
-            ):
-                merged = _merge_component_sources(
-                    request, parents, bridge_plan.concepts
-                )
-                if (
-                    merged is not None
-                    and not attempt.accepts_partial
-                    and request.complete_partials
-                ):
-                    merged = _complete_partial_requested(request, merged)
-                if merged is not None:
-                    return merged
-        direct = _direct_source(request, attempt)
+    decision = _network_source(request)
+    if decision is not None and decision.bridge is not None:
+        merged = _emit_bridge(request, decision.bridge)
+        if merged is not None:
+            return merged
+    # Either the search answered with a single scan (design §4: `_direct_source`
+    # is that solution's renderer), or it declined and this is the last read that
+    # might still work. The escalation is only "may this read accept a partial
+    # binding" — it is not a re-search.
+    for accept_partial in ((False,) if request.require_full else (False, True)):
+        direct = _direct_source(request, accept_partial)
         if direct is not None:
             return direct
+    if decision is not None and decision.bridge is None:
+        # The single-scan solution `_direct_source` could not render — a
+        # derived output only the bridge's concept-node assembly computes (the
+        # persist-refresh watermark shape, where the ladder likewise answered
+        # with a one-datasource bridge). Re-ask for the bridge rendering.
+        retry = _network_source(request, defer_single_scan=False)
+        if retry is not None and retry.bridge is not None:
+            merged = _emit_bridge(request, retry.bridge)
+            if merged is not None:
+                return merged
+    if request.conditions is None:
+        crossed = _cross_component_source(request)
+        if crossed is not None:
+            return crossed
     if request.conditions is not None:
         outputs = unique(
             request.outputs + _condition_row_concepts(request.conditions),
@@ -1354,7 +1577,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 history=request.history,
                 conditions=None,
                 depth=request.depth,
-                source_policy=request.source_policy,
+                require_full=request.require_full,
             )
         )
         if unfiltered is not None:
@@ -1365,25 +1588,4 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 parents=[unfiltered],
                 conditions=request.conditions.conditional,
             )
-    # Dead-last: the no-new-concepts multi-source join. Rescues a request no
-    # single source covers and no connector expansion reaches (the two-rowset
-    # body's `st as store` under `merge st into store_id`, where the joined
-    # key was itself requested) without pre-empting any plan the paths above
-    # can produce.
-    if fallback_bridge is not None:
-        plan, attempt = fallback_bridge
-        parents = _datasource_nodes_for_bridge(request, plan, attempt)
-        if parents is not None and (
-            attempt.accepts_partial
-            or _bridge_parents_cover(parents, requested_addresses)
-        ):
-            merged = _merge_component_sources(request, parents, plan.concepts)
-            if (
-                merged is not None
-                and not attempt.accepts_partial
-                and request.complete_partials
-            ):
-                merged = _complete_partial_requested(request, merged)
-            if merged is not None:
-                return merged
     return None

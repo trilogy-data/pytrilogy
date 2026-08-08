@@ -1,10 +1,14 @@
+import dataclasses
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator
+from trilogy.core.enums import BooleanOperator, FunctionType
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildFunction,
+    BuildRowsetItem,
 )
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
@@ -89,6 +93,81 @@ def add_datasource_sorted(
 
 def add_parent_cte(cte: CTE | UnionCTE, parent: CTE | UnionCTE) -> None:
     cte.add_dependency(parent)
+
+
+def rename_reference(column: BuildConcept) -> BuildConcept | None:
+    """The single column a pure rename re-labels, else None.
+
+    Two rename shapes exist: a rowset boundary output (`with rs as select x ...`
+    exposing `rs.x` over `x`) and a concept alias (`select x as y`). Both render
+    as `<content's sql> as <new name>`, so a CTE whose novel outputs are all
+    renames of parent columns folds into the parent — the merged CTE renders the
+    rename from lineage (no source_map entry) against its own columns."""
+    lineage = column.lineage
+    if isinstance(lineage, BuildRowsetItem):
+        return lineage.content
+    if isinstance(lineage, BuildFunction) and lineage.operator == FunctionType.ALIAS:
+        args = lineage.concept_arguments
+        if len(args) == 1:
+            return args[0]
+    return None
+
+
+def consumed_parent_column(
+    column: BuildConcept, cte: CTE, parent: CTE
+) -> BuildConcept | None:
+    """The parent output column `cte` actually renders `column` from, when that
+    render is a bare parent-column reference (`"parent"."T"`); None otherwise.
+
+    Pseudonym recovery may have picked ANY exposed twin T — including a
+    scoped-join canonical whose expression is a coalesce the lineage chain
+    never mentions — so T must be recovered from the actual render, not
+    predicted from lineage."""
+    from trilogy.dialect.base import BaseDialect
+
+    renderer = BaseDialect()
+    try:
+        rendered = renderer.render_concept_sql(column, cte, alias=False)
+    except Exception:  # unrenderable: not a bare reference
+        return None
+    q = renderer.QUOTE_CHARACTER
+    prefix = f"{q}{parent.safe_identifier}{q}.{q}"
+    if not (rendered.startswith(prefix) and rendered.count(q) == 4):
+        return None
+    consumed_name = rendered[len(prefix) : -1]
+    return next(
+        (c for c in parent.output_columns if c.safe_address == consumed_name), None
+    )
+
+
+def rebind_rename_to_consumed(
+    column: BuildConcept, consumed: BuildConcept
+) -> BuildConcept:
+    """Rebind a rename column's lineage to the exact parent column OBJECT it
+    consumed, so the merged CTE renders it through that object forever.
+
+    A rename's lineage re-derivation FLOATS: it resolves against whatever
+    bindings the CTE has when rendered, and later phases (datasource inlining,
+    further collapses) add bindings that flip it to a same-address side-variant
+    (raw column where the child read the coalescing canonical — a FULL
+    union-join axis then NULLs one-sided keys). Pinning the consumed object
+    makes the rename and the parent's own output render identically in every
+    future context, because they are the same object."""
+    lineage = column.lineage
+    if isinstance(lineage, BuildRowsetItem) and lineage.content is not consumed:
+        return dataclasses.replace(
+            column, lineage=dataclasses.replace(lineage, content=consumed)
+        )
+    if (
+        isinstance(lineage, BuildFunction)
+        and lineage.operator == FunctionType.ALIAS
+        and len(lineage.arguments) == 1
+        and lineage.arguments[0] is not consumed
+    ):
+        return dataclasses.replace(
+            column, lineage=dataclasses.replace(lineage, arguments=[consumed])
+        )
+    return column
 
 
 def is_sole_consumer(

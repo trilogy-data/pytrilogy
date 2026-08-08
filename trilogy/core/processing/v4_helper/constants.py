@@ -30,6 +30,11 @@ class EdgeKind(Enum):
     CONSTRAINT = "constraint"  # d1→d0 must-be-above ordering (implied JOIN)
     EXISTENCE = "existence"  # side-channel subselect source (IN/EXISTS RHS)
     MERGE = "merge"  # group → FINAL sink
+    # Authored join-axis equality between two DIFFERENT lineages (a
+    # statement-scoped relation member and its canonical). Rows JOIN across it;
+    # it is never a computational dependency, so lineage reach must not follow
+    # it — the sides recombine at a merge, not inside one scan.
+    RELATION = "relation"
 
 
 class EdgePhase(Enum):

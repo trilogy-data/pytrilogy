@@ -71,6 +71,46 @@ def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
     return False
 
 
+def _null_padded_sources(cte: CTE) -> set[str]:
+    """Names of ``cte``'s sources whose columns its own outer joins NULL-pad."""
+    padded: set[str] = set()
+    for join in cte.joins or []:
+        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+            continue
+        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
+            padded.add(join.right_cte.name)
+        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            if join.left_cte is not None:
+                padded.add(join.left_cte.name)
+            for pair in join.joinkey_pairs or []:
+                if pair.cte is not None:
+                    padded.add(pair.cte.name)
+    return padded
+
+
+def _coalesced_source_non_null(
+    cte: CTE, concept: BuildConcept, visited: frozenset[str]
+) -> bool:
+    """A column drawn from several sources renders as ``COALESCE`` over them, so
+    it is non-null as soon as ONE source the local joins cannot NULL-pad proves
+    it non-null -- even while another source sits on an outer join's optional
+    side. Without this the padding check below refuses the whole proof on the
+    strength of a source the COALESCE is there precisely to cover."""
+    sources: set[str] = set()
+    for addr in concept.equivalent_addresses:
+        sources.update(cte.source_map.get(addr, []) or [])
+    if len(sources) < 2:
+        return False
+    padded = _null_padded_sources(cte)
+    parents = {parent.name: parent for parent in cte.parent_ctes}
+    return any(
+        name not in padded
+        and name in parents
+        and proven_non_null(concept, parents[name], visited)
+        for name in sources
+    )
+
+
 def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
     """True when ``cte`` performs a ROLLUP/CUBE/GROUPING SETS that injects NULLs
     into any address in ``addrs`` (its grouping-key dims, or anything marked
@@ -130,13 +170,13 @@ def proven_non_null(
             return True
     if cte.name in _visited:
         return False
+    next_visited = _visited | {cte.name}
     # An outer join — or a ROLLUP/CUBE — here may itself introduce the NULL;
     # don't claim a parent proof if our own node is the source of the nullability.
-    if _join_pads_null(cte, concept.equivalent_addresses) or _rollup_injects_null(
-        cte, concept.equivalent_addresses
-    ):
+    if _rollup_injects_null(cte, concept.equivalent_addresses):
         return False
-    next_visited = _visited | {cte.name}
+    if _join_pads_null(cte, concept.equivalent_addresses):
+        return _coalesced_source_non_null(cte, concept, next_visited)
     contributing = [
         parent
         for parent in cte.parent_ctes

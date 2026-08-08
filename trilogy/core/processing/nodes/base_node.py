@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
@@ -140,8 +141,12 @@ def get_all_parent_partial(
 
 
 def get_all_parent_nullable(
-    all_concepts: list[BuildConcept], parents: list["StrategyNode"]
+    all_concepts: list[BuildConcept],
+    parents: Sequence["StrategyNode | QueryDatasource | BuildDatasource"],
 ) -> list[BuildConcept]:
+    """Accepts nodes or RESOLVED sources — only `nullable_concepts` is read.
+    Prefer resolved sources where available: a node's attribute is a
+    construction-time snapshot that grows at its first resolve."""
     for x in parents:
         if not x:
             raise ValueError(parents)
@@ -484,6 +489,56 @@ class StrategyNode:
             contents += f"...{extra} more"
         return f"{self.__class__.__name__}<{contents}>"
 
+    def _repoint_feeder_only_rows(
+        self,
+        parent_sources: list[QueryDatasource | BuildDatasource],
+        source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
+    ) -> None:
+        """A row source_map entry must never point at a parent reachable only
+        through an existence subselect — it is never joined, so a SELECT column
+        off it dangles at render (``Referenced table ... not found``). Mirrors
+        the MergeNode existence-only ordering guard: when every resolved source
+        of an OUTPUT address is such a feeder and a genuinely-joined parent
+        carries the address as a pseudonym twin (a scoped-join axis handle
+        riding its mate, q29), repoint the row entry at the joined parent — the
+        renderer's pseudonym recovery emits the mate's column under the
+        handle's alias."""
+        if not self.existence_concepts:
+            return
+        existence_addrs = {c.address for c in self.existence_concepts}
+        demand = {c.address for c in self.input_concepts} | {
+            c.address for c in self.output_concepts
+        }
+        feeders = {
+            id(ps)
+            for ps in parent_sources
+            if any(o.address in existence_addrs for o in ps.output_concepts)
+            and all(
+                o.address in existence_addrs
+                for o in ps.output_concepts
+                if o.address in demand
+            )
+        }
+        if not feeders:
+            return
+        for concept in self.output_concepts:
+            sources = source_map.get(concept.address)
+            if not sources or not all(id(s) in feeders for s in sources):
+                continue
+            for ps in parent_sources:
+                if id(ps) in feeders:
+                    continue
+                if any(
+                    (o.address == concept.address or concept.address in o.pseudonyms)
+                    and not (
+                        isinstance(ps, QueryDatasource)
+                        and o.address in ps.hidden_concepts
+                    )
+                    for o in ps.output_concepts
+                ):
+                    source_map[concept.address] = {ps}
+                    break
+
     def _resolve(self) -> QueryDatasource:
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
@@ -497,6 +552,26 @@ class StrategyNode:
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
+        self._repoint_feeder_only_rows(parent_sources, source_map)
+
+        # Nullability is recomputed from the RESOLVED parents, not trusted from
+        # the construction-time snapshot: `get_all_parent_nullable` at
+        # construction reads the parent NODE attribute, which only carries
+        # resolve-time join analysis after the parent's first resolve — so two
+        # copies of one logical node built before/after that resolve would
+        # otherwise resolve to different plans (divergent Nullable join
+        # modifiers, q29's mirrored-base merges). Parents have just resolved
+        # here, so their QDS stamps are authoritative; the node's own
+        # condition-refinement still applies on top.
+        nullable = unique(
+            self.nullable_concepts
+            + get_all_parent_nullable(self.output_concepts, parent_sources),
+            "address",
+        )
+        if self.conditions:
+            proven = condition_proves_non_null(self.conditions)
+            if proven:
+                nullable = [c for c in nullable if c.address not in proven]
 
         return QueryDatasource(
             input_concepts=self.input_concepts,
@@ -515,7 +590,7 @@ class StrategyNode:
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
             rollup_concepts=self.rollup_concepts,
-            nullable_concepts=self.nullable_concepts,
+            nullable_concepts=nullable,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,

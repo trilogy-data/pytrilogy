@@ -1,0 +1,81 @@
+
+WITH 
+concerned as (
+SELECT
+    "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" as "web_buyers_web_cust_id"
+FROM
+    "memory"."web_sales" as "sales_web_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_web_sales_unified"."WS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" BETWEEN 4 AND 6 and "sales_web_sales_unified"."WS_BILL_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+uneven as (
+SELECT
+    "sales_store_sales_unified"."SS_CUSTOMER_SK" as "store_buyers_store_cust_id"
+FROM
+    "memory"."store_sales" as "sales_store_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_store_sales_unified"."SS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" BETWEEN 4 AND 6 and "sales_store_sales_unified"."SS_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+cheerful as (
+SELECT
+    "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" as "catalog_buyers_cat_cust_id"
+FROM
+    "memory"."catalog_sales" as "sales_catalog_sales_unified"
+    INNER JOIN "memory"."date_dim" as "sales_sale_date_date" on "sales_catalog_sales_unified"."CS_SOLD_DATE_SK" = "sales_sale_date_date"."D_DATE_SK"
+WHERE
+    "sales_sale_date_date"."D_YEAR" = 2001 and "sales_sale_date_date"."D_MOY" BETWEEN 4 AND 6 and "sales_catalog_sales_unified"."CS_SHIP_CUSTOMER_SK" is not null
+
+GROUP BY
+    1),
+sweltering as (
+SELECT
+    "customer_current_demographics_customer_demographics"."CD_CREDIT_RATING" as "customer_current_demographics_credit_rating",
+    "customer_current_demographics_customer_demographics"."CD_EDUCATION_STATUS" as "customer_current_demographics_education_status",
+    "customer_current_demographics_customer_demographics"."CD_GENDER" as "customer_current_demographics_gender",
+    "customer_current_demographics_customer_demographics"."CD_MARITAL_STATUS" as "customer_current_demographics_marital_status",
+    "customer_current_demographics_customer_demographics"."CD_PURCHASE_ESTIMATE" as "customer_current_demographics_purchase_estimate",
+    "customer_customers"."C_CUSTOMER_SK" as "customer_sk"
+FROM
+    "memory"."customer" as "customer_customers"
+    INNER JOIN "memory"."customer_address" as "customer_current_address_customer_address" on "customer_customers"."C_CURRENT_ADDR_SK" = "customer_current_address_customer_address"."CA_ADDRESS_SK"
+    LEFT OUTER JOIN "memory"."customer_demographics" as "customer_current_demographics_customer_demographics" on "customer_customers"."C_CURRENT_CDEMO_SK" = "customer_current_demographics_customer_demographics"."CD_DEMO_SK"
+WHERE
+    ("customer_current_address_customer_address"."CA_STATE" is not null and "customer_current_address_customer_address"."CA_STATE" in ('KY','GA','NM')) and exists (select 1 from uneven where uneven."store_buyers_store_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") and not exists (select 1 from concerned where concerned."web_buyers_web_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK") and not exists (select 1 from cheerful where cheerful."catalog_buyers_cat_cust_id" is not distinct from "customer_customers"."C_CUSTOMER_SK")
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6)
+SELECT
+    "sweltering"."customer_current_demographics_gender" as "customer_current_demographics_gender",
+    "sweltering"."customer_current_demographics_marital_status" as "customer_current_demographics_marital_status",
+    "sweltering"."customer_current_demographics_education_status" as "customer_current_demographics_education_status",
+    count("sweltering"."customer_sk") as "cnt1",
+    "sweltering"."customer_current_demographics_purchase_estimate" as "customer_current_demographics_purchase_estimate",
+    count("sweltering"."customer_sk") as "cnt2",
+    "sweltering"."customer_current_demographics_credit_rating" as "customer_current_demographics_credit_rating",
+    count("sweltering"."customer_sk") as "cnt3"
+FROM
+    "sweltering"
+GROUP BY
+    1,
+    2,
+    3,
+    5,
+    7
+ORDER BY 
+    "sweltering"."customer_current_demographics_gender" asc,
+    "sweltering"."customer_current_demographics_marital_status" asc,
+    "sweltering"."customer_current_demographics_education_status" asc,
+    "sweltering"."customer_current_demographics_purchase_estimate" asc,
+    "sweltering"."customer_current_demographics_credit_rating" asc
+LIMIT (100)

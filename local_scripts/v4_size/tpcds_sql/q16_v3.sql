@@ -1,0 +1,72 @@
+
+WITH 
+cooperative as (
+SELECT
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number",
+    "cs_catalog_sales"."CS_WAREHOUSE_SK" as "cs_warehouse_sk"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    "cooperative"."cs_order_number" as "multi_warehouse_sales"
+FROM
+    "cooperative"
+GROUP BY
+    1
+HAVING
+    count("cooperative"."cs_warehouse_sk") > 1
+),
+cheerful as (
+SELECT
+    coalesce("cs_catalog_returns"."CR_ORDER_NUMBER","cs_catalog_sales"."CS_ORDER_NUMBER") as "returned_orders"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."catalog_returns" as "cs_catalog_returns" on "cs_catalog_sales"."CS_ITEM_SK" = "cs_catalog_returns"."CR_ITEM_SK" AND "cs_catalog_sales"."CS_ORDER_NUMBER" = "cs_catalog_returns"."CR_ORDER_NUMBER"
+WHERE
+    ("cs_catalog_returns"."CR_ORDER_NUMBER" is not null) = True
+
+GROUP BY
+    1),
+concerned as (
+SELECT
+    sum("cs_catalog_sales"."CS_EXT_SHIP_COST") as "total_shipping_cost",
+    sum("cs_catalog_sales"."CS_NET_PROFIT") as "total_net_profit"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_pos_ship_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_pos_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_pos_ship_address_customer_address"."CA_STATE" = 'GA' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and not exists (select 1 from cheerful where cheerful."returned_orders" is not distinct from "cs_catalog_sales"."CS_ORDER_NUMBER") and exists (select 1 from questionable where questionable."multi_warehouse_sales" is not distinct from "cs_catalog_sales"."CS_ORDER_NUMBER")
+),
+thoughtful as (
+SELECT
+    "cs_catalog_sales"."CS_ORDER_NUMBER" as "cs_order_number"
+FROM
+    "memory"."catalog_sales" as "cs_catalog_sales"
+    INNER JOIN "memory"."date_dim" as "cs_ship_date_date" on "cs_catalog_sales"."CS_SHIP_DATE_SK" = "cs_ship_date_date"."D_DATE_SK"
+    INNER JOIN "memory"."call_center" as "cs_call_center_call_center" on "cs_catalog_sales"."CS_CALL_CENTER_SK" = "cs_call_center_call_center"."CC_CALL_CENTER_SK"
+    INNER JOIN "memory"."customer_address" as "cs_pos_ship_address_customer_address" on "cs_catalog_sales"."CS_SHIP_ADDR_SK" = "cs_pos_ship_address_customer_address"."CA_ADDRESS_SK"
+WHERE
+    cast("cs_ship_date_date"."D_DATE" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and "cs_call_center_call_center"."CC_COUNTY" = 'Williamson County' and "cs_pos_ship_address_customer_address"."CA_STATE" = 'GA' and not exists (select 1 from cheerful where cheerful."returned_orders" is not distinct from "cs_catalog_sales"."CS_ORDER_NUMBER") and exists (select 1 from questionable where questionable."multi_warehouse_sales" is not distinct from "cs_catalog_sales"."CS_ORDER_NUMBER")
+
+GROUP BY
+    1),
+vacuous as (
+SELECT
+    count("thoughtful"."cs_order_number") as "order_count"
+FROM
+    "thoughtful")
+SELECT
+    "vacuous"."order_count" as "order_count",
+    "concerned"."total_shipping_cost" as "total_shipping_cost",
+    "concerned"."total_net_profit" as "total_net_profit"
+FROM
+    "vacuous"
+    INNER JOIN "concerned" on 1=1
+ORDER BY 
+    "vacuous"."order_count" desc
+LIMIT (100)

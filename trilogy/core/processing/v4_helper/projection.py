@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept, BuildFilterItem
+from trilogy.core.models.build import BuildConcept, BuildConceptArgs, BuildFilterItem
 from trilogy.core.processing.nodes import StrategyNode
 
 
@@ -18,17 +18,31 @@ def parent_output_addresses(node: StrategyNode) -> set[str]:
     }
 
 
+def lineage_existence_only(concept: BuildConcept) -> set[str]:
+    """Addresses that appear ONLY as existence args in the concept's lineage (a
+    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
+    side-channel subselect, not the concept's row stream. Two shapes: a FILTER's
+    where, and a membership comparison authored as a derived/projected boolean
+    (`auto flag <- a in b`, `(20, 1) in (pairs.val, pairs.cat) as present`)
+    whose lineage IS (or propagates from) the SubselectComparison."""
+    args: BuildConceptArgs
+    if isinstance(concept.lineage, BuildFilterItem):
+        args = concept.lineage.where
+    elif isinstance(concept.lineage, BuildConceptArgs):
+        args = concept.lineage
+    else:
+        return set()
+    existence = {ec.address for grp in (args.existence_arguments or []) for ec in grp}
+    return existence - {r.address for r in args.row_arguments}
+
+
 def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
     if concept.lineage is None:
         return []
     args = list(concept.lineage.concept_arguments)
-    if not isinstance(concept.lineage, BuildFilterItem):
+    existence = lineage_existence_only(concept)
+    if not existence:
         return args
-    existence = {
-        ec.address
-        for group in (concept.lineage.where.existence_arguments or ())
-        for ec in group
-    } - {row.address for row in concept.lineage.where.row_arguments}
     return [arg for arg in args if arg.address not in existence]
 
 
@@ -99,7 +113,12 @@ def widen_projection(
     *,
     input_candidates: Iterable[BuildConcept] = (),
     available_addresses: set[str] | None = None,
+    rebuild: bool = True,
 ) -> bool:
+    """Widen `node`'s projection in place; returns whether anything changed.
+
+    `rebuild=False` defers the resolve to the caller — only safe while nothing
+    resolves the node (or a descendant of it) before that rebuild lands."""
     changed = False
     in_addrs = {concept.address for concept in node.input_concepts}
     out_addrs = {concept.address for concept in node.output_concepts}
@@ -118,6 +137,6 @@ def widen_projection(
             node.output_concepts.append(concept)
             out_addrs.add(concept.address)
             changed = True
-    if changed:
+    if changed and rebuild:
         node.rebuild_cache()
     return changed
