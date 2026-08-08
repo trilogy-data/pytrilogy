@@ -66,7 +66,7 @@ from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from functools import cache
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse
@@ -1301,6 +1301,19 @@ def _report_push(
     print_success(f"{verb} job {job.name!r} ({job.id}) in org {org!r}{suffix}")
 
 
+def _is_contained_name(name: str) -> bool:
+    """Whether *name* is a directory-relative path on **every** platform.
+
+    Judged against both flavours rather than the host's, because containment
+    is a property of the bundle, not of the machine unpacking it: ``C:/x`` is
+    an escape that a POSIX ``resolve()`` would quietly turn into a directory
+    named ``C:``, and ``a\\..\\..\\x`` likewise reads as one harmless filename
+    there. A name the push side never produces is refused wherever it lands.
+    """
+    flavours = [PureWindowsPath(name), PurePosixPath(name)]
+    return not any(p.anchor or ".." in p.parts for p in flavours)
+
+
 def _resolve_bundle_entries(dest: Path, files: Any) -> list[tuple[Path, str]]:
     """``(target, content)`` for every inline file, resolved against *dest*.
 
@@ -1324,7 +1337,7 @@ def _resolve_bundle_entries(dest: Path, files: Any) -> list[tuple[Path, str]]:
         if not name:
             continue
         target = (dest / name).resolve()
-        if not target.is_relative_to(root):
+        if not _is_contained_name(name) or not target.is_relative_to(root):
             raise CloudError(
                 f"Refusing to write {name!r}: it escapes {dest}. The bundle is "
                 "corrupt or hostile; fetch it somewhere isolated and inspect it."

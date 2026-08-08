@@ -1470,6 +1470,8 @@ class TestJobFetch:
             "nested/../../escaped.preql",
             "/escaped.preql",
             "C:/escaped.preql",
+            "..\\escaped.preql",
+            "\\\\server\\share\\escaped.preql",
         ],
     )
     def test_a_name_that_escapes_the_destination_is_refused(
