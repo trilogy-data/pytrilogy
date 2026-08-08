@@ -2934,14 +2934,16 @@ class Factory:
     def _build_dispatch(self, base):
         raise NotImplementedError(f"Cannot build {type(base)}")
 
+    # int is registered separately rather than in the union below: it is not
+    # redundant with float at runtime (singledispatch needs its own int entry,
+    # bool arriving via subclass), but linters read the union as a type and flag
+    # `int | float` as redundant.
+    @_build_dispatch.register(int)
     @_build_dispatch.register
     def _(
         self,
         base: (
-            # int is NOT redundant with float here: singledispatch reads this
-            # union at runtime to register the int handler (bool via subclass)
-            int  # noqa: PYI041
-            | str
+            str
             | float
             | Decimal
             | list
