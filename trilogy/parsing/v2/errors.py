@@ -137,6 +137,16 @@ ERROR_CODES: dict[int, str] = {
         "statement takes a BARE select statement, not a parenthesized one - "
         "remove the parentheses and write `from select <cols> ...;` directly."
     ),
+    229: (
+        "An import takes a dot-separated MODULE PATH, not a file path - write "
+        "`import {path} as <alias>;`. Replace every `/` or `\\` with `.` and "
+        "drop the `.preql` extension, so the file `raw/store_sales.preql` is "
+        "imported as `raw.store_sales`. The path is relative to the project "
+        "root (where `trilogy.toml` lives), so a model in a subfolder keeps "
+        "that folder as its leading segment - do NOT drop it. The same dotted "
+        "form applies to selective imports (`from {path} import a, b;`) and to "
+        "`trilogy run --import {path}:<alias>`."
+    ),
 }
 
 
@@ -215,6 +225,46 @@ def detect_select_distinct(text: str, pos: int) -> int | None:
     if match is None:
         return None
     return match.start(1)
+
+
+# An `import`/`from` whose module path uses a file separator — the agent
+# transliterated what `file list` printed (`raw/store_sales.preql`). Anchored on
+# the keyword, so a `/` division elsewhere in the statement cannot match, and
+# `\b` after the keyword keeps `import_count / total` out.
+_IMPORT_FILE_PATH_RE = re.compile(
+    r"\b(?:import|from)\b\s+((?:\.*[A-Za-z_][\w.]*|\.{1,2})[/\\][\w./\\]*)",
+    re.IGNORECASE,
+)
+_IMPORT_PATH_RE = re.compile(r"[\w./\\]+")
+
+
+def detect_import_file_path(text: str, pos: int) -> int | None:
+    """Locate an import written as a FILE path (`import raw/store_sales as ss;`)
+    rather than a dotted module path. Both backends fail on the separator's
+    left-hand segment with an opaque `expected IMPORT_DOT` — IMPORT_DOT being
+    the *leading* relative-dot token, which reads as "add dots at the front".
+
+    Unlike most detectors the error lands BEFORE the offending character, so
+    scan the whole enclosing statement rather than a window ending at ``pos``.
+    Returns the module path's start, or None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    stmt_end = text.find(";", pos)
+    stmt_end = len(text) if stmt_end == -1 else stmt_end + 1
+    m = _IMPORT_FILE_PATH_RE.search(text, stmt_start, stmt_end)
+    return m.start(1) if m else None
+
+
+def module_path_from_file_path(text: str, pos: int) -> str:
+    """The dotted import the user meant, read off the file path at ``pos``:
+    `raw/store_sales.preql` -> `raw.store_sales`. A leading `./` is a
+    current-directory marker with no module-path equivalent, so it is dropped
+    rather than turned into a relative-import dot."""
+    m = _IMPORT_PATH_RE.match(text, pos)
+    raw = m.group(0) if m else "raw/store_sales"
+    if raw.lower().endswith(".preql"):
+        raw = raw[: -len(".preql")]
+    raw = re.sub(r"^\.[/\\]", "", raw)
+    return re.sub(r"[/\\]+", ".", raw).rstrip(".") or "raw.store_sales"
 
 
 _FROM_PAREN_RE = re.compile(r"\bfrom\s*\(", re.IGNORECASE)
@@ -811,6 +861,8 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
     elif code == 227:
         m = _IDENT_RE.match(text, pos)
         message = message.format(name=m.group(0) if m else "fn")
+    elif code == 229:
+        message = message.format(path=module_path_from_file_path(text, pos))
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
         + message

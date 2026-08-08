@@ -15,6 +15,7 @@ from trilogy.parsing.v2.errors import (
     detect_definition_after_clause,
     detect_derivation_as_connector,
     detect_group_by,
+    detect_import_file_path,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
@@ -134,6 +135,14 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     parsed_tokens = [x.value for x in e.token_history if x] if e.token_history else []
     if parsed_tokens == ["FROM"]:
         raise create_syntax_error(101, pos, text)
+
+    # 229: an import written as a file path (`import raw/store_sales as ss;`).
+    # First among the shared detectors — it is the most specific, and the raw
+    # error names IMPORT_DOT, the *leading* relative-dot token, which reads as
+    # "add dots at the front".
+    import_path_pos = detect_import_file_path(text, pos)
+    if import_path_pos is not None:
+        raise create_syntax_error(229, import_path_pos, text)
 
     # `__ANON_0` is Lark's auto-name for the inline "<-" literal — only used by
     # derivation/binding rules. If it appears in `expected`, the user is in a
