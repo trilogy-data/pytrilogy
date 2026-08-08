@@ -2509,3 +2509,46 @@ class TestDeployKeysArePinned:
         assert set(DEPLOY_KEYS) == set(
             DeploySettings(schedule="x", operation="run").__dataclass_fields__
         )
+
+
+class TestDryRunWritesNothing:
+    """`--dry-run` must not leave anything behind. Creating the branch
+    environment is a write, and it is the easiest one to do by accident —
+    resolving the target and creating it are the same call on the live path."""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        directory = tmp_path / "etl"
+        directory.mkdir(parents=True)
+        (directory / "trilogy.toml").write_text(
+            '[cloud]\noperation = "run"\n', encoding="utf-8"
+        )
+        (directory / "model.preql").write_text("key id int;", encoding="utf-8")
+        return tmp_path
+
+    def test_it_creates_no_environment(self, logged_in, run_cloud, tmp_path):
+        root = self._repo(tmp_path)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
+        result = run_cloud("sync", str(root), "--environment", "scratch", "--dry-run")
+        assert result.exit_code == 0, result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
+
+    def test_an_absent_environment_is_not_compared_against_production(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Falling back to `environment_id is None` would diff the branch's
+        projects against production's jobs and report updates it would never
+        make."""
+        root = self._repo(tmp_path)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
+        # A production job whose source_key matches what this project derives.
+        key = cloud_mod.discover_projects(root)[0].source_key
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "etl", source_key=key)],
+        )
+        result = run_cloud("sync", str(root), "--environment", "scratch", "--dry-run")
+        assert result.exit_code == 0, result.output
+        assert "would create" in result.output
+        assert "would update" not in result.output

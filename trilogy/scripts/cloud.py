@@ -1729,8 +1729,12 @@ def discover_projects(root: Path) -> list[DeployableProject]:
 
 
 def _resolve_sync_environment(
-    client: CloudClient, org: str, origin: SourceOrigin, explicit: str | None
-) -> tuple[str | None, str | None]:
+    client: CloudClient,
+    org: str,
+    origin: SourceOrigin,
+    explicit: str | None,
+    create: bool,
+) -> tuple[str | None, str | None, bool]:
     """``(environment_id, environment_name)`` for this sync.
 
     *origin* is the sync **root's**, not any one project's: the environment is
@@ -1738,13 +1742,24 @@ def _resolve_sync_environment(
     would otherwise take its branch from whichever project sorted first.
 
     ``--environment`` wins; otherwise the branch decides, and a default branch
-    (or no branch at all) means production, which has no row. The environment
-    is created on demand — the create route is idempotent, so CI calling this
-    on every push costs one extra request and needs no separate setup step.
+    (or no branch at all) means production, which has no row and always
+    "exists". The environment is created on demand — the create route is
+    idempotent, so CI calling this on every push costs one extra request and
+    needs no separate setup step.
+
+    ``create=False`` is what makes ``--dry-run`` truthful. Creating the
+    environment is a write, and a dry run that quietly left a new row behind is
+    precisely what the flag promises not to do — so the dry path *looks the
+    name up* instead, and reports an absent environment rather than making one.
     """
     label = explicit if explicit is not None else origin.environment_label()
     if not label:
-        return None, None
+        return None, None, True
+    if not create:
+        for env in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
+            if env.name == label:
+                return env.id, env.name, True
+        return None, label, False
     env = client.post_one(
         f"/orgs/{org}/environments",
         Environment,
@@ -1755,7 +1770,7 @@ def _resolve_sync_environment(
             "source_ref": origin.branch,
         },
     )
-    return env.id, env.name
+    return env.id, env.name, True
 
 
 @cloud.command("sync")
@@ -1835,25 +1850,33 @@ def cloud_sync(
     # resolves to production, which is the same answer main gives.
     # `--environment` is the manual override for a parallel namespace with no
     # branch behind it.
-    env_id, env_name = _resolve_sync_environment(
-        client, org, resolve_origin(root.resolve()), environment_flag
+    env_id, env_name, env_exists = _resolve_sync_environment(
+        client, org, resolve_origin(root.resolve()), environment_flag, create=not dry_run
     )
     target = env_name or "production"
     print_info(f"Syncing {len(projects)} project(s) to {org!r} / {target}")
 
-    existing = client.get_many(f"/orgs/{org}/jobs", Job)
-    by_key = {
-        job.source_key: job
-        for job in existing
-        if job.source_key and job.environment_id == env_id
-    }
+    # A branch environment that does not exist yet holds nothing, so nothing can
+    # match. Without this an absent environment falls back to `env_id is None`
+    # and a dry run compares against *production's* jobs — reporting "would
+    # update" for rows it would never touch.
+    if env_name is not None and not env_exists:
+        by_key: dict[str, Job] = {}
+    else:
+        by_key = {
+            job.source_key: job
+            for job in client.get_many(f"/orgs/{org}/jobs", Job)
+            if job.source_key and job.environment_id == env_id
+        }
     # Fetched once rather than per project: a sync of twenty directories should
     # not be twenty identical list calls. Going stale within the pass is fine —
     # each job owns a distinct binding, so no two projects contend for one row.
     # Only production reconciles schedules at all, so a branch sync skips the
     # call entirely.
     schedules = (
-        client.get_many(f"/orgs/{org}/schedules", ScheduleExt) if env_id is None else []
+        client.get_many(f"/orgs/{org}/schedules", ScheduleExt)
+        if env_name is None
+        else []
     )
 
     results: list[dict] = []
