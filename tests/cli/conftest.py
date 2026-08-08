@@ -273,6 +273,12 @@ class FakeCloudAPI:
     def body_for(self, method: str, path: str) -> Any:
         return self.call_for(method, path).body
 
+    def requests_for(self, method: str, path: str) -> list[Any]:
+        """Every matching call's body, oldest first — empty when there were
+        none. The plural of ``body_for``, and the only way to assert a call did
+        *not* happen (a sync that should have updated must not also create)."""
+        return [c.body for c in self.calls if c.method == method and c.path == path]
+
     def _lookup(self, method: str, path: str) -> Any:
         exact = self.routes.get((method, path), _MISSING)
         if exact is not _MISSING:

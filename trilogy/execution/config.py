@@ -251,7 +251,30 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "environments": {"home"},
     # Consumed by `trilogy cloud` (scripts/cloud.py), not by RuntimeConfig —
     # listed so the documented [cloud] section doesn't audit as unknown.
-    "cloud": {"api_url", "org"},
+    # `api_url`/`org` say which environment to talk to; the rest are the
+    # deployment settings `trilogy cloud sync` reads to declare a job, and are
+    # the fields of `scripts.cloud.DeploySettings`.
+    #
+    # Restated rather than imported: `scripts.cloud` pulls click and pydantic,
+    # and this module is on the engine's import path. `tests/cli/test_cloud.py`
+    # pins the two against each other — without that pin, adding a deployment
+    # setting there makes a valid toml audit as unknown here.
+    #
+    # There is deliberately no `name` key: a job's name is derived from its
+    # path under the sync root, so two projects cannot collide on one.
+    "cloud": {
+        "api_url",
+        "org",
+        "schedule",
+        "operation",
+        "timeout_seconds",
+        "memory_mb",
+        "cpus",
+        "secret_env",
+        "vm_class",
+        "priority",
+        "deadline_seconds",
+    },
     "agent": {
         "provider",
         "model",
