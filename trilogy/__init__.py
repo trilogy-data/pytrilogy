@@ -22,7 +22,7 @@ __all__ = [
 # and every `trilogy.<anything>` import runs this file first — so CLI commands
 # that never touch the engine (init, --version, file, cloud) pay if not lazy
 # PEP 562 defers each name to first attribute access; `from trilogy import
-# Executor` is unchanged, it just resolves on use. 
+# Executor` is unchanged, it just resolves on use.
 _LAZY_ATTRS: dict[str, str] = {
     "CONFIG": "trilogy.constants",
     "Dialects": "trilogy.dialect.enums",

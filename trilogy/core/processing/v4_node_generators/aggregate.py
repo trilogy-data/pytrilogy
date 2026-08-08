@@ -1,8 +1,9 @@
-from trilogy.core.enums import AggregateGroupingMode, Derivation
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildWhereClause,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import GroupNode, StrategyNode
@@ -56,9 +57,7 @@ def gen_aggregate(
     shortcut would otherwise drop the GROUP BY entirely, losing the
     subtotal rows the rollup adds (q14). Mirrors v3 `gen_group_node`."""
     has_non_standard_grouping = any(
-        isinstance(c.lineage, BuildAggregateWrapper)
-        and c.lineage.grouping != AggregateGroupingMode.STANDARD
-        for c in outputs
+        nonstandard_grouping_lineage(c) is not None for c in outputs
     )
     input_concepts = parent_outputs_needed(outputs, parents, conditions)
     input_addresses = {concept.address for concept in input_concepts}

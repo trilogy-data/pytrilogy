@@ -37,6 +37,16 @@ class AggregateGroupingMode(Enum):
     CUBE = "cube"
     GROUPING_SETS = "grouping_sets"
 
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        """Whether a group written in this mode NULLs its own grouping keys on
+        some of the rows it emits. ROLLUP/CUBE/GROUPING SETS add subtotal and
+        grand-total rows whose rolled-up key columns are NULL; every consumer
+        above such a group must treat those keys as unusable, because a WHERE,
+        a join axis, or a re-aggregation keyed on them silently drops the
+        subtotals."""
+        return self is not AggregateGroupingMode.STANDARD
+
 
 class ConceptSource(Enum):
     MANUAL = "manual"

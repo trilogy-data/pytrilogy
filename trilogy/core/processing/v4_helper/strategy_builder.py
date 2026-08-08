@@ -20,7 +20,6 @@ from typing import cast
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
-    AggregateGroupingMode,
     Derivation,
     FunctionType,
     Purpose,
@@ -39,6 +38,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
@@ -81,7 +81,6 @@ from .models import (
     FinalContributorContract,
     GroupAttrs,
     InputChannel,
-    nulls_grouping_keys,
 )
 from .projection import (
     concept_satisfiable,
@@ -524,9 +523,7 @@ def node_nulls_grouping_keys(node: StrategyNode) -> bool:
     came to be read by joining a ROLLUP back to a non-unique dimension column
     (q18)."""
     return any(
-        isinstance(o.lineage, BuildAggregateWrapper)
-        and nulls_grouping_keys(o.lineage.grouping)
-        for o in node.output_concepts
+        nonstandard_grouping_lineage(o) is not None for o in node.output_concepts
     )
 
 
@@ -539,13 +536,10 @@ def _nonstandard_grouping_key_addresses(
     out: set[str] = set()
     for addr in attrs[gid].primary_members:
         concept = _concept_at(environment, addr)
-        if (
-            concept is not None
-            and isinstance(concept.lineage, BuildAggregateWrapper)
-            and concept.lineage.grouping != AggregateGroupingMode.STANDARD
-        ):
-            out |= {b.address for b in concept.lineage.by}
-            for grouping_set in concept.lineage.grouping_sets:
+        lineage = nonstandard_grouping_lineage(concept) if concept else None
+        if lineage is not None:
+            out |= {b.address for b in lineage.by}
+            for grouping_set in lineage.grouping_sets:
                 out |= {b.address for b in grouping_set}
     return out
 
@@ -1232,10 +1226,7 @@ def _project_basic_aggregate_inputs(
     for concept in outputs:
         if concept.address not in primary_addrs:
             continue
-        if (
-            isinstance(concept.lineage, BuildAggregateWrapper)
-            and concept.lineage.grouping != AggregateGroupingMode.STANDARD
-        ):
+        if nonstandard_grouping_lineage(concept) is not None:
             return parents
         scalar_inputs.extend(
             aggregate_input
@@ -1310,11 +1301,7 @@ def _parents_already_at_input_grain(
     its GROUP BY clause (q80 invalid-SQL hazard)."""
     if not input_grain:
         return False
-    if any(
-        isinstance(c.lineage, BuildAggregateWrapper)
-        and c.lineage.grouping != AggregateGroupingMode.STANDARD
-        for c in outputs
-    ):
+    if any(nonstandard_grouping_lineage(c) is not None for c in outputs):
         return False
     keys = set(input_grain)
 

@@ -1,6 +1,5 @@
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    AggregateGroupingMode,
     Derivation,
     JoinType,
     Modifier,
@@ -85,7 +84,7 @@ def _renders_nonstandard_grouping(parent: StrategyNode) -> bool:
     }
     return any(
         (wrapper := get_grouped_aggregate_wrapper(c)) is not None
-        and wrapper.grouping != AggregateGroupingMode.STANDARD
+        and wrapper.grouping.nulls_grouping_keys
         and c.address not in upstream
         for c in parent.output_concepts
     )

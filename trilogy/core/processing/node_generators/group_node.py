@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from trilogy.constants import logger
-from trilogy.core.enums import AggregateGroupingMode, Derivation, FunctionType
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
     BoolExpr,
@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseBuildConceptList,
     concept_is_relevant,
+    nonstandard_grouping_lineage,
     nonstandard_grouping_spec,
     resolve_concepts_with_equivalents,
     windowed_over_grouping_pass,
@@ -64,19 +65,8 @@ def _can_use_grouped_materialized_source(concept: BuildConcept) -> bool:
 
 
 def _shared_nonstandard_grouping(a: BuildConcept, b: BuildConcept) -> bool:
-    if not isinstance(a.lineage, BuildAggregateWrapper):
-        return False
-    if not isinstance(b.lineage, BuildAggregateWrapper):
-        return False
-    if a.lineage.grouping == AggregateGroupingMode.STANDARD:
-        return False
-    if a.lineage.grouping != b.lineage.grouping:
-        return False
-    if [c.address for c in a.lineage.by] != [c.address for c in b.lineage.by]:
-        return False
-    return [[c.address for c in gs] for gs in a.lineage.grouping_sets] == [
-        [c.address for c in gs] for gs in b.lineage.grouping_sets
-    ]
+    spec = nonstandard_grouping_spec(a.lineage)
+    return spec is not None and spec == nonstandard_grouping_spec(b.lineage)
 
 
 def _is_optional_group_output(concept: BuildConcept) -> bool:
@@ -246,13 +236,8 @@ def _add_optional_aggregate_outputs(
 
 
 def _nonstandard_grouping_by_addresses(concept: BuildConcept) -> set[str]:
-    lineage = concept.lineage
-    if (
-        isinstance(lineage, BuildAggregateWrapper)
-        and lineage.grouping != AggregateGroupingMode.STANDARD
-    ):
-        return {c.address for c in lineage.by}
-    return set()
+    lineage = nonstandard_grouping_lineage(concept)
+    return {c.address for c in lineage.by} if lineage is not None else set()
 
 
 def _pseudonym_linked(concept: BuildConcept, outputs: list[BuildConcept]) -> bool:
@@ -326,12 +311,9 @@ def _resolve_grain_components(
     SQL. Pin each grain dim that matches a ``by`` member (by address or
     pseudonym) to that member's authored address; downstream consumers reach
     the other addresses through pseudonyms."""
-    lineage = concept.lineage
+    grouping_lineage = nonstandard_grouping_lineage(concept)
     by_concepts: list[BuildConcept] = (
-        list(lineage.by)
-        if isinstance(lineage, BuildAggregateWrapper)
-        and lineage.grouping != AggregateGroupingMode.STANDARD
-        else []
+        list(grouping_lineage.by) if grouping_lineage is not None else []
     )
     resolved: list[BuildConcept] = []
     for address in concept.grain.components:
@@ -653,9 +635,7 @@ def _build_group_node(
         parents=parent_resolution.parents,
         depth=depth,
         force_group=(
-            concept.is_aggregate
-            and isinstance(concept.lineage, BuildAggregateWrapper)
-            and concept.lineage.grouping != AggregateGroupingMode.STANDARD
+            concept.is_aggregate and nonstandard_grouping_lineage(concept) is not None
         ),
         preexisting_conditions=conditions.conditional if conditions else None,
         required_outputs=input_concepts,
