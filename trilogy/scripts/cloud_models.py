@@ -119,6 +119,42 @@ class SourceFingerprint(BaseModel):
         )
 
 
+class Environment(BaseModel):
+    """``models/environment.rs::Environment`` — a named parallel deployment.
+
+    The ``name`` is what reaches the executor as ``--environment``, and what
+    pytrilogy prefixes managed tables and suffixes managed files with. It is an
+    unquoted SQL identifier prefix on that side, so both ends constrain it to
+    ``^[A-Za-z_][A-Za-z0-9_]*$``; ``source_identity.environment_label`` is what
+    derives a valid one from a branch name.
+
+    A job whose ``environment_id`` is ``None`` is in the *default* environment,
+    which builds unprefixed production addresses — so "no environment" and
+    "production" are the same thing, and there is no row for it.
+    """
+
+    id: str
+    org_id: str
+    name: str
+    description: str | None = None
+    is_default: bool = False
+    #: What the environment tracks (`git` / remote / branch). Advisory.
+    source_kind: str | None = None
+    source_location: str | None = None
+    source_ref: str | None = None
+    parent_environment_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class EnvironmentExt(Environment):
+    """``routes/environments.rs::EnvironmentExt`` — plus what a prune would
+    take with it, so the CLI can say how many jobs are at stake before it
+    deletes anything."""
+
+    job_count: int = 0
+
+
 class Job(BaseModel):
     """``models/job.rs::Job``.
 
@@ -155,11 +191,25 @@ class Job(BaseModel):
     #: `"shared"` (may colocate with the tenant's other shared jobs on one VM)
     #: | `"exclusive"` | `None` (inherit down the workspace chain).
     vm_class: str | None = None
+    #: 0 realtime .. 4 background, and the wall-clock a queued run may wait.
+    #: Content, not identity: a `PUT` replaces them, so both have to be read
+    #: back off the job and resent by any update that was not told otherwise —
+    #: which is the only reason they are modelled here at all.
+    priority: int | None = None
+    deadline_seconds: int | None = None
     #: `None` on rows that predate versioning and have never been PUT.
     current_version_id: str | None = None
     #: Unset by every server that does not record push provenance; see
     #: `SourceFingerprint`.
     source_fingerprint: SourceFingerprint | None = None
+    #: Parallel deployment this job builds into; `None` = the default
+    #: (production) environment. Identity, not content — a content `PUT`
+    #: leaves it alone, exactly like `workspace_id`.
+    environment_id: str | None = None
+    #: Cross-environment identity, `{origin}#{subpath}`. This is what `sync`
+    #: matches on; the name is derived from the path and free to change.
+    #: `None` on jobs created before sync existed or by hand.
+    source_key: str | None = None
     created_at: datetime
     updated_at: datetime
 

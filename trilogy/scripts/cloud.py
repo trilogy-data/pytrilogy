@@ -37,6 +37,17 @@ of the bytes sent, plus where they came from — the git remote and commit when
 the source directory is in a repository, and an opaque local token when it is
 not. Absolute paths never leave the machine. A server that does not record the
 field ignores it, so nothing here depends on reading it back.
+
+``jobs fetch`` is the inverse: a job's config and inline files written back to
+a directory at the paths they were bundled from.
+
+``cloud sync`` is the declarative form of the same push. It walks a directory
+tree, treats every ``trilogy.toml`` whose ``[cloud]`` block declares *how the
+job runs* as one deployable project, and upserts each against its
+``source_key`` — the repository-and-subdirectory it lives in — rather than
+against its name. Which environment it deploys into comes from the branch, so
+one command in CI sends main to production and a feature branch to a namespace
+of its own; ``cloud env`` manages those namespaces.
 """
 
 from __future__ import annotations
@@ -48,12 +59,14 @@ import os
 import secrets as pysecrets
 import threading
 import webbrowser
-from collections.abc import Callable, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from functools import cache
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse
@@ -64,6 +77,8 @@ import tomllib
 from pydantic import BaseModel, ValidationError
 
 from trilogy.scripts.cloud_models import (
+    Environment,
+    EnvironmentExt,
     IssuedToken,
     Job,
     JobRun,
@@ -85,7 +100,12 @@ from trilogy.scripts.display import (
     print_warning,
 )
 from trilogy.scripts.project_config import find_trilogy_config
-from trilogy.scripts.source_identity import content_digest, resolve_origin
+from trilogy.scripts.source_identity import (
+    SourceOrigin,
+    content_digest,
+    environment_label,
+    resolve_origin,
+)
 
 DEFAULT_API_URL = "https://trilogy-cloud-api.fly.dev"
 ENV_API_URL = "TRILOGY_CLOUD_API"
@@ -149,6 +169,171 @@ def _cloud_table(directory: Path) -> dict:
 
 def _project_cloud_config(start: Path | None = None) -> dict:
     return _cloud_table((start or Path.cwd()).resolve())
+
+
+# ============================================================================
+# Declarative deployment settings — the [cloud] block of a project's toml
+# ============================================================================
+
+ALLOWED_OPERATIONS = ("run", "refresh", "plan", "state")
+ALLOWED_VM_CLASSES = ("shared", "exclusive")
+#: 0 realtime .. 4 background; mirrors the platform's `job_limits`.
+MAX_PRIORITY = 4
+
+
+def _setting_error(source: Path, key: str, detail: str) -> CloudError:
+    """Every ``[cloud]`` complaint, naming the file that holds it.
+
+    A sync deploys a directory tree, so validation happens here rather than at
+    the API: one bad value should name the toml it is written in, not fail the
+    twelfth of twenty HTTP calls with a message about a job name the author
+    never wrote.
+    """
+    return CloudError(f"{source}: [cloud].{key} {detail}")
+
+
+def _typed_setting(
+    table: Mapping[str, Any], source: Path, key: str, kind: type, label: str
+) -> Any:
+    value = table.get(key)
+    if value is None:
+        return None
+    # bool is an int subclass, and `timeout_seconds = true` is a mistake rather
+    # than 1 second.
+    if isinstance(value, bool) or not isinstance(value, kind):
+        raise _setting_error(source, key, f"must be {label}, got {value!r}")
+    return value
+
+
+def _positive_int_setting(
+    table: Mapping[str, Any], source: Path, key: str
+) -> int | None:
+    value = _typed_setting(table, source, key, int, "an integer")
+    if value is not None and value <= 0:
+        raise _setting_error(source, key, "must be positive")
+    return value
+
+
+def _choice_setting(
+    table: Mapping[str, Any], source: Path, key: str, allowed: tuple[str, ...]
+) -> str | None:
+    value = _typed_setting(table, source, key, str, "a string")
+    if value is not None and value not in allowed:
+        raise _setting_error(source, key, f"must be one of {', '.join(allowed)}")
+    return value
+
+
+def _secret_env_setting(
+    table: Mapping[str, Any], source: Path
+) -> tuple[str, ...] | None:
+    value = table.get("secret_env")
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(e, str) for e in value):
+        raise _setting_error(source, "secret_env", "must be a list of secret names")
+    return tuple(value)
+
+
+def _cpus_setting(table: Mapping[str, Any], source: Path) -> float | None:
+    value = table.get("cpus")
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _setting_error(source, "cpus", f"must be a number, got {value!r}")
+    if value <= 0:
+        raise _setting_error(source, "cpus", "must be positive")
+    return float(value)
+
+
+@dataclass(frozen=True)
+class DeploySettings:
+    """One project's declared job settings, parsed out of its ``[cloud]`` block.
+
+    Every field is optional and ``None`` means *unspecified*, which a sync
+    turns into "carry whatever the job already has" rather than into a platform
+    default — the same distinction ``jobs push`` draws for its command-line
+    flags, and for the same reason: a ``PUT`` replaces content wholesale, so an
+    omitted field would otherwise reset a job's operation or secrets on every
+    sync.
+
+    The field list is the source of truth for :data:`DEPLOY_KEYS`, which is in
+    turn what ``execution.config`` audits a ``[cloud]`` block against, so a new
+    setting is declared once here and accepted everywhere.
+    """
+
+    schedule: str | None = None
+    operation: str | None = None
+    timeout_seconds: int | None = None
+    memory_mb: int | None = None
+    cpus: float | None = None
+    secret_env: tuple[str, ...] | None = None
+    vm_class: str | None = None
+    priority: int | None = None
+    deadline_seconds: int | None = None
+
+    @classmethod
+    def from_table(cls, table: Mapping[str, Any], source: Path) -> DeploySettings:
+        """Parse and validate, naming *source* in every error."""
+        priority = _typed_setting(table, source, "priority", int, "an integer")
+        if priority is not None and not 0 <= priority <= MAX_PRIORITY:
+            raise _setting_error(
+                source, "priority", f"must be between 0 and {MAX_PRIORITY}"
+            )
+        return cls(
+            schedule=_typed_setting(table, source, "schedule", str, "a string"),
+            operation=_choice_setting(table, source, "operation", ALLOWED_OPERATIONS),
+            timeout_seconds=_positive_int_setting(table, source, "timeout_seconds"),
+            memory_mb=_positive_int_setting(table, source, "memory_mb"),
+            cpus=_cpus_setting(table, source),
+            secret_env=_secret_env_setting(table, source),
+            vm_class=_choice_setting(table, source, "vm_class", ALLOWED_VM_CLASSES),
+            priority=priority,
+            deadline_seconds=_positive_int_setting(table, source, "deadline_seconds"),
+        )
+
+    def declared_fields(self) -> dict[str, Any]:
+        """Only what the toml actually said, JSON-ready — ``None`` dropped and
+        tuples flattened, since a payload is JSON and JSON has no tuple."""
+        declared = {
+            "schedule": self.schedule,
+            "operation": self.operation,
+            "timeout_seconds": self.timeout_seconds,
+            "memory_mb": self.memory_mb,
+            "cpus": self.cpus,
+            "secret_env": None if self.secret_env is None else list(self.secret_env),
+            "vm_class": self.vm_class,
+            "priority": self.priority,
+            "deadline_seconds": self.deadline_seconds,
+        }
+        return {key: value for key, value in declared.items() if value is not None}
+
+    @property
+    def declared(self) -> bool:
+        """Whether this ``[cloud]`` block describes a *job* at all.
+
+        A repo-root toml that only points at an API (``api_url``/``org``) is
+        configuration, and `sync` must not deploy the whole repository as one
+        job because of it.
+        """
+        return bool(self.declared_fields())
+
+    def job_fields(self) -> dict[str, Any]:
+        """The declared settings as job-payload fields — ``schedule`` excluded,
+        since that binds a *schedule* to the job rather than being part of it."""
+        return {k: v for k, v in self.declared_fields().items() if k != "schedule"}
+
+
+#: Keys that describe *how a job runs*, as opposed to which environment to talk
+#: to (``api_url``/``org``). Derived from `DeploySettings` rather than written
+#: out, so the parser, the deployability test and `execution.config`'s section
+#: audit cannot disagree about what a `[cloud]` block may contain.
+#:
+#: There is deliberately no ``name``: a job's name is derived from its path
+#: under the sync root, so two projects can never collide on one by accident.
+#: Note that identity (`SourceOrigin.source_key`) is path-derived too — moving
+#: a directory deploys a *new* job and orphans the old one, which is what
+#: ``--prune`` is for.
+DEPLOY_KEYS: tuple[str, ...] = tuple(f.name for f in dataclass_fields(DeploySettings))
 
 
 def resolve_api_url(explicit: str | None) -> str:
@@ -810,9 +995,7 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
 # A PUT replaces content wholesale; without that distinction, pushing an edited
 # file to a job configured with --operation refresh and three secrets would
 # quietly reset it to a 300-second `run` with none.
-@click.option(
-    "--operation", default=None, type=click.Choice(["run", "refresh", "plan", "state"])
-)
+@click.option("--operation", default=None, type=click.Choice(list(ALLOWED_OPERATIONS)))
 @click.option("--timeout-seconds", type=int, default=None)
 @click.option("--memory-mb", type=int, default=None)
 @click.option("--cpus", type=float, default=None)
@@ -917,48 +1100,27 @@ def jobs_push(
     origin = resolve_origin(source.resolve())
     fingerprint = SourceFingerprint.build(content_digest(config_text, files), origin)
 
-    carried = _carried_settings(existing)
-    payload: dict = {
-        "name": name,
-        "config": config_text,
-        "files": files,
-        "source_fingerprint": fingerprint.model_dump(mode="json", exclude_none=True),
-        "operation": operation or carried.get("operation") or DEFAULT_OPERATION,
-    }
-    for field, value in (
-        ("description", description),
-        ("timeout_seconds", timeout_seconds),
-        ("memory_mb", memory_mb),
-        ("cpus", cpus),
-        ("secret_env", list(secret_env) or None),
-        # No flags of their own: whatever the job holds is all there is to
-        # keep, and dropping them here would clear them on every push.
-        ("parameters", None),
-        ("vm_class", None),
-    ):
-        kept = value if value is not None else carried.get(field)
-        if kept is not None:
-            payload[field] = kept
+    payload = _job_payload(
+        name=name,
+        config_text=config_text,
+        files=files,
+        fingerprint=fingerprint,
+        declared={
+            "operation": operation,
+            "description": description,
+            "timeout_seconds": timeout_seconds,
+            "memory_mb": memory_mb,
+            "cpus": cpus,
+            "secret_env": list(secret_env) or None,
+        },
+        existing=existing,
+    )
 
     encoded = check_bundle_size(payload)
     print_info(f"Bundled {len(files)} files ({len(encoded):,} bytes) from {source}")
     print_info(f"Source: {origin.describe()} (content {fingerprint.content[:12]}…)")
 
-    if existing is None:
-        job = client.post_one(f"/orgs/{org}/jobs", Job, encoded)
-        outcome = "created"
-    else:
-        # PUT replaces the job's *content* under its existing id. POSTing here
-        # would leave the original job in place with its schedules still bound
-        # to it, so the edit would never run — the failure mode this command
-        # had for as long as it only created.
-        job = client.put_one(f"/orgs/{org}/jobs/{existing.id}", Job, encoded)
-        outcome = (
-            "unchanged"
-            if job.current_version_id == existing.current_version_id
-            else "updated"
-        )
-
+    job, outcome = _upsert_job(client, org, encoded, existing)
     _report_push(org, job, outcome, fingerprint)
 
     if cron:
@@ -977,12 +1139,18 @@ def jobs_push(
 
 
 def _carried_settings(existing: Job | None) -> dict[str, Any]:
-    """The settings a push has to send back when it is updating a job.
+    """The settings a write has to send back when it is updating a job.
 
     ``PUT`` replaces a job's content wholesale — an omitted field is *cleared*,
-    not left alone — so every setting the command line was not told about has
-    to be read off the job being updated. Empty for a create, which falls
-    through to "let the platform decide" for everything but ``operation``.
+    not left alone — so every setting the caller was not told about has to be
+    read off the job being updated. Empty for a create, which falls through to
+    "let the platform decide" for everything but ``operation``.
+
+    **Every content field on `Job` belongs here.** A field the model carries
+    but this dict omits is silently reset on every write, which is the exact
+    failure the "unspecified means carry" design exists to prevent; a field
+    here that `Job` does not model cannot be carried at all, so the two lists
+    are pinned against each other in `tests/cli/test_cloud.py`.
     """
     if existing is None:
         return {}
@@ -995,7 +1163,86 @@ def _carried_settings(existing: Job | None) -> dict[str, Any]:
         "secret_env": existing.secret_env,
         "parameters": existing.parameters,
         "vm_class": existing.vm_class,
+        "priority": existing.priority,
+        "deadline_seconds": existing.deadline_seconds,
     }
+
+
+#: Content fields carried across an update, in payload order. ``operation`` is
+#: not among them: it is the one field with a platform default rather than a
+#: "leave it unset" state, so it is always sent.
+CARRIED_FIELDS = (
+    "description",
+    "timeout_seconds",
+    "memory_mb",
+    "cpus",
+    "secret_env",
+    "parameters",
+    "vm_class",
+    "priority",
+    "deadline_seconds",
+)
+
+
+def _job_payload(
+    name: str,
+    config_text: str,
+    files: list[dict],
+    fingerprint: SourceFingerprint,
+    declared: Mapping[str, Any],
+    existing: Job | None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict:
+    """The body of a job create or update.
+
+    Shared by ``jobs push`` (which declares settings on the command line) and
+    ``cloud sync`` (which declares them in a ``[cloud]`` block) so the two
+    cannot drift on which fields survive an update — a divergence that does not
+    fail, it just quietly clears whatever the shorter list forgot.
+
+    *declared* is "what the caller asked for", ``None`` meaning unspecified;
+    *extra* is for fields with no carried counterpart (``source_key``,
+    ``environment_id``) and is sent verbatim.
+    """
+    carried = _carried_settings(existing)
+    payload: dict = {
+        "name": name,
+        "config": config_text,
+        "files": files,
+        "source_fingerprint": fingerprint.model_dump(mode="json", exclude_none=True),
+        "operation": declared.get("operation")
+        or carried.get("operation")
+        or DEFAULT_OPERATION,
+        **(extra or {}),
+    }
+    for field in CARRIED_FIELDS:
+        value = declared.get(field)
+        if value is None:
+            value = carried.get(field)
+        if value is not None:
+            payload[field] = value
+    return payload
+
+
+def _upsert_job(
+    client: CloudClient, org: str, encoded: bytes, existing: Job | None
+) -> tuple[Job, str]:
+    """Create or replace a job, and say which happened.
+
+    ``PUT`` replaces the job's *content* under its existing id. POSTing over an
+    existing job would leave the original in place with its schedules still
+    bound to it, so the edit would never run — the failure mode ``jobs push``
+    had for as long as it only created.
+    """
+    if existing is None:
+        return client.post_one(f"/orgs/{org}/jobs", Job, encoded), "created"
+    job = client.put_one(f"/orgs/{org}/jobs/{existing.id}", Job, encoded)
+    outcome = (
+        "unchanged"
+        if job.current_version_id == existing.current_version_id
+        else "updated"
+    )
+    return job, outcome
 
 
 def _existing_job(
@@ -1052,6 +1299,122 @@ def _report_push(
     version = job.current_version_id
     suffix = f" as version {version[:8]}…" if version else ""
     print_success(f"{verb} job {job.name!r} ({job.id}) in org {org!r}{suffix}")
+
+
+def _is_contained_name(name: str) -> bool:
+    """Whether *name* is a directory-relative path on **every** platform.
+
+    Judged against both flavours rather than the host's, because containment
+    is a property of the bundle, not of the machine unpacking it: ``C:/x`` is
+    an escape that a POSIX ``resolve()`` would quietly turn into a directory
+    named ``C:``, and ``a\\..\\..\\x`` likewise reads as one harmless filename
+    there. A name the push side never produces is refused wherever it lands.
+    """
+    flavours = [PureWindowsPath(name), PurePosixPath(name)]
+    return not any(p.anchor or ".." in p.parts for p in flavours)
+
+
+def _resolve_bundle_entries(dest: Path, files: Any) -> list[tuple[Path, str]]:
+    """``(target, content)`` for every inline file, resolved against *dest*.
+
+    **Entry names are checked against the destination, not trusted.** They come
+    back from the platform as stored, and a name like ``../../.bashrc`` or an
+    absolute path would otherwise turn a fetch into an arbitrary file write.
+    The push side only ever produces directory-relative POSIX paths, so a name
+    that escapes is either corruption or an attack, and both deserve a refusal
+    rather than a best-effort sanitize.
+
+    Every name is resolved *before* anything is written, so a bundle carrying
+    one bad entry leaves no half-unpacked directory behind — the refusal has to
+    be something you can act on, not something you then have to clean up after.
+    """
+    root = dest.resolve()
+    resolved: list[tuple[Path, str]] = []
+    for entry in files or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "")
+        if not name:
+            continue
+        target = (dest / name).resolve()
+        if not _is_contained_name(name) or not target.is_relative_to(root):
+            raise CloudError(
+                f"Refusing to write {name!r}: it escapes {dest}. The bundle is "
+                "corrupt or hostile; fetch it somewhere isolated and inspect it."
+            )
+        resolved.append((target, str(entry.get("content") or "")))
+    return resolved
+
+
+def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path]:
+    """Write a job's config and inline files under *dest*, mirroring the layout
+    ``jobs push`` bundled them from. Returns ``(file_count, config_path)``."""
+    entries = _resolve_bundle_entries(dest, files)
+
+    dest.mkdir(parents=True, exist_ok=True)
+    config_path = dest / "trilogy.toml"
+    # A job's config is TOML text, but the column is JSON — a server that
+    # stored an object hands one back, and writing `{'engine': ...}` to a
+    # trilogy.toml would produce a file that parses as neither.
+    config_path.write_text(
+        config if isinstance(config, str) else json.dumps(config, indent=2),
+        encoding="utf-8",
+    )
+    for target, content in entries:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    return len(entries), config_path
+
+
+@jobs.command("fetch")
+@click.argument("job")
+@click.option(
+    "--dest",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Directory to write the job's project into.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Write into a non-empty directory, overwriting files of the same name.",
+)
+@click.pass_context
+def jobs_fetch(ctx: click.Context, job: str, dest: Path, force: bool) -> None:
+    """Write a cloud job's project to a local directory.
+
+    The inverse of ``jobs push``: the job's ``trilogy.toml`` and every inline
+    file land at their bundled paths, so the result is a working project you
+    can run, edit and push back. Round-trips exactly — the bundle is stored as
+    sent.
+
+    Refuses a non-empty destination unless ``--force``, because the natural
+    mistake is fetching over a checkout and silently reverting local edits to
+    whatever the cloud last received.
+    """
+    client, org = _org_client(ctx)
+    found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+
+    if dest.exists() and any(dest.iterdir()) and not force:
+        raise CloudError(
+            f"{dest} is not empty; pass --force to write into it. (Fetching over "
+            "a checkout replaces its files with the job's stored copy.)"
+        )
+
+    written, config_path = _write_bundle(dest, found.config, found.files)
+    if is_json_mode():
+        emit_event(
+            "job_fetched",
+            org=org,
+            job=found.model_dump(mode="json"),
+            dest=str(dest),
+            files=written,
+        )
+        return
+    print_success(f"Fetched {found.name!r} ({found.id}) into {dest}")
+    print_info(f"  {config_path.name} + {written} file(s)")
+    if found.source_fingerprint is not None:
+        print_info(f"  Source: {found.source_fingerprint.origin}")
 
 
 @jobs.command("run")
@@ -1241,6 +1604,642 @@ def schedules_delete(ctx: click.Context, schedule_id: str) -> None:
     client, org = _org_client(ctx)
     client.delete(f"/orgs/{org}/schedules/{schedule_id}")
     print_success(f"Deleted schedule {schedule_id}")
+
+
+#: Directory positions a sync refuses to read as a project even when they carry
+#: a declared ``[cloud]`` block: fixtures and scratch, not deployments. Narrower
+#: than `DEFAULT_EXCLUDE`, which also filters *files* out of a bundle — a
+#: directory cannot be a ``*.pyc``. A skip here is always reported; a project
+#: that vanishes from a deploy with no explanation is worse than one that
+#: deploys by mistake.
+DISCOVERY_EXCLUDE = ("*/__pycache__/*", "*/.venv/*", "*/tests/*", "*/test_*")
+
+
+@dataclass(frozen=True)
+class DeployableProject:
+    """One directory that declares itself deployable, ready to become a job."""
+
+    directory: Path
+    config_path: Path
+    settings: DeploySettings
+    #: Derived from the path relative to the sync root — never declared.
+    name: str
+    #: `{origin}#{subpath}`; the identity a sync upserts against.
+    source_key: str
+    origin: SourceOrigin
+
+
+def derive_job_name(root: Path, directory: Path) -> str:
+    """A job's name, from where it sits under the sync root.
+
+    ``duckdb/covid19_open_data/data`` -> ``duckdb-covid19_open_data-data``. The
+    whole relative path rather than the leaf, because leaves collide constantly
+    in a models repo — half of them are called ``data``.
+
+    The name is display only — ``source_key`` is what a sync matches on — but
+    both are path-derived, so a *move* is a new job either way. What identity
+    buys is stability across branches and commits, which is what groups a
+    branch's job under the mainline job it forked from.
+    """
+    relative = directory.resolve().relative_to(root.resolve())
+    parts = [p for p in relative.parts if p not in (".", "")]
+    return "-".join(parts) if parts else root.resolve().name
+
+
+def _excluded_from_discovery(root: Path, directory: Path) -> bool:
+    """Whether *directory* sits somewhere a sync never looks for a project.
+
+    Matched on the path *relative to the root*, never the absolute one: the
+    patterns describe positions inside a project ("a tests/ directory"), and
+    against an absolute path they would also match whatever the checkout
+    happens to live under — a repo cloned into ~/test_models would silently
+    deploy nothing at all.
+    """
+    relative = directory.resolve().relative_to(root.resolve()).as_posix()
+    # Leading-slash form so "*/tests/*" also catches tests/ at the root.
+    return _matches(f"/{relative}", DISCOVERY_EXCLUDE) or _matches(
+        relative, DISCOVERY_EXCLUDE
+    )
+
+
+def _reject_nested(found: Sequence[DeployableProject]) -> None:
+    """Refuse a project that contains another declared project.
+
+    The outer one's bundle would swallow the inner one's whole tree and both
+    would deploy, so the same files run twice under two names. There is no
+    reading of that which is obviously intended, and guessing which the author
+    meant is worse than saying so.
+    """
+    for outer in found:
+        for inner in found:
+            if inner is outer:
+                continue
+            if inner.directory.resolve().is_relative_to(outer.directory.resolve()):
+                raise CloudError(
+                    f"{inner.config_path} declares a deployable project inside "
+                    f"{outer.directory}, which declares one too. The outer "
+                    "bundle would contain the inner project and both would "
+                    "deploy. Remove the [cloud] deployment keys from one."
+                )
+
+
+def discover_projects(root: Path) -> list[DeployableProject]:
+    """Every deployable project under *root*, in a stable order.
+
+    Deployable means "has a trilogy.toml whose ``[cloud]`` block declares at
+    least one deployment key". A toml that only names an API and an org is
+    configuration — the repo-root one usually is — and deploying the whole
+    repository as one job because of it would be a surprising way to find that
+    out.
+    """
+    found: list[DeployableProject] = []
+    for config_path in sorted(root.rglob("trilogy.toml")):
+        directory = config_path.parent
+        try:
+            table = tomllib.loads(config_path.read_text(encoding="utf-8")).get(
+                "cloud", {}
+            )
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise CloudError(f"Could not parse {config_path}: {exc}") from exc
+        if not isinstance(table, dict):
+            continue
+        settings = DeploySettings.from_table(table, config_path)
+        if not settings.declared:
+            continue
+        if _excluded_from_discovery(root, directory):
+            print_warning(
+                f"Skipping {config_path}: it is under an excluded path "
+                f"({', '.join(DISCOVERY_EXCLUDE)}) but declares a [cloud] "
+                "deployment. Move it to deploy it."
+            )
+            continue
+        origin = resolve_origin(directory.resolve())
+        found.append(
+            DeployableProject(
+                directory=directory,
+                config_path=config_path,
+                settings=settings,
+                name=derive_job_name(root, directory),
+                source_key=origin.source_key(),
+                origin=origin,
+            )
+        )
+    _reject_nested(found)
+    return found
+
+
+def _resolve_sync_environment(
+    client: CloudClient,
+    org: str,
+    origin: SourceOrigin,
+    explicit: str | None,
+    create: bool,
+) -> tuple[str | None, str | None, bool]:
+    """``(environment_id, environment_name)`` for this sync.
+
+    *origin* is the sync **root's**, not any one project's: the environment is
+    a property of the checkout being deployed, and a root spanning a submodule
+    would otherwise take its branch from whichever project sorted first.
+
+    ``--environment`` wins; otherwise the branch decides, and a default branch
+    (or no branch at all) means production, which has no row and always
+    "exists". The environment is created on demand — the create route is
+    idempotent, so CI calling this on every push costs one extra request and
+    needs no separate setup step.
+
+    ``create=False`` is what makes ``--dry-run`` truthful. Creating the
+    environment is a write, and a dry run that quietly left a new row behind is
+    precisely what the flag promises not to do — so the dry path *looks the
+    name up* instead, and reports an absent environment rather than making one.
+    """
+    label = explicit if explicit is not None else origin.environment_label()
+    if not label:
+        return None, None, True
+    if not create:
+        for existing in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
+            if existing.name == label:
+                return existing.id, existing.name, True
+        return None, label, False
+    env = client.post_one(
+        f"/orgs/{org}/environments",
+        Environment,
+        {
+            "name": label,
+            "source_kind": origin.kind,
+            "source_location": origin.location,
+            "source_ref": origin.branch,
+        },
+    )
+    return env.id, env.name, True
+
+
+@cloud.command("sync")
+@click.argument(
+    "root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=".",
+)
+@click.option(
+    "--environment",
+    "environment_flag",
+    default=None,
+    help="Deployment environment to sync into. Default: derived from the git "
+    "branch, with a default branch (main/master) meaning production.",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Report what would change and write nothing."
+)
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Delete jobs in the target environment whose source directory is gone. "
+    "Limited to the repositories ROOT covers, so jobs synced from elsewhere "
+    "into the same org are left alone.",
+)
+@click.pass_context
+def cloud_sync(
+    ctx: click.Context,
+    root: Path,
+    environment_flag: str | None,
+    dry_run: bool,
+    prune: bool,
+) -> None:
+    """Deploy every deployable project under ROOT as a job.
+
+    A project is deployable when its ``trilogy.toml`` carries a ``[cloud]``
+    block declaring how it runs::
+
+        [cloud]
+        operation = "refresh"
+        timeout_seconds = 1800
+        schedule = "0 0 7 * * *"
+        secret_env = ["GOOGLE_HMAC_KEY", "GOOGLE_HMAC_SECRET"]
+
+    There is no ``name``: a job's name comes from its path under ROOT, and its
+    *identity* from the repository and subdirectory it lives in
+    (``source_key``). Identity is what groups a branch's job under the
+    production job it forked from — it is stable across branches and commits,
+    which a name is not.
+
+    It is **not** stable across a move. Both the name and the identity are
+    derived from the path, so relocating a directory deploys a new job and
+    leaves the old one behind with its run history; ``--prune`` is what clears
+    it out.
+
+    Which environment it syncs into comes from the current branch, so the same
+    command in CI deploys main to production and a feature branch to its own
+    namespace.
+
+    **Existing jobs are not adopted by name.** A job the platform holds with no
+    ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
+    to this command and will be duplicated rather than updated. Move or delete
+    those deliberately; a one-shot automatic migration is not worth carrying.
+    """
+    client, org = _org_client(ctx)
+    projects = discover_projects(root)
+    if not projects:
+        raise CloudError(
+            f"No deployable projects under {root}: no trilogy.toml declares a "
+            f"[cloud] block with any of {', '.join(DEPLOY_KEYS)}."
+        )
+
+    # The environment belongs to the checkout, so it is resolved from ROOT and
+    # not from any one project — a root spanning a submodule would otherwise
+    # take its branch from whichever project happened to sort first. Nothing
+    # here is git-specific: a directory with no repository has no branch, so it
+    # resolves to production, which is the same answer main gives.
+    # `--environment` is the manual override for a parallel namespace with no
+    # branch behind it.
+    env_id, env_name, env_exists = _resolve_sync_environment(
+        client,
+        org,
+        resolve_origin(root.resolve()),
+        environment_flag,
+        create=not dry_run,
+    )
+    target = env_name or "production"
+    print_info(f"Syncing {len(projects)} project(s) to {org!r} / {target}")
+
+    # A branch environment that does not exist yet holds nothing, so nothing can
+    # match. Without this an absent environment falls back to `env_id is None`
+    # and a dry run compares against *production's* jobs — reporting "would
+    # update" for rows it would never touch.
+    if env_name is not None and not env_exists:
+        by_key: dict[str, Job] = {}
+    else:
+        by_key = {
+            job.source_key: job
+            for job in client.get_many(f"/orgs/{org}/jobs", Job)
+            if job.source_key and job.environment_id == env_id
+        }
+    # Fetched once rather than per project: a sync of twenty directories should
+    # not be twenty identical list calls. Going stale within the pass is fine —
+    # each job owns a distinct binding, so no two projects contend for one row.
+    # Only production reconciles schedules at all, so a branch sync skips the
+    # call entirely.
+    schedules = (
+        client.get_many(f"/orgs/{org}/schedules", ScheduleExt)
+        if env_name is None
+        else []
+    )
+
+    results: list[dict] = []
+    for project in projects:
+        outcome = _sync_one(client, org, project, by_key, env_id, schedules, dry_run)
+        results.append(outcome)
+        print_info(f"  {outcome['outcome']:>12}  {project.name}")
+
+    pruned = _prune_stale(client, org, projects, by_key, dry_run) if prune else 0
+
+    if is_json_mode():
+        emit_event(
+            "sync",
+            org=org,
+            environment=env_name,
+            dry_run=dry_run,
+            jobs=results,
+            pruned=pruned,
+        )
+        return
+    print_success(_sync_summary(results, target, dry_run, pruned if prune else None))
+
+
+def _sync_summary(
+    results: Sequence[Mapping[str, Any]],
+    target: str,
+    dry_run: bool,
+    pruned: int | None,
+) -> str:
+    """The closing line, counting what actually happened.
+
+    A dry run reports creates and updates separately and says nothing about
+    "unchanged": it never sent a ``PUT``, so it cannot know whether one would
+    have minted a version, and rolling both into a single "changed" count while
+    reporting every project as unchanged is worse than not counting at all.
+    """
+    tally = Counter(str(r["action"] if dry_run else r["outcome"]) for r in results)
+    suffix = f", {pruned} pruned" if pruned is not None else ""
+    if dry_run:
+        return (
+            f"Would sync {len(results)} project(s) to {target}: "
+            f"{tally['create']} to create, {tally['update']} to update{suffix}"
+        )
+    return (
+        f"Synced {len(results)} project(s) to {target}: {tally['created']} created, "
+        f"{tally['updated']} updated, {tally['unchanged']} unchanged{suffix}"
+    )
+
+
+def _prune_stale(
+    client: CloudClient,
+    org: str,
+    projects: Sequence[DeployableProject],
+    by_key: Mapping[str, Job],
+    dry_run: bool,
+) -> int:
+    """Delete jobs in this environment whose source directory is gone.
+
+    **Scoped to the repositories ROOT actually covers.** A `source_key` is
+    ``{location}#{subpath}``, and an org routinely holds jobs synced from more
+    than one repository into the same environment; pruning on "not in this
+    root's project list" alone would delete every one of them, from a command
+    whose help says it removes directories that went away.
+    """
+    live = {p.source_key for p in projects}
+    locations = {p.origin.location for p in projects}
+    pruned = 0
+    for key, job in by_key.items():
+        if key in live or key.split("#", 1)[0] not in locations:
+            continue
+        if not dry_run:
+            client.delete(f"/orgs/{org}/jobs/{job.id}")
+        pruned += 1
+        print_info(f"    {'would prune' if dry_run else 'pruned':>12}  {job.name}")
+    return pruned
+
+
+def _sync_one(
+    client: CloudClient,
+    org: str,
+    project: DeployableProject,
+    by_key: Mapping[str, Job],
+    env_id: str | None,
+    schedules: Sequence[ScheduleExt],
+    dry_run: bool,
+) -> dict:
+    """Create or update one project's job. Returns a result record."""
+    files = collect_files(project.directory.resolve())
+    files = [f for f in files if f["name"] != "trilogy.toml"]
+    config_text = project.config_path.read_text(encoding="utf-8")
+    fingerprint = SourceFingerprint.build(
+        content_digest(config_text, files), project.origin
+    )
+
+    found = by_key.get(project.source_key)
+    action = "update" if found else "create"
+    payload = _job_payload(
+        name=project.name,
+        config_text=config_text,
+        files=files,
+        fingerprint=fingerprint,
+        declared=project.settings.job_fields(),
+        existing=found,
+        extra={"source_key": project.source_key, "environment_id": env_id},
+    )
+    # Measured on a dry run too: a bundle over the queue limit is exactly the
+    # kind of thing a dry run exists to find, and skipping the check here would
+    # let one pass cleanly and then fail the real sync.
+    encoded = check_bundle_size(payload)
+
+    if dry_run:
+        return {
+            "name": project.name,
+            "source_key": project.source_key,
+            "action": action,
+            "outcome": f"would {action}",
+        }
+
+    job, outcome = _upsert_job(client, org, encoded, found)
+
+    # Schedules belong to production only. A branch environment inheriting the
+    # declared cron would fire branch builds on production's cadence from the
+    # moment it was created — running, and billing, continuously for as long as
+    # the branch is open, without anyone asking for a single one of those runs.
+    # A branch job is triggered deliberately (`jobs run`, or CI). This is also
+    # what keeps the binding match unambiguous: derived names are identical
+    # across environments, so if both had schedules, `job_names == [job.name]`
+    # could not tell one environment's from another's.
+    if env_id is None:
+        _reconcile_schedule(client, org, job, project.settings.schedule, schedules)
+    elif project.settings.schedule:
+        print_info(
+            f"    {'unscheduled':>12}  {project.name} "
+            "(branch build; trigger it by hand)"
+        )
+    return {
+        "name": project.name,
+        "id": job.id,
+        "source_key": project.source_key,
+        "action": action,
+        "outcome": outcome,
+    }
+
+
+def _reconcile_schedule(
+    client: CloudClient,
+    org: str,
+    job: Job,
+    cron: str | None,
+    schedules: Sequence[ScheduleExt],
+) -> None:
+    """Bring the job's schedule in line with what its config declares.
+
+    **Matched by binding, not by name.** A schedule this sync owns is one bound
+    to this job *and to nothing else*; its own name is incidental. Matching on
+    the name `{job.name}-schedule` instead looks right and breaks as soon as
+    anything renames a job: the old schedule keeps its old name, stays bound to
+    the same job id, goes unrecognized, and a second one is created beside it.
+    The job then fires twice a day. That is the same failure `jobs push` had
+    when it created instead of updating, and it is worth not repeating.
+
+    A schedule binding *several* jobs is deliberately left alone: that is
+    someone's grouping (and a shared tick identity, which is what lets siblings
+    share one state probe), not something a per-directory config should own.
+
+    A declared cron that differs is replaced rather than edited — there is no
+    schedule update route — and an unchanged one is left untouched, so a sync
+    does not churn `next_run_at` and risk skipping a tick.
+
+    *schedules* is the org's list, fetched once by the caller.
+    """
+    mine = [s for s in schedules if s.job_names == [job.name]]
+    if cron is None:
+        for schedule in mine:
+            client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+            print_info(f"    {'unscheduled':>12}  {job.name}")
+        return
+    if any(s.cron_expr == cron for s in mine):
+        return
+    for schedule in mine:
+        client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+    client.post_one(
+        f"/orgs/{org}/schedules",
+        Schedule,
+        {"name": f"{job.name}-schedule", "cron_expr": cron, "job_ids": [job.id]},
+    )
+    print_info(f"    {'scheduled':>12}  {job.name} at {cron!r}")
+
+
+@cloud.group("env")
+def cloud_env() -> None:
+    """Manage deployment environments (parallel, branch-scoped builds).
+
+    A job in an environment builds into a namespace of its own — pytrilogy
+    prefixes its managed tables and suffixes its managed files with the
+    environment's name — so a branch can run against the cloud without building
+    over production. The default environment is the *absence* of one: jobs with
+    no environment build unprefixed production addresses, which is what every
+    job did before this existed.
+    """
+
+
+def _fmt_environment(env: EnvironmentExt) -> str:
+    marks = []
+    if env.is_default:
+        marks.append("default")
+    if env.source_ref:
+        marks.append(env.source_ref)
+    suffix = f"  ({', '.join(marks)})" if marks else ""
+    return f"{env.id}  {env.name!r}  jobs: {env.job_count}{suffix}"
+
+
+@cloud_env.command("list")
+@click.pass_context
+def env_list(ctx: click.Context) -> None:
+    """List the org's environments and how many jobs each holds."""
+    client, org = _org_client(ctx)
+    _show_rows(
+        "environments",
+        "environments",
+        client.get_many(f"/orgs/{org}/environments", EnvironmentExt),
+        f"No environments in org {org!r} (everything builds in production).",
+        _fmt_environment,
+        org=org,
+    )
+
+
+@cloud_env.command("label")
+@click.argument("branch", required=False, default=None)
+def env_label(branch: str | None) -> None:
+    """Print the environment label a branch maps to, and nothing for a default
+    branch.
+
+    Purely local — it contacts no API and needs no login, which is what makes
+    it usable in a CI step that runs before (or instead of) a deploy.
+
+    The sanitizing is lossy and digest-suffixed, so anything that needs the
+    label — a CI teardown step, a script — has to ask rather than derive it
+    again and get it subtly different. Reads the current checkout's branch when
+    none is given.
+
+    Exits 0 either way: "this is main, there is no environment" is an answer,
+    not a failure, and a teardown step should not fail the workflow over it.
+    """
+    if branch is None:
+        branch = resolve_origin(Path.cwd()).branch
+    label = environment_label(branch)
+    if label:
+        click.echo(label)
+
+
+@cloud_env.command("create")
+@click.argument("name")
+@click.option("--description", default=None)
+@click.option("--source-ref", default=None, help="Branch this tracks, for display.")
+@click.option(
+    "--source-location", default=None, help="Repository this tracks, for display."
+)
+@click.pass_context
+def env_create(
+    ctx: click.Context,
+    name: str,
+    description: str | None,
+    source_ref: str | None,
+    source_location: str | None,
+) -> None:
+    """Create an environment (idempotent — an existing one of this name is
+    returned unchanged, so CI can call it on every push)."""
+    client, org = _org_client(ctx)
+    env = client.post_one(
+        f"/orgs/{org}/environments",
+        Environment,
+        {
+            "name": name,
+            "description": description,
+            "source_kind": "git" if source_location or source_ref else None,
+            "source_location": source_location,
+            "source_ref": source_ref,
+        },
+    )
+    print_success(f"Environment {env.name!r} ({env.id}) ready in org {org!r}")
+
+
+@cloud_env.command("fork")
+@click.argument("source")
+@click.argument("name")
+@click.option("--source-ref", default=None, help="Branch the fork tracks.")
+@click.pass_context
+def env_fork(
+    ctx: click.Context, source: str, name: str, source_ref: str | None
+) -> None:
+    """Fork SOURCE's jobs into a new environment NAME.
+
+    SOURCE is an environment id, or ``default`` for production — forking "what
+    is running now" is the common case, and production has no row of its own.
+    Copies jobs only: run history belongs to the job that produced it, and an
+    inherited schedule would start firing branch builds on production's cadence
+    the moment the fork existed.
+    """
+    client, org = _org_client(ctx)
+    result = client.post(
+        f"/orgs/{org}/environments/{source}/fork",
+        {
+            "name": name,
+            "source_kind": "git" if source_ref else None,
+            "source_ref": source_ref,
+        },
+    )
+    copied = (result or {}).get("jobs_copied", 0)
+    print_success(f"Forked {source} into {name!r} ({copied} job(s) copied)")
+
+
+@cloud_env.command("delete")
+@click.argument("name")
+@click.option(
+    "--with-jobs",
+    is_flag=True,
+    help="Delete the environment's jobs, their runs and their schedules too. "
+    "Without this the jobs are left behind, pointing at production.",
+)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.pass_context
+def env_delete(ctx: click.Context, name: str, with_jobs: bool, yes: bool) -> None:
+    """Delete an environment by name — the teardown for a merged branch.
+
+    Warehouse assets the environment built are **not** touched: they are in the
+    warehouse, not the platform, and dropping them is
+    ``trilogy env delete <name> --drop-assets`` against the project itself.
+    """
+    client, org = _org_client(ctx)
+    env = _find_environment(client, org, name)
+
+    if with_jobs and not yes and env.job_count:
+        click.confirm(
+            f"Delete {env.job_count} job(s) in {env.name!r}, with their run "
+            "history and schedules?",
+            abort=True,
+        )
+
+    query = "?cascade=jobs" if with_jobs else ""
+    result = client.request("DELETE", f"/orgs/{org}/environments/{env.id}{query}") or {}
+    deleted = result.get("jobs_deleted", 0)
+    print_success(
+        f"Deleted environment {env.name!r}"
+        + (
+            f" and {deleted} job(s)"
+            if with_jobs
+            else f" ({env.job_count} job(s) left in production)"
+        )
+    )
+
+
+def _find_environment(client: CloudClient, org: str, name_or_id: str) -> EnvironmentExt:
+    envs = client.get_many(f"/orgs/{org}/environments", EnvironmentExt)
+    for env in envs:
+        if env.id == name_or_id or env.name == name_or_id:
+            return env
+    known = ", ".join(e.name for e in envs) or "none"
+    raise CloudError(f"No environment {name_or_id!r} in org {org!r}. Known: {known}.")
 
 
 @cloud.group()
