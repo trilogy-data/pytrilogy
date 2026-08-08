@@ -57,6 +57,13 @@ HEARTBEAT_INTERVAL = 30.0
 POLL_INTERVAL = 0.3
 
 
+def is_provider_crash(result: dict) -> bool:
+    """Whether an agent subprocess died after its provider retries exhausted."""
+    return result.get("exit_code", 0) != 0 and "ProviderError:" in result.get(
+        "output", ""
+    )
+
+
 def _pump_output(stream, sink: list[str], echo: bool) -> None:
     """Drain the subprocess output stream into ``sink``, optionally echoing it
     to the console as it arrives."""

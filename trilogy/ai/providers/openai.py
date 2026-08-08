@@ -92,6 +92,7 @@ class OpenAIProvider(LLMProvider):
         model: str,
         api_key: str | None = None,
         retry_options: RetryOptions | None = None,
+        request_timeout: float = 30.0,
     ):
         api_key = api_key or environ.get("OPENAI_API_KEY")
         if not api_key:
@@ -104,6 +105,7 @@ class OpenAIProvider(LLMProvider):
         self.models: list[str] = []
         self.type = Provider.OPENAI
         self.use_responses_api = True
+        self.request_timeout = request_timeout
 
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
@@ -159,7 +161,7 @@ class OpenAIProvider(LLMProvider):
         try:
 
             def make_request() -> dict[str, Any]:
-                with httpx.Client(timeout=30) as client:
+                with httpx.Client(timeout=self.request_timeout) as client:
                     response = client.post(
                         url=self.base_completion_url,
                         headers={

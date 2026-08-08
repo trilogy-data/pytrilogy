@@ -511,6 +511,25 @@ def _feeder_conditions_implied(
     return all(atom in sibling for atom in feeder)
 
 
+def node_nulls_grouping_keys(node: StrategyNode) -> bool:
+    """Whether this node emits ROLLUP/CUBE/GROUPING SETS rows — subtotal rows
+    whose rolled-up key columns are NULL.
+
+    The node-level companion to `nulls_grouping_keys`, and a two-sided
+    contract: such a node is passed through the FINAL *without* a dedup
+    (`_group_to_grain_if_required` — a dedup would re-aggregate the subtotals
+    away), and therefore nothing may join back to it on a key that is not
+    unique, because no later dedup will absorb the duplicates. Both halves must
+    ask this one question or they drift apart, which is exactly how a rename
+    came to be read by joining a ROLLUP back to a non-unique dimension column
+    (q18)."""
+    return any(
+        isinstance(o.lineage, BuildAggregateWrapper)
+        and nulls_grouping_keys(o.lineage.grouping)
+        for o in node.output_concepts
+    )
+
+
 def _nonstandard_grouping_key_addresses(
     environment: BuildEnvironment, attrs: dict[str, GroupAttrs], gid: str
 ) -> set[str]:
@@ -2271,12 +2290,7 @@ def _promote_final_aliases_to_grouping_contributors(
     environment: BuildEnvironment,
 ) -> None:
     def has_grouping_output(gid: str) -> bool:
-        return any(
-            concept.derivation == Derivation.AGGREGATE
-            and isinstance(concept.lineage, BuildAggregateWrapper)
-            and nulls_grouping_keys(concept.lineage.grouping)
-            for concept in built[gid].output_concepts
-        )
+        return node_nulls_grouping_keys(built[gid])
 
     for concept in mandatory_list:
         current_gid = next(
@@ -2340,7 +2354,20 @@ def _promote_final_aliases_to_grouping_contributors(
         ):
             continue
         for gid in list(per_group):
-            if gid == src_gid or attrs[gid].derivation not in GROUPING_DERIVATIONS:
+            if gid == src_gid:
+                continue
+            # `attrs[gid].derivation` is the GROUP's classification, and a
+            # ROLLUP that also carries its own renamed dimensions classifies
+            # BASIC — so the derivation test alone misses it and the FINAL
+            # joins the rename host back onto the rollup. That join is not
+            # merely redundant: the FINAL will not dedup a grouping-set node
+            # (see `node_nulls_grouping_keys`), and the join is on a dimension
+            # column that is non-unique in its own table (tpc-ds `i_item_id`
+            # is an SCD business key), so every rollup row multiplies. Ask
+            # what the node EMITS, which is the same question the dedup asks.
+            if attrs[gid].derivation not in GROUPING_DERIVATIONS and not (
+                has_grouping_output(gid)
+            ):
                 continue
             available = {output.address for output in built[gid].output_concepts}
             if not all(concept_satisfiable(c, available) for c in members):
@@ -2720,12 +2747,9 @@ def _group_to_grain_if_required(
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
     # to the requested grain re-aggregates them away (and a grouping()-derived
     # dim can't be re-grouped outside its grouping set). Flat passthrough,
-    # mirroring v3.
-    if any(
-        isinstance(o.lineage, BuildAggregateWrapper)
-        and o.lineage.grouping != AggregateGroupingMode.STANDARD
-        for o in node.output_concepts
-    ):
+    # mirroring v3. Skipping the dedup here is what obliges the FINAL not to
+    # join such a node on a non-unique key — same predicate, both sides.
+    if node_nulls_grouping_keys(node):
         return node
     if (
         check_if_group_required(

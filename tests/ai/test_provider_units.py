@@ -534,11 +534,11 @@ def test_deepseek_posts_to_deepseek_url(monkeypatch):
         "choices": [{"message": {"content": "ok", "tool_calls": []}}],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     }
-    monkeypatch.setattr(
-        httpx,
-        "Client",
-        lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
-    )
+    def client(timeout: float) -> _FakeClient:
+        sink["timeout"] = timeout
+        return _FakeClient(response_payload=response_payload, sink=sink)
+
+    monkeypatch.setattr(httpx, "Client", client)
     provider = DeepSeekProvider(name="ds", model="deepseek-v4-flash")
     provider.generate_completion(
         LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
@@ -546,6 +546,7 @@ def test_deepseek_posts_to_deepseek_url(monkeypatch):
     assert sink["url"] == "https://api.deepseek.com/v1/chat/completions"
     assert sink["headers"]["Authorization"] == "Bearer sk-deepseek-test"
     assert sink["json"]["model"] == "deepseek-v4-flash"
+    assert sink["timeout"] == 45.0
 
 
 def test_deepseek_errors_name_deepseek(monkeypatch):

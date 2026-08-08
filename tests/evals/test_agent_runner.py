@@ -6,6 +6,18 @@ from unittest.mock import Mock
 from evals.common import agent_runner
 
 
+def test_is_provider_crash_requires_nonzero_exit_and_provider_traceback():
+    assert agent_runner.is_provider_crash(
+        {"exit_code": 1, "output": "ProviderError: DeepSeek API error"}
+    )
+    assert not agent_runner.is_provider_crash(
+        {"exit_code": 0, "output": "ProviderError: recovered"}
+    )
+    assert not agent_runner.is_provider_crash(
+        {"exit_code": 1, "output": "ValueError: bad query"}
+    )
+
+
 def test_kill_process_tree_uses_taskkill_on_windows(monkeypatch):
     proc = Mock(spec=subprocess.Popen)
     proc.pid = 123
