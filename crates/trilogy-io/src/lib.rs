@@ -101,7 +101,9 @@ where
     pub fn resolve(self, invocation: &Invocation) -> Result<BatchReader> {
         let pushdown = effective_pushdown(&self.pushdown, &invocation.request);
         let handed = invocation.request.withheld(&pushdown);
+        let declared = self.schema.clone();
         let reader = (self.function)(&handed).into_batch_reader(self.schema)?;
+        let reader = adapters::conform_reader(reader, declared)?;
         let reader = transform::apply(reader, &invocation.request, &pushdown)?;
         Ok(stamp(reader, &pushdown, self.watermark.as_deref()))
     }
