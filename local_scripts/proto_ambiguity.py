@@ -320,7 +320,7 @@ MODELS: dict[str, tuple[Path | None, str]] = {
     ),
     "tpc_ds_multi": (
         REPO / "tests/modeling/tpc_ds_duckdb",
-        "import store_sales as store_sales;\n"
+        "import store_sales as store_sales;\n"  # noqa: ISC004
         "import catalog_sales as catalog_sales;\n"
         "import inventory as inventory;\n"
         "import item as item;\n"

@@ -48,8 +48,8 @@ def _graph_for(benv: BuildEnvironment) -> tuple[KeyGraph, dict[str, list[str]]]:
     for address, rep in kg.rep.items():
         if address in benv.concepts:
             members.setdefault(rep, []).append(address)
-    for rep in members:
-        members[rep].sort()
+    for addresses in members.values():
+        addresses.sort()
     _cache[id(benv)] = (benv, kg, members)
     return kg, members
 

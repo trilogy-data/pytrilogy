@@ -69,9 +69,9 @@ def main() -> None:
         seen_networks: list[ns.SourceNetwork] = []
         real_search = ns.search_sources
 
-        def search(network, _seen=seen_networks):
+        def search(network, _seen=seen_networks, _real=real_search):
             _seen.append(network)
-            return real_search(network)
+            return _real(network)
 
         import trilogy.core.processing.v4_helper.source_planning as sp
 
