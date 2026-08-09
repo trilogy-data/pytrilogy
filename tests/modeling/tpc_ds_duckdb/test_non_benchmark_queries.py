@@ -1087,8 +1087,6 @@ def test_join_hoist_inlined_dim_group_key_no_dangling_source(engine):
     query = """
 import item as item;
 import store_sales as ss;
-from trilogy.core.processing.nodes import History
-from trilogy.core.env_processor import generate_graph
 
 merge item.sk into ~ss.item.sk;
 

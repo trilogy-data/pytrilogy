@@ -1,0 +1,35 @@
+query_id = "03"
+gen_length = 1099
+preql_size = 298
+comp_size = 467
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"lineitem\".\"l_orderkey\" as \"order_id\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"q_revenue\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"lineitem\".\"l_orderkey\" = \"order_orders\".\"o_orderkey\"
+    INNER JOIN \"memory\".\"customer\" as \"order_customer_customers\" on \"order_orders\".\"o_custkey\" = \"order_customer_customers\".\"c_custkey\"
+WHERE
+    \"order_customer_customers\".\"c_mktsegment\" = 'BUILDING' and \"lineitem\".\"l_shipdate\" > date '1995-03-15' and \"order_orders\".\"o_orderdate\" < date '1995-03-15'
+
+GROUP BY
+    1)
+SELECT
+    \"cheerful\".\"order_id\" as \"order_id\",
+    \"cheerful\".\"q_revenue\" as \"q_revenue\",
+    \"order_orders\".\"o_orderdate\" as \"order_date\",
+    \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"cheerful\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+WHERE
+    \"order_orders\".\"o_orderdate\" < date '1995-03-15'
+
+ORDER BY 
+    \"cheerful\".\"q_revenue\" desc,
+    \"order_orders\".\"o_orderdate\" asc
+LIMIT (10)"""

@@ -1,0 +1,57 @@
+query_id = "65"
+gen_length = 2003
+preql_size = 650
+comp_size = 1062
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_sk\",
+    \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_sk\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"item_revenue\",
+    sum(\"store_sales_store_sales\".\"SS_SALES_PRICE\") as \"revenue\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"store_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1176 AND 1187 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null
+
+GROUP BY
+    1,
+    2),
+questionable as (
+SELECT
+    \"cheerful\".\"store_sales_store_sk\" as \"store_sales_store_sk\",
+    avg(\"cheerful\".\"item_revenue\") as \"store_avg_revenue\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1)
+SELECT
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    \"cheerful\".\"revenue\" as \"revenue\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    \"store_sales_item_items\".\"I_WHOLESALE_COST\" as \"store_sales_item_wholesale_cost\",
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cheerful\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"questionable\" on \"cheerful\".\"store_sales_store_sk\" = \"questionable\".\"store_sales_store_sk\"
+    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cheerful\".\"store_sales_store_sk\" = \"store_sales_store_store\".\"S_STORE_SK\"
+WHERE
+    \"cheerful\".\"revenue\" <= 0.1 * \"questionable\".\"store_avg_revenue\"
+
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    \"questionable\".\"store_avg_revenue\"
+ORDER BY 
+    \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
+    \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first
+LIMIT (100)"""

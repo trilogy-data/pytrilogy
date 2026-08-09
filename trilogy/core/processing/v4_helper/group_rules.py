@@ -775,6 +775,7 @@ def _partition_by_signature_and_grain(
     ensure_assigned: EnsureAssignedFn,
     extra_signature: Callable[[str], frozenset[str]] | None = None,
     allow_signature_subset: bool = False,
+    signature_exempt: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Generic signature+grain bucketing. Used for derivations whose
     upstream identity should split buckets even when row-shape (depth /
@@ -785,7 +786,10 @@ def _partition_by_signature_and_grain(
     are equal AND one's grain is a subset of the other's. The grain-
     subset union preserves the historical "widen to the superset" merge
     so a chain of derivations at progressively finer grains still
-    co-sources when they share an upstream."""
+    co-sources when they share an upstream.
+
+    ``signature_exempt`` nodes waive only the signature test (the grain
+    test still applies): see `partition_filters_by_signature`."""
     if not items:
         return []
     buckets: list[GroupBucket] = []
@@ -825,7 +829,10 @@ def _partition_by_signature_and_grain(
 
         for i in range(n):
             for j in range(i + 1, n):
-                signatures_match = sigs[i] == sigs[j]
+                signatures_match = sigs[i] == sigs[j] or (
+                    sub_items[i][0] in signature_exempt
+                    and sub_items[j][0] in signature_exempt
+                )
                 signatures_nest = (
                     allow_signature_subset
                     and _can_merge_nested_signatures(sigs[i], sigs[j])
@@ -859,7 +866,9 @@ def _partition_by_signature_and_grain(
             group_depth = (
                 DepthLabel.D1 if DepthLabel.D1 in depths else next(iter(depths))
             )
-            shared_sig = sigs[member_indices[0]]
+            shared_sig: frozenset[str] = frozenset().union(
+                *(sigs[i] for i in member_indices)
+            )
             # Stable signature representation: hash the sorted stop-set so
             # two component-equal sigs produce the same discriminator and
             # two disjoint sigs produce different ones. Group ids include
@@ -919,7 +928,17 @@ def partition_filters_by_signature(
     disjoint upstreams (e.g. q08's `_virt_filter_zips` over a basic
     chain vs. `_virt_filter_id` over customer roots) should not be
     co-sourced; their disjoint parent groups would form a back-edge
-    through any shared downstream consumer."""
+    through any shared downstream consumer.
+
+    That back-edge risk needs a downstream consumer to route through.
+    A FILTER that is a projected output AND a lineage sink has none —
+    its only consumer is the FINAL merge, which is a sink — so such
+    filters recombine into one row anyway and are exempted from the
+    signature split (they still must be grain-comparable). Mirrors
+    `partition_roots`' output-convergence co-sourcing. Without it, a
+    membership subselect requesting several cross-grain `_virt_filter`
+    concepts (HAVING-derived existence feeders) sources one CTE per
+    concept plus a merge, instead of one feeder CTE."""
 
     def existence_signature(node: str) -> frozenset[str]:
         return frozenset(
@@ -946,6 +965,13 @@ def partition_filters_by_signature(
         else:
             shared_items.append((node, data))
 
+    output_sinks = frozenset(
+        node
+        for node, _ in shared_items
+        if concept_attrs[node].address in output_addresses
+        and not any(True for _ in concept_graph.successors(node))
+    )
+
     buckets = _partition_by_signature_and_grain(
         shared_items,
         Derivation.FILTER,
@@ -955,6 +981,7 @@ def partition_filters_by_signature(
         primary_group,
         ensure_assigned,
         extra_signature=existence_signature,
+        signature_exempt=output_sinks,
     )
     for node, data in solo_items:
         solo = _bucket_for(

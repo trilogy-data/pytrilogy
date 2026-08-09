@@ -1,0 +1,34 @@
+query_id = "17"
+gen_length = 966
+preql_size = 448
+comp_size = 328
+generated_sql = """
+
+WITH 
+wakeful as (
+SELECT
+    \"lineitem\".\"l_extendedprice\" as \"relevant_lines_extended_price\",
+    \"lineitem\".\"l_quantity\" as \"relevant_lines_quantity\",
+    \"part_part\".\"p_partkey\" as \"relevant_lines_part_id\"
+FROM
+    \"memory\".\"part\" as \"part_part\"
+    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+WHERE
+    \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" = 'MED BOX' and \"lineitem\".\"l_orderkey\" is not null
+),
+cooperative as (
+SELECT
+    \"wakeful\".\"relevant_lines_part_id\" as \"relevant_lines_part_id\",
+    avg(\"wakeful\".\"relevant_lines_quantity\") as \"avg_qty_per_part\"
+FROM
+    \"wakeful\"
+GROUP BY
+    1)
+SELECT
+    sum(\"wakeful\".\"relevant_lines_extended_price\") / 7.0 as \"avg_yearly\"
+FROM
+    \"wakeful\"
+    INNER JOIN \"cooperative\" on \"wakeful\".\"relevant_lines_part_id\" = \"cooperative\".\"relevant_lines_part_id\"
+WHERE
+    \"wakeful\".\"relevant_lines_quantity\" < 0.2 * \"cooperative\".\"avg_qty_per_part\"
+"""

@@ -45,7 +45,11 @@ from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
     condition_implies,
 )
-from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
+from trilogy.core.processing.discovery_utility import (
+    LOGGER_PREFIX,
+    depth_to_prefix,
+    raise_if_filter_disconnected,
+)
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
@@ -83,7 +87,14 @@ def append_existence_check(
     the node's inputs/existence concepts is skipped.
 
     Used for HAVING-derived membership, which is planned after the output tree
-    (a WHERE membership gets its existence edges inside the concept graph)."""
+    (a WHERE membership gets its existence edges inside the concept graph).
+
+    Each subselect is gated for connectivity first. It is an independent
+    resolution scope, so its concepts (with any FILTER's hidden condition
+    concepts surfaced) must be connected on their own — otherwise the feeder
+    plans as a cross join and the membership silently filters nothing. The gate
+    has to run up front: the planner will happily assemble such a cross join
+    rather than fail, so there is no unresolvable result to diagnose after."""
     if not where.existence_arguments:
         return
     already_sourced = {c.address for c in node.input_concepts} | {
@@ -100,6 +111,7 @@ def append_existence_check(
         logger.info(
             f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
         )
+        raise_if_filter_disconnected(list(subselect), environment, graph)
         # A HAVING-derived membership subselect (`conditions` set) is this
         # query's own post-aggregation semijoin: the query WHERE must be
         # pushed pre-aggregate into its aggregate inputs, exactly as it is on

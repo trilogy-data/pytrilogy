@@ -1,0 +1,121 @@
+query_id = "51"
+gen_length = 3907
+preql_size = 1397
+comp_size = 1999
+generated_sql = """
+
+WITH 
+cheerful as (
+SELECT
+     'STORE'  as \"sales_channel\",
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
+    \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\"
+FROM
+    \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+WHERE
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" is not null
+
+UNION ALL
+SELECT
+     'WEB'  as \"sales_channel\",
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
+    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
+    \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\"
+FROM
+    \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+WHERE
+    \"sales_web_sales_unified\".\"WS_ITEM_SK\" is not null
+),
+cooperative as (
+SELECT
+    \"cheerful\".\"sales_channel\" as \"sales_channel\",
+    \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"cheerful\".\"sales_sales_price\" as \"sales_sales_price\",
+    cast(\"sales_sale_date_date\".\"D_DATE\" as date) as \"sales_sale_date_date\"
+FROM
+    \"cheerful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+WHERE
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and (\"cheerful\".\"sales_channel\" is not null and \"cheerful\".\"sales_channel\" in ('WEB','STORE'))
+),
+uneven as (
+SELECT
+    \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"cooperative\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
+    sum(CASE WHEN \"cooperative\".\"sales_channel\" = 'STORE' THEN \"cooperative\".\"sales_sales_price\" ELSE NULL END) as \"store_daily\",
+    sum(CASE WHEN \"cooperative\".\"sales_channel\" = 'WEB' THEN \"cooperative\".\"sales_sales_price\" ELSE NULL END) as \"web_daily\"
+FROM
+    \"cooperative\"
+GROUP BY
+    1,
+    2),
+yummy as (
+SELECT
+    \"uneven\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"uneven\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
+    sum(\"uneven\".\"store_daily\") over (partition by \"uneven\".\"sales_item_sk\" order by \"uneven\".\"sales_sale_date_date\" asc ) as \"store_cume\",
+    sum(\"uneven\".\"web_daily\") over (partition by \"uneven\".\"sales_item_sk\" order by \"uneven\".\"sales_sale_date_date\" asc ) as \"web_cume\"
+FROM
+    \"uneven\"),
+questionable as (
+SELECT
+    \"cooperative\".\"sales_channel\" as \"sales_channel\",
+    \"cooperative\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"cooperative\".\"sales_sale_date_date\" as \"sales_sale_date_date\"
+FROM
+    \"cooperative\"
+GROUP BY
+    1,
+    2,
+    3),
+abundant as (
+SELECT
+    \"questionable\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"questionable\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
+    max(CASE
+	WHEN \"questionable\".\"sales_channel\" = 'STORE' THEN 1
+	ELSE 0
+	END) as \"store_has_row\",
+    max(CASE
+	WHEN \"questionable\".\"sales_channel\" = 'WEB' THEN 1
+	ELSE 0
+	END) as \"web_has_row\"
+FROM
+    \"questionable\"
+GROUP BY
+    1,
+    2),
+juicy as (
+SELECT
+    \"abundant\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"abundant\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
+    \"abundant\".\"store_has_row\" as \"store_has_row\",
+    \"abundant\".\"web_has_row\" as \"web_has_row\",
+    \"yummy\".\"store_cume\" as \"store_cume\",
+    \"yummy\".\"web_cume\" as \"web_cume\"
+FROM
+    \"yummy\"
+    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"yummy\".\"sales_sale_date_date\" is not distinct from \"abundant\".\"sales_sale_date_date\")
+SELECT
+    \"juicy\".\"sales_item_sk\" as \"item_sk\",
+    \"juicy\".\"sales_sale_date_date\" as \"d_date\",
+    CASE
+	WHEN \"juicy\".\"web_has_row\" = 1 THEN \"juicy\".\"web_cume\"
+	ELSE null
+	END as \"web_sales\",
+    CASE
+	WHEN \"juicy\".\"store_has_row\" = 1 THEN \"juicy\".\"store_cume\"
+	ELSE null
+	END as \"store_sales\",
+    \"juicy\".\"web_cume\" as \"web_cumulative\",
+    \"juicy\".\"store_cume\" as \"store_cumulative\"
+FROM
+    \"juicy\"
+WHERE
+    \"juicy\".\"web_cume\" > \"juicy\".\"store_cume\"
+
+ORDER BY 
+    \"item_sk\" asc nulls first,
+    \"d_date\" asc nulls first
+LIMIT (100)"""
