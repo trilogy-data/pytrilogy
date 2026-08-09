@@ -12,17 +12,18 @@ import shutil
 from hashlib import blake2s
 from pathlib import Path
 
+from trilogy.scripts.project_config import MODEL_ROOT_DIR
+
 from .spec import BenchmarkSpec
 
 _SINGLE_QUERY_TEMPLATE = """\
 Trilogy project in this directory. `trilogy.toml` configures an already-loaded
-DuckDB database, and `raw/` is already populated with ingested Trilogy model
-files — do NOT re-run `trilogy ingest`
-and do NOT edit files in `raw/`.
+DuckDB database, and `{model_dir}/` is already populated with Trilogy model
+files — do NOT re-run `trilogy ingest` and do NOT edit files in `{model_dir}/`.
 
 Answer the ONE business question below by writing a Trilogy query file to
 `{filename}` in the working directory (alongside `trilogy.toml`, NOT inside
-`raw/`). Validate with `trilogy run {filename}{validate_params}`.
+`{model_dir}/`). Validate with `trilogy run {filename}{validate_params}`.
 
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
@@ -136,6 +137,16 @@ def stage_candidate_for_scoring(
         shutil.copy2(source, destination)
         if remove_source:
             source.unlink()
+    for sidecar_ext in spec.candidate_sidecar_extensions:
+        sidecar = source.with_suffix(sidecar_ext)
+        if not sidecar.exists():
+            continue
+        # The query body names the opaque agent-facing sidecar, so retain that
+        # basename when moving it out of the worker workspace.
+        sidecar_destination = scoring_workspace / sidecar.name
+        shutil.copy2(sidecar, sidecar_destination)
+        if remove_source:
+            sidecar.unlink()
     return destination
 
 
@@ -180,7 +191,17 @@ def _render_params_block(params: dict) -> tuple[str, str]:
     return "\n".join(lines), suffix
 
 
-def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
+def build_single_query_task(
+    spec: BenchmarkSpec, entry: dict, model_dir: str = MODEL_ROOT_DIR
+) -> str:
+    if spec.task_template is not None:
+        filename = candidate_filename(spec, entry["id"], ".preql")
+        return spec.task_template.format(
+            opaque_id=opaque_query_id(spec, entry["id"]),
+            filename=filename,
+            script_filename=Path(filename).with_suffix(".py").name,
+            prompt=entry["prompt"],
+        )
     template = _SINGLE_QUERY_TEMPLATE
     params_block, validate_params = _render_params_block(entry.get("params") or {})
     return template.format(
@@ -189,6 +210,7 @@ def build_single_query_task(spec: BenchmarkSpec, entry: dict) -> str:
         prompt=entry["prompt"],
         params_block=params_block,
         validate_params=validate_params,
+        model_dir=model_dir,
     )
 
 

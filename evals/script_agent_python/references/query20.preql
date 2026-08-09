@@ -1,0 +1,17 @@
+key id int;
+property id.title string;
+property id.body_word_count int;
+
+datasource generated_data(
+    id: id,
+    title: title,
+    body_word_count: body_word_count
+)
+grain (id)
+file `./query20.py`;
+
+select
+    id,
+    title,
+    body_word_count;
+

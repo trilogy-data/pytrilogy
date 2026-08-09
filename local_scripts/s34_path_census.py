@@ -116,7 +116,7 @@ def main(argv: list[str]) -> int:
         executor = Dialects.DUCK_DB.default_executor(environment=env)
         try:
             executor.generate_sql(path.read_text())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             STATS["query_error"] += 1
             print(f"  ERROR {path.name}: {type(exc).__name__}: {str(exc)[:120]}")
     total = sum(v for k, v in STATS.items() if k != "query_error")

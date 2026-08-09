@@ -1,0 +1,23 @@
+[package]
+name = "trilogy-io"
+# Synced from the python __init__ by the same release flow as trilogy-parser;
+# a published crate version always corresponds to a real pytrilogy release.
+version = "0.3.316"
+edition = "2021"
+description = "Write a program that is a Trilogy data source: Arrow out, contract flags in."
+license = "MIT"
+repository = "https://github.com/trilogy-data/pytrilogy"
+keywords = ["trilogy", "arrow", "datasource", "etl"]
+categories = ["database", "command-line-interface"]
+readme = "README.md"
+
+[dependencies]
+arrow = { version = "59", features = ["ipc", "csv", "json", "ffi"] }
+parquet = { version = "59", features = ["arrow"] }
+clap = { version = "4.4", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.0"

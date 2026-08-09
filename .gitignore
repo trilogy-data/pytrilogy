@@ -35,6 +35,13 @@ AdventureWorksDW2019.bak
 memory.db
 tests/scripts/test.db
 evals/eval_history.db
+
+# Script-agent eval artifacts (harnesses, prompts, and references stay tracked).
+evals/script_agent_*/.cache/
+evals/script_agent_*/results/
+evals/script_agent_*/charts/
+evals/script_agent_*/eval_history.db
+evals/script_agent_*/*.log
 # rendered report artifacts (source .md/.preql/.toml are tracked)
 evals/report_model/report.html
 evals/report_model/report.png
@@ -58,7 +65,9 @@ debug*.log
 
 .env.secrets
 
+# rust build output (one entry per crate; see .scripts/sync_version.py)
 trilogy/scripts/dependency/target
+crates/trilogy-io/target
 
 dependency_graph.png
 

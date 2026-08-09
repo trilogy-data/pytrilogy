@@ -363,18 +363,23 @@ jobs:
         skip-existing: true
 
   crates-io:
-    # Publishes the Rust parser crate (trilogy/scripts/dependency) to
-    # crates.io on the same version stream as PyPI, for non-Python consumers.
+    # Publishes the Rust crates to crates.io on the same version stream as
+    # PyPI, for non-Python consumers:
+    #   trilogy-parser (trilogy/scripts/dependency) — parser + dependency resolver
+    #   trilogy-io     (crates/trilogy-io)          — write a source in Rust
     # Deliberately NOT gated on should_publish: that flag is driven by *wheel*
-    # gaps, and the crate must be able to catch up on a version whose wheels
+    # gaps, and a crate must be able to catch up on a version whose wheels
     # already all exist. Instead this job does its own two checks — the exact
     # version must exist on PyPI (a crate version always corresponds to a real
     # pytrilogy release) and must not already be on crates.io (publishes are
     # immutable, so this also makes reruns no-ops).
     #
+    # The matrix is fail-fast: false so one crate stalling (e.g. awaiting its
+    # trusted-publisher bootstrap) does not block the other.
+    #
     # Bootstrap note: crates.io Trusted Publishing can only be configured on
-    # an existing crate, so the very first publish is manual (cargo login +
-    # cargo publish from trilogy/scripts/dependency). After that, add this
+    # an existing crate, so the very first publish of each is manual (cargo
+    # login + cargo publish from its manifest directory). After that, add this
     # repo (workflow pythonpublish.yml, environment release) as the crate's
     # trusted publisher and this job takes over.
     needs: [version-check, publish]
@@ -382,9 +387,19 @@ jobs:
       !cancelled() && needs.version-check.result == 'success' &&
       (needs.publish.result == 'success' || needs.publish.result == 'skipped')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: trilogy-parser
+            manifest: trilogy/scripts/dependency/Cargo.toml
+            index: tr/il/trilogy-parser
+          - crate: trilogy-io
+            manifest: crates/trilogy-io/Cargo.toml
+            index: tr/il/trilogy-io
     environment:
       name: release
-      url: https://crates.io/crates/trilogy-parser
+      url: https://crates.io/crates/${{ matrix.crate }}
     permissions:
       id-token: write
     steps:
@@ -412,13 +427,13 @@ jobs:
           exit 0
         fi
         # Sparse-index path for a 4+ char crate name is {first2}/{next2}/{name}.
-        INDEX=$(curl -s -w "\n%{http_code}" "https://index.crates.io/tr/il/trilogy-parser")
+        INDEX=$(curl -s -w "\n%{http_code}" "https://index.crates.io/${{ matrix.index }}")
         CODE=$(echo "$INDEX" | tail -n1)
         if [ "$CODE" = "404" ]; then
-          echo "Crate not yet on crates.io; will publish ${VERSION} (requires bootstrap, see job comment)"
+          echo "${{ matrix.crate }} not yet on crates.io; will publish ${VERSION} (requires bootstrap, see job comment)"
           echo "publish=true" >> $GITHUB_OUTPUT
         elif echo "$INDEX" | grep -q "\"vers\":\"${VERSION}\""; then
-          echo "trilogy-parser ${VERSION} already on crates.io; nothing to do"
+          echo "${{ matrix.crate }} ${VERSION} already on crates.io; nothing to do"
           echo "publish=false" >> $GITHUB_OUTPUT
         else
           echo "publish=true" >> $GITHUB_OUTPUT
@@ -432,7 +447,7 @@ jobs:
       env:
         CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       # --allow-dirty: the version sync rewrites Cargo.toml in the checkout.
-      run: cargo publish --manifest-path trilogy/scripts/dependency/Cargo.toml --allow-dirty
+      run: cargo publish --manifest-path ${{ matrix.manifest }} --allow-dirty
 
   skip-publish:
     needs: version-check

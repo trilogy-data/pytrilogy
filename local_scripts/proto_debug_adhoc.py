@@ -6,6 +6,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "local_scripts"))
 
 from proto_ambiguity import build_key_graph, connector_sets_from
+
 from trilogy import Environment
 
 root = REPO / "tests/modeling/tpc_ds_duckdb"

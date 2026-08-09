@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from trilogy.core.statements.execute import ProcessedQuery
     from trilogy.dialect.config import DialectConfig
     from trilogy.engine import ResultProtocol
+    from trilogy.io.contract import SourceRequest
     from trilogy.staging import StagingConfig
 
 from jinja2 import Template
@@ -454,7 +455,9 @@ class DuckDBDialect(BaseDialect):
             return f"{url}?cache_bust={self._gcs_cache_bust_token}"
         return url
 
-    def render_source(self, address: Address) -> str:
+    def render_source(
+        self, address: Address, request: SourceRequest | None = None
+    ) -> str:
         hive = ", hive_partitioning=true" if address.partition_columns else ""
         if address.additional_locations:
             paths = ", ".join(
@@ -483,12 +486,22 @@ class DuckDBDialect(BaseDialect):
                 )
             if self.staging and self.instance_id:
                 self.staging.prepare_executor_subdir(self.instance_id)
-            return f"uv_run('{address.location}')"
+            from trilogy.dialect.source_pushdown import render_args
+
+            args = render_args(request)
+            if not args:
+                return f"uv_run('{address.location}')"
+            # Filter tokens are single-quoted for the shell (see
+            # source_pushdown.render_args), so the SQL literal doubles them.
+            # Everything else render_args emits is already SQL-safe; see
+            # source_pushdown._is_transport_safe.
+            escaped = args.replace("'", "''")
+            return f"uv_run('{address.location}', args := '{escaped}')"
         if address.type == AddressType.SQL:
             with safe_open(address.location) as f:
                 sql_content = f.read().strip()
             return f"({sql_content})"
-        return super().render_source(address)
+        return super().render_source(address, request)
 
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
     # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").

@@ -1,0 +1,14 @@
+key slope float;
+property slope.intercept float;
+
+datasource generated_data(
+    slope: slope,
+    intercept: intercept
+)
+grain (slope)
+file `./query06.py`;
+
+select
+    slope,
+    intercept;
+

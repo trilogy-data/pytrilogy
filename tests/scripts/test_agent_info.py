@@ -5,10 +5,10 @@ from click.testing import CliRunner
 from trilogy.scripts.trilogy import cli
 
 
-def test_agent_info():
-    """Test that agent-info command outputs expected content."""
+def legacy_cli_reference_assertions():
+    """Detailed command documentation moved behind the CLI drilldown."""
     runner = CliRunner()
-    result = runner.invoke(cli, ["agent-info"])
+    result = runner.invoke(cli, ["agent-info", "cli"])
 
     assert result.exit_code == 0
 
@@ -45,6 +45,81 @@ def test_agent_info():
 
     # Check common workflows
     assert "## Common Workflows" in result.output
+
+
+def test_agent_info_cli_subcommand():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "cli"])
+
+    assert result.exit_code == 0
+    assert "# Trilogy CLI and Workspace Operations" in result.output
+    for command in (
+        "init",
+        "run",
+        "explore",
+        "file list",
+        "file write",
+        "fmt",
+        "unit",
+        "integration",
+        "database list",
+    ):
+        assert f"trilogy {command}" in result.output
+    assert len(result.output) < 5000
+    assert "# Trilogy Report Format" not in result.output
+    assert "enable_python_datasources" not in result.output
+
+
+def test_agent_info_directory():
+    """Bare agent-info is a compact routing directory."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info"])
+
+    assert result.exit_code == 0
+    for header in (
+        "## Query authoring",
+        "## Model, script, and datasource authoring",
+        "## Creating, running, and managing projects and scripts",
+    ):
+        assert header in result.output
+    for drilldown in (
+        "query",
+        "authoring",
+        "cli",
+        "syntax",
+        "datasources",
+        "ingest",
+        "config",
+        "report",
+        "state",
+        "serve",
+    ):
+        assert f"trilogy agent-info {drilldown}" in result.output
+    assert len(result.output) < 5000
+    assert "### trilogy run" not in result.output
+    assert "enable_python_datasources" not in result.output
+
+
+def test_agent_info_query_subcommand():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "query"])
+
+    assert result.exit_code == 0
+    assert "## Trilogy Language Reference" in result.output
+    assert "## SELECT statements" in result.output
+    assert "python-datasource" in result.output
+    assert "# Agent Usage Guide" not in result.output
+
+
+def test_agent_info_authoring_subcommand():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["agent-info", "authoring"])
+
+    assert result.exit_code == 0
+    assert "# Trilogy Model, Script, and Datasource Authoring" in result.output
+    assert "Python Script Datasources" in result.output
+    assert "syntax example python-datasource" in result.output
+    assert "enable_python_datasources" in result.output
 
 
 def test_agent_info_state_subcommand():

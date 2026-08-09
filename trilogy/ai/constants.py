@@ -1,16 +1,29 @@
 from trilogy.core.enums import FunctionClass, FunctionType
 from trilogy.core.functions import FUNCTION_FAMILIES, FUNCTION_REGISTRY, function_family
 
-RULE_PROMPT = r"""# Trilogy Syntax Guide
+RULE_PROMPT = r"""# Trilogy Syntax
 
-Trilogy statements define a semantic model or a query. Only selects return data.
+Trilogy statements define a semantic model or a query.
 
-import <model> as <alias>; — makes a model's fields available. When an imported model imports others (a fact table with imported dimensions); those are exposed as dot paths. `import enrollments as enroll;` enables accessing `enroll.student.name` if enroll imports students as studen. 
-Typical usage only imports facts; dimensions will then be accessed through the nested import. Nested dimensions have all values; order.customers returns all customers, even those without orders. 
+Collections of statements can be written as `.preql` files.
 
-key | property | auto | metric — define new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
+Statements can return data (SELECT) or define new concepts (auto, key, property, parameter)
+or datasources (DATASOURCE). There are other quality/validation statements 
+covered in more detail in drilldown; most of this focuses on the SELECT query syntax.
+
+
+import <model> as <alias>; makes a model's fields available. <model> is a DOT-SEPARATED MODULE PATH relative to the project root (where trilogy.toml lives), never a file path: the file `raw/store_sales.preql` is imported as `import raw.store_sales as ss;` — replace each `/` with `.` and drop the `.preql`. Keep the folder segment; `import store_sales as ss;` looks for a file next to trilogy.toml and fails.
+When an imported model imports others (a fact table with imported dimensions); those are exposed as dot paths. `import enrollments as enroll;` enables accessing `enroll.student.name` if enroll imports students as student.
+Typical usage only imports facts; dimensions will then be accessed through the nested import. Nested dimensions have all values; order.customers returns all customers, even those without orders.
+
+key | property | auto | metric; defines new concepts in your script. These concepts (auto x <- ...) are definitions, NOT precomputed values: each reference expands in a query and re-evaluates in the referencing query's scope. 
 
 parameter NAME TYPE [default <literal>]; — declares a runtime value supplied via trilogy run <file>.preql --param NAME=VALUE (repeat --param for several). Reference it like any field. Without default, required at run time. TYPE is any data type (see Data types); append `?` to allow null (`parameter cutoff date?;`).
+
+When merging two fact domains, use a MERGE statement to merge share dimensions concepts; 
+ex `merge concept_a into ~concept_b`. This marks concept_a as being identical to a partial subset
+of concept_b, enabling discovery to bridge the two. 
+If a dimenion is accessible through a fact, via abc.def - use that instead of merging.".
 
 ## Combining models
 
@@ -22,6 +35,7 @@ parameter NAME TYPE [default <literal>]; — declares a runtime value supplied v
 | Stack subsets/channels as rows | `union(...)` |
 | Rows in A but never in B (set difference) | `except(...)` |
 | Rows present in every source (set intersection) | `intersect(...)` |
+| Persist an ad-hoc field connection for several later queries | `merge` |
 
 ### Query-scoped join (the default)
 

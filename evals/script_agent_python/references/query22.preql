@@ -1,0 +1,16 @@
+key date string;
+property date.name string;
+property date.global bool;
+
+datasource generated_data(
+    date: date,
+    name: name,
+    global: global
+)
+grain (date)
+file `./query22.py`;
+
+select
+    date,
+    name,
+    global;

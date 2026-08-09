@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from trilogy.executor import Executor
     from trilogy.parser import parse
 
-__version__ = "0.3.317"
+__version__ = "0.3.318"
 
 __all__ = [
     "CONFIG",
@@ -22,7 +22,7 @@ __all__ = [
 # and every `trilogy.<anything>` import runs this file first — so CLI commands
 # that never touch the engine (init, --version, file, cloud) pay if not lazy
 # PEP 562 defers each name to first attribute access; `from trilogy import
-# Executor` is unchanged, it just resolves on use. 
+# Executor` is unchanged, it just resolves on use.
 _LAZY_ATTRS: dict[str, str] = {
     "CONFIG": "trilogy.constants",
     "Dialects": "trilogy.dialect.enums",

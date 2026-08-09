@@ -88,6 +88,20 @@ class BenchmarkSpec:
     default_scale_factor: float = 0.01
     default_num_queries: int = 22
 
+    task_template: str | None = None
+    """Optional per-query task template. Receives ``filename``, ``script_filename``,
+    ``opaque_id``, and ``prompt``. Script benchmarks use this to request both a
+    datasource program and the Trilogy query that consumes it."""
+
+    candidate_sidecar_extensions: tuple[str, ...] = ()
+    """Files sharing the candidate query stem that must follow it to scoring."""
+
+    skip_model_setup: bool = False
+    """Run with an empty project instead of ingesting or installing ``raw/``."""
+
+    enable_python_datasources: bool = False
+    """Enable executable Python datasource support in agent and scorer configs."""
+
     @property
     def cache_dir(self) -> Path:
         return self.eval_dir / ".cache"

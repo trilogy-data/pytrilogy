@@ -1,0 +1,14 @@
+key index int;
+property index.value int;
+
+datasource generated_data(
+    index: index,
+    value: value
+)
+grain (index)
+file `./query01.py`;
+
+select
+    index,
+    value;
+

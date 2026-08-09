@@ -25,6 +25,73 @@ class SyntaxExample:
 
 _EXAMPLES: list[SyntaxExample] = [
     SyntaxExample(
+        name="python-datasource",
+        title="Python script datasource - Arrow IPC producer plus Trilogy model",
+        summary=(
+            "run a local Python script as a datasource: wrap a function in "
+            "`trilogy.io.run`, which writes the Arrow IPC stream to stdout for "
+            "you from a table, dataframe, or list of dicts; declare concepts, map "
+            "script columns in `datasource (...)`, use `grain (...) file "
+            "`path.py`;`, then reference locally declared concepts WITHOUT the "
+            "datasource name as a prefix"
+        ),
+        body="""\
+# Python datasources require `enable_python_datasources = true` under
+# `[engine.config]` in trilogy.toml. Create these TWO files side by side.
+#
+# File 1: fibonacci.py
+# ---------------------------------------------------------------------------
+# #!/usr/bin/env -S uv run
+# # /// script
+# # requires-python = ">=3.11"
+# # dependencies = ["pyarrow>=16", "pytrilogy"]
+# # ///
+#
+# from trilogy.io import run
+#
+#
+# def fibonacci():
+#     values = [0, 1]
+#     while len(values) < 20:
+#         values.append(values[-1] + values[-2])
+#     return [{"index": i, "value": v} for i, v in enumerate(values)]
+#
+#
+# if __name__ == "__main__":
+#     raise SystemExit(run(fibonacci))
+#
+# `run` converts whatever you return -- a pyarrow table, a pandas/polars frame,
+# a list of dicts, or an iterator of those -- and gives the script a CLI
+# (`--limit`, `--filter`, `--columns`, `--describe`). Run
+# `trilogy source describe ./fibonacci.py` to print the datasource block below
+# instead of writing it against a guessed schema.
+#
+# IMPORTANT: stdout must contain ONLY the Arrow IPC stream. Send diagnostics
+# to stderr. A PEP 723 block lets `uv run` install script dependencies.
+#
+# File 2: query.preql
+# ---------------------------------------------------------------------------
+key index int;
+property index.value int;
+
+# The left side is the physical Arrow column; the right side is the Trilogy
+# concept declared above. The file suffix identifies this as a Python source.
+datasource fibonacci_numbers (
+    index: index,
+    value: value,
+)
+grain (index)
+file `./fibonacci.py`;
+
+# A datasource declaration does NOT create a namespace. Use local concepts as
+# `index` and `value`, NOT `fibonacci_numbers.index` / `.value`.
+select
+    index,
+    value,
+order by index;
+""",
+    ),
+    SyntaxExample(
         name="query-structure",
         title="Full query structure - every clause and where it goes (+ rowsets)",
         summary=(

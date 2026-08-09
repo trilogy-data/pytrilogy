@@ -142,16 +142,12 @@ def _tool_label(name: str, arguments: dict | None) -> str:
         # single `trilogy file` bucket would hide the distinction.
         if sub == "file" and isinstance(args, list) and len(args) > 1:
             return f"trilogy file {str(args[1]).strip()}"
-        # `agent-info` splits the always-on DEFAULT (no subcommand, the full
-        # guide re-sent every turn) from on-demand DRILLDOWNS (`agent-info
-        # report`, `agent-info syntax example X`, ...). Opposite cost profiles —
-        # the default is the fixed per-turn tax, drilldowns are the
-        # progressive-disclosure fetches — so one bucket would hide whether
-        # moving sections behind disclosure actually shrinks the default.
+        # Split the compact routing INDEX from focused drilldowns so charts show
+        # whether progressive disclosure is being used as intended.
         if sub == "agent-info":
             if isinstance(args, list) and len(args) > 1:
                 return f"trilogy agent-info {str(args[1]).strip()}"
-            return "trilogy agent-info (default)"
+            return "trilogy agent-info (index)"
         return f"trilogy {sub}" if sub else "trilogy"
     return str(name)
 
@@ -290,13 +286,32 @@ FAILURE_RULES: list[tuple[str, list[str]]] = [
             "invalid value for",
         ],
     ),
-    ("file-not-found", ["does not exist"]),
+    # A tool the harness deliberately blocked for this task (`file read`,
+    # `database` introspection) — a policy refusal, not a Trilogy failure.
+    ("disabled-tool", ["is disabled for this task"]),
+    # An import written as a FILE path (`raw/store_sales`) or with the package
+    # segment dropped (`store_sales`) instead of a dotted module path. Must
+    # precede syntax-parse: the write-time refusal is itself a parse error
+    # ("expected IMPORT_DOT") and would otherwise bucket generically.
+    (
+        "import-path",
+        ["expected import_dot", "unable to import", "syntax [229]"],
+    ),
+    ("file-not-found", ["does not exist", "no such path"]),
     # Semantic — the query parsed but could not be resolved or typed.
     ("enum-value", ["not a valid member of enum"]),
-    ("undefined-concept", ["is undefined", "undefinedconcept"]),
+    (
+        "undefined-concept",
+        ["is undefined", "undefinedconcept", "undefined concept"],
+    ),
     (
         "join-resolution",
-        ["could not resolve connections", "no datasource", "unresolvable"],
+        [
+            "could not resolve connections",
+            "no datasource",
+            "unresolvable",
+            "disconnected subgraph",
+        ],
     ),
     # A planner RecursionError — a framework bug, distinct from a genuine
     # join-resolution gap. Match both the clean CLI label ("could not be planned;
@@ -306,6 +321,9 @@ FAILURE_RULES: list[tuple[str, list[str]]] = [
         ["could not be planned", "maximum recursion depth", "recursion depth exceeded"],
     ),
     ("type-error", ["invalid argument type", "not compatible", "incompatible type"]),
+    # Parsed and resolved but emits nothing — under `--agent`, a file of only
+    # declarations/imports exits non-zero rather than reporting "0 statements".
+    ("no-output", ["none produce output", "nothing was executed"]),
     # Syntax — the query failed to parse.
     ("syntax-missing-alias", ["missing alias", "alias must be specified"]),
     (
@@ -1025,12 +1043,12 @@ def render(report: dict, events: list[dict], out_path: Path) -> Path:
     from matplotlib.gridspec import GridSpec
 
     meta, summary = report["meta"], report["summary"]
-    fig = plt.figure(figsize=(14, 15))
+    fig = plt.figure(figsize=(14, 17))
     gs = GridSpec(
         4,
         2,
         figure=fig,
-        height_ratios=[1.15, 1.15, 1.1, 0.95],
+        height_ratios=[1.15, 1.15, 1.1, 1.35],
         hspace=0.5,
         wspace=0.22,
     )

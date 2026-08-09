@@ -1,0 +1,14 @@
+key word string;
+property word.count int;
+
+datasource generated_data(
+    word: word,
+    count: count
+)
+grain (word)
+file `./query09.py`;
+
+select
+    word,
+    count;
+
