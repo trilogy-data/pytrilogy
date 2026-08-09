@@ -7,12 +7,20 @@ alone would only prove the feature fired, not that it was right.
 """
 
 import shlex
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.enums import ComparisonOperator
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Ordering
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildOrderBy,
+    BuildOrderItem,
+    BuildParenthetical,
+)
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.dialect.source_pushdown import (
@@ -20,6 +28,8 @@ from trilogy.dialect.source_pushdown import (
     _literal,
     _operator_spelling,
     render_args,
+    serialize_condition,
+    serialize_order_by,
 )
 from trilogy.io.contract import Filter, Sort, SourceRequest
 
@@ -75,6 +85,11 @@ def test_literal_rendering():
     assert _literal([1, 2]) is None
 
 
+def test_dates_render_as_iso_8601():
+    assert _literal(date(2026, 1, 31)) == "2026-01-31"
+    assert _literal(datetime(2026, 1, 31, 9, 30)) == "2026-01-31T09:30:00"
+
+
 def test_bool_is_not_rendered_as_an_int():
     """bool is a subclass of int; the bool branch has to come first."""
     assert _literal(False) == "false"
@@ -105,6 +120,173 @@ def test_render_args_round_trips_through_the_script_parser():
 
 def test_render_args_empty_for_no_request():
     assert render_args(None) == ""
+
+
+def test_render_args_drops_a_filter_whose_value_cannot_be_spelled():
+    request = SourceRequest(
+        filters=(Filter("tags", "=", [1, 2]), Filter("state", "=", "CA"))
+    )
+    assert render_args(request) == "--filter 'state=CA'"
+
+
+# --- serialization ----------------------------------------------------------
+# `serialize_condition` and `serialize_order_by` decline far more often than
+# they accept, and every decline is what keeps a limit from travelling with an
+# incomplete predicate. These drive the refusals directly; the integration
+# cases below prove the accepted ones stay correct end to end.
+
+SERIALIZATION_MODEL = """
+key id int;
+property id.state string;
+property id.absent string;
+
+datasource narrow (
+    id: id,
+    state: state
+)
+grain (id)
+address narrow_tbl;
+"""
+
+
+@pytest.fixture(scope="module")
+def build():
+    environment = Environment()
+    environment.parse(SERIALIZATION_MODEL)
+    return environment.materialize_for_select()
+
+
+@pytest.fixture(scope="module")
+def datasource(build):
+    return build.datasources["narrow"]
+
+
+@pytest.fixture(scope="module")
+def state(build):
+    return build.concepts["state"]
+
+
+def equals(left, right):
+    return BuildComparison(left=left, right=right, operator=ComparisonOperator.EQ)
+
+
+def ordering(expr, order):
+    return BuildOrderBy(items=[BuildOrderItem(expr=expr, order=order)])
+
+
+def test_no_condition_serializes_completely(datasource):
+    assert serialize_condition(None, datasource) == ((), True)
+
+
+def test_a_parenthesized_condition_is_unwrapped(datasource, state):
+    condition = BuildParenthetical(content=equals(state, "CA"))
+    assert serialize_condition(condition, datasource) == (
+        (Filter("state", "=", "CA"),),
+        True,
+    )
+
+
+def test_an_or_is_not_a_conjunction(datasource, state):
+    condition = BuildConditional(
+        left=equals(state, "CA"),
+        right=equals(state, "NY"),
+        operator=BooleanOperator.OR,
+    )
+    assert serialize_condition(condition, datasource) == ((), False)
+
+
+def test_an_or_nested_inside_an_and_disqualifies_the_whole_condition(datasource, state):
+    """Serializing only the AND side would silently widen the predicate."""
+    nested = BuildConditional(
+        left=equals(state, "CA"),
+        right=equals(state, "NY"),
+        operator=BooleanOperator.OR,
+    )
+    condition = BuildConditional(
+        left=equals(state, "CA"), right=nested, operator=BooleanOperator.AND
+    )
+    assert serialize_condition(condition, datasource) == ((), False)
+
+
+def test_a_mirrored_comparison_is_declined(datasource, state):
+    """`'CA' = state` would need the operator flipped to travel."""
+    assert serialize_condition(equals("CA", state), datasource) == ((), False)
+
+
+def test_a_comparison_between_two_columns_is_declined(datasource, state, build):
+    condition = equals(state, build.concepts["id"])
+    assert serialize_condition(condition, datasource) == ((), False)
+
+
+def test_a_concept_the_datasource_does_not_carry_is_declined(datasource, build):
+    condition = equals(build.concepts["absent"], "x")
+    assert serialize_condition(condition, datasource) == ((), False)
+
+
+def test_an_incomplete_conjunct_leaves_the_rest_pushable(datasource, state, build):
+    condition = BuildConditional(
+        left=equals(state, "CA"),
+        right=equals(build.concepts["absent"], "x"),
+        operator=BooleanOperator.AND,
+    )
+    filters, complete = serialize_condition(condition, datasource)
+    assert filters == (Filter("state", "=", "CA"),)
+    assert complete is False
+
+
+def test_no_ordering_serializes_completely(datasource):
+    assert serialize_order_by(None, datasource) == ((), True)
+
+
+def test_plain_directions_travel(datasource, state):
+    assert serialize_order_by(ordering(state, Ordering.ASCENDING), datasource) == (
+        (Sort("state", False),),
+        True,
+    )
+    assert serialize_order_by(ordering(state, Ordering.DESCENDING), datasource) == (
+        (Sort("state", True),),
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        Ordering.ASC_NULLS_FIRST,
+        Ordering.ASC_NULLS_LAST,
+        Ordering.ASC_NULLS_AUTO,
+        Ordering.DESC_NULLS_FIRST,
+        Ordering.DESC_NULLS_LAST,
+        Ordering.DESC_NULLS_AUTO,
+    ],
+    ids=lambda o: o.name,
+)
+def test_null_placement_variants_do_not_travel(datasource, state, order):
+    """They change which rows a LIMIT keeps, and pyarrow places nulls its own way."""
+    assert serialize_order_by(ordering(state, order), datasource) == ((), False)
+
+
+def test_an_ordering_on_an_expression_does_not_travel(datasource):
+    assert serialize_order_by(ordering(5, Ordering.ASCENDING), datasource) == (
+        (),
+        False,
+    )
+
+
+def test_an_ordering_on_an_absent_concept_does_not_travel(datasource, build):
+    order_by = ordering(build.concepts["absent"], Ordering.ASCENDING)
+    assert serialize_order_by(order_by, datasource) == ((), False)
+
+
+def test_one_untravellable_key_grounds_the_whole_ordering(datasource, state, build):
+    """A partial sort is a different ordering, not a weaker one."""
+    order_by = BuildOrderBy(
+        items=[
+            BuildOrderItem(expr=state, order=Ordering.ASCENDING),
+            BuildOrderItem(expr=build.concepts["absent"], order=Ordering.ASCENDING),
+        ]
+    )
+    assert serialize_order_by(order_by, datasource) == ((), False)
 
 
 def test_render_args_survives_a_posix_shell():

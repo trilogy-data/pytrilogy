@@ -17,10 +17,6 @@ from trilogy.scripts.agent_info_docs.content import (
 from trilogy.scripts.agent_info_docs.directory import AGENT_INFO_DIRECTORY
 
 
-def get_agent_info_output() -> str:
-    return AGENT_INFO_DIRECTORY
-
-
 @click.group(invoke_without_command=True)
 @click.pass_context
 def agent_info(ctx: click.Context) -> None:

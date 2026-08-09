@@ -81,12 +81,44 @@ def test_unsupported_type_names_the_type():
         to_reader(object())
 
 
-def test_register_adapter_overrides_a_builtin():
+def test_arrow_c_array_capsule_without_a_stream():
+    struct = pa.StructArray.from_arrays([pa.array([1, 2, 3])], names=["i"])
+    assert not hasattr(struct, "__arrow_c_stream__")
+    assert to_reader(struct).read_all().column_names == ["i"]
+
+
+def test_an_exhausted_iterator_still_needs_a_declared_schema():
+    assert rows_of(iter(()), SCHEMA) == 0
+    with pytest.raises(TrilogyIOError, match="empty result"):
+        to_reader(iter(()))
+
+
+def test_later_elements_are_cast_onto_the_schema_the_first_one_set():
+    narrow = pa.Table.from_pylist([{"i": 9}], schema=pa.schema([("i", pa.int32())]))
+    reader = to_reader(iter([pa.Table.from_pylist([{"i": 1}]), narrow]))
+    assert reader.schema.field("i").type == pa.int64()
+    assert reader.read_all().column("i").to_pylist() == [1, 9]
+
+
+@pytest.fixture
+def restore_adapters():
+    from trilogy.io import adapters
+
+    original = list(adapters._ADAPTERS)
+    yield
+    adapters._ADAPTERS[:] = original
+
+
+def test_register_adapter_overrides_a_builtin(restore_adapters):
     marker = pa.Table.from_pylist([{"x": 1}])
     register_adapter(lambda o: isinstance(o, str), lambda o, schema: marker.to_reader())
-    try:
-        assert to_reader("anything").read_all().column_names == ["x"]
-    finally:
-        from trilogy.io import adapters
+    assert to_reader("anything").read_all().column_names == ["x"]
 
-        adapters._ADAPTERS.pop()
+
+def test_register_adapter_works_as_a_decorator(restore_adapters):
+    @register_adapter(lambda o: isinstance(o, complex))
+    def from_complex(obj, schema):
+        return pa.Table.from_pylist([{"re": obj.real}]).to_reader()
+
+    assert to_reader(1 + 2j).read_all().column("re").to_pylist() == [1.0]
+    assert from_complex(3 + 0j, None).read_all().num_rows == 1

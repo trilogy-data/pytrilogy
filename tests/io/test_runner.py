@@ -62,6 +62,33 @@ def test_parse_args_builds_a_request():
     assert invocation.request.partition == {"day": "2026-01-01"}
 
 
+def test_parse_args_builds_an_ordering():
+    request = parse_args(["--order-by", "state:desc, i"]).request
+    assert [(s.column, s.descending) for s in request.order_by] == [
+        ("state", True),
+        ("i", False),
+    ]
+
+
+def test_a_malformed_partition_is_reported_as_a_contract_error(capsys):
+    """The rust twin raises `ContractError` here; the reported type must match."""
+    assert run(rows, argv=["--partition", "day"]) == SCRIPT_ERROR_EXIT_CODE
+    line = next(
+        line
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith(ERROR_PREFIX)
+    )
+    detail = json.loads(line[len(ERROR_PREFIX) :])
+    assert detail["type"] == "ContractError"
+    assert "--partition expects KEY=VALUE" in detail["message"]
+
+
+def test_writes_arrow_to_stdout_by_default(capsysbinary):
+    assert run(rows, argv=["--limit", "2"]) == 0
+    with pa.ipc.open_stream(capsysbinary.readouterr().out) as reader:
+        assert reader.read_all().num_rows == 2
+
+
 def test_writes_arrow_to_a_target(out: Path):
     assert run(rows, argv=["--output", str(out)]) == 0
     assert arrow_at(out).num_rows == 10
@@ -152,6 +179,22 @@ def test_source_decorator_keeps_the_function_callable(out: Path):
         decorated.cli(["--output", str(out)])
     assert exit_info.value.code == 0
     assert arrow_at(out).num_rows == 10
+
+
+def test_source_decorator_takes_arguments(out: Path):
+    schema = pa.schema([("i", pa.int64())])
+
+    @source(schema=schema, watermark="2026-08-06")
+    def empty():
+        return []
+
+    with pytest.raises(SystemExit) as exit_info:
+        empty.cli(["--output", str(out)])
+    assert exit_info.value.code == 0
+    table = arrow_at(out)
+    assert table.num_rows == 0
+    assert table.column_names == ["i"]
+    assert table.schema.metadata[b"trilogy.watermark"] == b"2026-08-06"
 
 
 def test_emit_still_works_and_now_honors_flags(out: Path):

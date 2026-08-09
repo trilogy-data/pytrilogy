@@ -19,8 +19,8 @@ sys.setrecursionlimit(20000)
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.v4_helper import source_planning as sp
 from trilogy.core.processing.v4_helper import network_search as ns
+from trilogy.core.processing.v4_helper import source_planning as sp
 from trilogy.dialect.config import DuckDBConfig
 
 ROOT = Path(__file__).parent.parent

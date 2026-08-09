@@ -9,12 +9,17 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from trilogy.io.contract import Filter, SourceRequest
+from trilogy.io.contract import SourceRequest, request_from_strings
 from trilogy.io.sinks import Format
 
 
 def click_options(fn: Callable) -> Callable:
-    """Add ``--limit/--columns/--filter/--since/--partition/--format/--output``."""
+    """Add the request flags plus ``--format`` and ``--output``.
+
+    The flag set mirrors :func:`trilogy.io.runner.build_parser`; a source is
+    still expected to answer ``--describe``, which stays the author's to wire up
+    because it is a mode rather than a request field.
+    """
     import click
 
     options = [
@@ -22,6 +27,12 @@ def click_options(fn: Callable) -> Callable:
         click.option("--columns", default=None, help="comma-separated projection"),
         click.option(
             "--filter", "filters", multiple=True, help="row predicate, repeatable"
+        ),
+        click.option(
+            "--order-by",
+            "order_by",
+            default=None,
+            help="comma-separated sort keys, e.g. 'score:desc,id'",
         ),
         click.option("--since", default=None, help="watermark low bound"),
         click.option(
@@ -42,24 +53,14 @@ def click_options(fn: Callable) -> Callable:
 
 def request_from_kwargs(**kwargs: Any) -> SourceRequest:
     """Build a request from the values :func:`click_options` collected."""
-    return SourceRequest(
+    return request_from_strings(
         limit=kwargs.get("limit"),
-        columns=_split(kwargs.get("columns")),
-        filters=tuple(Filter.parse(f) for f in kwargs.get("filters") or ()),
+        columns=kwargs.get("columns"),
+        filters=kwargs.get("filters") or (),
+        order_by=kwargs.get("order_by"),
         since=kwargs.get("since"),
-        partition=dict(_pair(p) for p in kwargs.get("partition") or ()),
+        partition=kwargs.get("partition") or (),
     )
-
-
-def _split(raw: str | None) -> tuple[str, ...] | None:
-    if not raw:
-        return None
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
-def _pair(raw: str) -> tuple[str, str]:
-    key, _, value = raw.partition("=")
-    return key.strip(), value.strip()
 
 
 __all__: Sequence[str] = ["click_options", "request_from_kwargs"]

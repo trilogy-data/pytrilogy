@@ -15,7 +15,7 @@ from __future__ import annotations
 import inspect
 import json
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
@@ -94,19 +94,48 @@ class SourceRequest:
     since: Any | None = None
     partition: Mapping[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "limit": self.limit,
-            "columns": list(self.columns) if self.columns else None,
-            "filters": [f.render() for f in self.filters],
-            "order_by": [s.render() for s in self.order_by],
-            "since": self.since,
-            "partition": dict(self.partition),
-        }
-
 
 #: Parameter names a source function may declare to take ownership of a field.
 PUSHDOWN_PARAMETERS = tuple(f.name for f in fields(SourceRequest))
+
+
+# --- command-line decoding ---------------------------------------------------
+# The one place each field's wire spelling is read, so the argparse fast path
+# and the click options cannot drift apart. The rust crate parses these same
+# strings; changing one here means changing `crates/trilogy-io/src/cli.rs` too.
+
+
+def split_list(raw: str | None) -> tuple[str, ...] | None:
+    """A comma-separated flag value. Empty means unset, not an empty list."""
+    if not raw:
+        return None
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def split_pair(raw: str) -> tuple[str, str]:
+    key, sep, value = raw.partition("=")
+    if not sep:
+        raise ContractError(f"--partition expects KEY=VALUE, got {raw!r}")
+    return key.strip(), value.strip()
+
+
+def request_from_strings(
+    limit: int | None = None,
+    columns: str | None = None,
+    filters: Sequence[str] = (),
+    order_by: str | None = None,
+    since: str | None = None,
+    partition: Sequence[str] = (),
+) -> SourceRequest:
+    """Build a request from the raw strings a command line carries."""
+    return SourceRequest(
+        limit=limit,
+        columns=split_list(columns),
+        filters=tuple(Filter.parse(f) for f in filters),
+        order_by=tuple(Sort.parse(s) for s in split_list(order_by) or ()),
+        since=since,
+        partition=dict(split_pair(p) for p in partition),
+    )
 
 
 def pushdown_parameters(fn: Callable) -> tuple[str, ...]:
@@ -235,7 +264,7 @@ def _sorted_reader(
     schema: pa.Schema,
 ) -> pa.RecordBatchReader:
     """Filter, then sort, then limit, then project -- in that order."""
-    batches = [b for b in _transform(reader, filters, None, None)]
+    batches = list(_transform(reader, filters, None, None))
     table = (
         pa.Table.from_batches(batches, reader.schema)
         if batches

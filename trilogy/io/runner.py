@@ -22,13 +22,12 @@ from trilogy.io import describe as describe_module
 from trilogy.io.adapters import to_reader
 from trilogy.io.contract import (
     CONTRACT_VERSION,
-    Filter,
-    Sort,
     SourceRequest,
     apply,
     bind,
     effective_pushdown,
     pushdown_parameters,
+    request_from_strings,
 )
 from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE
 from trilogy.io.sinks import Format, write
@@ -95,33 +94,18 @@ def parse_args(
 ) -> Invocation:
     parsed = build_parser(prog).parse_args(argv)
     return Invocation(
-        request=SourceRequest(
+        request=request_from_strings(
             limit=parsed.limit,
-            columns=_split_columns(parsed.columns),
-            filters=tuple(Filter.parse(f) for f in parsed.filters),
-            order_by=tuple(
-                Sort.parse(s) for s in _split_columns(parsed.order_by) or ()
-            ),
+            columns=parsed.columns,
+            filters=parsed.filters,
+            order_by=parsed.order_by,
             since=parsed.since,
-            partition=dict(_split_pair(p) for p in parsed.partition),
+            partition=parsed.partition,
         ),
         fmt=Format(parsed.fmt),
         output=parsed.output,
         describe=parsed.describe,
     )
-
-
-def _split_columns(raw: str | None) -> tuple[str, ...] | None:
-    if not raw:
-        return None
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
-def _split_pair(raw: str) -> tuple[str, str]:
-    key, sep, value = raw.partition("=")
-    if not sep:
-        raise argparse.ArgumentTypeError(f"--partition expects KEY=VALUE, got {raw!r}")
-    return key.strip(), value.strip()
 
 
 def stamp(

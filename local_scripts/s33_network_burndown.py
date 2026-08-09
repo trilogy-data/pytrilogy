@@ -29,7 +29,7 @@ def generate(path: Path) -> tuple[bool, str]:
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     try:
         executor.generate_sql(path.read_text())
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         frame = traceback.extract_tb(exc.__traceback__)[-1]
         site = f"{Path(frame.filename).name}:{frame.lineno}"
         return False, f"{type(exc).__name__} @ {site}: {str(exc)[:160]}"
