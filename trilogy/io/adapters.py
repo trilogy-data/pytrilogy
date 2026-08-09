@@ -3,6 +3,9 @@
 Probes are duck-typed and ordered, so no optional dependency is imported unless
 an object of that kind actually shows up. Streaming inputs stay streaming --
 nothing here materializes a generator into a table.
+
+A declared schema wins over whatever the source produced, whichever adapter
+handled it: ``to_reader(obj, schema).schema`` is always ``schema``.
 """
 
 from __future__ import annotations
@@ -40,7 +43,7 @@ def register_adapter(predicate: Probe, converter: Convert | None = None) -> Any:
 def to_reader(obj: Any, schema: pa.Schema | None = None) -> pa.RecordBatchReader:
     for predicate, converter in reversed(_ADAPTERS):
         if predicate(obj):
-            return converter(obj, schema)
+            return _conform_reader(converter(obj, schema), schema)
     raise TrilogyIOError(
         f"Cannot convert {type(obj).__module__}.{type(obj).__qualname__} to an "
         "Arrow stream. Return a pyarrow Table, a dataframe implementing the "
@@ -59,10 +62,43 @@ def empty_reader(schema: pa.Schema | None) -> pa.RecordBatchReader:
 
 
 def conform(batch: pa.RecordBatch, schema: pa.Schema) -> pa.RecordBatch:
-    """Cast a batch onto the stream's schema; a no-op in the common case."""
+    """Cast a batch onto the stream's schema; a no-op in the common case.
+
+    Columns are cast in place rather than through a Table: a 0-row Table yields
+    no batches at all, so the round trip loses the empty batch entirely.
+    """
     if batch.schema.equals(schema):
         return batch
-    return pa.Table.from_batches([batch]).cast(schema).combine_chunks().to_batches()[0]
+    if batch.schema.names != schema.names:
+        batch = batch.select(schema.names)
+    return pa.RecordBatch.from_arrays(
+        [column.cast(field.type) for column, field in zip(batch.columns, schema)],
+        schema=schema,
+    )
+
+
+def _conform_reader(
+    reader: pa.RecordBatchReader, schema: pa.Schema | None
+) -> pa.RecordBatchReader:
+    """Make a declared schema authoritative over whatever the source produced.
+
+    Applied here rather than in each adapter, because half of them carry a
+    schema of their own and would otherwise silently win: a source returning a
+    pyarrow table and one returning dicts must answer ``--describe`` the same
+    way they fill the stream. The declared schema also fixes column order, so
+    it is a projection as much as a cast.
+    """
+    if schema is None or reader.schema.equals(schema):
+        return reader
+    missing = [name for name in schema.names if name not in reader.schema.names]
+    if missing:
+        raise TrilogyIOError(
+            f"Source produced columns {reader.schema.names}, which do not cover "
+            f"its declared schema: {', '.join(missing)} missing."
+        )
+    return pa.RecordBatchReader.from_batches(
+        schema, (conform(batch, schema) for batch in reader)
+    )
 
 
 def _module_root(obj: Any) -> str:

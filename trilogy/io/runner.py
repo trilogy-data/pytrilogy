@@ -162,7 +162,9 @@ def run(
 
     ``fn`` may return a pyarrow table or reader, any dataframe implementing the
     Arrow PyCapsule interface, a pandas frame, a list of dicts, or an iterator
-    of any of those. If it declares parameters named for contract fields
+    of any of those. A ``schema`` given here is authoritative -- the output is
+    cast onto it whatever the return type. If it declares parameters named for
+    contract fields
     (``limit``, ``columns``, ``filters``, ``since``, ``partition``) they are
     bound and it owns them; everything else is enforced on the output stream.
     """

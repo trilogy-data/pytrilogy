@@ -75,6 +75,9 @@ def source(
 ) -> Any:
     """Mark a function as a data source, attaching ``.cli()`` to it.
 
+    ``schema`` is authoritative: the output is cast onto it, and it is the only
+    thing that can describe a result with no rows.
+
     The function stays directly callable, so it is still testable as a plain
     function::
 

@@ -1,7 +1,7 @@
 import pyarrow as pa
 import pytest
 
-from trilogy.io.adapters import register_adapter, to_reader
+from trilogy.io.adapters import conform, register_adapter, to_reader
 from trilogy.io.errors import TrilogyIOError
 
 ROWS = [{"i": i, "state": "CA" if i % 2 else "NY"} for i in range(6)]
@@ -79,6 +79,50 @@ def test_pandas():
 def test_unsupported_type_names_the_type():
     with pytest.raises(TrilogyIOError, match="Cannot convert"):
         to_reader(object())
+
+
+# --- a declared schema is authoritative --------------------------------------
+
+
+def declared(obj) -> pa.Table:
+    return to_reader(obj, SCHEMA).read_all()
+
+
+def test_a_declared_schema_casts_types_whatever_the_adapter():
+    narrow = pa.schema([("i", pa.int32()), ("state", pa.string())])
+    table = pa.Table.from_pylist(ROWS, schema=narrow)
+    for source in (table, table.to_batches()[0], table.to_reader(), ROWS):
+        assert to_reader(source, SCHEMA).schema == SCHEMA
+        assert declared(source).column("i").type == pa.int64()
+
+
+def test_a_declared_schema_fixes_column_order():
+    swapped = pa.Table.from_pydict({"state": ["CA"], "i": [1]})
+    assert swapped.column_names == ["state", "i"]
+    assert declared(swapped).column_names == ["i", "state"]
+
+
+def test_a_declared_schema_drops_columns_it_does_not_name():
+    wide = pa.Table.from_pylist([{"i": 1, "state": "CA", "extra": "drop me"}])
+    assert declared(wide).column_names == ["i", "state"]
+
+
+def test_a_column_the_declared_schema_names_must_exist():
+    with pytest.raises(TrilogyIOError, match="state missing"):
+        to_reader(pa.Table.from_pylist([{"i": 1}]), SCHEMA)
+
+
+def test_conforming_preserves_an_empty_batch():
+    """A 0-row Table yields no batches, so a Table round trip would lose it."""
+    empty = pa.RecordBatch.from_pylist([], schema=pa.schema([("i", pa.int32())]))
+    schema = pa.schema([("i", pa.int64())])
+    assert conform(empty, schema).num_rows == 0
+    assert conform(empty, schema).schema == schema
+
+
+def test_a_matching_schema_does_not_rewrap_the_reader():
+    reader = pa.Table.from_pylist(ROWS, schema=SCHEMA).to_reader()
+    assert to_reader(reader, SCHEMA) is reader
 
 
 def test_arrow_c_array_capsule_without_a_stream():

@@ -51,6 +51,12 @@ Return whatever you already have. `run` accepts:
 
 Anything else: `register_adapter(predicate, converter)`.
 
+A `schema=` is authoritative whichever of those you returned: the output is cast
+onto it, reordered to it, and narrowed to the columns it names, so `--describe`
+cannot disagree with the stream. A column it names that the source did not
+produce is an error. Without one, the source's own schema is used and only an
+empty result is a problem — there is nothing to infer from.
+
 `emit(fn)` is the older entrypoint and still works; it goes through the same
 pipeline, so scripts written against it pick all of this up unchanged.
 

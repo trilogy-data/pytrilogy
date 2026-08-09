@@ -152,6 +152,23 @@ def test_both_fail_the_same_way(rust_binary: str):
     assert "Available columns" in rs_error["message"]
 
 
+def test_both_reject_a_malformed_partition_identically(rust_binary: str):
+    """A bad flag value is a contract failure on both sides, not a parser quirk."""
+    args = ["--partition", "day"]
+    py, rs = run_python(args), run_rust(rust_binary, args)
+    assert py.returncode == rs.returncode == 65
+    for result in (py, rs):
+        stderr = result.stderr.decode(errors="replace")
+        line = next(
+            line
+            for line in stderr.splitlines()
+            if line.startswith("trilogy-io-error: ")
+        )
+        detail = json.loads(line[len("trilogy-io-error: ") :])
+        assert detail["type"] == "ContractError"
+        assert "--partition expects KEY=VALUE" in detail["message"]
+
+
 def test_tie_order_is_unspecified_but_the_keys_agree(rust_binary: str):
     """`state` repeats every four rows, so sorting on it alone is all ties.
 
