@@ -46,6 +46,9 @@ class PlacementReason(Enum):
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
     FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
+    # An earlier `then where` stage's row atom delivered as an input filter on
+    # a later stage's cross-row computation (its d1 feeder scan or host).
+    STAGE_PRECONDITION = "stage_precondition"
 
 
 @dataclass(frozen=True)
@@ -639,6 +642,89 @@ def _conjunction_recompute_placements(
     return extra
 
 
+_STAGE_HOST_DERIVATIONS: set[Derivation] = {
+    Derivation.AGGREGATE,
+    Derivation.GROUP_TO,
+    Derivation.WINDOW,
+}
+
+
+def _staged_precondition_placements(
+    staged_conditions: list[BuildWhereClause],
+    group_graph: nx.DiGraph,
+    buckets: dict[str, GroupBucket],
+    group_members: dict[str, set[str]],
+    lineage_ancestors_graph: nx.DiGraph,
+    scoped_join_member_addresses: frozenset[str],
+) -> list[ConditionPlacement]:
+    """Deliver earlier `then where` stages' row atoms as input filters on the
+    groups computing a later stage's aggregates/windows.
+
+    A flat WHERE deliberately gives every cross-row atom a pristine scan (its
+    conjuncts do not filter each other); a staged chain declares the opposite
+    for cross-stage pairs: stage N's computations see only rows passing stages
+    1..N-1. The atom lands on the computation's ROOT_D1 feeder scan(s) when it
+    has them — ROOT re-planning then sources the atom's columns (and can admit
+    a `complete where`-matching datasource) and anything downstream of the scan
+    (including a window) computes over the filtered rows. A host with no
+    ROOT_D1 feeder (e.g. fed by a rowset boundary) takes the atom directly and
+    the strategy builder's pre-filter peel applies it below the computation.
+
+    Only plain scalar row atoms travel, under the same exclusions as
+    conjunction co-delivery: existence-bearing atoms keep their side channel,
+    probe/scoped-axis atoms read a post-merge axis, and an atom over a host's
+    own output would turn a gate into a pre-filter."""
+    if len(staged_conditions) < 2:
+        return []
+    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
+    extra: list[ConditionPlacement] = []
+    earlier_atoms: list[BoolExpr] = []
+    for i, clause in enumerate(staged_conditions):
+        if i > 0 and earlier_atoms:
+            stage_addrs = {c.address for c in clause.row_arguments}
+            hosts = sorted(
+                gid
+                for gid, b in buckets.items()
+                if b.derivation in _STAGE_HOST_DERIVATIONS
+                and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                and stage_addrs & set(b.primary_members)
+            )
+            for host in hosts:
+                feeders = sorted(nx.ancestors(group_graph, host) & d1_root_ids)
+                targets = feeders or [host]
+                host_outputs = set(buckets[host].primary_members)
+                for atom in earlier_atoms:
+                    if any(atom.existence_arguments):
+                        continue
+                    row_inputs = {c.address for c in atom.row_arguments}
+                    if not row_inputs:
+                        continue
+                    if any(
+                        is_presence_probe(addr) or addr in scoped_join_member_addresses
+                        for addr in row_inputs
+                    ):
+                        continue
+                    if row_inputs & host_outputs:
+                        continue
+                    for gid in targets:
+                        # A ROOT_D1 feeder re-plans from datasources, so it can
+                        # source atom columns it does not yet carry; a direct
+                        # host cannot, so require reachability there.
+                        if gid == host and not row_inputs <= _reachable_input(
+                            gid, lineage_ancestors_graph, buckets, group_members
+                        ):
+                            continue
+                        extra.append(
+                            ConditionPlacement(
+                                atom=atom,
+                                group_ids=(gid,),
+                                reason=PlacementReason.STAGE_PRECONDITION,
+                            )
+                        )
+        earlier_atoms.extend(decompose_condition(clause.conditional))
+    return extra
+
+
 def plan_condition_placements(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -649,6 +735,7 @@ def plan_condition_placements(
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
     environment: BuildEnvironment | None = None,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
     scoped_join_key_groups = scoped_join_key_groups or {}
@@ -1206,6 +1293,17 @@ def plan_condition_placements(
         placements.extend(
             _conjunction_recompute_placements(
                 placements[clause_start:],
+                buckets,
+                group_members,
+                lineage_ancestors_graph,
+                scoped_join_member_addresses,
+            )
+        )
+    if staged_conditions:
+        placements.extend(
+            _staged_precondition_placements(
+                staged_conditions,
+                group_graph,
                 buckets,
                 group_members,
                 lineage_ancestors_graph,

@@ -134,7 +134,7 @@
 
     // join_clause may appear before "select" (legacy) OR right after the select
     // list (preferred, SQL-like); both positions collect into the same join set.
-    select_statement: from_clause? where? join_clause* "select"i select_list join_clause* where?  select_grouping?  having? order_by?  limit?
+    select_statement: from_clause? where_series? join_clause* "select"i select_list join_clause* where_series?  select_grouping?  having? order_by?  limit?
 
     // query-scoped join: blends two otherwise-disjoint concepts on a shared key
     // for this select only (a query-local merge). SUBSET and UNION are the only
@@ -365,7 +365,11 @@
                   | condition_parenthetical
     
     where: "WHERE"i conditional
-    
+
+    // staged where: each later stage's aggregates/windows compute over rows
+    // passing all earlier stages; the final row gate is the AND of all stages.
+    where_series: where ("THEN"i where)*
+
     having: "HAVING"i conditional
 
     COMPARISON_OPERATOR: /(\s+is\s+not\s|\s+is\s|\s+in\s|\s+not\s+in\s|=|>=|<=|!=|>|<)/i

@@ -166,8 +166,13 @@ HAVING # filters data AFTER it has been aggregated or windowed
 ```
 INLINE filter x ? cond <- filters the immediate prior expression (e.g. sum(x ? x > 0) is sum (x where x is more than 0)).
 
-Note that aggregates/windows in WHERE do not filter the inputs to each other. 
-You must use inline filters if you want a where clause aggregate/window to be filtered.
+Note that aggregates/windows in WHERE do not filter the inputs to each other.
+You must use inline filters if you want a where clause aggregate/window to be filtered,
+OR use a staged `then where` chain: each `then where` stage's aggregates/windows compute
+over only the rows passing all earlier stages (the final row gate is the AND of all stages).
+`where x = 5 then where sum(y) > 10` is equivalent to `where x = 5 and sum(y ? x = 5) > 10`.
+An earlier stage containing its own aggregate/window cannot precede a later stage that
+computes one (write that as an inline filter instead).
 
 where student.state = 'TN' #  filters ALL Data to the state
 select 

@@ -1079,6 +1079,7 @@ def _inject_conditions(
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
     environment: BuildEnvironment | None = None,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -1092,6 +1093,7 @@ def _inject_conditions(
         concept_attrs,
         statement_relation_addresses,
         environment,
+        staged_conditions,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1100,10 +1102,15 @@ def _inject_conditions(
                 attrs[gid].conditions.append(str(placement.atom))
             # A conjunction-coverage copy is tagged so the builder can strip
             # it from a twin-reused aggregate at build time; its host is
-            # already colored by the sibling atom that put it in play.
+            # already colored by the sibling atom that put it in play. A stage
+            # precondition likewise leaves phase coloring to the atom's own
+            # UPSTREAM_MOST placement: it is an input filter on a d1 side
+            # channel, not a gate host.
             if placement.reason is PlacementReason.CONJUNCTION_RECOMPUTE:
                 if placement.atom not in attrs[gid].conjunction_atoms:
                     attrs[gid].conjunction_atoms.append(placement.atom)
+                continue
+            if placement.reason is PlacementReason.STAGE_PRECONDITION:
                 continue
             condition_group_ids.add(gid)
     return condition_group_ids
@@ -2258,6 +2265,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment | None = None,
     return_merged_graph: Literal[False] = False,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]: ...
 
 
@@ -2272,6 +2280,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment | None = None,
     return_merged_graph: Literal[True],
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]: ...
 
 
@@ -2285,6 +2294,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment | None = None,
     return_merged_graph: bool = False,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> (
     tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]
     | tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]
@@ -2415,6 +2425,7 @@ def build_group_graph(
             else frozenset()
         ),
         environment,
+        staged_conditions,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,

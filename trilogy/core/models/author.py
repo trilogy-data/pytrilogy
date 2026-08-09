@@ -430,6 +430,18 @@ class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
         )
 
 
+def combine_staged_wheres(stages: Sequence[WhereClause]) -> WhereClause | None:
+    """AND-fold a `then where` stage chain into the single combined row gate."""
+    if not stages:
+        return None
+    condition = stages[0].conditional
+    for stage in stages[1:]:
+        condition = Conditional(
+            left=condition, right=stage.conditional, operator=BooleanOperator.AND
+        )
+    return WhereClause(conditional=condition)
+
+
 @dataclass
 class HavingClause(WhereClause):
     pass
@@ -2970,6 +2982,9 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     meta: Metadata = dc_field(default_factory=lambda: Metadata())
     grain: Grain = dc_field(default_factory=Grain)
     where_clause: WhereClause | None = None
+    # Ordered `then where` stages; where_clause is their AND fold. Empty or
+    # single-entry for a flat where.
+    where_clauses: list[WhereClause] = dc_field(default_factory=list)
     having_clause: HavingClause | None = None
     # Query-scoped JOINs declared on this select (`subset|union join a = b`).
     # Carried through to discovery so a select built as a sub-node (e.g. a union
@@ -2981,6 +2996,10 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     # un-pinned aggregate materialized in this select's projection scope, so no
     # shared authoring object ever carries the spec.
     grouping: AggregateGrouping | None = None
+
+    def __post_init__(self):
+        if not self.where_clauses and self.where_clause:
+            self.where_clauses = [self.where_clause]
 
     @property
     def output_components(self) -> list[ConceptRef]:
@@ -3002,6 +3021,7 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
                 if self.where_clause
                 else None
             ),
+            where_clauses=[x.with_namespace(namespace) for x in self.where_clauses],
             having_clause=(
                 self.having_clause.with_namespace(namespace)
                 if self.having_clause

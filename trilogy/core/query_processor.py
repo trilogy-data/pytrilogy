@@ -667,6 +667,7 @@ def _plan_query_node(
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
     history: History,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode:
     """Discovery entrypoint: plan `build_statement`, then wrap the result with
     the statement's HAVING, ORDER BY and hidden components.
@@ -695,6 +696,7 @@ def _plan_query_node(
         depth=0,
         g=graph,
         conditions=[conditions] if conditions else [],
+        staged_conditions=staged_conditions,
     )
     ds = info.strategy_node
     if ds is None:
@@ -1004,12 +1006,20 @@ def get_query_node(
 
     graph = generate_graph(build_environment)
 
+    staged_conditions = (
+        build_statement.where_clauses
+        if isinstance(build_statement, BuildSelectLineage)
+        and len(build_statement.where_clauses) > 1
+        else None
+    )
+
     return _plan_query_node(
         build_statement=build_statement,
         build_environment=build_environment,
         graph=graph,
         conditions=build_statement.where_clause,
         history=history,
+        staged_conditions=staged_conditions,
     )
 
 

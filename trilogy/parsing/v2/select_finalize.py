@@ -82,6 +82,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     UndefinedConcept,
     UndefinedConceptFull,
+    combine_staged_wheres,
 )
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
@@ -92,6 +93,7 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
 )
+from trilogy.core.where_scope_normalization import _collect_cross_row_parts
 from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
@@ -434,7 +436,13 @@ def _validate_where_aggregate_matches_select(
     if not select_aggs:
         return
     sig_to_alias = {sig: addr for sig, addr in select_aggs}
-    for node in _collect_condition_aggregates(select.where_clause.conditional):
+    # Only stage 1 of a `then where` chain can recompute a SELECT aggregate:
+    # a later stage's aggregate has its inputs gated by the earlier stages, so
+    # an identical-looking spelling is a genuinely different computation.
+    first_stage = (
+        select.where_clauses[0] if select.where_clauses else select.where_clause
+    )
+    for node in _collect_condition_aggregates(first_stage.conditional):
         sig = _aggregate_full_signature(node)
         if sig is None or sig not in sig_to_alias:
             continue
@@ -446,6 +454,36 @@ def _validate_where_aggregate_matches_select(
             f"clause - e.g. `having {alias} > ...`"
             + (f"; Line: {line_no}" if line_no else "")
         )
+
+
+def _validate_staged_where(
+    select: SelectStatement, context: RuleContext, line_no: int | None
+) -> None:
+    """v1 `then where` restriction: an earlier stage whose predicate contains a
+    cross-row computation (aggregate/window) cannot gate a later stage that
+    also computes cross-row — delivering an aggregate gate into a later
+    computation's input rows needs a feeder join the planner does not yet
+    build. Scalar earlier stages (the motivating shape) are unrestricted."""
+    if len(select.where_clauses) < 2:
+        return
+    cross = [
+        bool(
+            _collect_cross_row_parts(
+                stage.conditional, select.local_concepts, context.environment, set()
+            )
+        )
+        for stage in select.where_clauses
+    ]
+    for later, later_cross in enumerate(cross):
+        if later_cross and any(cross[:later]):
+            raise InvalidSyntaxException(
+                f"`then where` stage {later + 1} computes an aggregate or window, "
+                f"but an earlier stage's predicate also contains one; gating a "
+                f"later stage's computation inputs by an earlier aggregate/window "
+                f"predicate is not yet supported. Write the earlier condition as "
+                f"an inline filter instead (e.g. `sum(x ? <condition>)`), or "
+                f"flatten the stages" + (f"; Line: {line_no}" if line_no else "")
+            )
 
 
 def _validate_having_aggregates_match_select(
@@ -1392,9 +1430,11 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.metadata.line_number if x.metadata else None,
                     )
         if replacements:
-            select.where_clause = select.where_clause.with_reference_replacement(
-                replacements
-            )
+            select.where_clauses = [
+                wc.with_reference_replacement(replacements)
+                for wc in select.where_clauses
+            ]
+            select.where_clause = combine_staged_wheres(select.where_clauses)
     _rewrite_aliased_source_refs(select)
     all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived
@@ -1405,9 +1445,14 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     # computes at the select grain over the WHERE-unfiltered universe (its own CTE),
     # a valid pre-aggregation gate distinct from the post-filter SELECT/HAVING
     # aggregate. A scalar select has no grain to anchor that gate and the planner
-    # drops sibling row filters, so keep redirecting it to HAVING.
-    if select.where_clause and not select.grain.components:
-        for cref in select.where_clause.concept_arguments:
+    # drops sibling row filters, so keep redirecting it to HAVING. Stage 1 of a
+    # `then where` chain only: later stages' aggregates are input-gated by the
+    # earlier stages and never read the select's own output back.
+    first_where_stage = (
+        select.where_clauses[0] if select.where_clauses else select.where_clause
+    )
+    if first_where_stage and not select.grain.components:
+        for cref in first_where_stage.concept_arguments:
             concept = context.concepts.get(cref.address)
             if concept is None or isinstance(concept, UndefinedConcept):
                 continue
@@ -1428,6 +1473,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"move to the HAVING clause instead; Line: {line_no}"
                 )
         _validate_where_aggregate_matches_select(select, line_no)
+    _validate_staged_where(select, context, line_no)
     if select.having_clause:
         # Point HAVING windows at their materialized SELECT alias before
         # validating refs, so the window's inner aggregate input isn't treated

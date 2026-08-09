@@ -555,5 +555,11 @@ def normalize_select_where_scope(
     return dc_replace(
         base,
         where_clause=base.where_clause.with_reference_replacement(replacements),
+        # `then where` stages must stay address-aligned with the combined
+        # clause: the staged discovery pass maps stage atoms/hosts into the
+        # combined clause's placements by address.
+        where_clauses=[
+            wc.with_reference_replacement(replacements) for wc in base.where_clauses
+        ],
         local_concepts=local_concepts,
     )

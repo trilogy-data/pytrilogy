@@ -22,6 +22,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     UndefinedConceptFull,
     WhereClause,
+    combine_staged_wheres,
 )
 from trilogy.core.statements.author import (
     ConceptTransform,
@@ -40,6 +41,7 @@ from trilogy.parsing.v2.rules.concept_rules import (
     metadata_from_meta,
     parse_concept_reference,
 )
+from trilogy.parsing.v2.rules.conditional_rules import StagedWhere
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -62,7 +64,9 @@ def select_statement(
     limit: int | None = None
     order_by: OrderBy | None = None
     from_clause_val: FromClause | None = None
-    where: WhereClause | None = None
+    stages: list[WhereClause] = []
+    saw_multi_stage_slot = False
+    slot_count = 0
     having: HavingClause | None = None
     grouping: AggregateGrouping | None = None
     join_clauses: list[SelectJoin] = []
@@ -84,21 +88,31 @@ def select_statement(
             order_by = arg
         elif atype is FromClause:
             from_clause_val = arg
-        elif atype is WhereClause:
+        elif atype is StagedWhere:
+            slot_count += 1
+            if len(arg.stages) > 1:
+                saw_multi_stage_slot = True
             # Agents commonly split row filters across a pre-`select` `where` and
             # a post-join `where`; both mean "filter input rows", so AND them into
             # one clause rather than erroring (post-aggregation filtering is
-            # `having`, never a second `where`).
-            if where is not None:
-                where = WhereClause(
+            # `having`, never a second `where`). A `then where` chain, however,
+            # carries stage ordering that two positional slots cannot express.
+            if slot_count > 1 and saw_multi_stage_slot:
+                raise fail(
+                    node,
+                    "A `then where` staged chain cannot be combined with a "
+                    "second where clause; consolidate into one staged where.",
+                )
+            if stages and len(arg.stages) == 1:
+                stages[-1] = WhereClause(
                     conditional=Conditional(
-                        left=where.conditional,
-                        right=arg.conditional,
+                        left=stages[-1].conditional,
+                        right=arg.stages[0].conditional,
                         operator=BooleanOperator.AND,
                     )
                 )
             else:
-                where = arg
+                stages.extend(arg.stages)
         elif atype is HavingClause:
             having = arg
     if not select_items:
@@ -107,7 +121,8 @@ def select_statement(
     return SelectStatement(
         selection=select_items,
         order_by=order_by,
-        where_clause=where,
+        where_clause=combine_staged_wheres(stages),
+        where_clauses=stages,
         having_clause=having,
         limit=limit,
         eligible_datasources=from_clause_val.sources if from_clause_val else None,

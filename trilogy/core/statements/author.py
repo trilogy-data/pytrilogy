@@ -49,6 +49,7 @@ from trilogy.core.models.author import (
     UnionSelectLineage,
     WhereClause,
     WindowItem,
+    combine_staged_wheres,
     get_concept_arguments,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
@@ -170,6 +171,10 @@ class SelectJoin:
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: list[SelectItem]
     where_clause: WhereClause | None = None
+    # Ordered `then where` stages; where_clause is always their AND fold. A
+    # flat where is a single stage. Later stages' aggregates/windows compute
+    # over rows passing all earlier stages (applied at v4 discovery).
+    where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: HavingClause | None = None
     order_by: OrderBy | None = None
     limit: int | None = None
@@ -195,6 +200,8 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         self.selection = new
         if not isinstance(self.local_concepts, EnvironmentConceptDict):
             self.local_concepts = validate_concepts(self.local_concepts)
+        if not self.where_clauses and self.where_clause:
+            self.where_clauses = [self.where_clause]
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         derived = [
@@ -210,6 +217,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             order_by=self.order_by,
             limit=self.limit,
             where_clause=self.where_clause,
+            where_clauses=self.where_clauses,
             having_clause=self.having_clause,
             local_concepts={
                 k: v
@@ -357,14 +365,20 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                             x.address, x.metadata.line_number if x.metadata else None
                         )
             if replacements:
-                self.where_clause = self.where_clause.with_reference_replacement(
-                    replacements
-                )
+                self.where_clauses = [
+                    wc.with_reference_replacement(replacements)
+                    for wc in self.where_clauses
+                ]
+                self.where_clause = combine_staged_wheres(self.where_clauses)
         # Only a SCALAR select (no grouping key) restricts a WHERE aggregate that is
         # also derived in the select; a grouped select computes it at the select
         # grain over the WHERE-unfiltered universe as a valid pre-aggregation gate.
-        if self.where_clause and not self.grain.components:
-            for cref in self.where_clause.concept_arguments:
+        # Only stage 1 of a `then where` chain is restricted: a later stage's
+        # aggregate is a different computation (its inputs are gated by the
+        # earlier stages), never the select's own output read back.
+        first_stage = self.where_clauses[0] if self.where_clauses else self.where_clause
+        if first_stage and not self.grain.components:
+            for cref in first_stage.concept_arguments:
                 concept = environment.concepts[cref.address]
                 if isinstance(concept, UndefinedConcept):
                     continue

@@ -102,9 +102,10 @@ from trilogy.core.statements.author import (
 from trilogy.parsing.pretty import Break, DocPart
 from trilogy.parsing.pretty import render as pretty_render
 
-QUERY_TEMPLATE = Template("""{% if where %}where
+QUERY_TEMPLATE = Template(
+    """{% for where in wheres %}{{ 'where' if loop.first else 'then where' }}
 {{ where }}
-{% endif %}{% for join in joins %}{{ join }}
+{% endfor %}{% for join in joins %}{{ join }}
 {% endfor %}select{%- for select in select_columns %}
 {{ select }},{% endfor %}{%- if grouping %}
 {{ grouping }}
@@ -115,7 +116,8 @@ having
 order by{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
 limit {{ limit }}{% endif %}
-;""")
+;"""
+)
 
 
 @dataclass
@@ -1024,9 +1026,16 @@ class Renderer:
                 for c in arg.selection
                 if not self._is_hidden_subquery_output(c)
             ]
-            where_clause = None
-            if arg.where_clause:
-                where_clause = self.indent_lines(self.to_string(arg.where_clause))
+            # A `then where` chain renders stage by stage (fmt round-trip);
+            # a flat where renders from the combined clause as before.
+            if len(arg.where_clauses) > 1:
+                where_stages = [
+                    self.indent_lines(self.to_string(wc)) for wc in arg.where_clauses
+                ]
+            elif arg.where_clause:
+                where_stages = [self.indent_lines(self.to_string(arg.where_clause))]
+            else:
+                where_stages = []
             having_clause = None
             if arg.having_clause:
                 having_clause = self.indent_lines(self.to_string(arg.having_clause))
@@ -1057,7 +1066,7 @@ class Renderer:
         grouping = self._render_select_grouping(arg.grouping) if arg.grouping else None
         return QUERY_TEMPLATE.render(
             select_columns=select_columns,
-            where=where_clause,
+            wheres=where_stages,
             having=having_clause,
             grouping=grouping,
             order_by=order_by,
