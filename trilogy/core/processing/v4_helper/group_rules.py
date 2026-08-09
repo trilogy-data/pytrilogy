@@ -965,11 +965,17 @@ def partition_filters_by_signature(
         else:
             shared_items.append((node, data))
 
+    # `output_addresses` folds in condition args, so a D1 (WHERE-recursion)
+    # filter can carry a projected address without being a projected OUTPUT --
+    # exempting one would waive the signature split for a node that does have a
+    # downstream consumer. Excluded structurally rather than relying on the
+    # corpus never producing one.
     output_sinks = frozenset(
         node
-        for node, _ in shared_items
+        for node, data in shared_items
         if concept_attrs[node].address in output_addresses
-        and not any(True for _ in concept_graph.successors(node))
+        and data.depth_label != DepthLabel.D1
+        and concept_graph.out_degree(node) == 0
     )
 
     buckets = _partition_by_signature_and_grain(

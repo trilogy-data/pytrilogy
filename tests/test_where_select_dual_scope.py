@@ -529,6 +529,38 @@ def test_macro_partition_key_in_where_built_twin():
     assert _sql(model, query).count("lead(") == 2
 
 
+GATE_SCHEMA = """key id int;
+property id.cat string;
+property id.val int;
+datasource d ( id, cat, val ) grain (id)
+query '''select 1 as id, 'a' as cat, 5 as val
+union all select 2, 'a', 8
+union all select 3, 'b', 3
+union all select 4, 'b', 2''';
+"""
+# Population sums by cat: {a: 13, b: 5}; only cat=a clears the gate, and of its
+# rows only id=1 also has val < 8.
+
+
+def test_aggregate_gate_by_key_absent_from_select():
+    # The gate's `by` key is neither projected nor otherwise demanded, so the
+    # row stream has to carry it as a hidden join key or the gate CTE merges
+    # back cartesian and both atoms stop filtering.
+    rows = _rows(GATE_SCHEMA, "where val < 8 and sum(val) by cat > 10 select id;")
+    assert rows == [(1,)], rows
+
+
+def test_aggregate_gate_by_key_present_in_select():
+    rows = _rows(GATE_SCHEMA, "where val < 8 and sum(val) by cat > 10 select id, cat;")
+    assert rows == [(1, "a")], rows
+
+
+def test_aggregate_gate_alone_by_key_absent_from_select():
+    # The gate on its own: no scalar peer to mask a dropped join key.
+    rows = _rows(GATE_SCHEMA, "where sum(val) by cat > 10 select id;")
+    assert rows == [(1,), (2,)], rows
+
+
 def test_macro_wrapped_inline_where_aggregate():
     # An inline WHERE aggregate arriving through a def-macro call still counts
     # as a cross-row instantiation for the WHERE factory's scope salt.

@@ -73,6 +73,42 @@ def _condition_source_uses_aggregate_contract(
     )
 
 
+def _with_condition_source_join_keys(
+    outputs: list[BuildConcept],
+    conditions: BuildWhereClause,
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Widen the row scan by the grain of every aggregate gate ROOT must
+    re-source as a feeder.
+
+    The feeder is a standalone plan merged back onto this node on whatever the
+    two share, so a gate keyed by a dimension the outputs never demand
+    (`where sum(val) by cat > 10 select id`) shares nothing: the merge degrades
+    to a cross join and the gate stops filtering rows altogether. The keys come
+    back hidden, so this only adds join columns, never projected ones. A `by *`
+    gate has no grain and is genuinely keyless — it stays a cross join.
+    """
+    produced = {concept.address for concept in outputs}
+    row_args = [
+        concept
+        for concept in condition_row_args(conditions)
+        if concept.address not in produced
+    ]
+    if not _condition_source_uses_aggregate_contract(row_args):
+        return outputs
+    keys = {
+        address
+        for concept in row_args
+        if concept.grain is not None
+        for address in concept.grain.components
+    } - produced
+    return outputs + [
+        environment.concepts[address]
+        for address in sorted(keys)
+        if address in environment.concepts
+    ]
+
+
 def _inheritable_atoms(
     preexisting_conditions: BuildWhereClause | None,
     request: list[BuildConcept],
@@ -264,7 +300,11 @@ def gen_root(
         )
     )
     if node is None and conditions is not None:
-        fallback_outputs = _outputs_with_grain_keys(inner_outputs, environment)
+        fallback_outputs = _with_condition_source_join_keys(
+            _outputs_with_grain_keys(inner_outputs, environment),
+            conditions,
+            environment,
+        )
         node = plan_source(
             SourceRequest(
                 outputs=fallback_outputs,
