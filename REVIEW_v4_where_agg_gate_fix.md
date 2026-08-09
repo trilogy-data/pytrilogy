@@ -265,8 +265,8 @@ byte-diffed them: **identical, 132/132** — both fixes, and the whole v3 remova
 shape-neutral on the corpus. The same sweep showed both fixes are corpus-*silent*:
 `_with_condition_source_join_keys` widens **0 times**, and `_nested_scope_swallows_atom`
 fires 3 times (tpch q02, q02-region, q20) in exactly the places `main` already fired.
-The green suite is therefore not evidence about either fix's blast radius. Two defects
-the sweep turned up, both fixed here:
+The green suite is therefore not evidence about either fix's blast radius. What the
+sweep turned up, and what became of each:
 
 - **Sibling condition scopes.** `nested_ids` was a flat global set, so the grain test
   asked "does *any* nested group anywhere key this atom" rather than "does this host's
@@ -289,16 +289,26 @@ the sweep turned up, both fixed here:
   the real criterion (does the caller read rowset outputs across the boundary?)
   rather than "pre-gates pass False".
 
-Three new row tests cover the sibling-scope shapes (all four probe queries were wrong
-on `main`, all four correct now). Corpus re-rendered after both fixes: still 132/132
-identical to `main`.
+- **NULL-padded rows from a multi-gate feeder** (pre-existing, independent of the
+  two fixes above — the multi-feeder cousin of §2's unkeyed rejoin).
+  `where sum(id) by val > 0 and sum(val) by cat > 10 select id` returned
+  `[(1,), (2,), (None,), (None,)]`. Two gate CTEs on different keys have no shared
+  concept, so join ordering's `solo` branch fuses them with a **keyless FULL**;
+  that FULL marks all its outputs nullable, join inference then saw exactly one
+  nullable side, read it as enrichment, and preserved the FEEDER — emitting a
+  NULL-padded row per (val, cat) pair the data never contained. Fixed at the
+  semantic level rather than by touching nullability inference: the
+  `condition_on_merge` MergeNode now sets `force_join_type=INNER`, because a
+  condition source is a FILTER input and that merge may only REMOVE rows.
+  Corpus effect: one query, tpcds q64 — two RIGHT OUTER → INNER, all five
+  authored FULL joins untouched (they sit in other merges, so the coalescing
+  row-intent registry is not overridden), one pass-through CTE dropped, SQL 12%
+  smaller, q64's row assertions unchanged.
 
-**Known-remaining, pre-existing, NOT fixed here**: two gates keyed by different
-dimensions can be cross-joined into one feeder and LEFT-OUTER-joined back to the row
-scan, leaking NULL-padded rows —
-`where sum(id) by val > 0 and sum(val) by cat > 10 select id` returns
-`[(1,), (2,), (None,), (None,)]`. No row atom involved, so it is independent of both
-fixes above; it is the multi-feeder cousin of §2's unkeyed rejoin.
+Four new row tests in `tests/test_where_select_dual_scope.py` cover the sibling-scope
+and multi-gate shapes; every one of them was wrong on `main`. Corpus re-rendered after
+all fixes: **131/132 identical to `main`, q64 the only change**. Full suite
+`-m "not adventureworks_execution"`: 7456 passed, 121 skipped, 1 xpassed, 0 failed.
 
 ## 6. Suggested review order
 
