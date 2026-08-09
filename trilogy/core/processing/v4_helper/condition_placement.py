@@ -143,8 +143,8 @@ def _candidate_groups(
         if gid not in d1_root_ids
         # A RECURSIVE group never hosts a row atom: filtering the edge set
         # changes reachability (a 2024 post's parent chain crosses years), so
-        # the WHERE belongs above the recursion (v3 renders it at the final
-        # select). Excluding it here lets the atom fall through to FINAL.
+        # the WHERE belongs above the recursion, at the final select.
+        # Excluding it here lets the atom fall through to FINAL.
         and not (
             buckets.get(gid) is not None
             and buckets[gid].derivation == Derivation.RECURSIVE
@@ -410,7 +410,7 @@ def _uncovered_exposing_output_contributor(
     Hosting an atom at its upstream-most candidate filters that branch, but a
     sibling output projection (`vehicle_label` beside a name-grain window) joins
     FINAL on a coarser key and fans the filtered rows back out to the unfiltered
-    universe — v3 re-applies the WHERE on the final select. Only trip when the
+    universe, so the WHERE is re-applied on the final select. Only trip when the
     uncovered group can expose the inputs (else the FINAL WHERE would reference
     an unsourced concept; an uncovered contributor keyed 1:1 by row identity is
     pinned by the join and needs no re-filter — its groups can't expose derived
@@ -456,7 +456,7 @@ def _preserved_final_branch(
     on the split customer-dim cluster, LEFT-joined back to the qualifying
     aggregate). The WHERE — not the join — owns row dropping, so the atom is
     re-asserted at FINAL; the re-check is idempotent when the join is already
-    row-identical (v3 restates the predicate at its merge in the same shape).
+    row-identical (the predicate is restated at its merge in the same shape).
     Gated on the inputs being FINAL-visible mandatory outputs so the copy never
     drags feeder scans in above the merge, and skipped under non-standard
     grouping for the same subtotal-NULL reason as
@@ -548,7 +548,7 @@ def _conjunction_recompute_placements(
 
     A WHERE at a GROUP BY-emitting group restricts that aggregate's input
     population, and the population a select-scope aggregate must see is the
-    rows passing the FULL conjunction — v3 applies every atom at every
+    rows passing the FULL conjunction, so every atom must apply at every
     row-reducing recompute host. Placing atoms independently can split them
     across disjoint hosts (`f = 1` on the scalar branch, the twin gate on the
     `sx` recompute, whose input rides the unfiltered condition-phase chain),
@@ -860,8 +860,8 @@ def plan_condition_placements(
             # group, whose plan itself contains the completion merge). The
             # same applies to a scoped-join KEY-GROUP MEMBER itself: a member
             # reference reads as the coalesced group axis, which only exists
-            # post-merge (v3 renders `WHERE coalesce(b_store, a_store) is not
-            # null` at the final select) — filtering one boundary by its own
+            # post-merge (`WHERE coalesce(b_store, a_store) is not null`
+            # renders at the final select) — filtering one boundary by its own
             # key both no-ops locally and perturbs the anchor-LEFT join shape.
             active_relation_hosts = {
                 gid
@@ -1037,8 +1037,8 @@ def plan_condition_placements(
             # the condition-only group covers no mandatory output, so it is
             # pruned and the WHERE silently vanishes (`where year = 2001` over
             # rowset outputs that never expose year). No join relates the
-            # gate's rows to the outputs — v3's rowset islanding diagnoses the
-            # same shape as disconnected; raise the same typed error. EXEMPT an
+            # gate's rows to the outputs — rowset islanding diagnoses the same
+            # shape as disconnected; raise the same typed error. EXEMPT an
             # atom the output rowsets' own bodies already filter on (q44's
             # outer `store.sk = 1` restates both rowsets' WHERE): that scope
             # consumes the concept, so this is a redundant restatement, not a

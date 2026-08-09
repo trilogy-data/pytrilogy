@@ -403,7 +403,7 @@ class TestResolveMultiselect:
     def test_unresolvable_arm_raises(self):
         """An arm referencing a concept with no datasource is a genuine
         planning failure — it raises loudly rather than silently degrading
-        (the v4 dispatch no longer falls back to v3 for implemented
+        (dispatch has no fallback planner for implemented
         derivations)."""
         env, benv = _build("""
 key one int;

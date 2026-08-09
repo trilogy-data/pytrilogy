@@ -1,7 +1,6 @@
 import re
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key item_id int;
@@ -49,13 +48,8 @@ def test_aggregate_condition_feeder_keeps_only_value_and_grain_contract():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = executor.generate_sql(_QUERY)[-1]
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = executor.generate_sql(_QUERY)[-1]
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
 
     assert [tuple(row) for row in rows] == [(1, "eu-low")]
     assert len(re.findall(r"\bWITH\b|,\s*\w+\s+as\s*\(", sql, re.IGNORECASE)) == 5

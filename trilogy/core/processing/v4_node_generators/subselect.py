@@ -28,7 +28,7 @@ def gen_subselect(
     select reads a separate datasource (`@close_warehouses` reads `warehouse_*`
     while the outer correlates on `customer_lat/lon`); plan it recursively and
     add it as a second parent so the SubselectNode can render the correlated
-    sub-query. Mirrors v3 `gen_subselect_node`'s cross-datasource branch.
+    sub-query.
 
     SubselectNode has no `conditions` arg — both this-level and inherited atoms
     collapse into `preexisting_conditions`."""
@@ -72,7 +72,7 @@ def gen_subselect(
     # A non-correlated subselect is one global value, but the node computes it
     # once per parent row and its QDS grain (from the outputs) hides that — so
     # when NO output carries the parent's row grain, dedup to the output set
-    # (v3's shape: per-row compute CTE, then a GROUP BY collapse CTE).
+    # (per-row compute CTE, then a GROUP BY collapse CTE).
     if outputs and all(
         c.derivation == Derivation.SUBSELECT
         and isinstance(c.lineage, BuildSubselectItem)

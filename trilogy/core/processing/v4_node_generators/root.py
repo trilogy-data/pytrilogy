@@ -333,7 +333,7 @@ def gen_root(
             # pass-through wrapper CTE: the join-upgrade pass can only prove a
             # preserved dim join INNER when the rejecting WHERE and the join
             # render in the SAME select (q70's `state in top_states` guard must
-            # upgrade the nullable store join exactly as v3's inline form
+            # upgrade the nullable store join exactly as the inline form
             # does), and a wrapper hides the joins from the proof. Gated to
             # feeders whose outputs are fully disjoint from the row stream — a
             # shared address makes node resolution treat the feeder as a row

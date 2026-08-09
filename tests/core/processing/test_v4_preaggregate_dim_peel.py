@@ -2,7 +2,6 @@ import re
 from datetime import date
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key order_id int;
@@ -44,13 +43,8 @@ def test_preaggregate_dimension_peel_duplicates_filter_on_both_scans():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = executor.generate_sql(_QUERY)[-1]
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = executor.generate_sql(_QUERY)[-1]
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
 
     assert [tuple(row) for row in rows] == [(1, 30, date(1995, 3, 1), 0)]
     assert len(re.findall(r"\bWITH\b|,\s*\w+\s+as\s*\(", sql, re.IGNORECASE)) == 2

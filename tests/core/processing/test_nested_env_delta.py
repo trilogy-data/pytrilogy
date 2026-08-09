@@ -10,7 +10,6 @@ build — same concepts, same datasources, same aliases, same insertion order.
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment as AuthorEnvironment
 
 _MODEL = """
@@ -121,10 +120,7 @@ def _assert_env_equal(delta, full, context):
 
 @pytest.fixture
 def v4():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
     yield
-    CONFIG.use_v4_discovery = prior
 
 
 def test_session_caches_invalidate_on_env_mutation(v4):

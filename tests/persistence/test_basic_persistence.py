@@ -1,22 +1,8 @@
-import networkx as nx
 import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import ConceptSource, Derivation, Purpose
-from trilogy.core.env_processor import (
-    concept_to_node,
-    datasource_to_node,
-    generate_graph,
-)
-from trilogy.core.models.author import (
-    Grain,
-)
-from trilogy.core.processing.node_generators import (
-    gen_select_node,
-)
-from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.query_processor import process_auto
-from trilogy.core.statements.author import PersistStatement
 from trilogy.core.statements.execute import ProcessedQueryPersist
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
@@ -33,105 +19,6 @@ TEST_DIALECTS: list[BaseDialect] = [
     SqlServerDialect(),
     SnowflakeDialect(),
 ]
-
-
-def test_derivations():
-    declarations = """
-    key category_id int;
-    property category_id.category_name string;
-    datasource category_source (
-        category_id:category_id,
-        category_name:category_name,
-    )
-    grain (category_id)
-    address category;
-
-    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
-
-    persist bool_is_upper_name into upper_name from
-    select
-        test_upper_case_2
-    ;
-    
-    select 
-    test_upper_case_2;
-
-    persist bool_is_upper_name into upper_name from
-    select
-        test_upper_case_2
-    ;
-
-    select 
-    test_upper_case_2;
-
-    """
-    env, parsed = parse(declarations)
-    assert "local.test_upper_case_2" in env.concepts
-
-    for dialect in TEST_DIALECTS:
-        compiled = []
-
-        for idx, statement in enumerate(parsed[-2:]):
-            print("processing statement:", idx, str(statement))
-            if idx > 0:
-                hooks = [DebuggingHook()]
-            else:
-                hooks = []
-            if isinstance(statement, PersistStatement):
-                for x in statement.select.local_concepts:
-                    print(x)
-            else:
-                for x in statement.local_concepts:
-                    print(x)
-            processed = process_auto(env, statement, hooks=hooks)
-            compiled.append(dialect.compile_statement(processed))
-            # force add since we didn't run it
-            if isinstance(processed, ProcessedQueryPersist):
-                env.add_datasource(processed.datasource)
-        build_env = env.materialize_for_select()
-        test_concept = build_env.concepts["local.test_upper_case_2"]
-        assert test_concept.purpose == Purpose.PROPERTY
-        assert test_concept.address in build_env.materialized_concepts
-
-        persist: PersistStatement = parsed[-2]
-        assert persist.select.grain == Grain(components=[test_concept])
-        assert len(compiled) == 2
-
-        g = generate_graph(build_env)
-
-        path = nx.shortest_path(
-            g,
-            source=datasource_to_node(build_env.datasources["bool_is_upper_name"]),
-            target=concept_to_node(test_concept.with_default_grain()),
-        )
-        assert len(path) == 3, path
-
-        # test that the full function returns the value
-        static = gen_select_node(
-            concepts=[test_concept],
-            environment=build_env,
-            g=g,
-            depth=0,
-        )
-        assert static
-
-        # test that the rendered SQL didn't need to use a cASE
-        assert "CASE" not in compiled[-1]
-
-        assert test_concept.purpose == Purpose.PROPERTY
-        assert env.datasources["bool_is_upper_name"].grain == Grain(
-            components=[test_concept]
-        )
-
-        # test that we can resolve a select
-        test = SelectNode(
-            [test_concept.with_default_grain()],
-            [],
-            env,
-            parents=[],
-        )
-        resolved = test.resolve()
-        assert resolved is not None
 
 
 def test_derivations_reparse():

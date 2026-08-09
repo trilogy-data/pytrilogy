@@ -36,10 +36,9 @@ def gen_rowset(
 ) -> StrategyNode | None:
     """Boundary node for a rowset reference. The rowset's inner select is a
     self-contained sub-query, so — like ROOT — this generator ignores the
-    group graph's pre-built parents and plans the inner recursively through
-    v4, mirroring v3's `gen_rowset_node`/`get_query_node`. Enrichment joins
-    back to the outer query are handled by the outer group graph / FINAL
-    merge, not here."""
+    group graph's pre-built parents and plans the inner recursively.
+    Enrichment joins back to the outer query are handled by the outer group
+    graph / FINAL merge, not here."""
     if not outputs or not isinstance(history, V4History):
         return None
     return resolve_rowset(
@@ -58,8 +57,8 @@ def resolve_rowset(
     """Plan a rowset boundary node by recursively planning its inner select
     through v4, then projecting that producer under the outer handle addresses.
 
-    The rowset's inner select is a self-contained sub-query (the same shape v3
-    planned via `get_query_node`): we build its author lineage against the base
+    The rowset's inner select is a self-contained sub-query, planned the same
+    way `get_query_node` plans a statement: we build its author lineage against the base
     environment, materialize a FRESH build environment + graph for it (the
     outer environment classifies the inner's concepts under rowset aliasing —
     a plain root reads back as `derivation=rowset` there — so reusing it
@@ -128,8 +127,7 @@ def resolve_rowset(
     # authored side only as a pseudonym of that canonical — so a demanded
     # handle's content (`a.aid`) has no produced entry of its own. Re-expose
     # the content on the inner producer (sourced off the canonical column via
-    # the pseudonym) so the boundary can materialize the handle; mirrors v3
-    # `_expose_coalesced_key_sources`.
+    # the pseudonym) so the boundary can materialize the handle.
     produced_by_pseudonym: dict[str, BuildConcept] = {}
     for out in produced.values():
         for pseudonym in out.pseudonyms:
@@ -184,7 +182,7 @@ def resolve_rowset(
     # producer supplies so they enter the boundary grain below and the FINAL merge
     # joins on them; otherwise a shared-key rowset with no `merge into` pseudonym
     # degrades to a `1=1` cross product -> cartesian (test_rowset_alias_name_
-    # collision: 3 rows -> 27). Mirrors v3 `gen_rowset_node` carrying the inner
+    # collision: 3 rows -> 27). Carry the inner
     # select's demanded output_components (`additional_relevant`). Multiselect
     # grains are align concepts handled separately below, so scope to plain selects.
     #
@@ -220,8 +218,7 @@ def resolve_rowset(
     # multiselect concept, which the renderer resolves via `find_source` — it
     # needs the per-arm concepts in the SAME CTE's outputs. They're not handles,
     # so carry them as HIDDEN outputs of this boundary; the aligned value is then
-    # materialized here and outer CTEs just reference the column (mirrors v3
-    # `gen_rowset_node`, whose node kept the arm concepts as hidden outputs).
+    # materialized here and outer CTEs just reference the column.
     hidden: set[str] = set()
     if isinstance(built, BuildMultiSelectLineage):
         handle_addrs = {h.address for h in handles}
@@ -256,7 +253,7 @@ def resolve_rowset(
         inputs.append(content_concept)
         handle_addrs.add(content_concept.address)
 
-    # OBLIGATION (v3 `_local_exposure_obligations`): a presence probe over one
+    # OBLIGATION: a presence probe over one
     # of this rowset's handles must be computed HERE, pre-merge — post-merge
     # the member reads as the fused group coalesce, never NULL. The probe is a
     # BASIC over the handle, so it renders inline in the boundary SELECT once
@@ -287,7 +284,7 @@ def resolve_rowset(
     # OBLIGATION: a DERIVED relation member (`union join cur.wk + 53 = fut.wk`)
     # is a BASIC over THIS boundary's handles with no producer group of its own
     # — materialize it here so the completion merge can pair it with its
-    # authored mate instead of cross-joining ON 1=1 (v3 bundles the derived key
+    # authored mate instead of cross-joining ON 1=1 (bundling the derived key
     # into the rowset body select). OUTER (full/union) relations only: a
     # directional (left/subset) relation resolves through the scoped-merge
     # collapse, which substitutes the derived key into the other side's grain
@@ -349,9 +346,8 @@ def resolve_rowset(
 
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
     # spans only the subset side's domain: mark it partial so join resolution
-    # anchors the complete side and LEFT-joins this boundary (v3's
-    # `scoped_partial` in `_collect_advertised_outputs`) instead of INNER-
-    # narrowing the anchor to the intersection. Gated on the subset edge's
+    # anchors the complete side and LEFT-joins this boundary instead of
+    # INNER-narrowing the anchor to the intersection. Gated on the subset edge's
     # ANCHOR (its declared superset target) being a rowset handle, not on the
     # whole relation: a mixed root↔rowset relation whose anchor is the ROOT
     # side resolves through binding substitution, and marking the rowset side
@@ -390,9 +386,9 @@ def resolve_rowset(
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content — map through the BuildRowsetItem
     # content (and pseudonyms) so a `?` column's nullability survives the
-    # boundary (else a NULL rowset join key stops matching null-safely). Mirrors
-    # v3 `_build_translation_node`, but restricted to KEY-like handles (the
-    # boundary's grain and scoped-relation members): those are the handles that
+    # boundary (else a NULL rowset join key stops matching null-safely).
+    # Restricted to KEY-like handles (the boundary's grain and
+    # scoped-relation members): those are the handles that
     # become join keys and need the null-safe pairing. A nullable non-key
     # property handle stays unstamped — v4's FINAL re-pairing join would
     # otherwise render it `is not distinct from` alongside the keys that
@@ -449,7 +445,7 @@ def resolve_rowset(
         input_concepts=inputs,
         parents=[inner_node],
         environment=inner_env,
-        # Grain over the outer handles (mirrors v3 `gen_rowset_node`): lets the
+        # Grain over the outer handles: lets the
         # FINAL merge join two rowsets on their shared/pseudonym grain key
         # instead of cross-joining when the boundary exposes no grain. Probes
         # are per-key presence markers, not part of the boundary's row grain.

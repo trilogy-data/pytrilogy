@@ -1,13 +1,26 @@
-from trilogy.core.enums import ComparisonOperator, Derivation
+from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT
+from trilogy.core.enums import ComparisonOperator, Derivation, Purpose
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildFunction,
+    BuildGrain,
     BuildWhereClause,
+    DataType,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators.recursive_node import GATING_CONCEPT
 from trilogy.core.processing.nodes import RecursiveNode, StrategyNode
+
+GATING_CONCEPT = BuildConcept(
+    name=RECURSIVE_GATING_CONCEPT,
+    canonical_name=RECURSIVE_GATING_CONCEPT,
+    namespace=DEFAULT_NAMESPACE,
+    grain=BuildGrain(),
+    build_is_aggregate=False,
+    datatype=DataType.BOOL,
+    purpose=Purpose.KEY,
+    derivation=Derivation.BASIC,
+)
 
 
 def gen_recursive(
@@ -20,9 +33,9 @@ def gen_recursive(
     """Recursive CTE (`recurse_edge(seed, next)`) over an already-built parent.
 
     Emits a `RecursiveNode` whose UNION feeds the recursion plus a gating
-    concept, then a wrapper that keeps only the gated rows. Mirrors v3
-    `gen_recursive_node`, but the recursion's seed/next columns come from the
-    pre-built parent the group graph supplied rather than a fresh search."""
+    concept, then a wrapper that keeps only the gated rows. The recursion's
+    seed/next columns come from the pre-built parent the group graph supplied
+    rather than a fresh search."""
     recursive = next((o for o in outputs if o.derivation == Derivation.RECURSIVE), None)
     if recursive is None or not isinstance(recursive.lineage, BuildFunction):
         return None

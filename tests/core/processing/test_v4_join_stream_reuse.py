@@ -3,7 +3,6 @@
 from decimal import Decimal
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key sale_id int;
@@ -64,23 +63,11 @@ def _engine():
 
 
 def test_aggregate_consumer_reuses_grouped_join_stream_rows():
-    prior = CONFIG.use_v4_discovery
-    try:
-        CONFIG.use_v4_discovery = False
-        assert _engine().execute_text(_QUERY)[-1].fetchall() == _EXPECTED_ROWS
-        CONFIG.use_v4_discovery = True
-        assert _engine().execute_text(_QUERY)[-1].fetchall() == _EXPECTED_ROWS
-    finally:
-        CONFIG.use_v4_discovery = prior
+    assert _engine().execute_text(_QUERY)[-1].fetchall() == _EXPECTED_ROWS
 
 
 def test_aggregate_consumer_does_not_rescan_base_join_stream():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = _engine().generate_sql(_QUERY)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = _engine().generate_sql(_QUERY)[-1]
 
     assert sql.count(') as "sales"') == 1
     assert sql.count(') as "dates"') == 1

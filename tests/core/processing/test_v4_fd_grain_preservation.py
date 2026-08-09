@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build import Factory, get_canonical_pseudonyms
 from trilogy.core.processing.concept_strategies_v4 import (
@@ -175,29 +174,14 @@ def _scoped_join_build_info():
 
 
 def test_fd_dimension_on_row_grain_aggregate_rows_match_baseline():
-    prior = CONFIG.use_v4_discovery
-    try:
-        CONFIG.use_v4_discovery = False
-        assert _engine().execute_text(_QUERY)[-1].fetchall() == [
-            (100, Decimal("5.00")),
-            (101, Decimal("9.00")),
-        ]
-        CONFIG.use_v4_discovery = True
-        assert _engine().execute_text(_QUERY)[-1].fetchall() == [
-            (100, Decimal("5.00")),
-            (101, Decimal("9.00")),
-        ]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    assert _engine().execute_text(_QUERY)[-1].fetchall() == [
+        (100, Decimal("5.00")),
+        (101, Decimal("9.00")),
+    ]
 
 
 def test_fd_dimension_on_row_grain_does_not_force_input_normalization():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = _engine().generate_sql(_QUERY)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = _engine().generate_sql(_QUERY)[-1]
 
     assert '"line_id"' not in sql.lower()
     assert sql.lower().count("group by") == 1

@@ -147,10 +147,6 @@ class Config:
     human_identifiers: bool = True
     randomize_cte_names: bool = False
     validate_missing: bool = True
-    # Route discovery through the v4 planner instead of the v3 search. v4 is
-    # the DEFAULT as of 2026-07-26 (s38, the ladder purge); set False to run
-    # the legacy v3 planner for comparison while it remains in-tree.
-    use_v4_discovery: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)

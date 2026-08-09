@@ -1,5 +1,4 @@
 from trilogy import Dialects, Environment
-from trilogy.core.processing.node_generators.group_node import get_aggregate_grain
 
 DDL = """
 key rid int;
@@ -221,25 +220,6 @@ def test_grain_over_imported_keys_having_under_dimension_filter():
         "select frequent.item_sk order by frequent.item_sk asc;"
     )
     assert rows(executor, query) == [(10,)]
-
-
-def test_grain_aggregate_input_grain_carries_composite_keys():
-    """Non-result guard: the dedup depends on the aggregate's INPUT grain, so
-    assert it at the model level rather than only through a row count. The
-    count's argument tuple must resolve to the composite (item_sk, date_sk)
-    grain — item_id/item_desc are 1:1 properties of item_sk — independent of any
-    WHERE or sourcing. If this drifts, every count(grain(...)) silently
-    mis-dedupes."""
-    env = Environment()
-    env.parse(STAR_DDL)
-    env.parse("select item_sk, count(grain(item_id, item_desc, date_sk)) as c;")
-    benv = env.materialize_for_select()
-    c = benv.concepts["local.c"]
-    assert c.is_aggregate
-    assert set(get_aggregate_grain(c, benv).components) == {
-        "local.item_sk",
-        "local.date_sk",
-    }
 
 
 def test_grain_under_dimension_filter_normalizes_before_count_in_sql():

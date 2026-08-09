@@ -8,10 +8,8 @@ from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import BuildColumnAssignment, BuildDatasource, Factory
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import (
-    StrategyNode,
-    validate_stack,
-)
+from trilogy.core.processing.discovery_validation import validate_stack
+from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 
 
@@ -93,6 +91,8 @@ import symbol as symbol;
 import provider as provider;
 import holdings as holdings;
 import std.display;
+from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.discovery_validation import validate_stack
 
 merge dividend.symbol.* into ~symbol.*;
 merge holdings.symbol.* into ~symbol.*;

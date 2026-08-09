@@ -79,7 +79,7 @@ def test_aggregate_filter_anonymous():
     # HAVING (PredicatePushdown), so the qualifying-name filter runs during
     # aggregation -- before the join back to the base table -- and the
     # redundant downstream WHERE copy is stripped. (Unanchored: v4 orders the
-    # HAVING group after a base-scan CTE; v3 emits it first. Both must carry
+    # HAVING group after a base-scan CTE. Either order must carry
     # the HAVING shape and no WHERE.)
     pattern = r"""
 [a-z_]+\s+as\s+\(
@@ -121,7 +121,7 @@ def test_aggregate_filter():
     sql = exec.generate_sql(query)[0]
     # The leading `.*?` tolerates a CTE before the aggregate CTE: v4 emits the base
     # `usa_names` scan as one shared CTE (reused by the aggregate and the filtered
-    # join), where v3 duplicates the scan inline. Rows are identical; the aggregate
+    # join) rather than duplicating the scan inline. Rows are identical; the aggregate
     # structure + WHERE below are still asserted exactly.
     pattern = r"""
 WITH\s+
@@ -166,7 +166,7 @@ def test_aggregate_filter_short_syntax():
     sql = exec.generate_sql(query)[0]
     # After CollapseSingleParent optimization, aggregate selects directly from
     # datasource. Leading `.*?` tolerates a preceding CTE: v4 emits the base scan as
-    # one shared CTE (v3 duplicates it inline); rows identical, aggregate asserted.
+    # one shared CTE rather than duplicating it inline; aggregate asserted.
     pattern = r"""
 WITH\s+
 .*?[a-z_]+\s+as\s+\(

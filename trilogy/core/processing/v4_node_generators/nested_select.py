@@ -11,6 +11,7 @@ stack it. Keeping the sequence here is what stops the three from drifting apart.
 from dataclasses import dataclass
 
 from trilogy.constants import logger
+from trilogy.core.enums import JoinType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -27,15 +28,73 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
     raise_if_disconnected_for,
 )
-from trilogy.core.processing.node_generators.rowset_node import (
-    _interpose_limit_node,
-    _scoped_joins_for_rowset,
-)
-from trilogy.core.processing.nodes import BuildCaches, StrategyNode
+from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .common import search_parent
 from .condition_sources import resolve_and_inject_condition
+
+
+def _scoped_joins_for_rowset(
+    scoped_joins: list[tuple[str, str, JoinType]],
+    derived_concepts: list[str],
+) -> list[tuple[str, str, JoinType]]:
+    """A query-scoped `join`/`merge` relates the rowset's *output* to an outer
+    concept; it must not be applied inside the rowset's own (independent-scope)
+    build. Such a join collapses the outer concept onto the rowset output via
+    the merge map/pseudonym — so if the rowset's WHERE references that outer
+    concept (e.g. a membership existence feeder), sourcing the feeder redirects
+    back to the rowset's own output and the rowset depends on itself (infinite
+    recursion). Drop any join referencing a concept this rowset derives."""
+    derived = set(derived_concepts)
+    return [
+        (s, t, jt)
+        for (s, t, jt) in scoped_joins
+        if s not in derived and t not in derived
+    ]
+
+
+def _interpose_limit_node(
+    base_node: StrategyNode,
+    select: SelectLineage | MultiSelectLineage,
+    environment: BuildEnvironment,
+    depth: int,
+) -> StrategyNode:
+    """Materialize the body's `limit` (with its ORDER BY) as a dedicated
+    passthrough node BETWEEN the body and the translation wrapper.
+
+    The limit must not live on the translation node itself: discovery applies
+    outer WHEREs onto that node (they would render pre-limit, changing which
+    rows fill the limit), and when the outer statement reuses it as the query
+    root its ordering is overwritten by the statement's and the root renders
+    without a CTE-level limit. A dedicated node keeps LIMIT+ORDER BY in their
+    own CTE; everything downstream is post-limit by construction, and the
+    optimizer treats the limited CTE as an opaque boundary."""
+    if select.limit is None:
+        return base_node
+    passthrough = [
+        x
+        for x in base_node.output_concepts
+        if x.address not in base_node.hidden_concepts
+    ]
+    limit_node = SelectNode(
+        input_concepts=passthrough,
+        output_concepts=passthrough,
+        environment=environment,
+        parents=[base_node],
+        depth=depth,
+        partial_concepts=list(base_node.partial_concepts),
+        nullable_concepts=list(base_node.nullable_concepts),
+    )
+    limit_node.limit = select.limit
+    # the ORDER BY the limit selects under was built onto the body root by
+    # get_query_node; hoist it here so both render in one SELECT (an inner
+    # ORDER BY without a limit carries no semantics and just costs a sort)
+    limit_node.ordering = base_node.ordering
+    base_node.ordering = None
+    base_node.rebuild_cache()
+    limit_node.rebuild_cache()
+    return limit_node
 
 
 @dataclass
@@ -71,7 +130,7 @@ def build_nested_select(
     ``exclude_derived`` carries a rowset body's own derived concepts: an OUTER
     query-scoped join referencing them (``subset join a.store = b.store``)
     relates this rowset's output to its sibling and must not be applied inside
-    the body's independent scope (v3's `_scoped_joins_for_rowset`) — the body
+    the body's independent scope (see `_scoped_joins_for_rowset`) — the body
     would canonicalize its own output onto the cross-rowset group and source it
     back through itself."""
     author_env = history.base_environment

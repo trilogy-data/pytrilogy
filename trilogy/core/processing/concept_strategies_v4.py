@@ -65,8 +65,60 @@ __all__ = [
     "BuildInfo",
     "History",
     "V4History",
+    "append_existence_check",
     "search_concepts",
 ]
+
+
+def append_existence_check(
+    node: StrategyNode,
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    where: BuildWhereClause,
+    history: V4History,
+    conditions: BuildWhereClause | None = None,
+) -> None:
+    """Source each `x in (<set>)` RHS of `where` as an independent subselect and
+    wire it onto `node` as an existence parent. Idempotent: a set already among
+    the node's inputs/existence concepts is skipped.
+
+    Used for HAVING-derived membership, which is planned after the output tree
+    (a WHERE membership gets its existence edges inside the concept graph)."""
+    if not where.existence_arguments:
+        return
+    already_sourced = {c.address for c in node.input_concepts} | {
+        c.address for c in node.existence_concepts
+    }
+    for subselect in where.existence_arguments:
+        if not subselect:
+            continue
+        if all(x.address in already_sourced for x in subselect):
+            logger.info(
+                f"{LOGGER_PREFIX} existence clause inputs already found {[str(c) for c in subselect]}"
+            )
+            continue
+        logger.info(
+            f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
+        )
+        # A HAVING-derived membership subselect (`conditions` set) is this
+        # query's own post-aggregation semijoin: the query WHERE must be
+        # pushed pre-aggregate into its aggregate inputs, exactly as it is on
+        # the output path — else the membership recomputes the aggregate over
+        # the unfiltered universe and its value never matches the filtered
+        # output (q44 silent-empty). A user `x in (select ...)` RHS is an
+        # independent set (no conditions) and stays unfiltered.
+        parent = search_concepts(
+            mandatory_list=[*subselect],
+            history=history,
+            environment=environment,
+            depth=0,
+            g=graph,
+            conditions=[conditions] if conditions else [],
+        ).strategy_node
+        assert parent, "Could not resolve existence clause"
+        node.add_parents([parent])
+        logger.info(f"{LOGGER_PREFIX} found {[str(c) for c in subselect]}")
+        node.add_existence_concepts([*subselect])
 
 
 def _datasource_materializes(
@@ -392,7 +444,7 @@ def _search_concepts(
     # Prefer a precomputed/summary datasource for any demanded aggregate it
     # materializes at grain. If treating those as roots can't be sourced (the
     # summary doesn't combine with the rest of the query), fall back to the
-    # derive-from-base plan — mirrors v3 trying the direct source first.
+    # derive-from-base plan: try the direct source first.
     materialized_roots = _materialized_root_addresses(
         mandatory_list, environment, conditions
     )

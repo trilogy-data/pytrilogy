@@ -107,8 +107,8 @@ order by (monthly_total - avg_monthly_overall) asc;
     order_by_section = sql.split("ORDER BY")[1]
     # The arithmetic must keep both operands distinct — no collapse to
     # `monthly_total - monthly_total`. The second operand is the aggregate,
-    # spelled either as the materialized column `avg_monthly_overall` (v3, HAVING
-    # folded onto the merge node) or as its SELECT alias `avg_sales` (v4) — an
+    # spelled either as the materialized column `avg_monthly_overall` (HAVING
+    # folded onto the merge node) or as its SELECT alias `avg_sales` — an
     # equivalent spelling of the same value, NOT the collapsed inner arg.
     assert 'monthly_total" - "' in order_by_section.replace("`", '"')
     assert "avg_monthly_overall" in order_by_section or "avg_sales" in order_by_section

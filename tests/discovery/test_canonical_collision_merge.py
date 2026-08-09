@@ -112,20 +112,13 @@ def test_canonical_collision_s2_arm_sources_own_physical_column():
 def test_canonical_collision_single_source_both_columns():
     sql = _generate()
     assert "INVALID_REFERENCE_BUG" not in sql, sql
-    if CONFIG.use_v4_discovery:
-        # v4 plans each multiselect arm independently: one facts scan per arm,
-        # each folded into its own spine merge and reading ONLY its own
-        # physical column inside the coalesce. Rows verified identical to v3
-        # (12/12 incl. NULL-key row) on synthetic data 2026-07-28; total SQL
-        # is shorter than v3's shared-scan shape. The single-shared-scan
-        # rendering remains a v3-only shape (cross-arm CSE does not exist).
-        import re
+    # Each multiselect arm is planned independently: one facts scan per arm,
+    # each folded into its own spine merge and reading ONLY its own physical
+    # column inside the coalesce. Rows verified 12/12 incl. NULL-key row on
+    # synthetic data 2026-07-28. A single unified scan would need cross-arm
+    # CSE, which does not exist.
+    import re
 
-        assert len(re.findall(r'(?:FROM|JOIN)\s+"facts"', sql)) == 2, sql
-        assert 'coalesce("facts"."d1","quizzical"."s1") as "s1"' in sql, sql
-        assert 'coalesce("facts"."d2","thoughtful"."s2") as "s2"' in sql, sql
-    else:
-        # one unified scan of `facts` exposing both merged date columns
-        assert sql.count('FROM\n    "facts"') == 1, sql
-        assert '"facts"."d1" as "s1"' in sql, sql
-        assert '"facts"."d2" as "s2"' in sql, sql
+    assert len(re.findall(r'(?:FROM|JOIN)\s+"facts"', sql)) == 2, sql
+    assert 'coalesce("facts"."d1","quizzical"."s1") as "s1"' in sql, sql
+    assert 'coalesce("facts"."d2","thoughtful"."s2") as "s2"' in sql, sql

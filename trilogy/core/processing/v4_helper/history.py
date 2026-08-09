@@ -16,9 +16,10 @@ from .network_model import SearchResult
 
 @dataclass
 class V4History(History):
-    """History fork for the v4 discovery prototype. The inherited StrategyNode
-    cache still serves the v3 sub-searches v4 dispatches into; this fork adds a
-    parallel, correctly-typed cache for the BuildInfo bundles v4 returns."""
+    """History fork for discovery. The inherited StrategyNode cache still serves
+    the datasource-selection sub-searches dispatched into; this fork adds a
+    parallel, correctly-typed cache for the BuildInfo bundles the planner
+    returns."""
 
     build_history: dict[str, BuildInfo | None] = field(default_factory=dict)
     # Derived-connector origin addresses currently mid-plan, used by the root

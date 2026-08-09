@@ -177,7 +177,7 @@ def test_rowset_key_read_back_aligns_with_source_null_property(models: Path):
     # post-join predicates over the preserving read-back relation. Pre-filtering
     # the enrichment side re-admits aid 1 NULL-extended through the completion
     # merge (rows [(1, None), (2, ...)]); pre-filtering the rowset side re-admits
-    # aid 3. Only post-join application yields v3's [(2, 2000.0)].
+    # aid 3. Only post-join application yields the correct [(2, 2000.0)].
     eng = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=models)
     )

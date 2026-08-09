@@ -73,4 +73,4 @@ def test_q74_stays_join_lean():
     )
     sql = executor.generate_sql((TPCDS / "query74.preql").read_text())[-1]
     assert sql.count("JOIN") <= 2, sql
-    assert len(sql) < 4092, "v4 should stay under the v3 planner's size here"
+    assert len(sql) < 4092, "relookup drop should keep this plan small"

@@ -10,18 +10,9 @@ from trilogy.core.exceptions import (
     DisconnectedConceptsException,
     UnresolvableQueryException,
 )
-from trilogy.core.models.build import BuildAggregateWrapper, BuildGrain
+from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import (
-    History,
-    generate_graph,
-    search_concepts,
-)
-from trilogy.core.processing.discovery_utility import (
-    calculate_effective_parent_grain,
-    check_if_group_required,
-)
 from trilogy.core.query_processor import process_query
 from trilogy.parser import parse_text
 
@@ -692,43 +683,6 @@ limit 5;
     engine.execute_query(query).fetchall()
 
 
-def test_merge_grain_discovery():
-    # pure-discovery test: use a FRESH environment, not the shared session
-    # engine's — earlier tests in this module run `merge` statements that
-    # persist on the shared env and would change this grain
-    environment = Environment(working_path=working_path)
-    parse_text("""import store_sales as store_sales;""", environment)
-    build_environment = environment.materialize_for_select()
-    graph = generate_graph(build_environment)
-
-    target_concepts = [
-        build_environment.concepts["store_sales.ticket_number"],
-        build_environment.concepts["store_sales.sale_date.year"],
-        build_environment.concepts["store_sales.item.sk"],
-    ]
-    node = search_concepts(
-        mandatory_list=target_concepts,
-        history=History(base_environment=environment),
-        environment=build_environment,
-        g=graph,
-        depth=0,
-        accept_partial=False,
-    )
-    grain = calculate_effective_parent_grain(node.resolve())
-    assert (
-        grain.components
-        == BuildGrain(
-            components={"store_sales.ticket_number", "store_sales.item.sk"}
-        ).components
-    ), grain.components
-
-    assert not check_if_group_required(
-        downstream_concepts=target_concepts,
-        parents=[node.resolve()],
-        environment=build_environment,
-    ).required
-
-
 def test_def_wrapped_filtered_aggregate_in_basic_expression_keeps_aggregate():
     query = """
     import all_sales as sales;
@@ -1133,6 +1087,8 @@ def test_join_hoist_inlined_dim_group_key_no_dangling_source(engine):
     query = """
 import item as item;
 import store_sales as ss;
+from trilogy.core.processing.nodes import History
+from trilogy.core.env_processor import generate_graph
 
 merge item.sk into ~ss.item.sk;
 

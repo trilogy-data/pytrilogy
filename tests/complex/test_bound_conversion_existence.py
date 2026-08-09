@@ -1,8 +1,5 @@
-import pytest
-
 from tests.helpers.executor import mock_factory
 from trilogy import Dialects
-from trilogy.constants import CONFIG
 from trilogy.dialect import PrestoConfig
 
 _GRAND_TOTAL_QUERY = """
@@ -24,20 +21,14 @@ select date_converted, count(id) as id_count;
 """
 
 
-@pytest.mark.parametrize("use_v4", [False, True])
-def test_grand_total_aggregate_cross_joins_not_all_rows(use_v4: bool) -> None:
+def test_grand_total_aggregate_cross_joins_not_all_rows() -> None:
     """A `max(x) by *` grand-total aggregate is single-row: it must cross-join
     ON 1=1 and never materialize the abstract `__preql_internal.all_rows` marker
-    as a real join column. The v4 planner regressed this twice by sourcing that
+    as a real join column. The planner regressed this twice by sourcing that
     concept (once demanding it as an aggregate `by` input in `_upstream_aggregate`),
     which forced `1 as __preql_internal_all_rows` on both sides and an equality
-    join. Guard both planners."""
-    original = CONFIG.use_v4_discovery
-    try:
-        CONFIG.use_v4_discovery = use_v4
-        sql = Dialects.DUCK_DB.default_executor().generate_sql(_GRAND_TOTAL_QUERY)[-1]
-    finally:
-        CONFIG.use_v4_discovery = original
+    join."""
+    sql = Dialects.DUCK_DB.default_executor().generate_sql(_GRAND_TOTAL_QUERY)[-1]
     assert "__preql_internal_all_rows" not in sql, sql
     assert "on 1=1" in sql, sql
 
@@ -141,9 +132,8 @@ select
 
     # The essence guarded: the latest_date bound joins in and filters BEFORE
     # the count aggregation, over a (date_converted, id) dedup. CTE names are
-    # planner-specific (v4's plan is shorter than v3's — no re-applied final
-    # WHERE; rows execution-verified equal on duckdb 2026-07-28), so match
-    # structure, not names.
+    # planner-specific (no re-applied final WHERE; rows execution-verified on
+    # duckdb 2026-07-28), so match structure, not names.
     import re
 
     assert re.search(

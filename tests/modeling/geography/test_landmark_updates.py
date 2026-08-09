@@ -200,22 +200,16 @@ select
     )
 
     generated = base.generate_sql(query)[-1]
-    from trilogy import CONFIG
 
-    if CONFIG.use_v4_discovery:
-        # v4 filters the aggregate branch and INNER-joins the enrichment
-        # branch on species — quizzical carries only species='Oak' rows, so
-        # the equality join applies the filter transitively (algebraically
-        # identical result set; execution A/B'd 2026-07-28). The direct
-        # filter on the aggregate branch is the correctness carrier.
-        assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
-        assert (
-            'INNER JOIN "quizzical" on "wakeful"."species" = "quizzical"."species"'
-            in generated
-        ), generated
-    else:
-        assert '"tree_enrichment"."species" = \'Oak\'' in generated, generated
-        assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
+    # The aggregate branch is filtered and the enrichment branch INNER-joined
+    # on species — quizzical carries only species='Oak' rows, so the equality
+    # join applies the filter transitively (execution A/B'd 2026-07-28). The
+    # direct filter on the aggregate branch is the correctness carrier.
+    assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
+    assert (
+        'INNER JOIN "quizzical" on "wakeful"."species" = "quizzical"."species"'
+        in generated
+    ), generated
 
 
 def test_exact_match_with_derived_concept_and_extra_filter():

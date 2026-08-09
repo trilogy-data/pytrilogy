@@ -169,7 +169,7 @@ def connector_sets_from(kg: KeyGraph, source: str) -> dict[str, list[frozenset[s
 
 def undominated(alternatives: list[frozenset[str]]) -> list[frozenset[str]]:
     """Clean iff some connector set is a subset of every other — that set IS
-    the resolution (v3's detect_ambiguity_and_raise rule); ambiguous
+    the resolution; ambiguous
     otherwise. Longer-than-minimal paths never participate: a strictly longer
     route is a dominated plan, not a second meaning."""
     for candidate in alternatives:

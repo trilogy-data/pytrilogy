@@ -7,11 +7,9 @@ from collections import Counter
 from pathlib import Path
 
 from trilogy import Dialects
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 
-CONFIG.use_v4_discovery = True
 
 import trilogy.core.query_processor as qp
 

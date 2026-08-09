@@ -1,7 +1,7 @@
 # q77 CATALOG branch, extracted as a standalone select (negative test sk -1).
 # Inlined aggregate * scalar-from-a-different-rowset — the shape that makes the
 # v4 planner cross-join u_id_c off the raw scan against u_sales_c off the
-# aggregate. v3 plans it correctly (single projection over the aggregate).
+# aggregate. It should plan as a single projection over the aggregate.
 import catalog_sales as cs;
 
 const period_start <- '2000-08-23'::date;

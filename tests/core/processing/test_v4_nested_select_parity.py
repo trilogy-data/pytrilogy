@@ -11,7 +11,6 @@ The rowset path handles all three and serves as the control.
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.exceptions import DisconnectedConceptsException
 
 _MODEL = """
@@ -55,12 +54,9 @@ query '''select 1 as other_id, 'x' as oname union all select 2 as other_id, 'y' 
 
 @pytest.fixture
 def executor():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
     env = Environment()
     env, _ = env.parse(_MODEL)
     yield Dialects.DUCK_DB.default_executor(environment=env)
-    CONFIG.use_v4_discovery = prior
 
 
 def _rows(executor, query: str) -> list[tuple]:

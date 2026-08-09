@@ -5,7 +5,7 @@ A property functionally determined by a MULTI-key grouping grain -- and by no
 single entity key -- used to stay on the fact row bucket and be deduped back to
 grain in a sibling GROUP node. That gave the row scan two consumers, which
 blocks `CollapseSingleParent` and forces the aggregate into its own CTE (TPC-H
-q20's `wakeful` / `cooperative` / `cheerful` split, 5 CTEs where v3 renders 2).
+q20's `wakeful` / `cooperative` / `cheerful` split, 5 CTEs where 2 suffice).
 The property must instead source from its own table keyed by the composite
 grain. The aggregate is conditional here because that is what puts a row-grain
 FILTER bucket between the scan and the aggregate -- without it the peel is
@@ -14,7 +14,6 @@ unnecessary and the split never appears."""
 import re
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key part_id int;
@@ -105,12 +104,7 @@ def test_composite_key_property_sources_from_its_own_table():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = executor.generate_sql(_QUERY)[-1]
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = executor.generate_sql(_QUERY)[-1]
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
     assert [tuple(r) for r in rows] == [("alpha",)]
     assert _dedup_group_ctes(sql) == [], sql

@@ -1,101 +1,11 @@
 from networkx import Graph
 
-from trilogy import parse
 from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
     JoinOrderOutput,
     ensure_content_preservation,
     resolve_join_order_v2,
 )
-from trilogy.core.processing.node_generators.common import (
-    # resolve_join_order_v2,
-    NodeJoin,
-    StrategyNode,
-    concepts_to_grain_concepts,
-    resolve_join_order,
-)
-
-
-def test_concepts_to_grain_concepts():
-    env, _ = parse("""
-key order_id int;
-key product_id int;
-property product_id.price float;
-property product_id.name string;
-                """)
-    env = env.materialize_for_select()
-    product = env.concepts["product_id"]
-    price = env.concepts["price"]
-    name = env.concepts["name"]
-
-    # price and name both belong to product_id grain
-    result = concepts_to_grain_concepts([product, price, name], env)
-    result_addrs = [c.address for c in result]
-    assert result_addrs == ["local.product_id"]
-
-    # order_id is its own grain key
-    order = env.concepts["order_id"]
-    result = concepts_to_grain_concepts([order, product, price], env)
-    result_addrs = sorted([c.address for c in result])
-    assert result_addrs == ["local.order_id", "local.product_id"]
-
-
-def test_resolve_join_order():
-    env, _ = parse("""
-key order_id int;
-key product_id int;
-property product_id.price float;       
-                """)
-    env = env.materialize_for_select()
-    test_case = []
-    x = resolve_join_order(test_case)
-    assert x == []
-    orders = env.concepts["order_id"]
-    price = env.concepts["price"]
-    product = env.concepts["product_id"]
-    left = StrategyNode(
-        input_concepts=[orders], output_concepts=[orders], environment=env
-    )
-    right = StrategyNode(
-        input_concepts=[orders, product],
-        output_concepts=[orders, product],
-        environment=env,
-    )
-
-    right_two = StrategyNode(
-        input_concepts=[product, price],
-        output_concepts=[product, price],
-        environment=env,
-    )
-
-    first_join = NodeJoin(
-        left_node=left,
-        right_node=right,
-        join_type=JoinType.INNER,
-        concepts=[orders],
-    )
-    second_join = NodeJoin(
-        left_node=right,
-        right_node=right_two,
-        join_type=JoinType.INNER,
-        concepts=[product],
-    )
-    second_join_inverse = NodeJoin(
-        left_node=right_two,
-        right_node=right,
-        join_type=JoinType.INNER,
-        concepts=[product],
-    )
-    test_case = [second_join, first_join]
-    x = resolve_join_order(test_case)
-    assert x == [first_join, second_join]
-
-    test_case = [second_join, second_join_inverse]
-    try:
-        x = resolve_join_order(test_case)
-        raise ValueError("test should not get here")
-    except Exception as e:
-        assert isinstance(e, SyntaxError)
 
 
 def test_resolve_join_order_v2():

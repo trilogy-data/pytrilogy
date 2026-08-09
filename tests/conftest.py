@@ -2,7 +2,6 @@ import copy
 import os
 from pathlib import Path
 
-import pytest
 from pytest import fixture
 
 from trilogy.constants import CONFIG
@@ -29,61 +28,18 @@ from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
 
 
-@fixture(scope="session", autouse=True)
-def _maybe_enable_v4_discovery():
-    """v4 discovery is the DEFAULT (s38 ladder purge). The env var remains as
-    an explicit override for comparison sweeps: `TRILOGY_V4_DISCOVERY=0` forces
-    the legacy v3 planner, `=1` forces v4 (now redundant)."""
-    override = os.environ.get("TRILOGY_V4_DISCOVERY")
-    if override in ("0", "1"):
-        prior = CONFIG.use_v4_discovery
-        CONFIG.use_v4_discovery = override == "1"
-        yield
-        CONFIG.use_v4_discovery = prior
-    else:
-        yield
-
-
 @fixture(autouse=True)
 def _restore_global_config():
     """Contain cross-test CONFIG leakage. CONFIG is a process-global singleton and
-    many tests toggle its planner knobs (`use_v4_discovery`, `optimizations.*`) --
-    a single test that restored to a hardcoded value instead of the prior one
-    (e.g. a `finally: CONFIG.use_v4_discovery = False`) silently ran EVERY later
-    test under the wrong planner, masking real failures under a green sweep.
-    Snapshot the mutable knobs before each test and restore after, so a leak in one
-    test can't reconfigure the planner for the next. Restores to the value at test
-    START (the session fixture's env-driven value under a v4 sweep)."""
-    prior_v4 = CONFIG.use_v4_discovery
+    many tests toggle its planner knobs (`optimizations.*`) -- a single test that
+    restored to a hardcoded value instead of the prior one silently reconfigured
+    EVERY later test, masking real failures under a green sweep. Snapshot the
+    mutable knobs before each test and restore after."""
     prior_opts = copy.copy(CONFIG.optimizations)
     try:
         yield
     finally:
-        CONFIG.use_v4_discovery = prior_v4
         CONFIG.optimizations = prior_opts
-
-
-def pytest_collection_modifyitems(config, items):
-    """Turn each test in the v4 known-failing registry into an xfail whenever
-    the suite runs the v4 planner (the default; only `TRILOGY_V4_DISCOVERY=0`
-    opts a run back to v3). Keeps the suite green on the v4 planner while every
-    gap stays tracked, and a real regression (a test NOT in the registry) still
-    fails loudly.
-
-    Non-strict on purpose: the suite has pre-existing cross-test state leakage
-    (tests sharing a module-level `default_executor`), so a registered test can
-    XPASS in a full-suite run yet fail in isolation. strict=True would turn those
-    contamination-driven xpasses into hard failures and make the v4 gate flaky.
-    Re-check candidates for promotion in isolation, not from a full-suite xpass."""
-    if os.environ.get("TRILOGY_V4_DISCOVERY") == "0":
-        return
-    from tests.v4_known_failing import V4_KNOWN_FAILING
-
-    for item in items:
-        base = item.nodeid.split("[", 1)[0]
-        reason = V4_KNOWN_FAILING.get(base)
-        if reason:
-            item.add_marker(pytest.mark.xfail(reason=reason, strict=False))
 
 
 def load_secret(key: str) -> str | None:

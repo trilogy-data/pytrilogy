@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
-    FunctionType,
     Granularity,
     Purpose,
 )
@@ -14,7 +13,6 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
-    BuildFunction,
     BuildGrain,
     BuildParenthetical,
     BuildRowsetItem,
@@ -25,20 +23,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
-from trilogy.core.processing.condition_utility import (
-    concept_is_row_scalar,
-    preserved_non_partial_conditions,
-)
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
-)
-from trilogy.core.processing.nodes import (
-    GroupNode,
-    MergeNode,
-    MultiSelectMergeNode,
-    StrategyNode,
 )
 from trilogy.core.processing.rowset_islanding import island_rowsets_for_connectivity
 from trilogy.core.processing.utility import GroupRequiredResponse
@@ -240,87 +228,6 @@ def check_if_group_required(
     )
 
 
-def group_if_required_v2(
-    root: StrategyNode,
-    final: list[BuildConcept],
-    environment: BuildEnvironment,
-    where_injected: set[str] | None = None,
-    depth: int = 0,
-):
-    # local import: presence_probe -> basic_node -> discovery_utility cycles
-    from trilogy.core.processing.node_generators.presence_probe import (
-        retain_presence_probes,
-    )
-
-    where_injected = where_injected or set()
-    final_addresses = {x.address for x in final}
-    # Presence probes are never in `final` (a probe is a WHERE input, not a
-    # projected output); retain_presence_probes keeps them so this regroup does
-    # not bake a probe-less node into the discovery cache (TPC-DS q35).
-    targets = retain_presence_probes(
-        [
-            x
-            for x in root.output_concepts
-            if x.address in final_addresses
-            or any(c in final_addresses for c in x.pseudonyms)
-        ],
-        root.output_concepts,
-    )
-    # A multiselect align outer is a pure FULL JOIN of pre-aggregated arms at the
-    # align-key grain and must never regroup: Keyed off the concrete
-    # node type (the multiselect generator emits a MultiSelectMergeNode
-    if isinstance(root, MultiSelectMergeNode):
-        root.set_output_concepts(targets, change_visibility=False)
-        return root
-    required = check_if_group_required(
-        downstream_concepts=final,
-        parents=[root.resolve()],
-        environment=environment,
-        depth=depth,
-    )
-    if required.required:
-        if isinstance(root, MergeNode):
-            root.force_group = True
-            root.set_output_concepts(targets, rebuild=False, change_visibility=False)
-            root.rebuild_cache()
-            return root
-        elif isinstance(root, GroupNode) and any(
-            x.derivation == Derivation.BASIC for x in root.output_concepts
-        ):
-            # we need to group this one more time
-            pass
-        elif isinstance(root, GroupNode):
-            if {x.address for x in final} != {x.address for x in root.output_concepts}:
-                allowed_outputs = [
-                    x
-                    for x in root.output_concepts
-                    if not (
-                        x.address in where_injected
-                        and x.address not in (root.required_outputs or set())
-                    )
-                ]
-                if where_injected:
-                    logger.info(
-                        f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
-                    )
-                root.set_output_concepts(allowed_outputs)
-            return root
-        return GroupNode(
-            output_concepts=targets,
-            input_concepts=targets,
-            environment=environment,
-            parents=[root],
-            partial_concepts=root.partial_concepts,
-            preexisting_conditions=root.preexisting_conditions,
-        )
-    elif isinstance(root, GroupNode):
-
-        return root
-    else:
-        root.set_output_concepts(targets, change_visibility=False)
-    return root
-
-
 def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     return _upstream_concepts(base, nested, {})
 
@@ -355,194 +262,6 @@ def _upstream_concepts(
     return upstream
 
 
-def evaluate_loop_condition_pushdown(
-    mandatory: list[BuildConcept],
-    conditions: BuildWhereClause | None,
-    depth: int,
-    force_no_condition_pushdown: bool,
-    forced_pushdown: list[BuildConcept],
-) -> BuildWhereClause | None:
-    # filter evaluation
-    # always pass the filter up when we aren't looking at all filter inputs
-    # or there are any non-filter complex types
-    if not conditions:
-        return None
-    # first, check if we *have* to push up conditions above complex derivations
-    if forced_pushdown:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced_pushdown} that are not condition row inputs {conditions.row_arguments} or parent"
-        )
-        return conditions
-    # otherwise, only prevent pushdown
-    # (forcing local condition evaluation)
-    # only if all condition inputs are here and we only have roots
-    should_evaluate_filter_on_this_level_not_push_down = all(
-        x.address in mandatory for x in conditions.row_arguments
-    ) and not any(
-        x.derivation not in (ROOT_DERIVATIONS)
-        for x in mandatory
-        if x.address not in conditions.row_arguments
-    )
-
-    if (
-        force_no_condition_pushdown
-        or should_evaluate_filter_on_this_level_not_push_down
-    ):
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Forcing condition evaluation at this level: all basic_no_agg: {should_evaluate_filter_on_this_level_not_push_down}"
-        )
-        return None
-
-    return conditions
-
-
-def generate_candidates_restrictive(
-    priority_concept: BuildConcept,
-    candidates: list[BuildConcept],
-    exhausted: set[str],
-) -> list[BuildConcept]:
-    unselected_candidates = [
-        x for x in candidates if x.address != priority_concept.address
-    ]
-
-    # A pseudonym of the priority is "the same concept, already satisfied" -- skip
-    # it as a redundant co-source.
-    def _keep_pseudonym(x: BuildConcept) -> bool:
-        return not (
-            x.address in priority_concept.pseudonyms
-            or priority_concept.address in x.pseudonyms
-        )
-
-    local_candidates = [
-        x
-        for x in unselected_candidates
-        if x.address not in exhausted
-        and (
-            x.granularity != Granularity.SINGLE_ROW
-            or x.derivation == Derivation.CONSTANT
-        )
-        and _keep_pseudonym(x)
-    ]
-
-    # if it's single row, joins are irrelevant. Fetch without keys.
-    if priority_concept.granularity == Granularity.SINGLE_ROW:
-        logger.info("Have single row concept, including only other single row optional")
-        optional = (
-            [
-                x
-                for x in unselected_candidates
-                if x.granularity == Granularity.SINGLE_ROW
-                and x.address not in priority_concept.pseudonyms
-                and priority_concept.address not in x.pseudonyms
-            ]
-            if priority_concept.derivation == Derivation.AGGREGATE
-            else []
-        )
-        return optional
-    return local_candidates
-
-
-def get_priority_concept(
-    all_concepts: list[BuildConcept],
-    attempted_addresses: set[str],
-    found_concepts: set[str],
-    partial_concepts: set[str],
-    depth: int,
-    environment: BuildEnvironment | None = None,
-) -> BuildConcept:
-    # optimized search for missing concepts
-    all_concepts_local = all_concepts
-    pass_one = sorted(
-        [
-            c
-            for c in all_concepts_local
-            if c.address not in attempted_addresses
-            and (c.address not in found_concepts or c.address in partial_concepts)
-        ],
-        key=lambda x: x.address,
-    )
-
-    priority = (
-        # then multiselects to remove them from scope
-        [c for c in pass_one if c.derivation == Derivation.MULTISELECT]
-        +
-        # union TVFs behave like multiselects (self-contained combined sources)
-        [c for c in pass_one if c.derivation == Derivation.TVF_UNION]
-        +
-        # then rowsets to remove them from scope, as they cannot get partials
-        [c for c in pass_one if c.derivation == Derivation.UNION]
-        # we should be home-free here
-        + [c for c in pass_one if c.derivation == Derivation.BASIC]
-        +
-        # then rowsets to remove them from scope, as they cannot get partials
-        [c for c in pass_one if c.derivation == Derivation.ROWSET]
-        +
-        # then aggregates to remove them from scope, as they cannot get partials
-        [c for c in pass_one if c.derivation == Derivation.AGGREGATE]
-        # then windows to remove them from scope, as they cannot get partials
-        + [c for c in pass_one if c.derivation == Derivation.WINDOW]
-        # then filters to remove them from scope, also cannot get partials
-        + [c for c in pass_one if c.derivation == Derivation.FILTER]
-        # unnests are weird?
-        + [c for c in pass_one if c.derivation == Derivation.UNNEST]
-        + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
-        + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
-        + [c for c in pass_one if c.derivation == Derivation.SUBSELECT]
-        # roots that are abstract
-        + [
-            c
-            for c in pass_one
-            if c.derivation == Derivation.ROOT
-            and c.granularity == Granularity.SINGLE_ROW
-        ]
-        # finally our plain selects
-        + [
-            c
-            for c in pass_one
-            if c.derivation == Derivation.ROOT
-            and c.granularity != Granularity.SINGLE_ROW
-        ]  # and any non-single row constants
-        + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
-    )
-
-    priority += [c for c in pass_one if c.address not in [x.address for x in priority]]
-    final = []
-    # if any thing is derived from another concept
-    # get the derived copy first as this will usually resolve cleaner.
-    # get_upstream_concepts(c) depends only on c, so collect the union once
-    # rather than recomputing it per (x, c) pair.
-    all_upstream: set[str] = set()
-    for c in priority:
-        all_upstream |= get_upstream_concepts(c)
-    for x in priority:
-        if x.address in all_upstream:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
-            )
-            continue
-        final.append(x)
-    # then append anything we didn't get
-    for x2 in priority:
-        if x2 not in final:
-            final.append(x2)
-    if final:
-        return final[0]
-    subgraphs = (
-        disconnected_components(environment, all_concepts)
-        if environment is not None
-        else []
-    )
-    if len(subgraphs) > 1:
-        raise DisconnectedConceptsException(
-            format_disconnected_subgraphs_error(subgraphs, environment),
-            subgraphs=[[c.address for c in group] for group in subgraphs],
-        )
-    raise DisconnectedConceptsException(
-        format_unresolved_concepts_error(all_concepts, found_concepts),
-        subgraphs=[[c.address for c in all_concepts]],
-    )
-
-
 def _crossjoinable(concept: BuildConcept) -> bool:
     """Single-row / constant / literal-derived concepts cross-join into any
     component, so they never cause a disconnection (mirrors
@@ -558,7 +277,7 @@ def _crossjoinable(concept: BuildConcept) -> bool:
 def _literal_derived(concept: BuildConcept, _seen: set[str] | None = None) -> bool:
     """Generated purely from literals, transitively: ``unnest([1,2])``, ``sum(1)``,
     a window over either. No datasource anywhere in the derivation means the value
-    can be produced beside any component without a join (v3 plans these as cross
+    can be produced beside any component without a join (these plan as cross
     joins), so it must not count toward disconnection."""
     if concept.derivation == Derivation.CONSTANT:
         return True
@@ -705,10 +424,10 @@ def disconnected_components(
     ``island_rowsets_for_connectivity``): when
     set, a base concept reachable only by navigating into a rowset's derivation is
     not treated as a real join path. This is correct as a *post-failure* message
-    refiner (the v3 path, where discovery has already failed independently), but as
-    a *pre-check gate* it false-positives on legitimate rowset join-backs (a base
-    key that IS a rowset output, or a concept DERIVED from one) — so the v4
-    pre-gate disables it and lets discovery decide. Defaults to the v3 behaviour.
+    refiner (called once discovery has already failed independently), but as a
+    *pre-check gate* it false-positives on legitimate rowset join-backs (a base
+    key that IS a rowset output, or a concept DERIVED from one) — so the
+    pre-gate disables it and lets discovery decide. Defaults to on.
 
     See ``_component_map`` for ``excluded_addresses``.
     """
@@ -732,29 +451,6 @@ def disconnected_components(
 
     groups = [sorted(grp, key=lambda c: c.address) for grp in buckets.values()]
     return sorted(groups, key=lambda grp: min(c.address for c in grp))
-
-
-def raise_if_disconnected(
-    environment: BuildEnvironment,
-    concepts: list[BuildConcept],
-    g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
-    line_number: int | None = None,
-) -> None:
-    """Raise the typed subgraph error when ``concepts`` span >1 unconnected
-    reference-graph component (a real missing join/merge). Crossjoinable
-    (single-row/constant) concepts are skipped, so valid cross-joins still pass.
-    See ``disconnected_components`` for ``island_rowsets``."""
-    subgraphs = disconnected_components(
-        environment, concepts, g, island_rowsets=island_rowsets
-    )
-    if len(subgraphs) > 1:
-        raise DisconnectedConceptsException(
-            format_disconnected_subgraphs_error(
-                subgraphs, environment, g, island_rowsets, line_number
-            ),
-            subgraphs=[[c.address for c in group] for group in subgraphs],
-        )
 
 
 def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
@@ -782,8 +478,8 @@ def _is_global_aggregate_gate(
     """True when a disconnected subgraph is a pure WHERE aggregate gate rather than
     a missing join: every member is an aggregate row-arg (not an output) at a grain
     absent from the outputs. Such a condition is a global filter gate — the planner
-    bridges it via the gate's grain and cross-joins/dedups the (constant) outputs,
-    matching v3 (e.g. `where sum(x) by name < ... select <const>`). A disconnected
+    bridges it via the gate's grain and cross-joins/dedups the (constant) outputs
+    (e.g. `where sum(x) by name < ... select <const>`). A disconnected
     raw-column arg (`where bv > 0`) implies a row-level correlation that genuinely
     needs a join, so it is NOT a gate and must still raise."""
     return all(
@@ -1032,36 +728,6 @@ def format_disconnected_subgraphs_error(
     return f"{head} Are you missing a join or merge statement to relate them?"
 
 
-def format_unresolved_concepts_error(
-    all_concepts: list[BuildConcept], found_concepts: set[str]
-) -> str:
-    """Terminal-fallback message when discovery exhausts its candidates without
-    building one connected source. Unlike the >1-subgraph case the model graph
-    looks connected, so we can't name subgraphs — but the likely cause is still a
-    missing join/merge to relate concepts across models. List what we did and
-    didn't source, dropping internal `_virt_*` scaffolding."""
-    requested = {c.address for c in all_concepts}
-
-    def clean(addresses: set[str]) -> list[str]:
-        return sorted(a for a in addresses if VIRTUAL_CONCEPT_PREFIX not in a)
-
-    sourced = clean(found_concepts & requested)
-    unresolved = clean(requested - found_concepts)
-
-    def fmt(items: list[str]) -> str:
-        return "{" + ", ".join(items) + "}"
-
-    if unresolved:
-        detail = f"Sourced: {fmt(sourced)}; still unresolved: {fmt(unresolved)}"
-    else:
-        # everything resolved individually but couldn't be combined
-        detail = f"Sourced individually but not joinable from model: {fmt(sourced)}"
-    return (
-        "Discovery error: couldn't source all these concepts into one query; you "
-        "may need a join or merge to relate them across models. " + detail
-    )
-
-
 def _filter_hidden_concepts(
     output_concepts: list[BuildConcept],
 ) -> list[BuildConcept]:
@@ -1149,316 +815,3 @@ def raise_if_filter_disconnected(
             + filter_disconnect_context(output_concepts),
             subgraphs=[[c.address for c in group] for group in groups],
         )
-
-
-def is_pushdown_aliased_concept(c: BuildConcept) -> bool:
-    return (
-        isinstance(c.lineage, BuildFunction)
-        and c.lineage.operator == FunctionType.ALIAS
-        and isinstance(c.lineage.arguments[0], BuildConcept)
-        and c.lineage.arguments[0].derivation not in NO_PUSHDOWN_DERIVATIONS
-    )
-
-
-def get_inputs_that_require_pushdown(
-    conditions: BuildWhereClause | None, mandatory: list[BuildConcept]
-) -> list[BuildConcept]:
-    if not conditions:
-        return []
-    return [
-        x
-        for x in mandatory
-        if x.address not in conditions.row_arguments
-        and (
-            x.derivation not in NO_PUSHDOWN_DERIVATIONS
-            or is_pushdown_aliased_concept(x)
-        )
-    ]
-
-
-def _rowset_sourced(concept: BuildConcept, seen: set[str] | None = None) -> bool:
-    """The concept is a rowset output or derives (through any lineage chain —
-    aggregate, BASIC wrap, filter) from one, so it can only be computed at or
-    above the rowset scope, never inside it."""
-    seen = seen if seen is not None else set()
-    if concept.address in seen:
-        return False
-    seen.add(concept.address)
-    if concept.derivation == Derivation.ROWSET:
-        return True
-    if concept.lineage is None:
-        return False
-    return any(
-        _rowset_sourced(arg, seen)
-        for arg in concept.lineage.concept_arguments
-        if isinstance(arg, BuildConcept)
-    )
-
-
-def _resolve_condition_disposition(
-    conditions: BuildWhereClause | None,
-    original_conditions: BuildWhereClause | None,
-    remaining: list[BuildConcept],
-    materialized_canonical: set[str],
-    force_conditions: bool,
-    force_pushdown_to_complex_input: bool,
-    environment: BuildEnvironment | None,
-    depth: int,
-) -> tuple[bool, BuildWhereClause | None]:
-    """Decide whether to inject condition row args and what conditions to push down.
-
-    Returns (inject_row_args, routing_conditions).
-    """
-    # Condition inputs must be sourced at this level when every remaining
-    # concept is condition-terminal: a materialized root (nothing further up
-    # to push into) or a rowset output (an opaque scope conditions may never
-    # be pushed inside — see NO_PUSHDOWN_DERIVATIONS). Without injection a
-    # WHERE aggregate over a rowset column has no sourcing path at all and
-    # the query fails as INCOMPLETE_CONDITION. With ROWSET remainders inject
-    # only when every condition row-arg itself computes at/above the rowset
-    # scope: a base-model row-arg (e.g. `where year = 2001` beside a rowset
-    # join) already resolves through rowset sourcing, and injecting it here
-    # strands it with no join path to the rowset outputs.
-    remaining_addresses = {x.address for x in remaining}
-    all_materialized_roots = (
-        bool(remaining)
-        and conditions is not None
-        and all(
-            x.granularity != Granularity.SINGLE_ROW
-            and (
-                (
-                    x.derivation == Derivation.ROOT
-                    and x.canonical_address in materialized_canonical
-                )
-                or x.derivation == Derivation.ROWSET
-            )
-            for x in remaining
-        )
-        and (
-            all(x.derivation != Derivation.ROWSET for x in remaining)
-            or all(
-                x.address in remaining_addresses or _rowset_sourced(x)
-                for x in conditions.row_arguments
-            )
-        )
-    )
-
-    if all_materialized_roots:
-        assert conditions is not None
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are materialized roots, injecting condition inputs into candidate list"
-        )
-        routing = (
-            preserved_non_partial_conditions(conditions, environment)
-            if environment
-            else None
-        )
-        return True, routing
-    elif conditions and force_conditions:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
-        )
-        routing = conditions if force_pushdown_to_complex_input else None
-        if routing is None and original_conditions and environment:
-            routing = preserved_non_partial_conditions(original_conditions, environment)
-        return True, routing
-    else:
-        # No consumption — recover routing atoms if conditions were already consumed
-        if conditions is None and original_conditions and environment:
-            return False, preserved_non_partial_conditions(
-                original_conditions, environment
-            )
-        return False, conditions
-
-
-def get_loop_iteration_targets(
-    mandatory: list[BuildConcept],
-    conditions: BuildWhereClause | None,
-    attempted: set[str],
-    force_conditions: bool,
-    found: set[str],
-    partial: set[str],
-    depth: int,
-    materialized_canonical: set[str],
-    environment: BuildEnvironment | None = None,
-) -> tuple[BuildConcept, list[BuildConcept], BuildWhereClause | None]:
-    # objectives
-    # 1. if we have complex types; push any conditions further up until we only have roots
-    # 2. if we only have roots left, push all condition inputs into the candidate list
-    # 3. from the final candidate list, select the highest priority concept to attempt next
-    force_pushdown_to_complex_input = False
-
-    pushdown_targets = get_inputs_that_require_pushdown(conditions, mandatory)
-    if pushdown_targets:
-        force_pushdown_to_complex_input = True
-    # a list of all non-materialized concepts, or all concepts
-    # if a pushdown is required
-    all_concepts_local: list[BuildConcept] = [
-        x
-        for x in mandatory
-        if force_pushdown_to_complex_input
-        or (x.canonical_address not in materialized_canonical)
-        # keep Root/Constant
-        or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
-    ]
-    remaining_concrete = [x for x in mandatory if x.address not in all_concepts_local]
-
-    for x in remaining_concrete:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived."
-        )
-        all_concepts_local.append(x.with_materialized_source())
-
-    remaining = [x for x in all_concepts_local if x.address not in attempted]
-    original_conditions = conditions
-    conditions = evaluate_loop_condition_pushdown(
-        mandatory=all_concepts_local,
-        conditions=conditions,
-        depth=depth,
-        force_no_condition_pushdown=force_conditions,
-        forced_pushdown=pushdown_targets,
-    )
-    local_all = [*all_concepts_local]
-
-    inject_row_args, conditions = _resolve_condition_disposition(
-        conditions=conditions,
-        original_conditions=original_conditions,
-        remaining=remaining,
-        materialized_canonical=materialized_canonical,
-        force_conditions=force_conditions,
-        force_pushdown_to_complex_input=force_pushdown_to_complex_input,
-        environment=environment,
-        depth=depth,
-    )
-    if inject_row_args and original_conditions:
-        local_all = unique(
-            list(original_conditions.row_arguments) + remaining,
-            "address",
-        )
-
-    priority_concept = get_priority_concept(
-        all_concepts=local_all,
-        attempted_addresses=attempted,
-        found_concepts=found,
-        partial_concepts=partial,
-        depth=depth,
-        environment=environment,
-    )
-
-    # A `by`-partitioned aggregate injected purely because it appears in the
-    # outer WHERE (i.e. not in the caller's mandatory outputs) is a scoped
-    # scalar subquery: its denominator is its own `by` grain, not the outer
-    # WHERE. Treat it as a scalar for partial-satisfaction so outer routing
-    # atoms do NOT propagate into its parent sourcing — otherwise a datasource
-    # whose `non_partial_for` matches the outer filter can be pulled in to
-    # satisfy the routing, bringing foreign join keys that silently restrict
-    # the aggregate's input rows.
-    mandatory_addresses = {c.address for c in mandatory}
-    if (
-        inject_row_args
-        and isinstance(priority_concept.lineage, BuildAggregateWrapper)
-        and priority_concept.lineage.by
-        and priority_concept.address not in mandatory_addresses
-    ):
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
-            f"is a filter-scalar by-aggregate; dropping outer conditions for its scope"
-        )
-        conditions = None
-
-    # A condition can only be evaluated where all its inputs exist. When the
-    # priority we are about to build is itself a *derived* row-argument of the
-    # condition (e.g. a named `auto f1 <- a between x and y` flag used in both
-    # `where (f1 or f2)` and a `? f1` operand), routing the condition into its
-    # build is circular: sourcing the flag's parents puts the flag back in the
-    # mandatory list via the condition's row args, re-forcing forever. Build the
-    # flag first; the condition is applied at this level's completion instead.
-    # (An aggregate grouped *by* a derived row-arg is fine — it isn't the
-    # row-arg itself, so it never matches here and keeps normal pushdown.)
-    condition_input_row_scalar_priority = False
-    if (
-        conditions
-        and priority_concept.derivation not in ROOT_DERIVATIONS
-        and priority_concept.address in {c.address for c in conditions.row_arguments}
-    ):
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
-            f"is a derived condition input; not routing the condition into its build"
-        )
-        condition_input_row_scalar_priority = all(
-            concept_is_row_scalar(c) for c in conditions.row_arguments
-        )
-        conditions = None
-
-    # A single-row rowset scalar (e.g. `rowset stats <- select avg(x) as v`)
-    # is its own scope: the outer WHERE only reaches inside if it constrains a
-    # column that rowset exposes (mirrors _is_rowset_scope_exempt at
-    # validation). Routing an unrelated condition into its build force-co-
-    # sources the condition's row args next to the scalar (q23 clause) and
-    # welds foreign concepts onto the broadcast node — turning a clean 1=1
-    # cross join into a row-restricting merge (or a disconnect).
-    if (
-        conditions
-        and priority_concept.granularity == Granularity.SINGLE_ROW
-        and isinstance(priority_concept.lineage, BuildRowsetItem)
-    ):
-        rowset_outputs = set(priority_concept.lineage.rowset.derived_concepts)
-        if not any(arg.address in rowset_outputs for arg in conditions.row_arguments):
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
-                f"is an independent single-row rowset scalar; not routing the condition into its build"
-            )
-            conditions = None
-
-    optional = generate_candidates_restrictive(
-        priority_concept=priority_concept,
-        candidates=local_all,
-        exhausted=attempted,
-    )
-    # This build runs condition-free (the priority IS a condition input), so a
-    # pushdown target (window/aggregate needing the WHERE inside its sourcing)
-    # must not ride along as an optional — it would be sourced unfiltered and
-    # marked found (e.g. a rank computed over the unfiltered universe). Defer
-    # it to its own iteration, where the condition routes into its build.
-    # Two gates: (1) every WHERE row arg is row-scalar, so the condition is an
-    # unambiguous row filter that belongs inside the target's sourcing; (2)
-    # only WINDOW/AGGREGATE targets — a FILTER item is an author-scoped row
-    # intent whose statement-WHERE interaction composes at this level's
-    # completion instead (deferring q05's per-channel filtered measures
-    # co-sourced the other channel's date beside each fact and fanned out).
-    if condition_input_row_scalar_priority and pushdown_targets:
-        pushdown_addresses = {
-            c.address
-            for c in pushdown_targets
-            if c.derivation in (Derivation.WINDOW, Derivation.AGGREGATE)
-        }
-        deferred = [x for x in optional if x.address in pushdown_addresses]
-        if deferred:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} deferring pushdown targets "
-                f"{[c.address for c in deferred]} out of condition-free build of {priority_concept.address}"
-            )
-            optional = [x for x in optional if x.address not in pushdown_addresses]
-            # keep this build's own inputs and keys visible: stack connectivity
-            # ignores hidden outputs, so without them the deferred target's
-            # node would have no shared concept to join back on
-            existing = {x.address for x in optional}
-            join_surface = list(
-                priority_concept.lineage.concept_arguments
-                if priority_concept.lineage
-                else []
-            )
-            if environment and priority_concept.keys:
-                join_surface += [
-                    environment.concepts[k]
-                    for k in priority_concept.keys
-                    if k in environment.concepts
-                ]
-            for parent in join_surface:
-                if (
-                    parent.address not in existing
-                    and parent.address != priority_concept.address
-                ):
-                    optional.append(parent)
-                    existing.add(parent.address)
-    return priority_concept, optional, conditions

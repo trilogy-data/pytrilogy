@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from logging import Logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +12,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
-    LooseBuildConceptList,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -24,7 +22,6 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
-from trilogy.utility import unique
 
 
 class NodeType(Enum):
@@ -41,15 +38,6 @@ class GroupRequiredResponse:
 
 def padding(x: int) -> str:
     return "\t" * x
-
-
-def create_log_lambda(prefix: str, depth: int, logger: Logger):
-    pad = padding(depth)
-
-    def log_lambda(msg: str):
-        logger.info(f"{pad}{prefix} {msg}")
-
-    return log_lambda
 
 
 def calculate_graph_relevance(
@@ -220,16 +208,6 @@ def find_nullable_concepts(
         if nullable_datasources and set(v).issubset(all_ds):
             final_nullable.add(k)
     return sorted(final_nullable)
-
-
-def concept_to_relevant_joins(concepts: list[BuildConcept]) -> list[BuildConcept]:
-    sub_props = LooseBuildConceptList(
-        concepts=[
-            x for x in concepts if x.keys and all(key in concepts for key in x.keys)
-        ]
-    )
-    final = [c for c in concepts if c.address not in sub_props]
-    return unique(final, "address")
 
 
 def sort_select_output_processed(

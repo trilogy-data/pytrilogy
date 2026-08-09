@@ -107,9 +107,9 @@ written.
 - TPC-DS battery byte-stable (its multi-key joins are grain/property pairs
   the old heuristics already reduce) — the prune fires on shapes the old
   code could not see, never differently on ones it could.
-- SCOPE NOTE (owner, 2026-07-03): v4 discovery FD paths are EXCLUDED from
-  step 4 — v4 is a parallel migration target; drive v3 to the ideal state
-  first.
+- SCOPE NOTE (owner, 2026-07-03): discovery FD paths were EXCLUDED from step 4
+  while the planner migration was in flight. The legacy planner is gone; the
+  exclusion is now just a note on what step 4 covered.
 
 ## Landed (step 4 second consumer + step 3, 2026-07-03)
 

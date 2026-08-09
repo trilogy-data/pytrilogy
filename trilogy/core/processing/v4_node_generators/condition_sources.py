@@ -111,7 +111,7 @@ def resolve_existence_sources(
         # for a HAVING membership), and any of those shared with the consumer
         # promotes the feeder to a row-join candidate in MergeNode resolution —
         # a spurious value-join whose grain then leaks the plan-local virt
-        # across the rowset boundary. v3 renders the feeder as the bare
+        # across the rowset boundary. The feeder renders as the bare
         # subselect column; match it.
         existence_addrs = {c.address for c in existence_args}
         sliced = [o for o in ex_node.output_concepts if o.address in existence_addrs]

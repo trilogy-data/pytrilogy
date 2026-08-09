@@ -665,9 +665,9 @@ def build_optimization_rule_plan(
     elif not opts.merge_aggregate and opts.predicate_pushdown:
         # merge_aggregate gates the full CollapseSingleParent rule, but a bare
         # passthrough (single parent, no compute/WHERE/join/regroup) is pure
-        # noise unrelated to aggregate merging -- e.g. v4's semijoin-projection
-        # residue once predicate pushdown relocates its WHERE onto the parent
-        # scan (v3 never materializes the node). Collapse it even with aggregate
+        # noise unrelated to aggregate merging -- e.g. the semijoin-projection
+        # residue left once predicate pushdown relocates its WHERE onto the
+        # parent scan. Collapse it even with aggregate
         # merging off. Deliberately UNCONDITIONAL (no refires_after): unlike the
         # merge_aggregate branch above, this path has no initial collapse phase,
         # so this sole phase must run regardless of whether pushdown made changes

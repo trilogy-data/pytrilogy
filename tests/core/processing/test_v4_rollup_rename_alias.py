@@ -17,7 +17,6 @@ normalization, so the dimension is rendered once and the rename rides the
 grouped key. Guards correctness (rows) and validity (no dangling SELECT dim)."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key txn int;
@@ -59,18 +58,12 @@ _EXPECTED_ROWS = [
 ]
 
 
-def _run(v4: bool):
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env, _ = Environment().parse(_MODEL)
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        rows = engine.execute_text(_QUERY)[-1].fetchall()
-        return [(r[0], float(r[1])) for r in rows]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _run():
+    env, _ = Environment().parse(_MODEL)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = engine.execute_text(_QUERY)[-1].fetchall()
+    return [(r[0], float(r[1])) for r in rows]
 
 
 def test_rollup_rename_alias_rows_match_baseline():
-    assert _run(v4=False) == _EXPECTED_ROWS
-    assert _run(v4=True) == _EXPECTED_ROWS
+    assert _run() == _EXPECTED_ROWS

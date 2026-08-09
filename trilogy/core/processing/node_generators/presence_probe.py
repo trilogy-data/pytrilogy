@@ -1,7 +1,6 @@
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_proves_non_null
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
 )
@@ -16,29 +15,6 @@ def is_presence_probe(address: str) -> bool:
     (the null-test rewrite for coalescing join key-group members). The single
     place the probe naming convention is interpreted."""
     return PRESENCE_PROBE_PREFIX in address
-
-
-def retain_presence_probes(base: list[BuildConcept], candidates) -> list[BuildConcept]:
-    """`base` plus any presence probe among `candidates` it does not already
-    carry (by address).
-
-    The invariant: a probe is computed on a coalescing member's own side
-    pre-merge and read by the outer WHERE post-merge, so every node that
-    re-projects, merges, or groups its parents' outputs must keep the probes
-    those parents expose — else a member null test re-derives off the fused
-    coalesced key (never NULL) and silently no-ops (TPC-DS q35). Single home for
-    the "probes are sticky through merges/groups" rule so each output-narrowing
-    site enforces it identically."""
-    have = {c.address for c in base}
-    extra = unique(
-        [
-            c
-            for c in candidates
-            if is_presence_probe(c.address) and c.address not in have
-        ],
-        "address",
-    )
-    return base + extra if extra else base
 
 
 def probe_member_address(
@@ -97,40 +73,6 @@ def member_binding_datasources(
                 off_grain.append(datasource)
             break
     return off_grain + at_grain
-
-
-def co_declared_group_keys(
-    member_address: str,
-    datasource: BuildDatasource,
-    environment: BuildEnvironment,
-) -> list[BuildConcept]:
-    """Axis keys of OTHER statement-declared join-key groups with a member
-    physically bound in `datasource`.
-
-    A composite scoped join (`union join a.t = b.t and a.i = b.i`) declares
-    presence at the compound (t, i) grain. A probe scan carrying only its own
-    group's key groups the member's table to that single key and re-joins on
-    it alone, silently coarsening "did (t, i) match?" to "did t match ANY
-    row?" (TPC-DS q64 is_returned). Limited to statement-scoped declarations:
-    a global `merge` is ambient identity, not a join constraint of this query,
-    so a merged concept bound in the probed table must not narrow the probe."""
-    statement_members = environment.domain_graph.statement_relation_members()
-    out: list[BuildConcept] = []
-    for canonical, members in sorted(environment.scoped_join_key_groups.items()):
-        if member_address in members or canonical == member_address:
-            continue
-        if not members & statement_members:
-            continue
-        key = environment.concepts.get(canonical)
-        if key is None:
-            continue
-        if any(
-            datasource.name == d.name
-            for m in sorted(members)
-            for d in member_binding_datasources(m, environment)
-        ):
-            out.append(key)
-    return out
 
 
 def coalescing_axis_group(
@@ -269,142 +211,3 @@ def gen_coalescing_axis_node(
     finally:
         if history is not None:
             history.coalescing_axis_in_progress.discard(canonical)
-
-
-def _conditions_prove_probe_non_null(
-    probe: BuildConcept, conditions: BuildWhereClause | None
-) -> bool:
-    """True when the query's WHERE provably filters out NULL values of the
-    probe (`probe is not null` and negation-safe compositions) — the
-    null-rejection oracle shared with join safety."""
-    if conditions is None:
-        return False
-    return probe.address in condition_proves_non_null(conditions.conditional)
-
-
-def gen_presence_probe_node(
-    concept: BuildConcept,
-    local_optional: list[BuildConcept],
-    environment: BuildEnvironment,
-    g,
-    depth: int,
-    source_concepts,
-    history: History | None = None,
-    conditions: BuildWhereClause | None = None,
-) -> StrategyNode | None:
-    """Materialize a presence probe for a datasource-bound (ROOT) key-group
-    member from the member's OWN datasource, pre-merge.
-
-    The rowset analog computes the probe inside the member's rowset body
-    (`_local_exposure_obligations`). A ROOT member has no such body: its
-    binding was substituted onto the group canonical, so the generic BASIC
-    path would source the probe's argument from whichever datasource scores
-    best — including the OTHER side of the relation, whose key is present on
-    exactly the rows the probe must flag as absent. Pin the scan to a
-    datasource that physically carries the member's authored column and
-    compute the probe there; it rides through the completion merge un-fused
-    and is NULL exactly where the member's side is absent. Returns None when
-    the member has no datasource binding (rowset/derived members keep their
-    existing paths)."""
-    member_address = probe_member_address(concept.address, environment)
-    if member_address is None:
-        return None
-    key_args = concept.concept_arguments
-    if len(key_args) != 1:
-        return None
-    key = key_args[0]
-    candidates = member_binding_datasources(member_address, environment)
-    if not candidates:
-        return None
-    if len(candidates) > 1:
-        logger.info(
-            f"{LOGGER_PREFIX} member {member_address} bound in multiple"
-            f" datasources {[d.name for d in candidates]}; probing the first"
-        )
-    datasource = candidates[0]
-    logger.info(
-        f"{LOGGER_PREFIX} pinning probe {concept.address} for member"
-        f" {member_address} to datasource {datasource.name}"
-    )
-    co_keys = co_declared_group_keys(member_address, datasource, environment)
-    if co_keys:
-        logger.info(
-            f"{LOGGER_PREFIX} probe carries co-declared join keys"
-            f" {[c.address for c in co_keys]} bound in {datasource.name}"
-        )
-    node, force_group = create_datasource_node(
-        datasource,
-        [key] + co_keys,
-        accept_partial=True,
-        environment=environment,
-        depth=depth + 1,
-        conditions=None,
-    )
-    node.add_output_concept(concept)
-    pinned: StrategyNode = node
-    if force_group:
-        pinned = GroupNode(
-            output_concepts=node.output_concepts,
-            input_concepts=node.output_concepts,
-            environment=environment,
-            parents=[node],
-            depth=depth,
-            partial_concepts=node.partial_concepts,
-            nullable_concepts=node.nullable_concepts,
-            force_group=True,
-        )
-    parents: list[StrategyNode] = [pinned]
-    # A coalescing (`full`/`union`) key: the pinned scan carries only its own
-    # member's slice of the axis; merge in the full axis so this node doesn't
-    # satisfy the axis address one-sided (an `is null` test's answer lives on
-    # the complement side). Perf carve-out: when the statement WHERE provably
-    # rejects NULL probes (`probe is not null` and negation-safe equivalents),
-    # every surviving row has this member's side present, so the one-sided
-    # axis is already complete for the result — skip the complement scans.
-    # The loop sources sub-requests with conditions=None, so consult the
-    # statement-level WHERE stashed on History; unknown stays conservative.
-    statement_conditions = conditions or (
-        history.statement_conditions if history is not None else None
-    )
-    axis: StrategyNode | None = None
-    if not _conditions_prove_probe_non_null(concept, statement_conditions):
-        axis = gen_coalescing_axis_node(
-            key,
-            environment,
-            depth,
-            g=g,
-            source_concepts=source_concepts,
-            history=history,
-        )
-    if axis is not None:
-        parents.append(axis)
-    remaining = [c for c in local_optional if c.address != key.address]
-    if remaining:
-        # Cover local_optional per the generator contract: the pinned scan can
-        # never provide it (it carries only the group keys + probe), so source
-        # the rest alongside the keys and join on them. Co-declared keys ride
-        # along even when unrequested: without them the enrich side joins the
-        # probe on the probed key alone, re-coarsening the compound grain.
-        enrich = source_concepts(
-            mandatory_list=unique([key] + co_keys + remaining, "address"),
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            history=history,
-            conditions=conditions,
-        )
-        if not enrich:
-            return None
-        parents.append(enrich)
-    if len(parents) == 1:
-        return pinned
-    return MergeNode(
-        input_concepts=unique(
-            [c for p in parents for c in p.output_concepts], "address"
-        ),
-        output_concepts=unique([concept, key] + co_keys + remaining, "address"),
-        environment=environment,
-        parents=parents,
-        depth=depth,
-        preserve_parents=axis is not None,
-    )

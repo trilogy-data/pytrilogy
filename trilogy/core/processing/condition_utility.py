@@ -25,7 +25,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
-    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
@@ -47,7 +46,7 @@ from trilogy.core.models.core import (
 )
 
 if TYPE_CHECKING:
-    from trilogy.core.models.build_environment import BuildEnvironment
+    pass
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -256,30 +255,6 @@ def is_scalar_condition(
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
         return True
-    return True
-
-
-def concept_is_row_scalar(concept: BuildConcept) -> bool:
-    """True when the concept and its entire upstream closure are row-grain
-    scalars (ROOT/CONSTANT/BASIC) — no aggregate, window, filter, unnest, or
-    other grain-changing derivation anywhere in the lineage. A WHERE atom over
-    such a concept is a plain row filter whose placement is not semantic, so it
-    can (and must) be pushed below windows/aggregates. Distinct from
-    ``is_scalar_condition``, which routes WHERE-vs-HAVING and treats windows as
-    scalar."""
-    stack = [concept]
-    seen: set[str] = set()
-    while stack:
-        current = stack.pop()
-        if current.address in seen:
-            continue
-        seen.add(current.address)
-        if current.derivation in (Derivation.ROOT, Derivation.CONSTANT):
-            continue
-        if current.derivation != Derivation.BASIC:
-            return False
-        if current.lineage:
-            stack.extend(current.lineage.concept_arguments)
     return True
 
 
@@ -580,27 +555,6 @@ def condition_implies(
     return implied
 
 
-def drop_covered_conditions(
-    conditions: list[BoolExpr],
-) -> list[BoolExpr]:
-    """Remove conditions that are made redundant by a more general one in the same list.
-
-    A condition C is dropped if another condition D exists (D != C) where
-    condition_implies(C, D) — meaning D is more general (fewer atoms) and
-    covers everything C covers.
-    """
-    result = []
-    for i, c in enumerate(conditions):
-        dominated = any(
-            j != i and condition_implies(c, d)
-            for j, d in enumerate(conditions)
-            if j < i or c != d  # keep first occurrence of duplicates, drop the rest
-        )
-        if not dominated:
-            result.append(c)
-    return result
-
-
 # Only genuine literals have an enumerable allowed-value set. Anything else
 # (a concept, or an expression node like BuildFunction) is not reasoned over.
 _LITERAL_TYPES = (str, bytes, bool, int, float, Decimal, date, timedelta, Enum)
@@ -801,38 +755,6 @@ def merge_conditions(
         return conditions[0]
 
     return combine_condition_atoms(common)
-
-
-def preserved_non_partial_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
-) -> BuildWhereClause | None:
-    """Return the subset of `conditions`' atoms owned by a non-partial datasource.
-
-    When the full conditions imply some datasource's `non_partial_for`, those
-    atoms are guaranteed by an exact-match source and must stay as WHERE filters
-    (rather than being flattened into projections) so partial-datasource
-    resolution works downstream.
-    """
-    atoms = decompose_condition(conditions.conditional)
-    atom_str_map = {str(a): a for a in atoms}
-    preserved: list[BoolExpr] = []
-    seen: set[str] = set()
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
-            continue
-        if not condition_implies(
-            conditions.conditional, ds.non_partial_for.conditional
-        ):
-            continue
-        for np_atom in decompose_condition(ds.non_partial_for.conditional):
-            key = str(np_atom)
-            if key in atom_str_map and key not in seen:
-                preserved.append(atom_str_map[key])
-                seen.add(key)
-    cond = combine_condition_atoms(preserved)
-    if cond is None:
-        return None
-    return BuildWhereClause(conditional=cond)
 
 
 def filter_union_children(

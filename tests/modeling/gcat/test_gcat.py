@@ -4,15 +4,10 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
-from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
 from trilogy.core.models.build import BuildDatasource, BuildGrain
 from trilogy.core.models.core import DataType
-from trilogy.core.processing.discovery_utility import is_pushdown_aliased_concept
-from trilogy.core.processing.node_generators.node_merge_node import (
-    determine_induced_minimal_nodes,
-)
 from trilogy.hooks import DebuggingHook
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
@@ -352,60 +347,6 @@ limit 6;
         'LEFT OUTER JOIN "launch_info" as "launch_info" on "vehicle_lv_info"."LV_Name" = "launch_info"."LV_Type" AND "vehicle_lv_info"."LV_Variant" = "launch_info"."Variant"'
         in sql[0]
     ), sql[0]
-
-
-def test_joint_join_concept_injection_components():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch;
-        """)
-
-    test_env = env.materialize_for_select()
-    g = generate_graph(test_env)
-
-    target_select_concepts = [
-        test_env.concepts[x]
-        for x in ["vehicle.class", "local.launch_tag", "vehicle.name"]
-    ]
-    path = determine_induced_minimal_nodes(
-        g,
-        nodelist=[concept_to_node(x) for x in target_select_concepts],
-        accept_partial=False,
-        filter_downstream=False,
-        environment=test_env,
-    )
-
-    print(path.nodes)
-    assert "c~vehicle.variant@Grain<vehicle.variant>" in path.nodes, path.nodes
-
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch;
-        """)
-
-    test_env = env.materialize_for_select()
-    g = generate_graph(test_env)
-
-    target_select_concepts = [
-        test_env.concepts[x]
-        for x in ["vehicle.class", "local.launch_tag", "vehicle.variant"]
-    ]
-    path = determine_induced_minimal_nodes(
-        g,
-        nodelist=[concept_to_node(x) for x in target_select_concepts],
-        accept_partial=False,
-        filter_downstream=False,
-        environment=test_env,
-    )
-
-    assert "c~vehicle.name@Grain<vehicle.name>" in path.nodes, path.nodes
 
 
 def test_joint_join_concept_injection():
@@ -1150,8 +1091,6 @@ def test_spacex_alias_behavior():
     total as fun;
     """
     env.parse(queries)
-    build_env = env.materialize_for_select()
-    assert is_pushdown_aliased_concept(build_env.concepts["local.fun"])
 
 
 def test_spacex_aggregates(gcat_env: Executor):
@@ -1193,9 +1132,6 @@ SELECT
 ORDER BY local.launch_date.year ASC;"""
 
     results = gcat_env.execute_text(cmd)[-1].fetchall()
-
-    build_env = gcat_env.environment.materialize_for_select()
-    assert is_pushdown_aliased_concept(build_env.concepts["local.spacex_launches"])
 
     for row in results:
         if row.launch_date_year == 2023:

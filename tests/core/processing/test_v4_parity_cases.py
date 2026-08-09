@@ -1,12 +1,11 @@
-"""CI guard for the v4 discovery parity cases.
+"""CI guard for the discovery correctness cases.
 
 Promotes the `local_scripts/v4_evals` harness into pytest: each `cases/*.preql`
-is generated + executed under both the v3 and v4 planners on DuckDB and the
-result rows are compared as a column-sorted, float-rounded multiset. A v4 crash,
-hang, or row diff is a correctness regression — this is what keeps the graph
-invariants those repros pin from silently rotting.
+is generated + executed on DuckDB. A crash, hang, or render error is a
+correctness regression — this is what keeps the graph invariants those repros
+pin from silently rotting.
 
-The harness itself (case discovery, dual-planner run, row normalization) stays in
+The harness itself (case discovery, run, row normalization) stays in
 `run_parity.py` so the manual script and CI share one source of truth.
 """
 
@@ -22,39 +21,16 @@ if str(_HARNESS_DIR) not in sys.path:
 from run_parity import CASES_DIR, run_case
 
 CASES = sorted(CASES_DIR.glob("*.preql"))
-FAILING_DIR = CASES_DIR.parent / "failing_cases"
-FAILING_CASES = sorted(FAILING_DIR.glob("*.preql"))
 
 
 @pytest.mark.v4_parity
 @pytest.mark.parametrize("case", CASES, ids=lambda p: p.stem)
 def test_v4_parity(case: Path):
     r = run_case(case)
-    if r["status"] == "v3_error":
-        pytest.fail(f"{case.stem}: v3 oracle errored\n{r['v3_err']}")
-    if r["status"] == "v4_error":
-        pytest.fail(f"{case.stem}: v4 planner crashed\n{r['v4_err']}")
-    assert r["status"] == "match", (
-        f"{case.stem}: v3/v4 row mismatch (v3={r['v3_rows']} v4={r['v4_rows']})\n"
-        f"only in v3: {sorted(set(r['_v3'] or []) - set(r['_v4'] or []))[:5]}\n"
-        f"only in v4: {sorted(set(r['_v4'] or []) - set(r['_v3'] or []))[:5]}"
-    )
-
-
-@pytest.mark.v4_parity
-@pytest.mark.xfail(strict=True, reason="known v4 regression repro, not yet at parity")
-@pytest.mark.parametrize("case", FAILING_CASES, ids=lambda p: p.stem)
-def test_v4_known_failing_case(case: Path):
-    """Standalone repros of v4 regressions distilled from suite tests. Expected to
-    fail (crash or row diff) until the gap is fixed; strict xfail flips this red on
-    a fix so the case gets promoted to cases/."""
-    r = run_case(case)
-    assert (
-        r["status"] == "match"
-    ), f"{case.stem}: still failing ({r['status']})\n{r['v4_err']}"
+    assert r["status"] == "ok", f"{case.stem}: {r['error']}"
 
 
 def test_v4_parity_cases_discovered():
     """Guard the guard: a broken glob / moved cases dir would otherwise make the
     parametrized suite vacuously pass."""
-    assert len(CASES) >= 16, f"expected the curated v4 parity cases, found {CASES}"
+    assert len(CASES) >= 16, f"expected the curated discovery cases, found {CASES}"

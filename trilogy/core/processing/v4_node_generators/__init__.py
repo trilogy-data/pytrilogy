@@ -9,8 +9,8 @@ Each dispatched generator takes the same minimal inputs:
     history, g   — the re-entry handle, for generators that plan a sub-search
                    (ROOT's datasource selection, ROWSET/UNION/SUBSELECT)
 
-Stripped from the v3 generators: no sibling/equivalent-optional discovery,
-no optional-merging, no callback-based parent resolution. The topological
+No sibling/equivalent-optional discovery, no optional-merging, no
+callback-based parent resolution. The topological
 walker hands each generator its actual parents and asks it to project the
 listed outputs — nothing else.
 

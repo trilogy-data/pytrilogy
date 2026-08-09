@@ -11,9 +11,6 @@ property keys, grain components, partition keys. Everything the fetcher
 returns gets an `EdgeKind.LINEAGE` edge — an aggregate's grain keys aren't
 optional metadata, they're what keeps row identity intact through the SUM.
 
-This mirrors the per-derivation `resolve_*_parent_concepts` helpers used
-by the v3 generators (`gen_group_node`, `gen_filter_node`,
-`gen_window_node`, `gen_subselect_node`).
 """
 
 from collections.abc import Callable
@@ -131,7 +128,7 @@ def pinned_probe_addresses(environment: BuildEnvironment) -> frozenset[str]:
     the probe must read NULL). Classifying them as root-like sends them into
     the ROOT scan bucket, so `plan_source` sees them in the datasource request
     and the bridge's `_datasource_renders_probe` gate pins each to its member's
-    own scan — mirroring v3's `gen_presence_probe_node`. Rowset-member probes
+    own scan. Rowset-member probes
     (no binding datasource) keep the BASIC path: their value is computed inside
     the member's rowset body."""
     out: set[str] = set()
@@ -433,7 +430,7 @@ def _upstream_aggregate(
     # `__preql_internal.all_rows` marker. It is a single-row cross-join marker,
     # never a real sourced column -- demanding it forces the input scan to
     # project `1 as __preql_internal.all_rows` and the consumer to INNER JOIN on
-    # it instead of cross-joining ON 1=1 (v3 strips it in `gen_group_node`).
+    # it instead of cross-joining ON 1=1.
     base = [
         c for c in _lineage_args(concept, environment) if c.name != ALL_ROWS_CONCEPT
     ]
@@ -512,7 +509,7 @@ def _window_aggregate_grain_keys(
     group grain, every grain key of that aggregate must be a window parent —
     otherwise a dropped key forces a join-back on (kept_key, aggregate_value),
     which is non-unique and NULL-bearing for ROLLUP subtotal/total rows
-    (q36/q59). Mirrors v3's `resolve_window_parent_concepts`, but walks
+    (q36/q59). Walks
     transitively through BASIC args and stops at each aggregate boundary (a
     nested aggregate already collapsed its own upstream)."""
     extras: list[BuildConcept] = []
@@ -611,8 +608,7 @@ def _unsourced_relation_mates(
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     """Rowset-handle key-group mates the statement never references, requested
-    so their scope enters the plan (the requesting half of v3's
-    `rowset_node._relation_key_group_mates`). Without this the mate's rowset is
+    so their scope enters the plan. Without this the mate's rowset is
     absent entirely: a coalescing axis silently collapses to the demanded
     side's own domain, and a subset-declared RAW member stays partial and trips
     the final no-complete-source guard.
@@ -776,7 +772,7 @@ def _aggregate_input_grain(
                 # domain, not its host scan's rows: its authored grain is the
                 # row grain of the scan that computes it, but its identity is
                 # its defining keys (gcat array_agg(launch_filter): one entry
-                # per distinct _launch_code, v3 parity).
+                # per distinct _launch_code).
                 input_grain.update(sub.keys)
             elif sub.grain:
                 input_grain.update(sub.grain.components)
@@ -840,9 +836,9 @@ def _derivable_pseudonym_origins(
     The motivating case is a struct field reached through an unnest:
     `unnest_array.a` parses to the bare key `local.a`, which no datasource binds
     directly — it is only reachable as `attr_access(unnest(array_struct), a)`.
-    v3's synonym node swaps the bare key for that attr-access origin; mirror it
-    here so the graph walks attr_access -> unnest -> datasource instead of
-    dead-ending on a ROOT leaf with no source.
+    Swap the bare key for that attr-access origin so the graph walks
+    attr_access -> unnest -> datasource instead of dead-ending on a ROOT leaf
+    with no source.
 
     A field name can resolve to MORE THAN ONE origin — two struct arrays both
     exposing `a` leave `local.a` with pseudonyms `{x.a, y.a}`, each its own
@@ -999,7 +995,7 @@ def _add_concept(
         # pre-merge (post-merge the member reads as the fused group coalesce,
         # never NULL). Tag it with the member's rowset so the rowset grouping
         # rule buckets it into that boundary and `resolve_rowset` discharges it
-        # as an obligation output (v3's `_local_exposure_obligations`).
+        # as an obligation output.
         member = probe_member_address(concept.address, environment)
         member_concept = environment.concepts.get(member) if member else None
         if member_concept is not None and isinstance(
@@ -1025,8 +1021,8 @@ def _add_concept(
     # Under a STATEMENT-scoped preserving join to a ROWSET (`union join ticket
     # = r_filtered.r_ticket`), row identity is the coalesced relation axis: an
     # aggregate whose inputs ride the relation computes per axis row, not per
-    # its authored dimension grain (v3 renders it at the joined relation's
-    # grain via the grain-match formulas; the outer select then dedups).
+    # its authored dimension grain — it renders at the joined relation's grain
+    # via the grain-match formulas, and the outer select then dedups.
     # Widen the grouping grain by the relation members its inputs carry.
     # Global `merge` identities pair INNER 1:1 and are excluded, as are
     # GLOBAL aggregates (empty/all_rows grain — the q97 presence counts stay
@@ -1592,7 +1588,7 @@ def build_concept_graph(
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
     # its inner select is a self-contained sub-query that the native
     # `gen_rowset` generator plans recursively through v4's own
-    # `search_concepts` (mirroring v3's `get_query_node`), so the inner
+    # `search_concepts`, so the inner
     # lineage never enters the outer concept/group graph. Walking it in here
     # only ever produced a partial picture — it captured the inner outputs and
     # WHERE but not the inner HAVING or multiselect arms — so the boundary
