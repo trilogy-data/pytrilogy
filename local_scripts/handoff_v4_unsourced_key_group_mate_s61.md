@@ -58,10 +58,12 @@ nothing else referencing its MATE never pulled that mate into the plan.
   `test_property_hop_alignment_matrix.py` was stale — that file carries no
   xfail and is fully green under both planners.
 
-## Next: v3 removal
+## Next: v3 removal — DONE
 
-With both registries empty, v3 removal is UNBLOCKED. The scoped surface map
-is in the s61 version of this file (git history) — summary:
+Executed on branch `cleanup/remove-v3-discovery`: every item below landed as
+written (relocations included), plus a second pass that deleted the v3-only
+helpers those deletions freed inside the SHARED modules. The map is kept as
+the record of what was removed.
 
 - **v3-only, deletable:** `concept_strategies_v3.py`, `discovery_node_factory.py`,
   `node_generators/{basic,constant,filter,group,group_to,node_merge,subselect,synonym,union_select,unnest,window}_node.py`

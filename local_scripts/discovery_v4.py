@@ -1235,7 +1235,7 @@ def compile_sql(
     """Compile the v4 strategy node to SQL. When `build_stmt` is supplied,
     apply HAVING / ORDER BY / hidden_concepts / LIMIT from the original
     statement so the SQL matches the user's authored query (mirrors what
-    v3's process_query does at the end)."""
+    `process_query` does at the end)."""
     if info.strategy_node is None:
         return None
     from trilogy.core.enums import BooleanOperator
@@ -1298,7 +1298,7 @@ def compile_sql(
         root_cte.limit = build_stmt.limit
         root_cte.hidden_concepts = set(build_stmt.hidden_components)
 
-    # Match v3's process_query tail: run the optimizer pass plan (direct
+    # Match the `process_query` tail: run the optimizer pass plan (direct
     # return, predicate pushdown, join hoist, inlining, etc.) before
     # rendering. Without this the v4 SQL stays verbose — each scan in its
     # own CTE, no merging — which is correct but a lot bigger.
