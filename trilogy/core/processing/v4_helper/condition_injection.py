@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from trilogy.core.enums import BooleanOperator
+from trilogy.core.enums import BooleanOperator, JoinType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -98,6 +98,19 @@ def inject_condition_at_node(
             output_concepts=output_concepts,
             environment=environment,
             parents=[node, *sources.row_parents, *sources.existence_parents],
+            # A condition source is a FILTER input, so this merge may only
+            # REMOVE rows: preserving toward a feeder invents rows the row scan
+            # never had, and the gate stops being a gate. Two gates on
+            # different keys (`where sum(id) by val > 0 and sum(val) by cat >
+            # 10`) are cross-joined into one feeder by a keyless FULL, which
+            # marks its keys nullable; join inference then read that asymmetry
+            # as enrichment and LEFT-joined the row scan, emitting a
+            # NULL-padded row per key pair the data never contained. Row-scan
+            # rows with no matching feeder row cannot satisfy the condition
+            # either, so INNER is the whole contract. Genuinely nullable keys
+            # are unaffected: both sides nullable already infers INNER, paired
+            # null-safely by `get_modifiers`.
+            force_join_type=JoinType.INNER,
             partial_concepts=(
                 partial_concepts
                 if partial_concepts is not None

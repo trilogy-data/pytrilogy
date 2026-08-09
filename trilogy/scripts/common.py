@@ -20,6 +20,7 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
     ProcessedValidateStatement,
 )
+from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig, apply_env_vars, load_config_file
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -421,6 +422,75 @@ def validate_required_connection_params(
     return conn_dict
 
 
+def _file_connection_params(stored: DialectConfig) -> dict[str, Any]:
+    """CLI parameter name -> value for what a file [engine.config] can supply.
+
+    Only dialects whose config has required constructor arguments need this:
+    their conn_dict must already be complete when validation runs, so the merge
+    at the end of get_dialect_config is too late to save them.
+    """
+    from trilogy.dialect.config import (
+        MySQLConfig,
+        PostgresConfig,
+        PrestoConfig,
+        SnowflakeConfig,
+        SQLServerConfig,
+    )
+
+    if isinstance(stored, MySQLConfig):
+        return {
+            "host": stored.host,
+            "port": stored.port,
+            "username": stored.username,
+            "password": stored.password,
+            "database": stored.database,
+            "charset": stored.charset,
+        }
+    if isinstance(stored, (PostgresConfig, SQLServerConfig)):
+        return {
+            "host": stored.host,
+            "port": stored.port,
+            "username": stored.username,
+            "password": stored.password,
+            "database": stored.database,
+        }
+    # also covers TrinoConfig
+    if isinstance(stored, PrestoConfig):
+        return {
+            "host": stored.host,
+            "port": stored.port,
+            "username": stored.username,
+            "password": stored.password,
+            "catalog": stored.catalog,
+            "schema": stored.schema,
+        }
+    if isinstance(stored, SnowflakeConfig):
+        return {
+            "account": stored.account,
+            "username": stored.username,
+            "password": stored.password,
+            "database": stored.database,
+            "schema": stored.schema,
+        }
+    return {}
+
+
+def seed_conn_dict(
+    conn_dict: dict[str, Any],
+    stored: DialectConfig | None,
+    expected: type[DialectConfig],
+) -> dict[str, Any]:
+    """Fill missing connection params from a file config of the same type.
+
+    CLI-supplied params win over the ones already on the config.
+    """
+    if not isinstance(stored, expected):
+        return conn_dict
+    seeded = {k: v for k, v in _file_connection_params(stored).items() if v is not None}
+    seeded.update(conn_dict)
+    return seeded
+
+
 def get_dialect_config(
     edialect: Dialects, conn_dict: dict[str, Any], runtime_config: RuntimeConfig
 ) -> Any:
@@ -456,6 +526,9 @@ def get_dialect_config(
     elif edialect == Dialects.SNOWFLAKE:
         from trilogy.dialect.config import SnowflakeConfig
 
+        conn_dict = seed_conn_dict(
+            conn_dict, runtime_config.engine_config, SnowflakeConfig
+        )
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["username", "password", "account"],
@@ -466,6 +539,9 @@ def get_dialect_config(
     elif edialect == Dialects.SQL_SERVER:
         from trilogy.dialect.config import SQLServerConfig
 
+        conn_dict = seed_conn_dict(
+            conn_dict, runtime_config.engine_config, SQLServerConfig
+        )
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "port", "username", "password", "database"],
@@ -476,6 +552,9 @@ def get_dialect_config(
     elif edialect == Dialects.POSTGRES:
         from trilogy.dialect.config import PostgresConfig
 
+        conn_dict = seed_conn_dict(
+            conn_dict, runtime_config.engine_config, PostgresConfig
+        )
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "port", "username", "password", "database"],
@@ -486,19 +565,7 @@ def get_dialect_config(
     elif edialect == Dialects.MYSQL:
         from trilogy.dialect.config import MySQLConfig
 
-        existing = runtime_config.engine_config
-        if isinstance(existing, MySQLConfig):
-            # CLI-supplied params win over the ones already on the config.
-            configured: dict[str, Any] = {
-                "host": existing.host,
-                "port": existing.port,
-                "username": existing.username,
-                "password": existing.password,
-                "database": existing.database,
-                "charset": existing.charset,
-            }
-            configured.update(conn_dict)
-            conn_dict = {k: v for k, v in configured.items() if v is not None}
+        conn_dict = seed_conn_dict(conn_dict, runtime_config.engine_config, MySQLConfig)
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "username", "password", "database"],
@@ -525,6 +592,9 @@ def get_dialect_config(
     elif edialect == Dialects.PRESTO:
         from trilogy.dialect.config import PrestoConfig
 
+        conn_dict = seed_conn_dict(
+            conn_dict, runtime_config.engine_config, PrestoConfig
+        )
         conn_dict = validate_required_connection_params(
             conn_dict,
             ["host", "port", "username", "password", "catalog"],
@@ -566,7 +636,11 @@ def get_dialect_config(
             f"Dialect {edialect.value} does not accept connection parameters "
             f"via the CLI; got: {', '.join(conn_dict)}"
         )
-    if conf and runtime_config.engine_config:
+    # Only merge the file config when it is a config the dialect being built can
+    # accept; the executing dialect can differ from the toml's (`trilogy unit`
+    # always runs on DuckDB), and merging across types hands the engine factory
+    # a config of the wrong class.
+    if conf and isinstance(runtime_config.engine_config, type(conf)):
         conf = runtime_config.engine_config.merge_config(conf)
     return conf
 

@@ -597,6 +597,19 @@ def test_two_gates_on_different_absent_keys():
     assert rows == [(1,), (2,)], rows
 
 
+def test_two_gates_on_different_keys_emit_no_null_padded_rows():
+    # The two gate CTEs are cross-joined into one feeder by a keyless FULL,
+    # which marks its keys nullable; the rejoin onto the row scan then read that
+    # as enrichment and preserved the FEEDER, emitting a NULL-padded row for
+    # every (val, cat) pair the data never contained. A condition source can
+    # only remove rows.
+    rows = _rows(
+        GATE_SCHEMA,
+        "where sum(id) by val > 0 and sum(val) by cat > 10 select id;",
+    )
+    assert rows == [(1,), (2,)], rows
+
+
 def test_row_atom_beside_two_gates_on_absent_keys():
     rows = _rows(
         TWO_GATE_SCHEMA,
