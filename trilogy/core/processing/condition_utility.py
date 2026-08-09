@@ -4,7 +4,7 @@ import sys
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
@@ -44,9 +44,6 @@ from trilogy.core.models.core import (
     TupleWrapper,
     ValidatedType,
 )
-
-if TYPE_CHECKING:
-    pass
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
