@@ -13,9 +13,17 @@ on branch `cleanup-remove-v3-discovery`. Originating bug report:
 | `trilogy/core/processing/v4_helper/condition_placement.py` | +50/-43 | `_nested_scope_swallows_atom` rewritten (L188), call site restructured (L1093–1112) |
 | `tests/test_where_select_dual_scope.py` | +32 | `GATE_SCHEMA` + 3 tests |
 
-`trilogy/core/processing/v4_helper/group_rules.py` also shows a 1-line diff
-(`any(True for _ in successors)` → `out_degree`). **That is not part of this change** —
-it was already in the shared working tree. Ignore it.
+**Correction (audit)**: an earlier draft told the reviewer that
+`trilogy/core/processing/v4_helper/group_rules.py` showed only a stray 1-line
+`out_degree` rewrite and should be ignored. That was wrong. Against `main` the file
+is **+41/−9**: the branch adds a new `signature_exempt` / `output_sinks` bucketing
+rule, and the same commit as the fixes below adds its load-bearing
+`depth_label != DepthLabel.D1` guard. It also changes `shared_sig` from
+`sigs[member_indices[0]]` to the union of member sigs, which additionally affects the
+pre-existing `allow_signature_subset` path (`partition_basics_by_signature`) — that
+is arguably a latent-bug fix, since indexing member 0 made the group-id discriminator
+iteration-order dependent. **Review that file too.** It ships with no test and no
+observable effect on the TPC corpus.
 
 ---
 
@@ -250,7 +258,49 @@ branch. Whoever lands that feature should add the staged assertion, since it rid
 same placement machinery (`PlacementReason.STAGE_PRECONDITION` → ROOT_D1 feeders) and
 the fix above deliberately does not touch stage delivery.
 
-## 5. Suggested review order
+## 5. Audit follow-up (landed on top)
+
+A review pass rendered every TPC-DS + TPC-H query on `main` and on this branch and
+byte-diffed them: **identical, 132/132** — both fixes, and the whole v3 removal, are
+shape-neutral on the corpus. The same sweep showed both fixes are corpus-*silent*:
+`_with_condition_source_join_keys` widens **0 times**, and `_nested_scope_swallows_atom`
+fires 3 times (tpch q02, q02-region, q20) in exactly the places `main` already fired.
+The green suite is therefore not evidence about either fix's blast radius. Two defects
+the sweep turned up, both fixed here:
+
+- **Sibling condition scopes.** `nested_ids` was a flat global set, so the grain test
+  asked "does *any* nested group anywhere key this atom" rather than "does this host's
+  own scope". With two `by` gates, an unrelated scope grained by the atom's own input
+  suppressed the rescue: `where grp = 'x' and sum(val) by grp > 7 and sum(val) by cat >
+  10 select id` returned `[]`. The test is now per-host over
+  `_nested_scope_chain` (the host's nested lineage ancestors/descendants — *not* the
+  connected component, since siblings share the ROOT_D1 feeder and a component would
+  fuse them). One swallower disqualifies the whole nested pool, because that shared
+  feeder means an atom hosted on any sibling narrows every sibling's population.
+- **`append_existence_check` pre-gate — NOT a defect after all.** It calls
+  `raise_if_filter_disconnected` with the default `island_rowsets=True`, which reads
+  like a violation of that helper's stated contract ("pre-check gates must pass
+  False") and a divergence from the WHERE-membership twin in `query_processor`.
+  Flipping it to `False` regressed
+  `test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error` (both params):
+  a HAVING membership filters the statement's OUTPUTS, so its subselect reads rowset
+  outputs across the boundary where the rowset really is opaque, and islanding is the
+  entire diagnostic. The contract line was the thing that was wrong; it now states
+  the real criterion (does the caller read rowset outputs across the boundary?)
+  rather than "pre-gates pass False".
+
+Three new row tests cover the sibling-scope shapes (all four probe queries were wrong
+on `main`, all four correct now). Corpus re-rendered after both fixes: still 132/132
+identical to `main`.
+
+**Known-remaining, pre-existing, NOT fixed here**: two gates keyed by different
+dimensions can be cross-joined into one feeder and LEFT-OUTER-joined back to the row
+scan, leaking NULL-padded rows —
+`where sum(id) by val > 0 and sum(val) by cat > 10 select id` returns
+`[(1,), (2,), (None,), (None,)]`. No row atom involved, so it is independent of both
+fixes above; it is the multi-feeder cousin of §2's unkeyed rejoin.
+
+## 6. Suggested review order
 
 1. Reproduce the three table rows in §1 against the current tree (they pass), then revert
    each fix in turn and confirm only its own row fails.
@@ -258,6 +308,4 @@ the fix above deliberately does not touch stage delivery.
    subtle mistake would hide.
 3. Sanity-check the `_with_condition_source_join_keys` gating against
    `_resolve_root_condition_sources`' `aggregate_only` branch; they must agree.
-4. If you want more assurance than the suites give, a per-query generated-SQL diff over
-   the TPC-DS/TPC-H corpus would show the blast radius of the widened placement rule in
-   size terms (the suites prove rows, not bytes).
+4. Review `group_rules.py` — see the correction at the top of this file.

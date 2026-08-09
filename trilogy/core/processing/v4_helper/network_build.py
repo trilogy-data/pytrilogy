@@ -390,7 +390,7 @@ def _decomposable(
         # datasource binds identically. So its lineage always looks decomposable
         # and inlining it computes "did this side match?" off whichever source
         # won, which is the exact collapse the probe exists to prevent. It is
-        # pinned to its own side by `gen_presence_probe_node`.
+        # pinned to its own side by `_datasource_renders_probe`.
         return False
     concept = environment.concepts.get(address)
     if concept is None or concept.derivation is not Derivation.BASIC:

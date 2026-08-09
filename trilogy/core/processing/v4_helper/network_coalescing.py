@@ -41,7 +41,7 @@ def probe_owners(
     key group's canonical, which every member's datasource binds identically — so
     the reference graph offers the probe off BOTH sides, and reading it off the
     wrong one answers "did this side match?" with the other side's row. That is
-    exactly the collapse the probe exists to prevent. `gen_presence_probe_node`
+    exactly the collapse the probe exists to prevent. `_datasource_renders_probe`
     resolves and pins the same carrier, so the search must select for it or the
     two disagree about which scan the probe rides."""
     out: dict[str, frozenset[str]] = {}
@@ -82,7 +82,7 @@ def pin_unoffered_probes(
 ) -> dict[str, SourceCandidate]:
     """Bind a requested presence probe the graph offers off NO candidate to its
     carrier — the datasource physically carrying the member's authored column,
-    the same one `gen_presence_probe_node` pins.
+    the same one `_datasource_renders_probe` pins.
 
     The carrier computes the probe inline (a single-arg COALESCE over a column
     it binds), so the binding is real even though the graph never minted the

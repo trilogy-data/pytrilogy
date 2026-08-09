@@ -793,8 +793,15 @@ def raise_if_filter_disconnected(
     surfaced (see ``_filter_hidden_concepts``). When that splits the set, raise the
     standard named-subgraph error — same 'add a join or merge' diagnostic as any
     disconnected grouping — plus a rowset-filter-specific hint. No-op otherwise, so
-    the caller falls through to the generic connectivity error. ``island_rowsets``
-    as in ``disconnected_components`` — pre-check gates must pass False."""
+    the caller falls through to the generic connectivity error.
+
+    ``island_rowsets`` as in ``disconnected_components``, and it is NOT simply
+    "off for pre-check gates" — it turns on whether the caller reads rowset
+    outputs across the boundary. A WHERE-scope gate resolves its concepts
+    against the base model, where a key that happens to be a rowset output is a
+    legitimate join-back, so it must pass False. A HAVING-scope gate filters the
+    statement's outputs, where the rowset is genuinely opaque and islanding is
+    the whole diagnostic, so it keeps the default."""
     # Drop the FILTER outputs themselves: their connectivity is fully captured by
     # the surfaced content + condition concepts, and the virtual filter concept
     # has no condition edges in the graph (see add_concept), so keeping it would

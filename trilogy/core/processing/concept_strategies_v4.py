@@ -94,7 +94,16 @@ def append_existence_check(
     concepts surfaced) must be connected on their own — otherwise the feeder
     plans as a cross join and the membership silently filters nothing. The gate
     has to run up front: the planner will happily assemble such a cross join
-    rather than fail, so there is no unresolvable result to diagnose after."""
+    rather than fail, so there is no unresolvable result to diagnose after.
+
+    Rowset islanding stays ON here, unlike the WHERE-membership pre-gate in
+    `query_processor`. A HAVING membership filters the statement's OUTPUTS, so
+    its subselect reads rowset outputs (`r.wk`) across the boundary, where the
+    rowset is genuinely opaque and islanding IS the diagnostic
+    (`test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error`). A
+    WHERE-scope RHS is resolved against the base model instead, where a key that
+    happens to be a rowset output is a legitimate join-back and islanding
+    false-positives."""
     if not where.existence_arguments:
         return
     already_sourced = {c.address for c in node.input_concepts} | {

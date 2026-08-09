@@ -3809,8 +3809,8 @@ class Factory:
         null test asks a per-ROW question ("did this side match?"), not a
         domain question, so rewrite its operand to a virt passthrough of the
         member, materialized on the member's own side BEFORE the merge — its
-        rowset body for ROWSET members (gen_rowset_node), a scan pinned to its
-        own datasource for ROOT members (gen_presence_probe_node); it rides
+        rowset body for ROWSET members (gen_rowset), a scan pinned to its
+        own datasource for ROOT members (`_datasource_renders_probe`); it rides
         through the join un-fused and is NULL exactly where the member's side
         is absent. Projecting the member is untouched: that remains the
         coalesced group axis. The superset/anchor side of a subset join is
