@@ -4,7 +4,6 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.dialect import DuckDBConfig
-from trilogy.hooks import DebuggingHook
 
 BACKUP = """
 import launch;
@@ -21,7 +20,6 @@ def test_property_binding():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook()
     exec.generate_sql("""
 import launch;
 
@@ -34,7 +32,6 @@ import launch;
 
 
 def test_extra_fields():
-    from logging import INFO
 
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
@@ -43,7 +40,6 @@ def test_extra_fields():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook(INFO)
     query = """
     import launch;
 where date_part(launch_date, year) = 2010
@@ -60,7 +56,6 @@ limit 50;"""
 
 
 def test_extra_fields_two():
-    from logging import INFO
 
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
@@ -69,7 +64,6 @@ def test_extra_fields_two():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook(INFO)
     query = """
     import launch;
 where date_part(launch_date, year) = 2010
@@ -89,7 +83,6 @@ def test_refresh():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook()
     sql = exec.generate_sql("""
 import launch;
 
@@ -100,7 +93,6 @@ persist launch_info;
 
 
 def test_copy():
-    from logging import INFO
 
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
@@ -109,7 +101,6 @@ def test_copy():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook(INFO)
     sql = exec.generate_sql("""
 import launch;
 
@@ -134,7 +125,6 @@ def test_parquet_selection():
             enable_python_datasources=True,
         ),
     )
-    DebuggingHook()
     sql = exec.generate_sql("""
 import launch;
 

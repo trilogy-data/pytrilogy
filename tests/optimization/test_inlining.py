@@ -6,9 +6,7 @@ from trilogy.core.optimizations.inline_datasource import InlineDatasource
 
 
 def test_safe_cases():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     raw = """
 key upper_word string;
 key lower_word string;

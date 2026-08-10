@@ -18,9 +18,14 @@ from trilogy.authoring import (
     ImportStatement,
     PropertiesDeclarationStatement,
 )
-from trilogy.constants import REMOTE_PREFIXES, logger
+from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES, logger
 from trilogy.core.enums import AddressType, Modifier, Purpose
-from trilogy.core.models.author import Concept, Grain, Metadata
+from trilogy.core.models.author import (
+    Concept,
+    Grain,
+    Metadata,
+    address_with_namespace,
+)
 from trilogy.core.models.core import EnumType, TraitDataType, ValidatedType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.base import BaseDialect, TableColumn, nullable_from_str
@@ -59,7 +64,10 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
-from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
+from trilogy.scripts.ingest_helpers.introspection import (
+    IntrospectionLevel,
+    file_introspection_source,
+)
 from trilogy.scripts.ingest_helpers.typing import (
     detect_enum_types,
     detect_numeric_bounds,
@@ -93,6 +101,9 @@ class IngestRecord:
     concepts: list[Concept]
     required_imports: set[str]
     script: list[ScriptStatement]
+    # Raw names of sample-unique single columns beyond the elected grain,
+    # offered to FK inference as alternate targets.
+    alternate_keys: list[str]
 
 
 @dataclass
@@ -134,6 +145,16 @@ def _looks_like_file_source(arg: str) -> bool:
         return True
     suffix = PathlibPath(arg).suffix.lower()
     return suffix in _FILE_EXT_TO_TYPE
+
+
+def _fk_source_key(rec: IngestRecord) -> str:
+    """The name a record goes by in FK maps and as an FK target's import path.
+
+    Tables keep the source name the user typed (what explicit --fks reference);
+    file sources go by datasource name — their path/URL is meaningless to the
+    name matcher and unusable as an import path.
+    """
+    return rec.datasource.name if _looks_like_file_source(rec.source) else rec.source
 
 
 def _resolve_file_source(arg: str) -> tuple[str, AddressType]:
@@ -358,19 +379,109 @@ def _select_verified_grain(
     relation: str,
     candidates: list[list[str]],
     dialect: BaseDialect,
-) -> list[str] | None:
-    """First ranked candidate that is unique over the full relation, or None if
-    none qualify (caller then falls back to no grain).
+) -> tuple[list[str] | None, list[list[str]]]:
+    """(first ranked candidate unique over the full relation or None, rejected
+    candidates known non-unique). Rejections feed alternate-key selection so a
+    disproven column isn't re-verified at FK time.
 
     A verification query that errors propagates: grain detection is part of the
     ingest request, so a failure surfaces for investigation rather than silently
     degrading to an unverified guess.
     """
+    rejected: list[list[str]] = []
     for candidate in candidates[:_MAX_GRAIN_VERIFICATIONS]:
         if _is_unique_key(exec, relation, candidate, dialect):
-            return candidate
+            return candidate, rejected
         print_info(f"Rejected grain candidate {candidate}: not unique on full table")
-    return None
+        rejected.append(candidate)
+    return None, rejected
+
+
+def _alternate_single_keys(
+    suggested: list[list[str]],
+    elected: list[str],
+    rejected: list[list[str]],
+    penalties: dict[str, int] | None = None,
+) -> list[str]:
+    """Sample-unique single columns beyond the elected grain — candidate keys
+    offered to FK inference as alternate targets (full-table uniqueness is
+    verified lazily there, so known-rejected candidates are excluded).
+
+    Measure-penalized columns are dropped: a float that happens to be distinct
+    across the sample is a coincidence, not a key, and the same signal already
+    keeps it out of the grain.
+    """
+    dropped = {tuple(r) for r in rejected}
+    penalties = penalties or {}
+    return [
+        c[0]
+        for c in suggested
+        if len(c) == 1
+        and c != elected
+        and tuple(c) not in dropped
+        and penalties.get(c[0], 0) < _PENALTY_MEASURE
+    ]
+
+
+def _suggest_keys(
+    name: str,
+    column_names: list[str],
+    columns: list[TableColumn],
+    column_concept_mapping: dict[str, str],
+    sample_rows: list[tuple],
+    max_key_size: int = 3,
+) -> tuple[list[list[str]], dict[str, int]]:
+    """(sample-unique key candidates best-first, the penalties that ranked them).
+
+    The penalties come back because alternate-key selection needs the same
+    measure/FK signal that ordered the candidates.
+    """
+    penalties = _grain_penalties(name, columns, column_concept_mapping)
+    suggested = detect_unique_key_combinations(
+        column_names,
+        sample_rows,
+        max_key_size=max_key_size,
+        penalties=penalties,
+        exclude=_unkeyable_columns(columns),
+    )
+    return suggested, penalties
+
+
+def _elect_grain(
+    exec: Executor,
+    relation: str,
+    relation_label: str,
+    suggested: list[list[str]],
+    dialect: BaseDialect,
+) -> tuple[list[str], list[list[str]]]:
+    """(elected grain, candidates disproven along the way).
+
+    The first sample-unique candidate that survives full-relation verification
+    wins; an empty grain is the honest fallback when none does.
+    """
+    if not suggested:
+        print_info("No primary key or unique grain detected; defaulting to no grain")
+        return [], []
+    print_info(f"Detected potential unique key combinations: {suggested}")
+    verified, rejected = _select_verified_grain(exec, relation, suggested, dialect)
+    if verified is None:
+        print_warning(
+            f"No candidate is unique on the full {relation_label};"
+            " defaulting to no grain"
+        )
+        return [], rejected
+    print_info(f"Using verified unique grain: {verified}")
+    return verified, rejected
+
+
+def _grain_address(canonical: str) -> str:
+    """A canonical column name as the concept address the model stores.
+
+    ``Grain.components`` and ``Concept.keys`` hold addresses — that is what the
+    parser puts in them, and what every consumer resolves against. Ingest names
+    concepts in the default namespace, so the address is the qualified form.
+    """
+    return address_with_namespace(canonical, DEFAULT_NAMESPACE)
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
@@ -448,7 +559,9 @@ def _process_column(
         keys = set()
     else:
         purpose = Purpose.PROPERTY
-        keys = set(grain_components)
+        # `Concept.keys` holds concept *addresses*, which is what the parser
+        # puts there; these concepts are all default-namespace.
+        keys = {_grain_address(c) for c in grain_components}
 
     # Determine nullability: check sample data first, fall back to schema
     if sample_rows:
@@ -484,18 +597,6 @@ def _process_column(
     return concept, column_assignment, trait_import
 
 
-def _file_introspection_source(location: str, addr_type: AddressType) -> str:
-    """SQL fragment that DuckDB can read this file with."""
-    quoted = location.replace("'", "''")
-    if addr_type == AddressType.CSV:
-        return f"read_csv_auto('{quoted}')"
-    if addr_type == AddressType.TSV:
-        return f"read_csv_auto('{quoted}', delim='\\t')"
-    if addr_type == AddressType.PARQUET:
-        return f"read_parquet('{quoted}')"
-    raise ValueError(f"Unsupported file address type: {addr_type}")
-
-
 def _maybe_load_httpfs(exec: Executor, location: str) -> None:
     """Ensure DuckDB's httpfs extension is loaded for remote URLs.
 
@@ -515,15 +616,16 @@ def create_datasource_from_file(
     arg: str,
     name_override: str | None = None,
     root: bool = True,
-) -> tuple[Datasource, list[Concept], set[str], str]:
+) -> tuple[Datasource, list[Concept], set[str], str, list[str]]:
     """Build a Datasource from a local file path or URL via DuckDB.
 
-    Returns (datasource, concepts, required_imports, resolved_location).
+    Returns (datasource, concepts, required_imports, resolved_location,
+    alternate_keys).
     """
     location, addr_type = _resolve_file_source(arg)
     _maybe_load_httpfs(exec, location)
 
-    source_expr = _file_introspection_source(location, addr_type)
+    source_expr = file_introspection_source(location, addr_type)
 
     describe_rows = exec.execute_raw_sql(
         f"DESCRIBE SELECT * FROM {source_expr}"
@@ -549,32 +651,14 @@ def create_datasource_from_file(
     ).fetchall()
 
     column_concept_mapping = canonicalize_names(column_names)
-    suggested_keys = detect_unique_key_combinations(
-        column_names,
-        sample_rows,
-        penalties=_grain_penalties(
-            name_override or _datasource_name_from_path(arg),
-            columns,
-            column_concept_mapping,
-        ),
-        exclude=_unkeyable_columns(columns),
+    name = name_override or _datasource_name_from_path(arg)
+    suggested_keys, penalties = _suggest_keys(
+        name, column_names, columns, column_concept_mapping, sample_rows
     )
-    if suggested_keys:
-        print_info(f"Detected potential unique key combinations: {suggested_keys}")
-        verified = _select_verified_grain(
-            exec, source_expr, suggested_keys, exec.generator
-        )
-        if verified is not None:
-            keys = verified
-            print_info(f"Using verified unique grain: {verified}")
-        else:
-            keys = []
-            print_warning(
-                "No candidate is unique on the full file; defaulting to no grain"
-            )
-    else:
-        keys = []
-        print_info("No primary key or unique grain detected; defaulting to no grain")
+    keys, rejected = _elect_grain(
+        exec, source_expr, "file", suggested_keys, exec.generator
+    )
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected, penalties)
     grain_components = [column_concept_mapping.get(k, k) for k in keys]
 
     enum_map = detect_enum_types(
@@ -607,10 +691,14 @@ def create_datasource_from_file(
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=set(grain_components)) if grain_components else Grain()
+    grain_addresses = [_grain_address(c) for c in grain_components]
+    grain = (
+        Grain(components=set(grain_addresses), component_order=grain_addresses)
+        if grain_addresses
+        else Grain()
+    )
 
     address = Address(location=location, type=addr_type)
-    name = name_override or _datasource_name_from_path(arg)
     datasource = Datasource(
         name=name,
         grain=grain,
@@ -618,15 +706,15 @@ def create_datasource_from_file(
         address=address,
         is_root=root,
     )
-    return datasource, concepts, required_imports, location
+    return datasource, concepts, required_imports, location, alternate_keys
 
 
 def create_datasource_from_table(
     exec: Executor, table_name: str, schema: str | None = None, root: bool = False
-) -> tuple[Datasource, list[Concept], set[str]]:
+) -> tuple[Datasource, list[Concept], set[str], list[str]]:
     """Create a Datasource object from a warehouse table.
 
-    Returns: (datasource, concepts, required_imports)
+    Returns: (datasource, concepts, required_imports, alternate_keys)
     """
 
     dialect = exec.generator
@@ -650,45 +738,38 @@ def create_datasource_from_table(
 
     column_concept_mapping = canonicalize_names(column_names)
 
-    # Detect unique key combinations from sample data
-    suggested_keys = []
-
     # Normalize grain components to snake_case and apply prefix stripping
     db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
     # we always need sample rows for column detection, so fetch here to setup for later.
     sample_rows = dialect.get_table_sample(exec, table_name, schema)
+    rejected: list[list[str]] = []
     if db_primary_keys:
         keys = db_primary_keys
         print_info(f"Using primary key from database as grain: {db_primary_keys}")
+        # A declared PK skips grain detection, but other sample-unique single
+        # columns are still candidate keys worth offering as FK targets. Capped
+        # at size 1 because only singles can be alternate targets, and the wider
+        # scan is cubic in column count.
+        suggested_keys, penalties = _suggest_keys(
+            table_name,
+            column_names,
+            columns,
+            column_concept_mapping,
+            sample_rows,
+            max_key_size=1,
+        )
     else:
         # Get sample data to detect grain and nullability
         print_info(
             f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
         )
-        suggested_keys = detect_unique_key_combinations(
-            column_names,
-            sample_rows,
-            penalties=_grain_penalties(table_name, columns, column_concept_mapping),
-            exclude=_unkeyable_columns(columns),
+        suggested_keys, penalties = _suggest_keys(
+            table_name, column_names, columns, column_concept_mapping, sample_rows
         )
-        if suggested_keys:
-            print_info(f"Detected potential unique key combinations: {suggested_keys}")
-            verified = _select_verified_grain(
-                exec, dialect.safe_quote(qualified_name), suggested_keys, dialect
-            )
-            if verified is not None:
-                keys = verified
-                print_info(f"Using verified unique grain: {verified}")
-            else:
-                keys = []
-                print_warning(
-                    "No candidate is unique on the full table; defaulting to no grain"
-                )
-        else:
-            keys = []
-            print_info(
-                "No primary key or unique grain detected; defaulting to no grain"
-            )
+        keys, rejected = _elect_grain(
+            exec, dialect.safe_quote(qualified_name), "table", suggested_keys, dialect
+        )
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected, penalties)
     grain_components = []
     for key in keys:
         stripped = column_concept_mapping.get(key, key)
@@ -727,7 +808,12 @@ def create_datasource_from_table(
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=set(grain_components)) if grain_components else Grain()
+    grain_addresses = [_grain_address(c) for c in grain_components]
+    grain = (
+        Grain(components=set(grain_addresses), component_order=grain_addresses)
+        if grain_addresses
+        else Grain()
+    )
 
     address = Address(location=qualified_name)
 
@@ -739,7 +825,7 @@ def create_datasource_from_table(
         is_root=root,
     )
 
-    return datasource, concepts, required_imports
+    return datasource, concepts, required_imports, alternate_keys
 
 
 def _build_script_content(
@@ -984,14 +1070,14 @@ def ingest(
             is_file = _looks_like_file_source(source)
             try:
                 if is_file:
-                    datasource, concepts, required_imports, location = (
+                    datasource, concepts, required_imports, location, alt_keys = (
                         create_datasource_from_file(
                             exec, source, name_override=name, root=True
                         )
                     )
                     source_label = location
                 else:
-                    datasource, concepts, required_imports = (
+                    datasource, concepts, required_imports, alt_keys = (
                         create_datasource_from_table(exec, source, schema, root=True)
                     )
                     source_label = f"{schema}.{source}" if schema else source
@@ -1007,6 +1093,7 @@ def ingest(
                     script=_build_script_content(
                         source_label, datasource, concepts, required_imports
                     ),
+                    alternate_keys=alt_keys,
                 )
             except Exception as e:
                 print_error(f"Failed to ingest {source}: {e}")
@@ -1045,17 +1132,18 @@ def ingest(
     # would be worse than a hard failure.
     inferred_fks: list[InferredFK] = []
     fk_infos = []
-    if introspection_level is not IntrospectionLevel.OFF:
-        table_records = [
-            rec for rec in ingested.values() if not _looks_like_file_source(rec.source)
-        ]
-        if len(table_records) >= 2:
-            with _rollback_on_error(exec):
-                fk_infos = [
-                    build_table_fk_info(rec.source, rec.datasource, exec.generator)
-                    for rec in table_records
-                ]
-                inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
+    if introspection_level is not IntrospectionLevel.OFF and len(ingested) >= 2:
+        with _rollback_on_error(exec):
+            fk_infos = [
+                build_table_fk_info(
+                    _fk_source_key(rec),
+                    rec.datasource,
+                    exec.generator,
+                    alternate_keys=rec.alternate_keys,
+                )
+                for rec in ingested.values()
+            ]
+            inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
     # Explicit --fks arrive marked partial=True. In full mode we have the
     # executor; sniff reverse coverage to upgrade complete edges.
     if introspection_level is IntrospectionLevel.FULL and explicit_fk_map and fk_infos:
@@ -1068,13 +1156,14 @@ def ingest(
     if fk_map:
         print_info("Processing foreign key relationships...")
 
-    fk_datasources = {key: rec.datasource for key, rec in ingested.items()}
+    fk_datasources = {_fk_source_key(rec): rec.datasource for rec in ingested.values()}
     for source, rec in ingested.items():
         output_file = output_dir / f"{rec.datasource.name}.preql"
-        if fk_map and source in fk_map:
-            column_mappings = fk_map[source]
+        fk_key = _fk_source_key(rec)
+        if fk_map and fk_key in fk_map:
+            column_mappings = fk_map[fk_key]
             content = apply_foreign_key_references(
-                source, rec.datasource, fk_datasources, rec.script, column_mappings
+                fk_key, rec.datasource, fk_datasources, rec.script, column_mappings
             )
         else:
             content = renderer.render_statement_string(rec.script)

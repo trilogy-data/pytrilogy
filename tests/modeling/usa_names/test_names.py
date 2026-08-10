@@ -2,13 +2,11 @@ import re
 from pathlib import Path
 
 from trilogy import Dialects, Environment
-from trilogy.hooks import DebuggingHook
 from trilogy.parsing.common import concept_is_relevant
 
 
 def test_ranking():
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     query = """import names as names;
 
@@ -28,7 +26,6 @@ limit 100
 
 def test_ranking_inclusion():
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     query = """import names as names;
 select
@@ -71,7 +68,6 @@ def test_aggregate_filter_anonymous():
     ;
     """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
@@ -116,7 +112,6 @@ def test_aggregate_filter():
     ;
     """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
     # The leading `.*?` tolerates a CTE before the aggregate CTE: v4 emits the base
@@ -161,7 +156,6 @@ def test_aggregate_filter_short_syntax():
     ;
     """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
     # After CollapseSingleParent optimization, aggregate selects directly from
@@ -203,7 +197,6 @@ order by
 ;
     """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
@@ -269,7 +262,6 @@ order by names.state asc, total_births desc;
 
     """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
     assert env.concepts["rank_by_births"].keys == {
@@ -294,7 +286,6 @@ order by
 """
 
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     exec.generate_sql(query)[0]
 
@@ -311,7 +302,6 @@ order by
 """
 
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     exec.generate_sql(query)[0]
 
@@ -325,7 +315,6 @@ where abs(sum(births? gender = 'M') by name - sum(births? gender = 'F') by name)
 SELECT [1,2,3,4] as value, 'example' as dim;
 """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     query = exec.generate_sql(query)[0]
 
@@ -342,7 +331,6 @@ where abs(sum(births? gender = 'M') by name - sum(births? gender = 'F') by name)
 SELECT value, 'example' as dim;
 """
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     query = exec.generate_sql(query)[0]
 
@@ -363,7 +351,6 @@ LIMIT 15
 ;"""
 
     env = Environment(working_path=Path(__file__).parent)
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     query = exec.generate_sql(query)[0]
     assert (

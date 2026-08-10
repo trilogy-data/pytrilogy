@@ -19,6 +19,7 @@ from trilogy.dialect.config import (
     PrestoConfig,
     SnowflakeConfig,
     SQLServerConfig,
+    TrinoConfig,
 )
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
@@ -255,6 +256,80 @@ def test_get_dialect_config_file_config_for_other_dialect_does_not_seed():
 
     with raises(ConfigurationException, match="Missing required Postgres"):
         get_dialect_config(Dialects.POSTGRES, {}, runtime_config=runtime)
+
+
+class TestPrestoTrinoInterchange:
+    """Trino subclasses Presto with an identical constructor, so a file config
+    written for either seeds the other. Only the *parameters* cross over: the
+    engine factory type-checks, and `merge_config` returns self, so the class
+    has to come from the dialect being built."""
+
+    def _presto(self):
+        return PrestoConfig(
+            host="h", port=8080, username="u", password="p", catalog="c", schema="s"
+        )
+
+    def _trino(self):
+        return TrinoConfig(
+            host="h", port=8080, username="u", password="p", catalog="c", schema="s"
+        )
+
+    def test_presto_file_config_drives_trino_dialect(self):
+        runtime = _runtime_config()
+        runtime.engine_config = self._presto()
+
+        conf = get_dialect_config(Dialects.TRINO, {}, runtime_config=runtime)
+
+        assert type(conf) is TrinoConfig
+        assert conf.catalog == "c"
+
+    def test_trino_file_config_drives_presto_dialect(self):
+        runtime = _runtime_config()
+        runtime.engine_config = self._trino()
+
+        conf = get_dialect_config(Dialects.PRESTO, {}, runtime_config=runtime)
+
+        assert type(conf) is PrestoConfig
+        assert conf.catalog == "c"
+
+    def test_trino_file_config_drives_trino_dialect(self):
+        runtime = _runtime_config()
+        runtime.engine_config = self._trino()
+
+        conf = get_dialect_config(Dialects.TRINO, {}, runtime_config=runtime)
+
+        assert type(conf) is TrinoConfig
+        assert conf.connection_string() == "trino://u:p@h:8080/c/s"
+
+    def test_cli_args_still_win_over_the_sibling_config(self):
+        runtime = _runtime_config()
+        runtime.engine_config = self._presto()
+
+        conf = get_dialect_config(
+            Dialects.TRINO, {"catalog": "cli-catalog"}, runtime_config=runtime
+        )
+
+        assert type(conf) is TrinoConfig
+        assert conf.catalog == "cli-catalog"
+        assert conf.host == "h"
+
+    def test_trino_with_neither_args_nor_config_falls_through(self):
+        # Unchanged behaviour: Trino alone yields no config rather than an error.
+        assert get_dialect_config(Dialects.TRINO, {}, _runtime_config()) is None
+
+    def test_unrelated_file_config_still_does_not_seed_trino(self):
+        runtime = _runtime_config()
+        runtime.engine_config = BigQueryConfig(project="some-project")
+
+        assert get_dialect_config(Dialects.TRINO, {}, runtime_config=runtime) is None
+
+    def test_handing_presto_config_straight_to_trino_is_rejected(self):
+        """Why the parameters cross over but the class does not: the engine
+        factory type-checks, and PrestoConfig is not a TrinoConfig. Merging the
+        stored config in (as `merge_config` would, since it returns self) is
+        exactly this failure."""
+        with raises(TypeError, match="expected TrinoConfig, got PrestoConfig"):
+            Dialects.TRINO.default_engine(conf=self._presto())
 
 
 def test_get_dialect_config_unsupported_dialect_with_args_errors():

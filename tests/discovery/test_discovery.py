@@ -2,7 +2,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from trilogy import Dialects, Environment
-from trilogy.hooks.query_debugger import DebuggingHook
 
 working_dir = Path(__file__).parent
 
@@ -10,7 +9,6 @@ working_dir = Path(__file__).parent
 def test_history_e2e():
     env = Environment(working_path=working_dir).from_file(working_dir / "inputs.preql")
     exec = Dialects.DUCK_DB.default_executor(environment=env)
-    DebuggingHook()
     query = """where customer_id = 2
         select local.customer_id, local.total_customer_revenue;
         
@@ -33,7 +31,6 @@ select
 def test_history_e2e_non_materialized_field():
     env = Environment(working_path=working_dir).from_file(working_dir / "inputs.preql")
     exec = Dialects.DUCK_DB.default_executor(environment=env)
-    DebuggingHook()
     query2 = """
     where name = 'Sarah'
         select 

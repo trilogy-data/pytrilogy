@@ -49,9 +49,7 @@ datasource posts (
 
 
 def test_io_statement():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     target = Path(__file__).parent / "test_io_statement.csv"
     if target.exists():
         target.unlink()
@@ -71,9 +69,7 @@ copy into csv '{target}' from select x -> test order by test asc;
 
 
 def test_io_statement_relative():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     target = Path("./test_io_statement_relative.csv")
     if target.exists():
         target.unlink()
@@ -96,9 +92,7 @@ copy into csv '{target}' from select x -> test order by test asc;
 
 
 def test_io_statement_json():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     target = Path(__file__).parent / "test_io_statement.json"
     if target.exists():
         target.unlink()

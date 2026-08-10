@@ -302,9 +302,7 @@ def test_rowset_key_readback_intersection_k(models: Path):
     # guarded by `where b.bv is not null`, so the key is filtered to the matching ids
     # {1,2} (aid 3 and bid 4 dropped) -- the same set a scoped inner join produced.
     eng = _matrix_engine(models)
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     rows = [tuple(r) for r in eng.execute_query("""
 import a as a;
 import b as b;

@@ -1,7 +1,6 @@
 from trilogy import Dialects, Executor
 from trilogy.core.enums import JoinType
 from trilogy.core.models.environment import Environment
-from trilogy.hooks.query_debugger import DebuggingHook
 
 # from pydantic.functional_validators import merge
 
@@ -106,7 +105,7 @@ merge p2.lastname  into p1.lastname;
 """)
 
     # GraphHook().query_graph_built(g)
-    exec = Dialects.DUCK_DB.default_executor(environment=base, hooks=[DebuggingHook()])
+    exec = Dialects.DUCK_DB.default_executor(environment=base)
     test_select = """
 merge p2.firstname into p1.firstname; 
 merge p2.lastname into p1.lastname;

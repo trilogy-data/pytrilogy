@@ -61,9 +61,7 @@ WHERE
 
 def test_query_results():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
     duckdb.parse_text("""import dividend as dividend;
 import symbol as symbol;
@@ -116,9 +114,7 @@ def test_datasource_caching():
         for config in [True, False]:
             CONFIG.generation.datasource_build_cache = config
             env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-            from trilogy.hooks import DebuggingHook
 
-            DebuggingHook()
             duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
             sql = duckdb.generate_sql("""
@@ -134,14 +130,10 @@ def test_datasource_caching():
 
 def test_provider_name():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
 
     # test covering root cause of
     # INFO   [DISCOVERY LOOP] finished sourcing loop (complete: ValidationResult.INCOMPLETE), have {'dividend.amount', 'dividend.id', 'provider.id', 'symbol.sector'} from [MergeNode<dividend.amount,dividend.id,provider.id...1 more>]
     #  (missing {'dividend.symbol.sector'}), attempted {'dividend.amount'}, virtual set()
-    DebuggingHook(INFO)
     build_env: BuildEnvironment = Factory(environment=env).build(env)
     assert (
         "dividend.symbol.sector" in build_env.materialized_concepts
@@ -223,9 +215,7 @@ def test_provider_name():
 
 def test_filter():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     with raises(NoDatasourceException):
@@ -240,9 +230,7 @@ def test_filter():
 
 def test_filter_sector():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     sql = duckdb.generate_sql("""
@@ -264,9 +252,7 @@ limit 100;
 
 def test_filter_sector_two():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     sql = duckdb.generate_sql("""
@@ -284,9 +270,7 @@ where symbol.sector in ('Energy', 'Materials', 'Utilities')
 
 def test_bind_filter_reassignment():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     sql = duckdb.generate_sql("""
@@ -300,9 +284,7 @@ SELECT
 
 def test_bind_filter_reassignment_two():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     sql = duckdb.generate_sql("""
@@ -317,9 +299,7 @@ SELECT
 
 def test_calculated_field():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     sql = duckdb.generate_sql("""

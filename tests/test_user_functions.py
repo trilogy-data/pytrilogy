@@ -2,7 +2,6 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.hooks import DebuggingHook
 
 
 def test_user_function_def():
@@ -21,7 +20,6 @@ select @percent_ratio(10, 100) as ratio;
 
 def test_user_function_def_with_default():
     x = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     results = x.execute_query("""
 def percent_ratio(a, b, digits=3) -> round(a / b * 100, digits);
 
@@ -215,9 +213,7 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
 def test_user_function_import():
     env = Environment(working_path=Path(__file__).parent)
     x = Dialects.DUCK_DB.default_executor(environment=env)
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     results = x.execute_query("""
 import test_env_functions as test_env_functions;
 
@@ -355,9 +351,7 @@ order by x asc;
 
 
 def test_user_function_aggregate_two():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     x = Dialects.DUCK_DB.default_executor()
 
     results = x.execute_query("""import std.geography;

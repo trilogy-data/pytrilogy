@@ -9,7 +9,6 @@ from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
-from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
 
 TEST_DIALECTS: list[BaseDialect] = [
@@ -52,12 +51,8 @@ def test_derivations_reparse():
     for dialect in TEST_DIALECTS:
         compiled = []
 
-        for idx, statement in enumerate(parsed[3:]):
-            if idx > 0:
-                hooks = [DebuggingHook()]
-            else:
-                hooks = []
-            processed = process_auto(env, statement, hooks=hooks)
+        for statement in parsed[3:]:
+            processed = process_auto(env, statement)
             if processed:
                 compiled.append(dialect.compile_statement(processed))
                 # force add since we didn't run it
@@ -108,12 +103,8 @@ def test_derivations_reparse_new():
     for dialect in TEST_DIALECTS:
         compiled = []
 
-        for idx, statement in enumerate(parsed[3:]):
-            if idx > 0:
-                hooks = [DebuggingHook()]
-            else:
-                hooks = []
-            processed = process_auto(env, statement, hooks=hooks)
+        for statement in parsed[3:]:
+            processed = process_auto(env, statement)
             if processed:
                 compiled.append(dialect.compile_statement(processed))
                 # force add since we didn't run it
@@ -171,12 +162,8 @@ def test_persist_with_where():
     for dialect in TEST_DIALECTS:
         compiled = []
 
-        for idx, statement in enumerate(parsed[3:]):
-            if idx > 0:
-                hooks = [DebuggingHook()]
-            else:
-                hooks = []
-            processed = process_auto(env, statement, hooks=hooks)
+        for statement in parsed[3:]:
+            processed = process_auto(env, statement)
             if processed:
                 compiled.append(dialect.compile_statement(processed))
                 # force add since we didn't run it

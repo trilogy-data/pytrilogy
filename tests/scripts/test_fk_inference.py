@@ -6,16 +6,24 @@ from unittest.mock import Mock
 from click.testing import CliRunner
 
 from tests.scripts._fault_dialect import FailingExecutor
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
+from trilogy.scripts.ingest import create_datasource_from_table
 from trilogy.scripts.ingest_helpers.fk_inference import (
     FKBinding,
     FKCandidate,
     InferredFK,
     TableFKInfo,
+    _grain_key_columns,
     _rollback,
     _stem_related,
+    _target_key_options,
+    build_table_fk_info,
     enrich_explicit_fks_partial,
     generate_candidates,
+    generate_composite_candidates,
     infer_foreign_keys,
     measure_overlap,
     merge_fk_maps,
@@ -24,14 +32,17 @@ from trilogy.scripts.ingest_helpers.formatting import canonicalize_names
 from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
 from trilogy.scripts.trilogy import cli
 
+_DIALECT = BaseDialect()
 
-def _info(name, columns, key_columns, relation=None):
+
+def _info(name, columns, key_columns, relation=None, alternate_keys=None):
     return TableFKInfo(
         name=name,
         sql_relation=relation or f'"{name}"',
         raw_columns=columns,
         raw_to_canonical=canonicalize_names(columns),
         key_raw_columns=key_columns,
+        alternate_key_raw_columns=alternate_keys or [],
     )
 
 
@@ -178,6 +189,294 @@ class TestCandidateGeneration:
         assert ("customer_address", "ca_address_sk") in _targets(
             candidates, "customer", "c_current_addr_sk"
         )
+
+
+class TestAlternateKeyTargets:
+    """Alternate (non-grain) unique columns as FK targets."""
+
+    def test_exact_match_on_alternate_key(self):
+        # Lahman People: row-number `id` elected as grain, `playerID` unique.
+        people = _info(
+            "people",
+            ["id", "playerID", "birthYear"],
+            ["id"],
+            alternate_keys=["playerID"],
+        )
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "stint", "HR"],
+            ["playerID", "yearID", "stint"],
+        )
+        candidates = generate_candidates([batting, people])
+        edges = candidates[("batting", "playerID")]
+        assert [(e.to_table, e.to_column, e.alternate) for e in edges] == [
+            ("people", "playerID", True)
+        ]
+        assert edges[0].match_kind == "exact"
+
+    def test_table_stem_match_not_applied_to_alternates(self):
+        # customer_id must not latch onto an arbitrary unique column of
+        # `customers` via the stem->table-name rule; that rule only makes
+        # sense for the table's single identity.
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info(
+            "customers",
+            ["id", "email", "name"],
+            ["id"],
+            alternate_keys=["email"],
+        )
+        candidates = generate_candidates([orders, customers])
+        assert ("customers", "email") not in _targets(
+            candidates, "orders", "customer_id"
+        )
+        # The grain target still matches via the table-name rule.
+        assert ("customers", "id") in _targets(candidates, "orders", "customer_id")
+
+    def test_grain_target_preferred_over_alternate_on_tie(self):
+        orders = _info("orders", ["order_id", "customer_id"], ["order_id"])
+        customers = _info(
+            "customers",
+            ["customer_id", "customer_code"],
+            ["customer_id"],
+            alternate_keys=["customer_code"],
+        )
+        edges = generate_candidates([orders, customers])[("orders", "customer_id")]
+        assert (edges[0].to_column, edges[0].alternate) == ("customer_id", False)
+
+    def test_fast_level_skips_alternate_targets(self):
+        people = _info(
+            "people",
+            ["id", "playerID"],
+            ["id"],
+            alternate_keys=["playerID"],
+        )
+        batting = _info("batting", ["playerID", "yearID"], ["playerID", "yearID"])
+        accepted = infer_foreign_keys(
+            [batting, people], executor=None, level=IntrospectionLevel.FAST
+        )
+        assert accepted == []
+
+    def _lahman_db(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql(
+            "CREATE TABLE people(id INTEGER, playerID VARCHAR, birthYear INTEGER)"
+        )
+        exec.execute_raw_sql(
+            "INSERT INTO people VALUES (1,'p1',1980),(2,'p2',1985),(3,'p3',1990)"
+        )
+        exec.execute_raw_sql(
+            "CREATE TABLE batting(playerID VARCHAR, yearID INTEGER, HR INTEGER)"
+        )
+        exec.execute_raw_sql(
+            "INSERT INTO batting VALUES ('p1',2001,10),('p2',2001,20),('p1',2002,5)"
+        )
+        return exec
+
+    def test_full_level_accepts_verified_alternate_edge(self):
+        exec = self._lahman_db()
+        people = _info(
+            "people",
+            ["id", "playerID", "birthYear"],
+            ["id"],
+            relation="people",
+            alternate_keys=["playerID"],
+        )
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "HR"],
+            ["playerID", "yearID"],
+            relation="batting",
+        )
+        inferred = infer_foreign_keys([batting, people], exec, IntrospectionLevel.FULL)
+        assert len(inferred) == 1
+        edge = inferred[0]
+        assert edge.target_ref == "people.playerID"
+        assert edge.overlap == 1.0
+        # p3 never batted -> reverse coverage short -> partial.
+        assert edge.partial is True
+
+    def test_full_level_rejects_non_unique_alternate(self):
+        exec = self._lahman_db()
+        # Duplicate playerID in people: sample said unique, full table disagrees.
+        exec.execute_raw_sql("INSERT INTO people VALUES (4,'p1',1979)")
+        people = _info(
+            "people",
+            ["id", "playerID", "birthYear"],
+            ["id"],
+            relation="people",
+            alternate_keys=["playerID"],
+        )
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "HR"],
+            ["playerID", "yearID"],
+            relation="batting",
+        )
+        inferred = infer_foreign_keys([batting, people], exec, IntrospectionLevel.FULL)
+        assert inferred == []
+        # Verdict is cached for any later column hitting the same target.
+        assert people.unique_verdicts["playerID"] is False
+
+
+class TestCompositeCandidates:
+    """Stage 1 for composite-keyed targets."""
+
+    def _lahman(self):
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "stint", "teamID", "lgID", "HR"],
+            ["playerID", "yearID", "stint"],
+        )
+        teams = _info(
+            "teams",
+            ["teamID", "yearID", "lgID", "name"],
+            ["teamID", "yearID"],
+        )
+        return batting, teams
+
+    def test_every_component_exact_match(self):
+        batting, teams = self._lahman()
+        out = generate_composite_candidates([batting, teams])
+        assert len(out) == 1
+        cand = out[0]
+        assert (cand.from_table, cand.to_table) == ("batting", "teams")
+        assert sorted(cand.pairs) == [("teamID", "teamID"), ("yearID", "yearID")]
+        assert cand.match_kinds == ["exact", "exact"]
+
+    def test_missing_component_disqualifies(self):
+        _, teams = self._lahman()
+        no_year = _info(
+            "batting2", ["playerID", "teamID", "HR"], ["playerID", "teamID"]
+        )
+        out = generate_composite_candidates([no_year, teams])
+        assert out == []
+
+    def test_ambiguous_component_disqualifies(self):
+        # Role-playing composite: two columns match teamID — don't guess.
+        games = _info(
+            "games",
+            ["game_id", "home_teamID", "away_teamID", "yearID"],
+            ["game_id"],
+        )
+        _, teams = self._lahman()
+        out = generate_composite_candidates([games, teams])
+        assert out == []
+
+    def test_own_grain_is_identity_not_fk(self):
+        # Two fact tables at the same grain are peers, not dimensions.
+        batting = _info("batting", ["playerID", "yearID", "HR"], ["playerID", "yearID"])
+        pitching = _info(
+            "pitching", ["playerID", "yearID", "ERA"], ["playerID", "yearID"]
+        )
+        assert generate_composite_candidates([batting, pitching]) == []
+
+    def test_proper_subset_of_own_grain_allowed(self):
+        # batting (player, year, stint) -> appearances (player, year): N:1.
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "stint", "HR"],
+            ["playerID", "yearID", "stint"],
+        )
+        appearances = _info(
+            "appearances", ["playerID", "yearID", "G"], ["playerID", "yearID"]
+        )
+        out = generate_composite_candidates([batting, appearances])
+        assert len(out) == 1
+        assert out[0].to_table == "appearances"
+
+    def test_suffix_component_match(self):
+        sales = _info(
+            "sales",
+            ["sale_id", "store_teamID", "store_yearID"],
+            ["sale_id"],
+        )
+        _, teams = self._lahman()
+        out = generate_composite_candidates([sales, teams])
+        assert len(out) == 1
+        assert out[0].match_kinds == ["suffix", "suffix"]
+
+
+class TestCompositeInference:
+    """End-to-end composite acceptance over synthetic DuckDB tables."""
+
+    def _db(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql(
+            "CREATE TABLE teams(teamID VARCHAR, yearID INTEGER, name VARCHAR)"
+        )
+        exec.execute_raw_sql(
+            "INSERT INTO teams VALUES ('NYA',2001,'y01'),('NYA',2002,'y02'),"
+            "('BOS',2001,'b01')"
+        )
+        exec.execute_raw_sql(
+            "CREATE TABLE batting(playerID VARCHAR, yearID INTEGER, "
+            "teamID VARCHAR, HR INTEGER)"
+        )
+        exec.execute_raw_sql(
+            "INSERT INTO batting VALUES ('p1',2001,'NYA',10),"
+            "('p2',2001,'BOS',20),('p3',2002,'NYA',5)"
+        )
+        return exec
+
+    def _infos(self):
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "teamID", "HR"],
+            ["playerID", "yearID"],
+            relation="batting",
+        )
+        teams = _info(
+            "teams",
+            ["teamID", "yearID", "name"],
+            ["teamID", "yearID"],
+            relation="teams",
+        )
+        return batting, teams
+
+    def test_full_accepts_contained_tuples(self):
+        exec = self._db()
+        batting, teams = self._infos()
+        inferred = infer_foreign_keys([batting, teams], exec, IntrospectionLevel.FULL)
+        assert {(fk.from_column, fk.target_ref) for fk in inferred} == {
+            ("teamID", "teams.teamID"),
+            ("yearID", "teams.yearID"),
+        }
+        assert all(fk.match_kind == "composite" for fk in inferred)
+        # Every team-season appears in batting -> both components complete.
+        assert all(fk.partial is False for fk in inferred)
+
+    def test_full_rejects_uncontained_tuples(self):
+        exec = self._db()
+        # A team-season batting claims but teams doesn't have.
+        exec.execute_raw_sql("INSERT INTO batting VALUES ('p4',2009,'ATL',7)")
+        exec.execute_raw_sql("INSERT INTO batting VALUES ('p5',2010,'ATL',8)")
+        batting, teams = self._infos()
+        inferred = infer_foreign_keys([batting, teams], exec, IntrospectionLevel.FULL)
+        assert inferred == []
+
+    def test_fast_accepts_by_name(self):
+        batting, teams = self._infos()
+        inferred = infer_foreign_keys([batting, teams], None, IntrospectionLevel.FAST)
+        assert {(fk.from_column, fk.to_column) for fk in inferred} == {
+            ("teamID", "teamID"),
+            ("yearID", "yearID"),
+        }
+        assert all(fk.overlap is None for fk in inferred)
+
+    def test_single_edge_takes_precedence_over_composite(self):
+        exec = self._db()
+        exec.execute_raw_sql("CREATE TABLE years(yearID INTEGER, era VARCHAR)")
+        exec.execute_raw_sql("INSERT INTO years VALUES (2001,'a'),(2002,'b')")
+        batting, teams = self._infos()
+        years = _info("years", ["yearID", "era"], ["yearID"], relation="years")
+        inferred = infer_foreign_keys(
+            [batting, teams, years], exec, IntrospectionLevel.FULL
+        )
+        # yearID binds to the single-keyed years table; the composite onto
+        # teams is skipped because its component is claimed.
+        by_column = {fk.from_column: fk for fk in inferred}
+        assert by_column["yearID"].to_table == "years"
+        assert "teamID" not in by_column
 
 
 class TestValueOverlap:
@@ -346,6 +645,187 @@ class TestRolePlayingDimensions:
         assert len(inferred) == 1
         assert inferred[0].role_alias is None
         assert inferred[0].target_ref == "customers.id"
+
+
+class TestCompositeRoleAliasing:
+    """`_resolve_target_conflicts` groups by (from, to_table, to_column), so a
+    composite group's components each land in their own group. Pinned because a
+    change to that key would silently role-alias every composite component and
+    split the one import back into N."""
+
+    def test_composite_components_are_not_role_aliased(self):
+        batting, teams = _info(
+            "batting",
+            ["playerID", "yearID", "teamID", "HR"],
+            ["playerID", "yearID"],
+        ), _info("teams", ["teamID", "yearID", "name"], ["teamID", "yearID"])
+        inferred = infer_foreign_keys([batting, teams], None, IntrospectionLevel.FAST)
+        assert len(inferred) == 2
+        assert all(fk.role_alias is None for fk in inferred)
+        assert {fk.target_ref for fk in inferred} == {
+            "teams.teamID",
+            "teams.yearID",
+        }
+
+
+class TestDigitLeadingNames:
+    """Digit-leading raw columns are padded (`2B` -> `x_2_b`) to stay legal
+    identifiers. Matching runs on canonical names, so the padding has to be
+    applied on both sides or a digit-leading key stops being reachable."""
+
+    def test_digit_leading_key_is_still_an_fk_target(self):
+        events = _info("events", ["event_id", "2_team_id"], ["event_id"])
+        teams = _info("teams", ["2_team_id", "name"], ["2_team_id"])
+        inferred = infer_foreign_keys([events, teams], None, IntrospectionLevel.FAST)
+        assert len(inferred) == 1
+        # The edge carries RAW column names; only matching went through the
+        # padded canonical form.
+        assert inferred[0].target_ref == "teams.2_team_id"
+        assert inferred[0].from_column == "2_team_id"
+
+    def test_digit_leading_composite_component_matches(self):
+        batting = _info(
+            "batting", ["player_id", "2_year", "team_id"], ["player_id", "2_year"]
+        )
+        teams = _info("teams", ["team_id", "2_year", "name"], ["team_id", "2_year"])
+        out = generate_composite_candidates([batting, teams])
+        assert len(out) == 1
+        assert sorted(out[0].pairs) == [("2_year", "2_year"), ("team_id", "team_id")]
+
+
+class TestTargetKeyOptions:
+    """`_target_key_options` — what a table offers as an FK target."""
+
+    def test_grain_first_then_alternates(self):
+        people = _info(
+            "people",
+            ["id", "playerID", "ssn"],
+            ["id"],
+            alternate_keys=["playerID", "ssn"],
+        )
+        assert _target_key_options(people) == [
+            ("id", False),
+            ("playerID", True),
+            ("ssn", True),
+        ]
+
+    def test_composite_grain_offers_no_grain_option(self):
+        teams = _info("teams", ["teamID", "yearID", "name"], ["teamID", "yearID"])
+        assert _target_key_options(teams) == []
+
+    def test_alternate_duplicating_the_grain_is_not_offered_twice(self):
+        people = _info("people", ["id", "name"], ["id"], alternate_keys=["id"])
+        assert _target_key_options(people) == [("id", False)]
+
+
+class TestBuildTableFKInfoAlternates:
+    """`build_table_fk_info` over a real ingested datasource — the alternate
+    list it is handed is filtered against the datasource's own columns."""
+
+    def _ingested(self):
+        exec = Dialects.DUCK_DB.default_executor()
+        # `weight` is distinct across the sample but is a measure — the grain
+        # penalties that keep it out of the grain must also keep it out of the
+        # alternate-key offer. `name` repeats, so it is not a candidate at all.
+        exec.execute_raw_sql(
+            "CREATE TABLE people(id INTEGER, player_id VARCHAR, name VARCHAR, "
+            "weight DOUBLE)"
+        )
+        exec.execute_raw_sql(
+            "INSERT INTO people VALUES (1,'p1','a',1.5),(2,'p2','b',2.5),"
+            "(3,'p3','a',3.5)"
+        )
+        datasource, _concepts, _imports, alternate_keys = create_datasource_from_table(
+            exec, "people", None, root=True
+        )
+        return exec, datasource, alternate_keys
+
+    def test_ingest_offers_the_unelected_unique_column(self):
+        _exec, datasource, alternate_keys = self._ingested()
+        assert sorted(datasource.grain.components) == ["local.id"]
+        assert alternate_keys == ["player_id"]
+
+    def test_unknown_and_grain_columns_dropped(self):
+        exec, datasource, _alt = self._ingested()
+        info = build_table_fk_info(
+            "people",
+            datasource,
+            exec.generator,
+            alternate_keys=["player_id", "id", "not_a_column"],
+        )
+        assert info.alternate_key_raw_columns == ["player_id"]
+
+    def test_grain_seeds_a_true_uniqueness_verdict(self):
+        exec, datasource, _alt = self._ingested()
+        info = build_table_fk_info("people", datasource, exec.generator)
+        assert info.unique_verdicts == {"id": True}
+
+
+class TestGrainKeyColumns:
+    """Grain components are concept addresses, and the datasource states which
+    column backs which address — so resolution is a lookup through its own
+    bindings. Ingest and the parser must agree on the spelling."""
+
+    def _parsed(self, grain: str) -> "Datasource":
+        env = Environment()
+        env.parse(
+            "key id int;\nkey region string;\nproperty id.name string;\n"
+            "datasource people (id:id, region:region, name:name)\n"
+            f"grain ({grain})\naddress people;"
+        )
+        return env.datasources["people"]
+
+    def _ingested(self) -> "Datasource":
+        exec = Dialects.DUCK_DB.default_executor()
+        exec.execute_raw_sql(
+            "CREATE TABLE people(id INTEGER, region VARCHAR, name VARCHAR)"
+        )
+        exec.execute_raw_sql("INSERT INTO people VALUES (1,'a','x'),(2,'b','y')")
+        datasource, _c, _i, _alt = create_datasource_from_table(
+            exec, "people", None, root=True
+        )
+        return datasource
+
+    def test_parsed_and_ingested_grains_are_spelled_the_same(self):
+        # The point of the fix: ingest emitted a bare `id` here while the
+        # parser emitted `local.id`, so every consumer had to guess.
+        assert self._parsed("id").grain.component_order == ["local.id"]
+        assert self._ingested().grain.component_order == ["local.id"]
+
+    def test_ingest_property_keys_are_addresses(self):
+        datasource = self._ingested()
+        name_column = next(c for c in datasource.columns if c.alias == "name")
+        assert name_column.concept.address == "local.name"
+
+    def test_parsed_datasource_resolves(self):
+        info = build_table_fk_info("people", self._parsed("id"), _DIALECT)
+        assert info.key_raw_columns == ["id"]
+        assert info.single_key_raw == "id"
+
+    def test_ingested_datasource_resolves_identically(self):
+        info = build_table_fk_info("people", self._ingested(), _DIALECT)
+        assert info.key_raw_columns == ["id"]
+
+    def test_composite_resolves_whole(self):
+        info = build_table_fk_info("people", self._parsed("id, region"), _DIALECT)
+        assert sorted(info.key_raw_columns) == ["id", "region"]
+        # Composite: no single identity to offer, so no single-key FK target.
+        assert info.single_key_raw is None
+
+    def test_bare_default_namespace_component_still_resolves(self):
+        # `id` and `local.id` name one concept — the same fallback
+        # `Environment.__getitem__` applies, so a grain written the old bare
+        # way keeps working.
+        datasource = self._parsed("id")
+        datasource.grain.component_order = ["id"]
+        assert _grain_key_columns("people", datasource) == ["id"]
+
+    def test_unresolvable_component_yields_no_key_not_a_short_one(self):
+        # A partially-resolved composite would look like a single identity and
+        # advertise a non-unique FK target; the whole grain drops instead.
+        datasource = self._parsed("id, region")
+        datasource.grain.component_order = ["local.id", "local.gone"]
+        assert _grain_key_columns("people", datasource) == []
 
 
 class TestStemHelpers:
@@ -730,6 +1210,212 @@ def test_ingest_marks_inferred_fk_complete_when_parent_fully_covered():
         # Both customer ids (1,2) appear in orders, so the FK is complete.
         assert "customer_id: customers.id" in orders_preql
         assert "~customers.id" not in orders_preql
+
+
+def test_ingest_infers_fk_across_csv_files():
+    """File sources participate in FK inference; the child imports the parent
+    and a cross-file query resolves."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        customers_csv = tmppath / "customers.csv"
+        customers_csv.write_text("customer_id,name\n1,alice\n2,bob\n", newline="\n")
+        orders_csv = tmppath / "orders.csv"
+        orders_csv.write_text(
+            "order_id,customer_id,total\n10,1,99.5\n11,2,42.0\n12,1,10.0\n",
+            newline="\n",
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{customers_csv.as_posix()},{orders_csv.as_posix()}",
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        assert "import customers" in orders_preql
+        # All parent keys appear in orders, so the FK binds complete.
+        assert "customer_id: customers.customer_id" in orders_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.orders as orders;\n\n"
+            "select orders.customers.name, orders.total\n"
+            "order by orders.total desc;\n"
+        )
+        result = runner.invoke(cli, ["run", str(query), "duckdb"])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+
+def test_ingest_infers_fk_from_file_child_to_table_parent():
+    """A file child links to a warehouse-table parent in one ingest. FK
+    inference used to see table records only, so this pairing produced no edge
+    at all; it is also the only path where the two records are keyed
+    differently (table by source name, file by datasource name)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        orders_csv = tmppath / "orders.csv"
+        orders_csv.write_text(
+            "order_id,customer_id,total\n10,1,99.5\n11,2,42.0\n12,1,10.0\n",
+            newline="\n",
+        )
+        setup_sql = tmppath / "setup.sql"
+        setup_sql.write_text(
+            "CREATE TABLE customers (customer_id INTEGER PRIMARY KEY, name VARCHAR);\n"
+            "INSERT INTO customers VALUES (1,'alice'),(2,'bob');"
+        )
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n'
+            f'[setup]\nsql = ["{setup_sql.as_posix()}"]\n'
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"customers,{orders_csv.as_posix()}",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        assert "import customers" in orders_preql
+        # Every customer has an order, so the edge binds complete.
+        assert "customer_id: customers.customer_id" in orders_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.orders as orders;\n\n"
+            "select orders.customers.name, sum(orders.total) -> spend\n"
+            "order by spend desc;\n"
+        )
+        result = runner.invoke(
+            cli, ["run", str(query), "duckdb", "--config", str(config_file)]
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+
+def test_ingest_infers_fk_onto_alternate_key_csv():
+    """A parent whose grain is a row-number `id` still links via its unique
+    business key (the Lahman People shape)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        people_csv = tmppath / "people.csv"
+        people_csv.write_text(
+            "id,player_id,birth_year\n1,p1,1980\n2,p2,1985\n3,p3,1990\n",
+            newline="\n",
+        )
+        batting_csv = tmppath / "batting.csv"
+        batting_csv.write_text(
+            "player_id,year_id,hr\np1,2001,10\np2,2001,20\np1,2002,5\n",
+            newline="\n",
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{people_csv.as_posix()},{batting_csv.as_posix()}",
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        batting_preql = (out_dir / "batting.preql").read_text()
+        assert "import people" in batting_preql
+        # p3 never batted -> the FK is partial.
+        assert "player_id: ~people.player_id" in batting_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.batting as batting;\n\n"
+            "select batting.people.birth_year, sum(batting.hr) -> total_hr\n"
+            "order by total_hr desc;\n"
+        )
+        result = runner.invoke(cli, ["run", str(query), "duckdb"])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+
+def test_ingest_infers_composite_fk_csv():
+    """A composite-grain parent (team, year) links as a unit and the child
+    imports it once."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        # Every column repeats so no single column is sample-unique; the
+        # composite grains (team, year) / (player, year) must be elected.
+        teams_csv = tmppath / "teams.csv"
+        teams_csv.write_text(
+            "team_id,year_id,team_name\n"
+            "NYA,2001,Yankees\nNYA,2002,Yankees\n"
+            "BOS,2001,RedSox\nBOS,2002,RedSox\n",
+            newline="\n",
+        )
+        batting_csv = tmppath / "batting.csv"
+        batting_csv.write_text(
+            "player_id,year_id,team_id,hr\n"
+            "p1,2001,NYA,10\np2,2001,BOS,20\np1,2002,NYA,10\np2,2002,BOS,20\n",
+            newline="\n",
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{teams_csv.as_posix()},{batting_csv.as_posix()}",
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        batting_preql = (out_dir / "batting.preql").read_text()
+        assert batting_preql.count("import teams") == 1
+        assert "team_id: teams.team_id" in batting_preql
+        assert "year_id: teams.year_id" in batting_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.batting as batting;\n\n"
+            "select batting.teams.team_name, sum(batting.hr) -> total_hr\n"
+            "order by total_hr desc;\n"
+        )
+        result = runner.invoke(cli, ["run", str(query), "duckdb"])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
 
 
 def test_ingest_no_infer_fks_leaves_tables_disconnected():

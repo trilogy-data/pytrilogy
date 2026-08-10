@@ -11,7 +11,6 @@ from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
-from trilogy.hooks.query_debugger import DebuggingHook
 
 ENV_PATH = abspath(__file__)
 
@@ -112,7 +111,6 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         dialect=Dialects.DUCK_DB,
         engine=engine,
         environment=duckdb_model,
-        hooks=[DebuggingHook()],
     )
     yield executor
 

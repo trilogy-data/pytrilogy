@@ -21,9 +21,7 @@ def test_numeric_query(presto_engine):
 
 def test_unnest_query(presto_engine):
     from trilogy.constants import CONFIG
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
         results = presto_engine.generate_sql("""
     auto numbers <- unnest([1,2,3,4]);  
@@ -33,9 +31,7 @@ def test_unnest_query(presto_engine):
 
 def test_unnest_query_from_table(presto_engine):
     from trilogy.constants import CONFIG
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
         results = presto_engine.generate_sql("""
     key x int;
@@ -65,9 +61,7 @@ def test_unnest_query_from_table(presto_engine):
 
 def test_group_by_index(presto_engine):
     from trilogy.constants import CONFIG
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
         results = presto_engine.generate_sql("""
     key x int;

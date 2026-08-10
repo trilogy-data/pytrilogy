@@ -2,12 +2,11 @@ from pathlib import Path
 
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_subselect_non_correlated():
     """Non-correlated subselect: constant array output."""
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     results = executor.execute_query("""
 key id int;
 property id.val int;
@@ -34,7 +33,7 @@ select const,top3;
 
 def test_subselect_correlated():
     """Correlated subselect: array per group with join key."""
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     results = executor.execute_query("""
 key id int;
 property id.category string;
@@ -68,7 +67,7 @@ order by
 
 def test_subselect_with_filter():
     """Subselect with WHERE filter, no correlation."""
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     results = executor.execute_query("""
 key id int;
 property id.val int;
@@ -94,7 +93,7 @@ select @filtered() as filtered;
 
 def test_subselect_closest_warehouse():
     """Correlated subselect across unconnected datasources."""
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     results = executor.execute_query("""
 key customer_id int;
 property customer_id.customer_name string;
@@ -148,7 +147,7 @@ order by
 
 def test_subselect_with_global_merge():
     """Subselect result merged with data from a separate datasource."""
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     results = executor.execute_query("""
 key item_id int;
 property item_id.category string;
@@ -202,9 +201,7 @@ ALIGN merged_cat: category, label_cat
 def test_subselect_imported_namespace():
     """Subselect function imported from another namespace."""
     env = Environment(working_path=Path(__file__).parent)
-    executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook()]
-    )
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
     results = executor.execute_query("""
 import subselect_helpers as sh;
 

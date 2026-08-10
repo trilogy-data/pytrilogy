@@ -4,7 +4,6 @@ from trilogy import Dialects
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.models.author import Grain
-from trilogy.hooks import DebuggingHook
 
 SETUP = """
 key order_id int;
@@ -74,7 +73,6 @@ auto gsum2 <- sum(amount) + sum(amount);
 def test_abstract_property_sql_generation():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(SETUP)
-    DebuggingHook()
     built = exec.environment.materialize_for_select()
     assert "local.last_updated" in built.materialized_concepts
     materialized = built.concepts["local.last_updated"]

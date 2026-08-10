@@ -21,7 +21,6 @@ from trilogy.core.processing.node_generators.select_merge_node import (
 from trilogy.core.processing.node_generators.select_node import gen_select_node
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.core.statements.author import PersistStatement
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_gen_select_node_parents(test_environment: Environment):
@@ -114,7 +113,6 @@ address blended;
 
 def test_resolve_subgraphs():
     env = Environment()
-    DebuggingHook()
     env.parse(
         """
 key order_id int;

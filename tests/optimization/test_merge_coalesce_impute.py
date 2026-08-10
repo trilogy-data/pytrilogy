@@ -89,11 +89,7 @@ def test_virt_agg_grain_collapses_when_by_concepts_are_properties():
 
 
 def test_merge_coalesce_impute_no_group_by():
-    from logging import INFO
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(INFO)
     query = _BASE_QUERY + """
 where city = 'USBOS'
 select

@@ -4,12 +4,10 @@ from pytest import raises
 
 from trilogy import Dialects, Environment
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.hooks import DebuggingHook
 
 
 def test_query_gen():
     """Filtering below the carrier grain should still count carriers, not flights."""
-    DebuggingHook()
     x = Environment(working_path=Path(__file__).parent)
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
@@ -48,7 +46,6 @@ select
 
 def test_helpful_error():
     """Make sure we raise a helpful error when we have a join with no grain"""
-    DebuggingHook()
     x = Environment(working_path=Path(__file__).parent)
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
@@ -65,7 +62,6 @@ select
 
 def test_trailing_comma_before_order_by():
     """Trailing comma in select list before `order by` should not cause `desc` to be parsed as an order-by column."""
-    DebuggingHook()
     x = Environment(working_path=Path(__file__).parent)
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
@@ -82,7 +78,6 @@ limit 15;
 
 def test_hidden_field():
     """Make sure hidden fields are not included in select * expansions"""
-    DebuggingHook()
     x = Environment(working_path=Path(__file__).parent)
 
     x = Dialects.DUCK_DB.default_executor(environment=x)

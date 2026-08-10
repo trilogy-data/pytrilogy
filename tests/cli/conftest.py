@@ -66,6 +66,20 @@ class Raw:
 
 
 @dataclass
+class Steps:
+    """Successive answers for one route, so a polled resource can progress.
+
+    The last entry repeats forever — a poll loop must be free to check a
+    settled state more than once without falling off the end.
+    """
+
+    payloads: list[Any]
+
+    def take(self) -> Any:
+        return self.payloads.pop(0) if len(self.payloads) > 1 else self.payloads[0]
+
+
+@dataclass
 class RecordedCall:
     method: str
     #: Path only. Routes are registered and matched without a query string —
@@ -256,6 +270,10 @@ class FakeCloudAPI:
     def set(self, method: str, path: str, payload: Any) -> None:
         self.routes[(method, path)] = payload
 
+    def set_steps(self, method: str, path: str, payloads: list[Any]) -> None:
+        """Answer a route with each payload in turn, repeating the last."""
+        self.routes[(method, path)] = Steps(list(payloads))
+
     def fail(self, method: str, path: str, status: int, detail: str = "") -> None:
         self.routes[(method, path)] = Failure(status, detail)
 
@@ -313,6 +331,8 @@ class FakeCloudAPI:
             )
         )
         payload = self._lookup(req.get_method(), path)
+        if isinstance(payload, Steps):
+            payload = payload.take()
         if payload is _MISSING:
             payload = Failure(404, f"no route for {req.get_method()} {path}")
         if isinstance(payload, Failure):
@@ -332,13 +352,15 @@ class FakeCloudAPI:
 def cloud_api(tmp_path, monkeypatch) -> FakeCloudAPI:
     """A seeded fake API, wired in as the cloud module's transport.
 
-    Also isolates the two pieces of ambient state a cloud command reads:
-    the credentials file and the working directory's trilogy.toml.
+    Also isolates the ambient state a cloud command reads: the credentials
+    file, the token environment variable, and the working directory's
+    trilogy.toml.
     """
     api = FakeCloudAPI()
     monkeypatch.setattr(cloud_mod, "urlopen", api.urlopen)
     monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", tmp_path / "creds.json")
     monkeypatch.setenv(cloud_mod.ENV_API_URL, api.url)
+    monkeypatch.delenv(cloud_mod.ENV_TOKEN, raising=False)
     workdir = tmp_path / "work"
     workdir.mkdir()
     monkeypatch.chdir(workdir)

@@ -1,11 +1,8 @@
-from logging import INFO
-
 import pytest
 
 from trilogy import Dialects
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.core import DataType
-from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
 key line_id int;
@@ -438,7 +435,6 @@ def test_rowset_full_tuple_dedup_with_filtered_aggregates():
     # aggregates (val1 ∈ {2001, 2002} × val2 ∈ {2001, 2002}).
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_ROWSET_DEDUP_YEAR_FIXTURE)
-    DebuggingHook(INFO)
     results = executor.execute_text("""
 auto net_val1 <- val1 - coalesce(return_val1, 0);
 auto net_val2 <- val2 - coalesce(return_val2, 0);
@@ -634,9 +630,7 @@ def test_tvf_union_named():
     # arms. Output is exactly the bound columns; the result is a SQL UNION ALL
     # (rows stacked), NOT a key-join.
     executor = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     executor.execute_text(_TVF_UNION_FIXTURE)
     query = """
 with combined as union(

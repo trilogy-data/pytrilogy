@@ -1,5 +1,4 @@
 import re
-from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
@@ -8,7 +7,6 @@ from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
 from trilogy.core.models.build import BuildDatasource, BuildGrain
 from trilogy.core.models.core import DataType
-from trilogy.hooks import DebuggingHook
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
 
@@ -46,7 +44,6 @@ LIMIT (100)"""
 
 
 def test_environment(gcat_env):
-    DebuggingHook()
 
     gcat_env.parse_text("""import launch;
 """)
@@ -71,7 +68,6 @@ def test_case(gcat_env: Executor):
 
 
 def test_join():
-    DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -97,7 +93,6 @@ count(launch_tag) as launches;""")
 
 def test_date_filter():
 
-    DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -130,7 +125,6 @@ limit 2000;
 
 
 def test_case_key():
-    DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -274,9 +268,7 @@ def test_environment_cleanup_multiselect():
     env = Environment(
         working_path=Path(__file__).parent,
     )
-    from trilogy.hooks import INFO, DebuggingHook
 
-    DebuggingHook(INFO)
     base = Dialects.DUCK_DB.default_executor(environment=env)
     base.parse_text("""import satcat;
 auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
@@ -356,9 +348,7 @@ def test_joint_join_concept_injection():
     env = Environment(
         working_path=Path(__file__).parent,
     )
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     base = Dialects.DUCK_DB.default_executor(environment=env)
     queries = base.parse_text("""import launch;
 
@@ -376,9 +366,7 @@ def test_join_transform():
     env = Environment(
         working_path=Path(__file__).parent,
     )
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     base = Dialects.DUCK_DB.default_executor(environment=env)
     queries = base.parse_text("""import launch;
   
@@ -408,9 +396,6 @@ LIMIT 10
 
 
 def test_full_join_issue():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     env = Environment(
         working_path=Path(__file__).parent,
@@ -432,9 +417,6 @@ limit 50;
 
 
 def test_full_join_issue_2():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     env = Environment(
         working_path=Path(__file__).parent,
@@ -460,9 +442,6 @@ limit 50;
 
 
 def test_join_discovery():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     env = Environment(
         working_path=Path(__file__).parent,
@@ -488,9 +467,6 @@ LIMIT 1
 
 
 def test_join_discovery_two():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     env = Environment(
         working_path=Path(__file__).parent,
@@ -521,9 +497,6 @@ LIMIT 1
 
 def test_should_group(gcat_env: Executor):
     from trilogy.core.models.build import BuildGrain
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     base = gcat_env
     queries = base.parse_text("""import launch;
@@ -555,9 +528,6 @@ order by launch_count desc limit 15;
 
 
 def test_flag(gcat_env: Executor):
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     queries = gcat_env.parse_text("""import launch;
 
@@ -569,10 +539,6 @@ def test_flag(gcat_env: Executor):
 
 
 def test_array_agg(gcat_env: Executor):
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     queries = gcat_env.parse_text("""import launch;
 
@@ -598,10 +564,6 @@ SELECT
 
 def test_parenthetical_basic_parentheses(gcat_env: Executor):
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
-
     queries = gcat_env.parse_text("""
 import fuel_dashboard;
 import std.display;
@@ -626,12 +588,6 @@ SELECT
 
 
 def test_parenthetical_basic(gcat_env: Executor):
-
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     queries = gcat_env.parse_text("""
 import fuel_dashboard;
@@ -660,10 +616,6 @@ SELECT
 
 
 def test_parenthetical(gcat_env: Executor):
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     queries = gcat_env.parse_text("""
 import fuel_dashboard;
@@ -695,10 +647,6 @@ SELECT
 
 def test_filter_node_group_injection(gcat_env: Executor):
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
-
     queries = gcat_env.parse_text("""
 import fuel_dashboard;
 import std.display;
@@ -725,11 +673,6 @@ limit 1500;
 
 
 def test_aggregate_optimization(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     queries = gcat_env.parse_text("""
     import fuel_dashboard;
@@ -778,12 +721,6 @@ LIMIT 10
 
 def test_no_duplicates(gcat_env: Executor):
 
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
-
     queries = gcat_env.parse_text("""
 import fuel_dashboard;
 WHERE
@@ -812,11 +749,7 @@ LIMIT 10
 
 
 def test_big_group_by(gcat_env: Executor):
-    from logging import INFO
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
     base = gcat_env
     base.execute_raw_sql(ROOT / "setup.sql")
     queries = base.parse_text("""import fuel_dashboard;
@@ -843,11 +776,6 @@ LIMIT 10
 
 
 def test_wrong_global_join_agg(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     base = gcat_env
     queries = base.parse_text("""import satcat;
@@ -869,11 +797,7 @@ select
 
 
 def test_merge_with_filter(gcat_env: Executor):
-    from logging import INFO
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
     base = gcat_env
     queries = base.parse_text("""
 import satcat;
@@ -896,7 +820,6 @@ align
 
 def test_date_spine(gcat_env: Executor):
 
-    DebuggingHook(level=INFO)
     base = gcat_env
     queries = base.parse_text("""import satcat;
 const target_company <- 'PLAN';
@@ -945,8 +868,6 @@ order by
 
 def test_date_spine_local_filter(gcat_env: Executor):
 
-    DebuggingHook(level=INFO)
-
     base = gcat_env
     queries = base.parse_text("""import satcat;   
         import satcat;
@@ -971,11 +892,6 @@ having
 
 
 def test_recursion_error(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     base = gcat_env
     queries = base.parse_text("""import satcat;
@@ -1007,11 +923,6 @@ select
 
 
 def test_extra_filter(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     base = gcat_env
     # spine span kept small on purpose: the decom side unnests the spine per
@@ -1050,11 +961,6 @@ align date:launch_spine,decom_spine;
 
 
 def test_extra_filter_two(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     base_env = gcat_env.environment
     gcat_env.environment = gcat_env.environment.duplicate()
@@ -1076,9 +982,6 @@ SELECT
 
 
 def test_spacex_alias_behavior():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
 
     env = Environment(
         working_path=Path(__file__).parent,
@@ -1094,11 +997,6 @@ def test_spacex_alias_behavior():
 
 
 def test_spacex_aggregates(gcat_env: Executor):
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(level=INFO)
 
     cmd = """import launch_base;
 

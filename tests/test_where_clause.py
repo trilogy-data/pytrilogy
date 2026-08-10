@@ -47,7 +47,6 @@ where
 
 
 def test_select_where_agg(test_environment):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     declarations = """
 property my_favorite_order_revenue <- filter revenue where order_id in (1,2,3);
@@ -65,9 +64,7 @@ select
     )
     select: SelectStatement = parsed[-1]
 
-    BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    BaseDialect().compile_statement(process_query(test_environment, select))
 
 
 def test_select_where_joins(test_environment):
@@ -153,9 +150,7 @@ select
 
 
 def test_parenthetical(test_environment):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     declarations = """
 
 where 
@@ -185,9 +180,7 @@ select
 
 
 def test_like_filter(test_environment):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     declarations = """
 property special_order <- filter order_id where like(category_name, 'test') = True;
 property special_order_2 <- filter order_id where like(category_name, 'test') is True;
@@ -246,7 +239,6 @@ where
 
 
 def test_case_where(test_environment):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     declarations = """property order_id_even_name <- CASE
     when order_id %2 = 0 then 'even'
@@ -267,9 +259,7 @@ where
     _env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
-    query = BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
 
     # check to make sure our subselect is well-formed (membership renders as a
     # null-safe existence subquery)

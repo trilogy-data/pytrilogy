@@ -845,7 +845,8 @@ string_lit = ${
 // =============================================================================
 IDENTIFIER          = @{ !RESERVED_KW ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
 WILDCARD_IDENTIFIER = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | "-" | "." | "*")* }
-QUOTED_IDENTIFIER   = @{ "`" ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | "." | "-" | "*" | ":" | " ")* ~ "`" }
+// digit-leading allowed: backticks exist to escape arbitrary physical names
+QUOTED_IDENTIFIER   = @{ "`" ~ (ASCII_ALPHANUMERIC | "_") ~ (ASCII_ALPHANUMERIC | "_" | "." | "-" | "*" | ":" | " ")* ~ "`" }
 QUOTED_ADDRESS      = @{ "`" ~ "'"? ~ (ASCII_ALPHA | "_" | "\\" | "/") ~ (ASCII_ALPHANUMERIC | "_" | "." | "\\" | "/" | "-" | "*" | ":" | " ")* ~ "'"? ~ "`" }
 F_QUOTED_ADDRESS    = @{ "f`" ~ (!"`" ~ ANY)* ~ "`" }
 ADDRESS             = { IDENTIFIER }

@@ -5,6 +5,13 @@ browser OAuth loopback against the environment's API, which mints one and
 hands it back on a localhost redirect; ``--token`` accepts a pre-issued value
 instead. Tokens are stored per API URL in ``~/.trilogy/cloud_credentials.json``.
 
+Commands resolve which token to send in order of precedence: ``--token``,
+``TRILOGY_CLOUD_TOKEN``, then the credentials file. The environment variable is
+the CI path — a runner has no credentials file, and a token passed in argv is
+visible to process listings and any command echo. ``login`` and ``logout`` are
+the exceptions: they manage the credentials file and never read the variable,
+but warn when it is set, since it would shadow what they just wrote.
+
 The target environment defaults to the production API. Point elsewhere with,
 in order of precedence: ``--api``, ``TRILOGY_CLOUD_API``, or a ``[cloud]``
 section in the working directory's ``trilogy.toml``::
@@ -41,6 +48,12 @@ field ignores it, so nothing here depends on reading it back.
 ``jobs fetch`` is the inverse: a job's config and inline files written back to
 a directory at the paths they were bundled from.
 
+``jobs run`` returns as soon as the run is queued, so on its own a zero exit
+means "accepted", not "succeeded" — a CI step that stops there is green
+whatever the job does. ``--wait`` (and ``runs wait <id>``) blocks until the
+server stamps the run finished and then exits non-zero unless it ended
+``completed``.
+
 ``cloud sync`` is the declarative form of the same push. It walks a directory
 tree, treats every ``trilogy.toml`` whose ``[cloud]`` block declares *how the
 job runs* as one deployable project, and upserts each against its
@@ -58,6 +71,7 @@ import json
 import os
 import secrets as pysecrets
 import threading
+import time
 import webbrowser
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -109,6 +123,7 @@ from trilogy.scripts.source_identity import (
 
 DEFAULT_API_URL = "https://trilogy-cloud-api.fly.dev"
 ENV_API_URL = "TRILOGY_CLOUD_API"
+ENV_TOKEN = "TRILOGY_CLOUD_TOKEN"
 CREDENTIALS_PATH = Path.home() / ".trilogy" / "cloud_credentials.json"
 
 # PubSub caps a published message at 10MB and the job's files ride inside one;
@@ -130,6 +145,18 @@ LOGIN_TIMEOUT_SECONDS = 300
 # How much of a run's stdout/stderr to echo. Full logs are an artifact
 # download, not a terminal dump.
 RUN_LOG_TAIL_CHARS = 4000
+
+#: A run is over when the server stamps ``finished_at``. The status set is a
+#: belt-and-braces second signal, so a terminal state that somehow carries no
+#: timestamp still ends the wait instead of hanging until the timeout.
+TERMINAL_RUN_STATUSES = frozenset(
+    {"completed", "failed", "cancelled", "canceled", "timed_out", "errored", "error"}
+)
+SUCCESS_RUN_STATUS = "completed"
+WAIT_POLL_SECONDS = 5
+#: Generous by default: a cold executor can take minutes just to claim a run,
+#: and the job's own timeout is the real upper bound on the work itself.
+WAIT_TIMEOUT_SECONDS = 1800
 # The runs route clamps to this itself; mirrored so `--limit 500` is reported
 # as the cap it will actually get rather than silently truncated.
 RUNS_MAX_LIMIT = 200
@@ -378,6 +405,21 @@ def store_token(api_url: str, token: str, email: str | None) -> None:
     _save_credentials(creds)
 
 
+def resolve_token(explicit: str | None, api_url: str) -> str | None:
+    """--token flag > TRILOGY_CLOUD_TOKEN env > stored credentials for this API.
+
+    The env var is the CI path: a runner has no credentials file, and passing
+    ``--token`` there puts the secret in argv, where process listings and any
+    command echo can read it.
+    """
+    if explicit:
+        return explicit
+    env = os.environ.get(ENV_TOKEN)
+    if env:
+        return env
+    return stored_token(api_url)
+
+
 def forget_token(api_url: str) -> bool:
     creds = _load_credentials()
     if api_url in creds:
@@ -430,7 +472,12 @@ class CloudClient:
             detail = exc.read().decode("utf-8", errors="replace").strip()
             hint = ""
             if exc.code == 401:
-                hint = " (run `trilogy cloud login`)"
+                # `cloud login` is useless advice on a runner that got its
+                # token from the environment.
+                if self.token and self.token == os.environ.get(ENV_TOKEN):
+                    hint = f" (check ${ENV_TOKEN})"
+                else:
+                    hint = " (run `trilogy cloud login`)"
             raise CloudError(
                 f"{method} {path} failed: {exc.code} {detail or exc.reason}{hint}"
             ) from exc
@@ -490,11 +537,11 @@ class CloudClient:
 
 def _client(ctx: click.Context, require_auth: bool = True) -> CloudClient:
     api_url = resolve_api_url(ctx.obj.get("CLOUD_API"))
-    token = ctx.obj.get("CLOUD_TOKEN") or stored_token(api_url)
+    token = resolve_token(ctx.obj.get("CLOUD_TOKEN"), api_url)
     if require_auth and not token:
         raise CloudError(
             f"Not logged in to {api_url}. Run `trilogy cloud login` "
-            f"(or pass --token)."
+            f"(or pass --token, or set {ENV_TOKEN})."
         )
     return CloudClient(api_url=api_url, token=token)
 
@@ -513,7 +560,15 @@ def _resolve_org(ctx: click.Context, client: CloudClient) -> str:
     if not me.orgs:
         raise CloudError("You are not a member of any org on this environment.")
     slugs = ", ".join(o.slug for o in me.orgs)
-    raise CloudError(f"Multiple orgs ({slugs}); pass --org to choose one.")
+    # `--org` belongs to the `cloud` GROUP, so it only parses before the
+    # subcommand -- spell the position out. Trailing it (`jobs run x --org y`)
+    # gets "No such option: --org", and click then suggests a same-prefix flag
+    # from the subcommand, which reads as if the org flag never existed.
+    raise CloudError(
+        f"Multiple orgs ({slugs}); pass --org before the subcommand"
+        f" (trilogy cloud --org {me.orgs[0].slug} ...), or set org under"
+        " [cloud] in trilogy.toml."
+    )
 
 
 def _org_client(ctx: click.Context) -> tuple[CloudClient, str]:
@@ -806,7 +861,10 @@ def browser_login(api_url: str) -> str:
 @click.option(
     "--token",
     default=None,
-    help="API token to use for this invocation instead of stored credentials.",
+    help=(
+        "API token for this invocation, ahead of $TRILOGY_CLOUD_TOKEN and stored "
+        "credentials. Prefer the env var in CI to keep it out of argv."
+    ),
 )
 @click.pass_context
 def cloud(
@@ -836,6 +894,15 @@ def login(ctx: click.Context, token_value: str | None) -> None:
     me = client.get_one("/auth/me", Me)
     store_token(api_url, token, me.email)
 
+    # Login stores; every other command resolves the env var ahead of the store,
+    # so leaving it set would make this sign-in a no-op for the next command.
+    env_token = os.environ.get(ENV_TOKEN)
+    if env_token and env_token != token:
+        print_warning(
+            f"{ENV_TOKEN} is set and takes precedence over stored credentials — "
+            f"unset it to use this login."
+        )
+
     orgs = ", ".join(o.slug for o in me.orgs) or "none"
     if is_json_mode():
         emit_event("login", api=api_url, email=me.email, orgs=orgs)
@@ -852,6 +919,8 @@ def logout(ctx: click.Context) -> None:
         print_success(f"Logged out of {api_url}")
     else:
         print_info(f"No stored credentials for {api_url}")
+    if os.environ.get(ENV_TOKEN):
+        print_warning(f"{ENV_TOKEN} is still set — commands remain authenticated.")
 
 
 @cloud.command()
@@ -1419,9 +1488,43 @@ def jobs_fetch(ctx: click.Context, job: str, dest: Path, force: bool) -> None:
 
 @jobs.command("run")
 @click.argument("job")
+@click.option(
+    "--wait",
+    is_flag=True,
+    help="Block until the run finishes, and exit non-zero unless it succeeded.",
+)
+@click.option(
+    "--timeout",
+    "timeout",
+    type=int,
+    default=WAIT_TIMEOUT_SECONDS,
+    help=f"With --wait, seconds to wait (default: {WAIT_TIMEOUT_SECONDS}).",
+)
+@click.option(
+    "--poll-seconds",
+    type=int,
+    default=WAIT_POLL_SECONDS,
+    help=f"With --wait, seconds between status checks (default: {WAIT_POLL_SECONDS}).",
+)
+@click.option(
+    "--logs",
+    is_flag=True,
+    help="With --wait, print the log tail even on success (a failure always does).",
+)
 @click.pass_context
-def jobs_run(ctx: click.Context, job: str) -> None:
-    """Trigger a run of a job (by name or id)."""
+def jobs_run(
+    ctx: click.Context,
+    job: str,
+    wait: bool,
+    timeout: int,
+    poll_seconds: int,
+    logs: bool,
+) -> None:
+    """Trigger a run of a job (by name or id).
+
+    Without ``--wait`` this returns as soon as the run is queued, so a zero
+    exit means "accepted", not "succeeded". CI wants ``--wait``.
+    """
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
     run = client.post_one(f"/orgs/{org}/jobs/{found.id}/run", JobRun)
@@ -1431,6 +1534,9 @@ def jobs_run(ctx: click.Context, job: str) -> None:
         print_success(
             f"Triggered run {run.id} of {found.name!r} (status: {run.status})"
         )
+    if wait:
+        finished = _wait_for_run(client, org, run.id, timeout, poll_seconds)
+        _report_finished_run(org, finished, logs=logs)
 
 
 @jobs.command("versions")
@@ -1520,6 +1626,100 @@ def runs_list(
     _show_rows("runs", "runs", rows, empty, _fmt_run, org=org)
 
 
+def _run_is_over(run: JobRunExt) -> bool:
+    return run.finished_at is not None or run.status in TERMINAL_RUN_STATUSES
+
+
+def _wait_for_run(
+    client: CloudClient, org: str, run_id: str, timeout: int, poll: int
+) -> JobRunExt:
+    """Poll a run until it is over, or raise naming the state it was stuck in.
+
+    The timeout error is deliberately specific: "still queued after 30m" is a
+    saturated or missing executor, while "still running" is a slow job. A bare
+    "timed out" would send you to the wrong place.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        run = client.get_one(f"/orgs/{org}/jobs/runs/{run_id}", JobRunExt)
+        if _run_is_over(run):
+            return run
+        if time.monotonic() >= deadline:
+            raise CloudError(
+                f"Run {run_id} was still {run.status!r} after {timeout}s. "
+                f"It is not cancelled — check `trilogy cloud runs show {run_id}`."
+            )
+        time.sleep(min(poll, max(0, deadline - time.monotonic())))
+
+
+def _print_run_logs(run: JobRunExt) -> None:
+    for stream, body in (("stdout", run.stdout), ("stderr", run.stderr)):
+        text = (body or "").strip()
+        if text:
+            print_info(f"--- {stream} (tail) ---")
+            click.echo(text[-RUN_LOG_TAIL_CHARS:])
+
+
+def _report_finished_run(org: str, run: JobRunExt, logs: bool = False) -> None:
+    """Render a finished run and make a non-success fail the command.
+
+    Exiting non-zero is the entire point of ``--wait`` in CI: a workflow step
+    that reports green over a failed job is worse than no wait at all. A
+    failure also prints the log tail unasked, because the alternative is a
+    workflow that says only "it failed" and a second round trip to find out
+    why — with a run id the operator has to scrape out of the first one.
+    """
+    failed = run.status != SUCCESS_RUN_STATUS
+    if is_json_mode():
+        emit_event("run_finished", org=org, run=run.model_dump(mode="json"))
+    else:
+        detail = "" if run.exit_code is None else f" (exit code {run.exit_code})"
+        line = f"Run {run.id} of {run.job_name!r}: {run.status}{detail}"
+        if failed:
+            print_warning(line)
+        else:
+            print_success(line)
+        if run.error:
+            print_info(f"  {run.error}")
+        if failed or logs:
+            _print_run_logs(run)
+    if failed:
+        raise CloudError(
+            f"Run {run.id} finished {run.status!r}. "
+            f"See `trilogy cloud runs show {run.id}`."
+        )
+
+
+@runs.command("wait")
+@click.argument("run_id")
+@click.option(
+    "--timeout",
+    "timeout",
+    type=int,
+    default=WAIT_TIMEOUT_SECONDS,
+    help=f"Seconds to wait for the run to finish (default: {WAIT_TIMEOUT_SECONDS}).",
+)
+@click.option(
+    "--poll-seconds",
+    type=int,
+    default=WAIT_POLL_SECONDS,
+    help=f"Seconds between status checks (default: {WAIT_POLL_SECONDS}).",
+)
+@click.option(
+    "--logs",
+    is_flag=True,
+    help="Print the run's log tail even when it succeeded (a failure always does).",
+)
+@click.pass_context
+def runs_wait(
+    ctx: click.Context, run_id: str, timeout: int, poll_seconds: int, logs: bool
+) -> None:
+    """Block until a run finishes; exit non-zero unless it succeeded."""
+    client, org = _org_client(ctx)
+    run = _wait_for_run(client, org, run_id, timeout, poll_seconds)
+    _report_finished_run(org, run, logs=logs)
+
+
 @runs.command("show")
 @click.argument("run_id")
 @click.pass_context
@@ -1549,11 +1749,7 @@ def runs_show(ctx: click.Context, run_id: str) -> None:
         print_info("Files:")
         for step in run.files:
             print_info(f"  {step.status}: {step.name}")
-    for stream, body in (("stdout", run.stdout), ("stderr", run.stderr)):
-        text = (body or "").strip()
-        if text:
-            print_info(f"--- {stream} (tail) ---")
-            click.echo(text[-RUN_LOG_TAIL_CHARS:])
+    _print_run_logs(run)
 
 
 @cloud.group()

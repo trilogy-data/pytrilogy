@@ -2,11 +2,9 @@ from decimal import Decimal
 
 from trilogy import Dialects
 from trilogy.core.models.core import TraitDataType
-from trilogy.hooks import DebuggingHook
 
 
 def test_calc_percent():
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor()
     all_results = duckdb.execute_query("""
 import std.report;

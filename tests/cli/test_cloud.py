@@ -34,6 +34,7 @@ from trilogy.scripts.cloud import (
     forget_token,
     parse_rewrite,
     resolve_api_url,
+    resolve_token,
     store_token,
     stored_token,
 )
@@ -145,6 +146,40 @@ class TestCredentials:
         store_token("https://prod.example", "tri_prod", None)
         assert stored_token("https://dev.example") == "tri_dev"
         assert stored_token("https://prod.example") == "tri_prod"
+
+
+class TestTokenResolution:
+    URL = "https://api.example"
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", tmp_path / "creds.json")
+        monkeypatch.delenv(cloud_mod.ENV_TOKEN, raising=False)
+
+    def test_nothing_configured_resolves_to_none(self):
+        assert resolve_token(None, self.URL) is None
+
+    def test_env_is_used_when_there_is_no_credentials_file(self, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_env")
+        assert resolve_token(None, self.URL) == "tri_env"
+
+    def test_env_beats_stored_credentials(self, monkeypatch):
+        store_token(self.URL, "tri_stored", None)
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_env")
+        assert resolve_token(None, self.URL) == "tri_env"
+
+    def test_explicit_flag_beats_env(self, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_env")
+        assert resolve_token("tri_flag", self.URL) == "tri_flag"
+
+    def test_an_empty_env_var_counts_as_unset(self, monkeypatch):
+        store_token(self.URL, "tri_stored", None)
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "")
+        assert resolve_token(None, self.URL) == "tri_stored"
+
+    def test_the_env_var_is_not_scoped_per_api_url(self, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_env")
+        assert resolve_token(None, "https://other.example") == "tri_env"
 
 
 class TestBundling:
@@ -449,6 +484,18 @@ class TestHttpClient:
         with pytest.raises(CloudError, match=r"trilogy cloud login"):
             CloudClient(cloud_api.url, "t").get("/auth/me")
 
+    def test_a_401_on_an_env_token_points_at_the_env_var(self, cloud_api, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        cloud_api.fail("GET", "/auth/me", 401, "token expired")
+        with pytest.raises(CloudError, match=r"check \$TRILOGY_CLOUD_TOKEN"):
+            CloudClient(cloud_api.url, "tri_ci").get("/auth/me")
+
+    def test_a_401_on_a_flag_token_still_points_at_login(self, cloud_api, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        cloud_api.fail("GET", "/auth/me", 401, "token expired")
+        with pytest.raises(CloudError, match=r"trilogy cloud login"):
+            CloudClient(cloud_api.url, "tri_flag").get("/auth/me")
+
     def test_an_error_body_is_surfaced(self, cloud_api):
         cloud_api.fail("GET", "/auth/me", 500, "database is on fire")
         with pytest.raises(CloudError, match="database is on fire"):
@@ -641,6 +688,193 @@ class TestAuthCommands:
         result = run_cloud("whoami")
         assert result.exit_code != 0
         assert "Not logged in to https://api.test" in result.output
+        assert "TRILOGY_CLOUD_TOKEN" in result.output
+
+
+class TestRunWait:
+    """``--wait`` is the CI contract: block, then exit non-zero unless the run
+    actually succeeded."""
+
+    ROUTE: ClassVar[str] = "/orgs/acme/jobs/runs/*"
+    PENDING: ClassVar[tuple[str, ...]] = ("queued", "dispatched", "claimed", "running")
+
+    def _progress(self, cloud_api, *statuses: str, run_id: str = "run-1") -> None:
+        cloud_api.set_steps(
+            "GET",
+            self.ROUTE,
+            [
+                {
+                    "id": run_id,
+                    "job_id": "job-1",
+                    "job_name": "nightly",
+                    "created_at": TS,
+                    "status": status,
+                    "finished_at": None if status in self.PENDING else TS,
+                    "exit_code": None if status in self.PENDING else 0,
+                }
+                for status in statuses
+            ],
+        )
+
+    def test_it_returns_once_the_run_finishes(self, logged_in, run_cloud):
+        self._progress(logged_in, "queued", "running", "completed")
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        assert result.exit_code == 0
+        assert "completed" in result.output
+        assert len(logged_in.requests_for("GET", "/orgs/acme/jobs/runs/run-1")) == 3
+
+    def test_an_already_finished_run_is_not_polled_again(self, logged_in, run_cloud):
+        self._progress(logged_in, "completed")
+        assert run_cloud("runs", "wait", "run-1", "--poll-seconds", "0").exit_code == 0
+        assert len(logged_in.requests_for("GET", "/orgs/acme/jobs/runs/run-1")) == 1
+
+    def test_a_failed_run_exits_non_zero(self, logged_in, run_cloud):
+        self._progress(logged_in, "running", "failed")
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        assert result.exit_code != 0
+        assert "failed" in result.output and "run-1" in result.output
+
+    def test_a_terminal_status_without_a_timestamp_still_ends_the_wait(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set(
+            "GET",
+            self.ROUTE,
+            {
+                "id": "run-1",
+                "job_id": "job-1",
+                "job_name": "nightly",
+                "created_at": TS,
+                "status": "cancelled",
+                "finished_at": None,
+            },
+        )
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        assert result.exit_code != 0
+        assert "cancelled" in result.output
+
+    def test_a_timeout_names_the_status_it_was_stuck_in(self, logged_in, run_cloud):
+        self._progress(logged_in, "queued")
+        result = run_cloud(
+            "runs", "wait", "run-1", "--timeout", "0", "--poll-seconds", "0"
+        )
+        assert result.exit_code != 0
+        assert "queued" in result.output and "not cancelled" in result.output
+
+    def test_jobs_run_wait_polls_the_triggered_run(self, logged_in, run_cloud):
+        self._progress(logged_in, "running", "completed", run_id="run-new")
+        result = run_cloud("jobs", "run", "nightly", "--wait", "--poll-seconds", "0")
+        assert result.exit_code == 0
+        assert "Triggered run run-new" in result.output
+        assert logged_in.requests_for("GET", "/orgs/acme/jobs/runs/run-new")
+
+    def test_jobs_run_without_wait_never_polls(self, logged_in, run_cloud):
+        assert run_cloud("jobs", "run", "nightly").exit_code == 0
+        assert not logged_in.requests_for("GET", "/orgs/acme/jobs/runs/run-new")
+
+    def test_jobs_run_wait_exits_non_zero_on_a_failed_run(self, logged_in, run_cloud):
+        self._progress(logged_in, "failed")
+        result = run_cloud("jobs", "run", "nightly", "--wait", "--poll-seconds", "0")
+        assert result.exit_code != 0
+
+    def test_a_failure_prints_the_log_tail_unasked(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            self.ROUTE,
+            {
+                "id": "run-1",
+                "job_id": "job-1",
+                "job_name": "nightly",
+                "created_at": TS,
+                "status": "failed",
+                "finished_at": TS,
+                "exit_code": 1,
+                "stdout": "loading rows\n",
+                "stderr": "boom: table not found\n",
+            },
+        )
+        out = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0").output
+        assert "boom: table not found" in out
+        assert "loading rows" in out
+
+    def test_a_success_stays_quiet_until_logs_is_asked_for(self, logged_in, run_cloud):
+        payload = {
+            "id": "run-1",
+            "job_id": "job-1",
+            "job_name": "nightly",
+            "created_at": TS,
+            "status": "completed",
+            "finished_at": TS,
+            "exit_code": 0,
+            "stdout": "1 row(s).\n",
+        }
+        logged_in.set("GET", self.ROUTE, payload)
+        quiet = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0").output
+        assert "1 row(s)." not in quiet
+        loud = run_cloud(
+            "runs", "wait", "run-1", "--poll-seconds", "0", "--logs"
+        ).output
+        assert "1 row(s)." in loud
+
+    def test_the_finished_run_is_a_json_event(self, logged_in, run_cloud, json_mode):
+        self._progress(logged_in, "completed")
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        event = json.loads(result.output)
+        assert event["event"] == "run_finished"
+        assert event["run"]["status"] == "completed"
+
+
+class TestTokenEnvVarEndToEnd:
+    def test_a_ci_runner_authenticates_with_no_credentials_file(
+        self, cloud_api, run_cloud, monkeypatch
+    ):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        assert not cloud_mod.CREDENTIALS_PATH.exists()
+        result = run_cloud("whoami")
+        assert result.exit_code == 0
+        assert cloud_api.call_for("GET", "/auth/me").headers["authorization"] == (
+            "Bearer tri_ci"
+        )
+
+    def test_the_flag_still_beats_the_env_var(self, cloud_api, run_cloud, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        assert run_cloud("--token", "tri_flag", "whoami").exit_code == 0
+        assert cloud_api.call_for("GET", "/auth/me").headers["authorization"] == (
+            "Bearer tri_flag"
+        )
+
+    def test_the_env_var_beats_stored_credentials(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        assert run_cloud("whoami").exit_code == 0
+        assert logged_in.call_for("GET", "/auth/me").headers["authorization"] == (
+            "Bearer tri_ci"
+        )
+
+    def test_login_warns_that_the_env_var_shadows_what_it_stored(
+        self, cloud_api, run_cloud, monkeypatch
+    ):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        result = run_cloud("login", "--token", "tri_mine")
+        assert result.exit_code == 0
+        assert stored_token(cloud_api.url) == "tri_mine"
+        assert "takes precedence" in result.output
+
+    def test_login_with_the_same_token_does_not_warn(
+        self, cloud_api, run_cloud, monkeypatch
+    ):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_same")
+        result = run_cloud("login", "--token", "tri_same")
+        assert "takes precedence" not in result.output
+
+    def test_logout_warns_that_the_env_var_still_authenticates(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        monkeypatch.setenv(cloud_mod.ENV_TOKEN, "tri_ci")
+        result = run_cloud("logout")
+        assert "Logged out" in result.output
+        assert "still set" in result.output
 
 
 class TestTokenCommands:

@@ -1,12 +1,9 @@
 from trilogy import Dialects
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_basic_agg():
     executor = Dialects.DUCK_DB.default_executor()
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     results = executor.execute_query("""const x <- unnest([1,2,2,3]);
 
 select 
@@ -21,7 +18,7 @@ select
 
 
 def test_agg_to_grain():
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
 
     results = executor.execute_query("""
 key idx int;

@@ -475,16 +475,37 @@ def _file_connection_params(stored: DialectConfig) -> dict[str, Any]:
     return {}
 
 
+def _seed_compatible(
+    stored: DialectConfig | None, expected: type[DialectConfig]
+) -> bool:
+    """Whether a file config can supply connection params for ``expected``.
+
+    The same class (or a subclass) always can. Presto and Trino additionally
+    seed each other: ``TrinoConfig`` subclasses ``PrestoConfig`` with an
+    identical constructor, so the *parameters* are interchangeable even though
+    the classes are not. Only the parameters cross over — the dialect being
+    built still constructs its own class, because the engine factory
+    type-checks and a PrestoConfig is not a TrinoConfig.
+    """
+    from trilogy.dialect.config import PrestoConfig
+
+    if stored is None:
+        return False
+    if isinstance(stored, expected):
+        return True
+    return isinstance(stored, PrestoConfig) and issubclass(expected, PrestoConfig)
+
+
 def seed_conn_dict(
     conn_dict: dict[str, Any],
     stored: DialectConfig | None,
     expected: type[DialectConfig],
 ) -> dict[str, Any]:
-    """Fill missing connection params from a file config of the same type.
+    """Fill missing connection params from a compatible file config.
 
     CLI-supplied params win over the ones already on the config.
     """
-    if not isinstance(stored, expected):
+    if stored is None or not _seed_compatible(stored, expected):
         return conn_dict
     seeded = {k: v for k, v in _file_connection_params(stored).items() if v is not None}
     seeded.update(conn_dict)
@@ -602,16 +623,21 @@ def get_dialect_config(
             "Presto",
         )
         conf = PrestoConfig(**conn_dict)
-    elif edialect == Dialects.TRINO and conn_dict:
+    elif edialect == Dialects.TRINO:
         from trilogy.dialect.config import TrinoConfig
 
-        conn_dict = validate_required_connection_params(
-            conn_dict,
-            ["host", "port", "username", "password", "catalog"],
-            ["schema"],
-            "Trino",
-        )
-        conf = TrinoConfig(**conn_dict)
+        conn_dict = seed_conn_dict(conn_dict, runtime_config.engine_config, TrinoConfig)
+        # Still conditional on having *something*: with neither CLI args nor a
+        # usable file config, Trino falls through to the default engine rather
+        # than erroring, which is the behaviour it has always had.
+        if conn_dict:
+            conn_dict = validate_required_connection_params(
+                conn_dict,
+                ["host", "port", "username", "password", "catalog"],
+                ["schema"],
+                "Trino",
+            )
+            conf = TrinoConfig(**conn_dict)
     elif edialect == Dialects.CLICKHOUSE and conn_dict:
         from trilogy.dialect.config import ClickhouseConfig
 
@@ -636,12 +662,16 @@ def get_dialect_config(
             f"Dialect {edialect.value} does not accept connection parameters "
             f"via the CLI; got: {', '.join(conn_dict)}"
         )
-    # Only merge the file config when it is a config the dialect being built can
-    # accept; the executing dialect can differ from the toml's (`trilogy unit`
-    # always runs on DuckDB), and merging across types hands the engine factory
-    # a config of the wrong class.
-    if conf and isinstance(runtime_config.engine_config, type(conf)):
-        conf = runtime_config.engine_config.merge_config(conf)
+    # Only merge the file config when it is exactly the class the dialect just
+    # built. The executing dialect can differ from the toml's (`trilogy unit`
+    # always runs on DuckDB), and `merge_config` returns *self*, so merging a
+    # related-but-different class would hand the engine factory a config of the
+    # wrong type — a Presto/Trino pair passes isinstance in one direction and
+    # fails it in the other. Those siblings cross over through `seed_conn_dict`
+    # instead, which keeps the constructed class the dialect's own.
+    stored = runtime_config.engine_config
+    if conf is not None and stored is not None and type(stored) is type(conf):
+        conf = stored.merge_config(conf)
     return conf
 
 

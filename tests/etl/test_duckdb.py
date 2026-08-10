@@ -1,9 +1,6 @@
-from logging import INFO
-
 from tests.conftest import load_secret
 from trilogy import Dialects, Executor
 from trilogy.core.enums import DatasourceState
-from trilogy.hooks import DebuggingHook
 
 
 def test_partition_persistence(executor: Executor):
@@ -11,7 +8,6 @@ def test_partition_persistence(executor: Executor):
         "import root; select ride_year order by ride_year asc;"
     ).fetchall()
     base_row = 0
-    DebuggingHook(INFO)
     for row in years:
         executor.environment.set_parameters(load_year=row.ride_year)
         results = executor.execute_file("build_daily.preql")
@@ -47,7 +43,6 @@ def test_partition_persistence(executor: Executor):
 
 
 def test_simple_partition_persistence(executor: Executor):
-    DebuggingHook()
     executor.environment.set_parameters(load_year=2000)
     executor.execute_file("implicit_build_full.preql")
 
@@ -64,7 +59,6 @@ def test_simple_partition_persistence(executor: Executor):
 
 
 def test_simple_incremental_partition_persistence(executor: Executor):
-    DebuggingHook()
     executor.environment.set_parameters(load_year=2021)
     executor.execute_file("implicit_build_partial.preql")
 

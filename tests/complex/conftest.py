@@ -1,11 +1,6 @@
-from logging import DEBUG
-
 from pytest import fixture
 
 from trilogy import parse
-from trilogy.constants import logger
-
-logger.setLevel(DEBUG)
 
 DECLARATIONS = r"""
 key user_id int metadata(description="the description");

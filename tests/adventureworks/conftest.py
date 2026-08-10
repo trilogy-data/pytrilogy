@@ -2,7 +2,6 @@ import os
 import socket
 import time
 from enum import Enum
-from logging import DEBUG
 from os.path import abspath, dirname
 from socket import gethostname
 from urllib.parse import quote_plus
@@ -12,10 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
 from trilogy import Dialects, Executor
-from trilogy.constants import logger
 from trilogy.core.models.environment import Environment
-
-logger.setLevel(DEBUG)
 
 
 class TestConfig(Enum):

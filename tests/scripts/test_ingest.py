@@ -5,12 +5,17 @@ from click.testing import CliRunner
 
 from trilogy import Dialects
 from trilogy.authoring import DataType
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
+    _PENALTY_MEASURE,
+    _PENALTY_TEMPORAL,
+    _alternate_single_keys,
     _check_column_combination_uniqueness,
     _column_grain_penalty,
+    _fk_source_key,
     _grain_penalties,
     _is_unique_key,
     _process_column,
@@ -37,6 +42,34 @@ from trilogy.scripts.ingest_helpers.typing import (
 from trilogy.scripts.trilogy import cli
 
 _DIALECT = BaseDialect()
+
+
+def test_ingest_digit_leading_columns_produce_parseable_output(tmp_path):
+    """Lahman-style `2B`/`3B` columns must not render illegal identifiers."""
+    csv = tmp_path / "batting.csv"
+    csv.write_text(
+        "playerID,2B,3B\np1,10,1\np2,20,2\n",
+        newline="\n",
+    )
+    out_dir = tmp_path / "raw"
+    runner = CliRunner()
+    result = runner.invoke(cli, ["ingest", csv.as_posix(), "--output", str(out_dir)])
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+
+    content = (out_dir / "batting.preql").read_text()
+    assert "x_2_b" in content
+
+    query = tmp_path / "query.preql"
+    query.write_text(
+        "import raw.batting as batting;\n\n"
+        "select batting.player_id, batting.x_2_b;\n"
+    )
+    result = runner.invoke(cli, ["run", str(query), "duckdb"])
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
 
 
 def test_ingest():
@@ -582,6 +615,13 @@ class TestSnakeCaseNormalization:
         assert canonicolize_name("address1") == "address1"
         assert canonicolize_name("line2") == "line2"
 
+    def test_digit_leading_padded(self):
+        # Digit-leading identifiers are illegal in the grammar and BigQuery;
+        # a bare underscore pad would mark the concept internal.
+        assert canonicolize_name("2B") == "x_2_b"
+        assert canonicolize_name("3B") == "x_3_b"
+        assert canonicolize_name("2023_sales") == "x_2023_sales"
+
 
 class TestRichTypeDetection:
     """Test rich type detection for specialized data types."""
@@ -1114,20 +1154,83 @@ class TestGrainVerification:
         )
         assert _is_unique_key(eng, '"t"', ["a", "b"], eng.generator) is False
         assert _is_unique_key(eng, '"t"', ["a", "b", "c"], eng.generator) is True
-        picked = _select_verified_grain(
+        picked, rejected = _select_verified_grain(
             eng, '"t"', [["a", "b"], ["a", "b", "c"]], eng.generator
         )
         assert picked == ["a", "b", "c"]
+        assert rejected == [["a", "b"]]
 
     def test_all_candidates_fail_returns_none(self):
         eng = self._executor()
         eng.execute_raw_sql(
             "CREATE TABLE t2 AS SELECT * FROM (VALUES (1, 1), (1, 1)) v(a, b)"
         )
-        picked = _select_verified_grain(
+        picked, rejected = _select_verified_grain(
             eng, '"t2"', [["a"], ["b"], ["a", "b"]], eng.generator
         )
         assert picked is None
+        assert rejected == [["a"], ["b"], ["a", "b"]]
+
+
+class TestFKSourceKey:
+    """The name a record goes by in FK maps, and as an FK target's import path."""
+
+    def _record(self, source, name):
+        from trilogy.authoring import Address, Datasource, Grain
+        from trilogy.scripts.ingest import IngestRecord
+
+        return IngestRecord(
+            source=source,
+            datasource=Datasource(
+                name=name, grain=Grain(), columns=[], address=Address(location=source)
+            ),
+            concepts=[],
+            required_imports=set(),
+            script=[],
+            alternate_keys=[],
+        )
+
+    def test_table_keeps_the_typed_source_name(self):
+        # Explicit --fks reference tables by what the user typed.
+        assert _fk_source_key(self._record("customers", "customers")) == "customers"
+
+    def test_file_goes_by_datasource_name(self):
+        # A path is meaningless to the name matcher and unusable as an import.
+        rec = self._record("/data/raw/orders.csv", "orders")
+        assert _fk_source_key(rec) == "orders"
+
+    def test_url_goes_by_datasource_name(self):
+        rec = self._record("https://example.com/a/orders.parquet", "orders")
+        assert _fk_source_key(rec) == "orders"
+
+
+class TestAlternateSingleKeys:
+    """Which sample-unique columns get offered to FK inference as targets."""
+
+    def test_elected_grain_and_rejects_excluded(self):
+        suggested = [["id"], ["player_id"], ["ssn"]]
+        assert _alternate_single_keys(suggested, ["id"], [["ssn"]]) == ["player_id"]
+
+    def test_composite_candidates_yield_nothing(self):
+        # A composite result means no single column was sample-unique at all
+        # (detect_unique_key_combinations returns singles when any exist), so
+        # there is no alternate key to offer.
+        suggested = [["player_id", "stint"], ["stint", "ssn"]]
+        assert _alternate_single_keys(suggested, ["player_id", "stint"], []) == []
+
+    def test_measure_penalized_column_dropped(self):
+        suggested = [["id"], ["weight"]]
+        penalties = {"id": -1, "weight": _PENALTY_MEASURE}
+        assert _alternate_single_keys(suggested, ["id"], [], penalties) == []
+
+    def test_temporal_penalty_is_not_disqualifying(self):
+        # A date dimension's date column is a perfectly good alternate key; only
+        # measures are excluded.
+        suggested = [["d_date_sk"], ["d_date"]]
+        penalties = {"d_date_sk": -1, "d_date": _PENALTY_TEMPORAL}
+        assert _alternate_single_keys(suggested, ["d_date_sk"], [], penalties) == [
+            "d_date"
+        ]
 
 
 def _duckdb_executor():
@@ -1142,13 +1245,19 @@ def _duckdb_executor():
 
 
 def _ingest_grain(setup_sql: str, table: str) -> list[str]:
-    """Build `table` from setup SQL and return its detected grain (sorted)."""
+    """Build `table` from setup SQL and return its detected grain (sorted).
+
+    Grain components are concept addresses; these cases are about *which*
+    columns get elected, so the default namespace is stripped back off. The
+    address spelling itself is pinned in `TestGrainKeyColumns`.
+    """
     eng = _duckdb_executor()
     eng.execute_raw_sql(setup_sql)
-    datasource, _concepts, _imports = create_datasource_from_table(
+    datasource, _concepts, _imports, _alt_keys = create_datasource_from_table(
         eng, table, None, root=True
     )
-    return sorted(datasource.grain.components)
+    prefix = f"{DEFAULT_NAMESPACE}."
+    return sorted(c.removeprefix(prefix) for c in datasource.grain.components)
 
 
 class TestGrainSniffingEndToEnd:
@@ -1871,45 +1980,55 @@ class TestResolveFileSource:
 
 
 class TestFileIntrospectionSource:
-    """`_file_introspection_source` builds the read_* SQL fragment."""
+    """`file_introspection_source` builds the read_* SQL fragment."""
 
     def test_csv_uses_read_csv_auto(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        assert _file_introspection_source("/a/b.csv", AddressType.CSV) == (
+        assert file_introspection_source("/a/b.csv", AddressType.CSV) == (
             "read_csv_auto('/a/b.csv')"
         )
 
     def test_tsv_uses_tab_delimiter(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        sql = _file_introspection_source("/a/b.tsv", AddressType.TSV)
+        sql = file_introspection_source("/a/b.tsv", AddressType.TSV)
         assert sql.startswith("read_csv_auto(")
         assert "delim='\\t'" in sql
 
     def test_parquet_uses_read_parquet(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        assert _file_introspection_source("/a/b.parquet", AddressType.PARQUET) == (
+        assert file_introspection_source("/a/b.parquet", AddressType.PARQUET) == (
             "read_parquet('/a/b.parquet')"
         )
 
     def test_unsupported_addr_type_raises(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
         with pytest.raises(ValueError, match="Unsupported file address type"):
-            _file_introspection_source("/a/b", AddressType.QUERY)
+            file_introspection_source("/a/b", AddressType.QUERY)
 
     def test_single_quote_in_path_is_escaped(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
         # SQL injection guard: path with a literal apostrophe must be escaped.
-        sql = _file_introspection_source("/a/b's.csv", AddressType.CSV)
+        sql = file_introspection_source("/a/b's.csv", AddressType.CSV)
         assert sql == "read_csv_auto('/a/b''s.csv')"
 
 

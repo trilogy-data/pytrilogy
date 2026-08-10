@@ -17,7 +17,6 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import ShowStatement
 from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
-from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
 
 
@@ -1256,7 +1255,6 @@ def test_concept_derivation():
 
 
 def test_boolean_derivation():
-    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
 
     results = executor.execute_text("""const test <- 1 is not null;
@@ -1693,7 +1691,6 @@ order by
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (4,)
     assert len(results) == 2
@@ -1708,7 +1705,6 @@ order by x asc
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (1,)
     assert len(results) == 4
@@ -1723,7 +1719,6 @@ select reduced;
 """
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (Decimal("1.46"),)
     assert len(results) == 1
@@ -1757,7 +1752,6 @@ auto update_date_no_tz <- cast(data_updated_through_no_tz as date);
 select id, update_date, update_date_no_tz, update_datetime order by id asc;
 """
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 2
     # Row 1: 10:30:00-05:00 = 15:30:00 UTC, same day (2024-01-15)
@@ -1772,7 +1766,6 @@ select id, update_date, update_date_no_tz, update_datetime order by id asc;
 
 
 def test_duckdb_string_quotes():
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
     results = exec.execute_query(r"""
@@ -1810,7 +1803,6 @@ SELECT
 order by
     idx_val asc;"""
 
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
     results = exec.execute_query(query)
@@ -1819,7 +1811,6 @@ order by
 
 
 def test_union():
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
     results = exec.execute_query(r"""
@@ -1949,7 +1940,6 @@ select game.home_team.name, count(game.id)->game_count;"""
 
 def test_global_aggregate_inclusion():
     """check that including a global aggregate constant in output select doesn't force changed evaluation order"""
-    DebuggingHook()
     query = """
     key id int;
 key date date;
@@ -1994,7 +1984,6 @@ select max_date, date, avg(score) as avg_id;""")[0].fetchall()
 
 
 def test_recursive():
-    DebuggingHook()
 
     executor: Executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent)
@@ -2021,7 +2010,6 @@ select id, label;
 
 
 def test_recursive_enrichment():
-    DebuggingHook()
 
     executor: Executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent)
@@ -2062,7 +2050,6 @@ select count(id) as a_children;
 
 
 def test_tuple_constant(default_duckdb_engine: Executor):
-    DebuggingHook()
     test = """
 const list <- (1,2,3,4);
 
@@ -2075,7 +2062,6 @@ select list;"""
 
 def test_in_with_array(default_duckdb_engine: Executor):
 
-    DebuggingHook()
     test = """
 
 const list <- [1,2,3,4];
@@ -2095,7 +2081,6 @@ select
 
 def test_map(default_duckdb_engine: Executor):
 
-    DebuggingHook()
     test = """
 
 const map <- {1:2, 3:4};
@@ -2112,7 +2097,6 @@ select
 
 def test_regexp(default_duckdb_engine: Executor):
 
-    DebuggingHook()
     test = """
 
 const values <- unnest(['apple', 'banana', 'cherry', 'date']);
@@ -2190,7 +2174,6 @@ where values = true;
 
 
 def test_log():
-    DebuggingHook()
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
 const values <- unnest([1, 10, 100, 1000]);
@@ -2259,7 +2242,6 @@ select value where not value;
 
 def test_mock_statement():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     test = """
 import std.metric;
 import std.color;
@@ -2339,7 +2321,6 @@ select x, labels, email, favorite_color;
 
 def test_group_syntax():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     test = """
 key x int;
 key y int;
@@ -2375,7 +2356,6 @@ def test_connection_management():
 
 
 def test_proper_basic_unnest_handling():
-    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     test = """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
@@ -2403,7 +2383,6 @@ LIMIT 10;"""
 
 @mark.skip("Date spine not yet supported")
 def test_date_spine():
-    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
         test = """key prime date;
@@ -2444,7 +2423,6 @@ def test_date_spine():
 
 
 def test_date_spine_merge():
-    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
         test = """key prime date;
@@ -2485,7 +2463,6 @@ def test_date_spine_merge():
 
 
 def test_const_equivalence_merge():
-    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     with executor.generator.rendering.temporary(parameters=False):
         test = """key orid int;
@@ -2518,7 +2495,6 @@ def test_multi_select_align_aggregate():
     # Aligning a per-arm aggregate must not push it into each arm's GROUP BY
     # (DuckDB rejects aggregates in GROUP BY).
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     exec.execute_raw_sql("CREATE TABLE s(sid int, cat varchar)")
     exec.execute_raw_sql("CREATE TABLE w(wid int, cat2 varchar)")
     exec.execute_raw_sql(
@@ -2551,7 +2527,6 @@ def test_multi_select_having_hidden_derive_arg_no_outer_group():
     # GROUP BY that omitted the raw aggregate projections (`coalesce(cnt_a, 0)`),
     # which DuckDB rejects: column "cnt_a" must appear in the GROUP BY clause.
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     exec.execute_raw_sql("CREATE TABLE item(item_id int, name varchar)")
     exec.execute_raw_sql("CREATE TABLE dt(date_id int, yr int)")
     exec.execute_raw_sql(
@@ -2594,7 +2569,6 @@ ORDER BY grp asc;
 
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     queries = exec.parse_text("""
 
 auto x <- 1;
@@ -2621,7 +2595,6 @@ derive x_next + y_next -> total
 
 def test_multi_select_derive_import():
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     queries = exec.parse_text("""
 
 auto x <- 1;
@@ -2658,7 +2631,6 @@ derive x_next + y_next -> total
 
 def test_order_by_count():
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     exec.parse_text("""
 key state string;
 property state.count int;
@@ -2685,7 +2657,6 @@ select
 
 def test_existence():
     exec = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     results = exec.execute_text("""
 key state string;
 property state.count int;

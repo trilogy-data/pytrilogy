@@ -1,11 +1,9 @@
 # from trilogy.compiler import compile
 from datetime import date, datetime
-from logging import INFO
 
 from pytest import raises
 
 from trilogy import Dialects
-from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.core import ArrayType, DataType
 from trilogy.core.models.environment import Environment
@@ -17,8 +15,6 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-
-logger.setLevel(INFO)
 
 TEST_DIALECTS = [
     BaseDialect(),
