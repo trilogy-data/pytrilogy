@@ -8,13 +8,12 @@ from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
-from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
 
 
 def test_case_group():
 
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
     test = """
 const x <- 1;

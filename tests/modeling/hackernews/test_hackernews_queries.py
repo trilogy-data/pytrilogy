@@ -7,7 +7,6 @@ from trilogy import Dialects, Executor
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.bigquery import BigqueryDialect
-from trilogy.hooks import DebuggingHook
 
 working_path = Path(__file__).parent
 
@@ -64,7 +63,6 @@ def test_adhoc04():
 
 def test_adhoc05():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc05.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
@@ -73,7 +71,6 @@ def test_adhoc05():
 
 def test_adhoc06():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc06.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
@@ -82,7 +79,6 @@ def test_adhoc06():
 
 def test_adhoc07():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc07.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
@@ -97,7 +93,6 @@ def test_adhoc07():
 
 def test_adhoc08():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc08.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])

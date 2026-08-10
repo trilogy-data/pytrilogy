@@ -1,14 +1,9 @@
-from logging import INFO
-
 from trilogy import Dialects, parse
 
 
 def test_inline_filter_basic():
     """A simple filtered aggregate should be inlined to a single SELECT."""
 
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(INFO)
     query = """
 key id int;
 property id.value int;

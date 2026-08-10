@@ -1,5 +1,4 @@
 import re
-from logging import INFO
 from pathlib import Path
 
 from pytest import raises
@@ -14,14 +13,12 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
 from trilogy.core.processing.node_generators.select_merge_node import (
     create_union_datasource,
 )
-from trilogy.hooks import DebuggingHook
 
 working_path = Path(__file__).parent
 
 
 def test_union_node():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc01.preql") as f:
         text = f.read()
 
@@ -50,7 +47,6 @@ def test_union_node():
 
 def test_adhoc01():
     env = Environment(working_path=working_path)
-    DebuggingHook()
     with open(working_path / "adhoc01.preql") as f:
         text = f.read()
 
@@ -78,7 +74,6 @@ def test_adhoc02():
 
 
 def test_adhoc03():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc03.preql") as f:
         text = f.read()
@@ -102,7 +97,6 @@ def test_adhoc03():
 
 
 def test_adhoc04():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc04.preql") as f:
         text = f.read()
@@ -115,7 +109,6 @@ def test_adhoc04():
 
 
 def test_adhoc05():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc05.preql") as f:
         text = f.read()
@@ -144,7 +137,6 @@ def test_adhoc06():
 
 
 def test_adhoc07():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc07.preql") as f:
         text = f.read()
@@ -172,7 +164,6 @@ def test_adhoc07():
 
 
 def test_adhoc08():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc08.preql") as f:
         text = f.read()
@@ -188,7 +179,6 @@ def test_adhoc08():
 
 
 def test_adhoc9():
-    DebuggingHook(INFO)
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc09.preql") as f:
         text = f.read()
@@ -201,7 +191,6 @@ def test_adhoc9():
 
 
 def test_adhoc10():
-    DebuggingHook(INFO)
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc10.preql") as f:
         text = f.read()
@@ -211,7 +200,6 @@ def test_adhoc10():
 
 
 def test_adhoc11():
-    DebuggingHook(INFO)
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc11.preql") as f:
         text = f.read()

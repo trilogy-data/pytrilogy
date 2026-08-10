@@ -1,9 +1,7 @@
 from trilogy import Dialects
-from trilogy.hooks import DebuggingHook
 
 
 def test_ranking_import():
-    DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor()
     all_results = duckdb.execute_query("""
 import std.ranking;

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pytest import fixture
 
-from trilogy.constants import CONFIG
+from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -26,6 +26,26 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
+
+
+@fixture(autouse=True)
+def _restore_logger_state():
+    """Contain cross-test logger leakage. `DebuggingHook.__init__` sets the shared
+    trilogy logger to DEBUG and attaches a StreamHandler, and never undoes either
+    -- so one test constructing a hook left every later test in the session
+    rendering at DEBUG onto stderr. That is invisible until something fails, at
+    which point pytest attaches the whole session's records to the report: the
+    run this was written for emitted ~440k log lines for a single failure, the
+    same content twice (the leaked StreamHandler, plus pytest's own capture).
+    Snapshot level and handlers before each test and restore after, so a hook
+    stays scoped to the test that asked for it."""
+    prior_level = logger.level
+    prior_handlers = list(logger.handlers)
+    try:
+        yield
+    finally:
+        logger.setLevel(prior_level)
+        logger.handlers[:] = prior_handlers
 
 
 @fixture(autouse=True)

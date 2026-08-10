@@ -5,11 +5,9 @@ from pytest import raises
 from trilogy import Dialects, Environment
 from trilogy.core.exceptions import DatasourceModelValidationError, ModelValidationError
 from trilogy.core.validation.environment import validate_environment
-from trilogy.hooks import DebuggingHook
 
 
 def test_dataset_validation_iris():
-    DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -56,7 +54,6 @@ def test_join_validation_iris():
 
 
 def test_bad_grain_iris():
-    DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,
     )

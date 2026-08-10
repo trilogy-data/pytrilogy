@@ -8,9 +8,7 @@ from trilogy.core.statements.execute import ProcessedQuery
 
 
 def test_constant_optimization():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     test_query = """
     const x <- 'A319';
 
@@ -32,7 +30,6 @@ def test_constant_optimization():
 
 def test_constant_filter():
     # validate that the constant is inlined into the filter
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     test_query = """
     const x <- 1;
@@ -46,7 +43,7 @@ def test_constant_filter():
     ;
     """
 
-    exec = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    exec = Dialects.DUCK_DB.default_executor()
 
     generated = exec.generate_sql(test_query)[0]
     print(generated)

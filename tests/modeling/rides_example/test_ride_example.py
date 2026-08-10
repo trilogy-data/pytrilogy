@@ -1,15 +1,12 @@
 from pathlib import Path
 
 from trilogy import Dialects, Environment
-from trilogy.hooks import DebuggingHook
 
 
 def test_example_model():
     env = Environment(working_path=Path(__file__).parent)
 
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-
-    DebuggingHook()
 
     results = executor.execute_text("""
 import script;

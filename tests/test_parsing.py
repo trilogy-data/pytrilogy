@@ -462,9 +462,8 @@ select 1 as test;
 
 
 def test_circular_aliasing():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     test_case = """key composite_id string;
 
 property composite_id.first <- split(composite_id, '-')[1];
@@ -506,9 +505,8 @@ select first, second;
 
 
 def test_circular_aliasing_inverse():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    executor = Dialects.DUCK_DB.default_executor()
     test_case = """key composite_id string;
 
 property composite_id.first <- split(composite_id, '-')[1];

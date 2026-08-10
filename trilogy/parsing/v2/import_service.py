@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from os.path import dirname
@@ -143,29 +144,36 @@ class _ImportEnvEntry:
     # while `env` itself is — they are dropped with the entry. Each is
     # re-stamped on reuse because an importer that received one can edit the
     # shared datasources in place (see NamespaceProjection.integrity).
-    projections: dict[str, NamespaceProjection] = field(default_factory=dict)
-    projection_integrity: dict[str, tuple] = field(default_factory=dict)
+    # Projection and stamp live in ONE dict so publishing them is a single
+    # atomic write: this store is process-global and a directory run parses on
+    # a thread pool, so two dicts tear — a reader sees the projection before
+    # its stamp exists and raises KeyError(alias).
+    projections: dict[str, tuple[NamespaceProjection, tuple]] = field(
+        default_factory=dict
+    )
 
     def projection_for(self, alias: str) -> NamespaceProjection:
         cached = self.projections.get(alias)
-        if (
-            cached is not None
-            and self.projection_integrity[alias] == cached.integrity()
-        ):
-            return cached
+        if cached is not None and cached[1] == cached[0].integrity():
+            return cached[0]
         built = build_namespace_projection(self.env, alias)
-        self.projections[alias] = built
-        self.projection_integrity[alias] = built.integrity()
+        self.projections[alias] = (built, built.integrity())
         return built
 
 
 _IMPORT_ENV_STORE: OrderedDict[tuple, _ImportEnvEntry] = OrderedDict()
 _IMPORT_ENV_STORE_MAX = 128
 IMPORT_ENV_STORE_ENABLED = True
+# A directory run parses on a thread pool against this one global store, so the
+# LRU bookkeeping needs a lock: move_to_end/popitem raise KeyError on a key
+# another thread just evicted. Guards only the OrderedDict ops, never the
+# closure re-hash (which reads files).
+_IMPORT_ENV_STORE_LOCK = threading.Lock()
 
 
 def clear_import_env_store() -> None:
-    _IMPORT_ENV_STORE.clear()
+    with _IMPORT_ENV_STORE_LOCK:
+        _IMPORT_ENV_STORE.clear()
 
 
 def _params_fingerprint(parameters: dict) -> tuple:
@@ -191,7 +199,8 @@ def _env_integrity(env: Environment) -> tuple:
 def _store_lookup(
     key: tuple, own_hash: int, text_lookup: dict[Path | str, str]
 ) -> _ImportEnvEntry | None:
-    entry = _IMPORT_ENV_STORE.get(key)
+    with _IMPORT_ENV_STORE_LOCK:
+        entry = _IMPORT_ENV_STORE.get(key)
     if entry is None:
         return None
     target = key[0]
@@ -214,18 +223,21 @@ def _store_lookup(
                 break
     if valid and _env_integrity(entry.env) != entry.integrity:
         valid = False
-    if not valid:
-        _IMPORT_ENV_STORE.pop(key, None)
-        return None
-    _IMPORT_ENV_STORE.move_to_end(key)
+    with _IMPORT_ENV_STORE_LOCK:
+        if not valid:
+            _IMPORT_ENV_STORE.pop(key, None)
+            return None
+        if key in _IMPORT_ENV_STORE:
+            _IMPORT_ENV_STORE.move_to_end(key)
     return entry
 
 
 def _store_fill(key: tuple, entry: _ImportEnvEntry) -> None:
-    _IMPORT_ENV_STORE[key] = entry
-    _IMPORT_ENV_STORE.move_to_end(key)
-    while len(_IMPORT_ENV_STORE) > _IMPORT_ENV_STORE_MAX:
-        _IMPORT_ENV_STORE.popitem(last=False)
+    with _IMPORT_ENV_STORE_LOCK:
+        _IMPORT_ENV_STORE[key] = entry
+        _IMPORT_ENV_STORE.move_to_end(key)
+        while len(_IMPORT_ENV_STORE) > _IMPORT_ENV_STORE_MAX:
+            _IMPORT_ENV_STORE.popitem(last=False)
 
 
 @dataclass

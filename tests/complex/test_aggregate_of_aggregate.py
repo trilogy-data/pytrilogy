@@ -4,7 +4,6 @@ from trilogy import Dialects
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
-from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
 
 
@@ -51,7 +50,7 @@ select
     env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
 
-    query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
+    query = process_query(statement=select, environment=env)
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)

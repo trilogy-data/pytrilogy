@@ -8,7 +8,6 @@ from trilogy.constants import CONFIG, ParserBackend, Rendering
 from trilogy.core.models.core import ArrayType, DataType, ListWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.bigquery import BigqueryDialect
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @contextmanager
@@ -51,7 +50,6 @@ def test_date_diff_rendering():
 )
 def test_readme():
     environment = Environment()
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     environment.parse("""
 
@@ -72,9 +70,7 @@ def test_readme():
     address `bigquery-public-data.usa_names.usa_1910_2013`;
 
     """)
-    executor = Dialects.BIGQUERY.default_executor(
-        environment=environment, hooks=[DebuggingHook()]
-    )
+    executor = Dialects.BIGQUERY.default_executor(environment=environment)
 
     results = executor.execute_text("""SELECT
         name,
@@ -97,7 +93,6 @@ def test_readme():
 )
 def test_unnest_rendering():
     environment = Environment()
-    DebuggingHook()
     _, queries = environment.parse("""
 key sentences string;
 
@@ -155,9 +150,7 @@ def test_in_with_array():
     `in (…)` — `in [1,2,3,4]` is a syntax error on BigQuery, and `in unnest(…)`
     would be a BigQuery-only spelling of something every engine can say."""
     environment = Environment()
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     _, queries = environment.parse("""
 
 
@@ -457,9 +450,7 @@ def test_math_functions():
 
 def test_aggregate_functions():
     exec = Dialects.BIGQUERY.default_executor()
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     results = exec.execute_text("""
 key order_id int;
 property order_id.revenue float;

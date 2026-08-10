@@ -97,9 +97,7 @@ def test_circular():
     env, _parsed = parse(
         CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
     validated = False

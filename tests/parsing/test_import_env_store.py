@@ -6,6 +6,8 @@ env-integrity stamp; anything not context-free (cycles, dict-resolver text)
 never enters the store.
 """
 
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -272,3 +274,54 @@ def test_distinct_parameters_get_distinct_entries(model_dir: Path):
     parse(ROOT_TEXT, env)
     # same files, different parameter fingerprint -> separate entries
     assert len(isvc._IMPORT_ENV_STORE) == 4
+
+
+def _race_projection_for(entry, alias: str, threads: int) -> list[BaseException]:
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(threads)
+
+    def work() -> None:
+        try:
+            barrier.wait()
+            entry.projection_for(alias)
+        except BaseException as e:
+            errors.append(e)
+
+    workers = [threading.Thread(target=work) for _ in range(threads)]
+    for t in workers:
+        t.start()
+    for t in workers:
+        t.join()
+    return errors
+
+
+def test_projection_publish_is_atomic_under_threads(model_dir: Path):
+    """A directory run parses on a thread pool against this one global store, so
+    several scripts importing the same file under the same alias hit one entry's
+    projection cache at once. Publishing the projection and its integrity stamp
+    as two writes tears: a reader sees the projection before the stamp exists
+    and raises KeyError(alias) — observed in CI as a script failing on the name
+    of a module it imports.
+
+    A short switch interval is what makes this deterministic rather than a
+    once-per-few-thousand-runs flake.
+    """
+    parse(ROOT_TEXT, Environment(working_path=str(model_dir)))
+    source = next(iter(isvc._IMPORT_ENV_STORE.values())).env
+
+    original_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        errors = [
+            e
+            for i in range(600)
+            for e in _race_projection_for(
+                isvc._ImportEnvEntry(env=source, closure={}, integrity=()),
+                f"ns_{i}",
+                threads=8,
+            )
+        ]
+    finally:
+        sys.setswitchinterval(original_interval)
+
+    assert not errors, f"racing projection_for raised: {errors[:3]}"

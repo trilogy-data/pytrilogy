@@ -1,11 +1,9 @@
 from datetime import date, timedelta
-from logging import INFO
 from pathlib import Path
 
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @pytest.mark.skip(reason="Requires BigQuery credentials and setup")
@@ -33,7 +31,6 @@ def test_bigquery_etl_sql():
 def test_resolution_post_materialization():
     env = Environment(working_path=Path(__file__).parent)
     executor = Dialects.BIGQUERY.default_executor(environment=env)
-    DebuggingHook(INFO)
     result = executor.generate_sql("""
  import sales_reporting;
  import order_product_items;

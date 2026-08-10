@@ -81,9 +81,7 @@ key id2 int;
 def test_recursive():
     basic = Environment(working_path=Path(__file__).parent)
     exec = Dialects.DUCK_DB.default_executor(environment=basic)
-    from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
     results = exec.execute_text(
         """
 import recursive_env;

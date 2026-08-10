@@ -5,11 +5,9 @@ from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.utility import get_disconnected_components
 from trilogy.executor import Executor
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_array_filtering():
-    DebuggingHook()
     engine = Dialects.DUCK_DB.default_executor()
     test = """
 key id int;
@@ -31,7 +29,6 @@ select id
 
 
 def test_array_inclusion(default_duckdb_engine: Executor):
-    DebuggingHook()
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
@@ -52,7 +49,6 @@ where
 
 
 def test_array_inclusion_aggregate_one(default_duckdb_engine: Executor):
-    default_duckdb_engine.hooks = [DebuggingHook()]
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
@@ -80,7 +76,6 @@ select
 
 
 def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
-    default_duckdb_engine.hooks = [DebuggingHook()]
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
@@ -154,7 +149,6 @@ asc
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (1, None)
     assert results[1] == (2, 2)
@@ -162,7 +156,6 @@ asc
 
 
 def test_demo_filter_select():
-    DebuggingHook()
     test = """const x <- unnest([1,2,2,3]);
 
 select
@@ -172,7 +165,6 @@ where
   (x % 2) = 0;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (2, 8)
     assert len(results) == 2
@@ -194,7 +186,6 @@ order by
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (4,)
     assert len(results) == 2
@@ -213,7 +204,6 @@ select
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (2, 4)
     assert len(results) == 1
@@ -264,7 +254,6 @@ select
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (4,)
 
@@ -277,7 +266,6 @@ select
 ;"""
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (2,)
 
@@ -408,7 +396,6 @@ where
 
 """
 
-    duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 2
 
@@ -426,7 +413,6 @@ order by
     item desc;
 """
 
-    duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0] == ("hammer", 4)
@@ -529,8 +515,6 @@ order by
     item desc;
 """
 
-    duckdb_engine.hooks = [DebuggingHook()]
-
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0] == ("hammer", 2)
@@ -552,7 +536,6 @@ def test_filter_scalar_aggregate_not_restricted_by_staging():
       4. SELECT-level aggregate with matching outer WHERE: the filter *does*
          apply (SELECT-level aggregates are not filter scalars).
     """
-    DebuggingHook()
 
     model = """
 key item_id int;
@@ -729,7 +712,6 @@ order by local.ward asc
 
 
 def test_multiple_string_filters():
-    DebuggingHook()
     query = """
     key case_number int;
 property case_number.primary_type string;
@@ -802,7 +784,6 @@ select
 
 def test_filter_constant_unrelated():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     test = """
 key x int;
 
