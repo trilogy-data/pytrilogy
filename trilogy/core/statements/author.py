@@ -51,6 +51,7 @@ from trilogy.core.models.author import (
     WindowItem,
     combine_staged_wheres,
     get_concept_arguments,
+    normalize_where_stages,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
@@ -171,9 +172,10 @@ class SelectJoin:
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: list[SelectItem]
     where_clause: WhereClause | None = None
-    # Ordered `then where` stages; where_clause is always their AND fold. A
-    # flat where is a single stage. Later stages' aggregates/windows compute
-    # over rows passing all earlier stages (applied at v4 discovery).
+    # Ordered `then where` stages; `where_clause` is always their AND fold (see
+    # `normalize_where_stages`). A flat where is a single stage, so this is
+    # empty only when there is no where at all. Later stages' aggregates and
+    # windows compute over rows passing all earlier stages (v4 discovery).
     where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: HavingClause | None = None
     order_by: OrderBy | None = None
@@ -200,8 +202,24 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         self.selection = new
         if not isinstance(self.local_concepts, EnvironmentConceptDict):
             self.local_concepts = validate_concepts(self.local_concepts)
-        if not self.where_clauses and self.where_clause:
-            self.where_clauses = [self.where_clause]
+        self.where_clauses = normalize_where_stages(
+            self.where_clause, self.where_clauses
+        )
+
+    @property
+    def first_where_stage(self) -> WhereClause | None:
+        """Stage 1 of the chain — the only stage read back against the SELECT.
+
+        A later stage's aggregate has its inputs gated by the earlier stages,
+        so an identical-looking spelling is a genuinely different computation
+        and the rules that redirect a WHERE aggregate to HAVING must not see
+        it."""
+        return self.where_clauses[0] if self.where_clauses else None
+
+    def with_where_stages(self, stages: list[WhereClause]) -> None:
+        """Replace the staged chain and re-fold the combined gate with it."""
+        self.where_clauses = stages
+        self.where_clause = combine_staged_wheres(stages)
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         derived = [
@@ -365,18 +383,16 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                             x.address, x.metadata.line_number if x.metadata else None
                         )
             if replacements:
-                self.where_clauses = [
-                    wc.with_reference_replacement(replacements)
-                    for wc in self.where_clauses
-                ]
-                self.where_clause = combine_staged_wheres(self.where_clauses)
+                self.with_where_stages(
+                    [
+                        wc.with_reference_replacement(replacements)
+                        for wc in self.where_clauses
+                    ]
+                )
         # Only a SCALAR select (no grouping key) restricts a WHERE aggregate that is
         # also derived in the select; a grouped select computes it at the select
         # grain over the WHERE-unfiltered universe as a valid pre-aggregation gate.
-        # Only stage 1 of a `then where` chain is restricted: a later stage's
-        # aggregate is a different computation (its inputs are gated by the
-        # earlier stages), never the select's own output read back.
-        first_stage = self.where_clauses[0] if self.where_clauses else self.where_clause
+        first_stage = self.first_where_stage
         if first_stage and not self.grain.components:
             for cref in first_stage.concept_arguments:
                 concept = environment.concepts[cref.address]

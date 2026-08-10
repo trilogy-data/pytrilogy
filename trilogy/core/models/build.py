@@ -2002,10 +2002,13 @@ class BuildSelectLineage:
     grain: BuildGrain = field(default_factory=BuildGrain)
     where_clause: BuildWhereClause | None = field(default=None)
     # Ordered `then where` stages, built with the same WHERE factory as the
-    # combined `where_clause` so every address aligns with it. Populated only
-    # for a staged (2+) chain; empty for a flat where. Discovery uses these to
-    # deliver earlier-stage atoms as input filters on later stages' cross-row
-    # computations; `where_clause` remains the canonical full row gate.
+    # combined `where_clause` so every address aligns with it. This is THE
+    # place that decides what counts as staged: populated only for a chain that
+    # actually stages something (2+), because a flat where is a one-stage chain
+    # that says nothing `where_clause` does not. Downstream code can therefore
+    # test it for truth rather than re-deriving the length rule. Discovery uses
+    # these to deliver earlier-stage atoms as input filters on later stages'
+    # cross-row computations; `where_clause` stays the canonical full row gate.
     where_clauses: list[BuildWhereClause] = field(default_factory=list)
     having_clause: BuildHavingClause | None = field(default=None)
     # Author-side WHERE retained for diagnostics only (never planning). Scoped-

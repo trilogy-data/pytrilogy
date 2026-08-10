@@ -21,6 +21,7 @@ from trilogy.core.processing.v4_helper.condition_injection import (
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.projection import lineage_existence_only
 from trilogy.core.processing.v4_helper.source_planning import SourceRequest, plan_source
+from trilogy.core.processing.v4_helper.staged_where import hosting_stage_index
 
 from .common import search_parent
 from .condition_sources import resolve_existence_sources
@@ -120,32 +121,21 @@ def _staged_precondition_clauses(
     the host's feeder scan, but a re-sourced copy (this ROW branch) plans in a
     sub-search where the host is the search output itself — outside the
     delivery pass's D1 reach — so the bound must ride the sub-search's own
-    WHERE. Stages before a cross-row stage are scalar-only
-    (`_validate_staged_where`); existence-bearing atoms keep their side
-    channel. Wrapper lineage (`1.2 * avg(...)`) is expanded so the stage
-    matching sees the inner cross-row concept."""
-    if not staged_conditions or len(staged_conditions) < 2:
+    WHERE. Parse-time validation rejects a chain whose earlier stage carries a
+    cross-row or existence predicate ahead of a cross-row stage, so everything
+    before the hosting stage is a plain scalar atom that can travel as-is."""
+    if not staged_conditions:
         return []
-    arg_addrs: set[str] = set()
-    for concept in row_args:
-        arg_addrs.add(concept.address)
-        arg_addrs.update(s.address for s in concept.sources)
-    stage_idx = 0
-    for i, clause in enumerate(staged_conditions):
-        clause_addrs = {c.address for c in clause.row_arguments}
-        for c in clause.row_arguments:
-            clause_addrs.update(s.address for s in c.sources)
-        if clause_addrs & arg_addrs:
-            stage_idx = i
-    if stage_idx == 0:
+    stage_index = hosting_stage_index(staged_conditions, row_args)
+    if not stage_index:
         return []
-    atoms = [
-        atom
-        for clause in staged_conditions[:stage_idx]
-        for atom in decompose_condition(clause.conditional)
-        if not any(atom.existence_arguments)
-    ]
-    combined = combine_condition_atoms(atoms)
+    combined = combine_condition_atoms(
+        [
+            atom
+            for clause in staged_conditions[:stage_index]
+            for atom in decompose_condition(clause.conditional)
+        ]
+    )
     return [BuildWhereClause(conditional=combined)] if combined is not None else []
 
 

@@ -166,6 +166,131 @@ def test_staged_where_inside_rowset_body(backend) -> None:
     assert rows == [(2, 100)], rows
 
 
+def test_staged_with_having(backend) -> None:
+    rows = _rows(
+        AGG_SCHEMA,
+        "where f = 1 then where sum(z) by x > 5 select x, sum(z) as v having v > 1;",
+    )
+    assert rows == [(2, 100)], rows
+
+
+def test_staged_with_order_by_and_limit(backend) -> None:
+    rows = _rows(
+        AGG_SCHEMA,
+        "where f = 0 then where count(id) by x > 0 "
+        "select x, sum(z) as v order by x desc limit 1;",
+    )
+    assert rows == [(1, 10)], rows
+
+
+def test_staged_in_post_select_where_slot(backend) -> None:
+    rows = _rows(
+        AGG_SCHEMA,
+        "select x, sum(z) as v where f = 1 then where sum(z) by x > 5;",
+    )
+    assert rows == [(2, 100)], rows
+
+
+def test_staged_multiselect_arm(backend) -> None:
+    # the staged arm contributes only x=2; the flat arm contributes both
+    rows = _rows(
+        AGG_SCHEMA,
+        "where f = 1 then where sum(z) by x > 5 select x as xa, sum(z) as va\n"
+        "merge\n"
+        "where f = 1 select x as xb, count(id) as cb\n"
+        "align xx: xa, xb;",
+    )
+    assert [(r[0], r[1]) for r in rows] == [(1, None), (2, 2)], rows
+
+
+def test_staged_with_scoped_join(backend) -> None:
+    model = AGG_SCHEMA + """
+key bid int;
+property bid.bx int;
+property bid.bflag int;
+datasource b ( bid, bx, bflag ) grain (bid)
+query '''select 1 as bid, 1 as bx, 1 as bflag union all select 2, 2, 0''';
+"""
+    query = "select x, sum(z) as v subset join bx = x;"
+    staged = _rows(model, "where bflag = 1 then where sum(z) by x > 5 " + query)
+    manual = _rows(model, "where bflag = 1 and sum(z ? bflag = 1) by x > 5 " + query)
+    assert staged == manual, (staged, manual)
+
+
+def test_or_and_not_at_stage_root(backend) -> None:
+    disjunction = _rows(
+        AGG_SCHEMA,
+        "where f = 1 then where sum(z) by x > 5 or sum(z) by x < 1 "
+        "select x, sum(z) as v;",
+    )
+    negation = _rows(
+        AGG_SCHEMA,
+        "where f = 1 then where not sum(z) by x > 5 select x, sum(z) as v;",
+    )
+    assert disjunction == [(2, 100)], disjunction
+    assert negation == [(1, 2)], negation
+
+
+def test_cross_datasource_aggregate_in_later_stage(backend) -> None:
+    model = AGG_SCHEMA + """
+key oid int;
+property oid.amt int;
+datasource o ( oid, amt, oref:id ) grain (oid)
+query '''select 10 as oid, 7 as amt, 1 as oref
+union all select 11, 9, 2
+union all select 12, 11, 3''';
+"""
+    staged = _rows(
+        model, "where f = 1 then where sum(amt) by x > 8 select x, sum(z) as v;"
+    )
+    manual = _rows(
+        model,
+        "where f = 1 and sum(amt ? f = 1) by x > 8 select x, sum(z) as v;",
+    )
+    assert staged == manual == [(2, 100)], (staged, manual)
+
+
+def test_grand_total_aggregate_in_later_stage(backend) -> None:
+    # no `by` clause: the gate is a single keyless aggregate over stage-1 rows
+    staged = _rows(
+        AGG_SCHEMA, "where f = 1 then where sum(z) > 50 select x, sum(z) as v;"
+    )
+    manual = _rows(
+        AGG_SCHEMA, "where f = 1 and sum(z ? f = 1) > 50 select x, sum(z) as v;"
+    )
+    assert staged == manual == [(2, 100)], (staged, manual)
+
+
+def test_trailing_scalar_stage_does_not_bound_the_gate(backend) -> None:
+    # `z > 1` runs AFTER the gate stage, so the gate's sum still sees every
+    # f = 1 row -- it must not leak backwards into the aggregate's input
+    env = Environment()
+    env.parse(AGG_SCHEMA)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    query = (
+        "where f = 1 then where sum(z) by x > 5 then where z > 1 "
+        "select x, sum(z) as v;"
+    )
+    sql = executor.generate_sql(query)[-1]
+    before_having = sql[: sql.index("HAVING")]
+    gate_cte = before_having[before_having.rindex(" as (") :]
+    assert '"f" = 1' in gate_cte, sql
+    assert '"z" > 1' not in gate_cte, sql
+    assert _rows(AGG_SCHEMA, query) == [(2, 100)]
+
+
+def test_staged_persist_round_trips(backend) -> None:
+    env = Environment()
+    env.parse(AGG_SCHEMA)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    executor.execute_query(
+        "persist pz into ptbl from where f = 1 then where sum(z) by x > 5 "
+        "select id, x, z;"
+    )
+    rows = sorted(tuple(r) for r in executor.execute_raw_sql("select * from ptbl"))
+    assert rows == [(3, 2, 100)], rows
+
+
 def test_partial_datasource_still_admitted_by_scalar_conjunct(backend) -> None:
     # a `complete where` datasource matching the stage-1 scalar atom must stay
     # eligible under a staged clause

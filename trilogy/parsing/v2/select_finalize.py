@@ -82,7 +82,6 @@ from trilogy.core.models.author import (
     RowsetItem,
     UndefinedConcept,
     UndefinedConceptFull,
-    combine_staged_wheres,
 )
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
@@ -93,7 +92,7 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
 )
-from trilogy.core.where_scope_normalization import _collect_cross_row_parts
+from trilogy.core.where_scope_normalization import collect_cross_row_parts
 from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
@@ -436,12 +435,9 @@ def _validate_where_aggregate_matches_select(
     if not select_aggs:
         return
     sig_to_alias = {sig: addr for sig, addr in select_aggs}
-    # Only stage 1 of a `then where` chain can recompute a SELECT aggregate:
-    # a later stage's aggregate has its inputs gated by the earlier stages, so
-    # an identical-looking spelling is a genuinely different computation.
-    first_stage = (
-        select.where_clauses[0] if select.where_clauses else select.where_clause
-    )
+    first_stage = select.first_where_stage
+    if first_stage is None:
+        return
     for node in _collect_condition_aggregates(first_stage.conditional):
         sig = _aggregate_full_signature(node)
         if sig is None or sig not in sig_to_alias:
@@ -459,31 +455,58 @@ def _validate_where_aggregate_matches_select(
 def _validate_staged_where(
     select: SelectStatement, context: RuleContext, line_no: int | None
 ) -> None:
-    """v1 `then where` restriction: an earlier stage whose predicate contains a
-    cross-row computation (aggregate/window) cannot gate a later stage that
-    also computes cross-row — delivering an aggregate gate into a later
-    computation's input rows needs a feeder join the planner does not yet
-    build. Scalar earlier stages (the motivating shape) are unrestricted."""
+    """v1 `then where` restriction on what an earlier stage may contain.
+
+    A stage bound reaches a later stage's aggregate or window by riding that
+    computation's input scan, which the planner only knows how to do for a
+    plain scalar row predicate. Two kinds of earlier predicate cannot travel
+    that way: a cross-row one (delivering an aggregate gate into another
+    computation's input rows needs a feeder join we do not build), and an
+    existence one (`x in (select ...)`), whose subquery the input scan cannot
+    re-plan. Both are rejected rather than dropped, because dropping one
+    silently returns flat-WHERE rows for a query that asked for staged
+    semantics. Scalar earlier stages — the motivating shape — are
+    unrestricted, as is either kind in a stage with no cross-row stage after
+    it, where the predicate is just a conjunct of the combined gate."""
     if len(select.where_clauses) < 2:
         return
     cross = [
         bool(
-            _collect_cross_row_parts(
+            collect_cross_row_parts(
                 stage.conditional, select.local_concepts, context.environment, set()
             )
         )
         for stage in select.where_clauses
     ]
+    # A literal membership (`x in (1, 2)`) reports one EMPTY existence group;
+    # only an actual existence concept is a subquery feeder.
+    existence = [any(stage.existence_arguments) for stage in select.where_clauses]
     for later, later_cross in enumerate(cross):
-        if later_cross and any(cross[:later]):
-            raise InvalidSyntaxException(
-                f"`then where` stage {later + 1} computes an aggregate or window, "
-                f"but an earlier stage's predicate also contains one; gating a "
-                f"later stage's computation inputs by an earlier aggregate/window "
-                f"predicate is not yet supported. Write the earlier condition as "
-                f"an inline filter instead (e.g. `sum(x ? <condition>)`), or "
-                f"flatten the stages" + (f"; Line: {line_no}" if line_no else "")
-            )
+        if not later_cross:
+            continue
+        blocker = next(
+            (
+                earlier
+                for earlier in range(later)
+                if cross[earlier] or existence[earlier]
+            ),
+            None,
+        )
+        if blocker is None:
+            continue
+        kind = (
+            "computes an aggregate or window"
+            if cross[blocker]
+            else "contains a subquery membership filter"
+        )
+        raise InvalidSyntaxException(
+            f"`then where` stage {later + 1} computes an aggregate or window, "
+            f"but earlier stage {blocker + 1} {kind}; gating a later stage's "
+            f"computation inputs by that is not yet supported. Write the "
+            f"earlier condition as an inline filter instead (e.g. "
+            f"`sum(x ? <condition>)`), or flatten the stages"
+            + (f"; Line: {line_no}" if line_no else "")
+        )
 
 
 def _validate_having_aggregates_match_select(
@@ -1430,11 +1453,12 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.metadata.line_number if x.metadata else None,
                     )
         if replacements:
-            select.where_clauses = [
-                wc.with_reference_replacement(replacements)
-                for wc in select.where_clauses
-            ]
-            select.where_clause = combine_staged_wheres(select.where_clauses)
+            select.with_where_stages(
+                [
+                    wc.with_reference_replacement(replacements)
+                    for wc in select.where_clauses
+                ]
+            )
     _rewrite_aliased_source_refs(select)
     all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived
@@ -1445,12 +1469,8 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     # computes at the select grain over the WHERE-unfiltered universe (its own CTE),
     # a valid pre-aggregation gate distinct from the post-filter SELECT/HAVING
     # aggregate. A scalar select has no grain to anchor that gate and the planner
-    # drops sibling row filters, so keep redirecting it to HAVING. Stage 1 of a
-    # `then where` chain only: later stages' aggregates are input-gated by the
-    # earlier stages and never read the select's own output back.
-    first_where_stage = (
-        select.where_clauses[0] if select.where_clauses else select.where_clause
-    )
+    # drops sibling row filters, so keep redirecting it to HAVING.
+    first_where_stage = select.first_where_stage
     if first_where_stage and not select.grain.components:
         for cref in first_where_stage.concept_arguments:
             concept = context.concepts.get(cref.address)

@@ -23,7 +23,6 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
-    Conditional,
     Function,
     HavingClause,
     MultiSelectLineage,
@@ -31,6 +30,8 @@ from trilogy.core.models.author import (
     RowsetItem,
     SelectLineage,
     WhereClause,
+    combine_staged_wheres,
+    prepend_where_stage,
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -1007,9 +1008,8 @@ def get_query_node(
     graph = generate_graph(build_environment)
 
     staged_conditions = (
-        build_statement.where_clauses
+        build_statement.where_clauses or None
         if isinstance(build_statement, BuildSelectLineage)
-        and len(build_statement.where_clauses) > 1
         else None
     )
 
@@ -1168,19 +1168,16 @@ def process_persist(
     # Datasources created from a persist-with-WHERE already embed the condition
     # in the SELECT, so injecting again would duplicate it.
     if ds.is_partial and ds.non_partial_for:
-        if select_stmt.where_clause is None:
-            select_stmt = replace(select_stmt, where_clause=ds.non_partial_for)
-        else:
-            select_stmt = replace(
-                select_stmt,
-                where_clause=WhereClause(
-                    conditional=Conditional(
-                        left=ds.non_partial_for.conditional,
-                        right=select_stmt.where_clause.conditional,
-                        operator=BooleanOperator.AND,
-                    )
-                ),
-            )
+        # AND into stage 1 rather than onto the combined clause: the partition
+        # condition gates every row the persist writes, so it belongs ahead of
+        # any `then where` staging, and a bare `where_clause=` replace would
+        # leave the stage list describing the un-narrowed gate.
+        stages = prepend_where_stage(select_stmt.where_clauses, ds.non_partial_for)
+        select_stmt = replace(
+            select_stmt,
+            where_clause=combine_staged_wheres(stages),
+            where_clauses=stages,
+        )
     # set to unpublished to avoid circular refs
     try:
         ds.status = DatasourceState.UNPUBLISHED

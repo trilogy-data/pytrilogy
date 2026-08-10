@@ -229,9 +229,7 @@ def plan_nested_select(
     # A nested select's own `then where` stages ride its built lineage; thread
     # them so a staged rowset body / multiselect arm keeps staged semantics.
     staged = (
-        built.where_clauses
-        if isinstance(built, BuildSelectLineage) and len(built.where_clauses) > 1
-        else None
+        built.where_clauses or None if isinstance(built, BuildSelectLineage) else None
     )
     # Constructs nested inside this select inherit the hidden set.
     history.nested_exclusions = hidden

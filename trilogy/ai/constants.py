@@ -171,8 +171,10 @@ You must use inline filters if you want a where clause aggregate/window to be fi
 OR use a staged `then where` chain: each `then where` stage's aggregates/windows compute
 over only the rows passing all earlier stages (the final row gate is the AND of all stages).
 `where x = 5 then where sum(y) > 10` is equivalent to `where x = 5 and sum(y ? x = 5) > 10`.
-An earlier stage containing its own aggregate/window cannot precede a later stage that
-computes one (write that as an inline filter instead).
+Before a stage that computes an aggregate/window, every earlier stage must be plain
+scalar row conditions: an earlier aggregate/window, or an earlier `x in (select ...)`,
+is an error (write that condition as an inline filter instead). Those are only
+restricted when a LATER stage computes across rows.
 
 where student.state = 'TN' #  filters ALL Data to the state
 select 

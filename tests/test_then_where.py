@@ -8,12 +8,20 @@ test_then_where_execution.py.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 
 import pytest
 
 from trilogy import parse
 from trilogy.constants import CONFIG, ParserBackend
+from trilogy.core.enums import BooleanOperator
 from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.models.author import (
+    Conditional,
+    WhereClause,
+    combine_staged_wheres,
+    prepend_where_stage,
+)
 from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.render import Renderer
 
@@ -175,3 +183,106 @@ then where cat = 'a'
 select id;
 """)
     assert len(select.where_clauses) == 2
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_existence_earlier_stage_before_cross_row_stage_rejected(
+    backend: ParserBackend,
+) -> None:
+    # a subquery membership cannot be delivered into a later stage's input
+    # scan; rejecting beats silently returning flat-WHERE rows
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="subquery membership filter"
+    ):
+        _select(MODEL + """
+where id in (select id where cat = 'a')
+then where sum(val) by cat > 10
+select id;
+""")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_existence_earlier_stage_with_scalar_later_stage_allowed(
+    backend: ParserBackend,
+) -> None:
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where id in (select id where cat = 'a')
+then where val > 1
+select id;
+""")
+    assert len(select.where_clauses) == 2
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_existence_after_cross_row_stage_allowed(backend: ParserBackend) -> None:
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where cat = 'a'
+then where sum(val) by cat > 10
+then where id in (select id where cat = 'a')
+select id;
+""")
+    assert len(select.where_clauses) == 3
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_literal_membership_earlier_stage_allowed(backend: ParserBackend) -> None:
+    # `in (1, 2)` reports an empty existence group and is a plain row filter
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where id in (1, 2)
+then where sum(val) by cat > 10
+select id;
+""")
+    assert len(select.where_clauses) == 2
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_combined_clause_is_exactly_the_stage_fold(backend: ParserBackend) -> None:
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where cat = 'a'
+then where val > 1
+then where sum(val) by cat > 10
+select id;
+""")
+    assert select.where_clause == combine_staged_wheres(select.where_clauses)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_replace_cannot_desync_stages_from_gate(backend: ParserBackend) -> None:
+    # dataclasses.replace copies the old stage list verbatim; __post_init__ must
+    # re-derive it so the pair can never describe two different conditions
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where cat = 'a'
+then where sum(val) by cat > 10
+select id;
+""")
+    widened = WhereClause(
+        conditional=Conditional(
+            left=select.where_clauses[0].conditional,
+            right=select.where_clause.conditional,
+            operator=BooleanOperator.AND,
+        )
+    )
+    rebuilt = replace(select, where_clause=widened)
+    assert rebuilt.where_clause == combine_staged_wheres(rebuilt.where_clauses)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_prepend_where_stage_keeps_later_stages(backend: ParserBackend) -> None:
+    # a gate that applies to the whole statement ANDs into stage 1, so later
+    # stages keep their own (now narrower) input population
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where cat = 'a'
+then where sum(val) by cat > 10
+select id;
+""")
+    extra = select.where_clauses[0]
+    stages = prepend_where_stage(select.where_clauses, extra)
+    assert len(stages) == 2
+    assert str(select.where_clauses[1]) == str(stages[1])
+    assert str(extra) in str(stages[0])

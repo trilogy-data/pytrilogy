@@ -29,6 +29,11 @@ from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .models import ConceptAttrs, GroupBucket
+from .staged_where import (
+    CROSS_ROW_DERIVATIONS,
+    stage_computes_cross_row,
+    stage_lineage_addresses,
+)
 
 ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
@@ -642,13 +647,6 @@ def _conjunction_recompute_placements(
     return extra
 
 
-_STAGE_HOST_DERIVATIONS: set[Derivation] = {
-    Derivation.AGGREGATE,
-    Derivation.GROUP_TO,
-    Derivation.WINDOW,
-}
-
-
 def _staged_precondition_placements(
     staged_conditions: list[BuildWhereClause],
     group_graph: nx.DiGraph,
@@ -670,28 +668,26 @@ def _staged_precondition_placements(
     ROOT_D1 feeder (e.g. fed by a rowset boundary) takes the atom directly and
     the strategy builder's pre-filter peel applies it below the computation.
 
-    Only plain scalar row atoms travel, under the same exclusions as
-    conjunction co-delivery: existence-bearing atoms keep their side channel,
-    probe/scoped-axis atoms read a post-merge axis, and an atom over a host's
-    own output would turn a gate into a pre-filter."""
-    if len(staged_conditions) < 2:
-        return []
+    Parse-time validation rejects a chain whose earlier stage carries a
+    cross-row or existence predicate ahead of a cross-row stage, so the atoms
+    that reach a host here are plain scalar row filters. Two exclusions remain,
+    both because the atom does not mean what it says at the host's input:
+    probe/scoped-axis atoms read an axis that only exists post-merge, and an
+    atom over the host's OWN output is a gate, which becoming a pre-filter
+    would change."""
     d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     extra: list[ConditionPlacement] = []
     earlier_atoms: list[BoolExpr] = []
-    for i, clause in enumerate(staged_conditions):
-        if i > 0 and earlier_atoms:
-            # A stage may reference its cross-row computation through scalar
-            # wrappers (`1.3 * avg(x) by k`): the host bucket's member is the
-            # inner anonymous aggregate, not the wrapping concept, so match
-            # hosts against the full lineage expansion.
-            stage_addrs = {c.address for c in clause.row_arguments}
-            for c in clause.row_arguments:
-                stage_addrs.update(s.address for s in c.sources)
+    for clause in staged_conditions:
+        # A scalar stage is an ordinary conjunct of the combined gate, applied
+        # once at the end; only a stage that computes across rows has inputs
+        # for the earlier stages to bound.
+        if earlier_atoms and stage_computes_cross_row(clause):
+            stage_addrs = stage_lineage_addresses(clause)
             hosts = sorted(
                 gid
                 for gid, b in buckets.items()
-                if b.derivation in _STAGE_HOST_DERIVATIONS
+                if b.derivation in CROSS_ROW_DERIVATIONS
                 and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
                 and stage_addrs & set(b.primary_members)
             )
@@ -700,8 +696,6 @@ def _staged_precondition_placements(
                 targets = feeders or [host]
                 host_outputs = set(buckets[host].primary_members)
                 for atom in earlier_atoms:
-                    if any(atom.existence_arguments):
-                        continue
                     row_inputs = {c.address for c in atom.row_arguments}
                     if not row_inputs:
                         continue

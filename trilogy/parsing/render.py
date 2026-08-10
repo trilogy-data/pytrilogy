@@ -1026,16 +1026,11 @@ class Renderer:
                 for c in arg.selection
                 if not self._is_hidden_subquery_output(c)
             ]
-            # A `then where` chain renders stage by stage (fmt round-trip);
-            # a flat where renders from the combined clause as before.
-            if len(arg.where_clauses) > 1:
-                where_stages = [
-                    self.indent_lines(self.to_string(wc)) for wc in arg.where_clauses
-                ]
-            elif arg.where_clause:
-                where_stages = [self.indent_lines(self.to_string(arg.where_clause))]
-            else:
-                where_stages = []
+            # Stage by stage: a flat where is the one-stage chain `[where_clause]`,
+            # so this renders it unchanged and a `then where` chain round-trips.
+            where_stages = [
+                self.indent_lines(self.to_string(wc)) for wc in arg.where_clauses
+            ]
             having_clause = None
             if arg.having_clause:
                 having_clause = self.indent_lines(self.to_string(arg.having_clause))
