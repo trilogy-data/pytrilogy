@@ -1871,45 +1871,55 @@ class TestResolveFileSource:
 
 
 class TestFileIntrospectionSource:
-    """`_file_introspection_source` builds the read_* SQL fragment."""
+    """`file_introspection_source` builds the read_* SQL fragment."""
 
     def test_csv_uses_read_csv_auto(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        assert _file_introspection_source("/a/b.csv", AddressType.CSV) == (
+        assert file_introspection_source("/a/b.csv", AddressType.CSV) == (
             "read_csv_auto('/a/b.csv')"
         )
 
     def test_tsv_uses_tab_delimiter(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        sql = _file_introspection_source("/a/b.tsv", AddressType.TSV)
+        sql = file_introspection_source("/a/b.tsv", AddressType.TSV)
         assert sql.startswith("read_csv_auto(")
         assert "delim='\\t'" in sql
 
     def test_parquet_uses_read_parquet(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
-        assert _file_introspection_source("/a/b.parquet", AddressType.PARQUET) == (
+        assert file_introspection_source("/a/b.parquet", AddressType.PARQUET) == (
             "read_parquet('/a/b.parquet')"
         )
 
     def test_unsupported_addr_type_raises(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
         with pytest.raises(ValueError, match="Unsupported file address type"):
-            _file_introspection_source("/a/b", AddressType.QUERY)
+            file_introspection_source("/a/b", AddressType.QUERY)
 
     def test_single_quote_in_path_is_escaped(self):
         from trilogy.core.enums import AddressType
-        from trilogy.scripts.ingest import _file_introspection_source
+        from trilogy.scripts.ingest_helpers.introspection import (
+            file_introspection_source,
+        )
 
         # SQL injection guard: path with a literal apostrophe must be escaped.
-        sql = _file_introspection_source("/a/b's.csv", AddressType.CSV)
+        sql = file_introspection_source("/a/b's.csv", AddressType.CSV)
         assert sql == "read_csv_auto('/a/b''s.csv')"
 
 
