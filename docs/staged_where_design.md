@@ -71,6 +71,22 @@ feeder** — that host's input has no per-row gate value to compare against — 
 that raises `UnresolvableQueryException` rather than silently dropping the
 bound. Write the later stage's computation as an inline filter instead.
 
+### Known gaps (open, `xfail` in tests/test_then_where_execution.py)
+
+Two shapes of a 2+ cross-row-stage chain still return FLAT rows silently. Both
+need a chain whose stages group by *crossing* keys to observe — a chain whose
+gates all group by one key drops whole groups, which a later gate on that same
+key cannot see.
+
+- **A non-aggregating select.** `where sum(z) by x > 5 then where count(id) by
+  y > 1 select y` gives `[p, q]`; `[p]` is correct. The stage-1 gate leaves its
+  gate CTE (no `HAVING`) and is applied in a separate downstream CTE, so the
+  stage-2 feeder joins the unfiltered producer. Any aggregate in the select
+  restores the correct shape.
+- **A keyed third gate.** In `... then where count(id) by y > 1 then where
+  count(id) by x > 1`, stage 3 is computed without stage 2's bound. The same
+  chain with a grand-total third gate is correct.
+
 ### The same computation in two stages
 
 Because each stage computes over a different row population, `sum(z) by x`

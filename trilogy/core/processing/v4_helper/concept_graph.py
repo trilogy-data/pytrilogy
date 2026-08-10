@@ -74,20 +74,32 @@ PHASE_CONDITION_SUFFIX = "@condition"
 _STAGE_QUALIFIER_PREFIX = ":s"
 
 
+def _split_condition_label(label: str) -> tuple[str, int | None] | None:
+    """Split a condition-phase label into its (scope, stage index) parts, or
+    None if it is not a condition-phase label at all. The stage index is None
+    for the plain `@condition` phase and an int for a stage-qualified
+    `@condition:s<N>` one. Sole parser of the label format."""
+    scope, sep, qualifier = label.partition(PHASE_CONDITION_SUFFIX)
+    if not sep:
+        return None
+    if not qualifier:
+        return scope, None
+    if qualifier.startswith(_STAGE_QUALIFIER_PREFIX):
+        stage = qualifier[len(_STAGE_QUALIFIER_PREFIX) :]
+        if stage.isdigit():
+            return scope, int(stage)
+    return None
+
+
 def _scope_and_phase(label: str) -> tuple[str, str]:
     """Split a label into its (scope, phase) parts. scope is "" for the outer
     query and the rowset name for rowset internals; phase is "blank" or
-    "condition" (including stage-qualified `@condition:s<N>` labels)."""
-    scope, sep, qualifier = label.partition(PHASE_CONDITION_SUFFIX)
-    if sep and (
-        qualifier == ""
-        or (
-            qualifier.startswith(_STAGE_QUALIFIER_PREFIX)
-            and qualifier[len(_STAGE_QUALIFIER_PREFIX) :].isdigit()
-        )
-    ):
-        return scope, "condition"
-    return label, "blank"
+    "condition" (including stage-qualified `@condition:s<N>` labels, which are
+    one phase here — callers that care about the stage ask for it by name)."""
+    parsed = _split_condition_label(label)
+    if parsed is None:
+        return label, "blank"
+    return parsed[0], "condition"
 
 
 def _condition_label(scope_label: str) -> str:
@@ -107,14 +119,8 @@ def stage_condition_label(scope_label: str, stage_index: int) -> str:
 def condition_stage_of_label(label: str) -> int | None:
     """The `then where` stage index a condition-phase label is qualified with,
     or None for the plain condition phase (and all non-condition labels)."""
-    _, sep, qualifier = label.partition(PHASE_CONDITION_SUFFIX)
-    if (
-        sep
-        and qualifier.startswith(_STAGE_QUALIFIER_PREFIX)
-        and qualifier[len(_STAGE_QUALIFIER_PREFIX) :].isdigit()
-    ):
-        return int(qualifier[len(_STAGE_QUALIFIER_PREFIX) :])
-    return None
+    parsed = _split_condition_label(label)
+    return parsed[1] if parsed else None
 
 
 def _effective_label(
@@ -1470,7 +1476,12 @@ def _staged_condition_labels(
     cross-row-hosting stage plans under its own label. Presence is judged
     against THIS search's conditions, not the statement's stage list: a
     sub-search re-sourcing one stage's gate carries only the earlier stages'
-    atoms, and its single population needs no split."""
+    atoms, and its single population needs no split.
+
+    The map is keyed by ADDRESS, so it relies on one computation never gating
+    two stages — `_validate_staged_where` (parsing/v2/select_finalize.py) owns
+    that invariant; without it the later stage's label would silently answer
+    for the earlier stage's gate too."""
     if not staged_conditions or len(staged_conditions) < 2:
         return {}
     present = {arg.address for clause in conditions for arg in clause.row_arguments}
@@ -1776,6 +1787,9 @@ def build_concept_graph(
     # concept that only ever appears as an existence-arg gets an explicit
     # `existence` edge instead (below), so the dataflow distinction is
     # carried in the graph rather than recovered later via heuristics.
+    # `then where` stage qualifiers collapse into the one condition phase here
+    # on purpose: the constraint is "filter inputs sit above the barrier",
+    # which every stage's gate owes the barrier alike.
     nodes_by_scope_phase: dict[tuple[str, str], list[str]] = {}
     for n in graph.nodes:
         scope, phase = _scope_and_phase(attrs[n].label)

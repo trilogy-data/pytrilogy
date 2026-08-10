@@ -228,10 +228,12 @@ def _add_d1_root_buckets(
 ) -> dict[int | None, str]:
     """Add an extra ROOT bucket per stage qualifier containing just that
     stage's d1-feeding roots. Returns group ids keyed like the input; the
-    plain (None) bucket keeps its historical id."""
+    plain (None) bucket carries no discriminator, so it keeps its historical
+    id. Buckets are added plain-first then by stage so bucket insertion order
+    does not depend on set iteration order."""
     gids: dict[int | None, str] = {}
     for stage, d1_calc_roots in sorted(
-        d1_calc_roots_by_stage.items(), key=lambda kv: (kv[0] is not None, kv[0] or 0)
+        d1_calc_roots_by_stage.items(), key=lambda kv: (-1 if kv[0] is None else kv[0])
     ):
         if not d1_calc_roots:
             continue
@@ -2380,9 +2382,7 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs
     )
     d1_root_gids = _add_d1_root_buckets(concept_attrs, buckets, d1_calc_roots_by_stage)
-    all_d1_calc_roots: set[str] = set()
-    for stage_roots in d1_calc_roots_by_stage.values():
-        all_d1_calc_roots |= stage_roots
+    all_d1_calc_roots: set[str] = set().union(*d1_calc_roots_by_stage.values())
     _prune_existence_exclusive_roots(
         concept_graph,
         concept_edges,

@@ -186,6 +186,35 @@ select id;
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+def test_same_computation_under_two_spellings_rejected(backend: ParserBackend) -> None:
+    # the two stages spell it differently but resolve to one build address, so
+    # the graph's address-keyed stage split cannot tell them apart
+    model = MODEL + "auto sv <- sum(val) by cat;\n"
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="same computation"
+    ):
+        _select(model + """
+where sum(val) by cat > 5
+then where sv < 100
+select id;
+""")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_scalar_wrapped_computation_in_two_stages_rejected(
+    backend: ParserBackend,
+) -> None:
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="same computation"
+    ):
+        _select(MODEL + """
+where sum(val) by cat > 5
+then where 1.0 * sum(val) by cat < 100
+select id;
+""")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_same_named_metric_in_two_stages_rejected(backend: ParserBackend) -> None:
     model = MODEL + "auto sv <- sum(val) by cat;\n"
     with _using_backend(backend), pytest.raises(

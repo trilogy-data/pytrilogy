@@ -469,22 +469,26 @@ def _validate_staged_where(
     first_stage_of: dict[str, int] = {}
     for index, stage in enumerate(select.where_clauses):
         # Expand nested parts too: a window's ORDER BY aggregate collides with
-        # an earlier stage's bare gate the same way a top-level twin does.
+        # an earlier stage's bare gate the same way a top-level twin does. The
+        # key is the LINEAGE node's rendering, so spellings normalize — a named
+        # metric collides with its literal expansion, which is what makes the
+        # address-keyed `_staged_condition_labels` split safe downstream.
         parts = collect_cross_row_parts(
             stage.conditional, select.local_concepts, context.environment, set()
         )
-        expanded: list[Any] = []
+        seen: set[str] = set()
         while parts:
             part = parts.pop()
-            expanded.append(part)
+            key = str(part)
+            if key in seen:
+                continue
+            seen.add(key)
             for child in _child_exprs(part):
                 parts.extend(
                     collect_cross_row_parts(
                         child, select.local_concepts, context.environment, set()
                     )
                 )
-        for part in expanded:
-            key = str(part)
             earlier = first_stage_of.setdefault(key, index)
             if earlier != index:
                 raise InvalidSyntaxException(

@@ -11,6 +11,7 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.constants import CONFIG, ParserBackend
+from trilogy.core.exceptions import UnresolvableQueryException
 
 AGG_SCHEMA = """key id int;
 property id.x int;
@@ -36,6 +37,25 @@ select * from (values
 ) as t(launch_id, vehicle_name, orb_pay)
 ''';
 """
+
+
+# Two CROSSING dimensions. A chain whose stages all group by the same key can
+# never discriminate staged from flat — a group gate drops whole groups, which
+# a later gate on that same key cannot see — so every gate-population test
+# needs a second dimension to cut across the first.
+CROSS_SCHEMA = """key id int;
+property id.x string;
+property id.y string;
+property id.z int;
+datasource d ( id, x, y, z ) grain (id)
+query '''select * from (values
+ (1,'a','p',10),(2,'a','q',1),(3,'b','p',1),
+ (4,'b','q',1),(5,'c','p',5),(6,'c','p',5)
+) as t(id,x,y,z)''';
+"""
+# sum(z) by x = {a: 11, b: 2, c: 10}; `> 5` keeps rows 1,2,5,6.
+# count(id) by y over those = {p: 3, q: 1}; `> 1` keeps rows 1,5,6.
+# count(id) by x over those = {a: 1, c: 2}; `> 1` keeps rows 5,6.
 
 
 @pytest.fixture(params=[ParserBackend.PEST, ParserBackend.LARK])
@@ -404,6 +424,97 @@ def test_existence_stage_before_two_cross_row_stages(backend) -> None:
         "select x, sum(z) as v;",
     )
     assert staged == [(2, 100)], staged
+
+
+def test_cross_row_stages_on_crossing_keys(backend) -> None:
+    staged = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 then where count(id) by y > 1 "
+        "select y, count(id) as c;",
+    )
+    # flat conjuncts count the unfiltered population, where y=q also passes
+    flat = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 and count(id) by y > 1 select y, count(id) as c;",
+    )
+    assert staged == [("p", 3)], staged
+    assert flat == [("p", 3), ("q", 1)], flat
+
+
+def test_three_cross_row_stages_grand_total_last(backend) -> None:
+    # stage-3 counts the rows passing stages 1 and 2 (3 of them); over the
+    # stage-1-only population it would count 4 and empty the result
+    staged = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 then where count(id) by y > 1 "
+        "then where count(id) <= 3 select x, sum(z) as v;",
+    )
+    assert staged == [("a", 10), ("c", 10)], staged
+
+
+def test_scalar_stage_before_two_cross_row_stages(backend) -> None:
+    # z > 1 keeps rows 1,5,6; count by y over those keeps all three; count by
+    # x over those is a=1, c=2, so only c survives
+    staged = _rows(
+        CROSS_SCHEMA,
+        "where z > 1 then where count(id) by y > 1 then where count(id) by x > 1 "
+        "select x, sum(z) as v;",
+    )
+    assert staged == [("c", 10)], staged
+
+
+def test_rowset_body_with_two_cross_row_stages(backend) -> None:
+    rows = _rows(
+        CROSS_SCHEMA,
+        "rowset r <- where sum(z) by x > 5 then where count(id) by y > 1 "
+        "select x, y, sum(z) as v;\n"
+        "select r.x, r.v;",
+    )
+    assert rows == [("a", 10), ("c", 10)], rows
+
+
+def test_cross_row_stage_bound_without_feeder_raises(backend) -> None:
+    # the documented limitation: a rowset-fed host has no re-plannable feeder
+    # scan for the earlier gate to ride, so it is a typed error, never a
+    # silently dropped bound
+    env = Environment()
+    env.parse(CROSS_SCHEMA + "rowset r <- select id, x, z where z > 1;\n")
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    with pytest.raises(UnresolvableQueryException, match="no re-plannable feeder"):
+        executor.generate_sql(
+            "where sum(r.z) by r.x > 5 then where count(r.id) by r.x > 1 "
+            "select r.x, sum(r.z) as v;"
+        )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="a non-aggregating select drops the earlier stage's gate off the "
+    "gate CTE, so the later stage's feeder reads the unfiltered population",
+)
+def test_plain_select_with_two_cross_row_stages(backend) -> None:
+    staged = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 then where count(id) by y > 1 select y;",
+    )
+    oracle = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 and count(id ? sum(z) by x > 5) by y > 1 select y;",
+    )
+    assert staged == oracle == [("p",)], (staged, oracle)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="stage 3's gate is computed without stage 2's cross-row bound",
+)
+def test_three_cross_row_stages_keyed_last(backend) -> None:
+    staged = _rows(
+        CROSS_SCHEMA,
+        "where sum(z) by x > 5 then where count(id) by y > 1 "
+        "then where count(id) by x > 1 select x, sum(z) as v;",
+    )
+    assert staged == [("c", 10)], staged
 
 
 def test_staged_persist_round_trips(backend) -> None:
