@@ -159,15 +159,42 @@ select
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_cross_row_earlier_stage_before_cross_row_stage_rejected(
+def test_cross_row_earlier_stage_before_cross_row_stage_allowed(
     backend: ParserBackend,
 ) -> None:
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where sum(val) by cat > 5
+then where count(id) by cat > 0
+select id;
+""")
+    assert len(select.where_clauses) == 2
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_same_computation_in_two_stages_rejected(backend: ParserBackend) -> None:
+    # `sum(val) by cat` names a different value per stage (each stage has its
+    # own input population) but the identical spelling resolves to one concept
     with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="not yet supported"
+        InvalidSyntaxException, match="same computation"
     ):
         _select(MODEL + """
 where sum(val) by cat > 5
-then where count(id) by cat > 0
+then where sum(val) by cat < 100
+select id;
+""")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_same_named_metric_in_two_stages_rejected(backend: ParserBackend) -> None:
+    model = MODEL + "auto sv <- sum(val) by cat;\n"
+    with _using_backend(backend), pytest.raises(
+        InvalidSyntaxException, match="same computation"
+    ):
+        _select(model + """
+where sv > 5
+then where val > 1
+then where sv < 100
 select id;
 """)
 

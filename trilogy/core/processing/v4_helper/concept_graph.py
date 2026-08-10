@@ -54,6 +54,7 @@ from .edges import EdgeMap, add_edge, edge_kind
 from .functional_dependency import minimize_build_grain
 from .models import ConceptAttrs
 from .projection import concept_satisfiable, lineage_existence_only
+from .staged_where import cross_row_stage_args
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 
@@ -64,19 +65,56 @@ UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 # distinct so we don't try to promote/demote a single shared node.
 PHASE_CONDITION_SUFFIX = "@condition"
 
+# A `then where` chain gives each stage's cross-row computations a distinct
+# input population (the rows passing the stages before it). Population is
+# identity: two gates over different populations must not share a node, a
+# bucket, or a feeder scan. Each cross-row-hosting stage after the first
+# therefore plans under a stage-qualified condition label, splitting its whole
+# lineage subtree — and its root_d1 feeder — from the other stages'.
+_STAGE_QUALIFIER_PREFIX = ":s"
+
 
 def _scope_and_phase(label: str) -> tuple[str, str]:
     """Split a label into its (scope, phase) parts. scope is "" for the outer
     query and the rowset name for rowset internals; phase is "blank" or
-    "condition"."""
-    if label.endswith(PHASE_CONDITION_SUFFIX):
-        return label[: -len(PHASE_CONDITION_SUFFIX)], "condition"
+    "condition" (including stage-qualified `@condition:s<N>` labels)."""
+    scope, sep, qualifier = label.partition(PHASE_CONDITION_SUFFIX)
+    if sep and (
+        qualifier == ""
+        or (
+            qualifier.startswith(_STAGE_QUALIFIER_PREFIX)
+            and qualifier[len(_STAGE_QUALIFIER_PREFIX) :].isdigit()
+        )
+    ):
+        return scope, "condition"
     return label, "blank"
 
 
 def _condition_label(scope_label: str) -> str:
     """Build the condition-phase label from a blank-phase label."""
     return f"{scope_label}{PHASE_CONDITION_SUFFIX}"
+
+
+def stage_condition_label(scope_label: str, stage_index: int) -> str:
+    """The condition-phase label for a specific `then where` stage's cross-row
+    computations."""
+    return (
+        f"{scope_label}{PHASE_CONDITION_SUFFIX}"
+        f"{_STAGE_QUALIFIER_PREFIX}{stage_index}"
+    )
+
+
+def condition_stage_of_label(label: str) -> int | None:
+    """The `then where` stage index a condition-phase label is qualified with,
+    or None for the plain condition phase (and all non-condition labels)."""
+    _, sep, qualifier = label.partition(PHASE_CONDITION_SUFFIX)
+    if (
+        sep
+        and qualifier.startswith(_STAGE_QUALIFIER_PREFIX)
+        and qualifier[len(_STAGE_QUALIFIER_PREFIX) :].isdigit()
+    ):
+        return int(qualifier[len(_STAGE_QUALIFIER_PREFIX) :])
+    return None
 
 
 def _effective_label(
@@ -1420,11 +1458,42 @@ def resolve_alternatives(
                 _prune_orphan_branch(graph, edges, loser, sinks)
 
 
+def _staged_condition_labels(
+    conditions: list[BuildWhereClause],
+    staged_conditions: list[BuildWhereClause] | None,
+) -> dict[str, str]:
+    """Map cross-row condition-arg addresses to stage-qualified condition
+    labels, when this search's conditions span 2+ cross-row-hosting stages.
+
+    The first cross-row-hosting stage present keeps the plain condition label
+    — its graph is bit-identical to the unstaged one — and each later
+    cross-row-hosting stage plans under its own label. Presence is judged
+    against THIS search's conditions, not the statement's stage list: a
+    sub-search re-sourcing one stage's gate carries only the earlier stages'
+    atoms, and its single population needs no split."""
+    if not staged_conditions or len(staged_conditions) < 2:
+        return {}
+    present = {arg.address for clause in conditions for arg in clause.row_arguments}
+    stage_args: list[tuple[int, list[BuildConcept]]] = []
+    for index, clause in enumerate(staged_conditions):
+        args = [a for a in cross_row_stage_args(clause) if a.address in present]
+        if args:
+            stage_args.append((index, args))
+    if len(stage_args) < 2:
+        return {}
+    labels: dict[str, str] = {}
+    for index, args in stage_args[1:]:
+        for arg in args:
+            labels[arg.address] = stage_condition_label("", index)
+    return labels
+
+
 def build_concept_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
     materialized_roots: frozenset[str] = frozenset(),
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> tuple[nx.DiGraph, dict[str, ConceptAttrs], EdgeMap]:
     """Build the concept-level DAG. Constraint edges (d1→d0) record the
     invariant that filter inputs must be available above any row-shape barrier
@@ -1462,7 +1531,11 @@ def build_concept_graph(
         )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so we never
-    # have to retro-promote depth labels.
+    # have to retro-promote depth labels. A later `then where` stage's
+    # cross-row computation walks under a stage-qualified condition label
+    # instead: its input population differs per stage, so its lineage subtree
+    # (and its root_d1 feeder, downstream) must not be shared across stages.
+    staged_labels = _staged_condition_labels(conditions, staged_conditions)
     for clause in conditions:
         for concept in clause.concept_arguments:
             resolved = environment.concepts.get(concept.address, concept) or concept
@@ -1472,7 +1545,7 @@ def build_concept_graph(
                 graph,
                 edges,
                 attrs,
-                label=_condition_label(""),
+                label=staged_labels.get(resolved.address, _condition_label("")),
                 materialized_roots=materialized_roots,
                 datasource_addresses=datasource_addresses,
                 pinned_probes=pinned_probes,
@@ -1633,7 +1706,11 @@ def build_concept_graph(
         for cc in clause.concept_arguments:
             resolved = environment.concepts.get(cc.address, cc) or cc
             sid = node_id(
-                _effective_label(resolved, _condition_label(""), root_like),
+                _effective_label(
+                    resolved,
+                    staged_labels.get(resolved.address, _condition_label("")),
+                    root_like,
+                ),
                 resolved.address,
             )
             if sid in graph:
@@ -1767,9 +1844,14 @@ def build_concept_graph(
     for existence_addr, row_addr in existence_arg_pairs:
         existence_nid = node_id(_condition_label(""), existence_addr)
         # The row arg may be in either the blank or @condition phase
-        # depending on whether it's also a SELECT output. Connect to
-        # whichever exists; the atom's host bucket consumes from there.
-        for candidate_label in ("", _condition_label("")):
+        # depending on whether it's also a SELECT output — or in a
+        # stage-qualified condition phase when it's a later stage's cross-row
+        # computation. Connect to whichever exists; the atom's host bucket
+        # consumes from there.
+        row_candidates = ["", _condition_label("")]
+        if row_addr in staged_labels:
+            row_candidates.append(staged_labels[row_addr])
+        for candidate_label in row_candidates:
             row_nid = node_id(candidate_label, row_addr)
             if (
                 existence_nid in graph

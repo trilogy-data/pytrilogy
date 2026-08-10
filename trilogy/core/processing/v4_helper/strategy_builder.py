@@ -1978,19 +1978,24 @@ def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[st
     constraint / existence). Each kind expresses a different dataflow
     relationship downstream, but all of them require the source group to
     be built before the consumer — a constraint sibling has to be
-    JOIN-ready, an existence source has to be subselect-ready. Returns
-    an empty list on cycle so callers bail rather than build a partial
-    plan."""
+    JOIN-ready, an existence source has to be subselect-ready.
+
+    A cycle means no build order exists, which is always a planner bug.
+    Raising is deliberate: this used to log and return an empty order, and
+    an empty order does not stop the caller — it builds nothing, falls
+    through to whatever partial plan the surrounding retries produce, and
+    returns ROWS. A dependency the planner could not order silently became
+    a dropped filter. Failing loudly turns that class of bug into a report
+    instead of a wrong answer."""
     dep_graph = dependency_subgraph(group_graph, group_edges)
     try:
         return list(nx.topological_sort(dep_graph))
-    except nx.NetworkXUnfeasible:
-        try:
-            cycle = nx.find_cycle(dep_graph)
-        except nx.NetworkXNoCycle:
-            cycle = None
-        logger.warning("[v4] group-graph cycle, abandoning strategy build: %s", cycle)
-        return []
+    except nx.NetworkXUnfeasible as exc:
+        cycle = nx.find_cycle(dep_graph)
+        raise UnresolvableQueryException(
+            "Query planning produced a circular dependency between group nodes, "
+            f"so there is no valid build order: {cycle}"
+        ) from exc
 
 
 def _output_covers(output: BuildConcept, concept: BuildConcept) -> bool:

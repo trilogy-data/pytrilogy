@@ -53,23 +53,33 @@ delivered anywhere for it, and a flat `where` is simply a one-stage chain.
 ## What an earlier stage may contain
 
 An earlier stage's condition reaches a later stage's aggregate by riding that
-computation's input scan. Ordinary row predicates all go down that path,
-including existence ones — `where id in (select ...) then where sum(z) by x > 5`
-wires the subquery as a semi-join feeder on the gate's scan, exactly as it
-would at the row gate. A literal membership (`x in (1, 2)`) is a plain
-comparison and likewise unrestricted.
+computation's input scan, and every kind of predicate can travel that path.
 
-The one rejection is an **aggregate or window in an earlier stage, ahead of a
-later stage that also computes across rows**. That gate depends on the very
-scan it would have to filter, so the group graph closes a cycle, abandons the
-strategy build and falls back to a plan that drops rows the gate never
-excluded — wrong answers with no signal. Delivering it properly needs a feeder
-join we do not build yet, so it is an `InvalidSyntaxException`. Write the
-earlier condition as an inline filter (`sum(x ? cond)`) or flatten the stages.
+- **Ordinary row predicates** become a `WHERE` on the scan.
+- **Existence predicates** — `where id in (select ...) then where sum(z) by x > 5`
+  — wire their subquery as a semi-join feeder on that scan, exactly as they
+  would at the row gate. A literal membership (`x in (1, 2)`) is a plain
+  comparison and needs nothing special.
+- **Cross-row predicates** travel too. The host stage plans under a
+  stage-qualified condition label, so its feeder is private to the stage, and
+  the feeder's ROOT re-plan applies the aggregate gate the same way a flat
+  `where sum(z) by x > 5 select id` does: re-sourced standalone and semi-joined
+  back on its grain.
 
-The restriction only applies when a *later* stage computes across rows: with no
-such stage the predicate is just a conjunct of the row gate, so
-`where sum(z) by x > 5 then where f = 1` is fine.
+The one thing a cross-row atom cannot do is ride a **direct host with no
+feeder** — that host's input has no per-row gate value to compare against — so
+that raises `UnresolvableQueryException` rather than silently dropping the
+bound. Write the later stage's computation as an inline filter instead.
+
+### The same computation in two stages
+
+Because each stage computes over a different row population, `sum(z) by x`
+gating stage 1 and `sum(z) by x` gating stage 3 name two *different values* —
+but spelled identically they resolve to one concept address, and one concept
+has one value. Rather than let the first stage's value silently answer for
+both, that is an `InvalidSyntaxException` (`_validate_staged_where`), including
+when the collision is via a named metric or nested inside a window's `ORDER BY`.
+Give one stage a distinct expression (an inline filter) or flatten them.
 
 `then where` cannot be combined with a second positional `where` slot: the two
 pre-`select` and post-select-list slots AND into one stage, which cannot express

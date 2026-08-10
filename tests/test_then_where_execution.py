@@ -325,6 +325,87 @@ def test_trailing_scalar_stage_does_not_bound_the_gate(backend) -> None:
     assert _rows(AGG_SCHEMA, query) == [(2, 100)]
 
 
+def test_cross_row_stage_before_cross_row_stage(backend) -> None:
+    # stage-1's gate computes over the FULL population (both x groups pass),
+    # and stage-2's count over stage-1 survivors removes nothing, so the
+    # staged result equals the stage-1-only spelling
+    staged = _rows(
+        AGG_SCHEMA,
+        "where f = 1 and sum(z) by x > 5 then where count(id) by x > 0 "
+        "select x, sum(z) as v;",
+    )
+    stage_one_only = _rows(
+        AGG_SCHEMA, "where f = 1 and sum(z) by x > 5 select x, sum(z) as v;"
+    )
+    assert staged == stage_one_only == [(1, 2), (2, 100)], (staged, stage_one_only)
+
+
+def test_later_gate_counts_only_stage_filtered_rows(backend) -> None:
+    # stage-1 rows are the f = 1 rows (one per x group), so the staged count
+    # is 1 per group and `> 1` empties the result; the flat spelling counts
+    # the unfiltered population (x=1 has 2 rows) and keeps x=1
+    staged = _rows(
+        AGG_SCHEMA,
+        "where f = 1 and sum(z) by x > 5 then where count(id) by x > 1 "
+        "select x, sum(z) as v;",
+    )
+    flat = _rows(
+        AGG_SCHEMA,
+        "where f = 1 and sum(z) by x > 5 and count(id) by x > 1 "
+        "select x, sum(z) as v;",
+    )
+    assert staged == [], staged
+    assert flat == [(1, 2)], flat
+
+
+def test_window_stage_before_aggregate_stage(backend) -> None:
+    # stage-1 keeps the top-4 launches by payload (ids 6,5,4,1); stage-2's
+    # per-vehicle count over those is A=1, B=1, C=2, so only C survives
+    staged = _rows(
+        WINDOW_SCHEMA,
+        "where rank launch_id order by orb_pay desc <= 4 "
+        "then where count(launch_id) by vehicle_name > 1 "
+        "select vehicle_name, sum(orb_pay) as total;",
+    )
+    assert [(r[0], float(r[1])) for r in staged] == [("C", 900.0)], staged
+
+
+def test_aggregate_stage_then_window_stage_then_aggregate_stage(backend) -> None:
+    # stage-1 drops launch 6; stage-2 ranks vehicles by their stage-1 sums
+    # (C=400 #1, B=270 #2, A=150 #3) keeping B and C; stage-3 counts the
+    # rows passing both stages (B=2, C=1) keeping only B
+    staged = _rows(
+        WINDOW_SCHEMA,
+        "where orb_pay < 450 "
+        "then where rank vehicle_name order by sum(orb_pay) by vehicle_name desc <= 2 "
+        "then where count(launch_id) by vehicle_name > 1 "
+        "select vehicle_name, sum(orb_pay) as total;",
+    )
+    assert [(r[0], float(r[1])) for r in staged] == [("B", 270.0)], staged
+
+
+def test_earlier_aggregate_gate_bounds_later_gate_input(backend) -> None:
+    # stage-1's gate keeps only the x=2 row (id 3), so stage-2's grand total
+    # counts 1 and passes; counting the unfiltered population (3 rows) would
+    # fail the gate and empty the result
+    staged = _rows(
+        AGG_SCHEMA,
+        "where sum(z) by x > 50 then where count(id) <= 2 select x, sum(z) as v;",
+    )
+    assert staged == [(2, 100)], staged
+
+
+def test_existence_stage_before_two_cross_row_stages(backend) -> None:
+    staged = _rows(
+        AGG_SCHEMA,
+        "where id in (select id where f = 1) "
+        "then where sum(z) by x > 5 "
+        "then where count(id) by x > 0 "
+        "select x, sum(z) as v;",
+    )
+    assert staged == [(2, 100)], staged
+
+
 def test_staged_persist_round_trips(backend) -> None:
     env = Environment()
     env.parse(AGG_SCHEMA)

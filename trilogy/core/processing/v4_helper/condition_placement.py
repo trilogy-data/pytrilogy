@@ -11,7 +11,10 @@ from enum import Enum
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Derivation
-from trilogy.core.exceptions import DisconnectedConceptsException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -31,6 +34,7 @@ from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .models import ConceptAttrs, GroupBucket
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
+    concept_is_cross_row,
     stage_computes_cross_row,
     stage_lineage_addresses,
 )
@@ -669,12 +673,18 @@ def _staged_precondition_placements(
     the strategy builder's pre-filter peel applies it below the computation.
 
     An existence atom travels like any other: its subquery becomes a semi-join
-    feeder on the scan, the same one it would have become at the row gate.
-    Parse-time validation rejects only a CROSS-ROW earlier stage, which cannot
-    ride a scan it is itself computed from. Two exclusions remain, both because
-    the atom does not mean what it says at the host's input: probe/scoped-axis
-    atoms read an axis that only exists post-merge, and an atom over the host's
-    OWN output is a gate, which becoming a pre-filter would change."""
+    feeder on the scan, the same one it would have become at the row gate. A
+    CROSS-ROW earlier atom travels too: the host's stage plans under a
+    stage-qualified condition label, so its feeder is private to the stage,
+    and the feeder's ROOT re-plan applies an aggregate/window condition the
+    same way a flat `where sum(z) by x > 5 select id` does — the gate
+    re-sourced standalone and semi-joined back on its grain. What a cross-row
+    atom CANNOT do is ride a direct host with no feeder: the host's input has
+    no per-row gate value to compare, so that is a typed error rather than a
+    silently dropped bound. Two exclusions remain, both because the atom does
+    not mean what it says at the host's input: probe/scoped-axis atoms read an
+    axis that only exists post-merge, and an atom over the host's OWN output
+    is a gate, which becoming a pre-filter would change."""
     d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     extra: list[ConditionPlacement] = []
     earlier_atoms: list[BoolExpr] = []
@@ -706,6 +716,18 @@ def _staged_precondition_placements(
                         continue
                     if row_inputs & host_outputs:
                         continue
+                    atom_cross_row = any(
+                        concept_is_cross_row(c) for c in atom.row_arguments
+                    )
+                    if atom_cross_row and not feeders:
+                        raise UnresolvableQueryException(
+                            "`then where` stage bound "
+                            f"{atom} computes across rows, but the later "
+                            f"stage's computation host {host} has no "
+                            "re-plannable feeder scan to apply it on; "
+                            "write the later stage's computation as an "
+                            "inline filter instead"
+                        )
                     for gid in targets:
                         # A ROOT_D1 feeder re-plans from datasources, so it can
                         # source atom columns it does not yet carry; a direct

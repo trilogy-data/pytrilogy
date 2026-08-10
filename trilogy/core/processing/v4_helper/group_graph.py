@@ -36,6 +36,7 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 from .concept_graph import (
     _statement_scoped_relation_members,
     computed_origin_relation_members,
+    condition_stage_of_label,
 )
 from .condition_placement import PlacementReason, plan_condition_placements
 from .constants import (
@@ -126,8 +127,14 @@ def _d1_calc_subgraph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
-) -> tuple[set[str], set[str]]:
-    """Identify (d1_calc_roots, d1_subgraph_nodes).
+) -> tuple[dict[int | None, set[str]], set[str]]:
+    """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
+
+    Roots are keyed by the condition label's stage qualifier: None is the
+    plain condition phase (every query today; the first cross-row-hosting
+    stage of a chain), and each later cross-row-hosting stage gets its own
+    root set — its feeder scan carries the earlier stages' bounds, so it must
+    not be shared with a differently-bounded stage's computations.
 
     Any concept reached via the WHERE recursion lives at a condition-phase
     label (suffix ``@condition``) and is classified d1. We route a root →
@@ -161,7 +168,7 @@ def _d1_calc_subgraph(
         n for n in concept_graph.nodes if concept_attrs[n].depth_label == DepthLabel.D1
     }
     if not d1_subgraph:
-        return set(), set()
+        return {}, set()
 
     def _needs_independent_scan(n: str) -> bool:
         if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
@@ -184,48 +191,66 @@ def _d1_calc_subgraph(
 
     # Walk lineage upward from each d1 node that needs an independent scan; the
     # blank-phase ROOT ancestors are the roots whose condition scan must stay
-    # separate from the SELECT-side scan.
-    d1_calc_roots: set[str] = set()
-    visited: set[str] = set()
-    stack: list[str] = [n for n in d1_subgraph if _needs_independent_scan(n)]
-    while stack:
-        cur = stack.pop()
-        for pred, _ in concept_graph.in_edges(cur):
-            if edge_kind(concept_edges, pred, cur) != EdgeKind.LINEAGE:
-                continue
-            if pred in visited:
-                continue
-            visited.add(pred)
-            pa = concept_attrs[pred]
-            if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
-                d1_calc_roots.add(pred)
-            else:
-                stack.append(pred)
-    return d1_calc_roots, d1_subgraph
+    # separate from the SELECT-side scan. One walk per stage qualifier: a root
+    # feeding two stages' computations belongs to both feeders (the scan is
+    # duplicated per population, which is the point of the split).
+    needing = [n for n in d1_subgraph if _needs_independent_scan(n)]
+    roots_by_stage: dict[int | None, set[str]] = {}
+    for stage in {condition_stage_of_label(concept_attrs[n].label) for n in needing}:
+        d1_calc_roots: set[str] = set()
+        visited: set[str] = set()
+        stack: list[str] = [
+            n
+            for n in needing
+            if condition_stage_of_label(concept_attrs[n].label) == stage
+        ]
+        while stack:
+            cur = stack.pop()
+            for pred, _ in concept_graph.in_edges(cur):
+                if edge_kind(concept_edges, pred, cur) != EdgeKind.LINEAGE:
+                    continue
+                if pred in visited:
+                    continue
+                visited.add(pred)
+                pa = concept_attrs[pred]
+                if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
+                    d1_calc_roots.add(pred)
+                else:
+                    stack.append(pred)
+        roots_by_stage[stage] = d1_calc_roots
+    return roots_by_stage, d1_subgraph
 
 
-def _add_d1_root_bucket(
+def _add_d1_root_buckets(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
-    d1_calc_roots: set[str],
-) -> str | None:
-    """Add an extra ROOT bucket containing just the d1-feeding roots. Returns
-    the new bucket's group id (or None if no d1 calc roots)."""
-    if not d1_calc_roots:
-        return None
-    bucket = GroupBucket(
-        depth_label=ROOT_D1_DEPTH,
-        derivation=Derivation.ROOT,
-        grain_components=frozenset(),
-    )
-    for node in sorted(d1_calc_roots):
-        address = concept_attrs[node].address
-        bucket.primary_members.append(address)
-        bucket.primary_node_ids.append(node)
-        bucket.member_depths[address] = concept_attrs[node].depth_label
-    gid = _group_id_for(bucket)
-    buckets[gid] = bucket
-    return gid
+    d1_calc_roots_by_stage: dict[int | None, set[str]],
+) -> dict[int | None, str]:
+    """Add an extra ROOT bucket per stage qualifier containing just that
+    stage's d1-feeding roots. Returns group ids keyed like the input; the
+    plain (None) bucket keeps its historical id."""
+    gids: dict[int | None, str] = {}
+    for stage, d1_calc_roots in sorted(
+        d1_calc_roots_by_stage.items(), key=lambda kv: (kv[0] is not None, kv[0] or 0)
+    ):
+        if not d1_calc_roots:
+            continue
+        bucket = GroupBucket(
+            depth_label=ROOT_D1_DEPTH,
+            derivation=Derivation.ROOT,
+            grain_components=frozenset(),
+        )
+        if stage is not None:
+            bucket.discriminator = f"stage:s{stage}"
+        for node in sorted(d1_calc_roots):
+            address = concept_attrs[node].address
+            bucket.primary_members.append(address)
+            bucket.primary_node_ids.append(node)
+            bucket.member_depths[address] = concept_attrs[node].depth_label
+        gid = _group_id_for(bucket)
+        buckets[gid] = bucket
+        gids[stage] = gid
+    return gids
 
 
 def _prune_existence_exclusive_roots(
@@ -954,10 +979,11 @@ def _fold_rollup_key_dims(
 def _materialize_group_graph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     buckets: dict[str, GroupBucket],
-    d1_root_gid: str | None = None,
-    d1_calc_roots: set[str] | None = None,
+    d1_root_gids: dict[int | None, str] | None = None,
+    d1_calc_roots_by_stage: dict[int | None, set[str]] | None = None,
     d1_subgraph: set[str] | None = None,
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs], EdgeMap]:
     """Realize the in-flight `GroupBucket` map as an nx.DiGraph plus a
@@ -1002,7 +1028,11 @@ def _materialize_group_graph(
     # the d1 calc reads from a pristine scan; root → anything-else still
     # routes through the default R_other bucket and inherits its pushed-down
     # WHEREs. Without the split, sibling filters pollute the avg's input.
-    d1_calc_roots = d1_calc_roots or set()
+    # With `then where` stage-qualified condition labels, each stage has its
+    # own R_d1 — the consuming node's label picks which feeder the edge
+    # sources from.
+    d1_root_gids = d1_root_gids or {}
+    d1_calc_roots_by_stage = d1_calc_roots_by_stage or {}
     d1_subgraph = d1_subgraph or set()
     # The group-edge `kind` records the strongest concept-level edge that maps
     # to it: lineage > constraint > existence. Lineage means the row stream
@@ -1021,10 +1051,12 @@ def _materialize_group_graph(
         kind = ed.kind
         if kind not in DEPENDENCY_EDGE_KINDS:
             continue
-        if d1_root_gid is not None and u in d1_calc_roots and v in d1_subgraph:
-            gu = d1_root_gid
-        else:
-            gu = primary_group[u]
+        gu = primary_group[u]
+        if d1_root_gids and v in d1_subgraph:
+            stage = condition_stage_of_label(concept_attrs[v].label)
+            feeder_gid = d1_root_gids.get(stage)
+            if feeder_gid is not None and u in d1_calc_roots_by_stage.get(stage, ()):
+                gu = feeder_gid
         gv = primary_group[v]
         if gu == gv:
             continue
@@ -2344,16 +2376,19 @@ def build_group_graph(
             | _post_aggregate_basic_args(mandatory_list or []),
             _finer_filter_grains(conditions),
         )
-    d1_calc_roots, d1_subgraph = _d1_calc_subgraph(
+    d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs
     )
-    d1_root_gid = _add_d1_root_bucket(concept_attrs, buckets, d1_calc_roots)
+    d1_root_gids = _add_d1_root_buckets(concept_attrs, buckets, d1_calc_roots_by_stage)
+    all_d1_calc_roots: set[str] = set()
+    for stage_roots in d1_calc_roots_by_stage.values():
+        all_d1_calc_roots |= stage_roots
     _prune_existence_exclusive_roots(
         concept_graph,
         concept_edges,
         concept_attrs,
         buckets,
-        d1_calc_roots,
+        all_d1_calc_roots,
         d1_subgraph,
         protected_addresses=output_addresses | condition_arg_addresses,
     )
@@ -2361,10 +2396,11 @@ def build_group_graph(
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
         concept_edges,
+        concept_attrs,
         primary_group,
         buckets,
-        d1_root_gid=d1_root_gid,
-        d1_calc_roots=d1_calc_roots,
+        d1_root_gids=d1_root_gids,
+        d1_calc_roots_by_stage=d1_calc_roots_by_stage,
         d1_subgraph=d1_subgraph,
     )
     # FINAL must exist before injection so a cross-arm post-merge filter can

@@ -171,9 +171,10 @@ You must use inline filters if you want a where clause aggregate/window to be fi
 OR use a staged `then where` chain: each `then where` stage's aggregates/windows compute
 over only the rows passing all earlier stages (the final row gate is the AND of all stages).
 `where x = 5 then where sum(y) > 10` is equivalent to `where x = 5 and sum(y ? x = 5) > 10`.
-An earlier stage containing its own aggregate/window cannot precede a later stage that
-computes one (write that as an inline filter instead); ordinary row conditions in an
-earlier stage, including `x in (select ...)`, are fine.
+Any predicate may appear in any stage - row conditions, `x in (select ...)`, and
+aggregates/windows all bound the later stages. The one rule: the SAME cross-row
+expression cannot gate two different stages (each stage computes it over a different
+row population, so one spelling cannot name both) - give one an inline filter instead.
 
 where student.state = 'TN' #  filters ALL Data to the state
 select 

@@ -346,7 +346,11 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
-        mandatory_list, environment, conditions, materialized_roots
+        mandatory_list,
+        environment,
+        conditions,
+        materialized_roots,
+        staged_conditions=staged_conditions,
     )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)

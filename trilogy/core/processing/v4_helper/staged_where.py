@@ -34,6 +34,20 @@ def stage_lineage_addresses(clause: BuildWhereClause) -> set[str]:
     return addresses
 
 
+def concept_is_cross_row(concept: BuildConcept) -> bool:
+    """Whether a condition argument computes across rows, directly or through
+    a scalar wrapper (`1.3 * avg(x) by k`)."""
+    return concept.derivation in CROSS_ROW_DERIVATIONS or any(
+        s.derivation in CROSS_ROW_DERIVATIONS for s in concept.sources
+    )
+
+
+def cross_row_stage_args(clause: BuildWhereClause) -> list[BuildConcept]:
+    """The stage's row arguments that compute across rows — the computations
+    whose input population the staged contract bounds."""
+    return [c for c in clause.row_arguments if concept_is_cross_row(c)]
+
+
 def stage_computes_cross_row(clause: BuildWhereClause) -> bool:
     """Whether this stage's predicate computes an aggregate or window itself.
 
@@ -41,12 +55,7 @@ def stage_computes_cross_row(clause: BuildWhereClause) -> bool:
     scalar stage is an ordinary conjunct of the combined row gate, already
     applied at the end.
     """
-    for concept in clause.row_arguments:
-        if concept.derivation in CROSS_ROW_DERIVATIONS:
-            return True
-        if any(s.derivation in CROSS_ROW_DERIVATIONS for s in concept.sources):
-            return True
-    return False
+    return bool(cross_row_stage_args(clause))
 
 
 def hosting_stage_index(

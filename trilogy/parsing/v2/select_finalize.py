@@ -455,38 +455,46 @@ def _validate_where_aggregate_matches_select(
 def _validate_staged_where(
     select: SelectStatement, context: RuleContext, line_no: int | None
 ) -> None:
-    """v1 `then where` restriction: an earlier stage whose predicate computes
-    across rows cannot precede a later stage that also computes across rows.
+    """`then where` restriction: the same cross-row computation cannot appear
+    in two different stages' predicates.
 
-    A stage bound reaches a later stage's aggregate or window by riding that
-    computation's input scan. An ordinary row predicate goes down that path
-    fine — including an existence one (`x in (select ...)`), whose subquery the
-    scan wires as a semi-join feeder like any other. An aggregate or window
-    gate does not: it depends on the very scan it would have to filter, so the
-    group graph closes a cycle, abandons the strategy build, and falls back to
-    a plan that drops rows the gate never excluded. Delivering it properly
-    needs a feeder join we do not build yet, so this is an error rather than
-    wrong rows."""
+    Stage N's aggregates and windows compute over only the rows passing stages
+    1..N-1, so an expression like `sum(z) by x` names a DIFFERENT value in
+    each stage that gates on it — but spelled identically the spellings
+    resolve to one concept address, and one concept has one value. Rather than
+    silently letting the first stage's value answer for both, reject the
+    ambiguity where the line is known."""
     if len(select.where_clauses) < 2:
         return
-    cross = [
-        bool(
-            collect_cross_row_parts(
-                stage.conditional, select.local_concepts, context.environment, set()
-            )
+    first_stage_of: dict[str, int] = {}
+    for index, stage in enumerate(select.where_clauses):
+        # Expand nested parts too: a window's ORDER BY aggregate collides with
+        # an earlier stage's bare gate the same way a top-level twin does.
+        parts = collect_cross_row_parts(
+            stage.conditional, select.local_concepts, context.environment, set()
         )
-        for stage in select.where_clauses
-    ]
-    for later, later_cross in enumerate(cross):
-        if later_cross and any(cross[:later]):
-            raise InvalidSyntaxException(
-                f"`then where` stage {later + 1} computes an aggregate or window, "
-                f"but an earlier stage's predicate also contains one; gating a "
-                f"later stage's computation inputs by an earlier aggregate/window "
-                f"predicate is not yet supported. Write the earlier condition as "
-                f"an inline filter instead (e.g. `sum(x ? <condition>)`), or "
-                f"flatten the stages" + (f"; Line: {line_no}" if line_no else "")
-            )
+        expanded: list[Any] = []
+        while parts:
+            part = parts.pop()
+            expanded.append(part)
+            for child in _child_exprs(part):
+                parts.extend(
+                    collect_cross_row_parts(
+                        child, select.local_concepts, context.environment, set()
+                    )
+                )
+        for part in expanded:
+            key = str(part)
+            earlier = first_stage_of.setdefault(key, index)
+            if earlier != index:
+                raise InvalidSyntaxException(
+                    f"`then where` stages {earlier + 1} and {index + 1} both "
+                    f"gate on the same computation ({part}); each stage "
+                    f"computes it over a different row population, so the "
+                    f"shared spelling is ambiguous. Give one of them a "
+                    f"distinct expression (e.g. an inline filter) or flatten "
+                    f"the stages" + (f"; Line: {line_no}" if line_no else "")
+                )
 
 
 def _validate_having_aggregates_match_select(
