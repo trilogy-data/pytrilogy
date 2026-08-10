@@ -186,19 +186,19 @@ select id;
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_existence_earlier_stage_before_cross_row_stage_rejected(
+def test_existence_earlier_stage_before_cross_row_stage_allowed(
     backend: ParserBackend,
 ) -> None:
-    # a subquery membership cannot be delivered into a later stage's input
-    # scan; rejecting beats silently returning flat-WHERE rows
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="subquery membership filter"
-    ):
-        _select(MODEL + """
+    # a subquery membership is an ordinary row predicate: it rides the later
+    # stage's input scan as a semi-join feeder (rows asserted in the execution
+    # suite), so unlike a cross-row earlier stage it is not restricted
+    with _using_backend(backend):
+        select = _select(MODEL + """
 where id in (select id where cat = 'a')
 then where sum(val) by cat > 10
 select id;
 """)
+    assert len(select.where_clauses) == 2
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

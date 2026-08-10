@@ -166,6 +166,52 @@ def test_staged_where_inside_rowset_body(backend) -> None:
     assert rows == [(2, 100)], rows
 
 
+EXISTENCE_STAGE_ONE = [
+    ("in (select ...)", "id in (select id where f = 1)"),
+    ("not in (select ...)", "id not in (select id where f = 0)"),
+]
+
+
+@pytest.mark.parametrize("label,predicate", EXISTENCE_STAGE_ONE)
+def test_existence_stage_delivers_into_later_aggregate(
+    backend, label: str, predicate: str
+) -> None:
+    # an existence predicate rides the gate's input scan as a semi-join feeder,
+    # so the staged rows match the manual inline-filter spelling
+    staged = _rows(
+        AGG_SCHEMA,
+        f"where {predicate} then where sum(z) by x > 5 select x, sum(z) as v;",
+    )
+    manual = _rows(
+        AGG_SCHEMA,
+        f"where {predicate} and sum(z ? {predicate}) by x > 5 "
+        "select x, sum(z) as v;",
+    )
+    assert staged == manual == [(2, 100)], (label, staged, manual)
+
+
+def test_existence_stage_delivers_into_later_window(backend) -> None:
+    staged = _rows(
+        AGG_SCHEMA,
+        "where id in (select id where f = 1) "
+        "then where rank x order by sum(z) by x desc <= 1 select x, sum(z) as v;",
+    )
+    assert staged == [(2, 100)], staged
+
+
+def test_existence_stage_semi_join_lands_on_the_gate_scan(backend) -> None:
+    env = Environment()
+    env.parse(AGG_SCHEMA)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = executor.generate_sql(
+        "where id in (select id where f = 1) then where sum(z) by x > 5 "
+        "select x, sum(z) as v;"
+    )[-1]
+    before_having = sql[: sql.index("HAVING")]
+    # the gate aggregate reads a scan the existence feeder already filtered
+    assert "exists (select 1 from" in before_having, sql
+
+
 def test_staged_with_having(backend) -> None:
     rows = _rows(
         AGG_SCHEMA,

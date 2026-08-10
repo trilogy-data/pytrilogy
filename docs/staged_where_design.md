@@ -53,23 +53,23 @@ delivered anywhere for it, and a flat `where` is simply a one-stage chain.
 ## What an earlier stage may contain
 
 An earlier stage's condition reaches a later stage's aggregate by riding that
-computation's input scan, and the planner can only do that for a plain scalar
-row predicate. Two kinds of earlier predicate are rejected at parse time when a
-*later* stage computes across rows:
+computation's input scan. Ordinary row predicates all go down that path,
+including existence ones — `where id in (select ...) then where sum(z) by x > 5`
+wires the subquery as a semi-join feeder on the gate's scan, exactly as it
+would at the row gate. A literal membership (`x in (1, 2)`) is a plain
+comparison and likewise unrestricted.
 
-| Earlier stage contains | Why it cannot travel |
-| --- | --- |
-| an aggregate or window | delivering an aggregate gate into another computation's input rows needs a feeder join we do not build |
-| `x in (select ...)` | the input scan cannot re-plan the subquery |
+The one rejection is an **aggregate or window in an earlier stage, ahead of a
+later stage that also computes across rows**. That gate depends on the very
+scan it would have to filter, so the group graph closes a cycle, abandons the
+strategy build and falls back to a plan that drops rows the gate never
+excluded — wrong answers with no signal. Delivering it properly needs a feeder
+join we do not build yet, so it is an `InvalidSyntaxException`. Write the
+earlier condition as an inline filter (`sum(x ? cond)`) or flatten the stages.
 
-Both are errors rather than silent drops: dropping one returns flat-`WHERE`
-rows for a query that asked for staged semantics, which is a wrong answer with
-no signal. Write the earlier condition as an inline filter (`sum(x ? cond)`) or
-flatten the stages instead. Neither restriction applies when no later stage
-computes across rows — there the predicate is only a conjunct of the row gate,
-so `where sum(z) by x > 5 then where f = 1` and a trailing `x in (select ...)`
-stage are both fine. A literal membership (`x in (1, 2)`) is a plain row filter
-and is never restricted.
+The restriction only applies when a *later* stage computes across rows: with no
+such stage the predicate is just a conjunct of the row gate, so
+`where sum(z) by x > 5 then where f = 1` is fine.
 
 `then where` cannot be combined with a second positional `where` slot: the two
 pre-`select` and post-select-list slots AND into one stage, which cannot express

@@ -121,9 +121,10 @@ def _staged_precondition_clauses(
     the host's feeder scan, but a re-sourced copy (this ROW branch) plans in a
     sub-search where the host is the search output itself — outside the
     delivery pass's D1 reach — so the bound must ride the sub-search's own
-    WHERE. Parse-time validation rejects a chain whose earlier stage carries a
-    cross-row or existence predicate ahead of a cross-row stage, so everything
-    before the hosting stage is a plain scalar atom that can travel as-is."""
+    WHERE. Parse-time validation rejects a cross-row earlier stage, so
+    everything before the hosting stage is a row predicate; existence atoms
+    among them resolve through the shared `resolve_existence_sources` like any
+    other side-channel subselect."""
     if not staged_conditions:
         return []
     stage_index = hosting_stage_index(staged_conditions, row_args)

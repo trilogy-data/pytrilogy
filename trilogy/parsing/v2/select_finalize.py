@@ -455,19 +455,18 @@ def _validate_where_aggregate_matches_select(
 def _validate_staged_where(
     select: SelectStatement, context: RuleContext, line_no: int | None
 ) -> None:
-    """v1 `then where` restriction on what an earlier stage may contain.
+    """v1 `then where` restriction: an earlier stage whose predicate computes
+    across rows cannot precede a later stage that also computes across rows.
 
     A stage bound reaches a later stage's aggregate or window by riding that
-    computation's input scan, which the planner only knows how to do for a
-    plain scalar row predicate. Two kinds of earlier predicate cannot travel
-    that way: a cross-row one (delivering an aggregate gate into another
-    computation's input rows needs a feeder join we do not build), and an
-    existence one (`x in (select ...)`), whose subquery the input scan cannot
-    re-plan. Both are rejected rather than dropped, because dropping one
-    silently returns flat-WHERE rows for a query that asked for staged
-    semantics. Scalar earlier stages — the motivating shape — are
-    unrestricted, as is either kind in a stage with no cross-row stage after
-    it, where the predicate is just a conjunct of the combined gate."""
+    computation's input scan. An ordinary row predicate goes down that path
+    fine — including an existence one (`x in (select ...)`), whose subquery the
+    scan wires as a semi-join feeder like any other. An aggregate or window
+    gate does not: it depends on the very scan it would have to filter, so the
+    group graph closes a cycle, abandons the strategy build, and falls back to
+    a plan that drops rows the gate never excluded. Delivering it properly
+    needs a feeder join we do not build yet, so this is an error rather than
+    wrong rows."""
     if len(select.where_clauses) < 2:
         return
     cross = [
@@ -478,35 +477,16 @@ def _validate_staged_where(
         )
         for stage in select.where_clauses
     ]
-    # A literal membership (`x in (1, 2)`) reports one EMPTY existence group;
-    # only an actual existence concept is a subquery feeder.
-    existence = [any(stage.existence_arguments) for stage in select.where_clauses]
     for later, later_cross in enumerate(cross):
-        if not later_cross:
-            continue
-        blocker = next(
-            (
-                earlier
-                for earlier in range(later)
-                if cross[earlier] or existence[earlier]
-            ),
-            None,
-        )
-        if blocker is None:
-            continue
-        kind = (
-            "computes an aggregate or window"
-            if cross[blocker]
-            else "contains a subquery membership filter"
-        )
-        raise InvalidSyntaxException(
-            f"`then where` stage {later + 1} computes an aggregate or window, "
-            f"but earlier stage {blocker + 1} {kind}; gating a later stage's "
-            f"computation inputs by that is not yet supported. Write the "
-            f"earlier condition as an inline filter instead (e.g. "
-            f"`sum(x ? <condition>)`), or flatten the stages"
-            + (f"; Line: {line_no}" if line_no else "")
-        )
+        if later_cross and any(cross[:later]):
+            raise InvalidSyntaxException(
+                f"`then where` stage {later + 1} computes an aggregate or window, "
+                f"but an earlier stage's predicate also contains one; gating a "
+                f"later stage's computation inputs by an earlier aggregate/window "
+                f"predicate is not yet supported. Write the earlier condition as "
+                f"an inline filter instead (e.g. `sum(x ? <condition>)`), or "
+                f"flatten the stages" + (f"; Line: {line_no}" if line_no else "")
+            )
 
 
 def _validate_having_aggregates_match_select(

@@ -668,13 +668,13 @@ def _staged_precondition_placements(
     ROOT_D1 feeder (e.g. fed by a rowset boundary) takes the atom directly and
     the strategy builder's pre-filter peel applies it below the computation.
 
-    Parse-time validation rejects a chain whose earlier stage carries a
-    cross-row or existence predicate ahead of a cross-row stage, so the atoms
-    that reach a host here are plain scalar row filters. Two exclusions remain,
-    both because the atom does not mean what it says at the host's input:
-    probe/scoped-axis atoms read an axis that only exists post-merge, and an
-    atom over the host's OWN output is a gate, which becoming a pre-filter
-    would change."""
+    An existence atom travels like any other: its subquery becomes a semi-join
+    feeder on the scan, the same one it would have become at the row gate.
+    Parse-time validation rejects only a CROSS-ROW earlier stage, which cannot
+    ride a scan it is itself computed from. Two exclusions remain, both because
+    the atom does not mean what it says at the host's input: probe/scoped-axis
+    atoms read an axis that only exists post-merge, and an atom over the host's
+    OWN output is a gate, which becoming a pre-filter would change."""
     d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
     extra: list[ConditionPlacement] = []
     earlier_atoms: list[BoolExpr] = []
