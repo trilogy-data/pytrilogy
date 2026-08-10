@@ -1,6 +1,6 @@
 # q77 WEB branch, extracted as a standalone select (negative test sk -3).
 # Same merge-join shape as the store branch but keyed on web_page; included so
-# the per-branch v3/v4 parity audit covers all three multiselect arms.
+# the per-branch audit covers all three multiselect arms.
 import web_sales as ws;
 
 const period_start <- '2000-08-23'::date;

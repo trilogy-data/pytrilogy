@@ -114,9 +114,9 @@ def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | N
 
     A derivable pseudonym address (e.g. the struct field `unnest_array.a`)
     resolves through `environment.concepts` to its *canonical* concept (`local.a`,
-    lineage None), not the attr-access origin that actually computes it. v3
-    resolves these synonyms through `alias_origin_lookup`; mirror that so the
-    strategy builder builds the field's projection instead of a dead-end key.
+    lineage None), not the attr-access origin that actually computes it. Resolve
+    such synonyms through `alias_origin_lookup` so the strategy builder builds
+    the field's projection instead of a dead-end key.
     Only the exact-address match from `concepts` is trusted; otherwise the
     origin (whose `.address` equals the requested pseudonym) wins."""
     concept = environment.concepts.get(address)
@@ -198,7 +198,7 @@ def _group_existence_concepts(
         # A BASIC concept whose lineage is (or wraps) a membership comparison
         # (`x in <set>`, e.g. a projected `--x in set as flag`) carries the set
         # as a direct existence arg; without this its subselect renders against a
-        # dangling CTE (INVALID_REFERENCE_BUG). Mirrors v3 gen_basic_node.
+        # dangling CTE (INVALID_REFERENCE_BUG).
         elif isinstance(concept.lineage, BuildConceptArgs):
             for arg_group in concept.lineage.existence_arguments or ():
                 _add(tuple(arg_group))
@@ -817,9 +817,7 @@ def _drop_constant_only_parents(parents: list[StrategyNode]) -> list[StrategyNod
     __preql_internal.all_rows` grand-total marker, a `SELECT 1`). A constant is a
     literal, never a join key — merging it as a row parent only cross-joins it ON
     1=1, and the grand-total marker isn't even a needed output. Keep it only when
-    it is the sole parent (a bare constant select). Mirrors v3, which drops
-    ALL_ROWS_CONCEPT from the concepts it sources (group_node
-    `_resolve_parent_sources`)."""
+    it is the sole parent (a bare constant select)."""
     non_constant = [
         p
         for p in parents
@@ -837,9 +835,8 @@ def _fold_constant_parents(
     """Fold a constant-only parent into a non-constant sibling instead of
     cross-joining it ON 1=1. A constant is a literal rendered inline, valid in
     any projection (aggregate/window/select), so append its needed constants to
-    a sibling's outputs and drop the constant scan -- mirroring v3, which renders
-    a `'abc' as label` straight in the consuming SELECT rather than as its own
-    CTE. Constants not in `needed` (the `by all_rows` grand-total marker) are
+    a sibling's outputs and drop the constant scan, so a `'abc' as label`
+    renders straight in the consuming SELECT rather than as its own CTE. Constants not in `needed` (the `by all_rows` grand-total marker) are
     just dropped."""
     if len(parents) <= 1:
         return parents
@@ -1387,7 +1384,7 @@ def _relation_licenses_handle(
     the handle a substitutable identity of a column the anchor binds; without
     one, a rowset is opaque — its handle's row lineage alone must not let a scan
     over the same base re-derive it (a bare shared-key read of a renamed rowset
-    key is Disconnected in v3, never an implicit join)."""
+    key is Disconnected, never an implicit join)."""
     if concept.pseudonyms:
         return True
     return _scoped_relation_member(environment, concept.address)
@@ -1493,8 +1490,8 @@ def _widen_merge_join_keys(
         # A pure dedup GroupNode (every output rides through from its parents;
         # nothing aggregated locally — force_group dedups included) can safely
         # carry a declared join key: the key joins its parents' row stream, and
-        # the dedup grain widens with it (v3's shape — `quizzical` groups by
-        # c_demo, c_name). Widen the inner scan first, then the group's own
+        # the dedup grain widens with it (`quizzical` groups by c_demo,
+        # c_name). Widen the inner scan first, then the group's own
         # projection.
         if isinstance(parent, GroupNode):
             inner_available = parent_output_addresses(parent)
@@ -1550,8 +1547,8 @@ def _widen_merge_join_keys(
                 continue
             # A non-rowset parent may substitute a handle only when a declared
             # relation licenses it (q35's anchor under `subset join rs.k =
-            # l_key`); unlicensed, the synthesis silently joins a query v3
-            # reports as disconnected (rowset_generation_matrix islanded).
+            # l_key`); unlicensed, the synthesis silently joins a query that
+            # is disconnected (rowset_generation_matrix islanded).
             # A renamed output's mangled content (`_rs_k`) is equally internal
             # — the licensed plan joins the anchor's own column against the
             # boundary's handle, never a synthesized body-local.
@@ -1619,7 +1616,7 @@ def _raise_if_rowset_islanded(
 ) -> None:
     """A FINAL contributor sharing no join axis with any sibling — no common
     output address, pseudonym link, or scoped-relation mate — is about to
-    cross-join ON 1=1. With a rowset boundary involved that is the v3
+    cross-join ON 1=1. With a rowset boundary involved that is the
     Disconnected case (a rowset is opaque; only a declared join relates it back
     to its base), not a legitimate scalar cross join — confirm against the
     shared connectivity check with rowset islanding ON and surface the typed
@@ -1912,8 +1909,8 @@ def _satisfy_parent_projection_contract(
         # cross-joins ON 1=1 — the bridge between the two is a projection-grain key
         # the sibling outputs but fd_needed dropped (an aggregate's input-grain
         # key, `ride_date` linking `start_station.id` to the inner `daily_rides`
-        # aggregate). Keep that bridge by grouping to the combined grain (mirrors
-        # v3's per-(dim,key) dedup CTE). Guarded on disjointness so the normal case
+        # aggregate). Keep that bridge by grouping to the combined grain — a
+        # per-(dim,key) dedup CTE. Guarded on disjointness so the normal case
         # — a dimension that already shares its keys with the aggregate — is left
         # to `_wrap_for_grain` untouched. The bridge may only be DERIVABLE here
         # (the dimension carries `ride_start_time`, from which `ride_date`
@@ -2319,9 +2316,9 @@ def _promote_final_aliases_to_grouping_contributors(
             break
 
     # A contributor whose EVERY mandatory output is a pure rename satisfiable
-    # off one grouping sibling rides that sibling wholesale (v3 renders
+    # off one grouping sibling rides that sibling wholesale, rendering
     # `I_ITEM_ID as store_sales_item_name` inside the aggregate's own GROUP BY
-    # select). Without this the FINAL joins the rename host back to the
+    # select. Without this the FINAL joins the rename host back to the
     # aggregate null-safe on the whole dim tuple just to read the aliases
     # (q29). Group-level, not per-concept: promoting only some outputs leaves
     # the contributor (and its join) alive, so nothing is won.
@@ -2432,9 +2429,9 @@ def _fresh_final_root_projection(
     if node is None or conditions is None:
         return node
     # plan_source validates a conditioned request as COMPLETE when the plan
-    # merely CARRIES the condition's row args (v3's discovery loop applies the
-    # WHERE afterward; see `_conditions_met`'s found-addresses clause). This
-    # re-slice has no such after-step, so an unapplied condition silently
+    # merely CARRIES the condition's row args (see `_conditions_met`'s
+    # found-addresses clause), on the assumption that a later step applies the
+    # WHERE. This re-slice has no such after-step, so an unapplied condition silently
     # vanishes (a NULL-enrichment row rides the FINAL merge back in). Wrap
     # unless the plan provably applies it.
     for existing in (node.conditions, node.preexisting_conditions):
@@ -2709,11 +2706,11 @@ def _group_to_grain_if_required(
     grain is finer than the selected concepts' grain must be grouped down to
     that grain — otherwise duplicate rows at the coarser grain survive into the
     output (and inflate any downstream aggregate that reads them, e.g. q75's
-    `deduped` rowset feeding two `sum`s). Mirrors v3's `group_if_required_v2`,
-    which the v4 FINAL assembly otherwise skips for the single-contributor case.
+    `deduped` rowset feeding two `sum`s) — the dedup the FINAL assembly
+    otherwise skips for the single-contributor case.
 
     The group-required decision is made against the user-requested concepts
-    only (matching v3's `group_if_required_v2`), but the GroupNode keeps any
+    only, but the GroupNode keeps any
     hidden grain keys the node exposed for sibling joins — grouping by them
     alongside the requested columns preserves those keys (and the join handle)
     without changing the dedup grain. Aggregates/windows already sit at their
@@ -2733,8 +2730,8 @@ def _group_to_grain_if_required(
     # A non-standard-grouping (ROLLUP/CUBE/GROUPING SETS) contributor's rows are
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
     # to the requested grain re-aggregates them away (and a grouping()-derived
-    # dim can't be re-grouped outside its grouping set). Flat passthrough,
-    # mirroring v3. Skipping the dedup here is what obliges the FINAL not to
+    # dim can't be re-grouped outside its grouping set). Flat passthrough.
+    # Skipping the dedup here is what obliges the FINAL not to
     # join such a node on a non-unique key — same predicate, both sides.
     if node_nulls_grouping_keys(node):
         return node
@@ -2764,7 +2761,7 @@ def _group_to_grain_if_required(
         # Narrow to the requested grain *before* force-grouping: a MergeNode
         # exposes its join/filter columns (q82's date, warehouse, quantity,
         # manufacturer) as outputs, so force_group alone would GROUP BY the full
-        # merge grain and dedup nothing. Mirrors v3's group_if_required_v2.
+        # merge grain and dedup nothing.
         node.force_group = True
         node.set_output_concepts(targets, rebuild=False, change_visibility=False)
         node.rebuild_cache()
@@ -2774,7 +2771,7 @@ def _group_to_grain_if_required(
     # materialized-root rollup from a finer summary table), so re-aggregate it
     # with SUM rather than dedup it. Exact-grain materialized aggregates never
     # reach here — their scan already matches the target grain, so no group is
-    # required. Mirrors v3's `rollup_concepts` on `gen_select_merge_node`.
+    # required.
     rollup = [o for o in targets if o.is_aggregate and _is_additive_aggregate(o)]
     return GroupNode(
         output_concepts=targets,
@@ -2868,13 +2865,13 @@ def _clear_groupmate_completed_partials(
     its own contributor — it spans only the subset domain — but this merge pairs
     it with its complete group-mate via the authored equality, so the merged
     relation spans the anchor's domain and the key renders as the coalesced
-    group axis (v3's completion-merge behavior). Leaving it partial trips the
+    group axis. Leaving it partial trips the
     final no-complete-source guard for a value that is in fact complete here.
 
     A relation whose anchor members are ABSENT from the plan entirely (the
     query never references the anchor side, so it was never sourced) is pure
     domain metadata: the subset side's own domain IS the output domain, and
-    its partial clears too (v3 collapses to the subset side alone —
+    its partial clears too (collapsing to the subset side alone —
     union_reproject rowset-LHS cells)."""
     if not node.partial_concepts or not environment.scoped_join_key_groups:
         return
@@ -2911,7 +2908,7 @@ def _clear_groupmate_completed_partials(
         # partial on its own contributor but complete through the relation when
         # its mate is a ROWSET handle carrying the anchor's whole domain: the
         # key renders as the coalesced axis, exactly as for a rowset-handle
-        # member (q54 filtered/unfiltered-anchor cells, which v3 resolves).
+        # member (q54 filtered/unfiltered-anchor cells).
         # Without a complete ROWSET mate it must keep tripping the guard —
         # that is the deliberate author-facing error for a member whose only
         # binding is its own scoped declaration (union-reproject clean-error).
@@ -3233,8 +3230,8 @@ def _assemble_final_node(
             # whole rowset and drop its internal filter (rowset_outer_addition).
             # Those handles aren't join keys; the rowset stays a separate merge
             # contributor. A renamed output's mangled content (`_rs_k`) is a
-            # rowset internal the same way — carrying it silently joins a query
-            # v3 reports as disconnected, unless a declared relation licenses it.
+            # rowset internal the same way — carrying it silently joins a
+            # disconnected query, unless a declared relation licenses it.
             group_concepts.extend(
                 c
                 for address in sorted(preserve_keys)
@@ -3253,7 +3250,7 @@ def _assemble_final_node(
             # would drop its atom and the fresh re-source would lose the WHERE.
             # When such an arg was peeled INTO this bucket (a primary member),
             # add it to the projection so plan_source sources the dim table and
-            # applies the filter (v3's `wakeful` = `customer ⋈ customer_address
+            # applies the filter (`wakeful` = `customer ⋈ customer_address
             # WHERE state = 'GA'`). It isn't mandatory, so the FINAL merge
             # selects only the outputs and never leaks it. Restricted to bucket
             # members so a global-aggregate/cross-arm filter arg (handled as a
@@ -3417,8 +3414,8 @@ def _assemble_final_node(
             preexisting_conditions=merged.preexisting_conditions,
             force_group=True,
         )
-    # Dedup the assembled merge to the requested output grain (mirrors v3's
-    # group_if_required_v2 and the single-contributor path above). A contributor
+    # Dedup the assembled merge to the requested output grain (as the
+    # single-contributor path above does). A contributor
     # left whole at a finer row grain — e.g. a root scan kept at {store,wh,product}
     # to preserve a join key — otherwise leaks duplicate rows when its internal
     # keys (wh) drop out of the output grain (store_by_warehouse, product).
@@ -3826,7 +3823,7 @@ def build_strategy_node(
             # the renderer would emit `INVALID_REFERENCE_BUG`. This is an
             # unresolvable query (e.g. a projection / aggregate over concepts from
             # two unconnected namespaces); fail so it raises
-            # UnresolvableQueryException (matching v3) rather than invalid SQL.
+            # UnresolvableQueryException rather than invalid SQL.
             # Unnest-of-literal / constant leaves output only derived concepts and
             # are left alone.
             return None

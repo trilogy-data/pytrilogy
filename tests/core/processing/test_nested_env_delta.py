@@ -10,7 +10,6 @@ build — same concepts, same datasources, same aliases, same insertion order.
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment as AuthorEnvironment
 
 _MODEL = """
@@ -63,7 +62,7 @@ CASES = (
     # defect (BuildConcept equality ignores lineage/canonical_name).
     (
         _MODEL,
-        "auto class_share <- count(line_id) / (count(line_id) by cat) * 100;\n"
+        "auto class_share <- count(line_id) / (count(line_id) by cat) * 100;\n"  # noqa: ISC004
         "select yr, cat, class_share order by class_share desc limit 5;",
     ),
     (_MODEL, "with rs as select yr, count(line_id) -> c having c > 2;\nselect rs.yr;"),
@@ -71,7 +70,7 @@ CASES = (
     (_MODEL, "with rs as select yr, oname;\nselect rs.yr, rs.oname;"),
     (
         _MODEL,
-        "with combined as union(\n"
+        "with combined as union(\n"  # noqa: ISC004
         "    (select yr, count(line_id) -> c having c > 2),\n"
         "    (where cat = 'a' select yr, count(line_id) -> c)\n"
         ") -> (y, c);\n"
@@ -80,7 +79,7 @@ CASES = (
     (_ARMS_MODEL, "where s_cust is null select c_cust union join s_cust = c_cust;"),
     (
         _ARMS_MODEL,
-        "select c_cust, sum(sid) -> s_rows, sum(cid) -> c_rows"
+        "select c_cust, sum(sid) -> s_rows, sum(cid) -> c_rows"  # noqa: ISC004
         " union join s_cust = c_cust;",
     ),
 )
@@ -121,10 +120,7 @@ def _assert_env_equal(delta, full, context):
 
 @pytest.fixture
 def v4():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
     yield
-    CONFIG.use_v4_discovery = prior
 
 
 def test_session_caches_invalidate_on_env_mutation(v4):

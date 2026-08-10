@@ -1,17 +1,21 @@
 # v4-native network discovery — single-pass source search (design)
 
-Status: **LANDED AND DEFAULT** (last verified 2026-07-30, s50). The search is
-the v4 planner, v4 is the default planner (`CONFIG.use_v4_discovery = True`),
-and the correctness registry is EMPTY. What remains is SHAPE and COST, not
-correctness — see §0.10, which is the only section you need for current state.
-§0–§0.9 below are the migration's history, kept because every rule in the
-search was earned by a specific defect recorded there; read them for *why* a
-rule exists, not for what the code does today.
+Status: **LANDED — THE ONLY PLANNER**. The legacy recursive planner and its
+`CONFIG.use_v4_discovery` switch have been removed from the tree, so there is
+no longer anything to compare against or fall back to. What remains is SHAPE
+and COST, not correctness — see §0.10, which is the only section you need for
+current state. §0–§0.9 below are the migration's history, kept because every
+rule in the search was earned by a specific defect recorded there; read them
+for *why* a rule exists, not for what the code does today.
+
+Comparison figures against the legacy planner throughout this document are
+dated measurements from the migration, not reproducible checks.
 
 ## 0.10 Current state (2026-07-30, s50) — read this first
 
-**Correctness.** `tests/v4_known_failing.py` has **0 entries** (s49, closed
-2026-07-29). Sessions s39–s49 burned the registry 30 → 0; the per-session
+**Correctness.** The known-failing registry reached 0 entries (s49, closed
+2026-07-29) and has since been deleted along with the legacy planner it
+tracked gaps against. Sessions s39–s49 burned the registry 30 → 0; the per-session
 mechanisms are indexed in session memory and in git history, and the four
 final ones (aggregate-axis grain expansion, the global computed-origin
 RELATION rail, RECURSIVE groups never hosting row atoms, pseudonym-origin
@@ -160,10 +164,9 @@ tree shows NO node carrying the atom, so the conditioned node is built and then
 DISCARDED in favour of the bare union node. Full handoff with the repro, the
 ruled-out list and the gates: `local_scripts/handoff_v4_predicate_assembly_drop.md`.
 
-**Flags.** There is no `use_v4_network_search` any more — the network search is
-not optional, it IS v4 sourcing. `CONFIG.use_v4_discovery` defaults True and is
-the single remaining switch; setting it False runs the v3 recursive planner,
-which stays in-tree for comparison sweeps only.
+**Flags.** There are none left. The network search is not optional, it IS
+sourcing; `use_v4_network_search` and then `use_v4_discovery` were both
+removed as the migration closed.
 
 **Size, measured over both benchmark corpora** (2026-07-30,
 `local_scripts/v4_size_report.py`, full report in
@@ -1210,7 +1213,9 @@ v3-only). The survivors were pure vestige:
 - **`use_v4_discovery` defaults TRUE.** v4 is the planner; the env override
   inverts (`TRILOGY_V4_DISCOVERY=0` forces v3 for comparison sweeps) and the
   known-failing registry xfails apply whenever v4 runs. v3 remains in-tree
-  behind the flag until its own removal decision.
+  behind the flag until its own removal decision. *(Superseded: the flag, the
+  env override, the registry and the legacy planner have all since been
+  removed.)*
 - **Registry burndown, measured not assumed: 43 → 31 keys.** All 43 entries
   re-verified in ISOLATION (the registry's own promotion standard): 15
   xpassed — quietly fixed by the s34–s38 work — and were pruned; 3 were stale

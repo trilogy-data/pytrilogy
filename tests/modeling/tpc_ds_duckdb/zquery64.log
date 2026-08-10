@@ -1,6 +1,5 @@
 query_id = "64"
-generator = "v4"
-gen_length = 18378
+gen_length = 16068
 preql_size = 4382
 comp_size = 3783
 generated_sql = """
@@ -64,7 +63,7 @@ FROM
     FULL JOIN \"memory\".\"customer_address\" as \"ss_customer_current_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
 wakeful as (
 SELECT
-    coalesce(\"cs_catalog_returns\".\"CR_ITEM_SK\",\"cs_catalog_sales\".\"CS_ITEM_SK\") as \"cs_item_sk\"
+    coalesce(\"cs_catalog_returns\".\"CR_ITEM_SK\",\"cs_catalog_sales\".\"CS_ITEM_SK\") as \"cs_ui_cs_ui_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
@@ -73,11 +72,6 @@ GROUP BY
 HAVING
     sum(CASE WHEN (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True THEN \"cs_catalog_sales\".\"CS_EXT_LIST_PRICE\" ELSE NULL END) > 2 * sum(CASE WHEN (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True THEN ( coalesce(\"cs_catalog_returns\".\"CR_REFUNDED_CASH\",0) + coalesce(\"cs_catalog_returns\".\"CR_REVERSED_CHARGE\",0) ) + coalesce(\"cs_catalog_returns\".\"CR_STORE_CREDIT\",0) ELSE NULL END)
 ),
-cooperative as (
-SELECT
-    \"wakeful\".\"cs_item_sk\" as \"cs_ui_cs_ui_item_id\"
-FROM
-    \"wakeful\"),
 sparkling as (
 SELECT
     \"ss_store_sales\".\"SS_ADDR_SK\" as \"ss_pos_address_sk\",
@@ -95,7 +89,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_store_sales\".\"SS_ITEM_SK\") and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_store_sales\".\"SS_ITEM_SK\") and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
 ),
 late as (
 SELECT
@@ -108,12 +102,10 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
 WHERE
-    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\")) and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"ss_store_returns\".\"SR_ITEM_SK\",\"ss_store_sales\".\"SS_ITEM_SK\")) and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
 ),
 abhorrent as (
 SELECT
-    \"sparkling\".\"_virt_presence_334607598686241\" as \"_virt_presence_334607598686241\",
-    \"sparkling\".\"_virt_presence_9866050310038537\" as \"_virt_presence_9866050310038537\",
     \"sparkling\".\"ss_coupon_amt\" as \"ss_coupon_amt\",
     \"sparkling\".\"ss_list_price\" as \"ss_list_price\",
     \"sparkling\".\"ss_pos_address_sk\" as \"ss_pos_address_sk\",
@@ -123,18 +115,12 @@ SELECT
     \"ss_customer_current_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_customer_current_demographics_marital_status\",
     \"ss_customer_first_sales_date_date\".\"D_YEAR\" as \"ss_customer_first_sales_date_year\",
     \"ss_customer_first_shipto_date_date\".\"D_YEAR\" as \"ss_customer_first_shipto_date_year\",
-    \"ss_item_items\".\"I_COLOR\" as \"ss_item_color\",
-    \"ss_item_items\".\"I_CURRENT_PRICE\" as \"ss_item_current_price\",
     \"ss_pos_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" as \"ss_pos_customer_demographic_marital_status\",
     \"ss_sale_date_date\".\"D_YEAR\" as \"ss_sale_date_year\",
-    \"uneven\".\"_virt_presence_9232186781707329\" as \"_virt_presence_9232186781707329\",
     \"uneven\".\"ss_customer_current_address_sk\" as \"ss_customer_current_address_sk\",
-    coalesce(\"sparkling\".\"ss_customer_sk\",\"uneven\".\"ss_customer_sk\") as \"ss_customer_sk\",
     coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\") as \"agg_00_item_sk_00\",
     coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\") as \"agg_99_item_sk_99\",
-    coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\") as \"ss_item_sk\",
-    coalesce(\"ss_customer_first_sales_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_sales_date_sk\") as \"ss_customer_first_sales_date_sk\",
-    coalesce(\"ss_customer_first_shipto_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_shipto_date_sk\") as \"ss_customer_first_shipto_date_sk\"
+    coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\") as \"ss_item_sk\"
 FROM
     \"sparkling\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"sparkling\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
@@ -145,7 +131,7 @@ FROM
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_pos_customer_demographic_customer_demographics\" on \"sparkling\".\"ss_pos_customer_demographic_sk\" = \"ss_pos_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
     LEFT OUTER JOIN \"memory\".\"customer_demographics\" as \"ss_customer_current_demographics_customer_demographics\" on \"uneven\".\"ss_customer_current_demographics_sk\" = \"ss_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\")) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 75 AND 84 and coalesce(\"sparkling\".\"ss_customer_sk\",\"uneven\".\"ss_customer_sk\") is not null and \"sparkling\".\"_virt_presence_334607598686241\" is not null and \"sparkling\".\"_virt_presence_9866050310038537\" is not null and \"uneven\".\"_virt_presence_9232186781707329\" is not null and coalesce(\"ss_customer_first_sales_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_sales_date_sk\") is not null and coalesce(\"ss_customer_first_shipto_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_shipto_date_sk\") is not null
+    exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from coalesce(\"sparkling\".\"ss_item_sk\",\"ss_item_items\".\"I_ITEM_SK\")) and (\"ss_item_items\".\"I_COLOR\" is not null and \"ss_item_items\".\"I_COLOR\" in ('purple','burlywood','indian','spring','floral','medium')) and \"ss_item_items\".\"I_CURRENT_PRICE\" BETWEEN 75 AND 84 and coalesce(\"sparkling\".\"ss_customer_sk\",\"uneven\".\"ss_customer_sk\") is not null and \"sparkling\".\"_virt_presence_334607598686241\" is not null and \"sparkling\".\"_virt_presence_9866050310038537\" is not null and \"uneven\".\"_virt_presence_9232186781707329\" is not null and coalesce(\"ss_customer_first_sales_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_sales_date_sk\") is not null and coalesce(\"ss_customer_first_shipto_date_date\".\"D_DATE_SK\",\"uneven\".\"ss_customer_first_shipto_date_sk\") is not null
 ),
 premium as (
 SELECT
@@ -164,9 +150,9 @@ SELECT
     \"abhorrent\".\"ss_wholesale_cost\" as \"ss_wholesale_cost\"
 FROM
     \"late\"
-    RIGHT OUTER JOIN \"abhorrent\" on \"late\".\"ss_item_sk\" is not distinct from \"abhorrent\".\"ss_item_sk\" AND \"late\".\"ss_ticket_number\" is not distinct from \"abhorrent\".\"ss_ticket_number\"
+    INNER JOIN \"abhorrent\" on \"late\".\"ss_item_sk\" = \"abhorrent\".\"ss_item_sk\" AND \"late\".\"ss_ticket_number\" = \"abhorrent\".\"ss_ticket_number\"
 WHERE
-    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from \"abhorrent\".\"ss_item_sk\") and \"abhorrent\".\"ss_sale_date_year\" = 2000 and \"late\".\"ss_is_returned\" and (\"abhorrent\".\"ss_item_color\" is not null and \"abhorrent\".\"ss_item_color\" in ('purple','burlywood','indian','spring','floral','medium')) and \"abhorrent\".\"ss_item_current_price\" BETWEEN 75 AND 84 and \"abhorrent\".\"ss_customer_sk\" is not null and \"abhorrent\".\"_virt_presence_334607598686241\" is not null and \"abhorrent\".\"_virt_presence_9866050310038537\" is not null and \"abhorrent\".\"_virt_presence_9232186781707329\" is not null and \"abhorrent\".\"ss_customer_first_sales_date_sk\" is not null and \"abhorrent\".\"ss_customer_first_shipto_date_sk\" is not null
+    \"abhorrent\".\"ss_sale_date_year\" = 2000 and \"late\".\"ss_is_returned\"
 
 GROUP BY
     1,
@@ -221,9 +207,9 @@ SELECT
     \"abhorrent\".\"ss_wholesale_cost\" as \"ss_wholesale_cost\"
 FROM
     \"late\"
-    RIGHT OUTER JOIN \"abhorrent\" on \"late\".\"ss_item_sk\" is not distinct from \"abhorrent\".\"ss_item_sk\" AND \"late\".\"ss_ticket_number\" is not distinct from \"abhorrent\".\"ss_ticket_number\"
+    INNER JOIN \"abhorrent\" on \"late\".\"ss_item_sk\" = \"abhorrent\".\"ss_item_sk\" AND \"late\".\"ss_ticket_number\" = \"abhorrent\".\"ss_ticket_number\"
 WHERE
-    exists (select 1 from cooperative where cooperative.\"cs_ui_cs_ui_item_id\" is not distinct from \"abhorrent\".\"ss_item_sk\") and \"abhorrent\".\"ss_sale_date_year\" = 1999 and \"late\".\"ss_is_returned\" and (\"abhorrent\".\"ss_item_color\" is not null and \"abhorrent\".\"ss_item_color\" in ('purple','burlywood','indian','spring','floral','medium')) and \"abhorrent\".\"ss_item_current_price\" BETWEEN 75 AND 84 and \"abhorrent\".\"ss_customer_sk\" is not null and \"abhorrent\".\"_virt_presence_334607598686241\" is not null and \"abhorrent\".\"_virt_presence_9866050310038537\" is not null and \"abhorrent\".\"_virt_presence_9232186781707329\" is not null and \"abhorrent\".\"ss_customer_first_sales_date_sk\" is not null and \"abhorrent\".\"ss_customer_first_shipto_date_sk\" is not null
+    \"abhorrent\".\"ss_sale_date_year\" = 1999 and \"late\".\"ss_is_returned\"
 
 GROUP BY
     1,

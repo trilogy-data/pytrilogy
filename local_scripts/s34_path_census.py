@@ -18,7 +18,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.processing.v4_helper import network_search as ns
 from trilogy.core.processing.v4_helper import source_planning
 
@@ -97,7 +96,6 @@ def _addresses(request) -> set[str]:
 
 def main(argv: list[str]) -> int:
     global CURRENT
-    CONFIG.use_v4_discovery = True
     source_planning._network_source = traced_network_plan
     source_planning._direct_source = traced_direct
     source_planning.plan_source = census_plan_source

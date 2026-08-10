@@ -19,7 +19,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.domain_graph import EdgeProvenance
 from trilogy.core.processing.v4_helper import source_planning
 from trilogy.core.processing.v4_helper.network_search import build_source_network
@@ -61,7 +60,6 @@ _ORIGINAL = source_planning.plan_source
 
 def main(argv: list[str]) -> int:
     global CURRENT
-    CONFIG.use_v4_discovery = True
     source_planning.plan_source = audit_plan_source
     from trilogy.core.processing.v4_node_generators import root as v4_root
 

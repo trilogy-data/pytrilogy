@@ -29,7 +29,7 @@ def default_factory(conf: DialectConfig, config_type):
 
     if not isinstance(conf, config_type):
         raise TypeError(
-            f"Invalid dialect configuration for type {type(config_type).__name__}, is {type(conf)}"
+            f"Invalid dialect configuration; expected {config_type.__name__}, got {type(conf).__name__}"
         )
     connect_args = conf.create_connect_args()
     if connect_args:

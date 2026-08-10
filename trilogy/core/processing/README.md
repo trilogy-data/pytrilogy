@@ -1,48 +1,33 @@
-
 ## Query Planning
 
-Query planning is divided into 3 core phases.
+Query planning is divided into 3 core phases: discovery builds an abstract node
+tree, each node is then resolved to an abstract CTE, and finally each CTE is
+rendered to a backend-appropriate query.
 
-The first phase builds an abstract node tree by looping through every combination of
-output concept and keys in the output query grain and recursively searching for sources.
+Discovery is a staged planner — concept graph, group graph, per-group
+materialization, final assembly. It is documented in
+[`docs/v4_network_discovery_design.md`](../../../docs/v4_network_discovery_design.md);
+the entrypoint is `concept_strategies_v4.search_concepts`, the stage
+implementations live in `v4_helper/`, and the per-derivation node builders live
+in `v4_node_generators/`.
 
-It will begin with aggregations if those exist, then window functions, then filtration functions,
-rowsets, and finally look for bare selects.
-
-Each type of complex node will generate a new recursive node search for required parents,
-until a set of terminal nodes with base concept selection is reached. 
-
-A default merge node is injected between every recursion. The overall loop will terminate early 
-if an output node is returned with all required query concepts. If not, the merge node will
-handle a join between the returned subtrees. If there are not multiple nodes to merge,
-the merge node will simply return the single parent node and prune itself from the graph.
-
-In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that 
-reference the same tables, parent CTEs, and filtering can be merged.
-
-Finally, in query rendering each CTE is rendered to a backend appropriate query. The final
-CTE, or the `base`, will contain all required columns for the final output. The last
-select will only apply any query level filters + ordering, no joins will take place.
-
-## Aug 2023 Update
-
-For complex derivations, propogating the "full" context upstream is an issue. Instead, we need to adjust logic to prune the optional nodes in each search pattern.
-
-For filter nodes -> we should have these generate a node with _just_ the filtered column + the new concept. 
+The final CTE, or the `base`, contains all required columns for the final
+output. The last select applies only query-level filters + ordering; no joins
+take place there.
 
 ## Debugging
 
-Base query derivation accepts the 'DebugHook' defined under hooks, which will print to console
-each step of the plan. This is a great first step to figure out what might be going
-wrong with discovery in a query. 
+Base query derivation accepts the `DebuggingHook` defined under hooks, which
+prints each step of the plan to the console. This is a great first step to
+figure out what might be going wrong with discovery in a query.
 
 Example usage
 
 ```python
-from preql import parse
-from preql.core.query_processor import process_query
-from preql.hooks.query_debugger import DebuggingHook
-from preql.core.models import Select
+from trilogy import parse
+from trilogy.core.query_processor import process_query
+from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.core.statements.author import SelectStatement
 
 declarations = """
 key user_id int metadata(description="the description");
@@ -87,7 +72,7 @@ avg_user_post_count
 
 """
 env, parsed = parse(declarations)
-select: Select = parsed[-1]
+select: SelectStatement = parsed[-1]
 
 query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 

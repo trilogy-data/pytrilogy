@@ -110,10 +110,9 @@ def test_cross_cte_aggregate_grain_only_bridge_raises():
     # raises the helpful subgraph error rather than dead-ending in the raw "No
     # remaining priority concepts" dump. The rowset inner select runs the exact same
     # connectivity check as a top-level select (no rowset-specific path), so the
-    # b-side aggregate splits off from the a-side group key + aggregate. The two
-    # engines name the split differently — v3 by source (`b_agg.sb`), v4 by the
-    # rowset's own aliased columns (`combined.tb`) — so assert the structural
-    # invariant, not engine-specific addresses.
+    # b-side aggregate splits off from the a-side group key + aggregate. The
+    # split is named by the rowset's own aliased columns (`combined.tb`), so
+    # assert the structural invariant, not specific addresses.
     eng = Dialects.DUCK_DB.default_executor(environment=Environment())
     with pytest.raises(DisconnectedConceptsException) as exc:
         eng.generate_sql(_DISCONNECTED_CROSS_CTE_AGG)

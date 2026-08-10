@@ -8,10 +8,18 @@ dialect are a hard error against its allowed-kwargs list.
 from pathlib import Path
 
 from click.testing import CliRunner
-from pytest import raises
+from pytest import mark, raises
 
 from trilogy.core.exceptions import ConfigurationException
-from trilogy.dialect.config import DuckDBConfig, MySQLConfig
+from trilogy.dialect.config import (
+    BigQueryConfig,
+    DuckDBConfig,
+    MySQLConfig,
+    PostgresConfig,
+    PrestoConfig,
+    SnowflakeConfig,
+    SQLServerConfig,
+)
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.scripts.common import (
@@ -154,6 +162,99 @@ def test_get_dialect_config_mysql_uses_file_config():
 
     assert isinstance(conf, MySQLConfig)
     assert conf.database == "analytics"
+
+
+def test_get_dialect_config_ignores_file_config_for_other_dialect():
+    """`trilogy unit` forces DuckDB; a BigQuery [engine.config] must not leak in."""
+    runtime = _runtime_config()
+    runtime.engine_config = BigQueryConfig(project="some-project")
+
+    conf = get_dialect_config(Dialects.DUCK_DB, {}, runtime_config=runtime)
+
+    assert isinstance(conf, DuckDBConfig)
+    Dialects.DUCK_DB.default_engine(conf=conf).dispose()
+
+
+def test_get_dialect_config_merges_matching_file_config():
+    runtime = _runtime_config()
+    runtime.engine_config = BigQueryConfig(project="some-project", staging_uri="gs://a")
+
+    conf = get_dialect_config(
+        Dialects.BIGQUERY, {"project": "cli-project"}, runtime_config=runtime
+    )
+
+    assert isinstance(conf, BigQueryConfig)
+    assert conf.project == "cli-project"
+    assert conf.staging_uri == "gs://a"
+
+
+def test_default_engine_type_error_names_expected_config():
+    with raises(TypeError, match="expected DuckDBConfig, got BigQueryConfig"):
+        Dialects.DUCK_DB.default_engine(conf=BigQueryConfig())
+
+
+@mark.parametrize(
+    "dialect,stored,connection_string",
+    [
+        (
+            Dialects.POSTGRES,
+            PostgresConfig(
+                host="h", port=5432, username="u", password="p", database="db"
+            ),
+            "postgresql://u:p@h:5432",
+        ),
+        (
+            Dialects.SQL_SERVER,
+            SQLServerConfig(
+                host="h", port=1433, username="u", password="p", database="db"
+            ),
+            "sqlserver//u:p@h:1433",
+        ),
+        (
+            Dialects.SNOWFLAKE,
+            SnowflakeConfig(account="a", username="u", password="p", database="d"),
+            "snowflake://u:p@a/d",
+        ),
+        (
+            Dialects.PRESTO,
+            PrestoConfig(host="h", port=8080, username="u", password="p", catalog="c"),
+            "presto://u:p@h:8080/c",
+        ),
+    ],
+)
+def test_get_dialect_config_file_config_satisfies_required_params(
+    dialect, stored, connection_string
+):
+    """A complete [engine.config] is enough on its own — required params are
+    validated against the file config too, not only the CLI args."""
+    runtime = _runtime_config()
+    runtime.engine_config = stored
+
+    conf = get_dialect_config(dialect, {}, runtime_config=runtime)
+
+    assert conf.connection_string() == connection_string
+
+
+def test_get_dialect_config_cli_args_win_over_file_config():
+    runtime = _runtime_config()
+    runtime.engine_config = PostgresConfig(
+        host="h", port=5432, username="u", password="p", database="db"
+    )
+
+    conf = get_dialect_config(
+        Dialects.POSTGRES, {"host": "cli-host"}, runtime_config=runtime
+    )
+
+    assert conf.host == "cli-host"
+    assert conf.port == 5432
+
+
+def test_get_dialect_config_file_config_for_other_dialect_does_not_seed():
+    runtime = _runtime_config()
+    runtime.engine_config = BigQueryConfig(project="some-project")
+
+    with raises(ConfigurationException, match="Missing required Postgres"):
+        get_dialect_config(Dialects.POSTGRES, {}, runtime_config=runtime)
 
 
 def test_get_dialect_config_unsupported_dialect_with_args_errors():

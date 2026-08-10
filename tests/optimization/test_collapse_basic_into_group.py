@@ -2,7 +2,7 @@
 ``CollapseSingleParent`` (`basic_fold_into_group_is_safe`).
 
 A scalar row projection over a GROUP parent (e.g. `sum(a)/sum(b)`) folds into the
-GROUP's SELECT list -- valid SQL and the single-CTE shape v3 emits natively. The
+GROUP's SELECT list -- valid SQL, and it gives a single-CTE shape. The
 gate restricts that to the row-preserving subset: every output the child derives
 *locally* must be a scalar, while aggregate/window columns merely passed through
 from the GROUP parent are fine."""

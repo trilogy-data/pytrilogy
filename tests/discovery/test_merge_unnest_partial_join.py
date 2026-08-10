@@ -14,7 +14,7 @@ Deterministic (static `unnest([...])`, no `current_date`) and executed, so it
 guards rows under both planners — distinct from the shape-only date-spine asserts
 in `test_canonical_collision_merge.py`."""
 
-from trilogy import CONFIG, Dialects
+from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
 _MODEL = """
@@ -36,34 +36,23 @@ _QUERY = "select s1, m1 order by s1 asc;"
 _EXPECTED = [(1, 0), (2, 2), (3, 0), (4, 1), (5, 0)]
 
 
-def _run(v4: bool) -> list[tuple]:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env = Environment()
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        engine.parse_text(_MODEL)
-        rows = engine.execute_text(_QUERY)[-1].fetchall()
-        return [(int(r[0]), int(r[1])) for r in rows]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _run() -> list[tuple]:
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    engine.parse_text(_MODEL)
+    rows = engine.execute_text(_QUERY)[-1].fetchall()
+    return [(int(r[0]), int(r[1])) for r in rows]
 
 
 def test_merge_into_unnest_joins_on_key_not_cartesian():
-    assert _run(v4=False) == _EXPECTED
-    assert _run(v4=True) == _EXPECTED
+    assert _run() == _EXPECTED
 
 
 def test_merge_into_unnest_v4_join_key_in_sql():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        env = Environment()
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        engine.parse_text(_MODEL)
-        sql = engine.generate_sql(_QUERY)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    engine.parse_text(_MODEL)
+    sql = engine.generate_sql(_QUERY)[-1]
     # the fact's partial merge key is the join key, never a bare cross join
     assert "on 1=1" not in sql, sql
     assert '"facts"."d1"' in sql, sql

@@ -4,6 +4,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.core import DataType
 from trilogy.hooks.query_debugger import DebuggingHook
 
 _CONFLICTING_FILTER_FIXTURE = """
@@ -1506,3 +1507,62 @@ def test_composite_union_join_rowset_simple_aggregate_still_groups(agg):
     assert [r[0] for r in results] == ["CA", "CA", "NY"]
     if agg == "count":
         assert [r[2] for r in results] == [0, 1, 1]
+
+
+_ROWSET_DERIVED_SEGMENT_FIXTURE = """
+key sale_id int;
+property sale_id.cust_id int;
+property sale_id.price float;
+
+datasource sales (
+    sale_id: sale_id,
+    cust_id: cust_id,
+    price: price,
+)
+grain (sale_id)
+query '''
+select 1 as sale_id, 1 as cust_id, 20.0 as price union all
+select 2, 1, 30.0 union all
+select 3, 2, 25.0 union all
+select 4, 2, 30.0 union all
+select 5, 3, 20.0 union all
+select 6, 3, 25.0 union all
+select 7, 4, 60.0 union all
+select 8, 4, 40.0 union all
+select 9, 5, 55.0 union all
+select 10, 5, 50.0
+''';
+
+rowset cust_revenue <- select
+    cust_id as rev_cust_id,
+    sum(price) as revenue,
+;
+
+auto segment <- round(cust_revenue.revenue / 50, 0)::int;
+"""
+
+
+def test_concept_derived_from_rowset_output_groups_at_rowset_grain():
+    # tpc_ds q54's shape, reduced: a top-level `auto` derived from a rowset
+    # output, then counted BY that derivation. Concept declarations build during
+    # BIND, before rowset statements hydrate, so `cust_revenue.revenue` used to
+    # bind an UNKNOWN forward placeholder. The planner then could not see that
+    # `segment` lives at the rowset's per-customer grain: it built `segment` in
+    # its own node, counted customers with no GROUP BY (one global count), and
+    # cross-joined the two (`on 1=1`) — reporting the TOTAL customer count
+    # against every segment. q54 could not catch it because its fixture yields a
+    # single segment holding a single customer, where the two counts coincide.
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ROWSET_DERIVED_SEGMENT_FIXTURE)
+    assert executor.environment.concepts["segment"].datatype == DataType.INTEGER
+    query = """
+select
+    segment,
+    count(cust_revenue.rev_cust_id) as num_customers,
+    segment * 50 as segment_base,
+order by segment asc
+;
+"""
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    # Customers 1-3 sum to 50/55/45 (segment 1); customers 4-5 to 100/105 (segment 2).
+    assert results == [(1, 3, 50), (2, 2, 100)]

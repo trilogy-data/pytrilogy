@@ -23,7 +23,6 @@ from trilogy.core.processing.condition_utility import (
     condition_value_implies,
     conditions_mutually_exclusive,
     decompose_condition,
-    drop_covered_conditions,
     filter_union_children,
     flatten_conditions,
     merge_conditions,
@@ -213,43 +212,6 @@ class TestStripConditionAtoms:
         assert cond_dbh in atoms
         assert cond_extra in atoms
         assert cond_bos not in atoms
-
-
-class TestDropCoveredConditions:
-    def test_more_specific_dropped_when_general_present(self):
-        # cond_bos_and_dbh implies cond_bos → cond_bos_and_dbh is redundant
-        result = drop_covered_conditions([cond_bos_and_dbh, cond_bos])
-        assert cond_bos in result
-        assert cond_bos_and_dbh not in result
-
-    def test_general_not_dropped(self):
-        result = drop_covered_conditions([cond_bos_and_dbh, cond_bos])
-        assert cond_bos in result
-
-    def test_disjoint_conditions_both_kept(self):
-        result = drop_covered_conditions([cond_bos, cond_sfo])
-        assert cond_bos in result
-        assert cond_sfo in result
-
-    def test_single_condition_kept(self):
-        assert drop_covered_conditions([cond_bos]) == [cond_bos]
-
-    def test_empty_list(self):
-        assert drop_covered_conditions([]) == []
-
-    def test_exact_duplicates_deduplicated(self):
-        result = drop_covered_conditions([cond_bos, cond_bos])
-        assert result == [cond_bos]
-
-    def test_three_way_keeps_most_general(self):
-        extra = _concept("extra")
-        cond_extra = _eq(extra, "z")
-        most_specific = cond_bos + cond_dbh + cond_extra  # type: ignore[operator]
-        mid = cond_bos + cond_dbh  # type: ignore[operator]
-        result = drop_covered_conditions([most_specific, mid, cond_bos])
-        assert cond_bos in result
-        assert mid not in result
-        assert most_specific not in result
 
 
 class TestMergeConditions:

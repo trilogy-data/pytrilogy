@@ -12,13 +12,13 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.node_generators.select_merge_node import (
     SearchCriteria,
     create_datasource_node,
     get_graph_partial_nodes,
     resolve_subgraphs,
 )
+from trilogy.core.processing.node_generators.select_node import gen_select_node
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.core.statements.author import PersistStatement
 from trilogy.hooks.query_debugger import DebuggingHook

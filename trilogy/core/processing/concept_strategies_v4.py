@@ -45,7 +45,11 @@ from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
     condition_implies,
 )
-from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
+from trilogy.core.processing.discovery_utility import (
+    LOGGER_PREFIX,
+    depth_to_prefix,
+    raise_if_filter_disconnected,
+)
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
@@ -65,8 +69,77 @@ __all__ = [
     "BuildInfo",
     "History",
     "V4History",
+    "append_existence_check",
     "search_concepts",
 ]
+
+
+def append_existence_check(
+    node: StrategyNode,
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    where: BuildWhereClause,
+    history: V4History,
+    conditions: BuildWhereClause | None = None,
+) -> None:
+    """Source each `x in (<set>)` RHS of `where` as an independent subselect and
+    wire it onto `node` as an existence parent. Idempotent: a set already among
+    the node's inputs/existence concepts is skipped.
+
+    Used for HAVING-derived membership, which is planned after the output tree
+    (a WHERE membership gets its existence edges inside the concept graph).
+
+    Each subselect is gated for connectivity first. It is an independent
+    resolution scope, so its concepts (with any FILTER's hidden condition
+    concepts surfaced) must be connected on their own — otherwise the feeder
+    plans as a cross join and the membership silently filters nothing. The gate
+    has to run up front: the planner will happily assemble such a cross join
+    rather than fail, so there is no unresolvable result to diagnose after.
+
+    Rowset islanding stays ON here, unlike the WHERE-membership pre-gate in
+    `query_processor`. A HAVING membership filters the statement's OUTPUTS, so
+    its subselect reads rowset outputs (`r.wk`) across the boundary, where the
+    rowset is genuinely opaque and islanding IS the diagnostic
+    (`test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error`). A
+    WHERE-scope RHS is resolved against the base model instead, where a key that
+    happens to be a rowset output is a legitimate join-back and islanding
+    false-positives."""
+    if not where.existence_arguments:
+        return
+    already_sourced = {c.address for c in node.input_concepts} | {
+        c.address for c in node.existence_concepts
+    }
+    for subselect in where.existence_arguments:
+        if not subselect:
+            continue
+        if all(x.address in already_sourced for x in subselect):
+            logger.info(
+                f"{LOGGER_PREFIX} existence clause inputs already found {[str(c) for c in subselect]}"
+            )
+            continue
+        logger.info(
+            f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
+        )
+        raise_if_filter_disconnected(list(subselect), environment, graph)
+        # A HAVING-derived membership subselect (`conditions` set) is this
+        # query's own post-aggregation semijoin: the query WHERE must be
+        # pushed pre-aggregate into its aggregate inputs, exactly as it is on
+        # the output path — else the membership recomputes the aggregate over
+        # the unfiltered universe and its value never matches the filtered
+        # output (q44 silent-empty). A user `x in (select ...)` RHS is an
+        # independent set (no conditions) and stays unfiltered.
+        parent = search_concepts(
+            mandatory_list=[*subselect],
+            history=history,
+            environment=environment,
+            depth=0,
+            g=graph,
+            conditions=[conditions] if conditions else [],
+        ).strategy_node
+        assert parent, "Could not resolve existence clause"
+        node.add_parents([parent])
+        logger.info(f"{LOGGER_PREFIX} found {[str(c) for c in subselect]}")
+        node.add_existence_concepts([*subselect])
 
 
 def _datasource_materializes(
@@ -392,7 +465,7 @@ def _search_concepts(
     # Prefer a precomputed/summary datasource for any demanded aggregate it
     # materializes at grain. If treating those as roots can't be sourced (the
     # summary doesn't combine with the rest of the query), fall back to the
-    # derive-from-base plan — mirrors v3 trying the direct source first.
+    # derive-from-base plan: try the direct source first.
     materialized_roots = _materialized_root_addresses(
         mandatory_list, environment, conditions
     )

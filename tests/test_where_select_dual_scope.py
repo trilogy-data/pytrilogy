@@ -529,6 +529,95 @@ def test_macro_partition_key_in_where_built_twin():
     assert _sql(model, query).count("lead(") == 2
 
 
+GATE_SCHEMA = """key id int;
+property id.cat string;
+property id.val int;
+datasource d ( id, cat, val ) grain (id)
+query '''select 1 as id, 'a' as cat, 5 as val
+union all select 2, 'a', 8
+union all select 3, 'b', 3
+union all select 4, 'b', 2''';
+"""
+# Population sums by cat: {a: 13, b: 5}; only cat=a clears the gate, and of its
+# rows only id=1 also has val < 8.
+
+
+def test_aggregate_gate_by_key_absent_from_select():
+    # The gate's `by` key is neither projected nor otherwise demanded, so the
+    # row stream has to carry it as a hidden join key or the gate CTE merges
+    # back cartesian and both atoms stop filtering.
+    rows = _rows(GATE_SCHEMA, "where val < 8 and sum(val) by cat > 10 select id;")
+    assert rows == [(1,)], rows
+
+
+def test_aggregate_gate_by_key_present_in_select():
+    rows = _rows(GATE_SCHEMA, "where val < 8 and sum(val) by cat > 10 select id, cat;")
+    assert rows == [(1, "a")], rows
+
+
+def test_aggregate_gate_alone_by_key_absent_from_select():
+    # The gate on its own: no scalar peer to mask a dropped join key.
+    rows = _rows(GATE_SCHEMA, "where sum(val) by cat > 10 select id;")
+    assert rows == [(1,), (2,)], rows
+
+
+TWO_GATE_SCHEMA = """key id int;
+property id.cat string;
+property id.grp string;
+property id.val int;
+datasource d ( id, cat, grp, val ) grain (id)
+query '''select 1 as id, 'a' as cat, 'x' as grp, 5 as val
+union all select 2, 'a', 'y', 8
+union all select 3, 'b', 'x', 3
+union all select 4, 'b', 'y', 2''';
+"""
+# Population sums by cat: {a: 13, b: 5}; by grp: {x: 8, y: 10}.
+
+
+def test_row_atom_over_a_sibling_gates_key_still_leaves_both_scopes():
+    # `grp = 'x'` is elected at BOTH gates' condition scopes. The `by grp` scope
+    # keys its value by grp, so a per-scope grain test says "this one can carry
+    # it" -- but sibling scopes share one ROOT_D1 feeder, so hosting it there
+    # narrows the `by cat` gate's population too (a=5, b=3: neither clears 10,
+    # empty result). One swallower disqualifies the whole nested pool.
+    rows = _rows(
+        TWO_GATE_SCHEMA,
+        "where grp = 'x' and sum(val) by grp > 7 and sum(val) by cat > 10 select id;",
+    )
+    assert rows == [(1,)], rows
+
+
+def test_two_gates_on_different_absent_keys():
+    # Both gates' `by` keys are hidden join keys; neither may degrade to a cross
+    # join (each key duplicated every row: 8 rows out of 4).
+    rows = _rows(
+        TWO_GATE_SCHEMA,
+        "where sum(val) by grp > 7 and sum(val) by cat > 10 select id;",
+    )
+    assert rows == [(1,), (2,)], rows
+
+
+def test_two_gates_on_different_keys_emit_no_null_padded_rows():
+    # The two gate CTEs are cross-joined into one feeder by a keyless FULL,
+    # which marks its keys nullable; the rejoin onto the row scan then read that
+    # as enrichment and preserved the FEEDER, emitting a NULL-padded row for
+    # every (val, cat) pair the data never contained. A condition source can
+    # only remove rows.
+    rows = _rows(
+        GATE_SCHEMA,
+        "where sum(id) by val > 0 and sum(val) by cat > 10 select id;",
+    )
+    assert rows == [(1,), (2,)], rows
+
+
+def test_row_atom_beside_two_gates_on_absent_keys():
+    rows = _rows(
+        TWO_GATE_SCHEMA,
+        "where cat = 'a' and sum(val) by cat > 10 and sum(val) by grp > 7 select id;",
+    )
+    assert rows == [(1,), (2,)], rows
+
+
 def test_macro_wrapped_inline_where_aggregate():
     # An inline WHERE aggregate arriving through a def-macro call still counts
     # as a cross-row instantiation for the WHERE factory's scope salt.

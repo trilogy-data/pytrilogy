@@ -8,7 +8,6 @@ threading) and the generator body both run on a genuine plan.
 """
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.enums import Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -129,13 +128,8 @@ def test_cross_datasource_subselect_plans_inner_parent():
 
 
 def test_cross_datasource_subselect_end_to_end():
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        executor = Dialects.DUCK_DB.default_executor()
-        rows = executor.execute_query(CROSS_DATASOURCE_MODEL).fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    executor = Dialects.DUCK_DB.default_executor()
+    rows = executor.execute_query(CROSS_DATASOURCE_MODEL).fetchall()
     by_customer = {r.customer_name: r.nearest_warehouses for r in rows}
     assert by_customer == {"alice": ["east"], "bob": ["west"]}
 

@@ -298,8 +298,7 @@ GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
         can_preserve=can_preserve_grain_subset,
     ),
     # UNNEST expands each source row into one row per element; every source-row
-    # column rides through unchanged (v3's gen_unnest_node carries all
-    # companions). Judge preservation against the SOURCE row grain — the
+    # column rides through unchanged (all companions are carried). Judge preservation against the SOURCE row grain — the
     # declared grain is the element value, which FD-determines nothing, so the
     # default behavior would strip the source keys and leave a sibling merge
     # with no axis (count-over-unnest beside a dim join cross-joins ON 1=1).

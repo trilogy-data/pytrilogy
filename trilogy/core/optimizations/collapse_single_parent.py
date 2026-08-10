@@ -254,7 +254,7 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
         )
     # BASIC: a scalar projection over a GROUP parent folds into the GROUP's
     # SELECT list (`sum(a)/sum(b)` rendered alongside the GROUP BY is valid SQL,
-    # and matches v3's single-CTE shape). This is only sound for the safe subset
+    # giving a single-CTE shape). This is only sound for the safe subset
     # gated by `basic_fold_into_group_is_safe` (checked separately in `optimize`),
     # never blanket. WINDOW/SUBSELECT/UNNEST parents still can't absorb a
     # downstream row projection without changing row shape.

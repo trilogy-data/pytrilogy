@@ -16,7 +16,6 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
-    DisconnectedConceptsException,
     InvalidSyntaxException,
     UnresolvableQueryException,
 )
@@ -64,11 +63,10 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
-from trilogy.core.processing.concept_strategies_v3 import (
+from trilogy.core.processing.concept_strategies_v4 import (
+    V4History,
     append_existence_check,
-    source_query_concepts,
 )
-from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
@@ -76,10 +74,12 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
 )
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    describe_incomplete_partitions,
+)
 from trilogy.core.processing.nodes import (
     BuildCaches,
     History,
-    MergeNode,
     SelectNode,
     StrategyNode,
 )
@@ -620,20 +620,6 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
-def _with_line_location(
-    exc: DisconnectedConceptsException, line_number: int | None
-) -> DisconnectedConceptsException:
-    """Inject the failing statement's line into a disconnected-subgraph message
-    (the v3 raise sites don't have it). No-op if already located or line unknown."""
-    marker = "one connected query"
-    if line_number is None or f"{marker} (statement at line" in exc.message:
-        return exc
-    msg = exc.message.replace(
-        f"{marker}.", f"{marker} (statement at line {line_number}).", 1
-    )
-    return DisconnectedConceptsException(msg, subgraphs=exc.subgraphs)
-
-
 def _raise_if_disconnected(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -654,17 +640,16 @@ def _raise_if_disconnected(
         conditions,
         build_environment,
         graph,
-        # v4 runs this as a pre-discovery gate; rowset islanding false-positives
-        # on legitimate join-backs (base key that IS a rowset output, or a concept
-        # derived from one), so disable it and let v4 discovery decide. v3 keeps
-        # islanding because it only consults this AFTER discovery already failed.
+        # This runs as a pre-discovery gate; rowset islanding false-positives on
+        # legitimate join-backs (base key that IS a rowset output, or a concept
+        # derived from one), so disable it and let discovery decide.
         island_rowsets=False,
         line_number=line_number,
     )
     if conditions is None:
         return
-    # An existence subselect (`x in (<set>)`) is its own resolution scope — v3
-    # plans it as an independent query, so its RHS concepts (with any FILTER's
+    # An existence subselect (`x in (<set>)`) is its own resolution scope —
+    # planned as an independent query, so its RHS concepts (with any FILTER's
     # hidden content/condition concepts surfaced) must be connected on their
     # own. A correlated filter across unmerged models (`b ? b = a`, q64)
     # otherwise plans a FROM-less feeder that dies at render.
@@ -676,36 +661,36 @@ def _raise_if_disconnected(
         )
 
 
-def _get_query_node_v4(
+def _plan_query_node(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
     history: History,
 ) -> StrategyNode:
-    """v4 discovery entrypoint (gated by CONFIG.use_v4_discovery).
+    """Discovery entrypoint: plan `build_statement`, then wrap the result with
+    the statement's HAVING, ORDER BY and hidden components.
 
-    Mirrors the tail of `get_query_node`, but the root node comes from the v4
-    planner, which returns a fully-grouped FINAL node (no `group_if_required_v2`)
-    and may have promoted grain keys to hidden — so hidden_concepts are merged,
-    not overwritten."""
+    The planner returns a fully-grouped FINAL node that may have promoted grain
+    keys to hidden — so hidden_concepts are merged, not overwritten."""
     # Pre-check connectivity: a WHERE on an unrelated model would otherwise be
     # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
     # cross-joins (scalar aggregates, constants) still resolve below.
     _raise_if_disconnected(build_statement, build_environment, graph, conditions)
+    # Inherit the outer resolution's build caches — chiefly `scoped_joins`, the
+    # query-scoped JOIN merges. Sub-selects (rowsets, multiselect arms)
+    # materialize their own build env via these caches; a fresh BuildCaches
+    # would drop the merges, leaving a cross-fact rowset join unresolvable
+    # (q29: `inner join catalog_sales.* = store_sales.*` on the outer select
+    # feeds the rowset's combined source).
+    v4_history = V4History(
+        base_environment=history.base_environment,
+        build_caches=history.build_caches,
+    )
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components),
-        # Inherit the outer resolution's build caches — chiefly `scoped_joins`,
-        # the query-scoped JOIN merges. Sub-selects (rowsets, multiselect arms)
-        # materialize their own build env via these caches; a fresh BuildCaches
-        # would drop the merges, leaving a cross-fact rowset join unresolvable
-        # (q29: `inner join catalog_sales.* = store_sales.*` on the outer
-        # select feeds the rowset's combined source).
-        history=V4History(
-            base_environment=history.base_environment,
-            build_caches=history.build_caches,
-        ),
+        history=v4_history,
         environment=build_environment,
         depth=0,
         g=graph,
@@ -714,9 +699,9 @@ def _get_query_node_v4(
     ds = info.strategy_node
     if ds is None:
         # When the requested concepts span unconnected models, surface the typed
-        # subgraph error (mirrors the v3 get_priority_concept dead-end) rather
-        # than an opaque "could not resolve" dump. Caught by the up-front
-        # pre-check for top-level selects; this also covers nested dead-ends.
+        # subgraph error rather than an opaque "could not resolve" dump. Caught
+        # by the up-front pre-check for top-level selects; this also covers
+        # nested dead-ends.
         _raise_if_disconnected(build_statement, build_environment, graph, conditions)
         # FILTER outputs hide their condition concepts; re-check reachability with
         # them surfaced so a filter whose condition can't be related to the value it
@@ -733,7 +718,7 @@ def _get_query_node_v4(
         ]
         raise UnresolvableQueryException(
             f"Could not resolve connections for query with output {error_strings} "
-            "from current model (v4 discovery)."
+            "from current model."
         )
     if build_statement.having_clause:
         final = build_statement.having_clause.conditional
@@ -762,26 +747,25 @@ def _get_query_node_v4(
             partial_concepts=ds.partial_concepts,
             conditions=final,
         )
-        # Source any existence (`x in <set>`) args onto the HAVING-carrying node,
-        # mirroring the v3 path -- without this the membership subselect renders a
-        # dangling CTE reference (INVALID_REFERENCE_BUG). Idempotent. The query
-        # WHERE is threaded so the membership's aggregates filter pre-aggregation
+        # Source any existence (`x in <set>`) args onto the HAVING-carrying node
+        # -- without this the membership subselect renders a dangling CTE
+        # reference (INVALID_REFERENCE_BUG). Idempotent. The query WHERE is
+        # threaded so the membership's aggregates filter pre-aggregation
         # (matching the output path), not over the whole universe.
         append_existence_check(
             ds,
             build_environment,
             graph,
             build_statement.having_clause,
-            history,
+            v4_history,
             conditions=build_statement.where_clause,
         )
     # A plain ORDER BY arg that is only an alias-source of a projected derived
     # output (`order by channel` with `lower(channel) as chan` projected) must
     # be resolvable from the final node's source map: the renderer references
     # it against the final CTE's source and aggregate-wraps it (`MIN(channel)`)
-    # when the final is grouped. v3's final node carries such columns as
-    # INPUTS incidentally; v4's contract-projected FINAL slices them off.
-    # Carry them as inputs only — never outputs, which would put the column in
+    # when the final is grouped — and the contract-projected FINAL slices such
+    # columns off. Carry them as inputs only — never outputs, which would put it in
     # the final GROUP BY and change the dedup grain.
     if build_statement.order_by and ds.parents:
         output_addrs = {c.address for c in ds.output_concepts}
@@ -822,9 +806,18 @@ def _get_query_node_v4(
     }
     partial_requested = requested & {c.address for c in ds.partial_concepts}
     if partial_requested:
+        detail = describe_incomplete_partitions(
+            [
+                x
+                for x in build_environment.datasources.values()
+                if isinstance(x, BuildDatasource)
+            ],
+            [c for c in ds.partial_concepts if c.address in partial_requested],
+        )
         raise UnresolvableQueryException(
             f"Query is unresolvable: no complete sources found for output concepts"
             f" {partial_requested}. These concepts could only be resolved from partial sources."
+            + (f" {detail}" if detail else "")
         )
     return ds
 
@@ -1011,130 +1004,13 @@ def get_query_node(
 
     graph = generate_graph(build_environment)
 
-    search_concepts: list[BuildConcept] = list(build_statement.output_components)
-    if CONFIG.use_v4_discovery:
-        return _get_query_node_v4(
-            build_statement=build_statement,
-            build_environment=build_environment,
-            graph=graph,
-            conditions=build_statement.where_clause,
-            history=history,
-        )
-
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
+    return _plan_query_node(
+        build_statement=build_statement,
+        build_environment=build_environment,
+        graph=graph,
+        conditions=build_statement.where_clause,
+        history=history,
     )
-
-    # v3 raises the disconnected-subgraph error from deep in discovery, where the
-    # statement's line isn't threaded; inject it here (the v4 pre-gate already
-    # carries it). Harmless no-op when the message already names a line.
-    line_number = (
-        build_statement.meta.line_number
-        if isinstance(build_statement, BuildSelectLineage)
-        else None
-    )
-    try:
-        ods: StrategyNode = source_query_concepts(
-            output_concepts=search_concepts,
-            environment=build_environment,
-            g=graph,
-            conditions=build_statement.where_clause,
-            history=history,
-        )
-    except DisconnectedConceptsException as e:
-        raise _with_line_location(e, line_number) from e
-    if not ods:
-        raise ValueError(
-            f"Could not find source query concepts for {[x.address for x in search_concepts]}"
-        )
-    ds: StrategyNode = ods
-    extra_hidden: set[str] = set()
-    if build_statement.having_clause:
-        having = build_statement.having_clause.conditional
-        # Only outputs + WHERE go through discovery, so a HAVING referencing a
-        # precomputed rowset measure raw (`having rs.total > 0.5 * named_max`)
-        # may land on a node with no source for it — the reference would then
-        # re-render from the measure's base lineage, which this node cannot
-        # source (INVALID_REFERENCE). Re-plan with those args as extra hidden
-        # outputs so the condition binds to the rowset output column. Gated to
-        # ROWSET derivation (never re-derivable from outputs) at or above the
-        # select grain (so the plan grain cannot change — a finer arg keeps the
-        # existing routing, mirroring the q21 HAVING promotion guard).
-        planned = {c.address for c in ds.output_concepts}
-        missing_rowset_args = unique(
-            [
-                r
-                for r in build_statement.having_clause.row_arguments
-                if r.address not in planned
-                and r.derivation == Derivation.ROWSET
-                and set(r.grain.components).issubset(build_statement.grain.components)
-            ],
-            "address",
-        )
-        if missing_rowset_args:
-            replanned = source_query_concepts(
-                output_concepts=search_concepts + missing_rowset_args,
-                environment=build_environment,
-                g=graph,
-                conditions=build_statement.where_clause,
-                history=history,
-            )
-            if replanned:
-                ds = replanned
-                extra_hidden = {r.address for r in missing_rowset_args}
-        # A HAVING filters the SELECT outputs, which a resolved merge/select
-        # node already carries — so fold the predicate onto that node rather
-        # than wrapping it in a fresh SelectNode. The wrapper adds a CTE level
-        # that masks the node's join-key grain anchors and triggers a spurious
-        # regroup in a downstream consumer (e.g. a rowset's outer select, q68).
-        if isinstance(ds, (MergeNode, SelectNode)):
-            ds.add_condition(having)
-        else:
-            final = having
-            if ds.conditions:
-                final = BuildConditional(
-                    left=ds.conditions,
-                    right=having,
-                    operator=BooleanOperator.AND,
-                )
-            ds = SelectNode(
-                output_concepts=build_statement.output_components,
-                input_concepts=ds.usable_outputs,
-                parents=[ds],
-                environment=ds.environment,
-                partial_concepts=ds.partial_concepts,
-                conditions=final,
-            )
-        # Source any existence (`x in <set>`) args onto the node now carrying the
-        # HAVING, mirroring the WHERE path — the predicate's subselect must read
-        # from a real producer CTE, not a dangling reference. Idempotent, so the
-        # fold branch (which may already carry the set) is a no-op. The query
-        # WHERE is threaded so the membership's aggregates filter pre-aggregation
-        # (matching the output path), not over the whole universe.
-        append_existence_check(
-            ds,
-            build_environment,
-            graph,
-            build_statement.having_clause,
-            history,
-            conditions=build_statement.where_clause,
-        )
-    ds.hidden_concepts = set(build_statement.hidden_components) | extra_hidden
-    ds.ordering = build_statement.order_by
-    # TODO: avoid this
-    ds.rebuild_cache()
-    requested = {
-        c.address
-        for c in build_statement.output_components
-        if c.address not in build_statement.hidden_components
-    }
-    partial_requested = requested & {c.address for c in ds.partial_concepts}
-    if partial_requested:
-        raise UnresolvableQueryException(
-            f"Query is unresolvable: no complete sources found for output concepts"
-            f" {partial_requested}. These concepts could only be resolved from partial sources."
-        )
-    return ds
 
 
 def get_query_datasources(

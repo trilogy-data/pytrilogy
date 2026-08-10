@@ -2,7 +2,7 @@
 (audit: q2.1/q2.2 window/round fusion).
 
 A `round(agg / lead(agg) over (...))` ratio is a scalar projection whose only
-non-grain input is the window's output. v3 renders it in the window node's own
+non-grain input is the window's output. It should render in the window node's own
 SELECT (the `lead(...)` inline inside `round(...)`); v4 used to give the window
 and the round separate groups, forcing the window to materialize the lead as a
 passthrough column carried through a chain of CTEs. `_merge_basic_into_window_
@@ -13,7 +13,6 @@ never materialized. The post-window `is not null` defers to FINAL untouched
 Rows are identical between planners; this is purely plan size / CTE shape."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key sale_id int;
@@ -42,42 +41,31 @@ order by cat asc, wk asc;
 _EXPECTED_ROWS = [("A", 1, 0.75), ("A", 2, 0.5)]
 
 
-def _gen(v4: bool) -> str:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env, _ = Environment().parse(_MODEL)
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        return engine.generate_sql(_QUERY)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _gen() -> str:
+    env, _ = Environment().parse(_MODEL)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    return engine.generate_sql(_QUERY)[-1]
 
 
-def _run(v4: bool) -> list[tuple]:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env, _ = Environment().parse(_MODEL)
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        rows = engine.execute_text(_QUERY)[-1].fetchall()
-        return [(r[0], r[1], float(r[2])) for r in rows]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _run() -> list[tuple]:
+    env, _ = Environment().parse(_MODEL)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = engine.execute_text(_QUERY)[-1].fetchall()
+    return [(r[0], r[1], float(r[2])) for r in rows]
 
 
 def test_window_basic_merge_rows_match_baseline():
-    assert _run(v4=False) == _EXPECTED_ROWS
-    assert _run(v4=True) == _EXPECTED_ROWS
+    assert _run() == _EXPECTED_ROWS
 
 
 def test_window_basic_merge_renders_lead_inline():
-    v4_sql = _gen(v4=True)
+    sql = _gen()
     # the window result rides inline inside round(...); it is never materialized
     # as a standalone column carried through passthrough CTEs.
-    assert ' as "_virt_window_lead' not in v4_sql, v4_sql
-    assert "round(" in v4_sql and "lead(" in v4_sql
+    assert ' as "_virt_window_lead' not in sql, sql
+    assert "round(" in sql and "lead(" in sql
     # one agg CTE + one fused window/round CTE + one filter CTE, no lead passthrough
-    assert v4_sql.count(" as (\n") <= 3, v4_sql
+    assert sql.count(" as (\n") <= 3, sql
 
 
 # q2.1 shape: the windowed metric is a NAMED BASIC combining two aggregates
@@ -114,35 +102,24 @@ order by wk asc;
 _EXPECTED_COMBO = [(1, 0.75), (2, 0.5)]
 
 
-def _run_combo(v4: bool) -> list[tuple]:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env, _ = Environment().parse(_MODEL_COMBO)
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        rows = engine.execute_text(_QUERY_COMBO)[-1].fetchall()
-        return [(r[0], float(r[1])) for r in rows]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _run_combo() -> list[tuple]:
+    env, _ = Environment().parse(_MODEL_COMBO)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = engine.execute_text(_QUERY_COMBO)[-1].fetchall()
+    return [(r[0], float(r[1])) for r in rows]
 
 
-def _gen_combo(v4: bool) -> str:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = v4
-    try:
-        env, _ = Environment().parse(_MODEL_COMBO)
-        engine = Dialects.DUCK_DB.default_executor(environment=env)
-        return engine.generate_sql(_QUERY_COMBO)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+def _gen_combo() -> str:
+    env, _ = Environment().parse(_MODEL_COMBO)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    return engine.generate_sql(_QUERY_COMBO)[-1]
 
 
 def test_window_basic_merge_named_combo_rows_match_baseline():
-    assert _run_combo(v4=False) == _EXPECTED_COMBO
-    assert _run_combo(v4=True) == _EXPECTED_COMBO
+    assert _run_combo() == _EXPECTED_COMBO
 
 
 def test_window_basic_merge_named_combo_renders_lead_inline():
-    v4_sql = _gen_combo(v4=True)
-    assert ' as "_virt_window_lead' not in v4_sql, v4_sql
-    assert "round(" in v4_sql and "lead(" in v4_sql
+    sql = _gen_combo()
+    assert ' as "_virt_window_lead' not in sql, sql
+    assert "round(" in sql and "lead(" in sql

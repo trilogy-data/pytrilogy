@@ -6,14 +6,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import trilogy.core.query_processor as qp
 from trilogy import Dialects
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
-
-CONFIG.use_v4_discovery = True
-
-import trilogy.core.query_processor as qp
 
 TPCDS = Path(__file__).parent.parent / "tests" / "modeling" / "tpc_ds_duckdb"
 

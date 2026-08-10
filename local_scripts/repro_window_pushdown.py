@@ -2,7 +2,12 @@
 
 import trilogy.core.processing.discovery_utility as du
 import trilogy.core.processing.v4_node_generators.nested_select as m
-from tests.test_window_where_pushdown_matrix import MODEL, _oracle_rows, _oracle_sql, _sorted
+from tests.test_window_where_pushdown_matrix import (
+    MODEL,
+    _oracle_rows,
+    _oracle_sql,
+    _sorted,
+)
 from trilogy import Dialects, Environment
 from trilogy.core.processing.v4_node_generators import multiselect, rowset, union_select
 

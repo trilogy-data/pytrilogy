@@ -10,7 +10,6 @@ from tests.modeling._benchmark_timing import benchmark_query
 from tests.modeling._row_compare import rows_match
 from tests.modeling.tpc_ds_duckdb.query_size import query_size
 from trilogy import Executor
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 
 # Get aggregate info
@@ -137,7 +136,6 @@ def run_query(
             tomli_w.dumps(
                 {
                     "query_id": query_label,
-                    "generator": "v4" if CONFIG.use_v4_discovery else "v3",
                     "gen_length": query_size(query, "sql"),
                     "preql_size": preql_size,
                     "comp_size": comp_size,

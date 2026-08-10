@@ -13,7 +13,6 @@ import pytest
 
 import trilogy.core.processing.concept_strategies_v4 as cs
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.env_processor import generate_graph
@@ -65,12 +64,7 @@ def _search(env, benv, addresses, conditions=None):
 def _generate_v4_sql(text: str) -> str:
     env = Environment()
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        statements = executor.generate_sql(text)
-    finally:
-        CONFIG.use_v4_discovery = prior
+    statements = executor.generate_sql(text)
     return statements[-1]
 
 
@@ -176,16 +170,11 @@ class TestUnion:
         assert len(union_node.parents) == 2
 
     def test_relational_union_end_to_end(self):
-        prior = CONFIG.use_v4_discovery
-        CONFIG.use_v4_discovery = True
-        try:
-            rows = (
-                Dialects.DUCK_DB.default_executor()
-                .execute_query(RELATIONAL_UNION_MODEL)
-                .fetchall()
-            )
-        finally:
-            CONFIG.use_v4_discovery = prior
+        rows = (
+            Dialects.DUCK_DB.default_executor()
+            .execute_query(RELATIONAL_UNION_MODEL)
+            .fetchall()
+        )
         assert [tuple(r) for r in rows] == [(1, 10), (2, 20)]
 
 
@@ -837,8 +826,8 @@ class TestMultiGroupAssembly:
         assert matching_nodes
         # The basic node that *produces* spread must carry its declared grain
         # keys so a downstream sibling can join on them. When spread is the sole
-        # query output the FINAL node dedups it to grain {spread} (matching v3),
-        # so the keys live on the producing node beneath that group, not the
+        # query output the FINAL node dedups it to grain {spread}, so the keys
+        # live on the producing node beneath that group, not the
         # outermost node — assert the invariant on the producer.
         assert any(
             {"local.spread", "local.left_id", "local.right_id"}

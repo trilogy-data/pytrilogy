@@ -5,9 +5,6 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.discovery_utility import get_upstream_concepts
-from trilogy.core.processing.node_generators.common import (
-    resolve_function_parent_concepts,
-)
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
@@ -41,14 +38,8 @@ select
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
     assert total.derivation == Derivation.AGGREGATE
-    x = resolve_function_parent_concepts(
-        total, environment=default_duckdb_engine.environment
-    )
     assert len(cased.concept_arguments) == 1
     assert "local.orid" in get_upstream_concepts(cased)
-
-    assert "local.cased" in x
-    assert "local.orid" in x
     assert results[0] == (3,)
 
 

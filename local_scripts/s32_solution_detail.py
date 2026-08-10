@@ -131,9 +131,7 @@ _ORIGINAL = source_planning.plan_source
 
 def main(argv: list[str]) -> int:
     global FILTER
-    from trilogy.constants import CONFIG
 
-    CONFIG.use_v4_discovery = True
     source_planning.plan_source = shadow_plan_source
     from trilogy.core.processing.v4_node_generators import root as v4_root
 

@@ -87,21 +87,18 @@ def test_nested_greatest_refresh_keeps_watermark_projection():
 
     processed = _persist_merged(exe)
 
-    from trilogy import CONFIG
-
-    if CONFIG.use_v4_discovery:
-        # v4 re-derives multi_wm from the complete root watermark sources
-        # (greatest(wm_a, wm_b) inline) instead of reading the PARTIAL's
-        # stored column, so no CTE projects multi_wm and the group-parent /
-        # union-arm CTE-name collision this test guards cannot arise. Rows
-        # execution-verified equal to v3 2026-07-28; the end-to-end binder
-        # guard is test_nested_greatest_refresh_sql_executes.
-        assert not any(
-            col.address == "local.multi_wm"
-            for c in processed.ctes
-            for col in c.output_columns
-        ), "v4 plan changed: multi_wm materialized again — re-check the collision guard"
-        return
+    # multi_wm is re-derived from the complete root watermark sources
+    # (greatest(wm_a, wm_b) inline) instead of read from the PARTIAL's stored
+    # column, so no CTE projects multi_wm and the group-parent / union-arm
+    # CTE-name collision this test guards cannot arise. Rows
+    # execution-verified 2026-07-28; the end-to-end binder guard is
+    # test_nested_greatest_refresh_sql_executes.
+    assert not any(
+        col.address == "local.multi_wm"
+        for c in processed.ctes
+        for col in c.output_columns
+    ), "plan changed: multi_wm materialized again — re-check the collision guard"
+    return
 
     by_name = {c.name: c for c in processed.ctes}
     # Find the GROUP CTE that aggregates multi_wm; its single parent (the read of

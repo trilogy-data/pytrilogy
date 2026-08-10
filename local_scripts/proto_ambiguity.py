@@ -3,7 +3,7 @@
 Standard: a pair of key equivalence classes is AMBIGUOUS when no single
 datasource co-locates them and the minimal (shortest datasource-hop)
 join paths between them carry incomparable connector-key sets (no set is a
-subset of all others — v3's detect_ambiguity_and_raise rule). A hop between
+subset of all others — the detect_ambiguity_and_raise rule). A hop between
 two datasources joins on ALL their shared key classes, so a composite-grain
 snowflake hop is ONE path, not one path per key. Longer paths are treated as
 dominated by shorter ones. Computed statically from the model's datasource
@@ -200,7 +200,7 @@ def connector_sets_from(kg: KeyGraph, source: str) -> dict[str, list[frozenset[s
 
 
 def undominated(alternatives: list[frozenset[str]]) -> list[frozenset[str]]:
-    """v3's detect_ambiguity_and_raise rule: clean iff some connector set is a
+    """The detect_ambiguity_and_raise rule: clean iff some connector set is a
     subset of every other (that set is the resolution); ambiguous otherwise."""
     for candidate in alternatives:
         if all(candidate <= other for other in alternatives):
@@ -320,7 +320,7 @@ MODELS: dict[str, tuple[Path | None, str]] = {
     ),
     "tpc_ds_multi": (
         REPO / "tests/modeling/tpc_ds_duckdb",
-        "import store_sales as store_sales;\n"
+        "import store_sales as store_sales;\n"  # noqa: ISC004
         "import catalog_sales as catalog_sales;\n"
         "import inventory as inventory;\n"
         "import item as item;\n"

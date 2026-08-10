@@ -1297,7 +1297,7 @@ class BaseDialect:
         and stripped the redundant copy from this consumer. A single-parent (no
         join) projection can't NULL-pad rows, so every surviving row satisfies
         the where; render the content bare (which then lets CollapseSingleParent
-        fold this passthrough into the group parent, matching v3's single node).
+        fold this passthrough into the group parent, giving a single node).
 
         Gated to a single plain-CTE parent whose condition implies the where and
         which supplies every column the filter references, so no row that fails

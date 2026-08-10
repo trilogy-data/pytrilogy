@@ -247,7 +247,7 @@ def _prune_existence_exclusive_roots(
     but those filters. Left in the common ``grp:root:root:∅`` they force it to
     source from the fact, dragging the customer-dimension projection (demographics)
     onto the fact too. Removing them lets the shared root source the dimension
-    standalone (``customer ⋈ demographics ⋈ address``), matching v3 -- while the
+    standalone (``customer ⋈ demographics ⋈ address``) -- while the
     semijoin's join key (``pcid``, which also feeds the count) stays, sourced both
     from the fact (in root_d1) and the dimension (in the shared root) and joined by
     the ``IN``.
@@ -521,9 +521,9 @@ def _post_aggregate_filter_args(
     billing_customer.address.state = 'GA'``).
 
     A HAVING dim arg filters the OUTPUT after aggregation, so peeling it to a
-    standalone dim scan and semijoining on the entity key is faithful (v3's
-    ``wakeful`` sources the billing-customer dims AND applies ``state = 'GA'`` in
-    one CTE). Unlike a selected dim column, a filter-only HAVING arg has no output
+    standalone dim scan and semijoining on the entity key is faithful (one
+    ``wakeful`` CTE sources the billing-customer dims AND applies
+    ``state = 'GA'``). Unlike a selected dim column, a filter-only HAVING arg has no output
     to anchor it — but the placed condition still sources the column at the dim
     scan, so the WHERE is preserved (not dropped)."""
     args: set[str] = set()
@@ -678,7 +678,7 @@ def _split_root_dimension_clusters(
     lands in the single keyed root bucket alongside the fact-grain columns it
     converges with at the FINAL projection. Sourced together they re-root on the
     fact (``catalog_returns ⋈ date_dim ⋈ …``) and dedup back to customer grain —
-    the joins v3 avoids by sourcing the dims from their own tables keyed by
+    those joins are avoided by sourcing the dims from their own tables keyed by
     ``billing_customer.id``.
 
     When a subset of a root bucket's members is functionally determined by a
@@ -687,7 +687,7 @@ def _split_root_dimension_clusters(
     independently from its own dim tables and join on the key. Each such cluster
     becomes its own ROOT bucket. Per-entity: q65's ``item.desc`` (FD by item.id)
     and ``store.name`` (FD by store.id) each get their own bucket and join the
-    aggregate on their key — matching v3's ``wakeful ⋈ item ⋈ store``. A member
+    aggregate on their key (``wakeful ⋈ item ⋈ store``). A member
     FD by two incomparable entities only co-occurs through the fact and stays put.
 
     FD is resolved against the full build environment (not the concept-graph
@@ -765,7 +765,7 @@ def _split_root_dimension_clusters(
             # (q66's `square_feet` divisor). Both are consumed at post-aggregate
             # grain, so sourcing them at the dim scan joined on the entity key is
             # faithful — a HAVING's condition placed on the dim bucket still
-            # applies its WHERE there (v3's `wakeful` sources the dims AND
+            # applies its WHERE there (`wakeful` sources the dims AND
             # filters `state = 'GA'` in one CTE). A filter-only PRE-aggregate
             # arg is NOT peeled (`pre_aggregate_filter_args` gate below): its
             # WHERE must narrow the fact rows feeding the aggregate, not a
@@ -888,9 +888,9 @@ def _fold_rollup_key_dims(
     txt)``) buckets by stop-signature/grain into a leaf-grain BASIC group and is
     joined back to the rollup on the raw keys. At a subtotal row the rolled-up
     key is NULL, so the join finds no leaf match and the dim comes back NULL —
-    dropping the dimension value v3 preserves (q80). Mirrors v3, which emits the
-    derived dim as a non-aggregate column of the rollup group node;
-    ``group_node.py`` already marks these dims nullable for the null-safe
+    dropping the dimension value that must be preserved (q80). Emit the derived
+    dim as a non-aggregate column of the rollup group node instead; such dims
+    are already marked nullable for the null-safe
     assembly join.
 
     Scoped to non-standard grouping: a standard GROUP BY key is never
@@ -1320,7 +1320,7 @@ def _rowset_join_key_addresses(
         # `(select max(val)/2 -> half)`) has no join axis. Expanding through its
         # own lineage would put the aggregate VALUE into the merge grain and
         # force the row side to re-render the aggregate at row grain
-        # (AGG_GRAIN_MISMATCH). v3 cross-joins such a boundary ON 1=1.
+        # (AGG_GRAIN_MISMATCH). Such a boundary cross-joins ON 1=1.
         return set()
     output: set[str] = set()
     for key_address in key_addresses:
@@ -2508,8 +2508,8 @@ def _regraft_candidate(
     it. This lets a scalar BASIC over two sibling aggregates (q47/q57:
     `sum_minus_avg = sum_sales - avg_monthly_sales`) source its spine through the
     most-derived same-grain stream, while the coarser `avg` rides in via the
-    BASIC's existing lineage parents — collapsing v4's redundant intermediate
-    merge into v3's single inline join. The partial case is join-bearing, so it
+    BASIC's existing lineage parents — collapsing a redundant intermediate
+    merge into a single inline join. The partial case is join-bearing, so it
     is gated for safety: the BASIC's grain must equal the spine's (1:1, no
     fan-out) and every remaining input must already be built by `gid`'s current
     lineage parents. Among eligible spines the DEEPEST (most ancestors) wins —
@@ -2804,7 +2804,7 @@ def _merge_basic_into_window_parent(
 ) -> bool:
     """Collapse a same-grain scalar BASIC group into a WINDOW parent that already
     supplies all of its inputs, so the projection renders inline in the window's
-    own SELECT (v3's single-CTE window+round shape, q2.1/q2.2) instead of a
+    own SELECT (the single-CTE window+round shape, q2.1/q2.2) instead of a
     separate node that forces the window to materialize every passthrough column.
 
     This is the node-MERGE generalization of `_regraft_group_sources` (which only
@@ -2817,7 +2817,7 @@ def _merge_basic_into_window_parent(
     The post-window filter (`x is not null`) needs no handling here: it has not
     been injected yet (this runs before `_inject_conditions`), and placement
     refuses to host a filter on a window group's own output, so it defers to
-    FINAL exactly as v3 emits it."""
+    FINAL."""
     changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:

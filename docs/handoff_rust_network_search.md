@@ -45,9 +45,9 @@ seed fallback) and any design notes older than that are stale.
 
 Move the enumeration walk and its per-state machinery to Rust. Success is
 judged **within the search slice, not against total generation** (explicit
-maintainer directive): the remaining v4-vs-v3 residual on search-heavy
-queries (tpc_ds q23: ~0.27s v4 vs ~0.19–0.25s v3, of which the walk is
-~0.1s) and, more importantly, the worst case — a pathological wide model
+maintainer directive): search-heavy queries (tpc_ds q23 spends ~0.27s in
+generation, of which the walk is ~0.1s) and, more importantly, the worst
+case — a pathological wide model
 burns the 10k-state budget in ~4.5s of Python today; in Rust with bitset
 states that budget should cost milliseconds, which changes what the budget
 *means* (brute force to conviction instead of capped guessing).

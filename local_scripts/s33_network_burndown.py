@@ -17,7 +17,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 TPCDS_ROOT = (
     Path(__file__).resolve().parents[1] / "tests" / "modeling" / "tpc_ds_duckdb"
@@ -37,7 +36,6 @@ def generate(path: Path) -> tuple[bool, str]:
 
 
 def main(argv: list[str]) -> int:
-    CONFIG.use_v4_discovery = True
     queries = (
         [Path(a) if Path(a).exists() else TPCDS_ROOT / a for a in argv]
         if argv

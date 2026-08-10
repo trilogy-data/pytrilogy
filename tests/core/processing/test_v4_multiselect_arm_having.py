@@ -8,7 +8,6 @@ A (`count(ticket_id) as tickets having tickets > 1`) must exclude category `b`
 columns. Without the fix `b` leaks back with `tickets = 1`."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key ticket_id int;
@@ -53,13 +52,8 @@ def test_multiselect_arm_having_filters_that_arm():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = executor.generate_sql(_QUERY)[-1]
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = executor.generate_sql(_QUERY)[-1]
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
     assert 'HAVING\n    "tickets" > 1' in sql, sql
     # cat, tcat, tickets, ocat, total -- arm A drops `b`, so its columns are NULL
     # while arm B still contributes `b` through the FULL join.

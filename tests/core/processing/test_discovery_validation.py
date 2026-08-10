@@ -34,11 +34,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
-from trilogy.core.models.environment import Environment
-from trilogy.core.processing.discovery_node_factory import (
-    NodeGenerationContext,
-    RootNodeHandler,
-)
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     _conditions_met,
@@ -46,7 +41,6 @@ from trilogy.core.processing.discovery_validation import (
     _is_scalar_only,
     validate_stack,
 )
-from trilogy.core.processing.nodes import History
 
 
 def _concept(
@@ -471,81 +465,3 @@ class TestConditionsMetIndependentScope:
 # ---------------------------------------------------------------------------
 # RootNodeHandler._handle_expanded_node — preserves condition row args
 # ---------------------------------------------------------------------------
-
-
-class TestHandleExpandedNodePreservesRowArgs:
-    def _context(self, conditions, concept, local_optional):
-        return NodeGenerationContext(
-            concept=concept,
-            local_optional=local_optional,
-            environment=BuildEnvironment(),
-            g=None,  # type: ignore[arg-type]
-            depth=0,
-            source_concepts=lambda *a, **kw: None,  # type: ignore[arg-type]
-            history=History(base_environment=Environment()),
-            accept_partial=False,
-            conditions=conditions,
-        )
-
-    def test_row_args_kept_when_conditions_present(self):
-        """Bug 1: gen_merge_node returns a node containing the condition row
-        arguments so the discovery loop can apply the WHERE on top.
-        _handle_expanded_node must not strip those out — otherwise the next
-        validate_stack call sees a node with no row args and no
-        preexisting_conditions and trips the INCOMPLETE_CONDITION guardrail."""
-        target = _concept("date")  # the ROOT concept being sourced
-        optional = _concept("item_id")
-        row_arg_a = _concept("sales_channel")
-        row_arg_b = _concept("year")
-
-        ctx = self._context(
-            conditions=BuildWhereClause(
-                conditional=_and(_eq(row_arg_a, "STORE"), _eq(row_arg_b, "2000"))
-            ),
-            concept=target,
-            local_optional=[optional],
-        )
-        # Expanded node mirrors what gen_merge_node returns: target, optional,
-        # plus the condition row args (and an unrelated extra that *should*
-        # still get stripped).
-        unrelated_extra = _concept("date_id")
-        expanded = _StackNode(
-            [target, optional, row_arg_a, row_arg_b, unrelated_extra],
-            label="expanded",
-        )
-
-        RootNodeHandler(ctx)._handle_expanded_node(expanded, [target, optional])
-
-        kept = {c.address for c in expanded.output_concepts}
-        assert target.address in kept
-        assert optional.address in kept
-        assert row_arg_a.address in kept, (
-            "condition row arg sales_channel must be preserved so the "
-            "discovery loop can apply the WHERE"
-        )
-        assert row_arg_b.address in kept, (
-            "condition row arg year must be preserved so the discovery loop "
-            "can apply the WHERE"
-        )
-        assert (
-            unrelated_extra.address not in kept
-        ), "non-target, non-row-arg extras should still be stripped"
-
-    def test_no_conditions_strips_everything_extra(self):
-        """When no conditions are present, the original strip-down behavior
-        applies — anything not in root_targets is removed."""
-        target = _concept("date")
-        optional = _concept("item_id")
-        unrelated = _concept("unrelated")
-
-        ctx = self._context(
-            conditions=None,
-            concept=target,
-            local_optional=[optional],
-        )
-        expanded = _StackNode([target, optional, unrelated], label="expanded")
-
-        RootNodeHandler(ctx)._handle_expanded_node(expanded, [target, optional])
-
-        kept = {c.address for c in expanded.output_concepts}
-        assert kept == {target.address, optional.address}

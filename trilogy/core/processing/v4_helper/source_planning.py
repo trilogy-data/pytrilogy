@@ -1,8 +1,7 @@
-"""v4 root datasource planning.
+"""Root datasource planning.
 
-This replaces the old ROOT hand-off to v3 discovery for the case where a set
-of sourced concepts needs connector concepts added before datasource components
-can be merged. The connector search still reuses the graph Steiner helper for
+Handles the case where a set of sourced concepts needs connector concepts added
+before datasource components can be merged. The connector search still reuses the graph Steiner helper for
 now, but component sourcing and final assembly stay in the v4 root planner.
 """
 
@@ -746,7 +745,7 @@ def _derived_connector_nodes(
             # ride the connector too: the datasource gap-fill stands down for
             # non-BASIC merge bridges, so no raw scan will ever supply it
             # (window-key join: `orders.amt` rides the rank connector at oid
-            # grain — v3 computes the window inline on the amt-carrying scan).
+            # grain, so the window computes inline on the amt-carrying scan).
             grain_components = set(origin.grain.components)
             carried = [
                 c
@@ -1061,9 +1060,9 @@ def _complete_partial_requested(
     On a strict (non-partial) pass a bridge can still carry a requested concept
     as a partial column -- e.g. the `~vehicle.name` merge key on `launch_info`:
     every launch has one, but the column is not vehicle.name's authoritative
-    domain, so it is flagged partial and the final-output guard rejects it. v3's
-    sourcing loop completes such a key against its dimension source (`lv_info`)
-    and joins; mirror that here. If no *complete* source exists the node is left
+    domain, so it is flagged partial and the final-output guard rejects it.
+    Complete such a key against its dimension source (`lv_info`) and join. If no
+    *complete* source exists the node is left
     unchanged -- the genuinely-partial case stays for the partial passes / guard.
     """
     requested = {c.address for c in _requested_concepts(request)}
@@ -1105,7 +1104,7 @@ def _complete_partial_requested(
     )
     # Anchor the complete (and filtered) dimension and outer-join the bridge, so
     # the requested key is non-partial and every surviving dimension value is
-    # kept -- matching v3's `lv_info LEFT JOIN launch_info` shape.
+    # kept -- the `lv_info LEFT JOIN launch_info` shape.
     return MergeNode(
         input_concepts=inputs,
         output_concepts=node.output_concepts,
@@ -1320,11 +1319,9 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
 def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     """Bare projection of a coalescing (`full`/`union`) axis: the unified axis
     is the union of member domains, so no single member's scan may satisfy it —
-    assemble the mandatory coalesce of every member side (v3's
-    `gen_coalescing_axis_node`, reused with a v4 recursion adapter for unbound
-    members).
+    assemble the mandatory coalesce of every member side.
 
-    Deliberately narrow, mirroring the v3 trigger: fires only when EVERY
+    Deliberately narrow: fires only when EVERY
     requested concept (outputs and filter columns alike) is a key of one
     coalescing group. A request carrying any other column is querying a side or
     already forces the member scans into the bridge, where probe pinning and

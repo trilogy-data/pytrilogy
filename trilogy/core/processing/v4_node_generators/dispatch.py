@@ -72,7 +72,7 @@ def build_node(
     must apply it to whatever it re-plans.
 
     Every group-level derivation is native — an unknown one is a real bug, so
-    we raise rather than degrade (there is no v3 fallback)."""
+    we raise rather than degrade (there is no fallback planner)."""
     fn = _GENERATORS.get(derivation)
     if fn is None:
         raise ValueError(

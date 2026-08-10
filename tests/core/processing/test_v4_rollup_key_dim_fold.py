@@ -7,16 +7,13 @@ GROUP BY ROLLUP node so it is emitted as a column there and carries the
 rolled-up key values on the subtotal/grand-total rows. Otherwise it buckets
 into its own leaf-grain BASIC group and is joined back on the raw keys; at a
 subtotal row the rolled-up key is NULL, the join finds no leaf match, and the
-dim comes back NULL — dropping the dimension value v3 preserves.
+dim comes back NULL — dropping the dimension value the rollup must preserve.
 
-This is v4-only (`CONFIG.use_v4_discovery`), so it does not run in the default
-v3 coverage pass; the fixture enables it here so the fold body is exercised
-every run. The discriminating evidence is the per-channel subtotal rows
+The discriminating evidence is the per-channel subtotal rows
 (`('aa', None, 30.0)`, `('bb', None, 30.0)`): `channel` is non-NULL there only
 because the derived dim rides the rollup node."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key chan int;
@@ -44,12 +41,7 @@ def test_rollup_key_derived_dim_folds_into_rollup_node():
     env = Environment()
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     executor.parse_text(_MODEL)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
     assert [(r[0], r[1], float(r[2])) for r in rows] == [
         ("aa", "xp", 10.0),
         ("aa", "xq", 20.0),

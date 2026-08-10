@@ -10,8 +10,8 @@ outright, and nothing downstream re-applied them.
 Distilled from tpc-ds q11: `where billing_customer.sk is not null` beside
 `sum(...) by billing_customer.sk` rebuilt the aggregate unfiltered, so the
 NULL-key group survived the LEFT OUTER join to the customer dimension as an
-all-NULL output row (v3 98,992 rows vs v4 98,993). The same mechanism silently
-no-op'd q11's `channel in (...)` and `year in (...)`.
+all-NULL output row (98,993 rows where 98,992 are correct). The same mechanism
+silently no-op'd q11's `channel in (...)` and `year in (...)`.
 
 `test_not_null_on_aggregate_grain_key_is_enforced` (tpc_ds_duckdb) is the
 row-level guard; these pin the plumbing that produces it, without a database.
@@ -21,7 +21,6 @@ import inspect
 from pathlib import Path
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 from trilogy.core.processing import concept_strategies_v4
 from trilogy.core.processing.v4_node_generators import root as root_generator
 
@@ -34,15 +33,8 @@ select sales.billing_customer.id;"""
 
 
 def _generate() -> str:
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        env = Environment(working_path=_WORKING)
-        return Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)[
-            -1
-        ]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    env = Environment(working_path=_WORKING)
+    return Dialects.DUCK_DB.default_executor(environment=env).generate_sql(_QUERY)[-1]
 
 
 def test_ancestor_atom_renders_in_the_rebuilt_aggregates_scan():
@@ -51,9 +43,9 @@ def test_ancestor_atom_renders_in_the_rebuilt_aggregates_scan():
 
 
 def test_dimension_join_is_not_left_outer():
-    """With the NULL keys filtered out the customer join upgrades to INNER, as it
-    does under v3. A surviving LEFT OUTER means the atom went missing again — the
-    preserved side is exactly what let the NULL group through."""
+    """With the NULL keys filtered out the customer join upgrades to INNER. A
+    surviving LEFT OUTER means the atom went missing again — the preserved side
+    is exactly what let the NULL group through."""
     assert "LEFT OUTER JOIN" not in _generate()
 
 
@@ -85,15 +77,10 @@ def test_only_atoms_expressible_on_the_request_are_inherited():
     it would narrow the aggregates' INPUT, which the population/select
     dual-scope split forbids (`test_where_select_dual_scope`), so the year stays
     on the outer group and date_dim is still joined above the union."""
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        env = Environment(working_path=_WORKING)
-        sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
-            (_WORKING / "query11.preql").read_text()
-        )[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    env = Environment(working_path=_WORKING)
+    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
+        (_WORKING / "query11.preql").read_text()
+    )[-1]
     # Three arm-level guards (catalog/store/web) plus one re-check on the union
     # output. That fourth is redundant -- every arm already null-rejects the
     # column -- but proving it needs an "all arms enforce this" implication that

@@ -23,9 +23,7 @@ select
 limit 20;
 """
 
-DEFAULT_WORKSPACE = Path(
-    "evals/tpcds_agent/results/20260808-151955_enriched/workspace"
-)
+DEFAULT_WORKSPACE = Path("evals/tpcds_agent/results/20260808-151955_enriched/workspace")
 
 
 def run_query(workspace: str, events: mp.Queue) -> None:

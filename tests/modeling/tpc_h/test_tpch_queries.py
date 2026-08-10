@@ -10,7 +10,6 @@ from tests.modeling._benchmark_timing import benchmark_query
 from tests.modeling._row_compare import rows_match
 from tests.modeling.tpc_h.query_size import query_size
 from trilogy import Dialects, Executor, parse
-from trilogy.constants import CONFIG
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 
@@ -105,7 +104,6 @@ def run_query(
             tomli_w.dumps(
                 {
                     "query_id": query_label,
-                    "generator": "v4" if CONFIG.use_v4_discovery else "v3",
                     "gen_length": query_size(query, "sql"),
                     "preql_size": preql_size,
                     "comp_size": comp_size,
@@ -235,23 +233,15 @@ def test_five(engine):
 
 def test_five_fuses_identity_group_into_aggregate():
     text = (working_path / "query05.preql").read_text()
-    prior = CONFIG.use_v4_discovery
-    try:
-        sql: dict[bool, str] = {}
-        for use_v4 in (False, True):
-            CONFIG.use_v4_discovery = use_v4
-            environment = Environment(working_path=working_path)
-            executor = Dialects.DUCK_DB.default_executor(environment=environment)
-            sql[use_v4] = executor.generate_sql(text)[-1]
-    finally:
-        CONFIG.use_v4_discovery = prior
+    environment = Environment(working_path=working_path)
+    executor = Dialects.DUCK_DB.default_executor(environment=environment)
+    sql = executor.generate_sql(text)[-1]
 
-    assert sql[True] == sql[False]
-    assert sql[True].count("SELECT") == 1
-    assert sql[True].count("GROUP BY") == 1
-    assert 'sum("lineitem"."l_extendedprice" *' in sql[True]
-    assert ' as "discount"' not in sql[True]
-    assert ' as "extended_price"' not in sql[True]
+    assert sql.count("SELECT") == 1
+    assert sql.count("GROUP BY") == 1
+    assert 'sum("lineitem"."l_extendedprice" *' in sql
+    assert ' as "discount"' not in sql
+    assert ' as "extended_price"' not in sql
 
 
 def test_six(engine):
@@ -337,7 +327,7 @@ def test_twenty_two(engine):
     # repeats the filters `thoughtful` already applied and recomputes
     # SUBSTRING(phone,1,2) rather than reusing the projected cntrycode, and
     # every membership atom carries a redundant `IS NOT NULL` beside an IN over
-    # non-null literals. Measured 1755 here (v3 is 1773, main 1791); the 1600
+    # non-null literals. Measured 1755 here (main is 1791); the 1600
     # this once asserted has never been met by any planner. Guard the shape and
     # keep ~45 chars of headroom so a real regression still trips it.
     assert len(query) < 1800, query

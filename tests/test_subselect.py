@@ -1,4 +1,3 @@
-import pytest
 from lark.tree import Meta
 
 from trilogy import parse
@@ -11,9 +10,6 @@ from trilogy.core.models.author import (
     SubselectItem,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.node_generators.subselect_node import (
-    resolve_subselect_parent_concepts,
-)
 from trilogy.parsing.common import process_function_arg
 from trilogy.utility import string_to_hash
 
@@ -84,17 +80,6 @@ def test_subselect_item_bulk_reference_replacement():
     )
     assert replaced.content.address == "local.new_val"
     assert replaced.outer_arguments[0].address == "local.new_cat"
-
-
-def test_resolve_subselect_parent_concepts_wrong_lineage():
-    env, _ = parse("""
-key id int;
-property id.val int;
-    """)
-    env = env.materialize_for_select()
-    concept = env.concepts["val"]
-    with pytest.raises(ValueError, match="Expected subselect lineage"):
-        resolve_subselect_parent_concepts(concept, env, 0)
 
 
 def test_parse_def_table_basic():

@@ -3,9 +3,6 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import Factory
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.node_generators.common import (
-    resolve_function_parent_concepts,
-)
 from trilogy.core.statements.author import SelectStatement
 
 
@@ -70,7 +67,6 @@ def test_rowset_with_aggregation(
     assert group.derivation == Derivation.AGGREGATE
     # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)
     # assert "even_orders.store_id" in grain_c_lcl.addresses
-    resolve_function_parent_concepts(group, environment=test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     # assert len(results) == 3

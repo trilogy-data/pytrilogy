@@ -230,9 +230,7 @@ def run_query(path: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
-    from trilogy.constants import CONFIG
 
-    CONFIG.use_v4_discovery = True
     source_planning.plan_source = shadow_plan_source
     # dispatch.py imported the symbol directly; repoint that binding too
     from trilogy.core.processing.v4_node_generators import root as v4_root

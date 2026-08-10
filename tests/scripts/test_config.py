@@ -1707,3 +1707,36 @@ def test_audit_output_never_contains_resolved_values(tmp_path, monkeypatch):
     combined = "\n".join(warnings)
     assert "unknown_key" in combined
     assert "resolved-secret-value" not in combined
+
+
+def _bigquery_project(tmp_path: Path) -> Path:
+    (tmp_path / "trilogy.toml").write_text(
+        '[project]\nname = "repro"\n\n[engine]\ndialect = "bigquery"\n\n'
+        '[engine.config]\nproject = "some-project"\n'
+    )
+    (tmp_path / "things.preql").write_text(
+        "key id int;\nproperty id.label string;\n\n"
+        "datasource things (id:id, label:label)\n"
+        "grain (id)\n"
+        "address `some-project.some_dataset.things`;\n\n"
+        "select id, label order by id asc;\n"
+    )
+    return tmp_path
+
+
+def test_unit_runs_against_bigquery_project(tmp_path):
+    """`trilogy unit` forces DuckDB but keeps the project config; a typed
+    [engine.config] for another dialect must not reach the engine factory."""
+    path = _bigquery_project(tmp_path)
+    result = CliRunner().invoke(cli, ["unit", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "Invalid dialect configuration" not in result.output
+
+
+def test_run_with_dialect_override_in_bigquery_project(tmp_path):
+    """Same mismatch through the other spelling: an explicit dialect argument
+    that differs from the toml's."""
+    path = _bigquery_project(tmp_path)
+    (path / "constant.preql").write_text("select 1 as x;\n")
+    result = CliRunner().invoke(cli, ["run", str(path / "constant.preql"), "duck_db"])
+    assert result.exit_code == 0, result.output

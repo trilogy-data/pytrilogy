@@ -739,7 +739,6 @@ def _captured_searches(monkeypatch, model: str, query: str):
     """Run a v4 build of `query` and capture every (network, result) pair the
     planner searched."""
     import trilogy.core.processing.v4_helper.source_planning as sp
-    from trilogy.constants import CONFIG
     from trilogy.core.processing.v4_helper.network_search import (
         search_sources as real_search,
     )
@@ -752,7 +751,6 @@ def _captured_searches(monkeypatch, model: str, query: str):
         captured.append((network, result))
         return result
 
-    monkeypatch.setattr(CONFIG, "use_v4_discovery", True)
     monkeypatch.setattr(sp, "search_sources", capturing_search)
     env = Environment()
     env.parse(model)
@@ -993,7 +991,6 @@ def _captured_network_requests(monkeypatch, model: str, query: str):
     """Every `(concepts, environment, graph, conditions)` the planner labeled a
     network from, so a test can re-label a MODIFIED graph for the same request."""
     import trilogy.core.processing.v4_helper.source_planning as sp
-    from trilogy.constants import CONFIG
     from trilogy.core.processing.v4_helper.network_build import (
         build_source_network as real_build,
     )
@@ -1005,7 +1002,6 @@ def _captured_network_requests(monkeypatch, model: str, query: str):
         captured.append((concepts, environment, graph, conditions))
         return real_build(concepts, environment, graph, conditions)
 
-    monkeypatch.setattr(CONFIG, "use_v4_discovery", True)
     monkeypatch.setattr(sp, "build_source_network", capturing_build)
     env = Environment()
     env.parse(model)

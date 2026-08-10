@@ -1,5 +1,4 @@
 query_id = "02.region"
-generator = "v4"
 gen_length = 2092
 preql_size = 390
 comp_size = 764

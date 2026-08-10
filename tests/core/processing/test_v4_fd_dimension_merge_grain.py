@@ -9,7 +9,6 @@ the rowset out of the merge grain, so `_wrap_for_grain` deduped `city` to its ow
 pairing every customer with every city (distilled q46)."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key cust_id int;
@@ -71,13 +70,8 @@ def test_fd_dimension_rides_rowset_grain_no_cross_join():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        sql = executor.generate_sql(_QUERY)[-1]
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    sql = executor.generate_sql(_QUERY)[-1]
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
     assert " on 1=1" not in sql, sql
     assert [tuple(r) for r in rows] == [
         ("alice", "springfield", 12.0),

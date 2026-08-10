@@ -1,8 +1,6 @@
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
-from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.node_generators import gen_select_node
 
 
 def test_key_assignments(test_environment: Environment):
@@ -64,42 +62,6 @@ def test_metric_assignments(test_environment: Environment):
             store_id.address,
         }
         assert candidate.grain.components == {store_id.address}
-
-
-def test_source_outputs(test_environment: Environment, test_executor: Executor):
-    test_environment = test_environment.materialize_for_select()
-    order_ds = test_environment.datasources["orders"]
-    for col in order_ds.columns:
-        if col.alias == "order_id":
-            assert col.is_complete
-        elif col.alias == "store_id" or col.alias == "product_id":
-            assert not col.is_complete
-
-    x = next(
-        iter(
-            gen_select_node(
-                [test_environment.concepts["store_id"]]
-                + [test_environment.concepts["order_id"]],
-                environment=test_environment,
-                g=generate_graph(test_environment),
-                depth=0,
-                accept_partial=True,
-            ).parents
-        )
-    )
-
-    found = False
-    for con in x.partial_concepts:
-        if con.address == test_environment.concepts["store_id"].address:
-            found = True
-    assert found
-
-    resolved = x.resolve()
-    found = False
-    for con in resolved.partial_concepts:
-        if con.address == test_environment.concepts["store_id"].address:
-            found = True
-    assert found
 
 
 def test_statement_grains(test_environment: Environment, test_executor: Executor):

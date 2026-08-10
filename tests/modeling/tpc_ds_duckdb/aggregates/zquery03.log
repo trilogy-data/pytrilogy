@@ -1,5 +1,4 @@
 query_id = 3
-generator = "v4"
 gen_length = 923
 generated_sql = """
 SELECT

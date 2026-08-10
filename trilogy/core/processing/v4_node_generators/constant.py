@@ -23,8 +23,8 @@ def gen_constant(
     can't source those columns, so the predicate renders as an unresolved reference.
     When a parent supplies the gate's inputs, filter that parent by the gate and
     group the constants to their own (empty) grain, so the result is 0 or 1 rows —
-    the boolean "did any row satisfy the gate". Mirrors v3, which sources the
-    constant SELECT from the gate's scan and applies the predicate as a HAVING."""
+    the boolean "did any row satisfy the gate": the constant SELECT is sourced
+    from the gate's scan and the predicate applied as a HAVING."""
     if conditions and parents:
         parent_outputs = [o for p in parents for o in p.output_concepts]
         parent_addresses = {c.address for c in parent_outputs}

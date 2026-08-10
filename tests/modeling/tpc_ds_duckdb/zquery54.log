@@ -1,6 +1,5 @@
 query_id = "54"
-generator = "v4"
-gen_length = 4161
+gen_length = 4167
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
@@ -62,35 +61,33 @@ GROUP BY
 sweltering as (
 SELECT
     \"abhorrent\".\"ss_customer_sk\" as \"my_revenue_rev_cust_id\",
-    sum(\"abhorrent\".\"ss_ext_sales_price\") as \"my_revenue_revenue\"
+    cast(round(sum(\"abhorrent\".\"ss_ext_sales_price\") / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(sum(\"abhorrent\".\"ss_ext_sales_price\") / 50,0) as int) as \"segment\"
 FROM
     \"abhorrent\"
 GROUP BY
     1),
 friendly as (
 SELECT
+    \"sweltering\".\"segment\" as \"segment\",
     count(\"sweltering\".\"my_revenue_rev_cust_id\") as \"num_customers\"
 FROM
-    \"sweltering\"),
-scrawny as (
+    \"sweltering\"
+GROUP BY
+    1)
 SELECT
-    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(\"sweltering\".\"my_revenue_revenue\" / 50,0) as int) as \"segment\"
-FROM
-    \"sweltering\")
-SELECT
-    \"scrawny\".\"segment\" as \"segment\",
+    \"sweltering\".\"segment\" as \"segment\",
     \"friendly\".\"num_customers\" as \"num_customers\",
-    \"scrawny\".\"segment_base\" as \"segment_base\"
+    \"sweltering\".\"segment_base\" as \"segment_base\"
 FROM
     \"friendly\"
-    LEFT OUTER JOIN \"scrawny\" on 1=1
+    INNER JOIN \"sweltering\" on \"friendly\".\"segment\" = \"sweltering\".\"segment\"
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"scrawny\".\"segment\" asc nulls first,
+    \"sweltering\".\"segment\" asc nulls first,
     \"friendly\".\"num_customers\" asc nulls first,
-    \"scrawny\".\"segment_base\" asc nulls first
+    \"sweltering\".\"segment_base\" asc nulls first
 LIMIT (100)"""

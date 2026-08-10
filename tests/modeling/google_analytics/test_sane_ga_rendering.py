@@ -10,9 +10,6 @@ from trilogy.core.models.core import (
     DataType,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.node_generators.common import (
-    resolve_function_parent_concepts,
-)
 from trilogy.core.statements.author import SelectItem
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.executor import Executor
@@ -95,10 +92,6 @@ def test_daily_job():
     assert isinstance(case.lineage, BuildFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-    parents = resolve_function_parent_concepts(case, environment=env)
-    for x in parents:
-        assert x.namespace == "all_sites"
-
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
@@ -149,10 +142,6 @@ def test_counts():
 
     assert isinstance(case.lineage, BuildFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
-
-    parents = resolve_function_parent_concepts(case, environment=env)
-    for x in parents:
-        assert x.namespace == "all_sites"
 
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]

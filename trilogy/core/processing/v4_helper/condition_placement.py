@@ -15,13 +15,11 @@ from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildFilterItem,
     BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
-    condition_implies,
     decompose_condition,
 )
 from trilogy.core.processing.discovery_utility import _output_is_rootless
@@ -143,8 +141,8 @@ def _candidate_groups(
         if gid not in d1_root_ids
         # A RECURSIVE group never hosts a row atom: filtering the edge set
         # changes reachability (a 2024 post's parent chain crosses years), so
-        # the WHERE belongs above the recursion (v3 renders it at the final
-        # select). Excluding it here lets the atom fall through to FINAL.
+        # the WHERE belongs above the recursion, at the final select.
+        # Excluding it here lets the atom fall through to FINAL.
         and not (
             buckets.get(gid) is not None
             and buckets[gid].derivation == Derivation.RECURSIVE
@@ -187,60 +185,90 @@ def _candidate_groups(
     return hosts
 
 
+def _nested_scope_chain(
+    gid: str,
+    candidates: list[str],
+    nested_ids: set[str],
+    lineage_ancestors_graph: nx.DiGraph,
+) -> list[str]:
+    """The nested groups on `gid`'s own lineage chain — the ones that feed it or
+    carry its value out.
+
+    NOT the connected component of the nested subgraph: sibling scopes share the
+    ROOT_D1 feeder (two `by` gates over one fact both hang off `grp:root:root_d1`),
+    so a component would fuse independent scopes and let one scope's grain answer
+    for another's."""
+    reachable = nx.ancestors(lineage_ancestors_graph, gid) | nx.descendants(
+        lineage_ancestors_graph, gid
+    )
+    return [gid] + [
+        c for c in candidates if c != gid and c in nested_ids and c in reachable
+    ]
+
+
 def _nested_scope_swallows_atom(
-    atom: BoolExpr,
     row_inputs: set[str],
+    chosen_groups: tuple[str, ...],
     candidates: list[str],
     nested_ids: set[str],
     buckets: dict[str, GroupBucket],
-    environment: BuildEnvironment | None,
+    lineage_ancestors_graph: nx.DiGraph,
 ) -> bool:
-    """The atom would be hosted inside a d1 scope that cannot pass it on.
+    """SOME elected host is a d1 scope that cannot pass the atom on.
 
     A d1 scope is reached through the WHERE, so its groups sit lineage-UPSTREAM
     of the statement's own rows and `_upstream_most` elects them over a ROOT
     that could host the atom just as well. Filtering inside the scope restricts
-    that scope's VALUE, not the output population — which is harmless exactly
-    when the scope's value re-enters the outer plan keyed BY the atom's own
-    concept, and a silent drop when it does not. Two conditions, both required:
+    that scope's VALUE, not the output population — harmless exactly when the
+    scope's value re-enters the outer plan keyed BY the atom's own concepts, and
+    a silent drop when it does not, because the scope's value is read back
+    through a join on its GRAIN. An atom within that grain selects which groups
+    survive and propagates outward; an atom over anything else only shifts each
+    group's value, which is both invisible to the outer rows AND the population
+    narrowing the flat-WHERE dual-scope split forbids (conjuncts must not filter
+    each other). Grain exposure is asked of the host's whole nested CHAIN, not
+    the host alone — the scope's aggregate is what carries the value out, and
+    the filter feeding it sits at a finer grain of its own.
 
-    1. A candidate FILTER scope's own condition already implies the atom, so
-       placing it there restricts nothing even locally.
-    2. No nested candidate exposes the atom's row inputs in its GRAIN, so the
-       scope's filtering cannot propagate outward through the join that reads
-       its value.
+    tpch q02: `min(supply_cost ? region = 'EUROPE')` is grouped by part id, so
+    `region = 'EUROPE'` placed on that filter vanished from the plan entirely —
+    SQL byte-identical with the atom deleted, and a non-European supplier tying
+    the European minimum comes back in the results. `where val < 8 and sum(val)
+    by cat > 10 select id` is the same shape without a filter scope: `val` is
+    not the gate's `cat` grain, so the row gate was hosted on the gate's own
+    population and no row was ever dropped.
 
-    tpch q02 fails (2): `min(supply_cost ? region = 'EUROPE')` is grouped by
-    part id and joined back on part id, so `region = 'EUROPE'` placed on that
-    filter vanished from the plan entirely — SQL byte-identical with the atom
-    deleted, and a non-European supplier tying the European minimum comes back
-    in the results. tpcds q30/q30-alt/q81 satisfy (2): their
-    `avg(... ? year = Y and state is not null)` is grouped BY state and joined
-    back on state, so the scope's `is not null` reaches the outer rows and the
-    placement is correct (moving it out costs a second `web_returns` scan)."""
-    if environment is None:
+    Only once EVERY elected host is nested. A nested host elected ALONGSIDE an
+    outer one already reaches the outer rows through that outer copy, and
+    pulling the scope out from under it re-runs `_upstream_most` over a
+    different pool and re-elects a different group entirely (q04's `year in
+    (first, second)` is hosted at both ROOT and its filter scope; dropping the
+    scope moved it to neither, onto a customer-grain BASIC group that cannot
+    source `sale_date.year`). tpcds q30/q30-alt/q81 pass the grain test
+    outright: their `avg(... ? year = Y and state is not null)` is grouped BY
+    state and joined back on state, so the scope's `is not null` reaches the
+    outer rows and the placement is correct (moving it out costs a second
+    `web_returns` scan).
+
+    But then SOME, not ALL: sibling scopes share one materialized ROOT_D1
+    feeder, so an atom hosted on any one of them is pushed into that feeder and
+    narrows every sibling's population too. `where val < 8 and sum(id) by val >
+    0 and sum(val) by cat > 10 select id` elects `val < 8` at both gates'
+    scopes; the `by val` scope keys its value by `val` and could carry it, but
+    keeping it there still filtered the shared feeder and left `sum(val) by cat`
+    summing 5 per cat instead of 13/5 — an empty result. One swallower
+    disqualifies the whole nested pool."""
+    if not chosen_groups or not all(gid in nested_ids for gid in chosen_groups):
         return False
-    enforced = False
-    for gid in candidates:
-        bucket = buckets.get(gid)
-        if bucket is None or bucket.derivation != Derivation.FILTER:
-            continue
-        for member in bucket.primary_members:
-            concept = environment.concepts.get(member)
-            lineage = concept.lineage if concept is not None else None
-            if isinstance(lineage, BuildFilterItem) and condition_implies(
-                lineage.where.conditional, atom
-            ):
-                enforced = True
-                break
-        if enforced:
-            break
-    if not enforced:
-        return False
-    return not any(
-        row_inputs <= set(buckets[gid].grain_components)
-        for gid in candidates
-        if gid in nested_ids and gid in buckets
+    return any(
+        not any(
+            row_inputs <= set(buckets[member].grain_components)
+            for member in _nested_scope_chain(
+                gid, candidates, nested_ids, lineage_ancestors_graph
+            )
+            if member in buckets
+        )
+        for gid in chosen_groups
     )
 
 
@@ -410,12 +438,14 @@ def _uncovered_exposing_output_contributor(
     Hosting an atom at its upstream-most candidate filters that branch, but a
     sibling output projection (`vehicle_label` beside a name-grain window) joins
     FINAL on a coarser key and fans the filtered rows back out to the unfiltered
-    universe — v3 re-applies the WHERE on the final select. Only trip when the
+    universe, so the WHERE is re-applied on the final select. Only trip when the
     uncovered group can expose the inputs (else the FINAL WHERE would reference
     an unsourced concept; an uncovered contributor keyed 1:1 by row identity is
     pinned by the join and needs no re-filter — its groups can't expose derived
-    condition inputs and skip here). Condition-phase (d1) groups are population
-    scope and never receive row atoms.
+    condition inputs and skip here). Condition-phase (d1) groups are skipped as
+    contributors: they feed the WHERE side channel, never a mandatory output, so
+    they cannot be the unfiltered projection that re-fans the universe. (They DO
+    receive row atoms — see `_nested_scope_swallows_atom` — just not as outputs.)
 
     Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS):
     those groups NULL-inject rolled-up dims on subtotal rows, and a WHERE
@@ -456,7 +486,7 @@ def _preserved_final_branch(
     on the split customer-dim cluster, LEFT-joined back to the qualifying
     aggregate). The WHERE — not the join — owns row dropping, so the atom is
     re-asserted at FINAL; the re-check is idempotent when the join is already
-    row-identical (v3 restates the predicate at its merge in the same shape).
+    row-identical (the predicate is restated at its merge in the same shape).
     Gated on the inputs being FINAL-visible mandatory outputs so the copy never
     drags feeder scans in above the merge, and skipped under non-standard
     grouping for the same subtotal-NULL reason as
@@ -548,7 +578,7 @@ def _conjunction_recompute_placements(
 
     A WHERE at a GROUP BY-emitting group restricts that aggregate's input
     population, and the population a select-scope aggregate must see is the
-    rows passing the FULL conjunction — v3 applies every atom at every
+    rows passing the FULL conjunction, so every atom must apply at every
     row-reducing recompute host. Placing atoms independently can split them
     across disjoint hosts (`f = 1` on the scalar branch, the twin gate on the
     `sx` recompute, whose input rides the unfiltered condition-phase chain),
@@ -860,8 +890,8 @@ def plan_condition_placements(
             # group, whose plan itself contains the completion merge). The
             # same applies to a scoped-join KEY-GROUP MEMBER itself: a member
             # reference reads as the coalesced group axis, which only exists
-            # post-merge (v3 renders `WHERE coalesce(b_store, a_store) is not
-            # null` at the final select) — filtering one boundary by its own
+            # post-merge (`WHERE coalesce(b_store, a_store) is not null`
+            # renders at the final select) — filtering one boundary by its own
             # key both no-ops locally and perturbs the anchor-LEFT join shape.
             active_relation_hosts = {
                 gid
@@ -1037,8 +1067,8 @@ def plan_condition_placements(
             # the condition-only group covers no mandatory output, so it is
             # pruned and the WHERE silently vanishes (`where year = 2001` over
             # rowset outputs that never expose year). No join relates the
-            # gate's rows to the outputs — v3's rowset islanding diagnoses the
-            # same shape as disconnected; raise the same typed error. EXEMPT an
+            # gate's rows to the outputs — rowset islanding diagnoses the same
+            # shape as disconnected; raise the same typed error. EXEMPT an
             # atom the output rowsets' own bodies already filter on (q44's
             # outer `store.sk = 1` restates both rowsets' WHERE): that scope
             # consumes the concept, so this is a redundant restatement, not a
@@ -1099,20 +1129,29 @@ def plan_condition_placements(
                     )
                 )
                 continue
-            # A d1 scope that already enforces the atom cannot discharge it —
-            # and neither can anything else in that scope, so the WHOLE nested
-            # scope steps aside and `_upstream_most` sees the outer host it was
-            # shadowing. Dropping only the filter group is not enough: the d1
-            # aggregate reading it is equally nested and equally invisible to
-            # the output population. If the scope was the only candidate the
-            # restatement is genuinely scoped and placement proceeds unchanged.
-            hosts = restricted
+            chosen_groups = _choose_groups(
+                restricted, lineage_ancestors_graph, main_lineage
+            )
+            # A d1 scope that cannot discharge the atom cannot hand it to
+            # anything else on its chain either, so the WHOLE nested pool steps
+            # aside and `_upstream_most` sees the outer host it was shadowing.
+            # Dropping only the filter group is not enough: the d1 aggregate
+            # reading it is equally nested and equally invisible to the output
+            # population. If there is no outer candidate the atom is genuinely
+            # scoped and placement proceeds unchanged.
             if _nested_scope_swallows_atom(
-                atom, row_inputs, restricted, nested_ids, buckets, environment
+                row_inputs,
+                chosen_groups,
+                restricted,
+                nested_ids,
+                buckets,
+                lineage_ancestors_graph,
             ):
                 outer_hosts = [gid for gid in restricted if gid not in nested_ids]
-                hosts = outer_hosts or restricted
-            chosen_groups = _choose_groups(hosts, lineage_ancestors_graph, main_lineage)
+                if outer_hosts:
+                    chosen_groups = _choose_groups(
+                        outer_hosts, lineage_ancestors_graph, main_lineage
+                    )
             _validate_not_pushed_past_independent_barrier(
                 atom,
                 chosen_groups,

@@ -9,7 +9,6 @@ non-hidden parent nodes`). This is the distilled q76 (TPC-DS) crash. The group
 grain may only include concepts the parent actually outputs."""
 
 from trilogy import Dialects, Environment
-from trilogy.constants import CONFIG
 
 _MODEL = """
 key order_id int;
@@ -58,10 +57,5 @@ def test_aggregate_over_aggregate_filter_key_does_not_join_group_grain():
     env = Environment()
     env, _ = env.parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    prior = CONFIG.use_v4_discovery
-    CONFIG.use_v4_discovery = True
-    try:
-        rows = executor.execute_text(_QUERY)[-1].fetchall()
-    finally:
-        CONFIG.use_v4_discovery = prior
+    rows = executor.execute_text(_QUERY)[-1].fetchall()
     assert [tuple(r) for r in rows] == [("a", 1, 30.0), ("b", 1, 30.0)]

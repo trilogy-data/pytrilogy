@@ -242,6 +242,8 @@ By default a datasource is "complete" — it represents the full dataset for its
 `complete where` clause. This enables Trilogy to union multiple partial datasources together
 when it needs the full population.
 
+The `complete where` clause goes between `grain` and the `address`/`query`/`file` clause.
+
 **Complete datasource (default):**
 ```trilogy
 datasource orders (
@@ -255,14 +257,16 @@ address all_orders;
 
 **Partial datasource:**
 ```trilogy
+key region enum<string>['US', 'EU'];
+
 partial datasource orders_us (
     order_id,
     status,
     region
 )
 grain (order_id)
-address orders_us_table
-complete where region = 'US';
+complete where region = 'US'
+address orders_us_table;
 
 partial datasource orders_eu (
     order_id,
@@ -270,12 +274,30 @@ partial datasource orders_eu (
     region
 )
 grain (order_id)
-address orders_eu_table
-complete where region = 'EU';
+complete where region = 'EU'
+address orders_eu_table;
 ```
 
-When Trilogy needs `order_id` it will union `orders_us` and `orders_eu` automatically. Partial
-datasources can also carry `incremental by` for time-partitioned appends:
+When Trilogy needs `order_id` it will union `orders_us` and `orders_eu` automatically.
+
+**The union only forms when the arms provably cover the whole population.** Trilogy has to
+prove that the disjunction of the arms' `complete where` predicates is a tautology over the
+discriminator's domain — otherwise a row whose `region` is neither `'US'` nor `'EU'` would
+silently disappear from an unfiltered query. That proof needs a domain to check against, so
+the discriminator must be one of:
+
+- an `enum` whose values the arms exhaust (`region` above);
+- a numeric/date/bool concept whose arms cover the full range (`complete where created_at <
+  '2024-01-01'` plus `complete where created_at >= '2024-01-01'`);
+- a `::ranged` validated type whose declared ranges the arms cover.
+
+A plain `string` discriminator has no enumerable domain, so `complete where shard = 'a'` and
+`complete where shard = 'b'` can never be proven complete. Such a family stays partial, and an
+unfiltered `select` over it fails with "no complete sources found for output concepts". Give
+the discriminator an `enum` type to make the coverage checkable. A query whose own `where`
+*implies* one arm's `complete where` still resolves against that arm alone, typed or not.
+
+Partial datasources can also carry `incremental by` for time-partitioned appends:
 
 ```trilogy
 partial datasource orders_us (
@@ -285,8 +307,8 @@ partial datasource orders_us (
     created_at
 )
 grain (order_id)
-address orders_us_table
 complete where region = 'US'
+address orders_us_table
 incremental by created_at;
 ```
 

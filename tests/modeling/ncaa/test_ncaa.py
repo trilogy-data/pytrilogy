@@ -5,7 +5,6 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects, Executor
-from trilogy.constants import CONFIG
 from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import BuildUnionDatasource, Factory
 from trilogy.core.models.environment import Environment
@@ -157,19 +156,11 @@ def test_adhoc07():
     generated = engine.generate_sql(text)[0]
 
     # Validate the window's order-by ranks by the `eligible` flag then the
-    # sum/count ratio. The v3 planner inlines the `eligible` CASE (WHEN count > 10
-    # THEN 1 ELSE 0) directly into the ORDER BY; the v4 planner materializes the
-    # user-named `eligible` concept as an upstream column and references it by
-    # name -- the same CASE expression, provably equivalent rows (the eligible
-    # column IS `CASE WHEN count(game_id) > 10 THEN 1 ELSE 0 END`). Accept either
-    # rendering; don't pin the upstream CTE name (merge_aggregate may fold it).
-    if CONFIG.use_v4_discovery:
-        eligible_term = r'"\w+"\."eligible"'
-    else:
-        eligible_term = (
-            r'CASE\s+WHEN\s+"\w+"\."_virt_agg_count_\d+"\s*>\s*10'
-            r"\s+THEN 1\s+ELSE 0\s+END"
-        )
+    # sum/count ratio. The user-named `eligible` concept is materialized as an
+    # upstream column and referenced by name; the column IS
+    # `CASE WHEN count(game_id) > 10 THEN 1 ELSE 0 END`. Don't pin the upstream
+    # CTE name (merge_aggregate may fold it).
+    eligible_term = r'"\w+"\."eligible"'
     pattern = re.compile(
         r"rank\(\) over \(order by "
         + eligible_term

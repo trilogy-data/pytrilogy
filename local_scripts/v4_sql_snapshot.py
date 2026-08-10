@@ -19,7 +19,6 @@ from pathlib import Path
 sys.setrecursionlimit(20000)
 
 from trilogy import Dialects, Executor
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 
@@ -27,8 +26,6 @@ WORKING = Path(__file__).parent.parent / "tests" / "modeling" / "tpc_ds_duckdb"
 IMPORT_PATH = WORKING / "memory"
 GOLDEN = Path(__file__).parent / "v4_sql_golden"
 DRIFT = Path(__file__).parent / "v4_sql_drift"
-
-CONFIG.use_v4_discovery = True
 
 
 def make_engine() -> Executor:
