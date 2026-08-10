@@ -18,9 +18,14 @@ from trilogy.authoring import (
     ImportStatement,
     PropertiesDeclarationStatement,
 )
-from trilogy.constants import REMOTE_PREFIXES, logger
+from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES, logger
 from trilogy.core.enums import AddressType, Modifier, Purpose
-from trilogy.core.models.author import Concept, Grain, Metadata
+from trilogy.core.models.author import (
+    Concept,
+    Grain,
+    Metadata,
+    address_with_namespace,
+)
 from trilogy.core.models.core import EnumType, TraitDataType, ValidatedType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.base import BaseDialect, TableColumn, nullable_from_str
@@ -393,17 +398,90 @@ def _select_verified_grain(
 
 
 def _alternate_single_keys(
-    suggested: list[list[str]], elected: list[str], rejected: list[list[str]]
+    suggested: list[list[str]],
+    elected: list[str],
+    rejected: list[list[str]],
+    penalties: dict[str, int] | None = None,
 ) -> list[str]:
     """Sample-unique single columns beyond the elected grain — candidate keys
     offered to FK inference as alternate targets (full-table uniqueness is
-    verified lazily there, so known-rejected candidates are excluded)."""
+    verified lazily there, so known-rejected candidates are excluded).
+
+    Measure-penalized columns are dropped: a float that happens to be distinct
+    across the sample is a coincidence, not a key, and the same signal already
+    keeps it out of the grain.
+    """
     dropped = {tuple(r) for r in rejected}
+    penalties = penalties or {}
     return [
         c[0]
         for c in suggested
-        if len(c) == 1 and c != elected and tuple(c) not in dropped
+        if len(c) == 1
+        and c != elected
+        and tuple(c) not in dropped
+        and penalties.get(c[0], 0) < _PENALTY_MEASURE
     ]
+
+
+def _suggest_keys(
+    name: str,
+    column_names: list[str],
+    columns: list[TableColumn],
+    column_concept_mapping: dict[str, str],
+    sample_rows: list[tuple],
+    max_key_size: int = 3,
+) -> tuple[list[list[str]], dict[str, int]]:
+    """(sample-unique key candidates best-first, the penalties that ranked them).
+
+    The penalties come back because alternate-key selection needs the same
+    measure/FK signal that ordered the candidates.
+    """
+    penalties = _grain_penalties(name, columns, column_concept_mapping)
+    suggested = detect_unique_key_combinations(
+        column_names,
+        sample_rows,
+        max_key_size=max_key_size,
+        penalties=penalties,
+        exclude=_unkeyable_columns(columns),
+    )
+    return suggested, penalties
+
+
+def _elect_grain(
+    exec: Executor,
+    relation: str,
+    relation_label: str,
+    suggested: list[list[str]],
+    dialect: BaseDialect,
+) -> tuple[list[str], list[list[str]]]:
+    """(elected grain, candidates disproven along the way).
+
+    The first sample-unique candidate that survives full-relation verification
+    wins; an empty grain is the honest fallback when none does.
+    """
+    if not suggested:
+        print_info("No primary key or unique grain detected; defaulting to no grain")
+        return [], []
+    print_info(f"Detected potential unique key combinations: {suggested}")
+    verified, rejected = _select_verified_grain(exec, relation, suggested, dialect)
+    if verified is None:
+        print_warning(
+            f"No candidate is unique on the full {relation_label};"
+            " defaulting to no grain"
+        )
+        return [], rejected
+    print_info(f"Using verified unique grain: {verified}")
+    return verified, rejected
+
+
+def _grain_address(canonical: str) -> str:
+    """A canonical column name as the concept address the model stores.
+
+    ``Grain.components`` and ``Concept.keys`` hold addresses — that is what the
+    parser puts in them, and what every consumer resolves against. Ingest names
+    concepts in the default namespace, so the address is the qualified form.
+    """
+    return address_with_namespace(canonical, DEFAULT_NAMESPACE)
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
@@ -481,7 +559,9 @@ def _process_column(
         keys = set()
     else:
         purpose = Purpose.PROPERTY
-        keys = set(grain_components)
+        # `Concept.keys` holds concept *addresses*, which is what the parser
+        # puts there; these concepts are all default-namespace.
+        keys = {_grain_address(c) for c in grain_components}
 
     # Determine nullability: check sample data first, fall back to schema
     if sample_rows:
@@ -571,34 +651,14 @@ def create_datasource_from_file(
     ).fetchall()
 
     column_concept_mapping = canonicalize_names(column_names)
-    suggested_keys = detect_unique_key_combinations(
-        column_names,
-        sample_rows,
-        penalties=_grain_penalties(
-            name_override or _datasource_name_from_path(arg),
-            columns,
-            column_concept_mapping,
-        ),
-        exclude=_unkeyable_columns(columns),
+    name = name_override or _datasource_name_from_path(arg)
+    suggested_keys, penalties = _suggest_keys(
+        name, column_names, columns, column_concept_mapping, sample_rows
     )
-    rejected: list[list[str]] = []
-    if suggested_keys:
-        print_info(f"Detected potential unique key combinations: {suggested_keys}")
-        verified, rejected = _select_verified_grain(
-            exec, source_expr, suggested_keys, exec.generator
-        )
-        if verified is not None:
-            keys = verified
-            print_info(f"Using verified unique grain: {verified}")
-        else:
-            keys = []
-            print_warning(
-                "No candidate is unique on the full file; defaulting to no grain"
-            )
-    else:
-        keys = []
-        print_info("No primary key or unique grain detected; defaulting to no grain")
-    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected)
+    keys, rejected = _elect_grain(
+        exec, source_expr, "file", suggested_keys, exec.generator
+    )
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected, penalties)
     grain_components = [column_concept_mapping.get(k, k) for k in keys]
 
     enum_map = detect_enum_types(
@@ -631,10 +691,14 @@ def create_datasource_from_file(
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=set(grain_components)) if grain_components else Grain()
+    grain_addresses = [_grain_address(c) for c in grain_components]
+    grain = (
+        Grain(components=set(grain_addresses), component_order=grain_addresses)
+        if grain_addresses
+        else Grain()
+    )
 
     address = Address(location=location, type=addr_type)
-    name = name_override or _datasource_name_from_path(arg)
     datasource = Datasource(
         name=name,
         grain=grain,
@@ -674,9 +738,6 @@ def create_datasource_from_table(
 
     column_concept_mapping = canonicalize_names(column_names)
 
-    # Detect unique key combinations from sample data
-    suggested_keys = []
-
     # Normalize grain components to snake_case and apply prefix stripping
     db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
     # we always need sample rows for column detection, so fetch here to setup for later.
@@ -686,44 +747,29 @@ def create_datasource_from_table(
         keys = db_primary_keys
         print_info(f"Using primary key from database as grain: {db_primary_keys}")
         # A declared PK skips grain detection, but other sample-unique single
-        # columns are still candidate keys worth offering as FK targets.
-        suggested_keys = detect_unique_key_combinations(
+        # columns are still candidate keys worth offering as FK targets. Capped
+        # at size 1 because only singles can be alternate targets, and the wider
+        # scan is cubic in column count.
+        suggested_keys, penalties = _suggest_keys(
+            table_name,
             column_names,
+            columns,
+            column_concept_mapping,
             sample_rows,
             max_key_size=1,
-            penalties=_grain_penalties(table_name, columns, column_concept_mapping),
-            exclude=_unkeyable_columns(columns),
         )
     else:
         # Get sample data to detect grain and nullability
         print_info(
             f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
         )
-        suggested_keys = detect_unique_key_combinations(
-            column_names,
-            sample_rows,
-            penalties=_grain_penalties(table_name, columns, column_concept_mapping),
-            exclude=_unkeyable_columns(columns),
+        suggested_keys, penalties = _suggest_keys(
+            table_name, column_names, columns, column_concept_mapping, sample_rows
         )
-        if suggested_keys:
-            print_info(f"Detected potential unique key combinations: {suggested_keys}")
-            verified, rejected = _select_verified_grain(
-                exec, dialect.safe_quote(qualified_name), suggested_keys, dialect
-            )
-            if verified is not None:
-                keys = verified
-                print_info(f"Using verified unique grain: {verified}")
-            else:
-                keys = []
-                print_warning(
-                    "No candidate is unique on the full table; defaulting to no grain"
-                )
-        else:
-            keys = []
-            print_info(
-                "No primary key or unique grain detected; defaulting to no grain"
-            )
-    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected)
+        keys, rejected = _elect_grain(
+            exec, dialect.safe_quote(qualified_name), "table", suggested_keys, dialect
+        )
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected, penalties)
     grain_components = []
     for key in keys:
         stripped = column_concept_mapping.get(key, key)
@@ -762,7 +808,12 @@ def create_datasource_from_table(
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=set(grain_components)) if grain_components else Grain()
+    grain_addresses = [_grain_address(c) for c in grain_components]
+    grain = (
+        Grain(components=set(grain_addresses), component_order=grain_addresses)
+        if grain_addresses
+        else Grain()
+    )
 
     address = Address(location=qualified_name)
 

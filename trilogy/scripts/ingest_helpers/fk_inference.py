@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from trilogy.constants import logger
+from trilogy.constants import DEFAULT_NAMESPACE, logger
 from trilogy.scripts.display import print_info, print_warning
 from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
@@ -378,62 +378,6 @@ def _rollback(executor: Any) -> None:
 def _containment_sql(
     quote: Any,
     from_relation: str,
-    from_column: str,
-    to_relation: str,
-    to_column: str,
-    sample: int,
-) -> str:
-    fq = quote(from_column)
-    tq = quote(to_column)
-    return (
-        "SELECT COUNT(*) AS total, "
-        "SUM(CASE WHEN t.v IS NULL THEN 1 ELSE 0 END) AS unmatched FROM "
-        f"(SELECT DISTINCT {fq} AS v FROM {from_relation} "
-        f"WHERE {fq} IS NOT NULL LIMIT {sample}) f "
-        f"LEFT JOIN (SELECT DISTINCT {tq} AS v FROM {to_relation}) t "
-        "ON f.v = t.v"
-    )
-
-
-def measure_overlap(
-    executor: Any,
-    src: TableFKInfo,
-    candidate: FKCandidate,
-    target: TableFKInfo,
-    sample: int = DEFAULT_SNIFF_SAMPLE,
-) -> float | None:
-    """Stage 2: fraction of sampled from-values found in the referenced key.
-
-    Returns a value in [0, 1], or None when the check can't run (incompatible
-    types, empty source column).
-    """
-    sql = _containment_sql(
-        executor.generator.safe_quote,
-        src.sql_relation,
-        candidate.from_column,
-        target.sql_relation,
-        candidate.to_column,
-        sample,
-    )
-    try:
-        rows = executor.execute_raw_sql(sql).fetchall()
-    except Exception as e:
-        print_warning(
-            f"FK sniff skipped for {candidate.from_table}.{candidate.from_column}"
-            f" -> {candidate.target_ref}: {e}"
-        )
-        _rollback(executor)
-        return None
-    if not rows or not rows[0] or not rows[0][0]:
-        return None
-    total = rows[0][0]
-    unmatched = rows[0][1] or 0
-    return float((total - unmatched) / total)
-
-
-def _composite_containment_sql(
-    quote: Any,
-    from_relation: str,
     from_columns: list[str],
     to_relation: str,
     to_columns: list[str],
@@ -442,7 +386,8 @@ def _composite_containment_sql(
     """Tuple containment: distinct child tuples LEFT JOINed to parent key
     tuples on every component. A constant marker column detects misses — a
     joined value being NULL can't, since key components may themselves be
-    nullable."""
+    nullable. A single-column key is just the one-component case.
+    """
     f_select = ", ".join(f"{quote(c)} AS v{i}" for i, c in enumerate(from_columns))
     f_not_null = " AND ".join(f"{quote(c)} IS NOT NULL" for c in from_columns)
     t_select = ", ".join(f"{quote(c)} AS v{i}" for i, c in enumerate(to_columns))
@@ -457,6 +402,61 @@ def _composite_containment_sql(
     )
 
 
+def _measure_containment(
+    executor: Any,
+    src: TableFKInfo,
+    target: TableFKInfo,
+    from_columns: list[str],
+    to_columns: list[str],
+    label: str,
+    sample: int,
+) -> float | None:
+    """Fraction of sampled child tuples found in the parent's key, or None when
+    the check can't run (incompatible types, empty source column).
+
+    ``label`` names the edge in the skip warning — the only thing that differs
+    between the single-column and composite callers.
+    """
+    sql = _containment_sql(
+        executor.generator.safe_quote,
+        src.sql_relation,
+        from_columns,
+        target.sql_relation,
+        to_columns,
+        sample,
+    )
+    try:
+        rows = executor.execute_raw_sql(sql).fetchall()
+    except Exception as e:
+        print_warning(f"FK sniff skipped for {label}: {e}")
+        _rollback(executor)
+        return None
+    if not rows or not rows[0] or not rows[0][0]:
+        return None
+    total = rows[0][0]
+    unmatched = rows[0][1] or 0
+    return float((total - unmatched) / total)
+
+
+def measure_overlap(
+    executor: Any,
+    src: TableFKInfo,
+    candidate: FKCandidate,
+    target: TableFKInfo,
+    sample: int = DEFAULT_SNIFF_SAMPLE,
+) -> float | None:
+    """Stage 2: fraction of sampled from-values found in the referenced key."""
+    return _measure_containment(
+        executor,
+        src,
+        target,
+        [candidate.from_column],
+        [candidate.to_column],
+        f"{candidate.from_table}.{candidate.from_column} -> {candidate.target_ref}",
+        sample,
+    )
+
+
 def measure_composite_overlap(
     executor: Any,
     src: TableFKInfo,
@@ -466,28 +466,15 @@ def measure_composite_overlap(
 ) -> float | None:
     """Stage 2 for a composite candidate: fraction of sampled child tuples
     found among the parent's key tuples, or None when the check can't run."""
-    sql = _composite_containment_sql(
-        executor.generator.safe_quote,
-        src.sql_relation,
+    return _measure_containment(
+        executor,
+        src,
+        target,
         [from_col for from_col, _ in candidate.pairs],
-        target.sql_relation,
         [to_col for _, to_col in candidate.pairs],
+        f"{candidate.from_table} -> {candidate.to_table} (composite)",
         sample,
     )
-    try:
-        rows = executor.execute_raw_sql(sql).fetchall()
-    except Exception as e:
-        print_warning(
-            f"Composite FK sniff skipped for {candidate.from_table}"
-            f" -> {candidate.to_table}: {e}"
-        )
-        _rollback(executor)
-        return None
-    if not rows or not rows[0] or not rows[0][0]:
-        return None
-    total = rows[0][0]
-    unmatched = rows[0][1] or 0
-    return float((total - unmatched) / total)
 
 
 def _reverse_coverage(
@@ -768,6 +755,43 @@ def infer_foreign_keys(
     return _resolve_target_conflicts(accepted, by_name)
 
 
+def _grain_key_columns(name: str, datasource: Datasource) -> list[str]:
+    """Raw column names behind a datasource's grain.
+
+    Grain components are concept *addresses*, and the datasource already states
+    which column backs which address — so this is a lookup through its own
+    bindings, not a name match. The ``local.``-prefixed and bare spellings of a
+    default-namespace address name one concept (the same fallback
+    ``Environment.__getitem__`` does), so either resolves.
+
+    Resolution is all-or-nothing. Dropping the components that don't match
+    leaves a *shorter* key, and a composite grain silently reduced to one
+    column reads as a single identity: the table would then advertise an FK
+    target that is not unique, and every reference onto it would fan out. No
+    key at all is the safe answer, and it only costs this table its place as
+    an FK target.
+    """
+    by_address = {
+        c.concept.address: c.alias
+        for c in datasource.columns
+        if isinstance(c.alias, str)
+    }
+    resolved: list[str] = []
+    for component in datasource.grain.component_order:
+        raw = by_address.get(component) or by_address.get(
+            f"{DEFAULT_NAMESPACE}.{component}"
+        )
+        if raw is None:
+            print_warning(
+                f"Datasource {name!r} declares grain component {component!r},"
+                " which is bound to none of its columns; skipping it as a"
+                " foreign key target."
+            )
+            return []
+        resolved.append(raw)
+    return resolved
+
+
 def build_table_fk_info(
     name: str,
     datasource: Datasource,
@@ -781,12 +805,7 @@ def build_table_fk_info(
     """
     raw_columns = [c.alias for c in datasource.columns if isinstance(c.alias, str)]
     raw_to_canonical = canonicalize_names(raw_columns)
-    canonical_to_raw = {canonical: raw for raw, canonical in raw_to_canonical.items()}
-    key_raw_columns = [
-        canonical_to_raw[component]
-        for component in datasource.grain.component_order
-        if component in canonical_to_raw
-    ]
+    key_raw_columns = _grain_key_columns(name, datasource)
     address = datasource.address
     if isinstance(address, str):
         sql_relation = dialect.safe_quote(address)

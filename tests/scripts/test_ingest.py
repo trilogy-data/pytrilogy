@@ -5,12 +5,17 @@ from click.testing import CliRunner
 
 from trilogy import Dialects
 from trilogy.authoring import DataType
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.core import EnumType, TraitDataType
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
+    _PENALTY_MEASURE,
+    _PENALTY_TEMPORAL,
+    _alternate_single_keys,
     _check_column_combination_uniqueness,
     _column_grain_penalty,
+    _fk_source_key,
     _grain_penalties,
     _is_unique_key,
     _process_column,
@@ -1167,6 +1172,67 @@ class TestGrainVerification:
         assert rejected == [["a"], ["b"], ["a", "b"]]
 
 
+class TestFKSourceKey:
+    """The name a record goes by in FK maps, and as an FK target's import path."""
+
+    def _record(self, source, name):
+        from trilogy.authoring import Address, Datasource, Grain
+        from trilogy.scripts.ingest import IngestRecord
+
+        return IngestRecord(
+            source=source,
+            datasource=Datasource(
+                name=name, grain=Grain(), columns=[], address=Address(location=source)
+            ),
+            concepts=[],
+            required_imports=set(),
+            script=[],
+            alternate_keys=[],
+        )
+
+    def test_table_keeps_the_typed_source_name(self):
+        # Explicit --fks reference tables by what the user typed.
+        assert _fk_source_key(self._record("customers", "customers")) == "customers"
+
+    def test_file_goes_by_datasource_name(self):
+        # A path is meaningless to the name matcher and unusable as an import.
+        rec = self._record("/data/raw/orders.csv", "orders")
+        assert _fk_source_key(rec) == "orders"
+
+    def test_url_goes_by_datasource_name(self):
+        rec = self._record("https://example.com/a/orders.parquet", "orders")
+        assert _fk_source_key(rec) == "orders"
+
+
+class TestAlternateSingleKeys:
+    """Which sample-unique columns get offered to FK inference as targets."""
+
+    def test_elected_grain_and_rejects_excluded(self):
+        suggested = [["id"], ["player_id"], ["ssn"]]
+        assert _alternate_single_keys(suggested, ["id"], [["ssn"]]) == ["player_id"]
+
+    def test_composite_candidates_yield_nothing(self):
+        # A composite result means no single column was sample-unique at all
+        # (detect_unique_key_combinations returns singles when any exist), so
+        # there is no alternate key to offer.
+        suggested = [["player_id", "stint"], ["stint", "ssn"]]
+        assert _alternate_single_keys(suggested, ["player_id", "stint"], []) == []
+
+    def test_measure_penalized_column_dropped(self):
+        suggested = [["id"], ["weight"]]
+        penalties = {"id": -1, "weight": _PENALTY_MEASURE}
+        assert _alternate_single_keys(suggested, ["id"], [], penalties) == []
+
+    def test_temporal_penalty_is_not_disqualifying(self):
+        # A date dimension's date column is a perfectly good alternate key; only
+        # measures are excluded.
+        suggested = [["d_date_sk"], ["d_date"]]
+        penalties = {"d_date_sk": -1, "d_date": _PENALTY_TEMPORAL}
+        assert _alternate_single_keys(suggested, ["d_date_sk"], [], penalties) == [
+            "d_date"
+        ]
+
+
 def _duckdb_executor():
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
@@ -1179,13 +1245,19 @@ def _duckdb_executor():
 
 
 def _ingest_grain(setup_sql: str, table: str) -> list[str]:
-    """Build `table` from setup SQL and return its detected grain (sorted)."""
+    """Build `table` from setup SQL and return its detected grain (sorted).
+
+    Grain components are concept addresses; these cases are about *which*
+    columns get elected, so the default namespace is stripped back off. The
+    address spelling itself is pinned in `TestGrainKeyColumns`.
+    """
     eng = _duckdb_executor()
     eng.execute_raw_sql(setup_sql)
     datasource, _concepts, _imports, _alt_keys = create_datasource_from_table(
         eng, table, None, root=True
     )
-    return sorted(datasource.grain.components)
+    prefix = f"{DEFAULT_NAMESPACE}."
+    return sorted(c.removeprefix(prefix) for c in datasource.grain.components)
 
 
 class TestGrainSniffingEndToEnd:
