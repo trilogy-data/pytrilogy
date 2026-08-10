@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import agent_runner, analyze_run, archive, db, prompts, scoring
-from .categories import CATEGORIES, FUNNEL_ORDER, get_category
+from .categories import categories_for, funnel_order_for, get_category
 from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
 
@@ -162,7 +162,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--category",
-        choices=sorted(CATEGORIES),
+        choices=sorted(categories_for(spec)),
         default=None,
         help="which eval category this run is: sql_bare (db only), sql_schema "
         "(db+schema.md), ingest (auto Trilogy model), enriched (curated model). "
@@ -363,7 +363,7 @@ def _run_categories(
     import subprocess
 
     for key in category_keys:
-        get_category(key)  # validate early
+        get_category(key, spec)  # validate early
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     script = Path(sys.argv[0]).resolve()
@@ -435,7 +435,11 @@ def _run_categories(
             print(f"[categories] {key} leg produced no report.json", file=sys.stderr)
 
     if len(reports_by_key) >= 2:
-        ordered = {k: reports_by_key[k] for k in FUNNEL_ORDER if k in reports_by_key}
+        ordered = {
+            k: reports_by_key[k]
+            for k in funnel_order_for(spec)
+            if k in reports_by_key
+        }
         png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
         md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")
         print(f"[categories] wrote {png} and {md}")
@@ -465,7 +469,7 @@ def run(spec: BenchmarkSpec) -> int:
     category_key = args.category or (
         "enriched" if args.enriched_model_dir else "ingest"
     )
-    category = get_category(category_key)
+    category = get_category(category_key, spec)
 
     load_env(args.env_file)
     if args.provider == "openrouter":

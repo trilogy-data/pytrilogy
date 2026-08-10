@@ -44,7 +44,7 @@ class Category:
             entry = {**entry, "prompt": f"{spec.docs_preamble}\n\n{entry['prompt']}"}
         if self.harness == "sql":
             return prompts.build_single_query_task_sql(spec, entry)
-        model_dir = "raw" if self.key == "enriched" else MODEL_ROOT_DIR
+        model_dir = MODEL_ROOT_DIR if self.key == "ingest" else "raw"
         return prompts.build_single_query_task(spec, entry, model_dir=model_dir)
 
 
@@ -117,7 +117,22 @@ CATEGORIES: dict[str, Category] = {
 FUNNEL_ORDER: list[str] = ["sql_bare", "sql_schema", "ingest", "enriched"]
 
 
-def get_category(key: str) -> Category:
-    if key not in CATEGORIES:
-        raise ValueError(f"unknown category {key!r}; known: {', '.join(CATEGORIES)}.")
-    return CATEGORIES[key]
+def categories_for(spec: BenchmarkSpec | None = None) -> dict[str, Category]:
+    categories = dict(CATEGORIES)
+    if spec is not None:
+        categories.update({category.key: category for category in spec.additional_categories})
+    return categories
+
+
+def funnel_order_for(spec: BenchmarkSpec | None = None) -> list[str]:
+    if spec is not None and spec.funnel_order:
+        return list(spec.funnel_order)
+    extra = spec.additional_categories if spec is not None else ()
+    return [*FUNNEL_ORDER, *(category.key for category in extra)]
+
+
+def get_category(key: str, spec: BenchmarkSpec | None = None) -> Category:
+    categories = categories_for(spec)
+    if key not in categories:
+        raise ValueError(f"unknown category {key!r}; known: {', '.join(categories)}.")
+    return categories[key]

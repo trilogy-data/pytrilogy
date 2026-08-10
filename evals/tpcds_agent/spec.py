@@ -5,9 +5,55 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from common.categories import Category
 from common.spec import BenchmarkSpec
+try:
+    from .warehouse_variants import (
+        setup_enriched_aggregates,
+        setup_enriched_noise,
+        setup_sql_schema_aggregates,
+        setup_sql_schema_noise,
+    )
+except ImportError:  # invoked directly by run_eval.py
+    from warehouse_variants import (
+        setup_enriched_aggregates,
+        setup_enriched_noise,
+        setup_sql_schema_aggregates,
+        setup_sql_schema_noise,
+    )
 
 EVAL_DIR = Path(__file__).resolve().parent
+
+MESSY_WAREHOUSE_CATEGORIES = (
+    Category(
+        "sql_schema_aggregates",
+        "db+schema+aggregates",
+        "sql",
+        ".sql",
+        setup_sql_schema_aggregates,
+    ),
+    Category(
+        "enriched_aggregates",
+        "enriched+aggregates",
+        "trilogy",
+        ".preql",
+        setup_enriched_aggregates,
+    ),
+    Category(
+        "sql_schema_noise",
+        "db+schema+noise",
+        "sql",
+        ".sql",
+        setup_sql_schema_noise,
+    ),
+    Category(
+        "enriched_noise",
+        "enriched+noise",
+        "trilogy",
+        ".preql",
+        setup_enriched_noise,
+    ),
+)
 
 SPEC = BenchmarkSpec(
     name="TPC-DS",
@@ -34,4 +80,15 @@ SPEC = BenchmarkSpec(
     # Full TPC-DS set (99 queries) by default so a plain rebaseline covers
     # everything; pass --num-queries / --query-ids to scope a quick local run.
     default_num_queries=99,
+    additional_categories=MESSY_WAREHOUSE_CATEGORIES,
+    funnel_order=(
+        "sql_bare",
+        "sql_schema",
+        "sql_schema_aggregates",
+        "sql_schema_noise",
+        "ingest",
+        "enriched",
+        "enriched_aggregates",
+        "enriched_noise",
+    ),
 )

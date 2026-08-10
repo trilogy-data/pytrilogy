@@ -1,0 +1,124 @@
+auto _warehouse_count_items <- count(item.sk);
+auto _warehouse_count_customers <- count(billing_customer.sk);
+auto _warehouse_count_orders <- count(order_number);
+auto _warehouse_sum_quantity <- sum(quantity);
+auto _warehouse_sum_sales_price <- sum(sales_price);
+auto _warehouse_sum_list_price <- sum(list_price);
+auto _warehouse_sum_wholesale_cost <- sum(wholesale_cost);
+auto _warehouse_sum_ext_wholesale_cost <- sum(ext_wholesale_cost);
+auto _warehouse_sum_discount_amount <- sum(discount_amount);
+auto _warehouse_sum_ext_ship_cost <- sum(ext_ship_cost);
+auto _warehouse_sum_ext_sales_price <- sum(ext_sales_price);
+auto _warehouse_sum_ext_list_price <- sum(ext_list_price);
+auto _warehouse_sum_net_profit <- sum(net_profit);
+auto _warehouse_sum_coupon_amt <- sum(coupon_amt);
+
+datasource _warehouse_catalog_sales_daily (
+    cs_sold_date_sk: ?sale_date.sk,
+    cs_ship_date_sk: ?ship_date.sk,
+    cs_item_sk: item.sk,
+    cs_ship_customer_sk: ?ship_customer.sk,
+    cs_bill_customer_sk: ?billing_customer.sk,
+    cs_bill_cdemo_sk: ?pos_customer_demographic.sk,
+    cs_bill_hdemo_sk: ?pos_household_demographic.sk,
+    cs_bill_addr_sk: ?pos_bill_address.sk,
+    cs_call_center_sk: ?call_center.sk,
+    cs_catalog_page_sk: ?catalog_page.sk,
+    cs_warehouse_sk: ?warehouse.sk,
+    cs_promo_sk: ?promotion.sk,
+    cs_ship_mode_sk: ?ship_mode.sk,
+    count_rows: line_item_count,
+    count_items: _warehouse_count_items,
+    count_customers: _warehouse_count_customers,
+    count_orders: _warehouse_count_orders,
+    sum_quantity: _warehouse_sum_quantity,
+    sum_sales_price: _warehouse_sum_sales_price,
+    sum_list_price: _warehouse_sum_list_price,
+    sum_wholesale_cost: _warehouse_sum_wholesale_cost,
+    sum_ext_wholesale_cost: _warehouse_sum_ext_wholesale_cost,
+    sum_ext_discount_amt: _warehouse_sum_discount_amount,
+    sum_ext_ship_cost: _warehouse_sum_ext_ship_cost,
+    sum_ext_sales_price: _warehouse_sum_ext_sales_price,
+    sum_ext_list_price: _warehouse_sum_ext_list_price,
+    sum_net_profit: _warehouse_sum_net_profit,
+    sum_coupon_amt: _warehouse_sum_coupon_amt,
+)
+grain (
+    sale_date.sk,
+    ship_date.sk,
+    item.sk,
+    ship_customer.sk,
+    billing_customer.sk,
+    pos_customer_demographic.sk,
+    pos_household_demographic.sk,
+    pos_bill_address.sk,
+    call_center.sk,
+    catalog_page.sk,
+    warehouse.sk,
+    promotion.sk,
+    ship_mode.sk
+)
+address agg_catalog_sales_daily;
+
+auto _warehouse_count_return_items <- count(item.sk);
+auto _warehouse_count_return_customers <- count(return_customer.sk);
+auto _warehouse_count_return_orders <- count(order_number);
+auto _warehouse_sum_return_amount <- sum(return_amount);
+auto _warehouse_sum_return_quantity <- sum(return_quantity);
+auto _warehouse_sum_return_tax <- sum(return_tax);
+auto _warehouse_sum_return_amount_inc_tax <- sum(return_amount_inc_tax);
+auto _warehouse_sum_return_fee <- sum(return_fee);
+auto _warehouse_sum_return_ship_cost <- sum(return_ship_cost);
+auto _warehouse_sum_refunded_cash <- sum(refunded_cash);
+auto _warehouse_sum_reversed_charge <- sum(reversed_charge);
+auto _warehouse_sum_store_credit <- sum(store_credit);
+auto _warehouse_sum_return_net_loss <- sum(return_net_loss);
+
+datasource _warehouse_catalog_returns_daily (
+    cr_returned_date_sk: return_date.sk,
+    cr_item_sk: item.sk,
+    cr_returning_customer_sk: ?return_customer.sk,
+    cr_refunded_customer_sk: ?return_refund_customer.sk,
+    cr_returning_cdemo_sk: ?return_customer_demographic.sk,
+    cr_refunded_cdemo_sk: ?return_refund_customer_demographic.sk,
+    cr_returning_hdemo_sk: ?return_household_demographic.sk,
+    cr_refunded_hdemo_sk: ?return_refund_household_demographic.sk,
+    cr_returning_addr_sk: ?return_address.sk,
+    cr_refunded_addr_sk: ?return_refund_address.sk,
+    cr_call_center_sk: ?return_call_center.sk,
+    cr_catalog_page_sk: ?return_catalog_page.sk,
+    cr_ship_mode_sk: ?return_ship_mode.sk,
+    cr_warehouse_sk: ?return_warehouse.sk,
+    cr_reason_sk: ?return_reason.sk,
+    count_items: _warehouse_count_return_items,
+    count_customers: _warehouse_count_return_customers,
+    count_orders: _warehouse_count_return_orders,
+    sum_return_amount: _warehouse_sum_return_amount,
+    sum_return_quantity: _warehouse_sum_return_quantity,
+    sum_return_tax: _warehouse_sum_return_tax,
+    sum_return_amt_inc_tax: _warehouse_sum_return_amount_inc_tax,
+    sum_fee: _warehouse_sum_return_fee,
+    sum_return_ship_cost: _warehouse_sum_return_ship_cost,
+    sum_refunded_cash: _warehouse_sum_refunded_cash,
+    sum_reversed_charge: _warehouse_sum_reversed_charge,
+    sum_store_credit: _warehouse_sum_store_credit,
+    sum_net_loss: _warehouse_sum_return_net_loss,
+)
+grain (
+    return_date.sk,
+    item.sk,
+    return_customer.sk,
+    return_refund_customer.sk,
+    return_customer_demographic.sk,
+    return_refund_customer_demographic.sk,
+    return_household_demographic.sk,
+    return_refund_household_demographic.sk,
+    return_address.sk,
+    return_refund_address.sk,
+    return_call_center.sk,
+    return_catalog_page.sk,
+    return_ship_mode.sk,
+    return_warehouse.sk,
+    return_reason.sk
+)
+address agg_catalog_returns_daily;

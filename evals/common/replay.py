@@ -57,7 +57,7 @@ class ReplayError(RuntimeError):
     """A precondition failed — this run/query can't be replayed as-is."""
 
 
-def _resolve_category(report: dict) -> Category:
+def _resolve_category(report: dict, spec: BenchmarkSpec) -> Category:
     meta = report.get("meta", {})
     key = meta.get("category")
     if not key:
@@ -67,7 +67,7 @@ def _resolve_category(report: dict) -> Category:
             if str(meta.get("model_source", "")).startswith("enriched")
             else "ingest"
         )
-    return get_category(key)
+    return get_category(key, spec)
 
 
 def _worker_dir(workspace: Path, db_filename: str, worker: int = 0) -> Path:
@@ -311,7 +311,7 @@ def replay_all(
         raise ReplayError(f"{run_dir.name} has no queries to replay")
     workers = max(1, min(concurrency, len(qids)))
     workspace = run_dir / "workspace"
-    category = _resolve_category(report)
+    category = _resolve_category(report, spec)
     with _run_lock(run_dir):
         dirs = [_worker_dir(workspace, spec.db_filename, i) for i in range(workers)]
         _refresh_model(workspace, dirs, spec, category, report, log)
@@ -396,7 +396,7 @@ def replay_query(
                 f"no {spec.db_filename} in {workspace} — workspace was cleaned"
             )
 
-        category = _resolve_category(report)
+        category = _resolve_category(report, spec)
         meta = report["meta"]
         provider, model = meta["provider"], meta["model"]
 

@@ -29,6 +29,7 @@ from trilogy.scripts.serve import (
     build_local_studio_link,
     build_store_id,
     create_app,
+    is_loopback_studio,
 )
 
 
@@ -1794,6 +1795,92 @@ def test_hosted_studio_link_shape_is_unchanged():
     assert link.startswith("https://trilogydata.dev/trilogy-studio-core/#import=")
     assert "connection=bigquery" in link
     assert link.endswith("&token=tok")
+
+
+def _serve_without_running(monkeypatch, tmp_path: Path, extra_args: list[str]):
+    """Invoke `trilogy serve` far enough to print its studio link, then stop.
+
+    uvicorn is stubbed out rather than given a --timeout so the test never
+    binds a port or waits on a real server; everything under test happens
+    before the server starts.
+    """
+    import uvicorn
+
+    (tmp_path / "test.preql").write_text(SIMPLE_PREQL)
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
+    return CliRunner().invoke(
+        cli,
+        ["serve", str(tmp_path), "--no-browser", "--no-auth"] + extra_args,
+    )
+
+
+def test_studio_url_links_back_to_that_studio(monkeypatch, tmp_path):
+    """--studio-url points the printed link at an already-running studio."""
+    result = _serve_without_running(
+        monkeypatch, tmp_path, ["--studio-url", "http://localhost:5173/"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "http://localhost:5173/#import=" in result.output
+    # A named studio replaces the bundled one rather than being served next to it.
+    assert "Fetching Trilogy Studio" not in result.output
+    # ...and a studio on this machine is not subject to the Local Network Access
+    # block, so it must not carry that warning.
+    assert "your browser may block it" not in result.output
+
+
+def test_studio_url_keeps_the_local_network_caveat_for_a_public_studio(
+    monkeypatch, tmp_path
+):
+    result = _serve_without_running(
+        monkeypatch,
+        tmp_path,
+        ["--studio-url", "https://trilogydata.dev/trilogy-studio-core/"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "https://trilogydata.dev/trilogy-studio-core/#import=" in result.output
+    assert "your browser may block it" in result.output
+
+
+def test_studio_url_overrides_the_config_file(monkeypatch, tmp_path):
+    (tmp_path / "trilogy.toml").write_text(
+        '[serve]\nstudio_url = "https://from-config.example/studio/"\n'
+    )
+    result = _serve_without_running(
+        monkeypatch, tmp_path, ["--studio-url", "http://localhost:5173/"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "http://localhost:5173/#import=" in result.output
+    assert "from-config.example" not in result.output
+
+
+def test_studio_url_and_studio_bundle_are_mutually_exclusive(monkeypatch, tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    result = _serve_without_running(
+        monkeypatch,
+        tmp_path,
+        ["--studio-url", "http://localhost:5173/", "--studio-bundle", str(bundle)],
+    )
+
+    assert result.exit_code == 1
+    assert "mutually exclusive" in result.output
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("http://localhost:5173/", True),
+        ("http://127.0.0.1:8100/studio/", True),
+        ("http://[::1]:5173/", True),
+        ("https://trilogydata.dev/trilogy-studio-core/", False),
+        ("https://localhost.evil.example/", False),
+    ],
+)
+def test_is_loopback_studio(url, expected):
+    assert is_loopback_studio(url) is expected
 
 
 def test_store_id_is_unique_per_served_directory():

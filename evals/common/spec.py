@@ -10,6 +10,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .categories import Category
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,12 @@ class BenchmarkSpec:
 
     enable_python_datasources: bool = False
     """Enable executable Python datasource support in agent and scorer configs."""
+
+    additional_categories: tuple[Category, ...] = ()
+    """Benchmark-specific eval categories layered on top of the shared four."""
+
+    funnel_order: tuple[str, ...] = ()
+    """Optional category order for cross-category funnel reports."""
 
     @property
     def cache_dir(self) -> Path:
