@@ -22,7 +22,11 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
-from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
+from trilogy.scripts.ingest_helpers.introspection import (
+    FILE_ADDRESS_TYPES,
+    IntrospectionLevel,
+    file_introspection_source,
+)
 
 if TYPE_CHECKING:
     from trilogy.core.models.datasource import Datasource
@@ -482,10 +486,17 @@ def build_table_fk_info(name: str, datasource: Datasource, dialect: Any) -> Tabl
         if component in canonical_to_raw
     ]
     address = datasource.address
-    location = address if isinstance(address, str) else address.location
+    if isinstance(address, str):
+        sql_relation = dialect.safe_quote(address)
+    elif address.type in FILE_ADDRESS_TYPES:
+        # File-backed datasources sniff through DuckDB's read_* functions —
+        # their location is a path/URL, not a quotable relation name.
+        sql_relation = file_introspection_source(address.location, address.type)
+    else:
+        sql_relation = dialect.safe_quote(address.location)
     return TableFKInfo(
         name=name,
-        sql_relation=dialect.safe_quote(location),
+        sql_relation=sql_relation,
         raw_columns=raw_columns,
         raw_to_canonical=raw_to_canonical,
         key_raw_columns=key_raw_columns,

@@ -732,6 +732,53 @@ def test_ingest_marks_inferred_fk_complete_when_parent_fully_covered():
         assert "~customers.id" not in orders_preql
 
 
+def test_ingest_infers_fk_across_csv_files():
+    """File sources participate in FK inference; the child imports the parent
+    and a cross-file query resolves."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        customers_csv = tmppath / "customers.csv"
+        customers_csv.write_text(
+            "customer_id,name\n1,alice\n2,bob\n", newline="\n"
+        )
+        orders_csv = tmppath / "orders.csv"
+        orders_csv.write_text(
+            "order_id,customer_id,total\n10,1,99.5\n11,2,42.0\n12,1,10.0\n",
+            newline="\n",
+        )
+        out_dir = tmppath / "raw"
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                f"{customers_csv.as_posix()},{orders_csv.as_posix()}",
+                "--output",
+                str(out_dir),
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        orders_preql = (out_dir / "orders.preql").read_text()
+        assert "import customers" in orders_preql
+        # All parent keys appear in orders, so the FK binds complete.
+        assert "customer_id: customers.customer_id" in orders_preql
+
+        query = tmppath / "query.preql"
+        query.write_text(
+            "import raw.orders as orders;\n\n"
+            "select orders.customers.name, orders.total\n"
+            "order by orders.total desc;\n"
+        )
+        result = runner.invoke(cli, ["run", str(query), "duckdb"])
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+
 def test_ingest_no_infer_fks_leaves_tables_disconnected():
     """--infer-level off keeps the historical independent-datasource output."""
     with tempfile.TemporaryDirectory() as tmpdir:

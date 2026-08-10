@@ -59,7 +59,10 @@ from trilogy.scripts.ingest_helpers.formatting import (
     canonicalize_names,
     canonicolize_name,
 )
-from trilogy.scripts.ingest_helpers.introspection import IntrospectionLevel
+from trilogy.scripts.ingest_helpers.introspection import (
+    IntrospectionLevel,
+    file_introspection_source,
+)
 from trilogy.scripts.ingest_helpers.typing import (
     detect_enum_types,
     detect_numeric_bounds,
@@ -134,6 +137,16 @@ def _looks_like_file_source(arg: str) -> bool:
         return True
     suffix = PathlibPath(arg).suffix.lower()
     return suffix in _FILE_EXT_TO_TYPE
+
+
+def _fk_source_key(rec: IngestRecord) -> str:
+    """The name a record goes by in FK maps and as an FK target's import path.
+
+    Tables keep the source name the user typed (what explicit --fks reference);
+    file sources go by datasource name — their path/URL is meaningless to the
+    name matcher and unusable as an import path.
+    """
+    return rec.datasource.name if _looks_like_file_source(rec.source) else rec.source
 
 
 def _resolve_file_source(arg: str) -> tuple[str, AddressType]:
@@ -484,18 +497,6 @@ def _process_column(
     return concept, column_assignment, trait_import
 
 
-def _file_introspection_source(location: str, addr_type: AddressType) -> str:
-    """SQL fragment that DuckDB can read this file with."""
-    quoted = location.replace("'", "''")
-    if addr_type == AddressType.CSV:
-        return f"read_csv_auto('{quoted}')"
-    if addr_type == AddressType.TSV:
-        return f"read_csv_auto('{quoted}', delim='\\t')"
-    if addr_type == AddressType.PARQUET:
-        return f"read_parquet('{quoted}')"
-    raise ValueError(f"Unsupported file address type: {addr_type}")
-
-
 def _maybe_load_httpfs(exec: Executor, location: str) -> None:
     """Ensure DuckDB's httpfs extension is loaded for remote URLs.
 
@@ -523,7 +524,7 @@ def create_datasource_from_file(
     location, addr_type = _resolve_file_source(arg)
     _maybe_load_httpfs(exec, location)
 
-    source_expr = _file_introspection_source(location, addr_type)
+    source_expr = file_introspection_source(location, addr_type)
 
     describe_rows = exec.execute_raw_sql(
         f"DESCRIBE SELECT * FROM {source_expr}"
@@ -1045,17 +1046,13 @@ def ingest(
     # would be worse than a hard failure.
     inferred_fks: list[InferredFK] = []
     fk_infos = []
-    if introspection_level is not IntrospectionLevel.OFF:
-        table_records = [
-            rec for rec in ingested.values() if not _looks_like_file_source(rec.source)
-        ]
-        if len(table_records) >= 2:
-            with _rollback_on_error(exec):
-                fk_infos = [
-                    build_table_fk_info(rec.source, rec.datasource, exec.generator)
-                    for rec in table_records
-                ]
-                inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
+    if introspection_level is not IntrospectionLevel.OFF and len(ingested) >= 2:
+        with _rollback_on_error(exec):
+            fk_infos = [
+                build_table_fk_info(_fk_source_key(rec), rec.datasource, exec.generator)
+                for rec in ingested.values()
+            ]
+            inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
     # Explicit --fks arrive marked partial=True. In full mode we have the
     # executor; sniff reverse coverage to upgrade complete edges.
     if introspection_level is IntrospectionLevel.FULL and explicit_fk_map and fk_infos:
@@ -1068,13 +1065,16 @@ def ingest(
     if fk_map:
         print_info("Processing foreign key relationships...")
 
-    fk_datasources = {key: rec.datasource for key, rec in ingested.items()}
+    fk_datasources = {
+        _fk_source_key(rec): rec.datasource for rec in ingested.values()
+    }
     for source, rec in ingested.items():
         output_file = output_dir / f"{rec.datasource.name}.preql"
-        if fk_map and source in fk_map:
-            column_mappings = fk_map[source]
+        fk_key = _fk_source_key(rec)
+        if fk_map and fk_key in fk_map:
+            column_mappings = fk_map[fk_key]
             content = apply_foreign_key_references(
-                source, rec.datasource, fk_datasources, rec.script, column_mappings
+                fk_key, rec.datasource, fk_datasources, rec.script, column_mappings
             )
         else:
             content = renderer.render_statement_string(rec.script)
