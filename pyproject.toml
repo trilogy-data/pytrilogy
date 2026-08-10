@@ -1,9 +1,22 @@
 [tool.pytest.ini_options]
+# The single source of pytest config. There used to be a pytest.ini as well,
+# which silently won (pytest takes the FIRST config file it finds, it does not
+# merge) -- so this block was dead and its marker list had drifted to two
+# entries. Do not reintroduce pytest.ini/setup.cfg/tox.ini config.
+#
+# Deliberately NOT set here: log_cli_level / log_level. Either one forces the
+# ROOT logger to that level for every test, so trilogy's own INFO rendering
+# ("[RENDERING] Compiled query: <full SQL>") lands in the report of every
+# failing test. Left unset, loggers sit at WARNING and a failure report carries
+# only what the failure needs.
 markers = [
-    "adventureworks",
-    "adventureworks_execution",
+    "adventureworks_execution: marks test as requiring adventureworks db and running queries",
+    "adventureworks: marks tests as requirin adventureworks",
+    "clickhouse_server: marks tests as requiring a real ClickHouse server (env vars TRILOGY_CLICKHOUSE_*)",
+    "bigquery_execution: marks tests as requiring a real BigQuery project + GCS staging (env vars TRILOGY_BIGQUERY_*)",
+    "v4_parity: discovery planner correctness cases (local_scripts/v4_evals)",
+    "cloud_live: marks tests as hitting a real trilogy-cloud API and triggering real job runs (env vars TRILOGY_CLOUD_TOKEN + TRILOGY_CLOUD_API)",
 ]
-log_cli_level="INFO"
 
 [tool.ruff]
 # Allow lines to be as long as 200 characters.
