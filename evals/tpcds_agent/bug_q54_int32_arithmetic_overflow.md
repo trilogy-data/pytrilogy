@@ -1,5 +1,7 @@
 # Bug: q54 generated INT32 arithmetic overflows at execution
 
+**Re-verified OPEN 2026-08-10, and broader than described.** Not specific to aggregates or `round`: integer multiplication never promotes to BIGINT. `const big <- 105249413::int; select big * 50 as prod;` alone overflows INT32.
+
 ## Summary
 
 The enriched q54 agent produced a valid segmentation expression based on a

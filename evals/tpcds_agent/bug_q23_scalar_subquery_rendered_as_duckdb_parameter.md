@@ -1,5 +1,7 @@
 # Bug: q23 scalar subquery rendered as a DuckDB parameter
 
+**Re-verified OPEN 2026-08-10.** The `auto` form now fails cleanly at parse (the report's own acceptable fallback), but a scalar subquery used directly as a select output still leaks: `select (select max(alltime.total)) as max_alltime;` emits `SELECT $1 as "max_alltime"` and DuckDB raises `Unable to transform python value of type SubqueryItem`. The live defect is the inline-in-select placement.
+
 ## Summary
 
 A fresh ten-run enriched Q23 baseline exposed a framework defect distinct from

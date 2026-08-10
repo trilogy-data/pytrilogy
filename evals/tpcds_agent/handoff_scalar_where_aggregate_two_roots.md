@@ -1,5 +1,7 @@
 # Handoff: scalar WHERE-aggregate gate needs a distinct unfiltered root
 
+**Re-verified OPEN 2026-08-10, but the code map below is stale.** The blocking guard is live at `trilogy/parsing/v2/select_finalize.py:1411-1430` (mirrored in `core/statements/author.py:383,393`, pinned by `tests/test_derived_concepts.py:44`), and the later dual-scope work in `where_scope_normalization.py` deliberately skips SINGLE_ROW scalars. The "where to dig" section points at the deleted v3 modules (`concept_strategies_v3.py`, `group_node.py`) and needs redoing before pickup.
+
 **Status:** designed + validated, NOT implemented. Sizable planner change.
 **Date:** 2026-06-29
 

@@ -1,5 +1,7 @@
 # Bug: `trilogy file list` escapes the workspace → 144 MB result crashes the agent (q14)
 
+**Re-verified PARTIALLY OPEN 2026-08-10 — the crash narrative is obsolete.** Listings are now capped at 100 entries (`trilogy/scripts/file_helpers/backends.py:89-101`), so there is no 144 MB result. What remains is path sandboxing only: `LocalFileBackend._resolve` does a bare `Path(raw).expanduser()`, so `trilogy file list /` still escapes the workspace.
+
 **Status:** PARTIALLY FIXED (2026-06-25) — output is now capped/truncated; workspace
 sandboxing (suggested fix #1) is still open.
 

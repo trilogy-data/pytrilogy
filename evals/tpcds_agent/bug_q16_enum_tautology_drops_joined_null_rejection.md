@@ -1,5 +1,7 @@
 # q16 — enum "always true, should be removed" hard-error drops a join-load-bearing predicate (SILENT wrong result)
 
+**RESOLVED — retained as design rationale, not as an open bug (2026-08-10).** The constant-satisfiability check no longer flags tautologies. This file is cited as the reason that rule exists by `trilogy/core/models/core.py` (`constant_domain_violation`), `docs/type_validators_design.md` and `tests/engine/test_enum_unions.py`. Do not delete without updating those three.
+
 > **RESOLVED 2026-07-20** — removed the enum constant-satisfiability check entirely
 > (comparison + membership + LIKE + BETWEEN) rather than attempt to prove transitive
 > nullability through joins. Enum domains are *sampled* by auto-ingest, so "always

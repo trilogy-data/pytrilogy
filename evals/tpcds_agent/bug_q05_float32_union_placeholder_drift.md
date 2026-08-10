@@ -1,5 +1,7 @@
 # bug q05 — silent wrong money sums from `::float` union placeholders (float32 drift)
 
+**Re-verified OPEN 2026-08-10.** `DataType.FLOAT` still renders as `float` and both `float4`/`float8` map back to it (`trilogy/dialect/base.py:391,452-454`) — there is no 8-byte DOUBLE type, so the drift is unfixable at the model layer today.
+
 Bucket: **A (silent wrong-rows, no error)**. Known-open issue
 (`float32_union_placeholder_drift_no_double_type`), re-confirmed as the *sole* cause of the q05 FAIL.
 

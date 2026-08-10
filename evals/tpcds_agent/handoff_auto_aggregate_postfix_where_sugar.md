@@ -1,5 +1,7 @@
 # Handoff — support postfix `where` on derived aggregate concepts
 
+**Re-verified OPEN 2026-08-10.** `auto x <- avg(a * b) where yr = 2001;` is still a parse error; no `derivation_where` node exists in either grammar. The `?` form `avg((a*b) ? yr = 2001)` works, so this remains sugar rather than a gap.
+
 ## Summary
 
 Extend Trilogy so an aggregate concept definition can express its input-row
