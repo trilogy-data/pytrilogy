@@ -91,11 +91,10 @@ jobs:
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Test after installing rich
         run: |
-          # install rich and rerun CLI tests
+          # install rich and rerun CLI tests. One invocation, not three: the -k
+          # filters are disjoint but each run re-collected the whole tests/ tree.
           python -m pip install rich
-          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
-          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"
-          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_refresh"
+          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
