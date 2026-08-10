@@ -71,21 +71,21 @@ feeder** — that host's input has no per-row gate value to compare against — 
 that raises `UnresolvableQueryException` rather than silently dropping the
 bound. Write the later stage's computation as an inline filter instead.
 
-### Known gaps (open, `xfail` in tests/test_then_where_execution.py)
+### Re-sourcing gates: one search per stage
 
-Two shapes of a 2+ cross-row-stage chain still return FLAT rows silently. Both
-need a chain whose stages group by *crossing* keys to observe — a chain whose
-gates all group by one key drops whole groups, which a later gate on that same
-key cannot see.
+When no group can host the gates — a plain `select y` has no aggregate for them
+to become a `HAVING` on — the final ROOT re-sources them itself, through
+`_resolve_root_condition_sources`. That path used to build ONE search for all
+the condition row args at once, which cannot work for a chain: a search takes
+one set of stage bounds, and `hosting_stage_index` resolves a batch spanning
+two stages to the first one — stage 1, i.e. no bounds — so the later stage's
+gate quietly recomputed over unfiltered rows and the plan degenerated to flat.
 
-- **A non-aggregating select.** `where sum(z) by x > 5 then where count(id) by
-  y > 1 select y` gives `[p, q]`; `[p]` is correct. The stage-1 gate leaves its
-  gate CTE (no `HAVING`) and is applied in a separate downstream CTE, so the
-  stage-2 feeder joins the unfiltered producer. Any aggregate in the select
-  restores the correct shape.
-- **A keyed third gate.** In `... then where count(id) by y > 1 then where
-  count(id) by x > 1`, stage 3 is computed without stage 2's bound. The same
-  chain with a grand-total third gate is correct.
+`_stage_partitions` groups the args by hosting stage and re-sources each group
+separately (`ConditionSources.row_parents` already accepts several parents,
+which merge in as separate feeders). Population is identity here too. The split
+is confined to batches spanning 2+ stages, so every previously-plannable query
+keeps its single search and its plan.
 
 ### The same computation in two stages
 

@@ -487,11 +487,6 @@ def test_cross_row_stage_bound_without_feeder_raises(backend) -> None:
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a non-aggregating select drops the earlier stage's gate off the "
-    "gate CTE, so the later stage's feeder reads the unfiltered population",
-)
 def test_plain_select_with_two_cross_row_stages(backend) -> None:
     staged = _rows(
         CROSS_SCHEMA,
@@ -504,17 +499,29 @@ def test_plain_select_with_two_cross_row_stages(backend) -> None:
     assert staged == oracle == [("p",)], (staged, oracle)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="stage 3's gate is computed without stage 2's cross-row bound",
-)
 def test_three_cross_row_stages_keyed_last(backend) -> None:
+    # stage-3's gate must see stage-2's bound: over the stage-1-only
+    # population both x groups have 2 rows and would pass
     staged = _rows(
         CROSS_SCHEMA,
         "where sum(z) by x > 5 then where count(id) by y > 1 "
         "then where count(id) by x > 1 select x, sum(z) as v;",
     )
     assert staged == [("c", 10)], staged
+
+
+def test_four_cross_row_stages(backend) -> None:
+    chain = (
+        "where sum(z) by x > 5 then where count(id) by y > 1 "
+        "then where count(id) by x > 1 "
+    )
+    # rows 5,6 survive the first three stages, so stage-4's max over them is 5;
+    # over any earlier population it would be 10 (row 1) and pass the > 6 gate
+    assert _rows(CROSS_SCHEMA, chain + "then where max(z) by y > 6 select id;") == []
+    assert _rows(CROSS_SCHEMA, chain + "then where max(z) by y > 4 select id;") == [
+        (5,),
+        (6,),
+    ]
 
 
 def test_staged_persist_round_trips(backend) -> None:

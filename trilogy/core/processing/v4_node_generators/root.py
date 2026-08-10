@@ -209,73 +209,123 @@ def _resolve_root_condition_sources(
         if concept.address not in produced
     ]
     if row_args:
-        row_search = _condition_source_search_outputs(row_args, environment)
-        # This source is rejoined to `node` on whatever the two share, so it
-        # must carry the node's OWN row identity or the rejoin silently
-        # coarsens: `where supplier.nation.region.name = 'EUROPE'` beside an
-        # aggregate sourced region at (region, part) grain and rejoined on part
-        # alone, asking "does this part have SOME European supplier" instead of
-        # "is THIS supplier European". Identity is the node's grain, or the KEY
-        # concepts it outputs when it has none yet (a freshly sourced ROOT
-        # scan). Best-effort: an identity the row source cannot bind must not
-        # cost us the filter entirely, so retry without it.
-        seeded = {c.address for c in row_search}
-        identity = set(node.grain.components) if node.grain else set()
-        identity |= {
-            c.address for c in node.output_concepts if c.purpose == Purpose.KEY
-        }
-        aggregate_only = _condition_source_uses_aggregate_contract(row_args)
-        correlation = (
-            []
-            if aggregate_only
-            else [
-                environment.concepts[address]
-                for address in sorted(identity - seeded)
-                if address in environment.concepts
-            ]
+        sources.row_concepts = row_args
+        for partition in _stage_partitions(staged_conditions, row_args):
+            sources.row_parents.append(
+                _resolve_row_arg_source(
+                    node,
+                    partition,
+                    environment,
+                    g,
+                    v4_history,
+                    preexisting_conditions,
+                    staged_conditions,
+                )
+            )
+
+    resolve_existence_sources(sources, conditions, environment, g, v4_history, depth=1)
+    return sources
+
+
+def _stage_partitions(
+    staged_conditions: list[BuildWhereClause] | None,
+    row_args: list[BuildConcept],
+) -> list[list[BuildConcept]]:
+    """Group condition row args by the `then where` stage that computes them.
+
+    One search cannot re-source two stages' gates: each stage's cross-row value
+    is defined over a different population, and a search carries one set of
+    bounds. Batched together they resolve to a single hosting stage, which for
+    a mixed batch is stage 1 — no bounds at all — so the later stage's gate
+    silently re-computes over unfiltered rows. Splitting is confined to that
+    case: a batch spanning fewer than two stages keeps its single search, so
+    every previously-plannable query keeps its plan."""
+    if not staged_conditions:
+        return [row_args]
+    by_stage: dict[int | None, list[BuildConcept]] = {}
+    for arg in row_args:
+        by_stage.setdefault(hosting_stage_index(staged_conditions, [arg]), []).append(
+            arg
         )
-        inherited = _inheritable_atoms(preexisting_conditions, row_search + correlation)
-        # A staged (`then where`) chain's cross-row arg must be re-sourced with
-        # its stage bound applied — without it the re-sourced copy computes
-        # over unfiltered rows and silently replaces the bounded one the group
-        # graph planned.
-        inherited = inherited + _staged_precondition_clauses(
-            staged_conditions, row_args
-        )
+    staged = sorted(stage for stage in by_stage if stage is not None)
+    if len(staged) < 2:
+        return [row_args]
+    # Unstaged args (ordinary row columns) come last in their own search; they
+    # carry no stage bound, which is what they had inside the shared batch.
+    return [by_stage[stage] for stage in staged] + (
+        [by_stage[None]] if None in by_stage else []
+    )
+
+
+def _resolve_row_arg_source(
+    node: StrategyNode,
+    row_args: list[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    v4_history: V4History,
+    preexisting_conditions: BuildWhereClause | None,
+    staged_conditions: list[BuildWhereClause] | None,
+) -> StrategyNode:
+    """Re-source one group of condition row args from datasources."""
+    row_search = _condition_source_search_outputs(row_args, environment)
+    # This source is rejoined to `node` on whatever the two share, so it
+    # must carry the node's OWN row identity or the rejoin silently
+    # coarsens: `where supplier.nation.region.name = 'EUROPE'` beside an
+    # aggregate sourced region at (region, part) grain and rejoined on part
+    # alone, asking "does this part have SOME European supplier" instead of
+    # "is THIS supplier European". Identity is the node's grain, or the KEY
+    # concepts it outputs when it has none yet (a freshly sourced ROOT
+    # scan). Best-effort: an identity the row source cannot bind must not
+    # cost us the filter entirely, so retry without it.
+    seeded = {c.address for c in row_search}
+    identity = set(node.grain.components) if node.grain else set()
+    identity |= {c.address for c in node.output_concepts if c.purpose == Purpose.KEY}
+    aggregate_only = _condition_source_uses_aggregate_contract(row_args)
+    correlation = (
+        []
+        if aggregate_only
+        else [
+            environment.concepts[address]
+            for address in sorted(identity - seeded)
+            if address in environment.concepts
+        ]
+    )
+    inherited = _inheritable_atoms(preexisting_conditions, row_search + correlation)
+    # A staged (`then where`) chain's cross-row arg must be re-sourced with
+    # its stage bound applied — without it the re-sourced copy computes
+    # over unfiltered rows and silently replaces the bounded one the group
+    # graph planned.
+    inherited = inherited + _staged_precondition_clauses(staged_conditions, row_args)
+    row_node = search_parent(
+        row_search + correlation,
+        environment,
+        v4_history,
+        g,
+        depth=1,
+        conditions=inherited,
+        # This search rebuilds an aggregate's fact input, where a key
+        # carried by the fact is the intended population rather than an
+        # incomplete dimension projection.
+        complete_partials=not aggregate_only,
+        staged_conditions=staged_conditions,
+    )
+    if correlation and row_node is None:
         row_node = search_parent(
-            row_search + correlation,
+            row_search,
             environment,
             v4_history,
             g,
             depth=1,
             conditions=inherited,
-            # This search rebuilds an aggregate's fact input, where a key
-            # carried by the fact is the intended population rather than an
-            # incomplete dimension projection.
             complete_partials=not aggregate_only,
             staged_conditions=staged_conditions,
         )
-        if correlation and row_node is None:
-            row_node = search_parent(
-                row_search,
-                environment,
-                v4_history,
-                g,
-                depth=1,
-                conditions=inherited,
-                complete_partials=not aggregate_only,
-                staged_conditions=staged_conditions,
-            )
-        if row_node is None:
-            raise UnresolvableQueryException(
-                "Could not resolve condition row arguments "
-                f"{[c.address for c in row_args]}"
-            )
-        sources.row_concepts = row_args
-        sources.row_parents.append(row_node)
-
-    resolve_existence_sources(sources, conditions, environment, g, v4_history, depth=1)
-    return sources
+    if row_node is None:
+        raise UnresolvableQueryException(
+            "Could not resolve condition row arguments "
+            f"{[c.address for c in row_args]}"
+        )
+    return row_node
 
 
 def _has_upgradable_outer_join(node: StrategyNode, guard_addresses: set[str]) -> bool:
