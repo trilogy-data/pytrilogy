@@ -22,7 +22,6 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     UndefinedConceptFull,
     WhereClause,
-    combine_staged_wheres,
 )
 from trilogy.core.statements.author import (
     ConceptTransform,
@@ -121,7 +120,6 @@ def select_statement(
     return SelectStatement(
         selection=select_items,
         order_by=order_by,
-        where_clause=combine_staged_wheres(stages),
         where_clauses=stages,
         having_clause=having,
         limit=limit,

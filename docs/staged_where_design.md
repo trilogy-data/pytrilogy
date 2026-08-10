@@ -82,16 +82,32 @@ so put `subset join` after the select list when using a chain.
 
 `where_series` in both grammars (`trilogy/parsing/trilogy.lark` and
 `trilogy/scripts/dependency/src/trilogy.pest`) collects `where (then where)*`
-into a `SelectStatement.where_clauses` list. `where_clause` is set to the AND
-fold of that list and stays the canonical row gate everything plans against.
+into a `SelectStatement.where_clauses` list. That list is the **only stored
+form of the row gate**: `where_clause` — still the canonical thing everything
+plans against — is a read-only property returning its AND fold, so the gate and
+its staged decomposition cannot describe two different conditions. A flat
+`where` is a one-stage chain, and `combine_staged_wheres` returns that single
+stage identically, so nothing about the flat path changes.
 
-The pair is only meaningful together, so `__post_init__` re-derives it through
-`normalize_where_stages`: stages that no longer fold to the gate collapse back
-to the flat single stage it is. That makes `dataclasses.replace(stmt,
-where_clause=...)` — which copies the old stage list verbatim — safe by
-construction. Code that means to widen the gate *and* keep the staging uses
-`prepend_where_stage`, which ANDs into stage 1 (narrowing stage 1 narrows every
-later stage's input population, which is what a statement-wide gate means).
+The fold is memoized on the stage list's identity. Folding allocates, and
+conditions are compared by identity in places (`merge_conditions_and_dedup`
+preserves identity "so equality checks in validate_stack remain intact"), so
+handing back a fresh object per read would be both wasteful and wrong.
+Reassigning `where_clauses` re-folds automatically; nothing mutates the list in
+place.
+
+The practical consequence is that `dataclasses.replace(stmt,
+where_clause=...)` is a `TypeError` rather than a silent drop of the staging.
+Code that means to widen the gate *and* keep the chain uses
+`prepend_where_stage`, which ANDs into stage 1 — narrowing stage 1 narrows every
+later stage's input population, which is what a statement-wide gate means.
+`process_persist`'s `non_partial_for` injection is the live caller.
+
+`SelectLineage` mirrors this. `BuildSelectLineage` deliberately does not: it is
+constructed in exactly one place (`Factory.build`), never mutated and never
+`replace`d, so there is no desync risk to design against — and there
+`where_clauses` is populated *only* for a chain that actually stages something,
+which is what lets downstream code test it for truth.
 
 `_validate_staged_where` in `parsing/v2/select_finalize.py` enforces the table
 above. It runs from `_validate_syntax`, so it covers rowset bodies and
@@ -102,10 +118,10 @@ multiselect arms as well as plain selects.
 `Factory.build` builds the stages with the **same** `where_factory` as the
 combined clause, immediately after it. The shared caches make every stage
 expression resolve to the exact `BuildConcept` address it has in the combined
-clause, which the delivery pass depends on to match atoms and hosts.
-`BuildSelectLineage.where_clauses` is populated only for a chain that actually
-stages something (2+), so downstream code tests it for truth rather than
-re-deriving the length rule.
+clause, which the delivery pass depends on to match atoms and hosts. This is
+also the single gate on what counts as staged — it populates
+`BuildSelectLineage.where_clauses` only for a 2+ chain — so downstream code
+tests the list for truth rather than re-deriving the length rule.
 
 ### Discovery
 

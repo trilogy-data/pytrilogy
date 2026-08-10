@@ -451,27 +451,6 @@ def combine_staged_wheres(stages: Sequence[WhereClause]) -> WhereClause | None:
     return WhereClause(conditional=condition)
 
 
-def normalize_where_stages(
-    combined: WhereClause | None, stages: Sequence[WhereClause]
-) -> list[WhereClause]:
-    """The stage list that folds to `combined`, for a statement's `__post_init__`.
-
-    `where_clause` is the canonical row gate everything plans against and
-    `where_clauses` is its staged decomposition, so the two are only meaningful
-    together. Anything that rebuilds a statement around a new gate — most of
-    all `dataclasses.replace`, which copies the old stages verbatim — would
-    otherwise leave a stage list describing a condition the statement no longer
-    has. Re-deriving here means the pair can never disagree; stages that no
-    longer fold to the gate collapse back to the flat single stage it is. Use
-    `prepend_where_stage` to widen a gate while keeping its staging.
-    """
-    if combined is None:
-        return []
-    if stages and combine_staged_wheres(stages) == combined:
-        return list(stages)
-    return [combined]
-
-
 def prepend_where_stage(
     stages: Sequence[WhereClause], clause: WhereClause
 ) -> list[WhereClause]:
@@ -3034,10 +3013,9 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     limit: int | None = None
     meta: Metadata = dc_field(default_factory=lambda: Metadata())
     grain: Grain = dc_field(default_factory=Grain)
-    where_clause: WhereClause | None = None
-    # Ordered `then where` stages; `where_clause` is always their AND fold (see
-    # `normalize_where_stages`). A flat where is a single stage, so this is
-    # empty only when there is no where at all.
+    # Ordered `then where` stages, and the ONLY stored form of the row gate:
+    # `where_clause` is their AND fold, derived. A flat where is a single
+    # stage, so this is empty only when there is no where at all.
     where_clauses: list[WhereClause] = dc_field(default_factory=list)
     having_clause: HavingClause | None = None
     # Query-scoped JOINs declared on this select (`subset|union join a = b`).
@@ -3050,11 +3028,26 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     # un-pinned aggregate materialized in this select's projection scope, so no
     # shared authoring object ever carries the spec.
     grouping: AggregateGrouping | None = None
+    _folded_where: WhereClause | None = dc_field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _folded_from: list[WhereClause] | None = dc_field(
+        default=None, init=False, repr=False, compare=False
+    )
 
-    def __post_init__(self):
-        self.where_clauses = normalize_where_stages(
-            self.where_clause, self.where_clauses
-        )
+    @property
+    def where_clause(self) -> WhereClause | None:
+        """The AND fold of `where_clauses` — the canonical row gate.
+
+        Derived rather than stored so the gate and its staged decomposition
+        cannot describe two different conditions. Memoized on the stage list's
+        identity: folding allocates, and conditions are compared by identity in
+        places, so a fresh object per read would be both wasteful and wrong.
+        """
+        if self._folded_from is not self.where_clauses:
+            self._folded_where = combine_staged_wheres(self.where_clauses)
+            self._folded_from = self.where_clauses
+        return self._folded_where
 
     @property
     def first_where_stage(self) -> WhereClause | None:
@@ -3081,11 +3074,6 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
             limit=self.limit,
             meta=self.meta,
             grain=self.grain.with_namespace(namespace),
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
             where_clauses=[x.with_namespace(namespace) for x in self.where_clauses],
             having_clause=(
                 self.having_clause.with_namespace(namespace)

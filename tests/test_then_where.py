@@ -251,9 +251,9 @@ select id;
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_replace_cannot_desync_stages_from_gate(backend: ParserBackend) -> None:
-    # dataclasses.replace copies the old stage list verbatim; __post_init__ must
-    # re-derive it so the pair can never describe two different conditions
+def test_gate_cannot_be_set_independently_of_stages(backend: ParserBackend) -> None:
+    # `where_clause` is derived, so rebuilding a statement around a new gate is
+    # a hard error rather than a silent drop of the staging
     with _using_backend(backend):
         select = _select(MODEL + """
 where cat = 'a'
@@ -267,8 +267,32 @@ select id;
             operator=BooleanOperator.AND,
         )
     )
-    rebuilt = replace(select, where_clause=widened)
+    with pytest.raises(TypeError, match="where_clause"):
+        replace(select, where_clause=widened)
+    # widening goes through the stages, which keeps the chain intact
+    rebuilt = replace(
+        select,
+        where_clauses=prepend_where_stage(
+            select.where_clauses, select.where_clauses[0]
+        ),
+    )
+    assert len(rebuilt.where_clauses) == 2
     assert rebuilt.where_clause == combine_staged_wheres(rebuilt.where_clauses)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_gate_refolds_when_stages_are_reassigned(backend: ParserBackend) -> None:
+    # the fold memo is keyed on the stage list, so replacing it re-folds
+    with _using_backend(backend):
+        select = _select(MODEL + """
+where cat = 'a'
+then where sum(val) by cat > 10
+select id;
+""")
+    before = select.where_clause
+    assert select.where_clause is before  # memoized, not rebuilt per read
+    select.where_clauses = [select.where_clauses[0]]
+    assert select.where_clause == select.where_clauses[0]
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

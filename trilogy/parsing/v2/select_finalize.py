@@ -1453,12 +1453,10 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.metadata.line_number if x.metadata else None,
                     )
         if replacements:
-            select.with_where_stages(
-                [
-                    wc.with_reference_replacement(replacements)
-                    for wc in select.where_clauses
-                ]
-            )
+            select.where_clauses = [
+                wc.with_reference_replacement(replacements)
+                for wc in select.where_clauses
+            ]
     _rewrite_aliased_source_refs(select)
     all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived

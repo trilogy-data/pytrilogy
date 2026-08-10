@@ -51,7 +51,6 @@ from trilogy.core.models.author import (
     WindowItem,
     combine_staged_wheres,
     get_concept_arguments,
-    normalize_where_stages,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
@@ -171,11 +170,11 @@ class SelectJoin:
 @dataclass
 class SelectStatement(HasUUID, SelectTypeMixin):
     selection: list[SelectItem]
-    where_clause: WhereClause | None = None
-    # Ordered `then where` stages; `where_clause` is always their AND fold (see
-    # `normalize_where_stages`). A flat where is a single stage, so this is
-    # empty only when there is no where at all. Later stages' aggregates and
-    # windows compute over rows passing all earlier stages (v4 discovery).
+    # Ordered `then where` stages, and the ONLY stored form of the row gate:
+    # `where_clause` is their AND fold, derived. A flat where is a single
+    # stage, so this is empty only when there is no where at all. Later stages'
+    # aggregates and windows compute over rows passing all earlier stages
+    # (applied at v4 discovery).
     where_clauses: list[WhereClause] = field(default_factory=list)
     having_clause: HavingClause | None = None
     order_by: OrderBy | None = None
@@ -191,6 +190,12 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     # the lineage and applied to un-pinned aggregates by the build factory, so
     # no shared authoring object is ever mutated with the spec.
     grouping: AggregateGrouping | None = None
+    _folded_where: WhereClause | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _folded_from: list[WhereClause] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self):
         new = []
@@ -202,9 +207,20 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         self.selection = new
         if not isinstance(self.local_concepts, EnvironmentConceptDict):
             self.local_concepts = validate_concepts(self.local_concepts)
-        self.where_clauses = normalize_where_stages(
-            self.where_clause, self.where_clauses
-        )
+
+    @property
+    def where_clause(self) -> WhereClause | None:
+        """The AND fold of `where_clauses` — the canonical row gate.
+
+        Derived rather than stored so the gate and its staged decomposition
+        cannot describe two different conditions. Memoized on the stage list's
+        identity: folding allocates, and conditions are compared by identity in
+        places, so a fresh object per read would be both wasteful and wrong.
+        """
+        if self._folded_from is not self.where_clauses:
+            self._folded_where = combine_staged_wheres(self.where_clauses)
+            self._folded_from = self.where_clauses
+        return self._folded_where
 
     @property
     def first_where_stage(self) -> WhereClause | None:
@@ -215,11 +231,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         and the rules that redirect a WHERE aggregate to HAVING must not see
         it."""
         return self.where_clauses[0] if self.where_clauses else None
-
-    def with_where_stages(self, stages: list[WhereClause]) -> None:
-        """Replace the staged chain and re-fold the combined gate with it."""
-        self.where_clauses = stages
-        self.where_clause = combine_staged_wheres(stages)
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         derived = [
@@ -234,7 +245,6 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             ],
             order_by=self.order_by,
             limit=self.limit,
-            where_clause=self.where_clause,
             where_clauses=self.where_clauses,
             having_clause=self.having_clause,
             local_concepts={
@@ -268,9 +278,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         having_clause: HavingClause | None = None,
         eligible_datasources: list[str] | None = None,
     ) -> "SelectStatement":
+        # Takes the flat gate its callers have; a flat where is one stage.
         output = SelectStatement(
             selection=selection,
-            where_clause=where_clause,
+            where_clauses=[where_clause] if where_clause else [],
             having_clause=having_clause,
             limit=limit,
             order_by=order_by,
@@ -383,12 +394,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                             x.address, x.metadata.line_number if x.metadata else None
                         )
             if replacements:
-                self.with_where_stages(
-                    [
-                        wc.with_reference_replacement(replacements)
-                        for wc in self.where_clauses
-                    ]
-                )
+                self.where_clauses = [
+                    wc.with_reference_replacement(replacements)
+                    for wc in self.where_clauses
+                ]
         # Only a SCALAR select (no grouping key) restricts a WHERE aggregate that is
         # also derived in the select; a grouped select computes it at the select
         # grain over the WHERE-unfiltered universe as a valid pre-aggregation gate.

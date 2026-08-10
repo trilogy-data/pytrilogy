@@ -30,7 +30,6 @@ from trilogy.core.models.author import (
     RowsetItem,
     SelectLineage,
     WhereClause,
-    combine_staged_wheres,
     prepend_where_stage,
 )
 from trilogy.core.models.build import (
@@ -1168,15 +1167,14 @@ def process_persist(
     # Datasources created from a persist-with-WHERE already embed the condition
     # in the SELECT, so injecting again would duplicate it.
     if ds.is_partial and ds.non_partial_for:
-        # AND into stage 1 rather than onto the combined clause: the partition
-        # condition gates every row the persist writes, so it belongs ahead of
-        # any `then where` staging, and a bare `where_clause=` replace would
-        # leave the stage list describing the un-narrowed gate.
-        stages = prepend_where_stage(select_stmt.where_clauses, ds.non_partial_for)
+        # AND into stage 1: the partition condition gates every row the persist
+        # writes, so it belongs ahead of any `then where` staging, and every
+        # later stage's input population narrows with it.
         select_stmt = replace(
             select_stmt,
-            where_clause=combine_staged_wheres(stages),
-            where_clauses=stages,
+            where_clauses=prepend_where_stage(
+                select_stmt.where_clauses, ds.non_partial_for
+            ),
         )
     # set to unpublished to avoid circular refs
     try:

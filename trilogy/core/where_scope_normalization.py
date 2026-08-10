@@ -48,7 +48,6 @@ from trilogy.core.models.author import (
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
-    combine_staged_wheres,
 )
 from trilogy.core.models.environment import Environment
 
@@ -555,12 +554,12 @@ def normalize_select_where_scope(
     local_concepts.update(minted)
     # `then where` stages must stay address-aligned with the combined clause:
     # the staged discovery pass maps stage atoms and hosts into the combined
-    # clause's placements by address. Rewrite the stages and re-fold rather
-    # than rewriting the gate independently, so the two cannot drift.
-    stages = [wc.with_reference_replacement(replacements) for wc in base.where_clauses]
+    # clause's placements by address. Rewriting the stages is enough — the
+    # combined `where_clause` folds from them.
     return dc_replace(
         base,
-        where_clause=combine_staged_wheres(stages),
-        where_clauses=stages,
+        where_clauses=[
+            wc.with_reference_replacement(replacements) for wc in base.where_clauses
+        ],
         local_concepts=local_concepts,
     )
