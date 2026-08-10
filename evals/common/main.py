@@ -164,8 +164,9 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         "--category",
         choices=sorted(categories_for(spec)),
         default=None,
-        help="which eval category this run is: sql_bare (db only), sql_schema "
-        "(db+schema.md), ingest (auto Trilogy model), enriched (curated model). "
+        help="which eval category this run is; shared options are sql_bare "
+        "(db only), sql_schema (db+schema.md), ingest (auto Trilogy model), "
+        "and enriched (curated model). Benchmarks may add variants. "
         "Defaults to 'enriched' if --enriched-model-dir is set, else 'ingest'.",
     )
     parser.add_argument(
@@ -436,9 +437,7 @@ def _run_categories(
 
     if len(reports_by_key) >= 2:
         ordered = {
-            k: reports_by_key[k]
-            for k in funnel_order_for(spec)
-            if k in reports_by_key
+            k: reports_by_key[k] for k in funnel_order_for(spec) if k in reports_by_key
         }
         png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
         md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")

@@ -39,7 +39,10 @@ Record vocabulary (fields with ``None`` values are omitted):
   ``trilogy.execution.state.snapshot``), or {path} when written to a file
 - ``error``: error_type, message, file (fatal errors outside the file loop)
 - ``summary``: terminal record — success, exit_code, total, succeeded,
-  failed, skipped, partial_failure, total_duration_s, refreshed_assets
+  failed, skipped, partial_failure, total_duration_s, refreshed_assets.
+  A multi-phase command (``integration --refresh-derived failed`` runs
+  integration, refresh, then integration again) emits one per phase; the
+  LAST summary in the file is the run's outcome.
 
 One report file per invocation: the sink serializes writers within this
 process only. Orchestrators must supply a distinct path per run.
@@ -80,6 +83,13 @@ class ReportSink:
         self._lock = threading.Lock()
         self._seq = 0
         self._summary_emitted = False
+        # Orchestrators point this at a directory they expect us to make
+        # (`--report-file .trilogy/exec.jsonl`); without the parent every emit
+        # fails silently and the run looks unreported.
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:  # pragma: no cover - defensive
+            logger.debug("report sink directory create failed: %s", e)
 
     def emit(self, record_type: str, **fields: Any) -> None:
         try:

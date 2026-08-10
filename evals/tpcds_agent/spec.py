@@ -4,23 +4,17 @@ per-mode scripts; this module just defines SPEC."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from common.categories import Category
 from common.spec import BenchmarkSpec
-try:
-    from .warehouse_variants import (
-        setup_enriched_aggregates,
-        setup_enriched_noise,
-        setup_sql_schema_aggregates,
-        setup_sql_schema_noise,
-    )
-except ImportError:  # invoked directly by run_eval.py
-    from warehouse_variants import (
-        setup_enriched_aggregates,
-        setup_enriched_noise,
-        setup_sql_schema_aggregates,
-        setup_sql_schema_noise,
-    )
+
+if TYPE_CHECKING:
+    from tpcds_agent import warehouse_variants
+elif __package__:
+    from . import warehouse_variants
+else:
+    import warehouse_variants
 
 EVAL_DIR = Path(__file__).resolve().parent
 
@@ -30,28 +24,28 @@ MESSY_WAREHOUSE_CATEGORIES = (
         "db+schema+aggregates",
         "sql",
         ".sql",
-        setup_sql_schema_aggregates,
+        warehouse_variants.setup_sql_schema_aggregates,
     ),
     Category(
         "enriched_aggregates",
         "enriched+aggregates",
         "trilogy",
         ".preql",
-        setup_enriched_aggregates,
+        warehouse_variants.setup_enriched_aggregates,
     ),
     Category(
         "sql_schema_noise",
         "db+schema+noise",
         "sql",
         ".sql",
-        setup_sql_schema_noise,
+        warehouse_variants.setup_sql_schema_noise,
     ),
     Category(
         "enriched_noise",
         "enriched+noise",
         "trilogy",
         ".preql",
-        setup_enriched_noise,
+        warehouse_variants.setup_enriched_noise,
     ),
 )
 
@@ -62,7 +56,7 @@ SPEC = BenchmarkSpec(
     # dsdgen is a lazy table function — common.db.build_database materializes
     # SELECT-shaped generators via fetchall and runs CALL-shaped ones directly.
     generator_sql="SELECT * FROM dsdgen(sf={sf})",
-    db_filename="tpcds.duckdb",
+    db_filename="warehouse.duckdb",
     eval_dir=EVAL_DIR,
     prompts_file=EVAL_DIR / "query_prompts.json",
     enriched_skip_prefixes=("query", "adhoc"),

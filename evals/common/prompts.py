@@ -69,8 +69,8 @@ _SQL_PARAMS_HEADER = """
 Use these exact constant values in your SQL (inline them as literals):"""
 
 _TASK_TEMPLATE = """\
-Trilogy project in this directory. `trilogy.toml` configures a DuckDB database
-(`{db}`) already loaded with the {bench} benchmark schema and data.
+Trilogy project in this directory. `trilogy.toml` configures an already-loaded
+DuckDB database.
 
 Your goal:
 1. Build a Trilogy semantic data model with `trilogy ingest --all` — writes
@@ -243,5 +243,4 @@ def build_task(spec: BenchmarkSpec, num_queries: int) -> str:
         f"Question {p['id']} -> write `query{p['id']:02d}.preql`\n{p['prompt']}"
         for p in prompts
     )
-    template = _TASK_TEMPLATE.format(db=spec.db_filename, bench=spec.name)
-    return template.format(n=len(prompts), questions=questions)
+    return _TASK_TEMPLATE.format(n=len(prompts), questions=questions)

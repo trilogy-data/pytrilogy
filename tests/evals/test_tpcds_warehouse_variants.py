@@ -14,6 +14,7 @@ from tpcds_agent.warehouse_variants import (
     _append_aggregate_models,
     _run_sql,
 )
+
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 from trilogy.scripts.explore import filter_hidden
@@ -52,12 +53,17 @@ def test_aggregate_models_are_private_and_materialized(tmp_path: Path):
     assert result["exit_code"] == 0
 
     base = Environment(working_path=tmp_path)
-    base.parse("import raw.store_sales as ss;")
+    imports = (
+        "import raw.store_sales as ss; "
+        "import raw.catalog_sales as cs; "
+        "import raw.web_sales as ws;"
+    )
+    base.parse(imports)
     base_public = {address for address, _ in filter_hidden(list(base.concepts.items()))}
 
     _append_aggregate_models(tmp_path)
     augmented = Environment(working_path=tmp_path)
-    augmented.parse("import raw.store_sales as ss;")
+    augmented.parse(imports)
     augmented_public = {
         address for address, _ in filter_hidden(list(augmented.concepts.items()))
     }

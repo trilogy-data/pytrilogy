@@ -35,7 +35,7 @@ class BenchmarkSpec:
     ``database_builder`` is set."""
 
     db_filename: str
-    """Workspace database filename agents see ('tpcds.duckdb', 'tpch.duckdb')."""
+    """Workspace database filename agents see (for example, 'warehouse.duckdb')."""
 
     eval_dir: Path
     """The benchmark's own directory — where prompts/results/charts live."""

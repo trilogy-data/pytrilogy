@@ -14,7 +14,7 @@ import shutil
 from pathlib import Path
 
 
-def generate_schema_md(db_path: Path, benchmark_name: str) -> str:
+def generate_schema_md(db_path: Path) -> str:
     """Introspect ``db_path`` and return a markdown schema doc: one section per
     base table with its columns/types and row count."""
     import duckdb
@@ -30,7 +30,7 @@ def generate_schema_md(db_path: Path, benchmark_name: str) -> str:
             ).fetchall()
         ]
         lines = [
-            f"# {benchmark_name} database schema",
+            "# Database schema",
             "",
             "DuckDB database. Tables and columns below; write standard DuckDB SQL.",
             "",
@@ -60,7 +60,6 @@ def generate_schema_md(db_path: Path, benchmark_name: str) -> str:
 
 def write_schema_md(
     db_path: Path,
-    benchmark_name: str,
     dest: Path,
     override: Path | None = None,
 ) -> Path:
@@ -69,5 +68,5 @@ def write_schema_md(
     if override is not None and override.exists():
         shutil.copy2(override, dest)
     else:
-        dest.write_text(generate_schema_md(db_path, benchmark_name), encoding="utf-8")
+        dest.write_text(generate_schema_md(db_path), encoding="utf-8")
     return dest

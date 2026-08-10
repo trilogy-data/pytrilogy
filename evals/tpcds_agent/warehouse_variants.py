@@ -6,24 +6,29 @@ import time
 from pathlib import Path
 
 import duckdb
-
 from common import agent_runner, schema_md
 from common.spec import BenchmarkSpec
 
 ASSET_DIR = Path(__file__).resolve().parent / "warehouse"
-AGGREGATE_MODEL_FILES = ("store_sales.preql", "catalog_sales.preql", "web_sales.preql")
+AGGREGATE_MODEL_FILES = (
+    "store_sales.preql",
+    "catalog_sales.preql",
+    "web_sales.preql",
+)
 
 
 def _run_sql(db_path: Path, filename: str) -> tuple[float, int]:
     start = time.perf_counter()
     with duckdb.connect(str(db_path)) as connection:
         connection.execute((ASSET_DIR / filename).read_text(encoding="utf-8"))
-        table_count = connection.execute(
+        table_count_row = connection.execute(
             "select count(*) from information_schema.tables "
             "where table_schema = 'main' and table_type = 'BASE TABLE'"
-        ).fetchone()[0]
+        ).fetchone()
         connection.execute("CHECKPOINT")
-    return time.perf_counter() - start, table_count
+    if table_count_row is None:
+        raise RuntimeError("DuckDB did not return a table count")
+    return time.perf_counter() - start, table_count_row[0]
 
 
 def _append_aggregate_models(workspace: Path) -> None:
@@ -44,7 +49,7 @@ def _sql_schema_setup(
     duration, table_count = _run_sql(db_path, variant_sql)
     start = time.perf_counter()
     dest = schema_md.write_schema_md(
-        db_path, spec.name, workspace / "schema.md", spec.schema_md_file
+        db_path, workspace / "schema.md", spec.schema_md_file
     )
     duration += time.perf_counter() - start
     return {
@@ -75,9 +80,7 @@ def _enriched_setup(
     return {
         **result,
         "duration": duration + result["duration"],
-        "stdout": (
-            f"augmented database has {table_count} tables.\n{result['stdout']}"
-        ),
+        "stdout": (f"augmented database has {table_count} tables.\n{result['stdout']}"),
     }
 
 

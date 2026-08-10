@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import replace as dataclass_replace
 from datetime import datetime
 from functools import partial
@@ -18,6 +20,8 @@ from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.statements.execute import ProcessedValidateNaturalStatement
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import audit_config_file
+from trilogy.execution.report import report_run
+from trilogy.scripts.click_utils import report_options
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -384,6 +388,90 @@ def _test_type_options(fn):
     return fn
 
 
+@contextmanager
+def _environment_activation(
+    environment: str | None, input: str, cli_params: CLIRuntimeParams
+) -> Iterator[None]:
+    """Enter the deployment environment a test run builds against: flag >
+    activated > none (mirrors `run`/`refresh`)."""
+    from trilogy.execution.envs import env_activation_scope
+    from trilogy.scripts.env_commands import announce_activation, resolve_activation
+
+    activation = resolve_activation(environment, str(input), cli_params.config_path)
+    announce_activation(activation)
+    with env_activation_scope(activation):
+        yield
+
+
+def _run_integration(
+    cli_params: CLIRuntimeParams,
+    execution_fn: Callable[..., ExecutionStats],
+    input: str,
+    *,
+    refresh_derived: str | None,
+) -> None:
+    if refresh_derived is None:
+        run_parallel_execution(
+            cli_params=cli_params,
+            execution_fn=execution_fn,
+            execution_mode=ExecutionMode.INTEGRATION,
+        )
+        return
+
+    input_path = PathlibPath(input)
+    print_info("Initial integration run")
+    initial_summary = _run_integration_with_summary(
+        cli_params,
+        graph=_build_initial_integration_graph(input_path),
+        execution_fn=execution_fn,
+    )
+    if initial_summary.all_succeeded:
+        return
+
+    print_info("Integration failed; attempting refresh-derived=failed")
+    failed_scripts = _get_unsuccessful_script_nodes(
+        initial_summary, include_dependency_skips=False
+    )
+    affected_scripts = _get_unsuccessful_script_nodes(
+        initial_summary, include_dependency_skips=True
+    )
+
+    if not failed_scripts:
+        print_info(
+            "No actual failed scripts were identified; dependency-skipped scripts are not refresh targets."
+        )
+        raise Exit(1)
+
+    refreshable_datasources = _collect_refreshable_derived_datasources(
+        cli_params, failed_scripts
+    )
+    if not refreshable_datasources:
+        print_info(
+            "No refreshable derived datasources were identified from failed scripts."
+        )
+        raise Exit(1)
+
+    print_info(
+        "Refreshing "
+        f"{len(refreshable_datasources)} derived datasource(s) from "
+        f"{len(failed_scripts)} failed script(s)"
+    )
+    refresh_summary = _run_refresh_for_derived_datasources(
+        cli_params, refreshable_datasources
+    )
+    if refresh_summary.successful == 0 and refresh_summary.skipped > 0:
+        print_info("Refresh phase completed without updating any derived datasources.")
+
+    print_info(f"Re-running integration for {len(affected_scripts)} affected script(s)")
+    rerun_summary = _run_integration_with_summary(
+        cli_params,
+        graph=_build_selected_script_graph(input_path, affected_scripts),
+        execution_fn=execution_fn,
+    )
+    if not rerun_summary.all_succeeded:
+        raise Exit(1)
+
+
 def _run_refresh_for_derived_datasources(
     cli_params: CLIRuntimeParams, datasource_names: list[str]
 ) -> ParallelExecutionSummary:
@@ -420,6 +508,12 @@ def _run_refresh_for_derived_datasources(
     help="Attempt a targeted derived datasource refresh when integration fails.",
 )
 @_test_type_options
+@option(
+    "--environment",
+    default=None,
+    help="Build into this deployment environment (overrides the activated one)",
+)
+@report_options
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def integration(
@@ -434,97 +528,51 @@ def integration(
     skip_types: tuple[str, ...],
     include_types: tuple[str, ...],
     agent_report: bool,
+    environment: str | None,
+    report_file: str | None,
+    run_id: str | None,
     conn_args,
 ):
     """Run integration tests on Trilogy scripts."""
-    _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
-    cli_params = CLIRuntimeParams(
-        input=input,
-        dialect=Dialects(dialect) if dialect else None,
-        parallelism=parallelism,
-        param=param,
-        conn_args=conn_args,
-        debug=ctx.obj["DEBUG"],
-        debug_file=ctx.obj.get("DEBUG_FILE"),
-        config_path=PathlibPath(config) if config else None,
-        execution_strategy="eager_bfs",
-        env=env,
-    )
-    execution_fn = partial(
-        execute_script_for_integration,
-        test_types=resolve_test_types(skip_types, include_types),
-        agent_report=agent_report,
-    )
-
     try:
-        if refresh_derived is None:
-            run_parallel_execution(
-                cli_params=cli_params,
-                execution_fn=execution_fn,
-                execution_mode=ExecutionMode.INTEGRATION,
+        # The config audit and param construction live INSIDE report_run so a
+        # --report-file consumer still gets the guaranteed fallback summary for
+        # errors that die before the file loop — the common case for validation.
+        with report_run(
+            "integration",
+            report_file,
+            run_id,
+            target=str(input)[:200],
+            dialect=dialect,
+            parallelism=parallelism,
+            config_path=str(config) if config else None,
+        ):
+            _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
+            cli_params = CLIRuntimeParams(
+                input=input,
+                dialect=Dialects(dialect) if dialect else None,
+                parallelism=parallelism,
+                param=param,
+                conn_args=conn_args,
+                debug=ctx.obj["DEBUG"],
+                debug_file=ctx.obj.get("DEBUG_FILE"),
+                config_path=PathlibPath(config) if config else None,
+                execution_strategy="eager_bfs",
+                env=env,
             )
-            return
-
-        input_path = PathlibPath(input)
-        print_info("Initial integration run")
-        initial_summary = _run_integration_with_summary(
-            cli_params,
-            graph=_build_initial_integration_graph(input_path),
-            execution_fn=execution_fn,
-        )
-        if initial_summary.all_succeeded:
-            return
-
-        print_info("Integration failed; attempting refresh-derived=failed")
-        failed_scripts = _get_unsuccessful_script_nodes(
-            initial_summary, include_dependency_skips=False
-        )
-        affected_scripts = _get_unsuccessful_script_nodes(
-            initial_summary, include_dependency_skips=True
-        )
-
-        if not failed_scripts:
-            print_info(
-                "No actual failed scripts were identified; dependency-skipped scripts are not refresh targets."
+            execution_fn = partial(
+                execute_script_for_integration,
+                test_types=resolve_test_types(skip_types, include_types),
+                agent_report=agent_report,
             )
-            raise Exit(1)
-
-        refreshable_datasources = _collect_refreshable_derived_datasources(
-            cli_params, failed_scripts
-        )
-        if not refreshable_datasources:
-            print_info(
-                "No refreshable derived datasources were identified from failed scripts."
-            )
-            raise Exit(1)
-
-        print_info(
-            "Refreshing "
-            f"{len(refreshable_datasources)} derived datasource(s) from "
-            f"{len(failed_scripts)} failed script(s)"
-        )
-        refresh_summary = _run_refresh_for_derived_datasources(
-            cli_params, refreshable_datasources
-        )
-        if refresh_summary.successful == 0 and refresh_summary.skipped > 0:
-            print_info(
-                "Refresh phase completed without updating any derived datasources."
-            )
-
-        print_info(
-            f"Re-running integration for {len(affected_scripts)} affected script(s)"
-        )
-        rerun_summary = _run_integration_with_summary(
-            cli_params,
-            graph=_build_selected_script_graph(input_path, affected_scripts),
-            execution_fn=execution_fn,
-        )
-        if not rerun_summary.all_succeeded:
-            raise Exit(1)
+            with _environment_activation(environment, input, cli_params):
+                _run_integration(
+                    cli_params, execution_fn, input, refresh_derived=refresh_derived
+                )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=cli_params.debug)
+        handle_execution_exception(e, debug=ctx.obj["DEBUG"])
 
 
 @argument("input", type=Path())
@@ -546,6 +594,12 @@ def integration(
     help="Set env vars as KEY=VALUE or pass an env file path",
 )
 @_test_type_options
+@option(
+    "--environment",
+    default=None,
+    help="Build into this deployment environment (overrides the activated one)",
+)
+@report_options
 @pass_context
 def unit(
     ctx,
@@ -557,34 +611,46 @@ def unit(
     skip_types: tuple[str, ...],
     include_types: tuple[str, ...],
     agent_report: bool,
+    environment: str | None,
+    report_file: str | None,
+    run_id: str | None,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
-    _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
-    # Build CLI runtime params (unit tests always use DuckDB)
-    cli_params = CLIRuntimeParams(
-        input=input,
-        dialect=Dialects.DUCK_DB,
-        parallelism=parallelism,
-        param=param,
-        conn_args=(),
-        debug=ctx.obj["DEBUG"],
-        debug_file=ctx.obj.get("DEBUG_FILE"),
-        config_path=PathlibPath(config) if config else None,
-        execution_strategy="eager_bfs",
-        env=env,
-    )
-
     try:
-        run_parallel_execution(
-            cli_params=cli_params,
-            execution_fn=partial(
-                execute_script_for_unit,
-                test_types=resolve_test_types(skip_types, include_types),
-                agent_report=agent_report,
-            ),
-            execution_mode=ExecutionMode.UNIT,
-        )
+        with report_run(
+            "unit",
+            report_file,
+            run_id,
+            target=str(input)[:200],
+            dialect=Dialects.DUCK_DB.value,
+            parallelism=parallelism,
+            config_path=str(config) if config else None,
+        ):
+            _warn_unknown_config_fields(input, PathlibPath(config) if config else None)
+            # Build CLI runtime params (unit tests always use DuckDB)
+            cli_params = CLIRuntimeParams(
+                input=input,
+                dialect=Dialects.DUCK_DB,
+                parallelism=parallelism,
+                param=param,
+                conn_args=(),
+                debug=ctx.obj["DEBUG"],
+                debug_file=ctx.obj.get("DEBUG_FILE"),
+                config_path=PathlibPath(config) if config else None,
+                execution_strategy="eager_bfs",
+                env=env,
+            )
+            with _environment_activation(environment, input, cli_params):
+                run_parallel_execution(
+                    cli_params=cli_params,
+                    execution_fn=partial(
+                        execute_script_for_unit,
+                        test_types=resolve_test_types(skip_types, include_types),
+                        agent_report=agent_report,
+                    ),
+                    execution_mode=ExecutionMode.UNIT,
+                )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=cli_params.debug)
+        handle_execution_exception(e, debug=ctx.obj["DEBUG"])

@@ -74,20 +74,28 @@ def test_readonly_violation_ignores_leading_comment():
 
 def test_format_result_renders_header_rows_and_nulls():
     out = _format_result(["id", "name"], [(1, "a"), (2, None)])
-    assert "id | name" in out
-    assert "1 | a" in out
-    assert "2 | NULL" in out
-    assert "[2 row(s)]" in out
+    assert '"columns": [' in out
+    assert '"id"' in out and '"name"' in out
+    assert '[1,"a"]' in out
+    assert "[2,null]" in out
+    assert '"row_count": 2' in out
 
 
 def test_format_result_truncates_and_reports_total(monkeypatch):
     monkeypatch.setattr(sql_mod, "_MAX_RESULT_ROWS", 2)
     out = _format_result(["id"], [(i,) for i in range(5)])
-    assert "[5 row(s); first 2 shown]" in out
+    assert '"row_count": 5' in out
+    assert '"displayed": 2' in out
+    assert '"truncated": true' in out
+    assert '"omitted": 3' in out
+    assert "<redacted 3 rows>" in out
+    assert '"column_stats"' in out
 
 
 def test_format_result_handles_no_columns():
-    assert "(no columns)" in _format_result([], [])
+    out = _format_result([], [])
+    assert '"columns": []' in out
+    assert '"rows": []' in out
 
 
 def test_envelope_shape():
@@ -103,8 +111,9 @@ def test_envelope_shape():
 def test_execute_sql_returns_rows(sql_engine):
     out = _execute_sql(AgentState(), "select id, name from t order by id")
     assert "exit_code: 0" in out
-    assert "id | name" in out
-    assert "2 | NULL" in out
+    assert '"columns": [' in out
+    assert "[2,null]" in out
+    assert '"event": "summary"' in out
 
 
 def test_execute_sql_rejects_non_readonly(sql_engine):

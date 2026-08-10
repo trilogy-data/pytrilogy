@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Rebuild the cross-category funnel from a LIVE 4-category run log, before any
+"""Rebuild the cross-category funnel from a live multi-category run log, before any
 leg has written its final ``report.json``.
 
 Each leg prints ``[<cat>]   [qNN] done in Xs (exit N, score=<status>)`` as each
@@ -62,9 +62,7 @@ def _leg_dirs(run_ts: str, categories: list[str]) -> dict[str, Path]:
 
 
 def build_once(log_path: Path, total: int, categories: list[str]) -> tuple[str, str]:
-    parsed = _parse(
-        log_path.read_text(encoding="utf-8", errors="replace"), categories
-    )
+    parsed = _parse(log_path.read_text(encoding="utf-8", errors="replace"), categories)
     ordered = {key: _synth_report(key, parsed[key], total) for key in categories}
     analyze_run.render_funnel(ordered, SPEC.charts_dir / "funnel_v2.png")
     analyze_run.write_funnel_report(ordered, SPEC.charts_dir / "funnel.md")

@@ -91,7 +91,7 @@ def _setup_sql_schema(
 ) -> dict:
     start = time.perf_counter()
     dest = schema_md.write_schema_md(
-        Path(db_path), spec.name, workspace / "schema.md", spec.schema_md_file
+        Path(db_path), workspace / "schema.md", spec.schema_md_file
     )
     source = (
         f"curated {spec.schema_md_file}"
@@ -120,7 +120,9 @@ FUNNEL_ORDER: list[str] = ["sql_bare", "sql_schema", "ingest", "enriched"]
 def categories_for(spec: BenchmarkSpec | None = None) -> dict[str, Category]:
     categories = dict(CATEGORIES)
     if spec is not None:
-        categories.update({category.key: category for category in spec.additional_categories})
+        categories.update(
+            {category.key: category for category in spec.additional_categories}
+        )
     return categories
 
 

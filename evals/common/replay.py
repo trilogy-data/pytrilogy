@@ -70,6 +70,19 @@ def _resolve_category(report: dict, spec: BenchmarkSpec) -> Category:
     return get_category(key, spec)
 
 
+def _database_path(workspace: Path, preferred_filename: str) -> Path:
+    preferred = workspace / preferred_filename
+    if preferred.exists():
+        return preferred
+    candidates = sorted(workspace.glob("*.duckdb"))
+    if len(candidates) == 1:
+        return candidates[0]
+    names = ", ".join(path.name for path in candidates) or "none"
+    raise ReplayError(
+        f"no {preferred_filename} in {workspace}; DuckDB candidates: {names}"
+    )
+
+
 def _worker_dir(workspace: Path, db_filename: str, worker: int = 0) -> Path:
     """Reuse the run's own worker copy so the agent sees the same trilogy.toml
     (iteration budget, tool gating) the original run used — a rebuilt toml would
@@ -139,7 +152,7 @@ def _refresh_model(
     setup = category.setup(
         workspace,
         spec,
-        db_path=workspace / spec.db_filename,
+        db_path=_database_path(workspace, spec.db_filename),
         enriched_dir=_enriched_dir(report),
     )
     if setup["exit_code"] != 0:
@@ -313,7 +326,8 @@ def replay_all(
     workspace = run_dir / "workspace"
     category = _resolve_category(report, spec)
     with _run_lock(run_dir):
-        dirs = [_worker_dir(workspace, spec.db_filename, i) for i in range(workers)]
+        db_filename = _database_path(workspace, spec.db_filename).name
+        dirs = [_worker_dir(workspace, db_filename, i) for i in range(workers)]
         _refresh_model(workspace, dirs, spec, category, report, log)
 
     state: dict = {
@@ -390,11 +404,7 @@ def replay_query(
         report = json.loads(report_path.read_text(encoding="utf-8"))
 
         workspace = run_dir / "workspace"
-        workspace_db = workspace / spec.db_filename
-        if not workspace_db.exists():
-            raise ReplayError(
-                f"no {spec.db_filename} in {workspace} — workspace was cleaned"
-            )
+        workspace_db = _database_path(workspace, spec.db_filename)
 
         category = _resolve_category(report, spec)
         meta = report["meta"]
@@ -415,7 +425,7 @@ def replay_query(
         prev = next((q for q in report.get("queries", []) if q["id"] == qid), None)
         prev_status = prev["status"] if prev else None
 
-        worker_dir = _worker_dir(workspace, spec.db_filename, worker)
+        worker_dir = _worker_dir(workspace, workspace_db.name, worker)
         if refresh_model:
             _refresh_model(workspace, [worker_dir], spec, category, report, log)
         task = category.build_task(spec, entry)

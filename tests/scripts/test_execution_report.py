@@ -383,6 +383,99 @@ def test_refresh_report_records(runner, tmp_path):
     assert not records_of(records, "asset_refresh")
 
 
+VALIDATION_FAIL = """select not_a_declared_concept;
+"""
+
+
+def _validation_workspace(tmp_path: Path) -> None:
+    (tmp_path / "a.preql").write_text(RUN_A, encoding="utf-8")
+    (tmp_path / "bad.preql").write_text(VALIDATION_FAIL, encoding="utf-8")
+
+
+@pytest.mark.parametrize("command", ["unit", "integration"])
+def test_validation_report_records(runner, tmp_path, command):
+    """`unit`/`integration` are the platform's validation commands: each file's
+    outcome must reach the report as a file_end, with a terminal summary."""
+    _validation_workspace(tmp_path)
+    report = tmp_path / "report.jsonl"
+    args = [command, str(tmp_path)]
+    if command == "integration":
+        args.append("duckdb")
+    result = runner.invoke(
+        cli, [*args, "--report-file", str(report), "--run-id", "rid"]
+    )
+    assert result.exit_code == 1, result.output
+
+    records = read_report(report)
+    _assert_vocabulary(records)
+    assert {r["run_id"] for r in records} == {"rid"}
+    assert records[0]["type"] == "run_start"
+    assert records[0]["command"] == command
+
+    ends = {_file_name(r): r for r in records_of(records, "file_end")}
+    assert ends["a.preql"]["success"] is True
+    assert ends["bad.preql"]["success"] is False
+    assert ends["bad.preql"]["error"]
+
+    summary = records[-1]
+    assert summary["type"] == "summary"
+    assert summary["success"] is False
+    assert summary["total"] == 2
+    assert summary["succeeded"] == 1
+    assert summary["failed"] == 1
+
+
+@pytest.mark.parametrize("command", ["unit", "integration"])
+def test_validation_report_env_fallback_and_environment_flag(
+    runner, tmp_path, command, monkeypatch
+):
+    """TRILOGY_REPORT_FILE activates the sink with no flag, and --environment
+    is accepted (the cloud worker passes it unconditionally)."""
+    (tmp_path / "a.preql").write_text(RUN_A, encoding="utf-8")
+    report = tmp_path / "env.jsonl"
+    monkeypatch.setenv("TRILOGY_REPORT_FILE", str(report))
+    args = [command, str(tmp_path)]
+    if command == "integration":
+        args.append("duckdb")
+    result = runner.invoke(cli, [*args, "--environment", "branch1"])
+    assert result.exit_code == 0, result.output
+
+    records = read_report(report)
+    _assert_vocabulary(records)
+    assert records[0]["type"] == "run_start"
+    assert records[-1]["type"] == "summary"
+    assert records[-1]["success"] is True
+
+
+@pytest.mark.parametrize("command", ["unit", "integration"])
+def test_validation_summary_fallback_on_missing_input(runner, tmp_path, command):
+    """Validation dies before the file loop more than any other command; the
+    fallback summary is what tells the consumer the run failed."""
+    report = tmp_path / "report.jsonl"
+    args = [command, str(tmp_path / "missing")]
+    if command == "integration":
+        args.append("duckdb")
+    result = runner.invoke(cli, [*args, "--report-file", str(report)])
+    assert result.exit_code != 0
+
+    records = read_report(report)
+    assert records[0]["type"] == "run_start"
+    assert records[-1]["type"] == "summary"
+    assert records[-1]["success"] is False
+    assert isinstance(records[-1]["exit_code"], int)
+
+
+def test_report_file_parent_directory_is_created(runner, tmp_path):
+    """The orchestrator's path (`.trilogy/exec.jsonl`) names a directory it
+    expects the run to create."""
+    report = tmp_path / ".trilogy" / "nested" / "exec.jsonl"
+    result = runner.invoke(
+        cli, ["run", "select 1 -> num;", "duck_db", "--report-file", str(report)]
+    )
+    assert result.exit_code == 0, result.output
+    assert read_report(report)[-1]["type"] == "summary"
+
+
 def test_summary_fallback_on_config_error(runner, tmp_path):
     """A pathlike input that doesn't exist dies before the file loop (exit 2);
     the report must still end with a terminal failure summary (fallback path)."""
