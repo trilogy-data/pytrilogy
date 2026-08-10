@@ -534,6 +534,7 @@ def test_deepseek_posts_to_deepseek_url(monkeypatch):
         "choices": [{"message": {"content": "ok", "tool_calls": []}}],
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     }
+
     def client(timeout: float) -> _FakeClient:
         sink["timeout"] = timeout
         return _FakeClient(response_payload=response_payload, sink=sink)

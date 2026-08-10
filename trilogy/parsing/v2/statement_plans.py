@@ -146,6 +146,9 @@ class ConceptStatementPlan(StatementPlanBase):
     declaration: ConceptAddress | None = None
     provided_addresses: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
+    # Set by the hydrator when this declaration reads a rowset output; see
+    # NativeHydrator._deferred_concept_plans.
+    deferred: bool = False
 
     def collect_symbols(self, hydrator: NativeHydrator) -> None:
         self.declaration = collect_concept_address(self.syntax, hydrator.environment)
@@ -217,8 +220,13 @@ class ConceptStatementPlan(StatementPlanBase):
         self.declare_symbols(hydrator)
 
     def hydrate(self, hydrator: NativeHydrator) -> None:
-        # Concepts are created during BIND via _sort_and_create_concepts
-        pass
+        # Concepts are normally created during BIND via _sort_and_create_concepts.
+        # A deferred plan reads a rowset output, which only exists once that
+        # rowset statement has hydrated — build it here, in source order.
+        if not self.deferred or self.output is not None:
+            return
+        self.output = hydrator.hydrate_concept_block(self.syntax)
+        self.declare_hydrated_symbols(hydrator)
 
     def commit(
         self,

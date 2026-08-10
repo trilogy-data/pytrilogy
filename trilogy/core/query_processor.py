@@ -74,6 +74,9 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
 )
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    describe_incomplete_partitions,
+)
 from trilogy.core.processing.nodes import (
     BuildCaches,
     History,
@@ -803,9 +806,18 @@ def _plan_query_node(
     }
     partial_requested = requested & {c.address for c in ds.partial_concepts}
     if partial_requested:
+        detail = describe_incomplete_partitions(
+            [
+                x
+                for x in build_environment.datasources.values()
+                if isinstance(x, BuildDatasource)
+            ],
+            [c for c in ds.partial_concepts if c.address in partial_requested],
+        )
         raise UnresolvableQueryException(
             f"Query is unresolvable: no complete sources found for output concepts"
             f" {partial_requested}. These concepts could only be resolved from partial sources."
+            + (f" {detail}" if detail else "")
         )
     return ds
 

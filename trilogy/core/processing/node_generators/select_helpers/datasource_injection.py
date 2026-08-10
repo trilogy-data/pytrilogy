@@ -142,17 +142,18 @@ def _best_enum_union(
     return [best_per_overlap[s][0] for s in maximal]
 
 
-def get_union_sources(
+def _partition_families(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
-) -> list[list[BuildDatasource]]:
-    concept_addrs = {c.address for c in concepts}
-    candidates: list[BuildDatasource] = []
-    _PARTIAL = Modifier.PARTIAL
+) -> dict[str, list[BuildDatasource]]:
+    """Discriminator address -> the `complete where` arms partitioned on it.
 
-    # A candidate needs a non_partial_for clause and at least one partial column
-    # whose concept matches the request. A matching partial column is also a
-    # matching output column, so we don't need the separate output-overlap check
-    # the original did.
+    A candidate needs a non_partial_for clause and at least one partial column
+    whose concept matches the request. A matching partial column is also a
+    matching output column, so we don't need a separate output-overlap check.
+    """
+    concept_addrs = {c.address for c in concepts}
+    _PARTIAL = Modifier.PARTIAL
+    candidates: list[BuildDatasource] = []
     for x in datasources:
         if not x.non_partial_for:
             continue
@@ -172,18 +173,24 @@ def get_union_sources(
             for c in ca:
                 if isinstance(c.datatype, EnumType):
                     assocs[c.address].append(x)
+    return assocs
+
+
+def _merge_key(dses: list[BuildDatasource], merge_key_addr: str) -> BuildConcept | None:
+    if not dses or not dses[0].non_partial_for:
+        return None
+    args = dses[0].non_partial_for.concept_arguments  # type: ignore[union-attr]
+    return next((c for c in args if c.address == merge_key_addr), args[0])
+
+
+def get_union_sources(
+    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+) -> list[list[BuildDatasource]]:
     final: list[list[BuildDatasource]] = []
-    for merge_key_addr, dses in assocs.items():
-        if not dses or not dses[0].non_partial_for:
+    for merge_key_addr, dses in _partition_families(datasources, concepts).items():
+        merge_key = _merge_key(dses, merge_key_addr)
+        if merge_key is None:
             continue
-        merge_key = next(
-            (
-                c
-                for c in dses[0].non_partial_for.concept_arguments
-                if c.address == merge_key_addr
-            ),
-            dses[0].non_partial_for.concept_arguments[0],
-        )
         if isinstance(merge_key.datatype, EnumType):
             result = _best_enum_union(dses, merge_key.datatype, merge_key)
             if result:
@@ -195,3 +202,46 @@ def get_union_sources(
             if simplify_conditions(conditions):
                 final.append(dses)
     return final
+
+
+def describe_incomplete_partitions(
+    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+) -> str | None:
+    """Why a `complete where` family failed to union into a complete source.
+
+    ``get_union_sources`` only unions arms whose predicates provably exhaust the
+    discriminator's domain — a family that misses a value would silently drop
+    those rows. A plain `string` discriminator has no enumerable domain, so no
+    set of equality predicates over it can ever be proven complete. Without this
+    the query just reports "no complete sources", which reads as a planner
+    failure rather than a modeling one.
+    """
+    reasons: list[str] = []
+    for merge_key_addr, dses in _partition_families(datasources, concepts).items():
+        if len(dses) < 2:
+            continue
+        merge_key = _merge_key(dses, merge_key_addr)
+        if merge_key is None:
+            continue
+        if isinstance(merge_key.datatype, EnumType):
+            if _best_enum_union(dses, merge_key.datatype, merge_key):
+                continue
+        elif simplify_conditions(
+            [c.non_partial_for.conditional for c in dses if c.non_partial_for]
+        ):
+            continue
+        names = ", ".join(sorted(d.name for d in dses))
+        reasons.append(
+            f"partial sources ({names}) partition on `{merge_key_addr}`"
+            f" ({merge_key.datatype}), but their `complete where` clauses are not"
+            " provably exhaustive over that type, so they cannot be unioned into a"
+            " complete source"
+        )
+    if not reasons:
+        return None
+    return (
+        "; ".join(reasons)
+        + ". Declare the discriminator with an exhaustible type (e.g."
+        " `enum<string>['a', 'b']`) so the partitioning can be proven complete,"
+        " or filter the query to one partition."
+    )

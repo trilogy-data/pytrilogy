@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from trilogy.constants import Parsing
+from trilogy.constants import DEFAULT_NAMESPACE, Parsing
 from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Comment
 from trilogy.core.models.environment import Environment, Import
@@ -36,6 +36,7 @@ from trilogy.parsing.v2.statement_planner import (
 )
 from trilogy.parsing.v2.statement_plans import (
     ConceptStatementPlan,
+    RowsetStatementPlan,
     StatementPlan,
     StatementPlanBase,
     UnsupportedSyntaxError,
@@ -323,14 +324,83 @@ class NativeHydrator:
         for plan in plans:
             plan.declare_symbols(self)
 
+    def _deferred_concept_plans(
+        self, concept_plans: list[ConceptStatementPlan]
+    ) -> set[int]:
+        """Plan ids for concept declarations that read a rowset output declared
+        earlier in the same file (``auto total <- sum(rs.amount);``).
+
+        A rowset's outputs are real concepts only once its statement hydrates,
+        which happens after BIND. Building such a declaration here would bind it
+        to the UNKNOWN-typed forward placeholder ``RowsetStatementPlan``
+        collect_symbols staged, permanently typing the derived concept UNKNOWN.
+        These plans build in their own ``hydrate`` instead, in source order.
+        """
+        namespace = self.environment.namespace or DEFAULT_NAMESPACE
+        position = {id(p): i for i, p in enumerate(self.plans)}
+        rowset_at: dict[str, int] = {}
+        for index, plan in enumerate(self.plans):
+            if isinstance(plan, RowsetStatementPlan) and plan.rowset_name:
+                for prefix in (
+                    f"{plan.rowset_name}.",
+                    f"{namespace}.{plan.rowset_name}.",
+                ):
+                    rowset_at.setdefault(prefix, index)
+        if not rowset_at:
+            return set()
+        deferred: set[int] = set()
+        for plan in concept_plans:
+            needed = [
+                index
+                for prefix, index in rowset_at.items()
+                if any(dep.startswith(prefix) for dep in plan.dependencies)
+            ]
+            # Only a declaration written AFTER the rowset can wait for it; one
+            # written ahead is a forward reference the BIND-time topological
+            # sort already serves as well as anything can.
+            if needed and position[id(plan)] > max(needed):
+                deferred.add(id(plan))
+        # A declaration reading a deferred concept must wait on it too. When it
+        # cannot — it is declared ahead of that concept — keep the dependency at
+        # BIND instead, so the forward reference still resolves.
+        addr_to_plan = {
+            addr: plan for plan in concept_plans for addr in plan.provided_addresses
+        }
+        changed = True
+        while changed:
+            changed = False
+            for plan in concept_plans:
+                if id(plan) in deferred:
+                    continue
+                for dep in plan.dependencies:
+                    dep_plan = addr_to_plan.get(dep)
+                    if dep_plan is None or id(dep_plan) not in deferred:
+                        continue
+                    if position[id(plan)] > position[id(dep_plan)]:
+                        deferred.add(id(plan))
+                    else:
+                        deferred.discard(id(dep_plan))
+                    changed = True
+                    break
+        return deferred
+
     def _sort_and_create_concepts(self) -> None:
         concept_plans = [p for p in self.plans if isinstance(p, ConceptStatementPlan)]
         if not concept_plans:
             return
-        sorted_concepts = topological_sort_plans(concept_plans, self.environment)
+        deferred = self._deferred_concept_plans(concept_plans)
+        for plan in concept_plans:
+            plan.deferred = id(plan) in deferred
+        sorted_concepts = topological_sort_plans(
+            [p for p in concept_plans if not p.deferred], self.environment
+        )
         concept_iter = iter(sorted_concepts)
         self.plans = [
-            next(concept_iter) if isinstance(p, ConceptStatementPlan) else p
+            (
+                p
+                if not isinstance(p, ConceptStatementPlan) or p.deferred
+                else next(concept_iter)
+            )
             for p in self.plans
         ]
         # Concept hydration calls v1 function helpers (FunctionFactory /

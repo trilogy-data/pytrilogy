@@ -355,3 +355,63 @@ datasource orders (
     assert ds2.column_level_partial_concepts == []
     build_ds2 = env2.materialize_for_select().datasources["orders"]
     assert build_ds2.column_level_partial_concepts == []
+
+
+def test_documented_partial_union_covers_population():
+    """The `agent-info datasources` partial example, verbatim in clause order:
+    an enum discriminator whose arms exhaust it unions for a plain select."""
+    from trilogy import Dialects
+    from trilogy.dialect.config import DuckDBConfig
+
+    src = """
+key order_id int;
+property order_id.status string;
+property order_id.region enum<string>['US', 'EU'];
+
+partial datasource orders_us (order_id, status, region)
+grain (order_id)
+complete where region = 'US'
+query '''select 1 as order_id, 'open' as status, 'US' as region''';
+
+partial datasource orders_eu (order_id, status, region)
+grain (order_id)
+complete where region = 'EU'
+query '''select 2 as order_id, 'shipped' as status, 'EU' as region''';
+"""
+    engine = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig())
+    engine.execute_text(src)
+    rows = engine.execute_text("select order_id, status order by order_id asc;")[
+        -1
+    ].fetchall()
+    assert [r.order_id for r in rows] == [1, 2]
+
+
+def test_unprovable_partition_names_the_discriminator():
+    """A string discriminator has no enumerable domain, so `= 'a'` / `= 'b'`
+    can never be proven exhaustive. The failure must say so rather than read as
+    a planner bug."""
+    from trilogy import Dialects
+    from trilogy.core.exceptions import UnresolvableQueryException
+    from trilogy.dialect.config import DuckDBConfig
+
+    src = """
+key id string;
+property id.status string;
+property id.shard string;
+
+root partial datasource runs_a (run_id:id, status:status, shard:shard)
+grain (id)
+complete where shard = 'a'
+address `p.d.runs_a`;
+
+root partial datasource runs_b (run_id:id, status:status, shard:shard)
+grain (id)
+complete where shard = 'b'
+address `p.d.runs_b`;
+"""
+    engine = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig())
+    engine.parse_text(src)
+    with pytest.raises(UnresolvableQueryException, match="local.shard"):
+        engine.generate_sql("select id, status;")
+    # Narrowing to one partition still resolves off that arm alone.
+    assert engine.generate_sql("select id, status where shard = 'a';")

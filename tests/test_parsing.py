@@ -1053,3 +1053,43 @@ property x.val int;
     assert "local.x" in result
     # val resolves to its grain key x, so result reduces to the single key.
     assert result == {x.address}
+
+
+def test_aggregate_over_rowset_output_keeps_datatype():
+    """``auto x <- sum(rs.col);`` must type off the rowset's real output.
+
+    Concept declarations build during BIND, before rowset statements hydrate, so
+    the reference would otherwise bind the UNKNOWN forward placeholder and type
+    the derived metric UNKNOWN forever (breaking unit mocking and datasource
+    binding). Such declarations defer to hydrate instead.
+    """
+    env, _ = parse_text("""
+key day date;
+property day.x float;
+
+with ev as select day, sum(x) as amount;
+
+auto total <- sum(ev.amount);
+auto doubled <- total * 2;
+""")
+    assert env.concepts["ev.amount"].datatype == DataType.FLOAT
+    assert env.concepts["total"].datatype == DataType.FLOAT
+    assert env.concepts["doubled"].datatype == DataType.FLOAT
+
+
+def test_aggregate_over_union_rowset_output_keeps_datatype():
+    env, _ = parse_text("""
+key a.day date;
+property a.day.x float;
+key b.day date;
+property b.day.y float;
+
+with events as union(
+    (select a.day, sum(a.x) as amount),
+    (select b.day, sum(b.y) as amount)
+) -> (day, amount);
+
+auto total <- sum(events.amount);
+""")
+    assert env.concepts["events.amount"].datatype == DataType.FLOAT
+    assert env.concepts["total"].datatype == DataType.FLOAT

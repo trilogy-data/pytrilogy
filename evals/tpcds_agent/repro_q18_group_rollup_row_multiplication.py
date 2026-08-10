@@ -9,9 +9,7 @@ from pathlib import Path
 from evals.common.scoring import make_scoring_engine
 from trilogy.core.models.environment import Environment
 
-DEFAULT_WORKSPACE = Path(
-    "evals/tpcds_agent/results/20260808-151955_enriched/workspace"
-)
+DEFAULT_WORKSPACE = Path("evals/tpcds_agent/results/20260808-151955_enriched/workspace")
 
 PRELUDE = """\
 import raw.catalog_sales as cs;
@@ -67,9 +65,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     workspace = args.workspace.resolve()
-    engine = make_scoring_engine(
-        workspace / "tpcds.duckdb", workspace, "tpcds"
-    )
+    engine = make_scoring_engine(workspace / "tpcds.duckdb", workspace, "tpcds")
     single = execute(engine, workspace, SINGLE_ROLLUP)
     multi = execute(engine, workspace, MULTI_ROLLUP)
     keys = [row[:8] for row in multi]
