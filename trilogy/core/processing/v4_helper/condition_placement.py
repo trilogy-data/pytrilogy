@@ -681,7 +681,13 @@ def _staged_precondition_placements(
     earlier_atoms: list[BoolExpr] = []
     for i, clause in enumerate(staged_conditions):
         if i > 0 and earlier_atoms:
+            # A stage may reference its cross-row computation through scalar
+            # wrappers (`1.3 * avg(x) by k`): the host bucket's member is the
+            # inner anonymous aggregate, not the wrapping concept, so match
+            # hosts against the full lineage expansion.
             stage_addrs = {c.address for c in clause.row_arguments}
+            for c in clause.row_arguments:
+                stage_addrs.update(s.address for s in c.sources)
             hosts = sorted(
                 gid
                 for gid, b in buckets.items()

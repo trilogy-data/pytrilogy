@@ -1,14 +1,15 @@
 query_id = "11"
-gen_length = 1273
-preql_size = 559
+gen_length = 1313
+preql_size = 285
 comp_size = 581
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"partsupp\".\"ps_partkey\" as \"germany_partsupp_part_id\",
-    \"partsupp\".\"ps_supplycost\" * \"partsupp\".\"ps_availqty\" as \"germany_partsupp_supply_value\"
+    \"partsupp\".\"ps_availqty\" as \"available_quantity\",
+    \"partsupp\".\"ps_partkey\" as \"id\",
+    \"partsupp\".\"ps_supplycost\" as \"supply_cost\"
 FROM
     \"memory\".\"partsupp\" as \"partsupp\"
     INNER JOIN \"memory\".\"supplier\" as \"supplier_supplier\" on \"partsupp\".\"ps_suppkey\" = \"supplier_supplier\".\"s_suppkey\"
@@ -16,27 +17,31 @@ FROM
 WHERE
     UPPER(\"supplier_nation_nation\".\"n_name\")  = 'GERMANY'
 ),
-abundant as (
+cooperative as (
 SELECT
-    \"cheerful\".\"germany_partsupp_part_id\" as \"part_values_germany_partsupp_part_id\",
-    sum(\"cheerful\".\"germany_partsupp_supply_value\") as \"part_values_total_value\"
+    \"cheerful\".\"id\" as \"id\",
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"available_quantity\") as \"_virt_agg_sum_2511670338294675_wscope\"
 FROM
     \"cheerful\"
 GROUP BY
     1),
-questionable as (
+thoughtful as (
 SELECT
-    sum(\"cheerful\".\"germany_partsupp_supply_value\") as \"germany_total_value\"
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"available_quantity\") as \"total_value\"
 FROM
     \"cheerful\")
 SELECT
-    \"abundant\".\"part_values_germany_partsupp_part_id\" as \"part_values_germany_partsupp_part_id\",
-    \"abundant\".\"part_values_total_value\" as \"part_values_total_value\"
+    \"cheerful\".\"id\" as \"id\",
+    sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"available_quantity\") as \"part_value\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on 1=1
+    \"cheerful\"
+    INNER JOIN \"cooperative\" on \"cheerful\".\"id\" = \"cooperative\".\"id\"
+    INNER JOIN \"thoughtful\" on 1=1
 WHERE
-    \"abundant\".\"part_values_total_value\" > \"questionable\".\"germany_total_value\" * 0.0001
+    \"cooperative\".\"_virt_agg_sum_2511670338294675_wscope\" > \"thoughtful\".\"total_value\" * 0.0001
 
+GROUP BY
+    1,
+    \"cooperative\".\"_virt_agg_sum_2511670338294675_wscope\"
 ORDER BY 
-    \"abundant\".\"part_values_total_value\" desc"""
+    \"part_value\" desc"""

@@ -61,6 +61,7 @@ def build_node(
     complete_partials: bool = True,
     history: History,
     g: ReferenceGraph,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode | None:
     """Dispatch on `derivation`. ROOT and ROWSET need `history`/`g` (ROOT for
     datasource selection, ROWSET to recursively plan its inner select); the
@@ -92,6 +93,7 @@ def build_node(
             complete_partials=complete_partials,
             history=history,
             g=g,
+            staged_conditions=staged_conditions,
         )
     if derivation in (
         Derivation.ROWSET,

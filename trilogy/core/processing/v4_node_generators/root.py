@@ -109,6 +109,46 @@ def _with_condition_source_join_keys(
     ]
 
 
+def _staged_precondition_clauses(
+    staged_conditions: list[BuildWhereClause] | None,
+    row_args: list[BuildConcept],
+) -> list[BuildWhereClause]:
+    """Earlier `then where` stages' atoms for a cross-row arg being re-sourced.
+
+    The staged contract says a stage's aggregate/window computes over only the
+    rows passing the stages before it. The group graph delivers that bound to
+    the host's feeder scan, but a re-sourced copy (this ROW branch) plans in a
+    sub-search where the host is the search output itself — outside the
+    delivery pass's D1 reach — so the bound must ride the sub-search's own
+    WHERE. Stages before a cross-row stage are scalar-only
+    (`_validate_staged_where`); existence-bearing atoms keep their side
+    channel. Wrapper lineage (`1.2 * avg(...)`) is expanded so the stage
+    matching sees the inner cross-row concept."""
+    if not staged_conditions or len(staged_conditions) < 2:
+        return []
+    arg_addrs: set[str] = set()
+    for concept in row_args:
+        arg_addrs.add(concept.address)
+        arg_addrs.update(s.address for s in concept.sources)
+    stage_idx = 0
+    for i, clause in enumerate(staged_conditions):
+        clause_addrs = {c.address for c in clause.row_arguments}
+        for c in clause.row_arguments:
+            clause_addrs.update(s.address for s in c.sources)
+        if clause_addrs & arg_addrs:
+            stage_idx = i
+    if stage_idx == 0:
+        return []
+    atoms = [
+        atom
+        for clause in staged_conditions[:stage_idx]
+        for atom in decompose_condition(clause.conditional)
+        if not any(atom.existence_arguments)
+    ]
+    combined = combine_condition_atoms(atoms)
+    return [BuildWhereClause(conditional=combined)] if combined is not None else []
+
+
 def _inheritable_atoms(
     preexisting_conditions: BuildWhereClause | None,
     request: list[BuildConcept],
@@ -153,6 +193,7 @@ def _resolve_root_condition_sources(
     g,
     history: History,
     preexisting_conditions: BuildWhereClause | None = None,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> ConditionSources:
     """ROOT's fork of `condition_sources.resolve_condition_sources`.
 
@@ -202,6 +243,13 @@ def _resolve_root_condition_sources(
             ]
         )
         inherited = _inheritable_atoms(preexisting_conditions, row_search + correlation)
+        # A staged (`then where`) chain's cross-row arg must be re-sourced with
+        # its stage bound applied — without it the re-sourced copy computes
+        # over unfiltered rows and silently replaces the bounded one the group
+        # graph planned.
+        inherited = inherited + _staged_precondition_clauses(
+            staged_conditions, row_args
+        )
         row_node = search_parent(
             row_search + correlation,
             environment,
@@ -213,6 +261,7 @@ def _resolve_root_condition_sources(
             # carried by the fact is the intended population rather than an
             # incomplete dimension projection.
             complete_partials=not aggregate_only,
+            staged_conditions=staged_conditions,
         )
         if correlation and row_node is None:
             row_node = search_parent(
@@ -223,6 +272,7 @@ def _resolve_root_condition_sources(
                 depth=1,
                 conditions=inherited,
                 complete_partials=not aggregate_only,
+                staged_conditions=staged_conditions,
             )
         if row_node is None:
             raise UnresolvableQueryException(
@@ -271,6 +321,7 @@ def gen_root(
     complete_partials: bool = True,
     history: History,
     g,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode | None:
     """Source ROOT concepts through the v4 source planner.
 
@@ -324,6 +375,7 @@ def gen_root(
             g,
             history,
             preexisting_conditions,
+            staged_conditions=staged_conditions,
         )
         hidden = {concept.address for concept in fallback_outputs} - {
             concept.address for concept in outputs

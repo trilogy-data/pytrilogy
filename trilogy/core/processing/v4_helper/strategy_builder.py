@@ -3460,6 +3460,7 @@ def build_strategy_node(
     g: ReferenceGraph,
     history: History,
     complete_partials: bool = True,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode | None:
     """Walk groups in topological order, dispatching each to its v4 generator
     with explicit parent nodes. Returns the most-downstream built node, or
@@ -3773,6 +3774,7 @@ def build_strategy_node(
             complete_partials=complete_partials,
             history=history,
             g=g,
+            staged_conditions=staged_conditions,
         )
         logger.info(
             f"[v4] built {gid} derivation={derivation} "

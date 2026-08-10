@@ -378,6 +378,7 @@ def _build_from_graph(
         g,
         history,
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     )
     return BuildInfo(
         concept_graph=concept_graph,
