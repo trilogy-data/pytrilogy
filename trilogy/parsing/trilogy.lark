@@ -726,7 +726,8 @@
     concept_lit:  IDENTIFIER
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\.]*/
     WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
-    QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
+    // digit-leading allowed: backticks exist to escape arbitrary physical names
+    QUOTED_IDENTIFIER:  /`[a-zA-Z0-9\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
     QUOTED_ADDRESS:  /`'?[a-zA-Z\_\\\/][a-zA-Z0-9\_\.\\\/\-\*\:\s]*'?`/
     F_QUOTED_ADDRESS.2: /f`[^`]*`/
     ADDRESS: IDENTIFIER

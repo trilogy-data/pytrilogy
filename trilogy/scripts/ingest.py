@@ -96,6 +96,9 @@ class IngestRecord:
     concepts: list[Concept]
     required_imports: set[str]
     script: list[ScriptStatement]
+    # Raw names of sample-unique single columns beyond the elected grain,
+    # offered to FK inference as alternate targets.
+    alternate_keys: list[str]
 
 
 @dataclass
@@ -371,19 +374,36 @@ def _select_verified_grain(
     relation: str,
     candidates: list[list[str]],
     dialect: BaseDialect,
-) -> list[str] | None:
-    """First ranked candidate that is unique over the full relation, or None if
-    none qualify (caller then falls back to no grain).
+) -> tuple[list[str] | None, list[list[str]]]:
+    """(first ranked candidate unique over the full relation or None, rejected
+    candidates known non-unique). Rejections feed alternate-key selection so a
+    disproven column isn't re-verified at FK time.
 
     A verification query that errors propagates: grain detection is part of the
     ingest request, so a failure surfaces for investigation rather than silently
     degrading to an unverified guess.
     """
+    rejected: list[list[str]] = []
     for candidate in candidates[:_MAX_GRAIN_VERIFICATIONS]:
         if _is_unique_key(exec, relation, candidate, dialect):
-            return candidate
+            return candidate, rejected
         print_info(f"Rejected grain candidate {candidate}: not unique on full table")
-    return None
+        rejected.append(candidate)
+    return None, rejected
+
+
+def _alternate_single_keys(
+    suggested: list[list[str]], elected: list[str], rejected: list[list[str]]
+) -> list[str]:
+    """Sample-unique single columns beyond the elected grain — candidate keys
+    offered to FK inference as alternate targets (full-table uniqueness is
+    verified lazily there, so known-rejected candidates are excluded)."""
+    dropped = {tuple(r) for r in rejected}
+    return [
+        c[0]
+        for c in suggested
+        if len(c) == 1 and c != elected and tuple(c) not in dropped
+    ]
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
@@ -516,10 +536,11 @@ def create_datasource_from_file(
     arg: str,
     name_override: str | None = None,
     root: bool = True,
-) -> tuple[Datasource, list[Concept], set[str], str]:
+) -> tuple[Datasource, list[Concept], set[str], str, list[str]]:
     """Build a Datasource from a local file path or URL via DuckDB.
 
-    Returns (datasource, concepts, required_imports, resolved_location).
+    Returns (datasource, concepts, required_imports, resolved_location,
+    alternate_keys).
     """
     location, addr_type = _resolve_file_source(arg)
     _maybe_load_httpfs(exec, location)
@@ -560,9 +581,10 @@ def create_datasource_from_file(
         ),
         exclude=_unkeyable_columns(columns),
     )
+    rejected: list[list[str]] = []
     if suggested_keys:
         print_info(f"Detected potential unique key combinations: {suggested_keys}")
-        verified = _select_verified_grain(
+        verified, rejected = _select_verified_grain(
             exec, source_expr, suggested_keys, exec.generator
         )
         if verified is not None:
@@ -576,6 +598,7 @@ def create_datasource_from_file(
     else:
         keys = []
         print_info("No primary key or unique grain detected; defaulting to no grain")
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected)
     grain_components = [column_concept_mapping.get(k, k) for k in keys]
 
     enum_map = detect_enum_types(
@@ -619,15 +642,15 @@ def create_datasource_from_file(
         address=address,
         is_root=root,
     )
-    return datasource, concepts, required_imports, location
+    return datasource, concepts, required_imports, location, alternate_keys
 
 
 def create_datasource_from_table(
     exec: Executor, table_name: str, schema: str | None = None, root: bool = False
-) -> tuple[Datasource, list[Concept], set[str]]:
+) -> tuple[Datasource, list[Concept], set[str], list[str]]:
     """Create a Datasource object from a warehouse table.
 
-    Returns: (datasource, concepts, required_imports)
+    Returns: (datasource, concepts, required_imports, alternate_keys)
     """
 
     dialect = exec.generator
@@ -658,9 +681,19 @@ def create_datasource_from_table(
     db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
     # we always need sample rows for column detection, so fetch here to setup for later.
     sample_rows = dialect.get_table_sample(exec, table_name, schema)
+    rejected: list[list[str]] = []
     if db_primary_keys:
         keys = db_primary_keys
         print_info(f"Using primary key from database as grain: {db_primary_keys}")
+        # A declared PK skips grain detection, but other sample-unique single
+        # columns are still candidate keys worth offering as FK targets.
+        suggested_keys = detect_unique_key_combinations(
+            column_names,
+            sample_rows,
+            max_key_size=1,
+            penalties=_grain_penalties(table_name, columns, column_concept_mapping),
+            exclude=_unkeyable_columns(columns),
+        )
     else:
         # Get sample data to detect grain and nullability
         print_info(
@@ -674,7 +707,7 @@ def create_datasource_from_table(
         )
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
-            verified = _select_verified_grain(
+            verified, rejected = _select_verified_grain(
                 exec, dialect.safe_quote(qualified_name), suggested_keys, dialect
             )
             if verified is not None:
@@ -690,6 +723,7 @@ def create_datasource_from_table(
             print_info(
                 "No primary key or unique grain detected; defaulting to no grain"
             )
+    alternate_keys = _alternate_single_keys(suggested_keys, keys, rejected)
     grain_components = []
     for key in keys:
         stripped = column_concept_mapping.get(key, key)
@@ -740,7 +774,7 @@ def create_datasource_from_table(
         is_root=root,
     )
 
-    return datasource, concepts, required_imports
+    return datasource, concepts, required_imports, alternate_keys
 
 
 def _build_script_content(
@@ -985,14 +1019,14 @@ def ingest(
             is_file = _looks_like_file_source(source)
             try:
                 if is_file:
-                    datasource, concepts, required_imports, location = (
+                    datasource, concepts, required_imports, location, alt_keys = (
                         create_datasource_from_file(
                             exec, source, name_override=name, root=True
                         )
                     )
                     source_label = location
                 else:
-                    datasource, concepts, required_imports = (
+                    datasource, concepts, required_imports, alt_keys = (
                         create_datasource_from_table(exec, source, schema, root=True)
                     )
                     source_label = f"{schema}.{source}" if schema else source
@@ -1008,6 +1042,7 @@ def ingest(
                     script=_build_script_content(
                         source_label, datasource, concepts, required_imports
                     ),
+                    alternate_keys=alt_keys,
                 )
             except Exception as e:
                 print_error(f"Failed to ingest {source}: {e}")
@@ -1049,7 +1084,12 @@ def ingest(
     if introspection_level is not IntrospectionLevel.OFF and len(ingested) >= 2:
         with _rollback_on_error(exec):
             fk_infos = [
-                build_table_fk_info(_fk_source_key(rec), rec.datasource, exec.generator)
+                build_table_fk_info(
+                    _fk_source_key(rec),
+                    rec.datasource,
+                    exec.generator,
+                    alternate_keys=rec.alternate_keys,
+                )
                 for rec in ingested.values()
             ]
             inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)

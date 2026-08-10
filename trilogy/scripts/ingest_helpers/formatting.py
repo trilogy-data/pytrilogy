@@ -19,7 +19,14 @@ def canonicolize_name(name: str) -> str:
     name = re.sub(r"_+", "_", name)
 
     # Remove leading/trailing underscores
-    return name.strip("_")
+    name = name.strip("_")
+
+    # Digit-leading names (``2B`` -> ``2_b``) are illegal identifiers in the
+    # Trilogy grammar and several warehouses (BigQuery); a leading underscore
+    # would mark the concept internal, so pad with a letter instead.
+    if name and name[0].isdigit():
+        name = f"x_{name}"
+    return name
 
 
 def find_common_prefix(names: list[str]) -> str:
