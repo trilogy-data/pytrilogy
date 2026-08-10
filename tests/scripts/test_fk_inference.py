@@ -738,9 +738,7 @@ def test_ingest_infers_fk_across_csv_files():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         customers_csv = tmppath / "customers.csv"
-        customers_csv.write_text(
-            "customer_id,name\n1,alice\n2,bob\n", newline="\n"
-        )
+        customers_csv.write_text("customer_id,name\n1,alice\n2,bob\n", newline="\n")
         orders_csv = tmppath / "orders.csv"
         orders_csv.write_text(
             "order_id,customer_id,total\n10,1,99.5\n11,2,42.0\n12,1,10.0\n",

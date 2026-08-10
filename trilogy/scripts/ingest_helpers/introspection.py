@@ -16,9 +16,7 @@ class IntrospectionLevel(Enum):
     FULL = "full"
 
 
-FILE_ADDRESS_TYPES = frozenset(
-    {AddressType.CSV, AddressType.TSV, AddressType.PARQUET}
-)
+FILE_ADDRESS_TYPES = frozenset({AddressType.CSV, AddressType.TSV, AddressType.PARQUET})
 
 
 def file_introspection_source(location: str, addr_type: AddressType) -> str:

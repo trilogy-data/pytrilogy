@@ -1065,9 +1065,7 @@ def ingest(
     if fk_map:
         print_info("Processing foreign key relationships...")
 
-    fk_datasources = {
-        _fk_source_key(rec): rec.datasource for rec in ingested.values()
-    }
+    fk_datasources = {_fk_source_key(rec): rec.datasource for rec in ingested.values()}
     for source, rec in ingested.items():
         output_file = output_dir / f"{rec.datasource.name}.preql"
         fk_key = _fk_source_key(rec)
