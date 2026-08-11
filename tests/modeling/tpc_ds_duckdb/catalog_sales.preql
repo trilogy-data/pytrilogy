@@ -1,12 +1,7 @@
 # For cross-channel questions, prefer `all_sales` (combines this with store_sales and web_sales).
-# Catalog channel sales AND returns at (item, order_number) grain — the single
-# model for all catalog-channel analysis, including returns-only questions.
-# Sales: quantity, sales / list / wholesale / extended prices, discount and
-# coupon amounts, net paid (with and without tax), net profit, and sold vs
-# ship dates. Returns (NULL on lines never returned): is_returned flag, refund
-# amount / quantity / tax / fee / ship cost / refunded cash / reversed charge /
-# store credit / net loss, plus return date/time/customer/refund-customer/
-# call-center/catalog-page/reason/demographics/addresses.
+# Catalog channel sales AND returns at (item, order_number) grain — the single model
+# for all catalog-channel analysis, including returns-only questions. Return columns
+# are NULL on lines never returned.
 
 import std.money;
 
@@ -16,74 +11,74 @@ import date as sale_date;
 import date as return_date;
 import time as sale_time;
 import time as return_time;
-import customer as ship_customer; # the ship-to customer's latest/current records
-import customer as billing_customer; # the bill-to customer's latest/current records
-import customer as return_customer; # the customer returning the item — use this for "returning customer"
-import customer as return_refund_customer; # the customer refunded for the return (may differ from the returning customer)
+import customer as ship_customer; # ship-to customer (latest/current record)
+import customer as billing_customer; # bill-to customer (latest/current record)
+import customer as return_customer;
+import customer as return_refund_customer; # refund recipient; may differ from return_customer
 import call_center as call_center;
-import call_center as return_call_center; # the call center that handled the return
+import call_center as return_call_center;
 import catalog_page as catalog_page;
-import catalog_page as return_catalog_page; # the catalog page associated with the return
+import catalog_page as return_catalog_page;
 import warehouse as warehouse;
-import warehouse as return_warehouse; # the warehouse the item was returned to
-import customer_demographic as pos_customer_demographic; # customer demographics recorded at the point of sale
-import customer_demographic as return_customer_demographic; # the returning customer's demographics recorded on the return
-import customer_demographic as return_refund_customer_demographic; # the refunded customer's demographics recorded on the return
-import household_demographic as pos_household_demographic; # household demographics recorded at the point of sale
-import household_demographic as return_household_demographic; # the returning customer's household demographics recorded on the return
-import household_demographic as return_refund_household_demographic; # the refunded customer's household demographics recorded on the return
+import warehouse as return_warehouse; # warehouse the item was returned to
+import customer_demographic as pos_customer_demographic; # buyer's demographics AS OF the sale, not their current record
+import customer_demographic as return_customer_demographic; # returning customer's demographics AS OF the return, not their current record
+import customer_demographic as return_refund_customer_demographic; # refunded customer's demographics AS OF the return, not their current record
+import household_demographic as pos_household_demographic; # buyer's household demographics AS OF the sale, not their current record
+import household_demographic as return_household_demographic; # returning customer's household demographics AS OF the return, not their current record
+import household_demographic as return_refund_household_demographic; # refunded customer's household demographics AS OF the return, not their current record
 import promotion as promotion;
 import ship_mode as ship_mode;
-import ship_mode as return_ship_mode; # the ship mode used for the return
-import address as pos_ship_address; # shipping address recorded directly on the catalog sale at point of sale
-import address as pos_bill_address; # billing address recorded directly on the catalog sale at point of sale
-import address as return_address; # the address the return originated from (the returning side)
-import address as return_refund_address; # the address the refund was issued to
+import ship_mode as return_ship_mode;
+import address as pos_ship_address; # recorded on the sale at point of sale
+import address as pos_bill_address; # recorded on the sale at point of sale
+import address as return_address; # where the return originated
+import address as return_refund_address; # where the refund was issued
 import reason as return_reason;
 
-key order_number int; # Catalog order number identifying a single catalog sales transaction.
-auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Number of calendar days between sold and ship dates.
+key order_number int; # identifies a single catalog sales transaction
+auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Positive when shipped after sold.
 
 
 # metrics
 properties <order_number, item.sk> (
-    quantity int, # Number of units of the item ordered on this line.
-    sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
-    list_price numeric::usd, # Per-unit catalog list price before discounts.
-    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
-    discount_amount numeric::usd, # Extended (line-level) discount amount applied to the order line.
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
-    ext_list_price numeric::usd, # Line-extended list price (USD).
-    ext_ship_cost numeric::usd?, # Line-extended shipping cost (USD).
-    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
-    net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
+    quantity int,
+    sales_price numeric::usd, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric::usd, # Per-unit, before discounts.
+    wholesale_cost numeric::usd, # Per-unit.
+    discount_amount numeric::usd, # Extended (line-level) discount, despite the name.
+    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_list_price numeric::usd,
+    ext_ship_cost numeric::usd?,
+    ext_wholesale_cost numeric::usd,
+    net_profit numeric::usd, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
     --net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping.
     --net_paid_inc_tax numeric::usd, # Net amount paid including sales tax.
-    coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
-    return_amount numeric::usd?, # Refund amount if the line was returned.
-    return_net_loss numeric::usd?, # Net financial loss on the return for this line.
-    return_quantity int?, # Units returned for this line.
-    return_tax numeric::usd?, # Sales tax refunded on the return.
-    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
-    return_fee numeric::usd?, # Fee charged on the return.
-    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
-    refunded_cash numeric::usd?, # Cash portion of the refund.
+    coupon_amt numeric::usd, # Coupon/credit applied to the line.
+    return_amount numeric::usd?, # Refund excluding tax.
+    return_net_loss numeric::usd?,
+    return_quantity int?,
+    return_tax numeric::usd?,
+    return_amount_inc_tax numeric::usd?,
+    return_fee numeric::usd?,
+    return_ship_cost numeric::usd?,
+    refunded_cash numeric::usd?,
     reversed_charge numeric::usd?, # Refund portion reversed on the original payment method.
-    store_credit numeric::usd?, # Refund portion issued as store credit.
-    _returned_order_number int?, # The catalog_returns order number matched to this line.
-    row_counter int, # Constant 1, one per catalog line item (a unique order_number + item.sk combination).
+    store_credit numeric::usd?,
+    _returned_order_number int?, # Internal; NULL when not returned. Use is_returned instead.
+    row_counter int, # Constant 1 per line item.
 );
 
-auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item identifier (one catalog order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
-auto line_item_count <- sum(row_counter); # Number of catalog-sale line items (= count(line_item)); kept for queries that reference it.
-auto profit <- ext_list_price - ext_wholesale_cost - discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
-auto is_returned <- _returned_order_number is not null; # True if this line was later returned, else False.
+auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item id. Count line items with count(line_item), NOT count(order_number) (dedups multi-item orders).
+auto line_item_count <- sum(row_counter); # = count(line_item); kept for queries that reference it.
+auto profit <- ext_list_price - ext_wholesale_cost - discount_amount + ext_sales_price; # Derived line "gross value". NOT the reported net_profit column.
+auto is_returned <- _returned_order_number is not null; # True when a return row exists for this line, else False.
 
 datasource catalog_sales (
     raw('''1'''): row_counter,
     CS_SOLD_DATE_SK: ?sale_date.sk,
     CS_SOLD_TIME_SK: ?sale_time.sk,
-    CS_SHIP_DATE_SK: ?ship_date.sk, 
+    CS_SHIP_DATE_SK: ?ship_date.sk,
     CS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     CS_SHIP_ADDR_SK: ?pos_ship_address.sk,
     CS_BILL_CUSTOMER_SK: ?billing_customer.sk,
@@ -98,16 +93,16 @@ datasource catalog_sales (
     CS_WHOLESALE_COST: wholesale_cost,
     CS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     CS_EXT_DISCOUNT_AMT: discount_amount,
-    CS_CALL_CENTER_SK: ?call_center.sk, 
-    CS_CATALOG_PAGE_SK: ?catalog_page.sk, 
+    CS_CALL_CENTER_SK: ?call_center.sk,
+    CS_CATALOG_PAGE_SK: ?catalog_page.sk,
     CS_EXT_SHIP_COST: ext_ship_cost,
     CS_EXT_SALES_PRICE: ext_sales_price,
     CS_EXT_LIST_PRICE: ext_list_price,
     CS_NET_PROFIT: net_profit,
     CS_COUPON_AMT: coupon_amt,
-    CS_WAREHOUSE_SK: ?warehouse.sk, 
-    CS_PROMO_SK: ?promotion.sk, 
-    CS_SHIP_MODE_SK: ?ship_mode.sk, 
+    CS_WAREHOUSE_SK: ?warehouse.sk,
+    CS_PROMO_SK: ?promotion.sk,
+    CS_SHIP_MODE_SK: ?ship_mode.sk,
     CS_NET_PAID: net_paid,
     CS_NET_PAID_INC_TAX: net_paid_inc_tax,
 )

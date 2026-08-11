@@ -1,23 +1,22 @@
-# Address info: mailing addresses for customers, stores, warehouses, and
-# web sites — street, city, state, ZIP, county, country, and GMT offset.
+# Mailing addresses for customers, stores, warehouses, and web sites.
 
 import std.geography;
 
-key sk int; # Surrogate key uniquely identifying a customer address row.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the address (16-char alphanumeric).
-    street_number string?, # Numeric portion of the street address (e.g. '123').
-    street_name string?, # Street name portion of the address (excludes house number).
-    street_type string?, # Street type suffix (e.g. 'Ave', 'St', 'Rd').
-    suite_number string?, # Suite/apartment number, if any.
-    city string?, # City name.
-    state string::us_state_short?, # Two-letter US state code (e.g. 'CA', 'NY').
-    zip string?, # Postal/ZIP code as a string to preserve leading zeros.
-    county string?, # County name within the state.
-    country string::country?, # Country name (free-form string, typically 'United States').
-    gmt_offset float?, # GMT offset for the address timezone (hours, e.g. -5.0 for EST).
-    location_type string?, # Categorical location type: 'apartment', 'condo', or 'single family'.
+    id string, # business identifier
+    street_number string?,
+    street_name string?,
+    street_type string?, # e.g. 'Ave', 'St', 'Rd'.
+    suite_number string?,
+    city string?,
+    state string::us_state_short?,
+    zip string?,
+    county string?,
+    country string::country?, # Free-form, typically 'United States'.
+    gmt_offset float?, # Hours, e.g. -5.0.
+    location_type string?, # 'apartment', 'condo', or 'single family'.
 );
 
 datasource customer_address (

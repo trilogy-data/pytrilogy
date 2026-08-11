@@ -1,9 +1,7 @@
-# Use as default for multi-channel analysis (WEB / CATALOG / STORE) or 
-# any two channel combination (WEB CATALOG/ STORE CATALOG/ etc). Carries sales and
-# return information in a consolidated format.
-# Channel specific fields 
-# and data exist on peer models
-# (`store_sales`, `catalog_sales`, `web_sales`) for single-channel-only queries.
+# Default model for multi-channel analysis (any combination of WEB / CATALOG / STORE).
+# Carries sales and return information in a consolidated format. Channel-specific
+# fields live on the peer models (`store_sales`, `catalog_sales`, `web_sales`) for
+# single-channel-only queries.
 
 import item as item;
 import date as sale_date;
@@ -13,18 +11,17 @@ import customer as billing_customer;
 import customer as ship_customer;
 import customer as purchasing_customer;
 import promotion as promotion;
-import address as pos_bill_address; # billing address recorded directly on the sale at point of sale, not the customer's current home address
+import address as pos_bill_address; # billing address recorded on the sale at point of sale, not the customer's current address
 import warehouse as warehouse;
 import ship_mode as ship_mode;
 
-key channel enum<string>['WEB', 'CATALOG', 'STORE']; # the channel for the sale/return: WEB, CATALOG, or STORE
-key channel_dim_id int; # the ID of the store/web/site for each order (web_site_id, catalog_id, or store_id as appropriate)
-key return_channel_dim_id int; # the ID of the store/web/site used for the return; Unrelated to channel_id
+key channel enum<string>['WEB', 'CATALOG', 'STORE'];
+key channel_dim_id int; # per-channel dim id for the sale: store (STORE), catalog_page (CATALOG), web_site (WEB)
+key return_channel_dim_id int; # same, for the return; unrelated to channel_dim_id
 
-key outlet_id int; # the channel's selling-outlet surrogate sk, per channel: store (STORE), call cent for (CATALOG), web_page (WEB). Distinct from channel_dim_id (which is store/web_site/catalog_page).
-key order_id int; # the ID of the order (ticket number for store, order number for web/catalog)
+key outlet_id int; # selling-outlet sk, per channel: store (STORE), call_center (CATALOG), web_page (WEB). Distinct from channel_dim_id.
+key order_id int; # ticket number for STORE, order number for WEB/CATALOG
 
-# return identifier
 properties channel_dim_id (
     channel_dim_text_id string,
 );
@@ -32,28 +29,28 @@ properties return_channel_dim_id (
     return_channel_dim_text_id string,
 );
 # Line-grain facts. Sales measures come from the per-channel *sales* datasources;
-# the return measures (return_*, is_returned) come from the separate per-channel
-# *returns* datasources, unified onto the same (order_id, channel, item.sk) grain.
-# A row can carry sales facts, return facts, or both.
+# return measures (return_*, is_returned) from the separate per-channel *returns*
+# datasources, unified onto the same grain. A row can carry sales facts, return
+# facts, or both.
 properties <order_id, channel, item.sk> (
-    quantity int?, # Units of the item on this sales line.
-    sales_price numeric?, # Per-unit "unit price" charged for ONE unit; the whole-line total is ext_sales_price (the "total price").
-    list_price numeric?, # Per-unit list price before discounts.
-    wholesale_cost numeric?, # Per-unit wholesale acquisition cost.
-    ext_sales_price numeric?, # Whole-line "total price" = sales_price x quantity (the extended line amount); the per-unit price is sales_price.
-    ext_wholesale_cost numeric?, # Line-extended wholesale cost.
-    ext_list_price numeric?, # Line-extended list price.
-    ext_discount_amount numeric?, # Extended (line-level) discount amount applied to the line.
-    coupon_amt numeric?, # Coupon/credit amount applied to the line.
-    net_profit numeric?, # Net profit reported for the line.
-    net_paid numeric?, # Net amount paid for the line, excluding tax/shipping.
-    net_paid_inc_tax numeric?, # Net amount paid including sales tax.
-    # --- return measures: sourced from the *returns* datasources below, not the sales ones ---
-    return_amount numeric?, # Amount refunded for the line, if returned.
-    return_quantity int?, # Units returned on the line. GOTCHA: NULL even when a return exists (is_returned=true) for some rows. Presence is independent of this measure — don't coalesce to 0 unless asked (the reference keeps the NULL through its derived percentages/averages).
-    return_net_loss numeric?, # Net financial loss on the return for the line at order time; does not include return net loss.
-    is_returned bool?, # Marks a returned line. Sourced only as raw true from the returns datasources, so it is true-or-NULL here (no explicit false): test "not returned" as `is_returned is null`, not `= false`.
-    sale_line_item_counter int?, # counter of sales rows (NOT return-only rows). Use is_returned for return presence; `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
+    quantity int?,
+    sales_price numeric?, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric?, # Per-unit, before discounts.
+    wholesale_cost numeric?, # Per-unit.
+    ext_sales_price numeric?, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_wholesale_cost numeric?,
+    ext_list_price numeric?,
+    ext_discount_amount numeric?,
+    coupon_amt numeric?, # Coupon/credit applied to the line.
+    net_profit numeric?,
+    net_paid numeric?, # Excludes tax/shipping.
+    net_paid_inc_tax numeric?,
+    # --- return measures ---
+    return_amount numeric?,
+    return_quantity int?, # GOTCHA: can be NULL even when is_returned=true. Don't coalesce to 0 unless asked (the reference keeps the NULL through derived percentages/averages).
+    return_net_loss numeric?,
+    is_returned bool?, # True-or-NULL, never false (sourced as literal true from returns rows): test "not returned" as `is_returned is null`, not `= false`.
+    sale_line_item_counter int?, # 1 per SALES row (NOT return-only rows); `sale_line_item_counter ? is_returned` counts lines with BOTH a sale and a return.
 );
 
 partial datasource web_sales_unified (

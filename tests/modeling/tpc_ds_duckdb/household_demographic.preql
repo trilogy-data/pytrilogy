@@ -1,15 +1,14 @@
-# Household demographic info: buy_potential bucket, dependent count,
-# vehicle count, and a household income band identifier.
+# Household demographic profiles.
 
 import income_band as income_band;
 
-key sk int; # Surrogate key uniquely identifying a household demographic profile.
+key sk int; # surrogate key
 
 properties sk (
-    income_band_id int, # FK to the income_band defining the household's income range.
+    income_band_id int, # FK to income_band.
     buy_potential enum<string>['0-500', '501-1000', '1001-5000', '5001-10000', '>10000', 'Unknown'], # Estimated annual spend bucket (USD).
-    dependent_count int, # Total dependents in the household (0-9).
-    vehicle_count int, # Number of vehicles in the household (-1 = unknown, 0-4 otherwise).
+    dependent_count int,
+    vehicle_count int, # -1 = unknown.
 );
 
 datasource household_demographics (

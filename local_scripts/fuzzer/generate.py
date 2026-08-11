@@ -2876,6 +2876,358 @@ order by gid
     ]
 
 
+def _distinct_count_cases(seed: SeedData) -> list[FuzzCase]:
+    """Distinct-combination counting: multi-arg `count_distinct(a, b)` /
+    `count(distinct a, b)` (sugar for `count_distinct(grain(a, b))`) and
+    explicit `grain(...)` counting. The oracle spelling for grain semantics is
+    `count(distinct row(...))` — a DuckDB struct with a NULL member is not
+    NULL, so NULL-bearing combinations count, exactly like `grain()`."""
+    multiarg_by_group = _case(
+        seed,
+        "distinct_count",
+        "multiarg_by_group",
+        "Multi-arg count_distinct counts NULL-bearing pairs per group.",
+        ("distinct_count", "aggregate", "grain", "nullable"),
+        """
+select
+    group_id,
+    count_distinct(nullable_amount, active) as combos
+order by group_id asc;
+""",
+        """
+select gid, count(distinct row(nullable_amount, active))
+from events
+group by gid
+order by gid
+""",
+    )
+    alias_form_global = _case(
+        seed,
+        "distinct_count",
+        "alias_form_global",
+        "The SQL-habit `count(distinct a, b)` counts pairs at global grain.",
+        ("distinct_count", "aggregate", "grain", "alias"),
+        """
+select count(distinct group_id, active) as combos;
+""",
+        """
+select count(distinct row(gid, active))
+from events
+""",
+    )
+    filtered_grain_pairs = _case(
+        seed,
+        "distinct_count",
+        "filtered_grain_pairs",
+        "An inline-filtered count_distinct restricts the pair-value population.",
+        ("distinct_count", "aggregate", "grain", "filter"),
+        """
+select count_distinct(grain(group_id, active) ? event_amount > 4) as combos;
+""",
+        """
+select count(distinct row(gid, active)) filter (where amount > 4)
+from events
+""",
+    )
+    # `count(grain(...))` counts the POPULATION at the args' combined grain
+    # (event_id x group_id here -> filtered event rows), not distinct values —
+    # see fgrain: a NULL member still yields a row. The oracle is a plain
+    # filtered row count; only events supplies every argument, so any extra
+    # source joined in shows up as fan-out.
+    filtered_grain_rows = _case(
+        seed,
+        "distinct_count",
+        "filtered_grain_row_population",
+        "An inline-filtered grain() count returns the filtered row population.",
+        ("distinct_count", "aggregate", "grain", "filter", "population"),
+        """
+select count(grain(group_id, active) ? event_amount > 4) as filtered_rows;
+""",
+        """
+select count(*) filter (where amount > 4)
+from events
+""",
+    )
+    having_pair_count = _case(
+        seed,
+        "distinct_count",
+        "having_pair_count",
+        "HAVING filters groups by a multi-arg distinct pair count.",
+        ("distinct_count", "aggregate", "grain", "having"),
+        """
+select
+    group_id,
+    count_distinct(event_id, active) as combos
+having count_distinct(event_id, active) > 1
+order by group_id asc;
+""",
+        """
+select gid, count(distinct row(eid, active))
+from events
+group by gid
+having count(distinct row(eid, active)) > 1
+order by gid
+""",
+    )
+    bridge_dim_pair = _case(
+        seed,
+        "distinct_count",
+        "bridge_dim_pair",
+        "A filtered pair count bridges a fact key with a joined dimension.",
+        ("distinct_count", "aggregate", "grain", "join", "where"),
+        """
+where event_amount > 0
+select count_distinct(group_id, group_name) as combos;
+""",
+        """
+select count(distinct row(e.gid, g.name))
+from events e
+join groups g on e.gid = g.gid
+where e.amount > 0
+""",
+    )
+    nullable_pair_total = _case(
+        seed,
+        "distinct_count",
+        "nullable_pair_total",
+        "Pairs over a nullable join key count the NULL-keyed combination.",
+        ("distinct_count", "aggregate", "grain", "nullable"),
+        """
+select count_distinct(left_key, left_value) as combos;
+""",
+        """
+select count(distinct row(k, value))
+from left_facts
+""",
+    )
+    # KNOWN BUG COMPANION to filtered_grain_row_population: the same
+    # partial-binder source election corrupts a NAMED derived concept over the
+    # shared key — with `returns`/`sales` (~group_id binders) in the model the
+    # planner dedupes events to (amount, gid) pairs and self-joins on gid
+    # (edge: 7; correct 4). The anonymous inline spelling `count(group_id + 0
+    # ? ...)` plans a clean single scan.
+    filtered_named_derived = _case(
+        seed,
+        "distinct_count",
+        "filtered_named_derived_key_count",
+        "An inline-filtered count of a named derived key-expression counts rows.",
+        ("distinct_count", "aggregate", "derived", "filter", "population"),
+        """
+auto gid_label <- group_id + 0;
+
+select count(gid_label ? event_amount > 4) as filtered_rows;
+""",
+        """
+select count(*) filter (where amount > 4)
+from events
+""",
+    )
+    # count(grain(x)) = rows at x's grain (NULL x included); distinct VALUES
+    # of x (NULL included) is count_distinct(grain(x)).
+    single_grain_rows = _case(
+        seed,
+        "distinct_count",
+        "single_grain_row_population",
+        "A single-key grain() count returns the full row population.",
+        ("distinct_count", "aggregate", "grain", "nullable", "population"),
+        """
+select count(grain(left_key)) as row_count;
+""",
+        """
+select count(*)
+from left_facts
+""",
+    )
+    single_grain_values = _case(
+        seed,
+        "distinct_count",
+        "single_grain_distinct_values",
+        "count_distinct over grain() counts distinct values incl. the NULL one.",
+        ("distinct_count", "aggregate", "grain", "nullable"),
+        """
+select count_distinct(grain(left_key)) as key_count;
+""",
+        """
+select count(distinct row(k))
+from left_facts
+""",
+    )
+    return [
+        multiarg_by_group,
+        alias_form_global,
+        filtered_grain_pairs,
+        filtered_grain_rows,
+        filtered_named_derived,
+        having_pair_count,
+        bridge_dim_pair,
+        nullable_pair_total,
+        single_grain_rows,
+        single_grain_values,
+    ]
+
+
+def _composite_membership_cases(seed: SeedData) -> list[FuzzCase]:
+    """Tuple membership `(a, b) in (m.a, m.b)`. Renders as a null-safe
+    existence subquery (`is not distinct from` pairs — NULL components match
+    NULL components), and the right side must plan as ONE co-occurrence
+    source; every oracle spells both properties out."""
+    pair_in_cross_fact = _case(
+        seed,
+        "composite_membership",
+        "pair_in_cross_fact",
+        "A cross-fact tuple membership matches NULL keys null-safely.",
+        ("membership", "composite", "nullable", "where"),
+        """
+where (left_key, left_id) in (union_key, union_id)
+select left_id, left_key, left_value
+order by left_id asc;
+""",
+        """
+select id, k, value
+from left_facts l
+where exists (
+    select 1 from union_facts u
+    where u.k is not distinct from l.k
+      and u.id is not distinct from l.id
+)
+order by id
+""",
+    )
+    pair_not_in_cross_fact = _case(
+        seed,
+        "composite_membership",
+        "pair_not_in_cross_fact",
+        "A negated tuple membership keeps only pairs absent from the other fact.",
+        ("membership", "composite", "not_in", "nullable", "where"),
+        """
+where (left_key, left_id) not in (union_key, union_id)
+select left_id, left_key, left_value
+order by left_id asc;
+""",
+        """
+select id, k, value
+from left_facts l
+where not exists (
+    select 1 from union_facts u
+    where u.k is not distinct from l.k
+      and u.id is not distinct from l.id
+)
+order by id
+""",
+    )
+    pair_in_and_scalar = _case(
+        seed,
+        "composite_membership",
+        "pair_in_and_scalar",
+        "Tuple membership composes with a scalar predicate in one WHERE.",
+        ("membership", "composite", "and", "where"),
+        """
+where (left_key, left_id) in (union_key, union_id) and left_value > 1
+select left_id, left_key, left_value
+order by left_id asc;
+""",
+        """
+select id, k, value
+from left_facts l
+where l.value > 1
+  and exists (
+    select 1 from union_facts u
+    where u.k is not distinct from l.k
+      and u.id is not distinct from l.id
+)
+order by id
+""",
+    )
+    expression_pair_in = _case(
+        seed,
+        "composite_membership",
+        "expression_pair_in",
+        "Derived expressions participate on both sides of a tuple membership.",
+        ("membership", "composite", "derived", "nullable", "where"),
+        """
+where (left_key, left_id % 2) in (union_key, union_id % 2)
+select left_id, left_key, left_value
+order by left_id asc;
+""",
+        """
+select id, k, value
+from left_facts l
+where exists (
+    select 1 from union_facts u
+    where u.k is not distinct from l.k
+      and u.id % 2 is not distinct from l.id % 2
+)
+order by id
+""",
+    )
+    rowset_pair_semijoin = _case(
+        seed,
+        "composite_membership",
+        "rowset_pair_semijoin",
+        "A fact-anchored filtered rowset supplies the membership pair set.",
+        ("membership", "composite", "rowset", "aggregate", "where"),
+        """
+rowset big_pairs <- where event_amount > 4
+select group_id as pg, active as pa, count(event_id) as _anchor;
+
+where (group_id, active) in (big_pairs.pg, big_pairs.pa)
+select event_id, group_id, active, event_amount
+order by event_id asc;
+""",
+        """
+select eid, gid, active, amount
+from events e
+where exists (
+    select 1 from (
+        select gid, active
+        from events
+        where amount > 4
+        group by gid, active
+    ) p
+    where p.gid is not distinct from e.gid
+      and p.active is not distinct from e.active
+)
+order by eid
+""",
+    )
+    filtered_agg_rowset_pair = _case(
+        seed,
+        "composite_membership",
+        "filtered_agg_rowset_pair",
+        "A rowset pair membership filters an inline aggregate (the q17 remedy shape).",
+        ("membership", "composite", "rowset", "aggregate", "filter"),
+        """
+rowset big_pairs <- where event_amount > 4
+select group_id as pg, active as pa, count(event_id) as _anchor;
+
+select count(
+    event_id ? (group_id, active) in (big_pairs.pg, big_pairs.pa)
+) as matching_events;
+""",
+        """
+select count(eid) filter (where exists (
+    select 1 from (
+        select gid, active
+        from events
+        where amount > 4
+        group by gid, active
+    ) p
+    where p.gid is not distinct from e.gid
+      and p.active is not distinct from e.active
+))
+from events e
+""",
+    )
+    return [
+        pair_in_cross_fact,
+        pair_not_in_cross_fact,
+        pair_in_and_scalar,
+        expression_pair_in,
+        rowset_pair_semijoin,
+        filtered_agg_rowset_pair,
+    ]
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -2900,6 +3252,8 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _named_grouping_window_cases,
         _derived_join_cases,
         _chasm_cases,
+        _distinct_count_cases,
+        _composite_membership_cases,
     )
     for seed in seeds:
         for builder in builders:

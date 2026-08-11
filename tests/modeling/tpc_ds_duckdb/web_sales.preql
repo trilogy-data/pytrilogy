@@ -1,12 +1,7 @@
 # For cross-channel questions, prefer `all_sales` (combines this with store_sales and catalog_sales).
-# Web channel sales AND returns at (item, order_number) grain — the single
-# model for all web-channel analysis, including returns-only questions.
-# Sales: quantity, sales / list / extended prices, extended shipping cost,
-# extended discount, net paid, net profit, sold vs ship dates. Returns (NULL
-# on lines never returned): is_returned flag, refund amount / quantity / tax /
-# fee / ship cost / refunded cash / reversed charge / account credit / net
-# loss, plus return date/time/customer/refund-customer/reason/web-page/
-# demographics/addresses.
+# Web channel sales AND returns at (item, order_number) grain — the single model
+# for all web-channel analysis, including returns-only questions. Return columns
+# are NULL on lines never returned.
 
 import std.money;
 
@@ -16,73 +11,73 @@ import date as ship_date;
 import date as return_date;
 import time as sale_time;
 import time as return_time;
-import customer as billing_customer; # the bill-to customer's latest/current records
-import customer as ship_customer; # the ship-to customer's latest/current records
-import customer as return_customer; # the customer tied to the return
-import customer as return_refund_customer; # the customer refunded for the return
-import customer_demographic as return_customer_demographic; # the returning customer's demographics recorded on the return
-import customer_demographic as return_refund_customer_demographic; # the refunded customer's demographics recorded on the return
-import household_demographic as return_household_demographic; # the returning customer's household demographics recorded on the return
-import household_demographic as return_refund_household_demographic; # the refunded customer's household demographics recorded on the return
-import address as return_address; # the address the return originated from (the returning side)
-import address as return_refund_address; # the address the refund was issued to
+import customer as billing_customer; # bill-to customer (latest/current record)
+import customer as ship_customer; # ship-to customer (latest/current record)
+import customer as return_customer;
+import customer as return_refund_customer; # refund recipient; may differ from return_customer
+import customer_demographic as return_customer_demographic; # returning customer's demographics AS OF the return, not their current record
+import customer_demographic as return_refund_customer_demographic; # refunded customer's demographics AS OF the return, not their current record
+import household_demographic as return_household_demographic; # returning customer's household demographics AS OF the return, not their current record
+import household_demographic as return_refund_household_demographic; # refunded customer's household demographics AS OF the return, not their current record
+import address as return_address; # where the return originated
+import address as return_refund_address; # where the refund was issued
 import reason as return_reason;
 import web_site as web_site;
 import web_page as web_page;
-import web_page as return_web_page; # the web page the return was filed through
+import web_page as return_web_page;
 import promotion as promotion;
 import warehouse as warehouse;
 import ship_mode as ship_mode;
-import address as pos_ship_address; # shipping address recorded directly on the web sale at point of sale
-import address as pos_bill_address; # billing address recorded directly on the web sale at point of sale
-import household_demographic as pos_ship_household_demographic; # household demographics recorded on the sale at point of sale (ship-to)
-import household_demographic as pos_bill_household_demographic; # household demographics recorded on the sale at point of sale (bill-to)
+import address as pos_ship_address; # recorded on the sale at point of sale
+import address as pos_bill_address; # recorded on the sale at point of sale
+import household_demographic as pos_ship_household_demographic; # recorded at point of sale
+import household_demographic as pos_bill_household_demographic; # recorded at point of sale
 
-key order_number int; # Web order number identifying a single web sales transaction.
+key order_number int; # identifies a single web sales transaction
 --key return_order_number int; # Web order number on the returns side, for return-only queries.
 
 properties <order_number, item.sk> (
-    quantity int, # Number of units of the item ordered on this line.
-    sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit (USD). The whole-line total is ext_sales_price (the "total price").
-    list_price numeric::usd, # Per-unit list price before discounts (USD).
-    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost (USD).
-    net_profit numeric::usd, # Reported net profit for the line (USD). Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
-    net_paid numeric::usd, # Net amount paid for the line, excluding tax/shipping (USD).
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity (USD), the extended line amount. The per-unit price is sales_price (the "unit price").
-    ext_list_price numeric::usd, # Line-extended list price (USD).
-    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost (USD).
-    ext_ship_cost numeric::usd?, # Extended shipping cost charged on the line (USD).
-    ext_discount_amount numeric::usd?, # Extended discount amount applied to the line (USD).
-    return_amount numeric::usd, # Refund amount if the line was returned (USD, joined from web_returns).
-    return_net_loss numeric::usd?, # Net financial loss on the return for this line (joined from web_returns).
-    return_quantity int?, # Units returned for this line (joined from web_returns).
-    return_tax numeric::usd?, # Sales tax refunded on the return.
-    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
-    return_fee numeric::usd?, # Restocking or handling fee withheld from the refund.
-    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
-    refunded_cash numeric::usd?, # Cash portion of the refund.
+    quantity int,
+    sales_price numeric::usd, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric::usd, # Per-unit, before discounts.
+    wholesale_cost numeric::usd, # Per-unit.
+    net_profit numeric::usd, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
+    net_paid numeric::usd, # Excludes tax/shipping.
+    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_list_price numeric::usd,
+    ext_wholesale_cost numeric::usd,
+    ext_ship_cost numeric::usd?,
+    ext_discount_amount numeric::usd?,
+    return_amount numeric::usd, # Refund excluding tax.
+    return_net_loss numeric::usd?,
+    return_quantity int?,
+    return_tax numeric::usd?,
+    return_amount_inc_tax numeric::usd?,
+    return_fee numeric::usd?, # Restocking/handling fee withheld from the refund.
+    return_ship_cost numeric::usd?,
+    refunded_cash numeric::usd?,
     reversed_charge numeric::usd?, # Refund portion reversed on the original payment method.
-    account_credit numeric::usd?, # Refund portion issued as account credit.
-    _returned_order_number int?, # Internal: the web_returns order number matched to this line; NULL when not returned. Use is_returned instead.
-    row_counter int, # Constant 1, one per web line item (a unique order_number + item.sk combination).
+    account_credit numeric::usd?,
+    _returned_order_number int?, # Internal; NULL when not returned. Use is_returned instead.
+    row_counter int, # Constant 1 per line item.
 );
 
-auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item identifier (one web order + item). Count line items with count(line_item); do NOT use count(order_number), an order key that dedups and undercounts multi-item orders.
-auto line_item_count <- sum(row_counter); # Number of web-sale line items (= count(line_item)); kept for queries that reference it.
-auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Shipping lag in days (ship date minus sold date); positive when shipped after sold.
+auto line_item <- concat(order_number::string, '-', item.sk::string); # Unique line-item id. Count line items with count(line_item), NOT count(order_number) (dedups multi-item orders).
+auto line_item_count <- sum(row_counter); # = count(line_item); kept for queries that reference it.
+auto days_to_ship <- date_diff(sale_date.date, ship_date.date, day); # Positive when shipped after sold.
 
-auto is_returned <- _returned_order_number is not null; # True when a return row exists for this line, else False. Computed post-join from a real (NULL-padded) web_returns column, so "not returned" works as `= false` / `is not true` / `is null`.
-auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
+auto is_returned <- _returned_order_number is not null; # Computed post-join from a real (NULL-padded) web_returns column, so "not returned" works as `= false` / `is not true` / `is null`.
+auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value". NOT the reported net_profit column.
 
 datasource web_sales (
     raw('''1'''): row_counter,
-    WS_SOLD_DATE_SK: ?sale_date.sk, # FK to the date the order was sold.
-    WS_SOLD_TIME_SK: ?sale_time.sk, # FK to the time-of-day the order was placed.
-    WS_SHIP_DATE_SK: ?ship_date.sk, # FK to the date the order shipped.
-    WS_BILL_CUSTOMER_SK: ?billing_customer.sk, # FK to the customer billed for the order.
-    WS_SHIP_CUSTOMER_SK: ?ship_customer.sk, # FK to the customer the order was shipped to.
+    WS_SOLD_DATE_SK: ?sale_date.sk,
+    WS_SOLD_TIME_SK: ?sale_time.sk,
+    WS_SHIP_DATE_SK: ?ship_date.sk,
+    WS_BILL_CUSTOMER_SK: ?billing_customer.sk,
+    WS_SHIP_CUSTOMER_SK: ?ship_customer.sk,
     WS_ORDER_NUMBER: order_number,
-    WS_ITEM_SK: item.sk, # FK to the item ordered.
+    WS_ITEM_SK: item.sk,
     WS_QUANTITY: quantity,
     WS_SALES_PRICE: sales_price,
     WS_WHOLESALE_COST: wholesale_cost,
@@ -91,16 +86,16 @@ datasource web_sales (
     WS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     WS_EXT_SHIP_COST: ext_ship_cost,
     WS_NET_PROFIT: net_profit,
-    WS_WEB_SITE_SK: ?web_site.sk, # FK to the web site the order was placed through.
-    WS_WEB_PAGE_SK: ?web_page.sk, # FK to the web page the order was placed on.
-    WS_PROMO_SK: ?promotion.sk, # FK to the promotion applied to the line, if any.
-    WS_WAREHOUSE_SK: ?warehouse.sk, # FK to the warehouse fulfilling the order.
-    WS_SHIP_ADDR_SK: ?pos_ship_address.sk, # FK to the shipping address recorded on the sale.
-    WS_BILL_ADDR_SK: ?pos_bill_address.sk, # FK to the billing address.
-    WS_SHIP_MODE_SK: ?ship_mode.sk, # FK to the ship-mode used for the order.
+    WS_WEB_SITE_SK: ?web_site.sk,
+    WS_WEB_PAGE_SK: ?web_page.sk,
+    WS_PROMO_SK: ?promotion.sk,
+    WS_WAREHOUSE_SK: ?warehouse.sk,
+    WS_SHIP_ADDR_SK: ?pos_ship_address.sk,
+    WS_BILL_ADDR_SK: ?pos_bill_address.sk,
+    WS_SHIP_MODE_SK: ?ship_mode.sk,
     WS_EXT_DISCOUNT_AMT: ext_discount_amount,
-    WS_SHIP_HDEMO_SK: ?pos_ship_household_demographic.sk, # FK to the ship-to customer's household profile.
-    WS_BILL_HDEMO_SK: ?pos_bill_household_demographic.sk, # FK to the bill-to customer's household profile.
+    WS_SHIP_HDEMO_SK: ?pos_ship_household_demographic.sk,
+    WS_BILL_HDEMO_SK: ?pos_bill_household_demographic.sk,
     WS_NET_PAID: net_paid,
     WS_LIST_PRICE: list_price,
 )
@@ -108,19 +103,19 @@ grain (item.sk, order_number)
 address memory.web_sales;
 
 datasource web_returns (
-    WR_RETURNED_DATE_SK: return_date.sk, # FK to the date the return occurred.
-    WR_RETURNED_TIME_SK: return_time.sk, # FK to the time-of-day the return was processed.
+    WR_RETURNED_DATE_SK: return_date.sk,
+    WR_RETURNED_TIME_SK: return_time.sk,
     WR_ITEM_SK: ~item.sk,
-    WR_RETURNING_CUSTOMER_SK: return_customer.sk, # FK to the customer returning the item.
-    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.sk, # FK to the customer receiving the refund.
-    WR_RETURNING_CDEMO_SK: ?return_customer_demographic.sk, # FK to the returning customer's demographic profile.
-    WR_REFUNDED_CDEMO_SK: ?return_refund_customer_demographic.sk, # FK to the refunded customer's demographic profile.
-    WR_RETURNING_HDEMO_SK: ?return_household_demographic.sk, # FK to the returning customer's household profile.
-    WR_REFUNDED_HDEMO_SK: ?return_refund_household_demographic.sk, # FK to the refunded customer's household profile.
-    WR_RETURNING_ADDR_SK: ?return_address.sk, # FK to the address the return originated from.
-    WR_REFUNDED_ADDR_SK: ?return_refund_address.sk, # FK to the address the refund was issued to.
-    WR_REASON_SK: ?return_reason.sk, # FK to the return-reason code.
-    WR_WEB_PAGE_SK: ?return_web_page.sk, # FK to the web page the return was filed through.
+    WR_RETURNING_CUSTOMER_SK: return_customer.sk,
+    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.sk,
+    WR_RETURNING_CDEMO_SK: ?return_customer_demographic.sk,
+    WR_REFUNDED_CDEMO_SK: ?return_refund_customer_demographic.sk,
+    WR_RETURNING_HDEMO_SK: ?return_household_demographic.sk,
+    WR_REFUNDED_HDEMO_SK: ?return_refund_household_demographic.sk,
+    WR_RETURNING_ADDR_SK: ?return_address.sk,
+    WR_REFUNDED_ADDR_SK: ?return_refund_address.sk,
+    WR_REASON_SK: ?return_reason.sk,
+    WR_WEB_PAGE_SK: ?return_web_page.sk,
     WR_ORDER_NUMBER: ~order_number,
     WR_RETURN_AMT: return_amount,
     WR_RETURN_TAX: return_tax,

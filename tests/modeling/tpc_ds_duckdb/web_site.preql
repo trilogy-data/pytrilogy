@@ -1,11 +1,11 @@
-# Web site info: operator/company associated with each web storefront.
+# Web sites: the operator/company for each web storefront.
 
-key sk int; # Surrogate key uniquely identifying a web site.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the web site (16-char alphanumeric).
-    company_name string, # Operating company name for the web site.
-    name string?, # Display name of the web site.
+    id string, # business identifier
+    company_name string,
+    name string?,
 );
 
 datasource web_site (

@@ -1,8 +1,7 @@
-# Income band info: lower and upper dollar bounds (USD, inclusive) for
-# each household-income range bucket.
+# Household-income range buckets: inclusive lower/upper dollar bounds.
 import std.currency;
 
-key sk int; # Surrogate key uniquely identifying an income band.
+key sk int; # surrogate key
 
 properties sk (
     lower_bound int::usd,

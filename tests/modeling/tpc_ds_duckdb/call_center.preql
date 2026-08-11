@@ -1,13 +1,12 @@
-# Call center info: physical centers handling catalog and web orders,
-# with name, manager, and location county.
+# Call centers handling catalog and web orders.
 
-key sk int; # Surrogate key uniquely identifying a call center.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the call center (16-char alphanumeric).
-    county string, # County in which the call center is physically located.
-    name string, # Display name of the call center.
-    manager string?, # Name of the call center's general manager.
+    id string, # business identifier
+    county string,
+    name string,
+    manager string?,
 );
 
 datasource call_center (
