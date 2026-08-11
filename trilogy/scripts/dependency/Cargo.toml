@@ -4,7 +4,7 @@ name = "trilogy-parser"
 # crates.io releases ride the same stream (see pythonpublish.yml), so a
 # published crate version always corresponds to the pytrilogy release
 # whose grammar it carries.
-version = "0.3.320"
+version = "0.3.322"
 edition = "2021"
 description = "Parser and import/datasource dependency resolver for the Trilogy language"
 license = "MIT"

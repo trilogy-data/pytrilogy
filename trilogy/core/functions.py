@@ -41,10 +41,12 @@ from trilogy.core.models.core import (
     CONCRETE_TYPES,
     ArrayType,
     DataType,
+    EnumType,
     MapType,
     NumericType,
     StructType,
     TraitDataType,
+    ValidatedType,
     arg_to_datatype,
     is_compatible_datatype,
     merge_datatypes,
@@ -52,11 +54,6 @@ from trilogy.core.models.core import (
 from trilogy.core.models.environment import Environment
 
 GENERIC_ARGS = Concept | ConceptRef | Function | str | int | float | date | datetime
-
-
-CUSTOM_PLACEHOLDER = CustomType(
-    name="__placeholder__", type=DataType.UNKNOWN, drop_on=[], add_on=[]
-)
 
 
 VALID_INPUT_ITEM = DataType | ArrayType | MapType
@@ -115,6 +112,57 @@ def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
     if unwrapped in (DataType.INTEGER, DataType.BIGINT):
         return DataType.FLOAT
     return base
+
+
+# Functions whose result can leave the input's declared value domain: the sum
+# of bigint[0..716] values is not bounded by 716, nor is score * 2. Order
+# statistics and selection functions (min/max/any/coalesce/case) return values
+# drawn from the input domain, so they keep it.
+DOMAIN_DROPPING_FUNCTIONS = {
+    FunctionType.SUM,
+    FunctionType.ADD,
+    FunctionType.SUBTRACT,
+    FunctionType.MULTIPLY,
+    FunctionType.DIVIDE,
+    FunctionType.POWER,
+    FunctionType.ABS,
+}
+
+
+def strip_value_domain(datatype: CONCRETE_TYPES) -> CONCRETE_TYPES:
+    """Drop declared value-domain restrictions (ValidatedType ranges/pattern,
+    EnumType membership) while keeping the base type and trait annotations."""
+    if isinstance(datatype, TraitDataType):
+        stripped = strip_value_domain(datatype.type)
+        if stripped is not datatype.type:
+            return TraitDataType(type=stripped, traits=datatype.traits)
+        return datatype
+    if isinstance(datatype, (ValidatedType, EnumType)):
+        return datatype.type
+    return datatype
+
+
+def refine_output_type(
+    operator: FunctionType,
+    output_type: CONCRETE_TYPES,
+    type_lookup: Callable[[str], CustomType | None] | None,
+) -> CONCRETE_TYPES:
+    """Single seam for which type refinements survive applying a function:
+    declared value domains are a system rule (dropped when the output can
+    leave the input domain), trait annotations an author rule (dropped when
+    the trait's type declaration lists the operator in its DROP clause)."""
+    if operator in DOMAIN_DROPPING_FUNCTIONS:
+        output_type = strip_value_domain(output_type)
+    if isinstance(output_type, TraitDataType) and type_lookup is not None:
+        kept = []
+        for trait in output_type.traits:
+            declared = type_lookup(trait)
+            if declared is not None and operator in declared.drop_on:
+                continue
+            kept.append(trait)
+        if kept != output_type.traits:
+            output_type = TraitDataType(type=output_type.type, traits=kept)
+    return output_type
 
 
 def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:
@@ -1376,8 +1424,22 @@ def function_family(operator: FunctionType) -> str:
 
 
 class FunctionFactory:
-    def __init__(self, environment: Environment | None = None):
+    def __init__(
+        self,
+        environment: Environment | None = None,
+        type_lookup: Callable[[str], CustomType | None] | None = None,
+    ):
+        # type_lookup lets parse-time callers resolve custom types staged in
+        # the current document but not yet committed to environment.data_types.
         self.environment = environment
+        self.type_lookup = type_lookup
+
+    def _resolve_type(self, name: str) -> CustomType | None:
+        if self.type_lookup is not None:
+            return self.type_lookup(name)
+        if self.environment is not None:
+            return self.environment.data_types.get(name)
+        return None
 
     def create_function(
         self,
@@ -1448,18 +1510,9 @@ class FunctionFactory:
                 valid_inputs=valid_inputs,
                 arg_count=arg_count,
             )
-        if isinstance(final_output_type, TraitDataType) and self.environment:
-            final_output_type = TraitDataType(
-                type=final_output_type.type,
-                traits=[
-                    x
-                    for x in final_output_type.traits
-                    if operator
-                    not in self.environment.data_types.get(
-                        x, CUSTOM_PLACEHOLDER
-                    ).drop_on
-                ],
-            )
+        final_output_type = refine_output_type(
+            operator, final_output_type, self._resolve_type
+        )
 
         if operator in (FunctionType.CASE, FunctionType.SIMPLE_CASE):
             self._coerce_case_constant_branches(full_args, final_output_type)
