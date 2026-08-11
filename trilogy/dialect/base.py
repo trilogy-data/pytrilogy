@@ -1368,6 +1368,15 @@ class BaseDialect:
             redirect = self._grain_key_membership_redirect(c, cte)
             if redirect is not None:
                 result = redirect
+        if (
+            result is not None
+            and BASE_INVALID not in result
+            and isinstance(cte, CTE)
+            and cte.filter_collapses_to_grain(c)
+        ):
+            # excluded from GROUP BY (check_is_not_in_group): collapse the
+            # per-row CASE fan-out ({content, NULL}) to its one keyed value
+            result = self.FUNCTION_MAP[FunctionType.MAX]([result], [])
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result
@@ -1955,10 +1964,17 @@ class BaseDialect:
                 )
             finally:
                 self._existence_ref_overrides = prior
-        if len(from_clauses) != 1:
+        if len(from_clauses) != 1 or any(BASE_INVALID in f for f in from_clauses):
+            # name logical concepts, never source names: the raw from_clauses
+            # hold physical aliases and INVALID_REFERENCE_BUG placeholders
+            addresses = sorted({rc.address for rc in resolved_concepts})
             raise ValueError(
-                "composite membership right-hand operands must resolve to a "
-                f"single existence source, got {sorted(from_clauses) or 'none'}"
+                "the right side of a tuple membership `(a, b) in (m.a, m.b)` "
+                f"must come from ONE model or rowset, but {addresses} did not "
+                "resolve to a single source in this scope. Stage the pair "
+                "through a rowset anchored on its fact first — e.g. `with "
+                "pairs as select m.a as a, m.b as b, count(m.key) as _anchor;`"
+                " then `(x, y) in (pairs.a, pairs.b)`."
             )
         from_clause = next(iter(from_clauses))
         if " as " in from_clause and any(

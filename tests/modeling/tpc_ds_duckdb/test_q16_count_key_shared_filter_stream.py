@@ -10,19 +10,6 @@ survived as two rows and the sibling count reported 274,743 for the 160,000
 distinct catalog orders (q16 messy-warehouse probe).
 """
 
-import pytest
-
-# The first attempt (rewrite the flagged COUNTs to COUNT(DISTINCT) at bucket
-# partition time) was reverted: it fires blind to whether the builder will
-# actually emit the normalization GROUP, so it broke `count(x ? x)` over a
-# `const x <- unnest([...])`, whose plan has no GROUP at all and whose count is
-# a row count by design. The fix belongs at the assembly site instead — group to
-# the declared `aggregate_input_grain` and collapse the un-determined argument.
-pytestmark = pytest.mark.xfail(
-    reason="q16 count(<key>) grain contract not yet enforced at the group node",
-    strict=False,
-)
-
 QUERY = """
 import catalog_sales as cs;
 

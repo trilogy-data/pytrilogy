@@ -1,13 +1,13 @@
 # TPC-DS category funnel
 
-## Funnel (increasing scaffolding)
+## Category pass coverage
 
-| category | passing | newly unlocked | regressions |
+| category | passing | unique passes | shared passes |
 |---|---|---|---|
-| db+schema+aggregates | 17/20 | q01, q02, q03, q04, q05, q06, q07, q09, q10, q11, q12, q13, q15, q16, q17, q18, q19 | — |
-| db+schema+aggregates+noise | 14/20 | q14 | q05, q12, q16, q18 |
-| enriched+aggregates | 17/20 | q08 | q01, q14 |
-| enriched+aggregates+noise | 19/20 | q20 | q11 |
+| db+schema+aggregates | 17/20 | — | q01, q02, q03, q04, q05, q06, q07, q09, q10, q11, q12, q13, q15, q16, q17, q18, q19 |
+| db+schema+aggregates+noise | 14/20 | — | q01, q02, q03, q04, q06, q07, q09, q10, q11, q13, q14, q15, q17, q19 |
+| enriched+aggregates | 17/20 | — | q02, q03, q04, q05, q06, q07, q08, q09, q10, q11, q12, q13, q15, q16, q17, q18, q19 |
+| enriched+aggregates+noise | 19/20 | q20 | q01, q02, q03, q04, q05, q06, q07, q08, q09, q10, q12, q13, q14, q15, q16, q17, q18, q19 |
 
 ## Metrics
 

@@ -1,69 +1,74 @@
 # Handoff: composite membership across two facts leaks `INVALID_REFERENCE_BUG` (q17)
 
-**Status: confirmed bad error surface + probable capability gap. From
-`results/20260810-211903_enriched_aggregates/agent_log.q17.jsonl`.**
+**Status: error surface FIXED (2026-08-10); capability gap CHARACTERIZED, not
+implemented.** Originally from
+`results/20260810-211903_enriched_aggregates/agent_log.q17.jsonl`.
 
-## What happened
+## Reduction result (the localization the original handoff asked for)
 
-The agent tested tuple membership whose right side spans two concepts of a
-*different* fact model, inside an inline-filtered aggregate:
+Probes against `tests/modeling/tpc_ds_duckdb` (generation only):
+
+- (a) cross-model tuple membership in a **plain `where`** — WORKS. The planner
+  builds a shared existence source for the pair.
+- (b) the same membership moved **inside an inline-filtered aggregate**
+  (`count(grain(...) ? (ss.customer.sk, ss.item.sk) in
+  (cs.billing_customer.sk, cs.item.sk)) by *`) — FAILS. Both right-side
+  concepts are from `cs`, but inside the aggregate's scope they resolve
+  through **separate dimension parent CTEs** (customer vs item), and
+  `_common_existence_source` finds no single name carrying both. This is the
+  first failing step; the extra conditions in the original probe only change
+  *how* it fails.
+- (c) full original probe — same failure, plus one component becomes entirely
+  unresolvable, which is where `INVALID_REFERENCE_BUG<...>` leaked into the
+  message.
+- (d) same-model tuple membership in a filtered aggregate where both sides
+  live on one fact — WORKS.
+
+So: not COUNT- or model-specific. The capability gap is "composite membership
+inside an inline-filtered aggregate whose right-side pair is only reachable
+through separate dim enrichment CTEs". Making it work means planning the pair
+as one existence island (like the plain-`where` path does) rather than
+resolving components independently — planner work, not renderer work.
+
+## Error-surface fix (landed)
+
+`trilogy/dialect/base.py` `render_composite_membership`: the
+single-existence-source failure now raises a clean error that
+
+- names the **logical concepts** (`['cs.billing_customer.sk', 'cs.item.sk']`),
+  never source CTE names, physical aliases, or `INVALID_REFERENCE_BUG`
+  placeholders (it also fires when the sole resolution is an invalid
+  placeholder, instead of emitting broken SQL);
+- states the constraint in the language-reference wording (right side must
+  come from ONE model or rowset);
+- gives the **validated** remedy: stage the pair through a fact-anchored
+  rowset.
+
+Regression: `tests/modeling/tpc_ds_duckdb/test_q17_composite_membership_error.py`.
+
+## Remedy caveat (important for docs/agent guidance)
+
+`with pairs as select cs.billing_customer.sk as pc, cs.item.sk as pi;` (bare
+pair, no fact column) plans as `customer FULL JOIN item on 1=1` — a **dim
+cross product**, silently wrong for "pairs present in catalog_sales". The
+rowset must be anchored on the fact, e.g.
 
 ```trilogy
-import raw.store_sales as ss;
-import raw.catalog_sales as cs;
-
-auto cat_in_st <- count(grain(ss.ticket_number, ss.item.sk)
-    ? ss.sale_date.year = 2001
-      and (ss.customer.sk, ss.item.sk) in (cs.billing_customer.sk, cs.item.sk)
-      and cs.sale_date.year in (2001, 2002)
-      and cs.billing_customer.sk is not null) by *;
-
-select cat_in_st as match_out;
+with pairs as
+select cs.billing_customer.sk as pc, cs.item.sk as pi, count(cs.order_number) as _anchor;
 ```
 
-Result (exit 1):
+which renders `SELECT ... FROM catalog_sales GROUP BY 1, 2` and produces the
+correct existence semi-join. The error message and the language reference
+should keep recommending the anchored form. (The bare-pair cross product looks
+related to the open q06 `on 1=1` scoped-join issue —
+`project_q06_grain_drops_scoped_join_key`.)
 
-```
-Unexpected error in probe6.preql: composite membership right-hand operands
-must resolve to a single existence source, got
-['INVALID_REFERENCE_BUG<Missing source reference to cs.billing_customer.sk>',
- 'dim_item as cs_item_items']
-```
+## Open follow-ups
 
-Two distinct defects:
-
-1. **Error-quality bug (fix regardless):** an internal placeholder
-   (`INVALID_REFERENCE_BUG<...>`) and a physical alias (`dim_item as
-   cs_item_items`) leak into a user-facing message. The message also states the
-   constraint without the remedy. It should say something like: "the right side
-   of a tuple membership must come from ONE model or rowset; stage the
-   cross-model pair through a rowset first (`with pairs as select
-   cs.billing_customer.sk as c, cs.item.sk as i;` then `(a, b) in (pairs.c,
-   pairs.i)`), or use the staged-membership example."
-2. **Capability question:** both right-side concepts *do* come from one model
-   (`cs`), yet resolution split them across two sources (one of which failed to
-   resolve at all). Determine whether same-model tuple membership inside an
-   inline-filtered aggregate is supposed to work; if yes this is a resolution
-   bug, if no the parser should reject it with the remedy above rather than
-   failing mid-planning as "Unexpected error".
-
-Note the aggregate references a mix of `ss.*` and `cs.*` with no scoped join in
-scope — the condition crosses two unjoined facts, which may be the actual
-root cause of the split.
-
-## Follow-ups landed elsewhere
-
-The language reference (agent-info query) now documents: "Tuple membership
-`(a, b) in (m.a, m.b)` requires both right-side concepts to resolve to ONE
-source (model or rowset); to test against a cross-model pair, stage it through
-a rowset first." Keep the error message consistent with that wording.
-
-## Repro guidance
-
-Models in `tests/modeling/tpc_ds_duckdb/` (`store_sales.preql`,
-`catalog_sales.preql`). Reduce first: (a) same-model tuple membership in a
-plain `where` (probably works — find the passing baseline), (b) move it into
-an inline-filtered aggregate, (c) add the second imported fact. The first
-failing step localizes the defect. `grep -rn "INVALID_REFERENCE_BUG"
-trilogy/` finds the placeholder's origin; any path that can format it into a
-user-facing message is a bug on its own.
+1. **Capability decision:** support (b) by planning the membership's right
+   side as one existence island inside filtered-aggregate scopes, or keep the
+   clean rejection. The plain-`where` path (a) proves the existence-island
+   machinery exists; the gap is only in the inline-filtered-aggregate route.
+2. Language reference already documents the ONE-source constraint; consider
+   adding the fact-anchor caveat there too.

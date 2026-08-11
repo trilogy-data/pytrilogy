@@ -1,78 +1,65 @@
 # Handoff: `count(<key>)` returned 274,743 for 160,000 distinct orders (q16)
 
-**Status: REPRODUCED and FIXED.** Real planner defect, not a doc over-promise.
-Repro: `evals/tpcds_agent/repro_q16_count_key_not_distinct.py`. Regression test:
-`tests/modeling/tpc_ds_duckdb/test_q16_count_key_shared_filter_stream.py`.
+**Status: FIXED (2026-08-10).** The two-site change from the diagnosis is
+implemented and validated. Repro:
+`evals/tpcds_agent/repro_q16_count_key_not_distinct.py` (prints FIXED).
+Regression tests:
+`tests/modeling/tpc_ds_duckdb/test_q16_count_key_shared_filter_stream.py`
+(xfail removed; all 3 pass, including the lone-`count(key)` no-DISTINCT guard).
 
-## The claim vs the observation
+## Symptom (historical)
 
-The agent language reference promises: "`count(<key>)` is already distinct
-because keys are unique." In the fresh messy-warehouse run
-(`results/20260810-211903_enriched_aggregates/agent_log.q16.jsonl`), a
-DeepSeek agent probing `catalog_sales` got `count(cs.order_number) = 274,743`
-at single-row grain, while the true distinct order count is **160,000** —
-independently confirmed two ways in the same session (94,339 + 65,661 and
-93,142 + 66,858 from complementary rowset partitions).
-
-Against the un-renamed `tests/modeling/tpc_ds_duckdb` model at sf=1 the same
-probe returned **254,337** (the eval's messy schema shifts the number, not the
-defect). The doc promise was right; the plan did not honor it.
+`count(cs.order_number)` beside `count(cs.order_number ? cs.is_returned)`
+returned 254,337 at sf=1 (274,743 in the eval's messy-warehouse variant) where
+the truth is 160,000. `sum` was broken identically (20,349,624,832 vs
+12,800,080,000) — verified fixed too.
 
 ## Root cause
 
-`count(<key>)` is planned as **dedup-then-COUNT**, not `COUNT(DISTINCT)`: the
-aggregate bucket carries `aggregate_input_grain = {cs.order_number}` and a
-normalization `GroupNode` collapses the input stream to that grain, after which
-a plain `COUNT` of the key is distinct by construction.
+The build step mints `order_number ? is_returned` as a per-row
+`CASE WHEN cond THEN order_number END`. A mixed order (returned + unreturned
+lines) yields `{orid, NULL}`, so the normalization `GROUP BY orid, minted_orid`
+kept two rows for one order and every aggregate over the deduped stream
+double-counted. The concept model already declared `keys=['cs.order_number']`;
+dedup can't deliver that — the reduction has to be a collapse.
 
-That normalization GROUP must also project **every argument the bucket's
-aggregates read** (`strategy_builder.build_strategy_node`, the
-`normalize_addrs` block). `count(cs.order_number ? cs.is_returned = true)` sits
-in the *same* bucket — `_aggregate_input_grain` reduces a FILTER-over-a-key
-argument to the key, so both counts key to input grain `{cs.order_number}` —
-but its argument is the filter virtual `_virt_filter_order_number_*`, which
-`order_number` does **not** determine. It became a second GROUP BY key:
+## The fix (landed)
 
-```sql
--- pre-fix
-GROUP BY 1, 2   -- (_virt_filter_order_number_*, cs_order_number)
-...
-SELECT count("wakeful"."cs_order_number") as "all_orders"
-```
+1. `trilogy/core/models/execute.py` — new `CTE.filter_collapses_to_grain(c)`:
+   a locally-computed FILTER whose `keys` are covered by the grouping CTE's
+   grain but whose `where` reads columns outside it is a property of the
+   grain, not a grouping key. `check_is_not_in_group` consults it and drops
+   the virtual from GROUP BY. Guarded behind the CASE-elision check (CTE
+   condition implies the predicate → rendered value is bare content, stays a
+   group key), mirroring `has_local_aggregate`.
+2. `trilogy/dialect/base.py` — `render_concept_sql` wraps such a concept in
+   `max(...)` (the window alternative was unnecessary: the CTE already has a
+   GROUP BY, so a plain aggregate collapse needs no extra node).
 
-An order with both returned and unreturned lines survives as two rows, so the
-plain COUNT reports neither the distinct order count nor the line count — the
-"neither-rows-nor-distinct" number the original report flagged. The *filtered*
-count was accidentally immune (its virtual is NULL-or-the-key, so distinct
-pairs still map 1:1 to distinct returned orders), which is why only the
-unfiltered count was wrong.
+## Validation
 
-The `aggregate_distinct_addrs` machinery for exactly this
-(`_fold_distinct_rewritable_buckets`) never fired: it only rewrites a count
-folded *across* buckets, and here both counts were already in one bucket.
+- Repro + sum variant both exact at sf=1.
+- `tests/engine/test_duckdb_filter.py` (the suite that killed the reverted
+  COUNT(DISTINCT) attempt): 26 passed.
+- Corpus A/B (worktree baseline at 1d50578cb vs patched tree, plus a no-op
+  determinism leg): exactly **3 of 132** queries change, all the predicted
+  footprint sites — tpc_ds q97-one/q97-two (presence virtuals) and tpc_h q21
+  (`count(l_suppkey ? late)`), each losing the virtual from GROUP BY and
+  gaining the `max(...)` collapse. All other queries byte-identical.
+- Full suite `-m "not adventureworks_execution"` (run in 4 sequential chunks):
+  ~7,738 passed, 0 failed. The only xpass is the pre-existing
+  environment-dependent fakesnow xfail in `tests/execution/state`.
 
-## Fix
+## Rejected approaches (kept so they don't get re-tried)
 
-`trilogy/core/processing/v4_helper/group_rules.py` —
-`_dedup_widened_distinct_members`: after the fold, flag every
-`aggregate_distinct_rewritable` COUNT in a bucket whose members drag a direct
-argument outside `input_grain | out_grain`. Those counts lose the dedup
-guarantee, so the DISTINCT becomes explicit and they render
-`COUNT(DISTINCT ...)`. A lone `count(<key>)` keeps the cheaper
-dedup-then-COUNT shape.
-
-Post-fix the probe returns `(160000, 5, 94339)`, byte-identical to the raw-SQL
-oracle.
-
-## Footprint
-
-Rendering all 132 `query*.preql` in `tests/modeling/tpc_ds_duckdb` +
-`tests/modeling/tpc_h` before and after: **0 changed, 132 byte-identical**. The
-benchmark corpus never puts a filtered and an unfiltered count of the same key
-in one select; agents do.
-
-## Doc note
-
-No change needed to the "`count(<key>)` is already distinct" bullet — the
-promise now holds. Worth keeping the reference's existing steer toward
-`count(line_item)` for line-grain questions, which is a different point.
+- **COUNT(DISTINCT) rewrite at bucket-partition time** — fires blind to
+  whether the normalization GROUP is emitted; broke `count(x ? x)` over
+  `const x <- unnest([...])`; doesn't generalize to `sum`.
+- **Splitting the bucket and rejoining** — both aggregates correctly share the
+  `{orid}` input grain; no partition-key change needed.
+- **Minting a collapsed concept in the planner** — `minted_orid` already
+  exists; nothing new needed.
+- **`parsing/common.py:1156` grain asymmetry** — not touched; the renderer
+  collapse fixes the SQL regardless, and the grain change alone was assessed
+  necessary-but-not-sufficient. Still a valid loose thread if grain-level
+  cleanliness is wanted later.
