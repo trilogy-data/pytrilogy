@@ -1,7 +1,7 @@
 import json
 
 from trilogy import Environment
-from trilogy.ai.constants import AGGREGATE_FUNCTIONS, FUNCTIONS, RULE_PROMPT
+from trilogy.ai.constants import FUNCTIONS, RULE_PROMPT
 from trilogy.ai.models import LLMRequestOptions, LLMToolDefinition
 from trilogy.ai.syntax_examples import example_headers
 from trilogy.authoring import (
@@ -24,18 +24,10 @@ from trilogy.scripts.explore import build_concepts_payload
 def get_trilogy_syntax_reference() -> str:
     return f"""{RULE_PROMPT}
 
-Aggregate Functions:
-{AGGREGATE_FUNCTIONS}
-
-Functions:
+Functions (the `aggregate` family doubles as the Aggregate Functions list):
 {FUNCTIONS}
 
-Valid types:
-{[x.value for x in DataType]}
-
-Some types may have additional metadata, which will help you understand them. For example, 'latitude', 'longitude' and 'currency' are all of type 'float', but have additional meaning.
-
-A typical trilogy query only needs to import one file (the fact) and will use dot-references to pull in dimensions.
+Some types carry trait metadata that adds meaning: 'latitude', 'longitude' and 'currency' are all 'float' with extra semantics.
 
 Additional syntax examples:
 These less-common patterns have complete, copy-pasteable examples. Do NOT guess

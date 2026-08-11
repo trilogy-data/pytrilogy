@@ -598,6 +598,109 @@ def test_write_show_sql_render_error_confirms_write_then_surfaces(
     assert target.read_text() == "select 1 -> x;"
 
 
+def test_write_run_executes_written_file(runner, tmp_path: Path):
+    """``--run`` writes the file then executes it through the run command's own
+    path — one call replaces the agent's write/run pair."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "select 1 -> x;", "--run"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Wrote" in result.output
+    assert "Execution Complete" in result.output
+    assert target.exists()
+
+
+def test_write_run_refusal_does_not_run(runner, tmp_path: Path):
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        ["file", "write", str(target), "--content", "auto orders_per", "--run"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "not syntactically valid Trilogy" in result.output
+    assert not target.exists()
+
+
+def test_write_run_and_delete_removes_file_after_success(runner, tmp_path: Path):
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Execution Complete" in result.output
+    assert not target.exists()
+
+
+def test_write_run_and_delete_removes_file_after_failed_run(runner, tmp_path: Path):
+    """A body that parses but fails at run time (undefined concept) still gets
+    cleaned up, and the run's failing exit code survives the deletion."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select undefined_thing -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code != 0, result.output
+    assert not target.exists()
+
+
+def test_write_run_flags_mutually_exclusive(runner, tmp_path: Path):
+    target = tmp_path / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "at most one of --run or --run-and-delete" in result.output
+    assert not target.exists()
+
+
+def test_write_run_rejects_non_local_backend(runner):
+    class RemoteBackend:
+        scheme = "fakeremote"
+
+        def exists(self, path: str) -> bool:
+            return False
+
+    register_backend("fakeremote", lambda: RemoteBackend())  # type: ignore[arg-type,return-value]
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            "fakeremote://bucket/probe.preql",
+            "--content",
+            "select 1 -> x;",
+            "--run",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "only support local paths" in result.output
+
+
 def test_get_backend_rejects_unknown_scheme():
     with pytest.raises(FileOperationError):
         get_backend("s3://bucket/key")

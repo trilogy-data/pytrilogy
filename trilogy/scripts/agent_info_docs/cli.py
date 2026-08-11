@@ -9,6 +9,7 @@ language syntax use `agent-info query`; for models use `agent-info authoring`.
 - `trilogy file list [path] --recursive` - list files and model descriptions.
 - `trilogy file read <path>` - read a file when exploration is insufficient.
 - `trilogy file write <path>` - write stdin or use `--content`, `--from-file`, or `--from-url`.
+- `trilogy file write <path> --run` (or `--run-and-delete`) - write, then execute like `trilogy run <path>`; `--run-and-delete` also removes the file afterwards (probe workflow: write+execute+cleanup in one call).
 - `trilogy file move|delete|exists ...` - manage workspace paths.
 - `trilogy fmt <file|dir>` - format Trilogy scripts.
 - `trilogy unit <file|dir>` - validate with mocked datasources.

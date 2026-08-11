@@ -120,6 +120,9 @@ class AgentState:
     # AgentConfig.allow_file_read — query-gen evals push schema discovery
     # through `explore` rather than reading raw file contents.
     allow_file_read: bool = True
+    # One id per conversation: repeat `explore` payload entries collapse to
+    # `already_shown` stubs within a session (see scripts/explore_seen.py).
+    explore_session: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 SHOW_MESSAGE_TOOL = LLMToolDefinition(
@@ -141,7 +144,10 @@ TRILOGY_TOOL = LLMToolDefinition(
         '{"event":"result","columns":[...],"rows":[...],"row_count":N} for query '
         'output, {"type":"concepts","namespaces":{...}} for explore, '
         '{"event":"error","message":...} for failures. Oversized output is capped and middle truncated '
-        "with a warning."
+        "with a warning. Explore entries identical to earlier explore output "
+        'this session collapse to {"already_shown": <file>} stubs — the '
+        "content is unchanged from when that file was explored; add --reshow "
+        "to reprint."
     ),
     input_schema={
         "type": "object",
@@ -474,11 +480,19 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     # ``TRILOGY_AGENT_MODE`` is the separate declaration that a program reads
     # this: it turns warnings the agent would silently sail past — a run that
     # executed nothing — into non-zero exits.
+    subcommand = _first_non_flag_arg(raw_args)
+    out_limit = _explore_output_cap(subcommand, raw_args, state.tool_output_limit)
     child_env = {
         **os.environ,
         "PYTHONIOENCODING": "utf-8",
         "TRILOGY_OUTPUT_FORMAT": "json",
         "TRILOGY_AGENT_MODE": "1",
+        # Session-scoped explore dedup (see scripts/explore_seen.py). The cap
+        # rides along so the CLI never records a payload this wrapper will
+        # truncate — content the agent never received must not be suppressed
+        # on a later call.
+        "TRILOGY_EXPLORE_SESSION": state.explore_session,
+        "TRILOGY_EXPLORE_RECORD_LIMIT": str(out_limit),
     }
     try:
         completed = subprocess.run(
@@ -500,12 +514,10 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     # --show all) — those can dump 30-40KB of every concept in every imported
     # namespace. Narrow regex calls already targeted the question; they use
     # the full general budget so a 12KB result doesn't get sliced mid-output.
-    subcommand = _first_non_flag_arg(raw_args)
     if subcommand == "agent-info":
         stdout = completed.stdout or ""
         stderr = completed.stderr or ""
     else:
-        out_limit = _explore_output_cap(subcommand, raw_args, state.tool_output_limit)
         # stdout is structured JSON events — truncate on event boundaries so the
         # agent never receives a sliced, unparseable object. stderr is free text.
         stdout = truncate_json_events(completed.stdout or "", out_limit)

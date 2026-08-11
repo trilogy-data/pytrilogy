@@ -16,14 +16,17 @@ from trilogy.scripts.display import (
     print_error,
     print_info,
     print_success,
+    print_warning,
 )
 from trilogy.scripts.file_helpers import (
     LIST_MAX_ENTRIES,
     FileNotFoundError,
     FileOperationError,
+    LocalFileBackend,
     get_backend,
     preql_description,
 )
+from trilogy.scripts.file_helpers.backends import FileBackend
 from trilogy.scripts.file_helpers.preql_validation import validate_preql_content
 
 _FETCH_SCHEMES = {"http", "https", "file"}
@@ -309,7 +312,26 @@ _CONTENT_FROM_STDIN = "\x00__content_from_stdin__\x00"
     help="For .preql targets, compile and emit the last statement's generated "
     "SQL alongside the write confirmation.",
 )
+@click.option(
+    "--run",
+    "run_after",
+    is_flag=True,
+    default=False,
+    help="After a successful write, execute the file exactly as `trilogy run "
+    "<path>` would (same output; the run's exit code becomes this command's "
+    "exit code). Local paths only.",
+)
+@click.option(
+    "--run-and-delete",
+    "run_and_delete",
+    is_flag=True,
+    default=False,
+    help="Like --run, but delete the written file once the run completes "
+    "(success or failure) — one call for throwaway probe queries.",
+)
+@click.pass_context
 def write_cmd(
+    ctx: click.Context,
     path: str,
     content: str | None,
     from_file: str | None,
@@ -319,6 +341,8 @@ def write_cmd(
     force: bool,
     quiet: bool,
     show_sql: bool,
+    run_after: bool,
+    run_and_delete: bool,
 ) -> None:
     """Write/overwrite the file at PATH.
 
@@ -342,6 +366,9 @@ def write_cmd(
     if len(sources) > 1:
         print_error("Pass at most one of --content, --from-file, or --from-url.")
         raise click.exceptions.Exit(2)
+    if run_after and run_and_delete:
+        print_error("Pass at most one of --run or --run-and-delete.")
+        raise click.exceptions.Exit(2)
     if escapes and content is None:
         # `--escapes` interprets `\n`/`\t` in an INLINE `--content` value — its
         # whole purpose is no-heredoc shells. stdin already carries real newlines,
@@ -353,6 +380,13 @@ def write_cmd(
         raise click.exceptions.Exit(2)
 
     backend = _resolve(path)
+
+    if (run_after or run_and_delete) and not isinstance(backend, LocalFileBackend):
+        print_error(
+            "--run/--run-and-delete only support local paths; "
+            f"{path!r} targets a non-local backend."
+        )
+        raise click.exceptions.Exit(2)
 
     if no_create and not backend.exists(path):
         print_error(f"Refusing to create {path} (--no-create).")
@@ -393,13 +427,20 @@ def write_cmd(
     except FileOperationError as exc:
         _fail(exc, code=2)
 
-    if quiet:
-        return
+    if not quiet:
+        _report_write(
+            path, len(data), show_sql and not force and path.endswith(".preql")
+        )
+    if run_after or run_and_delete:
+        _run_written_file(ctx, backend, path, delete_after=run_and_delete)
+
+
+def _report_write(path: str, byte_count: int, show_sql: bool) -> None:
     # Optionally feed the just-written query's codegen back to the caller so an
     # agent can inspect the generated SQL (e.g. spot a degenerate GROUP BY)
     # before running. Off by default — compiling adds latency and tokens.
-    if not (show_sql and not force and path.endswith(".preql")):
-        _emit_write_success(path, len(data), None)
+    if not show_sql:
+        _emit_write_success(path, byte_count, None)
         return
     try:
         last_sql = _last_statement_sql(path)
@@ -408,12 +449,36 @@ def write_cmd(
         # preview failed. Confirm the write, then surface the rendering error
         # loudly — a compile failure on a resolvable query is a framework bug
         # worth reporting, not something to swallow.
-        _emit_write_success(path, len(data), None)
+        _emit_write_success(path, byte_count, None)
         from trilogy.scripts.common import handle_execution_exception
 
         handle_execution_exception(exc, source=path)
         return  # unreachable — handle_execution_exception raises Exit
-    _emit_write_success(path, len(data), last_sql)
+    _emit_write_success(path, byte_count, last_sql)
+
+
+def _run_written_file(
+    ctx: click.Context, backend: FileBackend, path: str, delete_after: bool
+) -> None:
+    """Execute the just-written file through the ``run`` command's own path so
+    output events and exit-code semantics match ``trilogy run <path>`` exactly.
+    With ``delete_after`` the file is removed once the run completes — success
+    or failure — without masking the run's outcome."""
+    # Resolve `run` through the root group: the module-level `run` is a bare
+    # decorated function, and the LazyGroup builds (and caches) the one true
+    # Command from it — wrapping it again here would strip its params.
+    from trilogy.scripts.trilogy import cli as root_cli
+
+    run_command = root_cli.get_command(ctx, "run")
+    assert run_command is not None
+    try:
+        ctx.invoke(run_command, input=path)
+    finally:
+        if delete_after:
+            try:
+                backend.delete(path)
+            except Exception as exc:
+                print_warning(f"Failed to delete {path} after run: {exc}")
 
 
 def _emit_write_success(path: str, byte_count: int, last_sql: str | None) -> None:

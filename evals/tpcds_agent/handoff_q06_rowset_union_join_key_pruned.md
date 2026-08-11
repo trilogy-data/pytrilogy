@@ -1,8 +1,21 @@
-# Handoff: q06 prunes a rowset key required by `union join`
+# Handoff: `grain(...)` in a filtered aggregate drops a scoped-join key
 
-**Open as of 2026-08-10.** This is independent of aggregate-datasource
+**Still open as of 2026-08-10**, reconfirmed after rebasing onto
+`830fc4329` ([Feat]: Hierarchical `then where` staged filters, #633) and
+rebuilding the rust parser. This is independent of aggregate-datasource
 selection: the failing query selects only the ordinary `store_sales` and item
 datasources.
+
+> **Root cause narrowed — see "Minimal trigger" below.** The original
+> hypothesis in this document (the hidden-concept pass prunes the rowset's
+> key) is **disproven**: the key can be present in the CTE and the join still
+> degrades. The actual trigger is the `grain(...)` wrapper on a filtered
+> aggregate's key.
+>
+> **Rebuild the rust parser before investigating.** A stale
+> `_preql_import_resolver` .pyd additionally swallows the rowset's `WHERE`
+> clause, which looks like a second defect but is not one. Run
+> `.venv\Scripts\python.exe -m maturin develop --release` from the repo root.
 
 ## Summary
 
@@ -93,19 +106,50 @@ and returns the correct 46 rows. This fresh A/B is additional evidence that
 aggregate materialization is not causal: candidate shape determines whether
 the optimizer hits the key-liveness defect.
 
+## Minimal trigger
+
+```powershell
+.venv\Scripts\python.exe evals\tpcds_agent\repro_q06_min_grain_scoped_join.py
+```
+
+Two legs differing by **one token**. Both use a root-import `item` rowset
+grouped by category and a `union join ss.item.category = cat_avg.category`:
+
+| filtered count key | rendered join |
+| --- | --- |
+| `count(ss.item.sk ? ...)` | `... on "highfalutin"."cat_avg_category" is not distinct from "ss_item_items"."I_CATEGORY"` |
+| `count(grain(ss.item.sk) ? ...)` | `... on 1=1` |
+
+The `grain(...)` wrapper alone flips it. Compositeness is not required — a
+single-key `grain(ss.item.sk)` already fails, so the composite
+`grain(ss.item.sk, ss.ticket_number)` in q06 is incidental.
+
+## What is ruled out
+
+Each of these was tested against the rebased tree and does **not** cause it:
+
+- **Key pruning / `HideUnusedConcepts`.** Adding `cat_avg.category` to the
+  outer projection keeps the alias alive through the CTE chain
+  (`"quizzical"."cat_avg_category"` is projected into the join CTE) and the
+  join is *still* `on 1=1`. The key being absent is a symptom, not the cause.
+- **The `is not null` presence rewrite.** Dropping
+  `ss.item.category is not null` from the count predicate — so no
+  `_virt_presence_*` marker is generated — does not restore the join.
+- **Cross-namespace keys.** An `item`-namespace rowset joined to
+  `ss.item.category` renders correctly without the `grain()` wrapper.
+- **`union join` specifically.** `subset join` degrades identically, so this
+  is not a `union`/coalescing-join rendering path issue.
+- **Aggregate datasource substitution** (already covered above).
+
 ## Likely root area
 
-The hidden-concept pass removes `cat_avg.category` from the grouped rowset even
-though the scoped join still requires it. Inspect rowset output liveness and
-join-key exposure around:
-
-- `HideUnusedConcepts` (the debug trace reports the category aliases as hidden);
-- scoped/coalescing join key propagation; and
-- rendering of `union join` when one side's key has been pruned.
-
-This resembles a liveness/dependency accounting issue more than join
-inference: the parser retains the explicit join, but its right-hand key is no
-longer available when the CTE graph is rendered.
+Scoped-join key propagation through the grain-scoped filtered-aggregate
+lowering. The `grain(...)` spec appears to rebuild the aggregate's source node
+at the declared grain without carrying the scoped join's key requirement into
+that node's output set, so by the time the join is rendered neither side
+exposes the key. Inspect the filtered-aggregate/`grain()` path in
+`trilogy/core/processing/v4_node_generators/` and how scoped-join keys are
+registered as required outputs.
 
 ## Desired behavior
 
