@@ -1,4 +1,4 @@
-CREATE OR REPLACE TABLE agg_store_sales_daily AS
+CREATE OR REPLACE TABLE fact_agg_store_sales_daily AS
 SELECT
     ss_sold_date_sk,
     ss_item_sk,
@@ -24,10 +24,10 @@ SELECT
     sum(ss_net_paid) AS sum_net_paid,
     sum(ss_ext_tax) AS sum_ext_tax,
     sum(ss_wholesale_cost) AS sum_wholesale_cost
-FROM store_sales
+FROM fact_store_sales
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE agg_catalog_sales_daily AS
+CREATE OR REPLACE TABLE fact_agg_catalog_sales_daily AS
 SELECT
     cs_sold_date_sk,
     cs_ship_date_sk,
@@ -57,10 +57,10 @@ SELECT
     sum(cs_ext_list_price) AS sum_ext_list_price,
     sum(cs_net_profit) AS sum_net_profit,
     sum(cs_coupon_amt) AS sum_coupon_amt
-FROM catalog_sales
+FROM fact_catalog_sales
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE agg_web_sales_daily AS
+CREATE OR REPLACE TABLE fact_agg_web_sales_daily AS
 SELECT
     ws_sold_date_sk,
     ws_ship_date_sk,
@@ -91,10 +91,10 @@ SELECT
     sum(ws_ext_discount_amt) AS sum_ext_discount_amt,
     sum(ws_net_profit) AS sum_net_profit,
     sum(ws_net_paid) AS sum_net_paid
-FROM web_sales
+FROM fact_web_sales
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE agg_store_returns_daily AS
+CREATE OR REPLACE TABLE fact_agg_store_returns_daily AS
 SELECT
     sr_returned_date_sk,
     sr_item_sk,
@@ -118,10 +118,10 @@ SELECT
     sum(sr_reversed_charge) AS sum_reversed_charge,
     sum(sr_store_credit) AS sum_store_credit,
     sum(sr_net_loss) AS sum_net_loss
-FROM store_returns
+FROM fact_store_returns
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE agg_catalog_returns_daily AS
+CREATE OR REPLACE TABLE fact_agg_catalog_returns_daily AS
 SELECT
     cr_returned_date_sk,
     cr_item_sk,
@@ -152,10 +152,10 @@ SELECT
     sum(cr_reversed_charge) AS sum_reversed_charge,
     sum(cr_store_credit) AS sum_store_credit,
     sum(cr_net_loss) AS sum_net_loss
-FROM catalog_returns
+FROM fact_catalog_returns
 GROUP BY ALL;
 
-CREATE OR REPLACE TABLE agg_web_returns_daily AS
+CREATE OR REPLACE TABLE fact_agg_web_returns_daily AS
 SELECT
     wr_returned_date_sk,
     wr_item_sk,
@@ -183,5 +183,5 @@ SELECT
     sum(wr_reversed_charge) AS sum_reversed_charge,
     sum(wr_account_credit) AS sum_account_credit,
     sum(wr_net_loss) AS sum_net_loss
-FROM web_returns
+FROM fact_web_returns
 GROUP BY ALL;

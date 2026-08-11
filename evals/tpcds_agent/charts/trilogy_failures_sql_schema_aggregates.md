@@ -1,6 +1,6 @@
-# Trilogy failure analysis — 20260810-200846
+# Trilogy failure analysis — 20260810-211908
 
-- Run `20260810-200843_sql_schema_aggregates` | `deepseek/deepseek-chat` | sf=1
+- Run `20260810-211903_sql_schema_aggregates` | `deepseek/deepseek-chat` | sf=1
 - `trilogy` calls: 0 | failed: 0
 
 ## Categories

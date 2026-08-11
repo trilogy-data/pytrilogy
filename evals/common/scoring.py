@@ -430,6 +430,7 @@ def score_query(
 
 def _score_subprocess_target(
     db_path: str,
+    reference_db_path: str | None,
     workspace: str,
     idx: int,
     extension: str,
@@ -449,6 +450,15 @@ def _score_subprocess_target(
             extension,
             enable_python_datasources=enable_python_datasources,
         )
+        reference_engine = (
+            make_scoring_engine(
+                Path(reference_db_path),
+                Path(custom_refs_dir) if custom_refs_dir else Path(workspace),
+                extension,
+            )
+            if reference_db_path
+            else None
+        )
         result = _score_one(
             engine,
             Path(workspace),
@@ -456,6 +466,7 @@ def _score_subprocess_target(
             extension,
             params=params,
             custom_refs_dir=Path(custom_refs_dir) if custom_refs_dir else None,
+            reference_engine=reference_engine,
         )
         conn.send(("ok", result))
     except Exception as exc:  # pragma: no cover - serialised back to parent
@@ -473,6 +484,7 @@ def score_query_timed(
     params: dict | None = None,
     custom_refs_dir: Path | None = None,
     enable_python_datasources: bool = False,
+    reference_db_path: Path | None = None,
 ) -> QueryResult:
     """Score one query in a child process bounded by ``timeout`` seconds. A
     hang in `generate_sql` (planner loop) or DuckDB execution can no longer
@@ -486,6 +498,7 @@ def score_query_timed(
         target=_score_subprocess_target,
         args=(
             str(db_path),
+            str(reference_db_path) if reference_db_path else None,
             str(workspace),
             idx,
             extension,
@@ -630,6 +643,7 @@ def _score_one(
     extension: str,
     params: dict | None = None,
     custom_refs_dir: Path | None = None,
+    reference_engine=None,
 ) -> QueryResult:
     from trilogy.core.models.environment import Environment
 
@@ -677,7 +691,9 @@ def _score_one(
         )
 
     try:
-        reference = _load_reference(engine, idx, extension, custom_refs_dir)
+        reference = _load_reference(
+            reference_engine or engine, idx, extension, custom_refs_dir
+        )
     except Exception as exc:
         return QueryResult(
             id=idx,

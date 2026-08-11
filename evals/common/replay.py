@@ -29,7 +29,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, prompts, scoring
+from . import agent_runner, analyze_run, db, prompts, scoring
 from .categories import Category, get_category
 from .main import PROVIDER_ENV, SCORE_TIMEOUT
 from .report import agent_metric_fields, load_env, render_markdown
@@ -464,6 +464,9 @@ def replay_query(
     )
     timed_out = result.get("timed_out", False)
     exit_code = result.get("exit_code", 0)
+    reference_db_path = None
+    if report.get("ingest", {}).get("separate_reference_database"):
+        reference_db_path = db.cache_path(spec, report["meta"]["scale_factor"])
 
     with lock:
         produced = worker_dir / prompts.candidate_filename(
@@ -483,6 +486,7 @@ def replay_query(
                 SCORE_TIMEOUT,
                 params=entry.get("params"),
                 custom_refs_dir=refs,
+                reference_db_path=reference_db_path,
             )
         except Exception as exc:
             score = scoring.QueryResult(

@@ -51,7 +51,7 @@ grain (
     promotion.sk,
     pos_address.sk
 )
-address agg_store_sales_daily;
+address fact_agg_store_sales_daily;
 
 auto _warehouse_count_return_items <- count(item.sk);
 auto _warehouse_count_return_customers <- count(return_customer.sk);
@@ -100,4 +100,4 @@ grain (
     return_store.sk,
     return_reason.sk
 )
-address agg_store_returns_daily;
+address fact_agg_store_returns_daily;

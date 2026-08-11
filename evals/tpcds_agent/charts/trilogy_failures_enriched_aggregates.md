@@ -1,24 +1,23 @@
-# Trilogy failure analysis — 20260810-200846
+# Trilogy failure analysis — 20260810-211911
 
-- Run `20260810-200843_enriched_aggregates` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 255 | failed: 12 (5%)
+- Run `20260810-211903_enriched_aggregates` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 300 | failed: 18 (6%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `disabled-tool` | 4 | 33% |
-| `syntax-parse` | 3 | 25% |
-| `other` | 2 | 17% |
-| `undefined-concept` | 1 | 8% |
-| `cli-misuse` | 1 | 8% |
-| `file-not-found` | 1 | 8% |
+| `disabled-tool` | 5 | 28% |
+| `cli-misuse` | 5 | 28% |
+| `other` | 5 | 28% |
+| `syntax-parse` | 2 | 11% |
+| `no-output` | 1 | 6% |
 
 ## Detail
 
 ### `disabled-tool`
 
-- `trilogy file read raw/all_sales.preql`
+- `trilogy file read answer_3705756794.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -28,7 +27,12 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read answer_2524943990.preql`
+- `trilogy file read raw/all_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -39,90 +43,131 @@
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 
-### `syntax-parse`
-
-- `trilogy run --explore-db`
-
-  ```text
-  Syntax error in stdin:  --> 1:3
-    |
-  1 | --explore-db;
-    |   ^---
-    |
-    = expected PURPOSE, PROPERTY, UNIQUE, or AUTO
-  Location:
-  -- ??? explore-db;
-  ```
-- `trilogy file write tmp_explore.preql`
-
-  ```text
-  refused to write 'tmp_explore.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [223]: `*` is not a valid argument - Trilogy has no `*` row-marker, so `count(*)` / `sum(*)` don't parse. To count rows at the query grain, count a NON-NULL GRAIN KEY: `count(<key>)` (counts are already distinct) - e.g. `count(store_sales.id)`; to count a related dimension's rows, count its key (`count(customer.id)`). It MUST be a key, and one that is not nullable: `count(x)` skips rows where `x` is NULL, so counting a nullable property (a name, a date, any optional field) silently undercounts. When the grain takes SEVERAL keys, name them with `grain(...)`: `count(grain(order_id, item.id))` counts order+item combinations, and `count_distinct(grain(first_name, last_name, sale_date))` counts distinct combinations - `grain()` is never NULL, so combinations with a missing member still count. For any other aggregate, pass the column you mean, e.g. `sum(store_sales.ext_sales_price)`.
-  Location:
-  ...d, s.ext_sales, s.net_profit, ??? count(*) over() as total limit...
-  ```
-- `trilogy file write tmp_verify.preql`
-
-  ```text
-  refused to write 'tmp_verify.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 9:1
-    |
-  9 | by *;
-    | ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...s_price),0) as all_ext_sales
-   ??? by *;
-  ```
-
-### `other`
-
-- `trilogy run tmp_explore.preql`
-
-  ```text
-  trilogy error: subprocess timed out after 600s.
-  ```
-- `trilogy agent-info syntax example intersect`
-
-  ```text
-  Unknown syntax example: 'intersect'
-
-  Available Trilogy syntax examples - print one with `trilogy agent-info syntax example <name>`:
-
-  - `python-datasource` - run a local Python script as a datasource: wrap a function in `trilogy.io.run`, which writes the Arrow IPC stream to stdout for you from a table, dataframe, or list of dicts; declare concepts, map script columns in `datasource (...)`, use `grain (...) file `path.py`;`, then reference locally declared concepts WITHOUT the datasource name as a prefix
-  - `query-structure` - the clause order of a query (`where` -> `select` <cols> -> join(s) ->
-  …
-  subtotal/total rows and to sort by level
-  - `rank-over-rollup` - rank rollup subtotals/leaves with a SINGLE `rank(a,b) over (partition by level, parent ...)` - not separate ranks per level
-  - `staged-membership` - compute a membership set in a `rowset` (keys meeting a count/HAVING), then filter the main query with `<key> in <rowset>.<col>`
-  - `correlated-exists-via-grouped-counts` - translate `EXISTS other` / `NOT EXISTS other matching` over the same model into two `count(...) by <grain>` compared in `where` (`> 1` = another exists, `= 1` = no other matches) - pin the correlation grain with `by`
-  ```
-
-### `undefined-concept`
-
-- `trilogy run answer_3863442186.preql`
-
-  ```text
-  Syntax error in answer_3863442186.preql: Undefined concept: store_sales.customer.customer.id. Suggestions: ['store_sales.customer.id', 'store_sales.customer.last_name', 'store_sales.customer.sk', 'store_sales.return_customer.id', 'store_sales.customer.first_shipto_date.id', 'store_sales.customer.current_address.id']
-  ```
-
 ### `cli-misuse`
 
+- `trilogy explore C:\trilogy\raw\store_sales.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'C:\\trilogy\\raw\\store_sales.preql' does not exist.
+  ```
 - `trilogy explore`
 
   ```text
   Missing argument 'PATH'.
   ```
-
-### `file-not-found`
-
-- `trilogy file list ./root --recursive`
+- `trilogy explore catalog_sales.preql`
 
   ```text
-  No such path: ./root
+  Invalid value for 'PATH': File 'catalog_sales.preql' does not exist.
+  ```
+- `trilogy explore item.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'item.preql' does not exist.
+  ```
+- `trilogy explore date.preql`
+
+  ```text
+  Invalid value for 'PATH': File 'date.preql' does not exist.
+  ```
+
+### `other`
+
+- `trilogy run answer_3697440276.preql`
+
+  ```text
+  zero-length delimited identifier at or near \"\"\"\"\n\nLINE 115: ...r_id_at_a_billing_customer_id_at_web01_cid_at_web01_cid']\".\"\",\"busy\".\"INVALID_ALIAS: [MODELS_EXECUTE] Concept local...\n                                                                        ^\n[SQL: \nWITH \nscrawny as (\nSELECT\n    \"a_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"web01_cid\",\n    sum(\"a_web_sales_unified\".\"WS_EXT_LIST_PRICE\" - \"a_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\") as \"web01_rev\"\nFROM\n    \"fact_web_sales\" as \"a_web_sales_unified\"\n    INNER JOIN \"dim_date_dim\" as \"a
+  …
+  macho\".\"web02_cid\") asc nulls first,\n    \"concerned\".\"first_name\" asc nulls first,\n    \"concerned\".\"last_name\" asc nulls first,\n    \"concerned\".\"preferred_cust_flag\" asc nulls first\nLIMIT (100)]\n(Background on this error at: https://sqlalche.me/e/20/f405)",
+    "error_type": "ProgrammingError"
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 20.076,
+    "ok": false,
+    "rows": 0
+  }
+  {
+    "event": "output_truncated",
+    "dropped_events": 1,
+    "note": "Output exceeded the tool cap; trailing events dropped. Narrow the call (--regex, --show, fewer rows) to see the rest."
+  }
+  ```
+- `trilogy run answer_3697440276.preql`
+
+  ```text
+  zero-length delimited identifier at or near \"\"\"\"\n\nLINE 115: ...r_id_at_a_billing_customer_id_at_web01_cid_at_web01_cid']\".\"\",\"busy\".\"INVALID_ALIAS: [MODELS_EXECUTE] Concept local...\n                                                                        ^\n[SQL: \nWITH \nscrawny as (\nSELECT\n    \"a_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"web01_cid\",\n    sum(\"a_web_sales_unified\".\"WS_EXT_LIST_PRICE\" - \"a_web_sales_unified\".\"WS_EXT_DISCOUNT_AMT\") as \"web01_rev\"\nFROM\n    \"fact_web_sales\" as \"a_web_sales_unified\"\n    INNER JOIN \"dim_date_dim\" as \"a
+  …
+  macho\".\"web02_cid\") asc nulls first,\n    \"concerned\".\"first_name\" asc nulls first,\n    \"concerned\".\"last_name\" asc nulls first,\n    \"concerned\".\"preferred_cust_flag\" asc nulls first\nLIMIT (100)]\n(Background on this error at: https://sqlalche.me/e/20/f405)",
+    "error_type": "ProgrammingError"
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 12.109,
+    "ok": false,
+    "rows": 0
+  }
+  {
+    "event": "output_truncated",
+    "dropped_events": 1,
+    "note": "Output exceeded the tool cap; trailing events dropped. Narrow the call (--regex, --show, fewer rows) to see the rest."
+  }
+  ```
+- `trilogy `
+
+  ```text
+  Tool call 'trilogy' rejected: invalid tool arguments: Expecting value: line 1 column 54 (char 53). Re-issue the call with valid JSON arguments.
+  ```
+- `trilogy run probe2.preql`
+
+  ```text
+  Syntax error in probe2.preql: Output column 'ss_present' renames 'local.ss_present' back to the name of an existing concept 'ss_present' (defined at line 4) that 'local.ss_present' is derived from, so the rename refers back to itself. Use a distinct output name (e.g. 'ss_present_out').
+  ```
+- `trilogy run probe6.preql`
+
+  ```text
+  Unexpected error in probe6.preql: composite membership right-hand operands must resolve to a single existence source, got ['INVALID_REFERENCE_BUG<Missing source reference to cs.billing_customer.sk>', 'dim_item as cs_item_items']
+  ```
+
+### `syntax-parse`
+
+- `trilogy file write check2.preql`
+
+  ```text
+  refused to write 'check2.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [224]: Using `SELECT DISTINCT`? Trilogy has no DISTINCT keyword - a select is already grouped by its non-aggregate columns, so listing the columns you want already returns distinct rows. Remove `distinct`: write `select s.channel, s.channel_dim_text_id` (not `select distinct s.channel, ...`).
+  Location:
+  ...g_sales as cs;
+
+   select
+       ??? distinct cs.catalog_page.id
+   l...
+  ```
+- `trilogy file write probe5.preql`
+
+  ```text
+  refused to write 'probe5.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 18:1
+     |
+  18 | union join ss.customer.sk = cs.billing_customer.sk
+     | ^---
+     |
+     = expected limit, order_by, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ...ling_customer.sk is not null
+   ??? union join ss.customer.sk = cs...
+  ```
+
+### `no-output`
+
+- `trilogy run raw/all_sales.preql`
+
+  ```text
+  Nothing was executed: parsed 31 definition statement(s) (12 datasources, 11 imports, 5 concepts, 3 propertys) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
   ```

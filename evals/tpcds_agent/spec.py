@@ -35,14 +35,14 @@ MESSY_WAREHOUSE_CATEGORIES = (
     ),
     Category(
         "sql_schema_noise",
-        "db+schema+noise",
+        "db+schema+aggregates+noise",
         "sql",
         ".sql",
         warehouse_variants.setup_sql_schema_noise,
     ),
     Category(
         "enriched_noise",
-        "enriched+noise",
+        "enriched+aggregates+noise",
         "trilogy",
         ".preql",
         warehouse_variants.setup_enriched_noise,

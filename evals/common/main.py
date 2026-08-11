@@ -557,6 +557,7 @@ def run(spec: BenchmarkSpec) -> int:
         # Trilogy per-query tasks tell the agent raw/ is already populated;
         # without it every query starts from a broken premise. Abort.
         return 2
+    reference_db_path = cached if ingest.get("separate_reference_database") else None
 
     concurrency = max(1, args.concurrency)
     monitor_mode = "quiet" if concurrency > 1 else args.monitor
@@ -749,6 +750,7 @@ def run(spec: BenchmarkSpec) -> int:
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                             enable_python_datasources=spec.enable_python_datasources,
+                            reference_db_path=reference_db_path,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -817,6 +819,7 @@ def run(spec: BenchmarkSpec) -> int:
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                             enable_python_datasources=spec.enable_python_datasources,
+                            reference_db_path=reference_db_path,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -904,6 +907,7 @@ def run(spec: BenchmarkSpec) -> int:
     report["ingest"] = {
         "exit_code": ingest["exit_code"],
         "duration_seconds": round(ingest["duration"], 1),
+        "separate_reference_database": bool(reference_db_path),
     }
 
     if args.query_ids and args.splice_from != "none":

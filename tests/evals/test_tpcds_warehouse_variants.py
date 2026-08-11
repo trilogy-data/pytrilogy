@@ -11,7 +11,10 @@ from common import agent_runner
 from common.categories import categories_for, funnel_order_for
 from tpcds_agent.spec import SPEC
 from tpcds_agent.warehouse_variants import (
+    PHYSICAL_TABLE_RENAMES,
     _append_aggregate_models,
+    _rename_benchmark_tables,
+    _retarget_model_addresses,
     _run_sql,
 )
 
@@ -38,12 +41,31 @@ def test_noise_variant_adds_unrelated_tables(tmp_path: Path):
 
     assert table_count == 12
     with duckdb.connect(str(db_path), read_only=True) as connection:
-        assert connection.execute("select count(*) from hr_employee").fetchone() == (
-            500,
-        )
         assert connection.execute(
-            "select count(*) from application_audit_event"
+            "select count(*) from dim_hr_employee"
+        ).fetchone() == (500,)
+        assert connection.execute(
+            "select count(*) from fact_application_audit_event"
         ).fetchone() == (15000,)
+
+
+def test_benchmark_tables_receive_dimension_and_fact_prefixes(tmp_path: Path):
+    db_path = tmp_path / "warehouse.duckdb"
+    with duckdb.connect(str(db_path)) as connection:
+        for table in PHYSICAL_TABLE_RENAMES:
+            connection.execute(f'create table "{table}" (id int)')
+
+    _rename_benchmark_tables(db_path)
+
+    with duckdb.connect(str(db_path), read_only=True) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "select table_name from information_schema.tables "
+                "where table_schema = 'main' and table_type = 'BASE TABLE'"
+            ).fetchall()
+        }
+    assert tables == set(PHYSICAL_TABLE_RENAMES.values())
 
 
 def test_aggregate_models_are_private_and_materialized(tmp_path: Path):
@@ -51,6 +73,12 @@ def test_aggregate_models_are_private_and_materialized(tmp_path: Path):
         tmp_path, SPEC.default_enriched_dir, SPEC.enriched_skip_prefixes
     )
     assert result["exit_code"] == 0
+
+    rewrites = _retarget_model_addresses(tmp_path)
+    assert rewrites > 0
+    assert "address fact_store_sales;" in (
+        tmp_path / "raw" / "store_sales.preql"
+    ).read_text(encoding="utf-8")
 
     base = Environment(working_path=tmp_path)
     imports = (
@@ -78,5 +106,5 @@ def test_aggregate_models_are_private_and_materialized(tmp_path: Path):
         "ss.store.sk, ss.promotion.sk, ss.pos_address.sk, "
         "ss._warehouse_sum_ext_sales_price LIMIT 1;"
     )[-1]
-    assert "agg_store_sales_daily" in sql
+    assert "fact_agg_store_sales_daily" in sql
     assert '"store_sales"' not in sql

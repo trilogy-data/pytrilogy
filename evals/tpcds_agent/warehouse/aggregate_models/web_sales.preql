@@ -60,7 +60,7 @@ grain (
     pos_ship_household_demographic.sk,
     pos_bill_household_demographic.sk
 )
-address agg_web_sales_daily;
+address fact_agg_web_sales_daily;
 
 auto _warehouse_count_return_items <- count(item.sk);
 auto _warehouse_count_return_customers <- count(return_customer.sk);
@@ -117,4 +117,4 @@ grain (
     return_reason.sk,
     return_web_page.sk
 )
-address agg_web_returns_daily;
+address fact_agg_web_returns_daily;
