@@ -1,7 +1,8 @@
 # Handoff: `count(<key>)` returned 274,743 for 160,000 distinct orders (q16)
 
-**Status: unreproduced engine-bug candidate. Isolated from the messy-warehouse
-first-20 run; needs a minimal repro before any fix.**
+**Status: REPRODUCED and FIXED.** Real planner defect, not a doc over-promise.
+Repro: `evals/tpcds_agent/repro_q16_count_key_not_distinct.py`. Regression test:
+`tests/modeling/tpc_ds_duckdb/test_q16_count_key_shared_filter_stream.py`.
 
 ## The claim vs the observation
 
@@ -13,73 +14,65 @@ at single-row grain, while the true distinct order count is **160,000** —
 independently confirmed two ways in the same session (94,339 + 65,661 and
 93,142 + 66,858 from complementary rowset partitions).
 
-`order_number` is a key, but one key of the fact's composite grain
-`<order_number, item.sk>`. 274,743 is neither the distinct order count
-(160,000) nor the line count (~1.44M at SF1), which makes it look like a
-count over some intermediate node's grain rather than a distinct count of the
-key. The agent burned ~10 probe queries on this; the query ultimately FAILED
-scoring.
+Against the un-renamed `tests/modeling/tpc_ds_duckdb` model at sf=1 the same
+probe returned **254,337** (the eval's messy schema shifts the number, not the
+defect). The doc promise was right; the plan did not honor it.
 
-## Evidence (exact queries from the log)
+## Root cause
 
-Probe at global grain (debug1, exit 0):
+`count(<key>)` is planned as **dedup-then-COUNT**, not `COUNT(DISTINCT)`: the
+aggregate bucket carries `aggregate_input_grain = {cs.order_number}` and a
+normalization `GroupNode` collapses the input stream to that grain, after which
+a plain `COUNT` of the key is distinct by construction.
 
-```trilogy
-import raw.catalog_sales as cs;
+That normalization GROUP must also project **every argument the bucket's
+aggregates read** (`strategy_builder.build_strategy_node`, the
+`normalize_addrs` block). `count(cs.order_number ? cs.is_returned = true)` sits
+in the *same* bucket — `_aggregate_input_grain` reduces a FILTER-over-a-key
+argument to the key, so both counts key to input grain `{cs.order_number}` —
+but its argument is the filter virtual `_virt_filter_order_number_*`, which
+`order_number` does **not** determine. It became a second GROUP BY key:
 
-where 1=1
-select
-    count(cs.order_number) as all_orders,                      # -> 274,743
-    count_distinct(cs.warehouse.sk) as all_warehouses,         # -> 5
-    count(cs.order_number ? cs.is_returned = true) as returned_orders  # -> 96,277
-;
+```sql
+-- pre-fix
+GROUP BY 1, 2   -- (_virt_filter_order_number_*, cs_order_number)
+...
+SELECT count("wakeful"."cs_order_number") as "all_orders"
 ```
 
-Ground truth via rowset partition (debug6, exit 0):
+An order with both returned and unreturned lines survives as two rows, so the
+plain COUNT reports neither the distinct order count nor the line count — the
+"neither-rows-nor-distinct" number the original report flagged. The *filtered*
+count was accidentally immune (its virtual is NULL-or-the-key, so distinct
+pairs still map 1:1 to distinct returned orders), which is why only the
+unfiltered count was wrong.
 
-```trilogy
-import raw.catalog_sales as cs;
+The `aggregate_distinct_addrs` machinery for exactly this
+(`_fold_distinct_rewritable_buckets`) never fired: it only rewrites a count
+folded *across* buckets, and here both counts were already in one bucket.
 
-with returned as
-where cs.return_quantity is not null
-select cs.order_number as order_id;
+## Fix
 
-with no_return as
-where cs.order_number not in returned.order_id
-select cs.order_number as order_id;
+`trilogy/core/processing/v4_helper/group_rules.py` —
+`_dedup_widened_distinct_members`: after the fold, flag every
+`aggregate_distinct_rewritable` COUNT in a bucket whose members drag a direct
+argument outside `input_grain | out_grain`. Those counts lose the dedup
+guarantee, so the DISTINCT becomes explicit and they render
+`COUNT(DISTINCT ...)`. A lone `count(<key>)` keeps the cheaper
+dedup-then-COUNT shape.
 
-select
-    count(returned.order_id) as returned_count,     # -> 93,142
-    count(no_return.order_id) as no_return_count    # -> 66,858  (sum = 160,000)
-;
-```
+Post-fix the probe returns `(160000, 5, 94339)`, byte-identical to the raw-SQL
+oracle.
 
-Note `where 1=1` in debug1 — check whether the tautological filter changes the
-sourcing (the second probe went through rowsets, which dedupe to their select
-grain by construction).
+## Footprint
 
-## Repro guidance
+Rendering all 132 `query*.preql` in `tests/modeling/tpc_ds_duckdb` +
+`tests/modeling/tpc_h` before and after: **0 changed, 132 byte-identical**. The
+benchmark corpus never puts a filtered and an unfiltered count of the same key
+in one select; agents do.
 
-- Model: `tests/modeling/tpc_ds_duckdb/catalog_sales.preql` (the eval seeds its
-  workspace from this directory; the eval's physical rename to `fact_*`/`dim_*`
-  should be irrelevant). NEVER run two pytest processes concurrently against
-  `tests/modeling` — shared memory-duckdb setup produces phantom failures.
-- Minimal check: `select count(cs.order_number) as c;` with and without
-  `where 1=1`, vs `select count_distinct(cs.order_number) as c;` vs the rowset
-  partition sum. Compare against direct SQL
-  `SELECT COUNT(DISTINCT cs_order_number) FROM catalog_sales`.
-- If it reproduces: inspect the generated SQL — the interesting question is
-  which source node hosted the count and at what grain (a pre-aggregation to
-  `<order_number, X>` before `count(order_number)` would produce a
-  neither-rows-nor-distinct number like this).
-- Before chasing, check `index_not_a_bug_verdicts` memory / prior `bug_q*`
-  files — count-at-grain semantics have prior verdicts; confirm this case is
-  not already adjudicated.
+## Doc note
 
-## Outcomes
-
-Either (a) a real distinctness defect in count-over-key planning — fix in the
-planner; or (b) the doc promise is over-broad for keys of composite grains —
-then the language reference's "`count(<key>)` is already distinct" bullet must
-be qualified, because agents build multi-hundred-k-token debugging loops on
-exactly this promise.
+No change needed to the "`count(<key>)` is already distinct" bullet — the
+promise now holds. Worth keeping the reference's existing steer toward
+`count(line_item)` for line-grain questions, which is a different point.

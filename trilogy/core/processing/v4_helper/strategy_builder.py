@@ -1338,6 +1338,64 @@ def _parents_already_at_input_grain(
     return True
 
 
+def _widening_inputs(node: StrategyNode) -> set[str]:
+    """Addresses `node` can project: its parents' visible outputs plus, for a leaf
+    scan, every column its datasource binds (a leaf has no parent nodes, so
+    `parent_output_addresses` alone reports nothing)."""
+    available = parent_output_addresses(node)
+    if isinstance(node, SelectNode) and isinstance(node.datasource, BuildDatasource):
+        available |= {c.address for c in node.datasource.output_concepts}
+    return available
+
+
+# A declared join key is normally one hop from the scan that binds it; the cap
+# stops a pathological chain from walking the whole plan per key.
+_JOIN_KEY_CHAIN_LIMIT = 4
+
+
+def _widen_scan_chain(
+    node: StrategyNode, concept: BuildConcept, depth: int = 0
+) -> bool:
+    """Project `concept` off `node`, widening the passthrough projection chain
+    beneath it when `node`'s own inputs cannot satisfy it. Returns whether the
+    concept ends up on `node`.
+
+    A merge parent can sit one or more projections above the scan that binds the
+    key (`count(grain(k) ? ...)` inserts a hash projection under the dedup group,
+    itself over the fact merge). Only the scan sees the key's column, so without
+    descending to it the declared key stops being carryable and the merge
+    cross-joins ON 1=1."""
+    if concept.address in {o.address for o in node.output_concepts}:
+        return True
+    if not isinstance(node, (SelectNode, MergeNode)):
+        return False
+    available = _widening_inputs(node)
+    if not concept_satisfiable(concept, available):
+        if depth >= _JOIN_KEY_CHAIN_LIMIT:
+            return False
+        # A SelectNode projects ONE stream, so descending a fan-in would change
+        # what the widened column means; a MergeNode joins its parents, so any
+        # arm that binds the key can supply it. A grain-collapsing parent is
+        # never widened -- that would move its grouping key.
+        if isinstance(node, SelectNode) and len(node.parents) != 1:
+            return False
+        if not any(
+            isinstance(below, (SelectNode, MergeNode))
+            and not below.force_group
+            and _widen_scan_chain(below, concept, depth + 1)
+            for below in node.parents
+        ):
+            return False
+        available = _widening_inputs(node)
+    widen_projection(
+        node,
+        [concept],
+        input_candidates=_row_lineage_closure(concept),
+        available_addresses=available,
+    )
+    return True
+
+
 def _widen_passthrough_group(
     group: StrategyNode, join_key_concepts: list[BuildConcept]
 ) -> None:
@@ -1351,22 +1409,8 @@ def _widen_passthrough_group(
         for inner in group.parents:
             # `force_group` on the inner scan is fine here — the wrapping
             # GroupNode being widened performs the dedup either way.
-            if not isinstance(inner, (SelectNode, MergeNode)):
+            if not _widen_scan_chain(inner, concept):
                 continue
-            available = parent_output_addresses(inner)
-            ds = getattr(inner, "datasource", None)
-            if isinstance(ds, BuildDatasource):
-                available |= {c.address for c in ds.output_concepts}
-            already = concept.address in {o.address for o in inner.output_concepts}
-            if not already and not concept_satisfiable(concept, available):
-                continue
-            if not already:
-                widen_projection(
-                    inner,
-                    [concept],
-                    input_candidates=_row_lineage_closure(concept),
-                    available_addresses=available,
-                )
             group_dirty |= widen_projection(
                 group, [concept], input_candidates=[concept], rebuild=False
             )

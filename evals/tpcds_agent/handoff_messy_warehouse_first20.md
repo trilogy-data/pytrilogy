@@ -1,6 +1,6 @@
 # Handoff: messy-warehouse first-20 experiment
 
-**Preliminary as of 2026-08-10.** This memo describes the hypothesis, the
+**Preliminary as of 2026-08-11.** This memo describes the hypothesis, the
 current experiment, and why the first result should not yet be treated as an
 effect. The intended audience is someone reviewing the setup with fresh eyes
 before we run all 99 benchmark questions.
@@ -20,19 +20,22 @@ The directional hypothesis was:
 2. The same physical additions will have little or no effect on the Trilogy
    agent because they do not expand its normal exploration surface.
 
-The fresh first-20 result ran opposite to the simple SQL hypothesis. SQL with
-aggregates plus noise scored **18/20**, versus **15/20 as reported** for SQL
-with aggregates alone, while using 3.4% fewer tokens. The latter score contains
-a q08 scoring timeout; the saved q08 candidate passes a direct rescore, making
-the candidate-correct comparison **18/20 versus 16/20**.
+Two first-20 runs now disagree on the direction of the SQL accuracy effect.
+Before the tool optimizations, SQL with aggregates plus noise beat aggregates
+alone 18/20 to 15/20 as reported, while using 3.4% fewer tokens. In the
+2026-08-11 rebaseline, aggregates plus noise lost 14/20 to 17/20 and used 6.3%
+more tokens. The current token delta closely matches the independently
+predicted cost of rebilling the 2,604 additional schema characters, but no SQL
+agent probed or selected an unrelated table. The accuracy drop therefore lacks
+the behavioral mechanism the hypothesis predicts.
 
-This is not evidence that noise helps. The enriched pair is a useful negative
-control: its installed models and configuration are byte-identical, and the
-extra physical noise is not introspectable, yet the two runs differed by one
-pass and 1.42 million tokens. Together with moving per-query failures and a
-known compiler defect activated by only one authored query shape, the result
-looks dominated by single-run agent variance. Replication is needed before a
-full benchmark launch or a causal claim.
+The tool optimization did move its intended metric: enriched raw tokens fell
+12.5% and 11.8% relative to the previous run. However, the enriched pair is
+still a useful negative control. Its task files, installed models, and
+configuration are byte-identical, and the extra physical noise is not
+introspectable, yet the current cells differ by two passes and 1.20 million
+tokens. Replication is still needed before a full benchmark launch or a causal
+accuracy claim.
 
 ## Context
 
@@ -142,7 +145,72 @@ configuration, schema input, installed semantic models, or tool results. It is
 still used in evaluator-side report names and this memo, which are not agent
 inputs.
 
-## Fresh first-20 result
+## Tool-optimization rebaseline (current)
+
+Run prefix: `20260811-015536`. The editable environment loaded the current
+working tree and reported Trilogy 0.3.321. All four category legs exited 0;
+all 80 candidates were scored, with no crash or scorer-error artifacts.
+
+The invocation was identical to the prior run:
+
+```powershell
+.venv\Scripts\python.exe evals\tpcds_agent\run_eval.py --categories sql_schema_aggregates,enriched_aggregates,sql_schema_noise,enriched_noise --num-queries 20 --provider deepseek --model deepseek-chat
+```
+
+| Category | Pass | Tokens | Iterations | Tool calls | Failures |
+|---|---:|---:|---:|---:|---|
+| SQL + aggregates | 17/20 | 2,455,252 | 163 | 203 | q08, q14, q20 |
+| SQL + aggregates + noise | 14/20 | 2,610,710 | 163 | 213 | q05, q08, q12, q16, q18, q20 |
+| Enriched + aggregates | 17/20 | 6,686,260 | 231 | 298 | q01, q14, q20 |
+| Enriched + aggregates + noise | 19/20 | 5,490,215 | 210 | 283 | q11 |
+
+### What changed relative to `20260810-211903`
+
+| Category | Pass change | Token change |
+|---|---:|---:|
+| SQL + aggregates | 15/20 to 17/20 | +451,484 (+22.5%) |
+| SQL + aggregates + noise | 18/20 to 14/20 | +674,085 (+34.8%) |
+| Enriched + aggregates | 17/20 to 17/20 | -957,316 (-12.5%) |
+| Enriched + aggregates + noise | 16/20 to 19/20 | -733,505 (-11.8%) |
+
+The old SQL aggregate score includes the q08 scorer timeout discussed below;
+its post-run candidate-correct score was 16/20. The table deliberately retains
+the immutable raw score.
+
+The enriched token reduction is directionally consistent across both cells.
+Trilogy tool calls fell from 300 to 278 in the aggregate cell and from 267 to
+263 in the noise cell; average Trilogy tool-result size fell from 6,076 to
+5,849 characters and from 7,112 to 6,525 characters, respectively. This is
+evidence that the shorter help corpus and session-scoped output deduplication
+reduced the enriched intercept, although one stochastic run cannot attribute a
+precise percentage to either optimization.
+
+The SQL comparison is also unusually close to the token-cost model. Noise adds
+2,604 schema characters. The observed 155,458-token cell delta is about 7,773
+tokens per question, or 2.98 billed tokens per added schema character per
+question. The design estimate was roughly 2.7. Both SQL cells used exactly 163
+LLM iterations, so the result is consistent with a schema-rebilling slope even
+without additional audit turns.
+
+Mechanism audit:
+
+- no SQL probe or final candidate referenced any of the 12 unrelated tables;
+- aggregate-only SQL q04 probed and ultimately used aggregate tables;
+- noisy SQL q08 probed an aggregate but did not retain it in the final query;
+- none of the 40 enriched candidates explicitly referenced a private aggregate;
+- compiling all 40 saved enriched candidates selected no `fact_agg_*`
+  datasource and produced no compile errors;
+- enriched task files, `raw/` models, and `trilogy.toml` are byte-identical
+  between the two current cells;
+- the benchmark-name leak audit remains clean across static inputs,
+  session-start commands, and tool results.
+
+The current SQL accuracy result is in the hypothesized direction, but should
+not yet be read as an effect of warehouse disambiguation. The agent did not
+interact with the unrelated tables, the prior run moved in the opposite
+direction, and the invisible enriched control still swung by two passes.
+
+## Pre-optimization first-20 result
 
 Run prefix: `20260810-211903`.
 
@@ -178,19 +246,20 @@ required by the hypothesis—the intended Trilogy benefit is insulation from
 physical complexity—but this means the run does not measure a materialized-view
 speedup.
 
-## Why the result is non-intuitive
+## Why the two results remain non-intuitive
 
-### 1. Visible SQL noise coincided with better results
+### 1. The visible SQL-noise result flipped direction
 
-Adding 12 visible tables increased the SQL schema payload by 13.4%, but the
-noise cell gained three reported passes and used 67,143 fewer tokens. Even after
-correcting the q08 scorer anomaly, it gained two candidate-correct passes. This
-is the reverse of the expected direction.
+In the pre-optimization run, adding 12 visible tables increased the SQL schema
+payload by 13.4%, but the noise cell gained three reported passes and used
+67,143 fewer tokens. Even after correcting the q08 scorer anomaly, it gained
+two candidate-correct passes. In the current run, the same treatment lost three
+passes and used 155,458 more tokens.
 
-There is no consistent query-level mechanism behind the aggregate result.
-Four failures in the aggregate-only SQL run pass in the noisy run, while q02
-moves in the other direction. The agents authored different solutions, rather
-than the same solution slowing down or failing under a larger schema.
+There is no consistent query-level mechanism behind the accuracy changes. The
+agents authored different solutions, and none inspected an unrelated table.
+The current token delta is consistent with the deterministic schema-size slope;
+the accuracy delta is not yet tied to a treatment mechanism.
 
 ### 2. An invisible enriched treatment also moved substantially
 
@@ -236,25 +305,32 @@ This is not a clean replicate. That run retained the familiar physical table
 names, and its noise variants contained noise instead of the new cumulative
 aggregates-plus-noise treatment. It is useful only as qualitative evidence that
 both pass sets and token counts can move substantially between runs. It should
-not be pooled with the fresh result as if the setups were identical.
+not be pooled with either renamed-table run as if the setups were identical.
 
 ## Current interpretation
 
-The first-20 run does not support the claim that unrelated tables improve SQL,
-nor does it provide clean evidence that they degrade it. The most defensible
-interpretation is:
+The two renamed-table first-20 runs do not support the claim that unrelated
+tables improve SQL, nor do they provide clean evidence that unrelated tables
+degrade SQL accuracy. The most defensible interpretation is:
 
 - the aggregate and noise treatments are constructed as intended;
 - the semantic layer successfully hides both kinds of physical complexity from
   normal agent exploration;
 - SQL visibly receives the additional warehouse complexity;
-- with one stochastic trajectory per question and treatment, the observed
-  accuracy and token deltas are not separable from run variance;
-- no conclusion about the original degradation hypothesis should be drawn yet.
+- the current SQL raw-token delta is consistent with the predictable cost of
+  rebilling a larger schema, even though agent behavior did not change;
+- the unrelated tables did not induce audits or wrong-table selections, so the
+  proposed behavioral degradation mechanism was not observed;
+- the Trilogy tool/help optimization likely lowered its raw-token intercept,
+  but the identical enriched controls still show a large stochastic noise floor;
+- the accuracy deltas are not separable from run variance, and no causal
+  accuracy conclusion should be drawn yet.
 
 The Trilogy path's larger absolute token use is a separate tooling/language-DX
 question. It does not invalidate the within-path insulation hypothesis, but it
-does mean “Trilogy uses fewer tokens than SQL” is not the claim tested here.
+does mean “Trilogy uses fewer raw tokens than SQL” is not the claim tested here.
+The provider logs still expose only raw prompt/completion tokens, not cache-hit
+and cache-miss tokens, so these totals are not a direct cost comparison either.
 
 ## Suggested next experiment
 
@@ -278,6 +354,9 @@ cells:
 7. Predeclare the decision rule for proceeding to all questions—for example, a
    repeated SQL token/accuracy degradation with enriched deltas centered near
    zero, rather than a single favorable or unfavorable 20-question draw.
+8. Add confusable in-domain noise if the goal is to test audit behavior rather
+   than only the deterministic schema-size slope. The current unrelated-domain
+   tables were never inspected.
 
 A cheaper alternative is to repeat only the two enriched cells first. Because
 their agent-visible inputs should be identical, their between-run dispersion
@@ -286,12 +365,19 @@ be judged.
 
 ## Artifacts
 
-- Fresh combined funnel: [`charts/funnel.md`](charts/funnel.md)
+- Current combined funnel: [`charts/funnel.md`](charts/funnel.md)
 - Warehouse construction: [`warehouse_variants.py`](warehouse_variants.py)
 - Aggregate DDL: [`warehouse/aggregates.sql`](warehouse/aggregates.sql)
 - Noise DDL: [`warehouse/noise.sql`](warehouse/noise.sql)
 - Category definitions: [`spec.py`](spec.py)
-- Fresh raw reports:
+- Proposed confusable-noise/replicate design:
+  [`design_messy_warehouse_v2.md`](design_messy_warehouse_v2.md)
+- Current rebaseline reports:
+  - [`results/20260811-015536_sql_schema_aggregates/report.md`](results/20260811-015536_sql_schema_aggregates/report.md)
+  - [`results/20260811-015536_sql_schema_noise/report.md`](results/20260811-015536_sql_schema_noise/report.md)
+  - [`results/20260811-015536_enriched_aggregates/report.md`](results/20260811-015536_enriched_aggregates/report.md)
+  - [`results/20260811-015536_enriched_noise/report.md`](results/20260811-015536_enriched_noise/report.md)
+- Pre-optimization reports:
   - [`results/20260810-211903_sql_schema_aggregates/report.md`](results/20260810-211903_sql_schema_aggregates/report.md)
   - [`results/20260810-211903_sql_schema_noise/report.md`](results/20260810-211903_sql_schema_noise/report.md)
   - [`results/20260810-211903_enriched_aggregates/report.md`](results/20260810-211903_enriched_aggregates/report.md)

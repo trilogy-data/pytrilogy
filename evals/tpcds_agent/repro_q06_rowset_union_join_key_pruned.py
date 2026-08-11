@@ -19,11 +19,15 @@ def main() -> None:
     sql = executor.generate_sql(QUERY_PATH.read_text(encoding="utf-8"))[-1]
     print(sql)
 
-    if "FULL JOIN" not in sql or "on 1=1" not in sql:
-        raise AssertionError("The category join was not reduced to a cross join")
-    if 'GROUP BY\n    "item_items"."I_CATEGORY"' not in sql:
-        raise AssertionError("The category-average grouping was not generated")
-    print("\nREPRODUCED: the category key is grouped, then pruned before its join")
+    if "FULL JOIN" not in sql:
+        raise AssertionError("The category join disappeared entirely")
+    if "cat_avg_category" not in sql:
+        raise AssertionError("The category-average key was not projected")
+    if "on 1=1" in sql:
+        raise AssertionError(
+            "REPRODUCED: the category key is grouped, then pruned before its join"
+        )
+    print("\nFIXED: the union join renders the category key")
 
 
 if __name__ == "__main__":

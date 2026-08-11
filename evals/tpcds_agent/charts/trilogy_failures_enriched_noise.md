@@ -1,34 +1,22 @@
-# Trilogy failure analysis — 20260810-211911
+# Trilogy failure analysis — 20260811-015537
 
-- Run `20260810-211903_enriched_noise` | `deepseek/deepseek-chat` | sf=1
-- `trilogy` calls: 267 | failed: 12 (4%)
+- Run `20260811-015536_enriched_noise` | `deepseek/deepseek-chat` | sf=1
+- `trilogy` calls: 263 | failed: 9 (3%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `disabled-tool` | 4 | 33% |
-| `syntax-parse` | 3 | 25% |
-| `cli-misuse` | 2 | 17% |
-| `no-output` | 1 | 8% |
-| `other` | 1 | 8% |
-| `undefined-concept` | 1 | 8% |
+| `disabled-tool` | 4 | 44% |
+| `cli-misuse` | 3 | 33% |
+| `undefined-concept` | 1 | 11% |
+| `syntax-parse` | 1 | 11% |
 
 ## Detail
 
 ### `disabled-tool`
 
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/repro.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_store_returns.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -38,101 +26,60 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-
-### `syntax-parse`
-
-- `trilogy file write inspect5.preql`
+- `trilogy file read raw/all_sales.preql`
 
   ```text
-  refused to write 'inspect5.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 5:24
-    |
-  5 |     count_distinct(i.id, i.category) as n_id_cat,
-    |                        ^---
-    |
-    = expected dot_tail, bracket_tail, dcolon_tail, COMPARISON_OPERATOR, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
-  Location:
-  ...n_id,
-       count_distinct(i.id ??? , i.category) as n_id_cat,
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run -`
+- `trilogy file read raw/catalog_store_returns.preql`
 
   ```text
-  Syntax error in stdin:  --> 7:3
-    |
-  7 |   by cs.order_number
-    |   ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...ct(cs.warehouse.sk) as n_wh   ??? by cs.order_number having coun...
-  ```
-- `trilogy run -`
-
-  ```text
-  Syntax error in stdin:  --> 5:3
-    |
-  5 |   by asl.channel
-    |   ^---
-    |
-    = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...t(asl.warehouse.sk) as n_wh   ??? by asl.channel ;
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 
 ### `cli-misuse`
 
-- `trilogy file`
+- `trilogy file remove debug_null.preql`
 
   ```text
-  Usage: python -m trilogy.scripts.trilogy file [OPTIONS] COMMAND [ARGS]...
-
-    Create, read, update, and delete files against local or remote backends.
-
-    The same commands work against any backend Trilogy knows about. Only the
-    local filesystem ships today; future releases will add cloud storage and
-    remote git model backends, so write CLI-friendly scripts (and agent loops)
-    against ``trilogy file`` instead of ad-hoc shell or python plumbing.
-
-  Options:
-    --help  Show this message and exit.
-
-  Commands:
-    delete  Delete the file or directory at PATH.
-    exists  Exit 0 if PATH exists, 1 otherwise.
-    list    List files at PATH (default: current directory).
-    move    Move (or rename) SRC to DST.
-    read    Read the file at PATH and write its contents to stdout.
-    write   Write/overwrite the file at PATH.
+  No such command 'remove'.
   ```
-- `trilogy file cat raw/catalog_sales.preql`
+- `trilogy explore root/store_sales.preql`
 
   ```text
-  No such command 'cat'.
+  Invalid value for 'PATH': File 'root/store_sales.preql' does not exist.
   ```
-
-### `no-output`
-
-- `trilogy run raw/all_sales.preql`
+- `trilogy file delete probe.preql probe2.preql probe3.preql probe4.preql probe5.preql probe6.preql`
 
   ```text
-  Nothing was executed: parsed 31 definition statement(s) (12 datasources, 11 imports, 5 concepts, 3 propertys) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
-  ```
-
-### `other`
-
-- `trilogy run answer_3863442186.preql`
-
-  ```text
-  trilogy error: subprocess timed out after 600s.
+  Got unexpected extra arguments (probe2.preql probe3.preql probe4.preql probe5.preql probe6.preql)
   ```
 
 ### `undefined-concept`
 
-- `trilogy run -`
+- `trilogy run answer_1455459008.preql`
 
   ```text
-  Syntax error in stdin: Undefined concept: catalog_ret_orders.cs_order_number. Suggestions: ['catalog_ret_orders.cs.order_number']
+  Syntax error in answer_1455459008.preql: 7 undefined concept references; fix all before re-running:
+    - local.sales_price (line 9, in SELECT); did you mean: cs.sales_price, cs.ext_sales_price, cs.list_price?
+    - sale_date.year (line 3, col 7, in WHERE); did you mean: cs.sale_date.year, sale_date.quarter, cs.return_date.year, cs.ship_date.year, cs.ship_customer.first_sales_date.year, cs.return_customer.first_sales_date.year?
+    - sale_date.quarter (line 3, col 33, in WHERE); did you mean: cs.sale_date.quarter, sale_date.year, cs.return_date.quarter, cs.ship_date.quarter, cs.ship_customer.first_sales_date.quarter, cs.return_customer.first_sales_date.quarter?
+    - billing_customer.current_address.zip (line 3, in WHERE); did you mean: cs.billing_customer.current_address.zip, billing_customer.current_address.state, cs.ship_customer.current_address.zip, cs.return_customer.current_address.zip, cs.return_refund_customer.current_address.zip, cs.return_address.zip?
+    - billing_customer.current_address.state (line 5, col 8, in WHERE); did you mean: cs.billing_customer.current_address.state, billing_customer.current_address.zip, cs.ship_customer.current_address.state, cs.return_customer.current_address.state, cs.return_refund_customer.current_address.state, cs.return_address.state?
+    - local.sales_price (line 6, col 8, in WHERE); did you mean: cs.sales_price, cs.ext_sales_price, cs.list_price?
+    - billing_customer.current_address.zip (line 10, col 10, in ORDER BY); did you mean: cs.billing_customer.current_address.zip, billing_customer.current_address.state, cs.ship_customer.current_address.zip, cs.return_customer.current_address.zip, cs.return_refund_customer.current_address.zip, cs.return_address.zip?
+  ```
+
+### `syntax-parse`
+
+- `trilogy file write probe3.preql`
+
+  ```text
+  refused to write 'probe3.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...turn_customer.sk is not null
+   ??? group by ss.item.id, ss.store....
   ```
