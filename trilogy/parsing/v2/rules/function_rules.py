@@ -212,7 +212,12 @@ def fgrain(
     args = hydrated_children(node, hydrate)
     if not args:
         raise fail(node, "grain() needs at least one key - grain(a).")
-    factory = context.function_factory
+    return grain_hash(args, context.function_factory)
+
+
+def grain_hash(args: list[Any], factory: Any) -> Function:
+    """The grain() desugar core (see ``fgrain``), shared with multi-arg
+    ``count_distinct`` which counts distinct combinations through it."""
     parts: list[Any] = [GRAIN_SEPARATOR]
     for arg in args:
         as_string = factory.create_function([arg, DataType.STRING], FunctionType.CAST)
@@ -265,6 +270,12 @@ def generic_aggregate(
 ) -> Function:
     args = hydrated_children(node, hydrate)
     ft = AGGREGATE_DISPATCH[node.kind]  # type: ignore
+    if ft == FunctionType.COUNT_DISTINCT and len(args) > 1:
+        # SQL-habit `count_distinct(a, b)` / `count(distinct a, b)`: distinct
+        # combinations, desugared through grain() like `count(grain(a, b))`.
+        # Note grain() is total over NULLs, so unlike SQL's COUNT(DISTINCT a, b)
+        # a combination with a missing member still counts.
+        args = [grain_hash(args, context.function_factory)]
     return context.function_factory.create_function(args, ft)
 
 

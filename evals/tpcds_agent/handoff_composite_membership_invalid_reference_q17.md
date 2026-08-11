@@ -72,3 +72,40 @@ related to the open q06 `on 1=1` scoped-join issue —
    machinery exists; the gap is only in the inline-filtered-aggregate route.
 2. Language reference already documents the ONE-source constraint; consider
    adding the fact-anchor caveat there too.
+
+## Audit verdict (2026-08-11): planning gap, NOT principled — for the minimal case
+
+The right side of `X in Y` is scope-independent by the codebase's own stated
+principle ("the set Y is by definition the UNFILTERED set" —
+`_CleanFeederCache`, `strategy_builder.py`). Hosting the membership in a plain
+`where` vs an inline-filtered aggregate changes which rows are *tested*, never
+what the *set* is. And the plain-`where` plan is verified semantically correct:
+the island renders `SELECT pair FROM catalog_sales GROUP BY 1, 2` — fact-anchored
+co-occurring pairs, not a dim cross product.
+
+The mechanism of the gap: the plain-`where` route
+(`condition_sources.py::resolve_existence_sources`) searches each existence
+arg group **as one unit** (`search_parent(existence_args)`), which is what
+produces the single co-occurrence island. The v4 group-graph route that hosts
+filter-lineage predicates **flattens tuple groups into individual addresses at
+every touchpoint** — `group_graph.py` (existence demand routed per-address to
+whatever group already hosts it), `concept_graph.py` (per-address channel
+classification), `strategy_builder.py::_group_existence_concepts` →
+`_existence_parents_for` (per-concept lookup against already-built groups).
+The tuple's co-occurrence constraint ("these N addresses must come from ONE
+node") is simply not representable in that data model. A lost invariant, not a
+decision — a principled rejection would have to reject the plain-`where` form
+too.
+
+**Two caveats:**
+
+- The FULL q17 pattern is only *partly* a gap: the extra cs-side scalar
+  conditions inside the filter (`cs.sale_date.year in (2001, 2002)`) ask for a
+  *filtered* set, which the unfiltered-set principle deliberately does not
+  express inline. The fact-anchored rowset remains the principled spelling for
+  that; fixing (b) would not and should not make (c) work as written.
+- Implementation caution: a fix must route the whole tuple to ONE
+  co-occurrence host (group-level `search_parent`, like the plain-`where`
+  path), likely building a NEW island group anchored on the shared lineage
+  fact. Reusing the already-built per-address dim groups and joining them is
+  exactly the bare-pair cross-product trap above.
