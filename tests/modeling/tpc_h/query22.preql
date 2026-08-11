@@ -2,11 +2,13 @@
 import order as orders;
 
 
-auto avg_bal_in_target <- avg(orders.customer.account_balance ? orders.customer.account_balance > 0 and substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) by *;
+auto avg_bal_in_target <- avg(orders.customer.account_balance) by *;
 
 where
     substring(orders.customer.phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')
-    and orders.customer.account_balance > avg_bal_in_target
+    and orders.customer.account_balance > 0
+then where
+    orders.customer.account_balance > avg_bal_in_target
     and orders.id is null
 select
     substring(orders.customer.phone, 1, 2) -> cntrycode,

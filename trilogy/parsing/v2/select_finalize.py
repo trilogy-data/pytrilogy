@@ -92,6 +92,7 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
 )
+from trilogy.core.where_scope_normalization import collect_cross_row_parts
 from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
@@ -434,7 +435,10 @@ def _validate_where_aggregate_matches_select(
     if not select_aggs:
         return
     sig_to_alias = {sig: addr for sig, addr in select_aggs}
-    for node in _collect_condition_aggregates(select.where_clause.conditional):
+    first_stage = select.first_where_stage
+    if first_stage is None:
+        return
+    for node in _collect_condition_aggregates(first_stage.conditional):
         sig = _aggregate_full_signature(node)
         if sig is None or sig not in sig_to_alias:
             continue
@@ -446,6 +450,55 @@ def _validate_where_aggregate_matches_select(
             f"clause - e.g. `having {alias} > ...`"
             + (f"; Line: {line_no}" if line_no else "")
         )
+
+
+def _validate_staged_where(
+    select: SelectStatement, context: RuleContext, line_no: int | None
+) -> None:
+    """`then where` restriction: the same cross-row computation cannot appear
+    in two different stages' predicates.
+
+    Stage N's aggregates and windows compute over only the rows passing stages
+    1..N-1, so an expression like `sum(z) by x` names a DIFFERENT value in
+    each stage that gates on it — but spelled identically the spellings
+    resolve to one concept address, and one concept has one value. Rather than
+    silently letting the first stage's value answer for both, reject the
+    ambiguity where the line is known."""
+    if len(select.where_clauses) < 2:
+        return
+    first_stage_of: dict[str, int] = {}
+    for index, stage in enumerate(select.where_clauses):
+        # Expand nested parts too: a window's ORDER BY aggregate collides with
+        # an earlier stage's bare gate the same way a top-level twin does. The
+        # key is the LINEAGE node's rendering, so spellings normalize — a named
+        # metric collides with its literal expansion, which is what makes the
+        # address-keyed `_staged_condition_labels` split safe downstream.
+        parts = collect_cross_row_parts(
+            stage.conditional, select.local_concepts, context.environment, set()
+        )
+        seen: set[str] = set()
+        while parts:
+            part = parts.pop()
+            key = str(part)
+            if key in seen:
+                continue
+            seen.add(key)
+            for child in _child_exprs(part):
+                parts.extend(
+                    collect_cross_row_parts(
+                        child, select.local_concepts, context.environment, set()
+                    )
+                )
+            earlier = first_stage_of.setdefault(key, index)
+            if earlier != index:
+                raise InvalidSyntaxException(
+                    f"`then where` stages {earlier + 1} and {index + 1} both "
+                    f"gate on the same computation ({part}); each stage "
+                    f"computes it over a different row population, so the "
+                    f"shared spelling is ambiguous. Give one of them a "
+                    f"distinct expression (e.g. an inline filter) or flatten "
+                    f"the stages" + (f"; Line: {line_no}" if line_no else "")
+                )
 
 
 def _validate_having_aggregates_match_select(
@@ -1392,9 +1445,10 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.metadata.line_number if x.metadata else None,
                     )
         if replacements:
-            select.where_clause = select.where_clause.with_reference_replacement(
-                replacements
-            )
+            select.where_clauses = [
+                wc.with_reference_replacement(replacements)
+                for wc in select.where_clauses
+            ]
     _rewrite_aliased_source_refs(select)
     all_in_output = {x.address for x in select.output_components}
     locally_derived = select.locally_derived
@@ -1406,8 +1460,9 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
     # a valid pre-aggregation gate distinct from the post-filter SELECT/HAVING
     # aggregate. A scalar select has no grain to anchor that gate and the planner
     # drops sibling row filters, so keep redirecting it to HAVING.
-    if select.where_clause and not select.grain.components:
-        for cref in select.where_clause.concept_arguments:
+    first_where_stage = select.first_where_stage
+    if first_where_stage and not select.grain.components:
+        for cref in first_where_stage.concept_arguments:
             concept = context.concepts.get(cref.address)
             if concept is None or isinstance(concept, UndefinedConcept):
                 continue
@@ -1428,6 +1483,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                     f"move to the HAVING clause instead; Line: {line_no}"
                 )
         _validate_where_aggregate_matches_select(select, line_no)
+    _validate_staged_where(select, context, line_no)
     if select.having_clause:
         # Point HAVING windows at their materialized SELECT alias before
         # validating refs, so the window's inner aggregate input isn't treated

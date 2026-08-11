@@ -52,9 +52,12 @@ class V4History(History):
         search: list[BuildConcept],
         conditions: list[BuildWhereClause],
         complete_partials: bool,
+        staged_conditions: list[BuildWhereClause] | None = None,
     ) -> str:
         base = "-".join(sorted(c.address for c in search))
         conditioned = base + str(conditions) if conditions else base
+        if staged_conditions:
+            conditioned += f"|staged={staged_conditions}"
         return f"{conditioned}|complete_partials={complete_partials}"
 
     def get_build_history(
@@ -62,8 +65,9 @@ class V4History(History):
         search: list[BuildConcept],
         conditions: list[BuildWhereClause],
         complete_partials: bool = True,
+        staged_conditions: list[BuildWhereClause] | None = None,
     ) -> BuildInfo | None | bool:
-        key = self._v4_key(search, conditions, complete_partials)
+        key = self._v4_key(search, conditions, complete_partials, staged_conditions)
         if key in self.build_history:
             node = self.build_history[key]
             return node.copy() if node else node
@@ -75,5 +79,8 @@ class V4History(History):
         output: BuildInfo | None,
         conditions: list[BuildWhereClause],
         complete_partials: bool = True,
+        staged_conditions: list[BuildWhereClause] | None = None,
     ) -> None:
-        self.build_history[self._v4_key(search, conditions, complete_partials)] = output
+        self.build_history[
+            self._v4_key(search, conditions, complete_partials, staged_conditions)
+        ] = output

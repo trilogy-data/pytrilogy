@@ -34,6 +34,7 @@ def search_parent(
     depth: int = 0,
     conditions: list[BuildWhereClause] | None = None,
     complete_partials: bool = True,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode | None:
     """Plan `concepts` as an independent sub-search and return its producer.
 
@@ -50,6 +51,7 @@ def search_parent(
         g=g,
         conditions=conditions or [],
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     ).strategy_node
 
 

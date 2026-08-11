@@ -402,11 +402,13 @@ def test_thirty(engine):
 
 
 def test_thirty_alt(engine):
-    # Non-rowset conditional-aggregate form; equivalent to PRAGMA tpcds(30).
+    # Non-rowset staged (`then where`) form; equivalent to PRAGMA tpcds(30).
+    # The year/state stage pre-filters the scan CTE (INNER joins, no CASE
+    # sums), so the customer-grain sum groups in its own CTE: 3 GROUP BYs.
     query = run_query(engine, 30, preql_file="query30-alt.preql", label="30.alt")
     assert len(query) < 12000, query
     assert query.count('"memory"."web_returns"') == 1, query
-    assert query.count("GROUP BY") == 2, query
+    assert query.count("GROUP BY") == 3, query
     assert '"WR_RETURNING_ADDR_SK" as "ws_return_address_id"' not in query
     assert 'LEFT OUTER JOIN "abundant"' not in query
     assert 'ws_return_address_state" is not distinct from' in query

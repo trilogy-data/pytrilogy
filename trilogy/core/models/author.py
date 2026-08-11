@@ -430,6 +430,50 @@ class WhereClause(ReferenceReplaceable, ConceptArgs, Namespaced):
         )
 
 
+def combine_staged_wheres(stages: Sequence[WhereClause]) -> WhereClause | None:
+    """AND-fold a `then where` stage chain into the single combined row gate.
+
+    Deliberately not `combine_where_clauses`, the build-side fold: that one
+    dedups atoms, which would silently drop a stage that repeats an earlier
+    condition and leave the gate no longer reconstructible from the stages.
+    """
+    if not stages:
+        return None
+    if len(stages) == 1:
+        # A flat where IS its own fold; returning it keeps object identity,
+        # which downstream equality-by-identity checks on conditions rely on.
+        return stages[0]
+    condition = stages[0].conditional
+    for stage in stages[1:]:
+        condition = Conditional(
+            left=condition, right=stage.conditional, operator=BooleanOperator.AND
+        )
+    return WhereClause(conditional=condition)
+
+
+def prepend_where_stage(
+    stages: Sequence[WhereClause], clause: WhereClause
+) -> list[WhereClause]:
+    """AND `clause` into the FIRST stage of a chain.
+
+    A new condition that gates the whole statement belongs in stage 1: every
+    later stage's computation already sees only rows passing the stages before
+    it, so narrowing stage 1 narrows them all. Prepending a separate leading
+    stage would say the same thing about the row gate but would additionally
+    push the new condition into stage 1's own cross-row computations.
+    """
+    if not stages:
+        return [clause]
+    first = WhereClause(
+        conditional=Conditional(
+            left=clause.conditional,
+            right=stages[0].conditional,
+            operator=BooleanOperator.AND,
+        )
+    )
+    return [first, *stages[1:]]
+
+
 @dataclass
 class HavingClause(WhereClause):
     pass
@@ -2969,7 +3013,10 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     limit: int | None = None
     meta: Metadata = dc_field(default_factory=lambda: Metadata())
     grain: Grain = dc_field(default_factory=Grain)
-    where_clause: WhereClause | None = None
+    # Ordered `then where` stages, and the ONLY stored form of the row gate:
+    # `where_clause` is their AND fold, derived. A flat where is a single
+    # stage, so this is empty only when there is no where at all.
+    where_clauses: list[WhereClause] = dc_field(default_factory=list)
     having_clause: HavingClause | None = None
     # Query-scoped JOINs declared on this select (`subset|union join a = b`).
     # Carried through to discovery so a select built as a sub-node (e.g. a union
@@ -2981,6 +3028,36 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
     # un-pinned aggregate materialized in this select's projection scope, so no
     # shared authoring object ever carries the spec.
     grouping: AggregateGrouping | None = None
+    _folded_where: WhereClause | None = dc_field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _folded_from: list[WhereClause] | None = dc_field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    @property
+    def where_clause(self) -> WhereClause | None:
+        """The AND fold of `where_clauses` — the canonical row gate.
+
+        Derived rather than stored so the gate and its staged decomposition
+        cannot describe two different conditions. Memoized on the stage list's
+        identity: folding allocates, and conditions are compared by identity in
+        places, so a fresh object per read would be both wasteful and wrong.
+        """
+        if self._folded_from is not self.where_clauses:
+            self._folded_where = combine_staged_wheres(self.where_clauses)
+            self._folded_from = self.where_clauses
+        return self._folded_where
+
+    @property
+    def first_where_stage(self) -> WhereClause | None:
+        """Stage 1 of the chain — the only stage read back against the SELECT.
+
+        A later stage's aggregate has its inputs gated by the earlier stages,
+        so an identical-looking spelling is a genuinely different computation
+        and the rules that redirect a WHERE aggregate to HAVING must not see
+        it."""
+        return self.where_clauses[0] if self.where_clauses else None
 
     @property
     def output_components(self) -> list[ConceptRef]:
@@ -2997,11 +3074,7 @@ class SelectLineage(ReferenceReplaceable, Namespaced):
             limit=self.limit,
             meta=self.meta,
             grain=self.grain.with_namespace(namespace),
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
+            where_clauses=[x.with_namespace(namespace) for x in self.where_clauses],
             having_clause=(
                 self.having_clause.with_namespace(namespace)
                 if self.having_clause

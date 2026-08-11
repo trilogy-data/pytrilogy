@@ -343,9 +343,14 @@ def _build_from_graph(
     conditions: list[BuildWhereClause],
     materialized_roots: frozenset[str],
     complete_partials: bool,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
-        mandatory_list, environment, conditions, materialized_roots
+        mandatory_list,
+        environment,
+        conditions,
+        materialized_roots,
+        staged_conditions=staged_conditions,
     )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
@@ -366,6 +371,7 @@ def _build_from_graph(
         datasource_columns,
         environment=environment,
         return_merged_graph=True,
+        staged_conditions=staged_conditions,
     )
     strategy_node = build_strategy_node(
         group_graph,
@@ -376,6 +382,7 @@ def _build_from_graph(
         g,
         history,
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     )
     return BuildInfo(
         concept_graph=concept_graph,
@@ -434,6 +441,7 @@ def _search_concepts(
     history: V4History,
     conditions: list[BuildWhereClause],
     complete_partials: bool,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
     # A top-level multiselect (merge/align) isn't a single source graph — its
     # arms are independent sub-plans joined on the alignment concept. Resolve
@@ -478,6 +486,7 @@ def _search_concepts(
         conditions,
         materialized_roots,
         complete_partials,
+        staged_conditions,
     )
     if materialized_roots and info.strategy_node is None:
         info = _build_from_graph(
@@ -489,6 +498,7 @@ def _search_concepts(
             conditions,
             frozenset(),
             complete_partials,
+            staged_conditions,
         )
     return info
 
@@ -501,9 +511,14 @@ def search_concepts(
     g: ReferenceGraph,
     conditions: list[BuildWhereClause] | None = None,
     complete_partials: bool = True,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
     """Run the v4 planner against `mandatory_list` under `conditions`. Cached
     per `(mandatory_list, conditions)` via `history`.
+
+    ``staged_conditions`` carries the statement's ordered `then where` stages
+    (address-aligned with the combined `conditions` clause); earlier stages'
+    row atoms become input filters on later stages' cross-row computations.
 
     The network search prices partial bindings per binding. ``complete_partials``
     controls whether requested partial keys are subsequently completed against
@@ -513,6 +528,7 @@ def search_concepts(
         search=mandatory_list,
         conditions=conditions,
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     )
     if hist is not False:
         logger.info(
@@ -531,6 +547,7 @@ def search_concepts(
         history=history,
         conditions=conditions,
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     )
     # a node may be mutated after being cached; always store a copy
     history.build_to_history(
@@ -538,5 +555,6 @@ def search_concepts(
         result.copy(),
         conditions=conditions,
         complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
     )
     return result

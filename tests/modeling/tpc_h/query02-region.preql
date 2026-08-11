@@ -1,18 +1,20 @@
 import part;
 
-# Guards the shape where a WHERE atom is ALSO the condition of a filtered
-# aggregate keyed by something else (here: min-by-part vs a region predicate).
-# The atom used to be placed inside the aggregate's filter scope and dropped
-# from the outer plan entirely. Spec q02's `supply_cost = min(...)` makes the
-# drop invisible in dbgen data at any scale factor; the tolerance below admits
-# many suppliers per part, so a dropped region filter shows up immediately.
+# Guards the shape where a staged (`then where`) aggregate is keyed by something
+# other than the stage-1 predicate (here: min-by-part vs a region predicate).
+# The region atom used to be placed inside the aggregate's filter scope and
+# dropped from the outer plan entirely. Spec q02's `supply_cost = min(...)`
+# makes the drop invisible in dbgen data at any scale factor; the tolerance
+# below admits many suppliers per part, so a dropped region filter shows up
+# immediately.
 
-auto min_supply_cost_in_europe <- min(supply_cost ? supplier.nation.region.name = 'EUROPE') by id;
+auto min_supply_cost_in_europe <- min(supply_cost) by id;
 
 where
+    supplier.nation.region.name = 'EUROPE'
+then where
     size = 15
     and type like '%BRASS'
-    and supplier.nation.region.name = 'EUROPE'
     and supply_cost <= min_supply_cost_in_europe * 1.5
 select
     id,

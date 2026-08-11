@@ -81,6 +81,22 @@ def where_clause(
     return WhereClause(conditional=root)
 
 
+class StagedWhere:
+    """Carrier for a `where ... then where ...` chain, one WhereClause per stage."""
+
+    def __init__(self, stages: list[WhereClause]):
+        self.stages = stages
+
+
+def where_series(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> StagedWhere:
+    stages = hydrated_children(node, hydrate)
+    return StagedWhere(stages=[s for s in stages if isinstance(s, WhereClause)])
+
+
 def having_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -106,5 +122,6 @@ CONDITIONAL_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.CONDITIONAL: conditional,
     SyntaxNodeKind.CONDITION_PARENTHETICAL: condition_parenthetical,
     SyntaxNodeKind.WHERE: where_clause,
+    SyntaxNodeKind.WHERE_SERIES: where_series,
     SyntaxNodeKind.HAVING: having_clause,
 }

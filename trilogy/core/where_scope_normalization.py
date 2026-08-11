@@ -345,7 +345,7 @@ def _constant_universe(
     return True
 
 
-def _collect_cross_row_parts(
+def collect_cross_row_parts(
     node: Any,
     local: Mapping[str, Concept],
     environment: Environment,
@@ -374,10 +374,10 @@ def _collect_cross_row_parts(
             or resolved.granularity == Granularity.SINGLE_ROW
         ):
             return []
-        return _collect_cross_row_parts(resolved.lineage, local, environment, seen)
+        return collect_cross_row_parts(resolved.lineage, local, environment, seen)
     found: list[Any] = []
     for child in _child_exprs(node):
-        found.extend(_collect_cross_row_parts(child, local, environment, seen))
+        found.extend(collect_cross_row_parts(child, local, environment, seen))
     return found
 
 
@@ -420,7 +420,7 @@ def _scope_sensitive(
         concept is not None
         and concept.lineage is not None
         and concept.granularity != Granularity.SINGLE_ROW
-        and _collect_cross_row_parts(concept.lineage, local, environment, set())
+        and collect_cross_row_parts(concept.lineage, local, environment, set())
     )
     cache[address] = sensitive
     return sensitive
@@ -465,7 +465,7 @@ def _where_scope_lineage(
             or resolved.granularity == Granularity.SINGLE_ROW
         ):
             continue
-        if not _collect_cross_row_parts(resolved.lineage, local, environment, set()):
+        if not collect_cross_row_parts(resolved.lineage, local, environment, set()):
             continue
         inlined = _where_scope_lineage(
             resolved.lineage, local, environment, active | {ref.address}, rewritten
@@ -512,7 +512,7 @@ def normalize_select_where_scope(
         target = _resolve_where_scope_target(concept, base.local_concepts, environment)
         if target is None:
             continue
-        parts = _collect_cross_row_parts(
+        parts = collect_cross_row_parts(
             target.lineage, base.local_concepts, environment, set()
         )
         if not parts:
@@ -552,8 +552,14 @@ def normalize_select_where_scope(
         return base
     local_concepts = dict(base.local_concepts)
     local_concepts.update(minted)
+    # `then where` stages must stay address-aligned with the combined clause:
+    # the staged discovery pass maps stage atoms and hosts into the combined
+    # clause's placements by address. Rewriting the stages is enough — the
+    # combined `where_clause` folds from them.
     return dc_replace(
         base,
-        where_clause=base.where_clause.with_reference_replacement(replacements),
+        where_clauses=[
+            wc.with_reference_replacement(replacements) for wc in base.where_clauses
+        ],
         local_concepts=local_concepts,
     )

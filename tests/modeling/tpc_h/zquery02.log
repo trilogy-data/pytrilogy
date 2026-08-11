@@ -1,6 +1,6 @@
 query_id = "02"
 gen_length = 2679
-preql_size = 562
+preql_size = 528
 comp_size = 840
 generated_sql = """
 
@@ -37,7 +37,7 @@ FROM
     INNER JOIN \"memory\".\"nation\" as \"supplier_nation_nation\" on \"supplier_supplier\".\"s_nationkey\" = \"supplier_nation_nation\".\"n_nationkey\"
     INNER JOIN \"memory\".\"region\" as \"supplier_nation_region_region\" on \"supplier_nation_nation\".\"n_regionkey\" = \"supplier_nation_region_region\".\"r_regionkey\"
 WHERE
-    \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS' and \"supplier_nation_region_region\".\"r_name\" = 'EUROPE'
+    \"supplier_nation_region_region\".\"r_name\" = 'EUROPE' and \"part\".\"p_size\" = 15 and \"part\".\"p_type\" like '%BRASS'
 )
 SELECT
     \"cooperative\".\"supplier_account_balance\" as \"supplier_account_balance\",

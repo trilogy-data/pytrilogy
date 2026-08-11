@@ -2,16 +2,18 @@ import catalog_sales as cs;
 
 # Non-rowset equivalent of the rowset form: the key-join shape achieved by
 # grouping the aggregate to (return_address.state, customer.sk). The year/state
-# filter is bound *inside* the conditional sum because a plain sum + a row-grain
-# WHERE year=2000 loses the filter from the customer-grain aggregate.
-auto customer_state <- sum(cs.return_amount_inc_tax ? cs.return_date.year = 2000 and cs.return_address.state is not null)
+# filter is a `then where` stage, so the customer-grain aggregate computes over
+# only the rows passing it.
+auto customer_state <- sum(cs.return_amount_inc_tax)
     by cs.return_address.state, cs.return_customer.sk;
 auto scaled_state <- 1.2 * avg(customer_state) by cs.return_address.state;
 
 where
+    cs.return_date.year = 2000
+    and cs.return_address.state is not null
+then where
     customer_state > scaled_state
     and cs.return_customer.current_address.state = 'GA'
-    and cs.return_address.state is not null
 select
     --cs.return_customer.sk,
     cs.return_customer.id,

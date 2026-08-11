@@ -8,72 +8,72 @@ Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Refe
 
 Queries: 99
 
-PreQL is shorter than the reference SQL for 73/99 queries. Total PreQL length is 126,332 chars vs 182,494 reference SQL chars.
+PreQL is shorter than the reference SQL for 73/99 queries. Total PreQL length is 126,006 chars vs 182,494 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,420 | -209 | +206 |
+| PreQL - Reference SQL chars | -1,420 | -210 | +206 |
 | PreQL vs Reference SQL | -60.0% | -21.8% | +14.1% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 81 | 2,125 | 1,459 | +666 |
+| 81 | 2,098 | 1,459 | +639 |
 | 28 | 2,694 | 2,056 | +638 |
 | 35 | 2,381 | 1,745 | +636 |
 | 89 | 1,586 | 965 | +621 |
 | 64 | 4,382 | 3,783 | +599 |
 
-Trilogy execution is faster than the reference SQL for 50/99 queries. Total Trilogy execution time is 12.300s vs 11.590s reference SQL time.
+Trilogy execution is faster than the reference SQL for 53/99 queries. Total Trilogy execution time is 13.786s vs 12.208s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.051s | -0.000s | +0.062s |
-| Trilogy vs Reference SQL | -43.3% | -0.1% | +92.4% |
-| Trilogy / Reference SQL | 0.57x | 1.00x | 1.92x |
+| Trilogy - Reference SQL seconds | -0.047s | -0.001s | +0.072s |
+| Trilogy vs Reference SQL | -37.2% | -1.2% | +98.1% |
+| Trilogy / Reference SQL | 0.63x | 0.99x | 1.98x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 05 | 0.610s | 0.146s | +0.464s |
-| 23 | 0.779s | 0.365s | +0.414s |
-| 76 | 0.381s | 0.107s | +0.274s |
-| 78 | 0.571s | 0.317s | +0.254s |
-| 70 | 0.281s | 0.051s | +0.230s |
+| 78 | 1.550s | 0.344s | +1.206s |
+| 05 | 0.701s | 0.183s | +0.519s |
+| 23 | 0.891s | 0.426s | +0.465s |
+| 35 | 0.372s | 0.200s | +0.172s |
+| 83 | 0.222s | 0.070s | +0.152s |
 
 ## Alternative Queries
 
 Queries: 5
 
-PreQL is shorter than the reference SQL for 4/5 queries. Total PreQL length is 6,643 chars vs 8,957 reference SQL chars.
+PreQL is shorter than the reference SQL for 4/5 queries. Total PreQL length is 6,602 chars vs 8,957 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -1,233 | -39 | +89 |
-| PreQL vs Reference SQL | -48.0% | -3.4% | +5.7% |
+| PreQL - Reference SQL chars | -1,233 | -39 | +64 |
+| PreQL vs Reference SQL | -48.0% | -3.4% | +4.1% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
 | Query | PreQL chars | Reference SQL chars | PreQL - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 30.alt | 1,670 | 1,507 | +163 |
+| 30.alt | 1,629 | 1,507 | +122 |
 
-Trilogy execution is faster than the reference SQL for 0/5 queries. Total Trilogy execution time is 1.627s vs 0.387s reference SQL time.
+Trilogy execution is faster than the reference SQL for 0/5 queries. Total Trilogy execution time is 1.643s vs 0.380s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | +0.018s | +0.036s | +0.584s |
-| Trilogy vs Reference SQL | +25.1% | +63.8% | +639.8% |
-| Trilogy / Reference SQL | 1.25x | 1.64x | 7.40x |
+| Trilogy - Reference SQL seconds | +0.021s | +0.058s | +0.583s |
+| Trilogy vs Reference SQL | +28.2% | +88.4% | +686.0% |
+| Trilogy / Reference SQL | 1.28x | 1.88x | 7.86x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 97.1 | 0.690s | 0.099s | +0.592s |
-| 97.2 | 0.659s | 0.086s | +0.573s |
-| 30.alt | 0.093s | 0.057s | +0.036s |
-| 2.1 | 0.099s | 0.074s | +0.025s |
-| 2.2 | 0.086s | 0.072s | +0.014s |
+| 97.2 | 0.673s | 0.085s | +0.588s |
+| 97.1 | 0.660s | 0.085s | +0.574s |
+| 30.alt | 0.123s | 0.065s | +0.058s |
+| 2.2 | 0.094s | 0.071s | +0.023s |
+| 2.1 | 0.093s | 0.074s | +0.019s |

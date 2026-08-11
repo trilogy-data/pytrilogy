@@ -1,16 +1,10 @@
 import store_sales as ss;
 
-# Top-5 states by sum(profit) — same as reference's IN-subquery.
-auto state_total <- sum(ss.net_profit ? ss.sale_date.month_seq between 1200 and 1211) by ss.store.state;
+# Top-5 states by sum(profit) — same as reference's IN-subquery, expressed as a
+# staged filter: the rank's aggregate computes over only the rows passing the
+# month window stage.
+auto state_total <- sum(ss.net_profit) by ss.store.state;
 auto state_rnk <- rank(ss.store.state) over (order by state_total desc);
-
-rowset top_states <- where
-    ss.sale_date.month_seq between 1200 and 1211
-select
-    ss.store.state as ts_state,
-having
-    state_rnk <= 5
-;
 
 # Single ROLLUP(state, county). The sum and the grouping() columns now resolve
 # into one rollup CTE, and the window runs directly over that CTE's rows, so
@@ -29,7 +23,9 @@ auto rank_within_parent <- rank(ss.store.state, ss.store.county)
 
 where
     ss.sale_date.month_seq between 1200 and 1211
-    and ss.store.state in top_states.ts_state
+    and ss.store.state is not null
+then where
+    state_rnk <= 5
 select
     total_sum,
     ss.store.state as s_state,

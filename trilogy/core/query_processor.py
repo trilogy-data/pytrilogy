@@ -23,7 +23,6 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
-    Conditional,
     Function,
     HavingClause,
     MultiSelectLineage,
@@ -31,6 +30,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     SelectLineage,
     WhereClause,
+    prepend_where_stage,
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -667,6 +667,7 @@ def _plan_query_node(
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
     history: History,
+    staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode:
     """Discovery entrypoint: plan `build_statement`, then wrap the result with
     the statement's HAVING, ORDER BY and hidden components.
@@ -695,6 +696,7 @@ def _plan_query_node(
         depth=0,
         g=graph,
         conditions=[conditions] if conditions else [],
+        staged_conditions=staged_conditions,
     )
     ds = info.strategy_node
     if ds is None:
@@ -1004,12 +1006,19 @@ def get_query_node(
 
     graph = generate_graph(build_environment)
 
+    staged_conditions = (
+        build_statement.where_clauses or None
+        if isinstance(build_statement, BuildSelectLineage)
+        else None
+    )
+
     return _plan_query_node(
         build_statement=build_statement,
         build_environment=build_environment,
         graph=graph,
         conditions=build_statement.where_clause,
         history=history,
+        staged_conditions=staged_conditions,
     )
 
 
@@ -1158,19 +1167,15 @@ def process_persist(
     # Datasources created from a persist-with-WHERE already embed the condition
     # in the SELECT, so injecting again would duplicate it.
     if ds.is_partial and ds.non_partial_for:
-        if select_stmt.where_clause is None:
-            select_stmt = replace(select_stmt, where_clause=ds.non_partial_for)
-        else:
-            select_stmt = replace(
-                select_stmt,
-                where_clause=WhereClause(
-                    conditional=Conditional(
-                        left=ds.non_partial_for.conditional,
-                        right=select_stmt.where_clause.conditional,
-                        operator=BooleanOperator.AND,
-                    )
-                ),
-            )
+        # AND into stage 1: the partition condition gates every row the persist
+        # writes, so it belongs ahead of any `then where` staging, and every
+        # later stage's input population narrows with it.
+        select_stmt = replace(
+            select_stmt,
+            where_clauses=prepend_where_stage(
+                select_stmt.where_clauses, ds.non_partial_for
+            ),
+        )
     # set to unpublished to avoid circular refs
     try:
         ds.status = DatasourceState.UNPUBLISHED

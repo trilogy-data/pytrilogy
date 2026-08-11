@@ -2001,6 +2001,15 @@ class BuildSelectLineage:
     meta: Metadata = field(default_factory=lambda: Metadata())
     grain: BuildGrain = field(default_factory=BuildGrain)
     where_clause: BuildWhereClause | None = field(default=None)
+    # Ordered `then where` stages, built with the same WHERE factory as the
+    # combined `where_clause` so every address aligns with it. This is THE
+    # place that decides what counts as staged: populated only for a chain that
+    # actually stages something (2+), because a flat where is a one-stage chain
+    # that says nothing `where_clause` does not. Downstream code can therefore
+    # test it for truth rather than re-deriving the length rule. Discovery uses
+    # these to deliver earlier-stage atoms as input filters on later stages'
+    # cross-row computations; `where_clause` stays the canonical full row gate.
+    where_clauses: list[BuildWhereClause] = field(default_factory=list)
     having_clause: BuildHavingClause | None = field(default=None)
     # Author-side WHERE retained for diagnostics only (never planning). Scoped-
     # join key canonicalization rewrites `where_clause` endpoints to their group
@@ -4212,6 +4221,15 @@ class Factory:
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
         )
+        # `then where` stages build AFTER the combined clause with the SAME
+        # factory: the shared caches make every stage expression resolve to the
+        # exact BuildConcept address it has in the combined clause, which the
+        # staged discovery pass depends on to map atoms and hosts.
+        staged_where_clauses = (
+            [where_factory.build(wc) for wc in base.where_clauses]
+            if len(base.where_clauses) > 1
+            else []
+        )
         # if the where clause derives new concepts
         # we need to ensure these are accessible from the general factory
         # post resolution
@@ -4247,6 +4265,7 @@ class Factory:
             ),
             # this uses a different grain factory
             where_clause=where_clause,
+            where_clauses=staged_where_clauses,
             authored_where_clause=base.where_clause,
         )
 

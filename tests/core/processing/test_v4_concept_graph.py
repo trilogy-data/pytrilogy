@@ -341,6 +341,7 @@ class TestResolveMultiselect:
             g,
             conditions=None,
             complete_partials=True,
+            staged_conditions=None,
         ):
             seen_envs.append(environment)
             return v4.BuildInfo(

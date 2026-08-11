@@ -1,11 +1,12 @@
 import part;
 
-auto min_supply_cost_in_europe <- min(supply_cost ? supplier.nation.region.name = 'EUROPE') by id;
+auto min_supply_cost_in_europe <- min(supply_cost) by id;
 
 where
+    supplier.nation.region.name = 'EUROPE'
+then where
     size = 15
     and type like '%BRASS'
-    and supplier.nation.region.name = 'EUROPE'
     and supply_cost = min_supply_cost_in_europe
 select
     --supplier.id,

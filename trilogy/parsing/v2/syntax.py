@@ -64,6 +64,7 @@ class SyntaxNodeKind(str, Enum):
     SELECT_HIDE_MODIFIER = "select_hide_modifier"
     SELECT_PARTIAL_MODIFIER = "select_partial_modifier"
     WHERE = "where"
+    WHERE_SERIES = "where_series"
     HAVING = "having"
     CONDITIONAL = "conditional"
     CONDITION_PARENTHETICAL = "condition_parenthetical"
@@ -411,6 +412,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "select_hide_modifier": SyntaxNodeKind.SELECT_HIDE_MODIFIER,
     "select_partial_modifier": SyntaxNodeKind.SELECT_PARTIAL_MODIFIER,
     "where": SyntaxNodeKind.WHERE,
+    "where_series": SyntaxNodeKind.WHERE_SERIES,
     "having": SyntaxNodeKind.HAVING,
     "conditional": SyntaxNodeKind.CONDITIONAL,
     "condition_parenthetical": SyntaxNodeKind.CONDITION_PARENTHETICAL,

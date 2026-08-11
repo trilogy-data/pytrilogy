@@ -269,7 +269,10 @@ def test_eleven(engine):
     query = run_query(engine, 11, sql_override=True)
     assert "CASE WHEN" not in query
     assert query.count('"memory"."partsupp"') == 1
-    assert query.count("GROUP BY") == 1
+    # Staged (`then where`) form: the gate's per-part sum is a distinct
+    # computation from the SELECT's, so it groups in its own CTE off the shared
+    # Germany-filtered scan — 2 GROUP BYs, still one partsupp scan.
+    assert query.count("GROUP BY") == 2
 
 
 def test_twelve(engine):
@@ -327,9 +330,10 @@ def test_twenty_two(engine):
     # repeats the filters `thoughtful` already applied and recomputes
     # SUBSTRING(phone,1,2) rather than reusing the projected cntrycode, and
     # every membership atom carries a redundant `IS NOT NULL` beside an IN over
-    # non-null literals. Measured 1755 here (main is 1791); the 1600
-    # this once asserted has never been met by any planner. Guard the shape and
-    # keep ~45 chars of headroom so a real regression still trips it.
-    assert len(query) < 1800, query
+    # non-null literals. The staged (`then where`) form adds the explicit
+    # `account_balance > 0` stage-1 atom to that duplicated text (row scan,
+    # avg scan, and final gate): measured 1848. Keep ~50 chars of headroom so
+    # a real regression still trips it.
+    assert len(query) < 1900, query
     assert query.count("GROUP BY") == 1, query
     assert query.count("SELECT") == 3, query

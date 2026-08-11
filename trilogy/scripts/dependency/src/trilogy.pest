@@ -171,7 +171,7 @@ from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
 // join_clause may appear before "select" (legacy) OR right after the select
 // list (preferred, SQL-like); both positions collect into the same join set.
 select_statement = {
-    from_clause? ~ where? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where? ~ select_grouping? ~ having? ~ order_by? ~ limit?
+    from_clause? ~ where_series? ~ join_clause* ~ ^"select" ~ select_list ~ join_clause* ~ where_series? ~ select_grouping? ~ having? ~ order_by? ~ limit?
 }
 
 // query-scoped join: SUBSET/UNION are the only spellings (left/full/inner/right/
@@ -337,6 +337,13 @@ ordering           = { ORDERING_DIRECTION? ~ (^"nulls" ~ NULLS_SORT)? }
 // WHERE / HAVING / CONDITIONAL
 // =============================================================================
 where  = { ^"where" ~ conditional }
+// staged where: each later stage's aggregates/windows compute over rows
+// passing all earlier stages; the final row gate is the AND of all stages.
+// THEN_LA is a word-boundary lookahead so `thenwhere`/`then_flag` never lex
+// as the stage separator (pest is scannerless; whitespace is optional); the
+// anonymous ^"then" does the consuming so no token lands in the tree.
+THEN_LA      = @{ ^"then" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
+where_series = { where ~ (&THEN_LA ~ ^"then" ~ where)* }
 having = { ^"having" ~ conditional }
 
 // The v2 hydration `conditional` uses right-associative munching:
