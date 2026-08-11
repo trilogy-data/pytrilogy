@@ -282,7 +282,11 @@ def _race_projection_for(entry, alias: str, threads: int) -> list[BaseException]
 
     def work() -> None:
         try:
-            barrier.wait()
+            # Bounded, because `except BaseException` swallows a worker that
+            # left before arriving: a bare wait() parks the other parties (and
+            # then join()) forever instead of failing. That wedged ubuntu-3.11
+            # CI for 6h a round, roughly one worker in 4800.
+            barrier.wait(timeout=30)
             entry.projection_for(alias)
         except BaseException as e:
             errors.append(e)
@@ -291,7 +295,9 @@ def _race_projection_for(entry, alias: str, threads: int) -> list[BaseException]
     for t in workers:
         t.start()
     for t in workers:
-        t.join()
+        t.join(timeout=60)
+        if t.is_alive():
+            errors.append(RuntimeError(f"worker for {alias} never finished"))
     return errors
 
 
@@ -304,7 +310,9 @@ def test_projection_publish_is_atomic_under_threads(model_dir: Path):
     of a module it imports.
 
     A short switch interval is what makes this deterministic rather than a
-    once-per-few-thousand-runs flake.
+    once-per-few-thousand-runs flake. The round count buys nothing beyond that
+    - it is kept low because each round starts 8 threads, and under `--cov` the
+    tracer makes those startups the dominant cost of the file.
     """
     parse(ROOT_TEXT, Environment(working_path=str(model_dir)))
     source = next(iter(isvc._IMPORT_ENV_STORE.values())).env
@@ -314,7 +322,7 @@ def test_projection_publish_is_atomic_under_threads(model_dir: Path):
     try:
         errors = [
             e
-            for i in range(600)
+            for i in range(50)
             for e in _race_projection_for(
                 isvc._ImportEnvEntry(env=source, closure={}, integrity=()),
                 f"ns_{i}",

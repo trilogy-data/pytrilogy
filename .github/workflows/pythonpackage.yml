@@ -12,6 +12,9 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    # A hung test used to burn the 6h default; fail fast instead. Windows runs
+    # ~42m, so this is a thin margin - raise it rather than trimming coverage.
+    timeout-minutes: 45
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
