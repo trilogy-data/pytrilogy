@@ -773,3 +773,185 @@ def test_query_execution_with_validators():
     rows = results[-1].fetchall()
     assert len(rows) == 1
     assert rows[0][1] == 90
+
+
+def test_strip_value_domain():
+    from trilogy.core.functions import strip_value_domain
+    from trilogy.core.models.core import EnumType
+
+    vint = ValidatedType(type=DataType.BIGINT, ranges=(ValueRange(min=0, max=716),))
+    assert strip_value_domain(vint) is DataType.BIGINT
+
+    vnum = ValidatedType(
+        type=NumericType(precision=20, scale=5), ranges=(ValueRange(min=0),)
+    )
+    assert isinstance(strip_value_domain(vnum), NumericType)
+
+    enum = EnumType(type=DataType.INTEGER, values=[1, 2, 3])
+    assert strip_value_domain(enum) is DataType.INTEGER
+
+    wrapped = TraitDataType(type=vint, traits=["pct"])
+    stripped = strip_value_domain(wrapped)
+    assert isinstance(stripped, TraitDataType)
+    assert stripped.traits == ["pct"]
+    assert stripped.type is DataType.BIGINT
+
+    plain_trait = TraitDataType(type=DataType.INTEGER, traits=["pct"])
+    assert strip_value_domain(plain_trait) is plain_trait
+    assert strip_value_domain(DataType.INTEGER) is DataType.INTEGER
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_aggregates_drop_value_domain(backend: ParserBackend):
+    """A sum over bounded values is not itself bounded; comparisons past the
+    per-row domain must parse."""
+    prelude = (
+        "key game int;\n"
+        "property game.ab bigint[1..716];\n"
+        "property game.hr bigint[1..73];\n"
+    )
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(prelude + "auto at_bats <- sum(ab);\nauto mean_ab <- avg(ab);")
+        at_bats = env.concepts["at_bats"].datatype
+        assert at_bats is DataType.BIGINT
+        assert not isinstance(at_bats, ValidatedType)
+        assert env.concepts["mean_ab"].datatype is DataType.FLOAT
+        Environment().parse(
+            prelude + "select sum(ab) as at_bats having at_bats > 20000;"
+        )
+        Environment().parse(
+            prelude + "select (sum(hr) / sum(ab)) as per_hr having per_hr < 0.9;"
+        )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_order_statistics_keep_value_domain(backend: ParserBackend):
+    """min/max/any return values drawn from the input domain, so the domain —
+    and its impossible-comparison lint — survives them."""
+    prelude = "key score int[0..100];\n"
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(prelude + "auto top <- max(score);\nauto bottom <- min(score);")
+        for name in ("top", "bottom"):
+            dt = env.concepts[name].datatype
+            assert isinstance(dt, ValidatedType)
+            assert dt.ranges == (ValueRange(min=0, max=100),)
+        with pytest.raises(Exception, match="no value > 150"):
+            Environment().parse(prelude + "select max(score) as top having top > 150;")
+        Environment().parse(prelude + "select max(score) as top having top > 50;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_enum_membership_through_aggregates(backend: ParserBackend):
+    from trilogy.core.models.core import EnumType
+
+    with _using_backend(backend):
+        env = Environment()
+        env.parse("key q enum<int>[1, 2, 3];\nauto total <- sum(q);")
+        total = env.concepts["total"].datatype
+        assert total is DataType.INTEGER
+        assert not isinstance(total, EnumType)
+        Environment().parse(
+            "key q enum<int>[1, 2, 3];\nselect sum(q) as total having total = 12;"
+        )
+        # max still returns a member, so membership lint survives
+        prelude = "key status enum<string>['open', 'closed'];\n"
+        with pytest.raises(Exception, match="can never match a declared value"):
+            Environment().parse(
+                prelude + "select max(status) as last having last = 'pending';"
+            )
+        Environment().parse(
+            prelude + "select max(status) as last having last = 'open';"
+        )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_arithmetic_drops_value_domain(backend: ParserBackend):
+    """Arithmetic moves values out of the declared domain: ab + 1 can exceed
+    the max, hr / ab lands below the min."""
+    prelude = (
+        "key game int;\n"
+        "property game.ab bigint[1..716];\n"
+        "property game.hr bigint[1..73];\n"
+    )
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(
+            prelude
+            + "auto next_ab <- ab + 1;\n"
+            + "auto ratio <- hr / ab;\n"
+            + "auto dbl <- ab * 2;\n"
+            + "auto diff <- hr - ab;\n"
+            + "auto mag <- abs(diff);\n"
+            + "auto sq <- ab ** 2;"
+        )
+        for name in ("next_ab", "ratio", "dbl", "diff", "mag", "sq"):
+            assert not isinstance(env.concepts[name].datatype, ValidatedType), name
+        Environment().parse(prelude + "select ab, ab + 1 as bumped where bumped > 717;")
+        Environment().parse(
+            prelude + "select game, hr / ab as ratio where ratio < 0.9;"
+        )
+        Environment().parse(prelude + "select hr, hr - ab as diff where diff < 0;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_traits_survive_domain_dropping_functions(backend: ParserBackend):
+    """Dropping the value domain must not disturb trait annotations — traits
+    are governed separately by the type's DROP clause."""
+    prelude = "type pct int[0..100];\nkey score int::pct;\n"
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(prelude + "auto total <- sum(score);\nauto top <- max(score);")
+        total = env.concepts["total"].datatype
+        assert isinstance(total, TraitDataType)
+        assert total.traits == ["pct"]
+        assert not isinstance(total.type, ValidatedType)
+        top = env.concepts["top"].datatype
+        assert isinstance(top, TraitDataType)
+        assert isinstance(top.type, ValidatedType)
+        Environment().parse(
+            prelude + "select sum(score) as total having total > 20000;"
+        )
+        with pytest.raises(Exception, match="no value > 150"):
+            Environment().parse(prelude + "select max(score) as top having top > 150;")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_type_drop_clause_same_document(backend: ParserBackend):
+    """DROP clauses fire for types declared in the same document: staged types
+    were previously invisible to the function factory, so drops only worked
+    across separate parse calls."""
+    text = (
+        "type pct int[0..100] DROP sum;\n"
+        "key score int::pct;\n"
+        "auto total <- sum(score);\n"
+        "auto top <- max(score);"
+    )
+    with _using_backend(backend):
+        env = Environment()
+        env.parse(text)
+        total = env.concepts["total"].datatype
+        assert isinstance(total, TraitDataType)
+        assert total.traits == []
+        top = env.concepts["top"].datatype
+        assert isinstance(top, TraitDataType)
+        assert top.traits == ["pct"]
+
+
+def test_aggregate_beyond_domain_executes():
+    executor = Dialects.DUCK_DB.default_executor()
+    results = executor.execute_text("""
+        key id int;
+        property id.score int[0..100];
+
+        datasource scores (id: id, score: score)
+        grain (id)
+        query '''
+        SELECT i AS id, 100 AS score FROM range(300) t(i)
+        ''';
+
+        select sum(score) as total having total > 20000;
+        """)
+    rows = results[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(30000,)]

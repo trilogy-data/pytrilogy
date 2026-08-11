@@ -29,7 +29,7 @@ from trilogy.parsing.v2.rules.token_rules import TOKEN_HYDRATORS
 from trilogy.parsing.v2.rules.tvf_rules import TVF_NODE_HYDRATORS
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.semantic_scope import SymbolTable
-from trilogy.parsing.v2.semantic_state import SemanticState
+from trilogy.parsing.v2.semantic_state import SemanticState, TypeLookup
 from trilogy.parsing.v2.statement_planner import (
     StatementPlanner,
     require_block_statement,
@@ -158,7 +158,11 @@ class NativeHydrator:
             semantic_state=self.semantic_state,
         )
         self.in_stdlib = context.in_stdlib
-        self.function_factory = FunctionFactory(self.environment)
+        # TypeLookup so DROP clauses on types declared earlier in the same
+        # document (staged, not yet committed) are honored.
+        self.function_factory = FunctionFactory(
+            self.environment, type_lookup=TypeLookup(self.semantic_state).get
+        )
         self.symbol_table: SymbolTable = (
             context.symbol_table
             if context.symbol_table is not None
