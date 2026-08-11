@@ -9,6 +9,12 @@
 # ("[RENDERING] Compiled query: <full SQL>") lands in the report of every
 # failing test. Left unset, loggers sit at WARNING and a failure report carries
 # only what the failure needs.
+#
+# A deadlocked test used to be invisible: the job sat at the last flushed
+# progress line until the CI ceiling killed it, with no stack to look at. This
+# dumps every thread's stack once a single test passes the threshold and then
+# lets it keep running -- diagnosis only, it never fails or kills a test.
+faulthandler_timeout = 600
 markers = [
     "adventureworks_execution: marks test as requiring adventureworks db and running queries",
     "adventureworks: marks tests as requirin adventureworks",
