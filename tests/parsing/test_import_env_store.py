@@ -276,28 +276,50 @@ def test_distinct_parameters_get_distinct_entries(model_dir: Path):
     assert len(isvc._IMPORT_ENV_STORE) == 4
 
 
-def _race_projection_for(entry, alias: str, threads: int) -> list[BaseException]:
+def _race_projection_for(
+    work_items: list[tuple[isvc._ImportEnvEntry, str]], threads: int
+) -> list[BaseException]:
+    """Race `threads` readers over each (entry, alias) publish in turn.
+
+    One long-lived thread set covers every alias, and the switch interval drops
+    only once each worker has run. Starting threads *under* a 1e-6 interval is
+    the hazard: about one newborn in 400 never wins its first GIL acquisition,
+    so it reaches no Python frame, arrives at no barrier, and strands the other
+    parties on a wait that had no timeout - six hours of ubuntu-3.11 CI per run.
+    """
     errors: list[BaseException] = []
     barrier = threading.Barrier(threads)
+    ready = threading.Semaphore(0)
+    go = threading.Event()
 
     def work() -> None:
+        ready.release()
         try:
-            # Bounded, because `except BaseException` swallows a worker that
-            # left before arriving: a bare wait() parks the other parties (and
-            # then join()) forever instead of failing. That wedged ubuntu-3.11
-            # CI for 6h a round, roughly one worker in 4800.
-            barrier.wait(timeout=30)
-            entry.projection_for(alias)
+            if not go.wait(timeout=60):
+                raise TimeoutError("race never started")
+            for entry, alias in work_items:
+                barrier.wait(timeout=60)
+                entry.projection_for(alias)
         except BaseException as e:
             errors.append(e)
 
     workers = [threading.Thread(target=work) for _ in range(threads)]
     for t in workers:
         t.start()
-    for t in workers:
-        t.join(timeout=60)
-        if t.is_alive():
-            errors.append(RuntimeError(f"worker for {alias} never finished"))
+    for _ in workers:
+        if not ready.acquire(timeout=60):
+            errors.append(RuntimeError("worker never started"))
+
+    original_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        go.set()
+        for t in workers:
+            t.join(timeout=120)
+            if t.is_alive():
+                errors.append(RuntimeError("worker never finished"))
+    finally:
+        sys.setswitchinterval(original_interval)
     return errors
 
 
@@ -310,26 +332,18 @@ def test_projection_publish_is_atomic_under_threads(model_dir: Path):
     of a module it imports.
 
     A short switch interval is what makes this deterministic rather than a
-    once-per-few-thousand-runs flake. The round count buys nothing beyond that
-    - it is kept low because each round starts 8 threads, and under `--cov` the
-    tracer makes those startups the dominant cost of the file.
+    once-per-few-thousand-runs flake; one alias per round, because the tear is
+    in publishing a single alias's projection.
     """
     parse(ROOT_TEXT, Environment(working_path=str(model_dir)))
     source = next(iter(isvc._IMPORT_ENV_STORE.values())).env
 
-    original_interval = sys.getswitchinterval()
-    sys.setswitchinterval(1e-6)
-    try:
-        errors = [
-            e
+    errors = _race_projection_for(
+        [
+            (isvc._ImportEnvEntry(env=source, closure={}, integrity=()), f"ns_{i}")
             for i in range(50)
-            for e in _race_projection_for(
-                isvc._ImportEnvEntry(env=source, closure={}, integrity=()),
-                f"ns_{i}",
-                threads=8,
-            )
-        ]
-    finally:
-        sys.setswitchinterval(original_interval)
+        ],
+        threads=8,
+    )
 
     assert not errors, f"racing projection_for raised: {errors[:3]}"
