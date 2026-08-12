@@ -159,12 +159,13 @@ def test_aggregate_functions_renders_known_aggregates():
 
 def test_trilogy_syntax_reference_embeds_aggregate_functions():
     """End-to-end check that the syntax reference the agent system prompt is
-    built from now contains real aggregate signatures, not the literal `[]`
-    that the broken filter used to produce."""
+    built from contains real aggregate signatures, not the literal `[]`
+    that the broken filter used to produce. Aggregates now ride the single
+    Functions list (its `aggregate` family) instead of a duplicated section."""
     from trilogy.ai.prompts import get_trilogy_syntax_reference
 
     ref = get_trilogy_syntax_reference()
-    assert "Aggregate Functions:" in ref
-    aggregates_block = ref.split("Aggregate Functions:", 1)[1].split("Functions:", 1)[0]
+    assert "Functions" in ref
+    aggregates_block = ref.split("aggregate:", 1)[1].splitlines()[0]
     assert "sum" in aggregates_block and "(<arg1>)" in aggregates_block
     assert aggregates_block.strip() != "[]"

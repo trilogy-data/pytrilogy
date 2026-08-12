@@ -1,11 +1,9 @@
-# Catalog page info: paper-catalog page slot (department, catalog number,
-# page number) where a catalog product appeared, plus publication cadence
-# (monthly / quarterly / bi-annual) and a free-form description.
+# Paper-catalog page slots where catalog products appeared.
 
-key sk int; # Surrogate key uniquely identifying a catalog page slot.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the catalog page (16-char alphanumeric).
+    id string, # business identifier
     --department string?, # Department name the catalog page belongs to (e.g. 'DEPARTMENT').
     --catalog_number int?, # Catalog issue/edition number.
     --catalog_page_number int?, # Page number within the catalog.

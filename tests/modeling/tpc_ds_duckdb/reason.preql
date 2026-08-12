@@ -1,11 +1,10 @@
-# Return reason info: free-form textual description of why an item was
-# returned (e.g. 'Did not fit', 'wrong color').
+# Return reasons.
 
-key sk int; # Surrogate key uniquely identifying a return reason.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the return reason (16-char alphanumeric).
-    desc string?, # Free-form description of the reason (e.g. 'Did not fit', 'wrong color').
+    id string, # business identifier
+    desc string?, # Free-form, e.g. 'Did not fit', 'wrong color'.
 );
 
 datasource reason (

@@ -1,5 +1,7 @@
 # q95 token sink (1,213,259 tok, FAIL) — explore JSON hides imported-dimension FK; wrong result is filter-scope idiom error
 
+**Still open as of 2026-08-10** (not re-verified this pass).
+
 Run: `evals/tpcds_agent/results/20260711-042547_enriched`
 Query: q95 — web-sales ship-date / IL / 'pri' / multi-warehouse order / has-return.
 Result: `status: fail`, `detail: result set differs from reference`; 34 iterations, 14 `explore` calls, 4 tool errors, prompt_tokens 1.2M.

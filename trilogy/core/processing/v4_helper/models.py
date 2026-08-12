@@ -166,6 +166,12 @@ class ConceptAttrs:
     # canonical collapse, `merge into`): lets grouping relate a property root
     # to its key root when the key was collapsed onto a different address.
     pseudonyms: frozenset[str] = frozenset()
+    # For ROOT-leaf concepts only: identifiers of the datasources that bind
+    # this concept as an output column. Two roots sharing a binding sit on one
+    # physical row stream even when the demanded lineage graph never relates
+    # them (a fact FK column beside a fact property — `select group_id as g,
+    # nullable_amount as v` — has one BASIC per root and no shared consumer).
+    datasource_bindings: frozenset[str] = frozenset()
     # True for a pure rename (``alias(...)`` lineage) — a pseudonym of its
     # source. The renderer resolves it transparently to the source column, so
     # it must not be folded into a rollup group like a genuine transform dim.

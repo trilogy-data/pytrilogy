@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 1694
+gen_length = 1692
 preql_size = 510
 comp_size = 802
 generated_sql = """
@@ -22,7 +22,7 @@ highfalutin as (
 SELECT
     \"lineitem\".\"l_orderkey\" as \"order_id\",
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    CASE WHEN \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\" THEN \"lineitem\".\"l_suppkey\" ELSE NULL END as \"_virt_filter_id_1852383943558009\"
+    max(CASE WHEN \"lineitem\".\"l_receiptdate\" > \"lineitem\".\"l_commitdate\" THEN \"lineitem\".\"l_suppkey\" ELSE NULL END) as \"_virt_filter_id_1852383943558009\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
@@ -30,8 +30,7 @@ WHERE
 
 GROUP BY
     1,
-    2,
-    3),
+    2),
 thoughtful as (
 SELECT
     \"highfalutin\".\"order_id\" as \"order_id\"

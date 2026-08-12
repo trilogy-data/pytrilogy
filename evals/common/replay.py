@@ -29,7 +29,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, prompts, scoring
+from . import agent_runner, analyze_run, db, prompts, scoring
 from .categories import Category, get_category
 from .main import PROVIDER_ENV, SCORE_TIMEOUT
 from .report import agent_metric_fields, load_env, render_markdown
@@ -57,7 +57,7 @@ class ReplayError(RuntimeError):
     """A precondition failed — this run/query can't be replayed as-is."""
 
 
-def _resolve_category(report: dict) -> Category:
+def _resolve_category(report: dict, spec: BenchmarkSpec) -> Category:
     meta = report.get("meta", {})
     key = meta.get("category")
     if not key:
@@ -67,7 +67,20 @@ def _resolve_category(report: dict) -> Category:
             if str(meta.get("model_source", "")).startswith("enriched")
             else "ingest"
         )
-    return get_category(key)
+    return get_category(key, spec)
+
+
+def _database_path(workspace: Path, preferred_filename: str) -> Path:
+    preferred = workspace / preferred_filename
+    if preferred.exists():
+        return preferred
+    candidates = sorted(workspace.glob("*.duckdb"))
+    if len(candidates) == 1:
+        return candidates[0]
+    names = ", ".join(path.name for path in candidates) or "none"
+    raise ReplayError(
+        f"no {preferred_filename} in {workspace}; DuckDB candidates: {names}"
+    )
 
 
 def _worker_dir(workspace: Path, db_filename: str, worker: int = 0) -> Path:
@@ -139,7 +152,7 @@ def _refresh_model(
     setup = category.setup(
         workspace,
         spec,
-        db_path=workspace / spec.db_filename,
+        db_path=_database_path(workspace, spec.db_filename),
         enriched_dir=_enriched_dir(report),
     )
     if setup["exit_code"] != 0:
@@ -311,9 +324,10 @@ def replay_all(
         raise ReplayError(f"{run_dir.name} has no queries to replay")
     workers = max(1, min(concurrency, len(qids)))
     workspace = run_dir / "workspace"
-    category = _resolve_category(report)
+    category = _resolve_category(report, spec)
     with _run_lock(run_dir):
-        dirs = [_worker_dir(workspace, spec.db_filename, i) for i in range(workers)]
+        db_filename = _database_path(workspace, spec.db_filename).name
+        dirs = [_worker_dir(workspace, db_filename, i) for i in range(workers)]
         _refresh_model(workspace, dirs, spec, category, report, log)
 
     state: dict = {
@@ -390,13 +404,9 @@ def replay_query(
         report = json.loads(report_path.read_text(encoding="utf-8"))
 
         workspace = run_dir / "workspace"
-        workspace_db = workspace / spec.db_filename
-        if not workspace_db.exists():
-            raise ReplayError(
-                f"no {spec.db_filename} in {workspace} — workspace was cleaned"
-            )
+        workspace_db = _database_path(workspace, spec.db_filename)
 
-        category = _resolve_category(report)
+        category = _resolve_category(report, spec)
         meta = report["meta"]
         provider, model = meta["provider"], meta["model"]
 
@@ -415,7 +425,7 @@ def replay_query(
         prev = next((q for q in report.get("queries", []) if q["id"] == qid), None)
         prev_status = prev["status"] if prev else None
 
-        worker_dir = _worker_dir(workspace, spec.db_filename, worker)
+        worker_dir = _worker_dir(workspace, workspace_db.name, worker)
         if refresh_model:
             _refresh_model(workspace, [worker_dir], spec, category, report, log)
         task = category.build_task(spec, entry)
@@ -454,6 +464,9 @@ def replay_query(
     )
     timed_out = result.get("timed_out", False)
     exit_code = result.get("exit_code", 0)
+    reference_db_path = None
+    if report.get("ingest", {}).get("separate_reference_database"):
+        reference_db_path = db.cache_path(spec, report["meta"]["scale_factor"])
 
     with lock:
         produced = worker_dir / prompts.candidate_filename(
@@ -473,6 +486,7 @@ def replay_query(
                 SCORE_TIMEOUT,
                 params=entry.get("params"),
                 custom_refs_dir=refs,
+                reference_db_path=reference_db_path,
             )
         except Exception as exc:
             score = scoring.QueryResult(

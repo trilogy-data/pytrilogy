@@ -28,7 +28,10 @@ from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
 )
-from trilogy.core.processing.rowset_islanding import island_rowsets_for_connectivity
+from trilogy.core.processing.rowset_islanding import (
+    island_rowsets_for_connectivity,
+    link_rowset_outputs_for_connectivity,
+)
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -389,6 +392,11 @@ def _component_map(
 
     if island_rowsets:
         island_rowsets_for_connectivity(g, cg, grain_only)
+    else:
+        # Even without islanding, one rowset's co-produced outputs are a single
+        # sub-query — weld them so a join declared INSIDE the rowset body
+        # (invisible at this level) doesn't split its own handles.
+        link_rowset_outputs_for_connectivity(g, cg)
 
     if excluded_addresses:
         for node, concept in g.concepts.items():
@@ -609,7 +617,7 @@ def raise_if_disconnected_for(
     ]
     if len(subgraphs) > 1:
         message = format_disconnected_subgraphs_error(
-            subgraphs, environment, g, island_rowsets, line_number
+            subgraphs, environment, g, island_rowsets, line_number, excluded_addresses
         )
         note = membership_span_note(
             conditions, subgraphs, environment, g, island_rowsets
@@ -627,6 +635,7 @@ def connected_equivalent_suggestions(
     subgraphs: list[list[BuildConcept]],
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
+    excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Detect the separate-import mistake: a model imported a second time as a
     disconnected copy, so concepts like ``date.year`` split off from a measure that
@@ -638,10 +647,11 @@ def connected_equivalent_suggestions(
     connected component; shortest such prefix wins. Returns
     ``(stranded_address, connected_address)`` pairs, or ``[]`` when no twin exists
     (the caller then falls back to the generic join/merge hint). Reachability is
-    judged with ``_component_map`` so it matches ``disconnected_components``."""
+    judged with ``_component_map`` — same ``island_rowsets``/``excluded_addresses``
+    as the split — so it matches ``disconnected_components``."""
     if environment is None:
         return []
-    comp_of, _ = _component_map(environment, g, island_rowsets)
+    comp_of, _ = _component_map(environment, g, island_rowsets, excluded_addresses)
 
     def component_of(concept: BuildConcept) -> int | None:
         for node in _anchor_nodes(concept):
@@ -666,6 +676,8 @@ def connected_equivalent_suggestions(
             best: str | None = None
             for candidate in environment.concepts.values():
                 addr = candidate.address
+                if addr == stranded or addr in excluded_addresses:
+                    continue
                 if VIRTUAL_CONCEPT_PREFIX in addr or not addr.endswith(suffix):
                     continue
                 if component_of(candidate) not in target_comps:
@@ -689,6 +701,7 @@ def format_disconnected_subgraphs_error(
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
     line_number: int | None = None,
+    excluded_addresses: frozenset[str] = frozenset(),
 ) -> str:
     def render(group: list[BuildConcept]) -> str:
         addrs = sorted(c.address for c in group)
@@ -709,7 +722,9 @@ def format_disconnected_subgraphs_error(
     )
 
     suggestions = (
-        connected_equivalent_suggestions(environment, subgraphs, g, island_rowsets)
+        connected_equivalent_suggestions(
+            environment, subgraphs, g, island_rowsets, excluded_addresses
+        )
         if environment is not None
         else []
     )

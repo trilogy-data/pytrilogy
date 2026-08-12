@@ -1,5 +1,7 @@
 # Handoff: q05 rollup over a joined rowset emits an ungrouped binding column
 
+**Re-verified OPEN 2026-08-10.** `repro_q05_rollup_rowset_binding.py` still fails its assertion ("The known ungrouped backing key was not generated").
+
 ## Summary
 
 TPC-DS q05 exposed a planner/rendering bug when a query:

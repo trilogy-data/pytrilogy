@@ -1169,18 +1169,35 @@ def _statuses_by_id(report: dict) -> dict[int, str]:
     return {q["id"]: q["status"] for q in report.get("queries", [])}
 
 
+def _token_percentiles(report: dict) -> tuple[float | None, float | None]:
+    values = sorted(
+        float(metric.get("total_tokens", 0))
+        for metric in report.get("per_query_metrics") or []
+    )
+    if not values:
+        return None, None
+    return _pct(values, 50), _pct(values, 90)
+
+
 def _funnel_rows(reports_by_key: dict[str, dict]) -> list[dict]:
-    """One row per category in the given order: pass set, marginal new passes
-    vs the previous (less-scaffolded) leg, and regressions (passed earlier but
-    not here). Pass sets are cumulative-union for the 'newly unlocked' delta so
-    the funnel reads as 'value added by this layer'."""
+    """One row per category with order-independent pass-set overlap metrics."""
+    pass_sets = {
+        key: {
+            qid for qid, status in _statuses_by_id(report).items() if status == "pass"
+        }
+        for key, report in reports_by_key.items()
+    }
     rows: list[dict] = []
-    seen_pass: set[int] = set()
     for key, report in reports_by_key.items():
         statuses = _statuses_by_id(report)
-        passing = {qid for qid, st in statuses.items() if st == "pass"}
-        marginal = passing - seen_pass
-        regressions = seen_pass - passing
+        passing = pass_sets[key]
+        other_passes: set[int] = set()
+        for other_key, other_passing in pass_sets.items():
+            if other_key != key:
+                other_passes.update(other_passing)
+        unique = passing - other_passes
+        shared = passing & other_passes
+        token_p50, token_p90 = _token_percentiles(report)
         rows.append(
             {
                 "key": key,
@@ -1188,60 +1205,130 @@ def _funnel_rows(reports_by_key: dict[str, dict]) -> list[dict]:
                 "passing": passing,
                 "pass_count": len(passing),
                 "total": report["meta"].get("num_queries", len(statuses)),
-                "marginal": sorted(marginal),
-                "regressions": sorted(regressions),
+                "unique": sorted(unique),
+                "shared": sorted(shared),
                 "tokens": report.get("agent", {}).get("tokens", {}).get("total", 0),
+                "token_p50": token_p50,
+                "token_p90": token_p90,
                 "pass_rate": report.get("summary", {}).get("pass_rate", 0.0),
             }
         )
-        seen_pass |= passing
     return rows
 
 
 def render_funnel(reports_by_key: dict[str, dict], out_path: Path) -> Path:
-    """Cross-category funnel + per-query pass/fail matrix. ``reports_by_key`` is
-    ordered least- to most-scaffolded (sql_bare → enriched)."""
+    """Cross-category pass coverage, metrics, and per-query outcome matrix."""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
     from matplotlib.gridspec import GridSpec
     from matplotlib.patches import Patch
+    from matplotlib.ticker import MaxNLocator
 
     rows = _funnel_rows(reports_by_key)
     keys = list(reports_by_key)
     all_ids = sorted({q["id"] for r in reports_by_key.values() for q in r["queries"]})
 
-    fig = plt.figure(figsize=(15, 10))
-    gs = GridSpec(2, 2, figure=fig, height_ratios=[1.0, 1.6], hspace=0.35, wspace=0.25)
-    bench = next(iter(reports_by_key.values()))["meta"].get("benchmark", "")
-    fig.suptitle(f"{bench} eval — category funnel", fontsize=14, fontweight="bold")
+    fig = plt.figure(figsize=(15, 12.5), facecolor="#f8fafc")
+    gs = GridSpec(
+        3,
+        1,
+        figure=fig,
+        height_ratios=[1.0, 0.58, 1.55],
+        hspace=0.4,
+        left=0.18,
+        right=0.95,
+        top=0.9,
+        bottom=0.06,
+    )
+    meta = next(iter(reports_by_key.values()))["meta"]
+    bench = meta.get("benchmark", "")
+    provider = meta.get("provider", "")
+    model = meta.get("model", "")
+    model_label = "/".join(value for value in (provider, model) if value)
+    fig.suptitle(
+        f"{bench} eval — category funnel",
+        y=0.975,
+        fontsize=16,
+        fontweight="bold",
+        color="#172033",
+    )
+    fig.text(
+        0.5,
+        0.95,
+        f"{model_label}  •  {len(all_ids)} queries  •  raw token usage",
+        ha="center",
+        fontsize=9.5,
+        color="#64748b",
+    )
 
-    # Funnel bars (pass count per category, annotated with marginal lift).
+    # Pass bars split into order-independent shared and category-unique passes.
     ax_funnel = fig.add_subplot(gs[0, 0])
+    ax_funnel.set_facecolor("white")
     labels = [r["label"] for r in rows]
-    counts = [r["pass_count"] for r in rows]
-    ypos = list(range(len(rows)))[::-1]  # most-scaffolded on top
-    ax_funnel.barh(ypos, counts, color="#4c78a8")
+    shared_counts = [len(r["shared"]) for r in rows]
+    unique_counts = [len(r["unique"]) for r in rows]
+    ypos = list(range(len(rows)))[::-1]  # first category on top
+    bar_colors = [
+        "#2a9d8f" if r["key"].startswith("enriched") else "#4c78a8" for r in rows
+    ]
+    ax_funnel.barh(ypos, shared_counts, color=bar_colors, alpha=0.55, height=0.72)
+    ax_funnel.barh(
+        ypos,
+        unique_counts,
+        left=shared_counts,
+        color=bar_colors,
+        height=0.72,
+    )
     for y, r in zip(ypos, rows):
-        delta = f"  (+{len(r['marginal'])}" if r["marginal"] else "  (+0"
-        delta += f", -{len(r['regressions'])})" if r["regressions"] else ")"
         ax_funnel.text(
-            r["pass_count"] + 0.1,
+            r["pass_count"] + 0.12,
             y,
-            f"{r['pass_count']}{delta}",
+            (
+                f"{r['pass_count']}/{r['total']}  "
+                f"({len(r['shared'])} shared, {len(r['unique'])} unique)"
+            ),
             va="center",
-            fontsize=9,
+            fontsize=9.5,
+            color="#334155",
         )
     ax_funnel.set_yticks(ypos)
-    ax_funnel.set_yticklabels(labels)
-    ax_funnel.set_xlabel("queries passing")
-    ax_funnel.set_title("Funnel: passes + (newly unlocked, -regressions)")
+    ax_funnel.set_yticklabels(labels, fontsize=9.5)
+    ax_funnel.set_xlabel("queries passing", color="#475569")
+    ax_funnel.set_title(
+        "Pass counts and cross-category overlap",
+        loc="left",
+        pad=10,
+        fontsize=12,
+        fontweight="semibold",
+        color="#172033",
+    )
+    ax_funnel.set_axisbelow(True)
+    ax_funnel.xaxis.grid(color="#e2e8f0", linewidth=0.8)
+    ax_funnel.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax_funnel.tick_params(axis="both", colors="#475569")
+    ax_funnel.legend(
+        handles=[
+            Patch(color="#64748b", alpha=0.55, label="shared pass"),
+            Patch(color="#64748b", label="unique pass"),
+        ],
+        loc="lower right",
+        bbox_to_anchor=(1.0, 1.01),
+        fontsize=8,
+        frameon=False,
+        ncol=2,
+    )
+    for spine in ("top", "right", "left"):
+        ax_funnel.spines[spine].set_visible(False)
+    ax_funnel.spines["bottom"].set_color("#cbd5e1")
     if rows:
-        ax_funnel.set_xlim(0, max(r["total"] for r in rows) + 2)
+        ax_funnel.set_xlim(0, max(r["total"] for r in rows) + 2.5)
 
     # Metrics table.
-    ax_tbl = fig.add_subplot(gs[0, 1])
+    ax_tbl = fig.add_subplot(gs[1, 0])
+    ax_tbl.set_facecolor("white")
     ax_tbl.axis("off")
     table_rows = [
         [
@@ -1249,55 +1336,109 @@ def render_funnel(reports_by_key: dict[str, dict], out_path: Path) -> Path:
             f"{r['pass_count']}/{r['total']}",
             f"{r['pass_rate']:.2f}",
             f"{r['tokens']:,}",
+            f"{r['token_p50']:,.0f}" if r["token_p50"] is not None else "—",
+            f"{r['token_p90']:,.0f}" if r["token_p90"] is not None else "—",
         ]
         for r in rows
     ]
     tbl = ax_tbl.table(
         cellText=table_rows,
-        colLabels=["category", "pass", "rate", "tokens"],
+        colLabels=[
+            "category",
+            "pass",
+            "rate",
+            "total tokens",
+            "p50 tokens/query",
+            "p90 tokens/query",
+        ],
+        colWidths=[0.32, 0.1, 0.1, 0.17, 0.15, 0.15],
         loc="center",
         cellLoc="center",
     )
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(9)
-    tbl.scale(1, 1.5)
-    ax_tbl.set_title("Per-category metrics")
+    tbl.scale(1, 1.45)
+    for (row_idx, col_idx), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#cbd5e1")
+        cell.set_linewidth(0.7)
+        cell.PAD = 0.04
+        if row_idx == 0:
+            cell.set_facecolor("#334155")
+            cell.get_text().set_color("white")
+            cell.get_text().set_fontweight("bold")
+        else:
+            cell.set_facecolor("#ffffff" if row_idx % 2 else "#f1f5f9")
+            cell.get_text().set_color("#1e293b")
+        if col_idx == 0:
+            cell.get_text().set_ha("left")
+    ax_tbl.set_title(
+        "Per-category metrics",
+        loc="left",
+        pad=10,
+        fontsize=12,
+        fontweight="semibold",
+        color="#172033",
+    )
 
     # Per-query matrix (rows=queries, cols=categories).
-    ax_mat = fig.add_subplot(gs[1, :])
+    ax_mat = fig.add_subplot(gs[2, 0])
+    ax_mat.set_facecolor("white")
     status_maps = {k: _statuses_by_id(reports_by_key[k]) for k in keys}
     grid = [
         [1 if status_maps[k].get(qid) == "pass" else 0 for k in keys] for qid in all_ids
     ]
+    outcome_colors = ["#c2415d", "#198754"]
     ax_mat.imshow(
-        grid, aspect="auto", cmap="RdYlGn", vmin=0, vmax=1, interpolation="nearest"
+        grid,
+        aspect="auto",
+        cmap=ListedColormap(outcome_colors),
+        vmin=0,
+        vmax=1,
+        interpolation="nearest",
     )
     ax_mat.set_xticks(range(len(keys)))
     ax_mat.set_xticklabels(
-        [reports_by_key[k]["meta"].get("category_label", k) for k in keys]
+        [reports_by_key[k]["meta"].get("category_label", k) for k in keys],
+        fontsize=9,
     )
     ax_mat.set_yticks(range(len(all_ids)))
-    ax_mat.set_yticklabels([f"q{qid:02d}" for qid in all_ids], fontsize=7)
-    ax_mat.set_title("Per-query pass (green) / not-pass (red)")
+    ax_mat.set_yticklabels([f"q{qid:02d}" for qid in all_ids], fontsize=7.5)
+    ax_mat.set_xticks([idx - 0.5 for idx in range(len(keys) + 1)], minor=True)
+    ax_mat.set_yticks([idx - 0.5 for idx in range(len(all_ids) + 1)], minor=True)
+    ax_mat.grid(which="minor", color="white", linewidth=1.2)
+    ax_mat.tick_params(which="minor", bottom=False, left=False)
+    ax_mat.tick_params(axis="x", pad=8, colors="#334155")
+    ax_mat.tick_params(axis="y", colors="#475569")
+    ax_mat.set_title(
+        "Per-query outcomes",
+        loc="left",
+        pad=10,
+        fontsize=12,
+        fontweight="semibold",
+        color="#172033",
+    )
     ax_mat.legend(
         handles=[
-            Patch(color=plt.get_cmap("RdYlGn")(1.0), label="pass"),
-            Patch(color=plt.get_cmap("RdYlGn")(0.0), label="not pass"),
+            Patch(color=outcome_colors[1], label="pass"),
+            Patch(color=outcome_colors[0], label="not pass"),
         ],
-        loc="upper right",
-        bbox_to_anchor=(1.18, 1.0),
+        loc="lower right",
+        bbox_to_anchor=(1.0, 1.01),
         fontsize=8,
+        frameon=False,
+        ncol=2,
     )
+    for spine in ax_mat.spines.values():
+        spine.set_color("#cbd5e1")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    fig.savefig(out_path, dpi=140, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     return out_path
 
 
 def write_funnel_report(reports_by_key: dict[str, dict], out_path: Path) -> Path:
-    """Markdown twin of :func:`render_funnel`: funnel deltas, a per-category
-    metrics table, and the full query×category pass/fail matrix."""
+    """Markdown twin of :func:`render_funnel`."""
     rows = _funnel_rows(reports_by_key)
     keys = list(reports_by_key)
     status_maps = {k: _statuses_by_id(reports_by_key[k]) for k in keys}
@@ -1305,15 +1446,15 @@ def write_funnel_report(reports_by_key: dict[str, dict], out_path: Path) -> Path
     bench = next(iter(reports_by_key.values()))["meta"].get("benchmark", "")
 
     lines = [f"# {bench} category funnel", ""]
-    lines.append("## Funnel (increasing scaffolding)")
+    lines.append("## Category pass coverage")
     lines.append("")
-    lines.append("| category | passing | newly unlocked | regressions |")
+    lines.append("| category | passing | unique passes | shared passes |")
     lines.append("|---|---|---|---|")
     for r in rows:
-        unlocked = ", ".join(f"q{q:02d}" for q in r["marginal"]) or "—"
-        regr = ", ".join(f"q{q:02d}" for q in r["regressions"]) or "—"
+        unique = ", ".join(f"q{q:02d}" for q in r["unique"]) or "—"
+        shared = ", ".join(f"q{q:02d}" for q in r["shared"]) or "—"
         lines.append(
-            f"| {r['label']} | {r['pass_count']}/{r['total']} | {unlocked} | {regr} |"
+            f"| {r['label']} | {r['pass_count']}/{r['total']} | {unique} | {shared} |"
         )
     lines += [
         "",

@@ -106,7 +106,7 @@ def test_agent_info_query_subcommand():
 
     assert result.exit_code == 0
     assert "## Trilogy Language Reference" in result.output
-    assert "## SELECT statements" in result.output
+    assert "## Query structure" in result.output
     assert "python-datasource" in result.output
     assert "# Agent Usage Guide" not in result.output
 

@@ -1,0 +1,103 @@
+# Private materializations keep these warehouse summaries out of normal explore output.
+auto _warehouse_count_items <- count(item.sk);
+auto _warehouse_count_customers <- count(customer.sk);
+auto _warehouse_count_tickets <- count(ticket_number);
+auto _warehouse_sum_quantity <- sum(quantity);
+auto _warehouse_sum_sales_price <- sum(sales_price);
+auto _warehouse_sum_list_price <- sum(list_price);
+auto _warehouse_sum_ext_sales_price <- sum(ext_sales_price);
+auto _warehouse_sum_ext_list_price <- sum(ext_list_price);
+auto _warehouse_sum_ext_wholesale_cost <- sum(ext_wholesale_cost);
+auto _warehouse_sum_ext_discount_amount <- sum(ext_discount_amount);
+auto _warehouse_sum_net_profit <- sum(net_profit);
+auto _warehouse_sum_coupon_amt <- sum(coupon_amt);
+auto _warehouse_sum_net_paid <- sum(net_paid);
+auto _warehouse_sum_ext_tax <- sum(ext_tax);
+auto _warehouse_sum_wholesale_cost <- sum(wholesale_cost);
+
+datasource _warehouse_store_sales_daily (
+    ss_sold_date_sk: ?sale_date.sk,
+    ss_item_sk: item.sk,
+    ss_customer_sk: ?customer.sk,
+    ss_cdemo_sk: ?pos_customer_demographic.sk,
+    ss_hdemo_sk: ?pos_household_demographic.sk,
+    ss_store_sk: ?store.sk,
+    ss_promo_sk: ?promotion.sk,
+    ss_addr_sk: ?pos_address.sk,
+    count_rows: line_item_count,
+    count_items: _warehouse_count_items,
+    count_customers: _warehouse_count_customers,
+    count_tickets: _warehouse_count_tickets,
+    sum_quantity: _warehouse_sum_quantity,
+    sum_sales_price: _warehouse_sum_sales_price,
+    sum_list_price: _warehouse_sum_list_price,
+    sum_ext_sales_price: _warehouse_sum_ext_sales_price,
+    sum_ext_list_price: _warehouse_sum_ext_list_price,
+    sum_ext_wholesale_cost: _warehouse_sum_ext_wholesale_cost,
+    sum_ext_discount_amt: _warehouse_sum_ext_discount_amount,
+    sum_net_profit: _warehouse_sum_net_profit,
+    sum_coupon_amt: _warehouse_sum_coupon_amt,
+    sum_net_paid: _warehouse_sum_net_paid,
+    sum_ext_tax: _warehouse_sum_ext_tax,
+    sum_wholesale_cost: _warehouse_sum_wholesale_cost,
+)
+grain (
+    sale_date.sk,
+    item.sk,
+    customer.sk,
+    pos_customer_demographic.sk,
+    pos_household_demographic.sk,
+    store.sk,
+    promotion.sk,
+    pos_address.sk
+)
+address fact_agg_store_sales_daily;
+
+auto _warehouse_count_return_items <- count(item.sk);
+auto _warehouse_count_return_customers <- count(return_customer.sk);
+auto _warehouse_count_return_tickets <- count(ticket_number);
+auto _warehouse_sum_return_amount <- sum(return_amount);
+auto _warehouse_sum_return_quantity <- sum(return_quantity);
+auto _warehouse_sum_return_tax <- sum(return_tax);
+auto _warehouse_sum_return_amount_inc_tax <- sum(return_amount_inc_tax);
+auto _warehouse_sum_return_fee <- sum(return_fee);
+auto _warehouse_sum_return_ship_cost <- sum(return_ship_cost);
+auto _warehouse_sum_refunded_cash <- sum(refunded_cash);
+auto _warehouse_sum_reversed_charge <- sum(reversed_charge);
+auto _warehouse_sum_store_credit <- sum(store_credit);
+auto _warehouse_sum_return_net_loss <- sum(return_net_loss);
+
+datasource _warehouse_store_returns_daily (
+    sr_returned_date_sk: return_date.sk,
+    sr_item_sk: item.sk,
+    sr_customer_sk: ?return_customer.sk,
+    sr_cdemo_sk: ?return_customer_demographic.sk,
+    sr_hdemo_sk: ?return_household_demographic.sk,
+    sr_addr_sk: ?return_address.sk,
+    sr_store_sk: ?return_store.sk,
+    sr_reason_sk: ?return_reason.sk,
+    count_items: _warehouse_count_return_items,
+    count_customers: _warehouse_count_return_customers,
+    count_tickets: _warehouse_count_return_tickets,
+    sum_return_amt: _warehouse_sum_return_amount,
+    sum_return_quantity: _warehouse_sum_return_quantity,
+    sum_return_tax: _warehouse_sum_return_tax,
+    sum_return_amt_inc_tax: _warehouse_sum_return_amount_inc_tax,
+    sum_fee: _warehouse_sum_return_fee,
+    sum_return_ship_cost: _warehouse_sum_return_ship_cost,
+    sum_refunded_cash: _warehouse_sum_refunded_cash,
+    sum_reversed_charge: _warehouse_sum_reversed_charge,
+    sum_store_credit: _warehouse_sum_store_credit,
+    sum_net_loss: _warehouse_sum_return_net_loss,
+)
+grain (
+    return_date.sk,
+    item.sk,
+    return_customer.sk,
+    return_customer_demographic.sk,
+    return_household_demographic.sk,
+    return_address.sk,
+    return_store.sk,
+    return_reason.sk
+)
+address fact_agg_store_returns_daily;

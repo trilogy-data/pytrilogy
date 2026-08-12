@@ -1,34 +1,33 @@
-# Customer info: names, salutation, login, email, preferred-customer
-# flag, country of birth, and decomposed birth date (year / month / day).
+# Customer dimension: identity, contact, and birth attributes.
 
 import std.date;
 import std.geography;
 
-import customer_demographic as current_demographics; # the customer's current customer-demographic record (C_CURRENT_CDEMO_SK)
-import household_demographic as current_household_demographics; # the customer's current household-demographic record (C_CURRENT_HDEMO_SK)
-import address as current_address; # the customer's current address record (C_CURRENT_ADDR_SK)
+import customer_demographic as current_demographics;
+import household_demographic as current_household_demographics;
+import address as current_address;
 import date as first_sales_date;
 import date as first_shipto_date;
 
-key sk int; # Surrogate key uniquely identifying a customer.
-unique property sk.id string; # Stable natural/business customer ID (16-char alphanumeric) Unique for customers..
+key sk int; # surrogate key
+unique property sk.id string; # natural/business customer ID
 
 properties sk (
-    last_name string?, # Customer last (family) name. Not guaranteed unique; weak for identity.
-    first_name string?, # Customer first (given) name..
+    last_name string?, # Not guaranteed unique; weak for identity.
+    first_name string?,
     preferred_cust_flag enum<string>['Y', 'N']?,
-    birth_day int::day?, # Day-of-month of birth (1-31; combine with month/year for full DOB).
-    birth_month int::month?, # Month of birth (1-12).
-    birth_year int::year?, # Four-digit year of birth (1924-1992 in this dataset).
-    birth_country string::country?, # Country of birth (free-form name, e.g. 'UNITED STATES').
-    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir']?, # Title/salutation prefix.
-    email_address string?, # Customer email address.
-    login string?, # Account username/login.
-    last_review_date string?, # FK to date for customer's last review.
+    birth_day int::day?,
+    birth_month int::month?,
+    birth_year int::year?, # 1924-1992 in this dataset.
+    birth_country string::country?, # Free-form, e.g. 'UNITED STATES'.
+    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir']?,
+    email_address string?,
+    login string?,
+    last_review_date string?, # Date-dim sk of the last review, stored as string.
 );
 
-auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # Derived display name: 'Salutation First Last'.
-auto birth_date <- (birth_year::string || '/' || birth_month::string || '/' || birth_day::string)::date; # Derived calendar birth date; || so any NULL component yields a NULL date (concat() skips NULLs and would produce an uncastable string).
+auto full_name <- concat(salutation, ' ', first_name, ' ', last_name); # 'Salutation First Last'.
+auto birth_date <- (birth_year::string || '/' || birth_month::string || '/' || birth_day::string)::date; # Derived calendar birth date; NULL if any component is NULL (uses ||, since concat() skips NULLs and would produce an uncastable string).
 
 datasource customers (
     C_CUSTOMER_SK: sk,

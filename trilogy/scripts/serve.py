@@ -7,7 +7,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from pathlib import Path as PathlibPath
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from click import Path, argument, option, pass_context
 
@@ -182,6 +182,18 @@ def build_hosted_studio_link(
         f"store={quote(store_url)}&"
         f"remote={quote('true')}" + (f"&token={token}" if token else "")
     )
+
+
+def is_loopback_studio(studio_url: str) -> bool:
+    """Is this studio address on the same machine as the store we're serving?
+
+    Only used to decide whether to print the Local Network Access caveat: that
+    block applies to a *public* origin reaching a loopback store, so a studio
+    already running on localhost (a dev server, another `trilogy serve`) is not
+    subject to it and should not be warned about.
+    """
+    host = (urlparse(studio_url).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 
 def build_local_studio_link(
@@ -661,6 +673,15 @@ def create_app(
     type=Path(exists=True, file_okay=False, dir_okay=True),
     help="Serve an already-extracted studio bundle from this directory",
 )
+@option(
+    "--studio-url",
+    default=None,
+    type=str,
+    help=(
+        "Link back to the studio already running at this address instead of "
+        "serving a local bundle. Overrides [serve] studio_url in trilogy.toml."
+    ),
+)
 @pass_context
 def serve(
     ctx,
@@ -675,12 +696,22 @@ def serve(
     no_state_cache: bool,
     no_local_studio: bool,
     studio_bundle: str | None,
+    studio_url: str | None,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
         print(
             "Error: FastAPI and uvicorn are required for the serve command.\n"
             "Please install with: pip install pytrilogy[serve]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if studio_url and studio_bundle:
+        print(
+            "Error: --studio-url and --studio-bundle are mutually exclusive. "
+            "--studio-url names a studio hosted elsewhere; --studio-bundle "
+            "serves one from this process.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -702,7 +733,7 @@ def serve(
 
     # Load trilogy.toml for engine dialect and serve settings
     config_path = find_trilogy_config(directory_path)
-    studio_url = DEFAULT_STUDIO_URL
+    resolved_studio_url = DEFAULT_STUDIO_URL
     project_name: str | None = None
     connection_type: Dialects | str | None = None
     connection_options: dict[str, str] = {}
@@ -712,7 +743,7 @@ def serve(
         runtime_config = load_config_file(config_path)
         if runtime_config.engine_dialect and engine == "generic":
             engine = runtime_config.engine_dialect.value
-        studio_url = runtime_config.serve_studio_url
+        resolved_studio_url = runtime_config.serve_studio_url
         project_name = runtime_config.project_name
         if runtime_config.serve_connection:
             connection_type = runtime_config.serve_connection.type
@@ -726,6 +757,16 @@ def serve(
         ):
             engine_config = runtime_config.engine_config
         startup_scripts = runtime_config.startup_sql + runtime_config.startup_trilogy
+
+    # An explicit address names a studio that is already running, so there is
+    # nothing to gain from downloading and mounting a bundle — and the link has
+    # to point at that studio, which only the hosted form does. Config's
+    # studio_url keeps its narrower meaning (a fallback for --no-local-studio):
+    # a file that has sat in a repo for months shouldn't silently turn off the
+    # local bundle for everyone who runs `trilogy serve` in it.
+    if studio_url:
+        resolved_studio_url = studio_url
+        no_local_studio = True
 
     if no_auth:
         token = None
@@ -805,7 +846,7 @@ def serve(
             )
         else:
             studio_link = build_hosted_studio_link(
-                studio_url,
+                resolved_studio_url,
                 f"{base_url}/models/{model_safe_name}.json",
                 asset_name,
                 display_model_name,
@@ -817,7 +858,7 @@ def serve(
         print("\n" + "=" * 80)
         print("Trilogy Studio Link:")
         print(studio_link)
-        if resolved_bundle is None:
+        if resolved_bundle is None and not is_loopback_studio(resolved_studio_url):
             print(
                 "(hosted studio — your browser may block it from reaching this "
                 "local server; run with a studio bundle to serve it locally)"

@@ -92,6 +92,14 @@ jobs:
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
+      - name: Run differential fuzzer corpus
+        # One cell only: the fixed-seed corpus is deterministic, so extra
+        # matrix cells re-prove the same result. This is the sweep the
+        # V4-default flip shipped without — 20 silent regressions
+        # (evals/tpcds_agent/handoff_fuzzer_v4_default_regressions.md).
+        if: matrix.run_llm_tests == true
+        run: |
+          python -m local_scripts.fuzzer
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests. One invocation, not three: the -k

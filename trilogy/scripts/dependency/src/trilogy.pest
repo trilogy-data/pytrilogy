@@ -545,7 +545,9 @@ aggregate_by = { GROUP_TARGET ~ ^"by" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 count          = { ^"count" ~ "(" ~ expr ~ ")" }
 // Accept the SQL-habit `count(distinct x)` as an alias for `count_distinct(x)`.
 // Tried before `count` in aggregate_functions, so `count(x)` still resolves to count.
-count_distinct = { (^"count_distinct" ~ "(" ~ expr ~ ")") | (^"count" ~ "(" ~ ^"distinct" ~ expr ~ ")") }
+// Several arguments (`count_distinct(a, b)`, `count(distinct a, b)`) count distinct
+// combinations: hydration desugars them through grain(), same as count(grain(a, b)).
+count_distinct = { (^"count_distinct" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")") | (^"count" ~ "(" ~ ^"distinct" ~ (expr ~ ",")* ~ expr ~ ")") }
 grouping       = { ^"grouping" ~ "(" ~ expr ~ ")" }
 grouping_id    = { ^"grouping_id" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }

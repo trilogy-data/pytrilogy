@@ -30,6 +30,17 @@ def _reset_output_format():
     display_core.set_output_format("rich")
 
 
+def _assert_ran(output: str) -> None:
+    """The run summary is a rich panel ("Execution Complete") only when rich is
+    installed; without it the same summary prints as plain text."""
+    from trilogy.scripts import display_core
+
+    if display_core.RICH_AVAILABLE and display_core.console is not None:
+        assert "Execution Complete" in output, output
+    else:
+        assert "Completed in" in output, output
+
+
 def test_list_empty_directory(runner, tmp_path: Path):
     result = runner.invoke(cli, ["file", "list", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -596,6 +607,109 @@ def test_write_show_sql_render_error_confirms_write_then_surfaces(
     assert "Wrote" in result.output
     assert "codegen exploded" in result.output
     assert target.read_text() == "select 1 -> x;"
+
+
+def test_write_run_executes_written_file(runner, tmp_path: Path):
+    """``--run`` writes the file then executes it through the run command's own
+    path — one call replaces the agent's write/run pair."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli, ["file", "write", str(target), "--content", "select 1 -> x;", "--run"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Wrote" in result.output
+    _assert_ran(result.output)
+    assert target.exists()
+
+
+def test_write_run_refusal_does_not_run(runner, tmp_path: Path):
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        ["file", "write", str(target), "--content", "auto orders_per", "--run"],
+    )
+    assert result.exit_code == 1, result.output
+    assert "not syntactically valid Trilogy" in result.output
+    assert not target.exists()
+
+
+def test_write_run_and_delete_removes_file_after_success(runner, tmp_path: Path):
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _assert_ran(result.output)
+    assert not target.exists()
+
+
+def test_write_run_and_delete_removes_file_after_failed_run(runner, tmp_path: Path):
+    """A body that parses but fails at run time (undefined concept) still gets
+    cleaned up, and the run's failing exit code survives the deletion."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select undefined_thing -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code != 0, result.output
+    assert not target.exists()
+
+
+def test_write_run_flags_mutually_exclusive(runner, tmp_path: Path):
+    target = tmp_path / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "at most one of --run or --run-and-delete" in result.output
+    assert not target.exists()
+
+
+def test_write_run_rejects_non_local_backend(runner):
+    class RemoteBackend:
+        scheme = "fakeremote"
+
+        def exists(self, path: str) -> bool:
+            return False
+
+    register_backend("fakeremote", lambda: RemoteBackend())  # type: ignore[arg-type,return-value]
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            "fakeremote://bucket/probe.preql",
+            "--content",
+            "select 1 -> x;",
+            "--run",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "only support local paths" in result.output
 
 
 def test_get_backend_rejects_unknown_scheme():

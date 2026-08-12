@@ -1,11 +1,10 @@
-# Web page info: per-page metadata for the retailer's web storefront —
-# page type, autogen flag, and character / link / image counts.
+# Web pages of the retailer's web storefront.
 
-key sk int; # Surrogate key uniquely identifying a web page.
+key sk int; # surrogate key
 
 properties sk (
-    id string, # Stable business identifier for the web page (16-char alphanumeric).
-    char_count int?, # Total number of characters on the page.
+    id string, # business identifier
+    char_count int?,
     --link_count int?, # Number of hyperlinks on the page.
     --image_count int?, # Number of images on the page.
     --type enum<string>['ad', 'dynamic', 'feedback', 'general', 'order', 'protected', 'welcome']?, # Page-type category.

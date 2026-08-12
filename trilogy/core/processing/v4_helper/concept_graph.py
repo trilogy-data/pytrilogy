@@ -13,6 +13,7 @@ optional metadata, they're what keeps row identity intact through the SUM.
 
 """
 
+from collections import defaultdict
 from collections.abc import Callable
 
 from trilogy.core import graph as nx
@@ -33,6 +34,8 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildRowsetLineage,
     BuildWhereClause,
+    is_grouping_identity,
+    nonstandard_grouping_spec,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import decompose_condition
@@ -455,6 +458,94 @@ def _aggregate_authored_grain(
     return frozenset(redirected)
 
 
+def _aggregate_axis_members(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    aggregate_input_grain: frozenset[str],
+) -> frozenset[str]:
+    """Statement-scoped relation members an aggregate's inputs ride — the axis
+    columns to widen its grouping grain by (see the caller in `_add_concept`).
+
+    The MEASURE the aggregate reads can itself be a relation member
+    (`count(r_filtered.return_quantity)` under `union join quantity =
+    r_filtered.return_quantity`). It never enters `aggregate_input_grain`
+    — an argument contributes its own grain, not itself — but a measure
+    the relation pairs on is an axis column like any other: the aggregate
+    reads it per coalesced axis row, so the axis has to be in the grain or
+    the merge above loses that leg of the pairing. Only the FUNCTION's
+    arguments: the wrapper's `by` grain is already the output grain, and
+    feeding those back through here re-adds them as axis members and
+    splits the answer per joined row (union_reproject direct-RHS).
+
+    ...but never the ANCHOR-side member the aggregate itself reads. A
+    rowset handle read per axis row is a presence measure — it is NULL on
+    axis rows the boundary never matched, so `count(handle)` per axis is a
+    meaningful 0/1 (q17). The anchor-side key is the axis, so grouping by
+    the very key being counted is degenerate: `count(cust_id)` beside
+    `region` becomes 1 per customer instead of the customers per region
+    (q35 `store AND (web OR catalog)`)."""
+    candidates = set(aggregate_input_grain)
+    if isinstance(concept.lineage, BuildAggregateWrapper):
+        candidates |= {
+            arg.address
+            for arg in concept.lineage.function.concept_arguments
+            if isinstance(arg, BuildConcept)
+        }
+    own_anchor_args = {
+        arg.address
+        for arg in (
+            concept.lineage.function.concept_arguments
+            if isinstance(concept.lineage, BuildAggregateWrapper)
+            else ()
+        )
+        if isinstance(arg, BuildConcept)
+        and not isinstance(arg.lineage, BuildRowsetItem)
+    }
+    return frozenset(
+        addr
+        for addr in candidates & _statement_scoped_relation_members(environment)
+        if _relation_crosses_rowset_boundary(addr, environment)
+        and addr not in own_anchor_args
+    )
+
+
+def _grouping_pass_sibling_axis_members(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> frozenset[str]:
+    """The axis widening a grouping()/grouping_id() identity inherits: the
+    union of `_aggregate_axis_members` over the (non-identity) aggregates
+    sharing its grouping spec. The identity is part of the pass's row identity
+    and MUST land in the same bucket-shape as its pass siblings; computing its
+    widening from its own arg lineage instead either drags orthogonal axis
+    columns into the pass's GROUP BY shape (BinderException) or strands the
+    flag on a node its pass pairs with via the literal-0 grain-match stamp
+    (subtotal rows drop)."""
+    spec = nonstandard_grouping_spec(concept.lineage)
+    if spec is None:
+        return frozenset()
+    members: set[str] = set()
+    seen: set[str] = set()
+    for other in environment.concepts.values():
+        if (
+            other.address == concept.address
+            or other.address in seen
+            or is_grouping_identity(other)
+            or nonstandard_grouping_spec(other.lineage) != spec
+        ):
+            continue
+        seen.add(other.address)
+        other_grain = frozenset(other.grain.components) if other.grain else frozenset()
+        if environment.scoped_join_key_groups:
+            other_grain = _aggregate_authored_grain(other, other_grain, environment)
+        other_input = _aggregate_input_grain(other, environment, other_grain)
+        other_dimension_grain = {
+            addr for addr in other_grain if not addr.endswith(f".{ALL_ROWS_CONCEPT}")
+        }
+        if other_input and other_dimension_grain:
+            members |= _aggregate_axis_members(other, environment, other_input)
+    return frozenset(members)
+
+
 def _upstream_aggregate(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
@@ -766,6 +857,56 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     return frozenset(out)
 
 
+def _scoped_group_sides(
+    members: set[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Identity of the endpoints a scoped join-key group pairs: the rowset (or
+    namespace) each member belongs to. Two key groups with the same sides are
+    legs of ONE composite relation (`union join a.x = b.x and a.y = b.y`, or
+    two clauses over the same pair — both render as one FULL JOIN on all
+    legs)."""
+    sides: set[str] = set()
+    for addr in members:
+        member = environment.concepts.get(addr)
+        if member is not None and isinstance(member.lineage, BuildRowsetItem):
+            sides.add(f"rowset:{member.lineage.rowset.name}")
+        else:
+            sides.add(f"ns:{addr.rsplit('.', 1)[0]}")
+    return frozenset(sides)
+
+
+def _composite_relation_sibling_axes(
+    addresses: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Members of sibling key groups completing a composite scoped relation.
+
+    A FULL/union join on a composite key pairs rows on ALL its legs at once,
+    so the joined row identity is every leg's axis. An aggregate whose inputs
+    ride one leg (a presence probe over `customer_id`) still consumes rows at
+    the FULL composite grain — deduping its input to just the touched leg
+    collapses distinct `(customer, item)` pairs into one row per customer and
+    undercounts (coalescing-presence composite)."""
+    groups = environment.scoped_join_key_groups
+    if not groups:
+        return frozenset()
+    group_sets = {
+        canonical: {canonical, *members} for canonical, members in groups.items()
+    }
+    sides_of = {
+        canonical: _scoped_group_sides(g, environment)
+        for canonical, g in group_sets.items()
+    }
+    out: set[str] = set()
+    for canonical, group in group_sets.items():
+        if not group & addresses:
+            continue
+        for other, other_group in group_sets.items():
+            if other == canonical or sides_of[other] != sides_of[canonical]:
+                continue
+            out |= other_group
+    return frozenset(out - addresses)
+
+
 def _aggregate_input_grain(
     concept: BuildConcept, environment: BuildEnvironment, out_grain: frozenset[str]
 ) -> frozenset[str]:
@@ -820,6 +961,16 @@ def _aggregate_input_grain(
                 input_grain.update(sub.keys)
             elif sub.grain:
                 input_grain.update(sub.grain.components)
+    # GLOBAL aggregates only: their whole population IS the joined axis, so a
+    # composite relation's row identity must include every leg (the presence
+    # sums over `union join a.k = b.k and a.e = b.e` dedup per (k, e) pair).
+    # A dimension-grained aggregate reading one side's member keeps its own
+    # input stream — widening it re-shapes the isolated two-pass aggregate
+    # CTEs of the q17 family (composite_union_join stddev cells).
+    if input_grain and not out_grain and environment.scoped_join_key_groups:
+        input_grain |= _composite_relation_sibling_axes(
+            frozenset(input_grain), environment
+        )
     return minimize_build_grain(environment, input_grain)
 
 
@@ -1077,51 +1228,24 @@ def _add_concept(
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE
-        and aggregate_input_grain
         and dimension_grain
     ):
-        # The MEASURE the aggregate reads can itself be a relation member
-        # (`count(r_filtered.return_quantity)` under `union join quantity =
-        # r_filtered.return_quantity`). It never enters `aggregate_input_grain`
-        # — an argument contributes its own grain, not itself — but a measure
-        # the relation pairs on is an axis column like any other: the aggregate
-        # reads it per coalesced axis row, so the axis has to be in the grain or
-        # the merge above loses that leg of the pairing. Only the FUNCTION's
-        # arguments: the wrapper's `by` grain is already the output grain, and
-        # feeding those back through here re-adds them as axis members and
-        # splits the answer per joined row (union_reproject direct-RHS).
-        candidates = set(aggregate_input_grain)
-        if isinstance(concept.lineage, BuildAggregateWrapper):
-            candidates |= {
-                arg.address
-                for arg in concept.lineage.function.concept_arguments
-                if isinstance(arg, BuildConcept)
-            }
-        # ...but never the ANCHOR-side member the aggregate itself reads. A
-        # rowset handle read per axis row is a presence measure — it is NULL on
-        # axis rows the boundary never matched, so `count(handle)` per axis is a
-        # meaningful 0/1 (q17). The anchor-side key is the axis, so grouping by
-        # the very key being counted is degenerate: `count(cust_id)` beside
-        # `region` becomes 1 per customer instead of the customers per region
-        # (q35 `store AND (web OR catalog)`).
-        own_anchor_args = {
-            arg.address
-            for arg in (
-                concept.lineage.function.concept_arguments
-                if isinstance(concept.lineage, BuildAggregateWrapper)
-                else ()
+        if is_grouping_identity(concept):
+            # A grouping()/grouping_id() identity is a KEY of its pass, not a
+            # row reader — widening it from its OWN arg lineage (its arg IS a
+            # grouping key, whose lineage rides the axis even when the pass's
+            # measures don't) puts it in a bucket whose grain names columns the
+            # rendered GROUP BY (the by-list verbatim) never groups: a bare
+            # ungrouped projection (BinderException). But it must still bucket
+            # WITH its pass — a separately-bucketed flag pairs with the
+            # aggregate via the literal-0 grain-match stamp and the join drops
+            # subtotal rows. So it inherits exactly the axis widening of the
+            # aggregates sharing its grouping spec.
+            out_grain |= _grouping_pass_sibling_axis_members(concept, environment)
+        elif aggregate_input_grain:
+            out_grain |= _aggregate_axis_members(
+                concept, environment, aggregate_input_grain
             )
-            if isinstance(arg, BuildConcept)
-            and not isinstance(arg.lineage, BuildRowsetItem)
-        }
-        axis_members = {
-            addr
-            for addr in candidates & _statement_scoped_relation_members(environment)
-            if _relation_crosses_rowset_boundary(addr, environment)
-            and addr not in own_anchor_args
-        }
-        if axis_members:
-            out_grain |= axis_members
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
         address=concept.address,
@@ -1926,4 +2050,23 @@ def build_concept_graph(
             ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
+
+    # Stamp ROOT-leaf nodes with the datasources binding them, so
+    # `partition_roots` can relate two roots that share a physical row stream
+    # even when the demanded lineage graph never connects them (a fact FK
+    # column beside a fact property, each consumed only by its own rename).
+    binding_map: dict[str, set[str]] = defaultdict(set)
+    for ds in environment.datasources.values():
+        for out in ds.output_concepts:
+            binding_map[out.address].add(ds.identifier)
+    for n in graph.nodes:
+        node_attrs = attrs[n]
+        bound_concept = environment.concepts.get(node_attrs.address)
+        if bound_concept is not None and bound_concept.lineage is not None:
+            continue
+        bindings = set(binding_map.get(node_attrs.address, set()))
+        for pseudonym in node_attrs.pseudonyms:
+            bindings |= binding_map.get(pseudonym, set())
+        if bindings:
+            node_attrs.datasource_bindings = frozenset(bindings)
     return graph, attrs, edges

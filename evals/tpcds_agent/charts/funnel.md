@@ -1,123 +1,44 @@
 # TPC-DS category funnel
 
-## Funnel (increasing scaffolding)
+## Category pass coverage
 
-| category | passing | newly unlocked | regressions |
+| category | passing | unique passes | shared passes |
 |---|---|---|---|
-| db-only | 78/99 | q01, q03, q04, q07, q08, q09, q10, q11, q12, q13, q14, q15, q16, q17, q18, q19, q20, q21, q22, q23, q24, q25, q28, q29, q30, q31, q32, q33, q34, q35, q37, q38, q39, q40, q41, q42, q43, q44, q45, q46, q47, q48, q50, q52, q54, q55, q59, q60, q61, q62, q63, q64, q65, q66, q68, q69, q70, q71, q73, q74, q76, q77, q78, q81, q82, q83, q84, q85, q86, q87, q88, q89, q90, q92, q94, q95, q96, q99 | — |
-| db+schema | 91/99 | q02, q06, q26, q27, q36, q51, q53, q57, q58, q72, q75, q79, q91, q93, q97, q98 | q08, q31, q45 |
-| ingest | 81/99 | q49, q56, q67 | q02, q06, q11, q29, q46, q65, q72, q75, q81, q83, q84, q86, q91, q93, q94, q97 |
-| enriched | 85/99 | q05, q80 | q14, q27, q36, q45, q53, q58, q67, q72, q75, q81, q82, q90, q91, q97 |
+| db+schema+aggregates | 17/20 | — | q01, q02, q03, q04, q06, q07, q08, q09, q10, q11, q12, q13, q14, q15, q16, q17, q19 |
+| db+schema+aggregates+noise | 18/20 | — | q01, q02, q03, q04, q05, q07, q08, q09, q10, q11, q12, q13, q14, q15, q16, q17, q18, q19 |
+| enriched+aggregates | 16/20 | — | q01, q02, q03, q04, q05, q06, q07, q08, q09, q10, q11, q13, q14, q16, q18, q19 |
+| enriched+aggregates+noise | 17/20 | q20 | q01, q02, q03, q04, q05, q06, q07, q08, q09, q10, q11, q12, q13, q16, q18, q19 |
 
 ## Metrics
 
 | category | pass rate | total tokens |
 |---|---|---|
-| db-only | 0.79 | 14,459,422 |
-| db+schema | 0.92 | 17,953,974 |
-| ingest | 0.82 | 45,750,261 |
-| enriched | 0.86 | 35,802,826 |
+| db+schema+aggregates | 0.85 | 3,729,773 |
+| db+schema+aggregates+noise | 0.90 | 3,410,857 |
+| enriched+aggregates | 0.80 | 10,300,910 |
+| enriched+aggregates+noise | 0.85 | 9,928,497 |
 
 ## Per-query matrix
 
-| query | db-only | db+schema | ingest | enriched |
+| query | db+schema+aggregates | db+schema+aggregates+noise | enriched+aggregates | enriched+aggregates+noise |
 |---|---|---|---|---|
 | q01 | ✅ | ✅ | ✅ | ✅ |
-| q02 | ❌ fail | ✅ | ❌ timeout | ✅ |
+| q02 | ✅ | ✅ | ✅ | ✅ |
 | q03 | ✅ | ✅ | ✅ | ✅ |
 | q04 | ✅ | ✅ | ✅ | ✅ |
-| q05 | ❌ fail | ❌ fail | ❌ fail | ✅ |
-| q06 | ❌ fail | ✅ | ❌ fail | ✅ |
+| q05 | ❌ fail | ✅ | ✅ | ✅ |
+| q06 | ✅ | ❌ fail | ✅ | ✅ |
 | q07 | ✅ | ✅ | ✅ | ✅ |
-| q08 | ✅ | ❌ fail | ✅ | ✅ |
+| q08 | ✅ | ✅ | ✅ | ✅ |
 | q09 | ✅ | ✅ | ✅ | ✅ |
 | q10 | ✅ | ✅ | ✅ | ✅ |
-| q11 | ✅ | ✅ | ❌ fail | ✅ |
-| q12 | ✅ | ✅ | ✅ | ✅ |
+| q11 | ✅ | ✅ | ✅ | ✅ |
+| q12 | ✅ | ✅ | ❌ fail | ✅ |
 | q13 | ✅ | ✅ | ✅ | ✅ |
-| q14 | ✅ | ✅ | ✅ | ❌ fail |
-| q15 | ✅ | ✅ | ✅ | ✅ |
+| q14 | ✅ | ✅ | ✅ | ❌ timeout |
+| q15 | ✅ | ✅ | ❌ timeout | ❌ timeout |
 | q16 | ✅ | ✅ | ✅ | ✅ |
-| q17 | ✅ | ✅ | ✅ | ✅ |
-| q18 | ✅ | ✅ | ✅ | ✅ |
+| q17 | ✅ | ✅ | ❌ timeout | ❌ timeout |
+| q18 | ❌ fail | ✅ | ✅ | ✅ |
 | q19 | ✅ | ✅ | ✅ | ✅ |
-| q20 | ✅ | ✅ | ✅ | ✅ |
-| q21 | ✅ | ✅ | ✅ | ✅ |
-| q22 | ✅ | ✅ | ✅ | ✅ |
-| q23 | ✅ | ✅ | ✅ | ✅ |
-| q24 | ✅ | ✅ | ✅ | ✅ |
-| q25 | ✅ | ✅ | ✅ | ✅ |
-| q26 | ❌ fail | ✅ | ✅ | ✅ |
-| q27 | ❌ fail | ✅ | ✅ | ❌ fail |
-| q28 | ✅ | ✅ | ✅ | ✅ |
-| q29 | ✅ | ✅ | ❌ timeout | ✅ |
-| q30 | ✅ | ✅ | ✅ | ✅ |
-| q31 | ✅ | ❌ fail | ✅ | ✅ |
-| q32 | ✅ | ✅ | ✅ | ✅ |
-| q33 | ✅ | ✅ | ✅ | ✅ |
-| q34 | ✅ | ✅ | ✅ | ✅ |
-| q35 | ✅ | ✅ | ✅ | ✅ |
-| q36 | ❌ fail | ✅ | ✅ | ❌ fail |
-| q37 | ✅ | ✅ | ✅ | ✅ |
-| q38 | ✅ | ✅ | ✅ | ✅ |
-| q39 | ✅ | ✅ | ✅ | ✅ |
-| q40 | ✅ | ✅ | ✅ | ✅ |
-| q41 | ✅ | ✅ | ✅ | ✅ |
-| q42 | ✅ | ✅ | ✅ | ✅ |
-| q43 | ✅ | ✅ | ✅ | ✅ |
-| q44 | ✅ | ✅ | ✅ | ✅ |
-| q45 | ✅ | ❌ fail | ✅ | ❌ fail |
-| q46 | ✅ | ✅ | ❌ fail | ✅ |
-| q47 | ✅ | ✅ | ✅ | ✅ |
-| q48 | ✅ | ✅ | ✅ | ✅ |
-| q49 | ❌ fail | ❌ fail | ✅ | ✅ |
-| q50 | ✅ | ✅ | ✅ | ✅ |
-| q51 | ❌ fail | ✅ | ✅ | ✅ |
-| q52 | ✅ | ✅ | ✅ | ✅ |
-| q53 | ❌ fail | ✅ | ✅ | ❌ fail |
-| q54 | ✅ | ✅ | ✅ | ✅ |
-| q55 | ✅ | ✅ | ✅ | ✅ |
-| q56 | ❌ fail | ❌ fail | ✅ | ✅ |
-| q57 | ❌ fail | ✅ | ✅ | ✅ |
-| q58 | ❌ fail | ✅ | ✅ | ❌ fail |
-| q59 | ✅ | ✅ | ✅ | ✅ |
-| q60 | ✅ | ✅ | ✅ | ✅ |
-| q61 | ✅ | ✅ | ✅ | ✅ |
-| q62 | ✅ | ✅ | ✅ | ✅ |
-| q63 | ✅ | ✅ | ✅ | ✅ |
-| q64 | ✅ | ✅ | ✅ | ✅ |
-| q65 | ✅ | ✅ | ❌ fail | ✅ |
-| q66 | ✅ | ✅ | ✅ | ✅ |
-| q67 | ❌ fail | ❌ fail | ✅ | ❌ fail |
-| q68 | ✅ | ✅ | ✅ | ✅ |
-| q69 | ✅ | ✅ | ✅ | ✅ |
-| q70 | ✅ | ✅ | ✅ | ✅ |
-| q71 | ✅ | ✅ | ✅ | ✅ |
-| q72 | ❌ fail | ✅ | ❌ fail | ❌ fail |
-| q73 | ✅ | ✅ | ✅ | ✅ |
-| q74 | ✅ | ✅ | ✅ | ✅ |
-| q75 | ❌ fail | ✅ | ❌ fail | ❌ fail |
-| q76 | ✅ | ✅ | ✅ | ✅ |
-| q77 | ✅ | ✅ | ✅ | ✅ |
-| q78 | ✅ | ✅ | ✅ | ✅ |
-| q79 | ❌ fail | ✅ | ✅ | ✅ |
-| q80 | ❌ fail | ❌ fail | ❌ fail | ✅ |
-| q81 | ✅ | ✅ | ❌ fail | ❌ fail |
-| q82 | ✅ | ✅ | ✅ | ❌ fail |
-| q83 | ✅ | ✅ | ❌ fail | ✅ |
-| q84 | ✅ | ✅ | ❌ timeout | ✅ |
-| q85 | ✅ | ✅ | ✅ | ✅ |
-| q86 | ✅ | ✅ | ❌ fail | ✅ |
-| q87 | ✅ | ✅ | ✅ | ✅ |
-| q88 | ✅ | ✅ | ✅ | ✅ |
-| q89 | ✅ | ✅ | ✅ | ✅ |
-| q90 | ✅ | ✅ | ✅ | ❌ fail |
-| q91 | ❌ fail | ✅ | ❌ fail | ❌ fail |
-| q92 | ✅ | ✅ | ✅ | ✅ |
-| q93 | ❌ fail | ✅ | ❌ fail | ✅ |
-| q94 | ✅ | ✅ | ❌ fail | ✅ |
-| q95 | ✅ | ✅ | ✅ | ✅ |
-| q96 | ✅ | ✅ | ✅ | ✅ |
-| q97 | ❌ fail | ✅ | ❌ fail | ❌ exhausted |
-| q98 | ❌ fail | ✅ | ✅ | ✅ |
-| q99 | ✅ | ✅ | ✅ | ✅ |
+| q20 | ❌ fail | ❌ fail | ❌ fail | ✅ |

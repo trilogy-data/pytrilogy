@@ -12,6 +12,7 @@ signal. Tool results use the same ``exit_code/stdout/stderr`` envelope as the
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 from trilogy.ai.models import LLMToolDefinition
@@ -19,7 +20,13 @@ from trilogy.scripts.agent_tools import (
     LIST_FILES_TOOL,
     AgentState,
     handle_list_files,
+    truncate_json_events,
     truncate_middle,
+)
+from trilogy.scripts.display_core import _pretty
+from trilogy.scripts.display_execution import (
+    _column_stats,
+    _slice_for_middle_truncation,
 )
 
 # Leading keywords a read-only exploration/answer statement may start with. The
@@ -42,7 +49,7 @@ _READONLY_LEADING = frozenset(
     }
 )
 
-_MAX_RESULT_ROWS = 50
+_MAX_RESULT_ROWS = 25
 
 # One executor per process (each agent runs in its own subprocess), built lazily
 # from the workspace trilogy.toml engine config.
@@ -102,18 +109,31 @@ def _readonly_violation(sql: str) -> str | None:
 
 def _format_result(keys: list[str], rows: list) -> str:
     total = len(rows)
-    shown = rows[:_MAX_RESULT_ROWS]
-    lines = []
-    if keys:
-        lines.append(" | ".join(str(k) for k in keys))
-    for row in shown:
-        lines.append(" | ".join("NULL" if v is None else str(v) for v in row))
-    body = "\n".join(lines) if lines else "(no columns)"
-    footer = f"\n[{total} row(s)"
-    if total > _MAX_RESULT_ROWS:
-        footer += f"; first {_MAX_RESULT_ROWS} shown"
-    footer += "]"
-    return body + footer
+    head, tail, omitted = _slice_for_middle_truncation(rows, _MAX_RESULT_ROWS)
+    shown: list = [list(row) for row in head]
+    if omitted:
+        shown.append(f"<redacted {omitted} rows>")
+    shown.extend(list(row) for row in tail)
+    payload = {
+        "event": "result",
+        "columns": keys,
+        "rows": shown,
+        "row_count": total,
+        "displayed": len(head) + len(tail),
+    }
+    if omitted:
+        payload.update(
+            {
+                "truncated": True,
+                "omitted": omitted,
+                "column_stats": _column_stats(keys, rows),
+                "column_stats_note": (
+                    "column_stats are computed over the full returned result "
+                    f"({total} rows)."
+                ),
+            }
+        )
+    return _pretty(payload)
 
 
 def _envelope(exit_code: int, stdout: str, stderr: str) -> str:
@@ -128,7 +148,8 @@ def _execute_sql(state: AgentState, sql: str) -> str:
     statement = _last_statement(sql)
     violation = _readonly_violation(statement)
     if violation is not None:
-        return _envelope(1, "", violation)
+        return _envelope(1, _pretty({"event": "error", "message": violation}), "")
+    start = time.perf_counter()
     try:
         result = _get_engine().execute_raw_sql(statement)
         rows = result.fetchall()
@@ -137,8 +158,28 @@ def _execute_sql(state: AgentState, sql: str) -> str:
         except Exception:
             keys = []
     except Exception as exc:
-        return _envelope(1, "", f"{type(exc).__name__}: {exc}")
-    out = truncate_middle(_format_result(keys, rows), state.tool_output_limit)
+        return _envelope(
+            1,
+            _pretty(
+                {
+                    "event": "error",
+                    "message": f"{type(exc).__name__}: {exc}",
+                }
+            ),
+            "",
+        )
+    summary = _pretty(
+        {
+            "event": "summary",
+            "statements": 1,
+            "duration_ms": round((time.perf_counter() - start) * 1000, 3),
+            "ok": True,
+            "rows": len(rows),
+        }
+    )
+    out = truncate_json_events(
+        f"{_format_result(keys, rows)}\n{summary}", state.tool_output_limit
+    )
     return _envelope(0, out, "")
 
 

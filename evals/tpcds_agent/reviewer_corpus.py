@@ -290,7 +290,7 @@ def main() -> int:
     me.add_argument(
         "--labeled", default=str(EVAL_DIR / "reviewer_corpus" / "labeled.jsonl")
     )
-    me.add_argument("--model", default="deepseek-chat")
+    me.add_argument("--model", default="deepseek-v4-flash")
     me.add_argument("--per-class", type=int, default=30)
     me.add_argument("--concurrency", type=int, default=6)
     me.set_defaults(func=measure)

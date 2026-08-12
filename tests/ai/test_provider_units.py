@@ -542,12 +542,77 @@ def test_deepseek_posts_to_deepseek_url(monkeypatch):
     monkeypatch.setattr(httpx, "Client", client)
     provider = DeepSeekProvider(name="ds", model="deepseek-v4-flash")
     provider.generate_completion(
-        LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+        LLMRequestOptions(tools=[_tool_def()], require_tool=True),
+        [LLMMessage(role="user", content="hi")],
     )
     assert sink["url"] == "https://api.deepseek.com/v1/chat/completions"
     assert sink["headers"]["Authorization"] == "Bearer sk-deepseek-test"
     assert sink["json"]["model"] == "deepseek-v4-flash"
-    assert sink["timeout"] == 45.0
+    assert sink["json"]["thinking"] == {"type": "enabled"}
+    assert "tool_choice" not in sink["json"]
+    assert sink["timeout"] == 120.0
+
+
+def test_deepseek_can_explicitly_disable_v4_thinking(monkeypatch):
+    import httpx
+
+    sink: dict = {}
+    response_payload = {
+        "choices": [{"message": {"content": "ok", "tool_calls": []}}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
+    )
+    provider = DeepSeekProvider(
+        name="ds", model="deepseek-v4-flash", api_key="x", thinking=False
+    )
+    provider.generate_completion(
+        LLMRequestOptions(tools=[_tool_def()], require_tool=True),
+        [LLMMessage(role="user", content="hi")],
+    )
+
+    assert sink["json"]["thinking"] == {"type": "disabled"}
+    assert sink["json"]["tool_choice"] == "required"
+    assert provider.request_timeout == 45.0
+
+
+def test_deepseek_parses_thinking_usage_and_finish_reason(monkeypatch):
+    import httpx
+
+    response_payload = {
+        "choices": [
+            {
+                "finish_reason": "tool_calls",
+                "message": {
+                    "content": "",
+                    "reasoning_content": "opaque continuation state",
+                    "tool_calls": [],
+                },
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 3,
+            "total_tokens": 4,
+            "completion_tokens_details": {"reasoning_tokens": 2},
+        },
+    }
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_payload=response_payload, sink={}),
+    )
+    provider = DeepSeekProvider(name="ds", model="deepseek-v4-flash", api_key="x")
+    response = provider.generate_completion(
+        LLMRequestOptions(), [LLMMessage(role="user", content="hi")]
+    )
+
+    assert response.reasoning_content == "opaque continuation state"
+    assert response.usage.reasoning_tokens == 2
+    assert response.finish_reason == "tool_calls"
 
 
 def test_deepseek_errors_name_deepseek(monkeypatch):

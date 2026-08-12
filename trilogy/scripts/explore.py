@@ -21,6 +21,7 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment, Import
 from trilogy.parser import parse_text
+from trilogy.scripts import explore_seen
 from trilogy.scripts.display import emit_event, is_json_mode, print_error, print_info
 
 _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
@@ -803,24 +804,32 @@ def _emit_explore_json(
     import_descriptions: dict[str, str],
     expand_roles: bool,
     include_hidden: bool,
+    explored: str = "",
+    reshow: bool = False,
 ) -> None:
     """Emit the explore results as a stream of pretty-printed JSON events,
     honoring ``--show``. Concepts are grouped by namespace and rendered in
     full Trilogy declaration syntax — local under ``namespaces``, imported
     under ``namespaced`` with conformed role-players deduped (``--expand-imports``
-    only affects the rich renderer; JSON is always full detail)."""
+    only affects the rich renderer; JSON is always full detail).
+
+    Inside an agent session (``TRILOGY_EXPLORE_SESSION``), payload entries
+    byte-identical to earlier explore output this session collapse to
+    ``already_shown`` stubs — see ``explore_seen``."""
     if show in ("all", "groups", "concepts"):
-        emit_event(
-            "concepts",
-            discriminator="type",
-            **build_concepts_payload(
-                env,
-                concept_items,
-                import_descriptions,
-                expand_roles,
-                include_hidden=include_hidden,
-            ),
+        payload = build_concepts_payload(
+            env,
+            concept_items,
+            import_descriptions,
+            expand_roles,
+            include_hidden=include_hidden,
         )
+        session = explore_seen.active_session()
+        if session:
+            payload = explore_seen.apply_seen_dedup(
+                payload, explored, session, reshow=reshow
+            )
+        emit_event("concepts", discriminator="type", **payload)
     if show in ("all", "datasources"):
         datasources = [
             {
@@ -924,6 +933,16 @@ def _emit_explore_json(
         "files. Pass this for the literal per-role dump."
     ),
 )
+@click.option(
+    "--reshow",
+    is_flag=True,
+    default=False,
+    help=(
+        "JSON sessions only: reprint entries that collapsed to an "
+        "`already_shown` stub because identical content was already emitted "
+        "earlier in this agent session."
+    ),
+)
 def explore(
     path: Path,
     show: str,
@@ -933,6 +952,7 @@ def explore(
     include_builtins: bool,
     expand_imports: bool,
     expand_roles: bool,
+    reshow: bool,
 ) -> None:
     """Parse PATH and list concepts, datasources, and imports from its environment.
 
@@ -991,7 +1011,14 @@ def explore(
 
     if is_json_mode():
         _emit_explore_json(
-            env, concept_items, show, import_descriptions, expand_roles, include_hidden
+            env,
+            concept_items,
+            show,
+            import_descriptions,
+            expand_roles,
+            include_hidden,
+            explored=str(path),
+            reshow=reshow,
         )
         return
 

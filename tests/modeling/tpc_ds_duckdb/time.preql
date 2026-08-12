@@ -1,15 +1,14 @@
-# Time-of-day info: seconds since midnight decomposed into hour, minute,
-# and second, plus a meal_time bucket (breakfast / lunch / dinner).
+# Time-of-day dimension.
 
-key sk int; # Surrogate key uniquely identifying a time-of-day row (seconds since midnight).
+key sk int; # surrogate key (= seconds since midnight)
 
 properties sk (
-    id string, # Stable business identifier for the time-of-day row (16-char alphanumeric).
-    time int, # Seconds elapsed since midnight (0-86399).
-    hour int, # Hour of day (0-23).
-    minute int, # Minute within the hour (0-59).
+    id string, # business identifier
+    time int, # Seconds since midnight (0-86399).
+    hour int,
+    minute int,
     --second int, # Second within the minute (0-59).
-    meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Meal-time bucket; empty string for off-meal hours.
+    meal_time enum<string>['', 'breakfast', 'lunch', 'dinner']?, # Empty string for off-meal hours.
 );
 
 datasource time (

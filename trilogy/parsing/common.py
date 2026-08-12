@@ -480,6 +480,16 @@ def concept_list_to_keys(
             concept = environment.concepts[concept.address]
         if isinstance(concept, UndefinedConcept):
             continue
+        # A derived value over a bare KEY is keyed by that key itself. Its
+        # fk-derived keys (a fact grain asserting it determines the key —
+        # `Environment.fk_derived_keys`, last declaration wins) describe that
+        # fact's rows, not the key's identity: inheriting them re-keys the
+        # derivation onto whichever fact was declared last, and an undemanded
+        # partial (`~`) binder then elects into the plan and fans it out
+        # (partial-binder filtered-count fuzzer bugs).
+        if concept.purpose == Purpose.KEY and not concept.keys:
+            final_keys.append(concept.address)
+            continue
         concept_keys = concept.effective_keys(environment)
         if concept_keys:
             final_keys += list(concept_keys)
@@ -1020,7 +1030,7 @@ def function_to_concept(
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal
-        if is_metric:
+        if is_metric or x.purpose == Purpose.KEY and not x.keys:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
         elif x_keys := x.effective_keys(environment):
@@ -1155,14 +1165,21 @@ def filter_item_to_concept(
     modifiers = get_lineage_modifiers(parent, environment)
     grain = cparent.grain if cparent.purpose == Purpose.PROPERTY else Grain()
     granularity = cparent.granularity
-    if cparent.purpose == Purpose.CONSTANT and grain.abstract:
+    if (cparent.purpose == Purpose.CONSTANT and grain.abstract) or (
+        cparent.derivation == Derivation.BASIC and cparent.purpose == Purpose.PROPERTY
+    ):
         # A filter over a grainless *constant* (`1 ? cond`) still produces a
         # distinct CASE-mask per row of the condition's row-grain args, so it must
         # carry that grain (descended to keys — the mask varies per row, not per
         # distinct property value). Otherwise `sum(1 ? cond)` treats the mask as a
         # single-row constant and dedups it to one row, collapsing the count.
-        # Gated to CONSTANT content: a key/property content already carries its own
-        # row grain and must NOT be widened by the (possibly finer) condition args.
+        # A DERIVED row expression (`gid_label <- group_id + 0`) is the same
+        # case: its mask varies per condition row, and counting it must range
+        # over the row population — exactly the plan its anonymous inline
+        # spelling (`count(group_id + 0 ? cond)`) already gets. Narrowing to
+        # the content's own key grain dedups the rows and re-joins the mask at
+        # the wrong grain. A bare key/property content keeps its own row grain:
+        # a KEY's filtered count ranges over the key's domain by design.
         cond_key_addrs: list[str] = []
         for ref in parent.where.row_arguments:
             if ref.address not in environment.concepts:
@@ -1173,8 +1190,11 @@ def filter_item_to_concept(
             cond_key_addrs += (
                 list(cond_concept.keys) if cond_concept.keys else [cond_concept.address]
             )
-        cond_grain = Grain.from_concepts(cond_key_addrs, environment=environment)
-        if not cond_grain.abstract:
+        base_components = [] if grain.abstract else list(grain.components)
+        cond_grain = Grain.from_concepts(
+            base_components + cond_key_addrs, environment=environment
+        )
+        if not cond_grain.abstract and cond_grain.components != grain.components:
             grain = cond_grain
             granularity = Granularity.MULTI_ROW
             fallback_keys = set(cond_grain.components)
@@ -1823,7 +1843,7 @@ def comparison_to_concept(
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal
-        if is_metric:
+        if is_metric or x.purpose == Purpose.KEY and not x.keys:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
         elif x_keys := x.effective_keys(environment):

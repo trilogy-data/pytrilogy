@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from common import agent_runner, db, prompts, scoring
-from common.categories import CATEGORIES, get_category
+from common.categories import categories_for, get_category
 from common.main import DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_ENV
 from common.report import load_env
 from spec import SPEC
@@ -50,7 +50,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--concurrency", type=int, default=3)
     p.add_argument(
         "--category",
-        choices=sorted(CATEGORIES),
+        choices=sorted(categories_for(SPEC)),
         default="enriched",
         help="which eval category to repeat: sql_bare, sql_schema, ingest, "
         "enriched (default).",
@@ -101,7 +101,7 @@ def main() -> int:
         print(f"ERROR: {api_env} not set (looked in {args.env_file})", file=sys.stderr)
         return 2
 
-    category = get_category(args.category)
+    category = get_category(args.category, SPEC)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     qid = args.query_id
     # Resolve to absolute: the agent subprocess runs with cwd=worker, so a

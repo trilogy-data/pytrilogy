@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import agent_runner, analyze_run, archive, db, prompts, scoring
-from .categories import CATEGORIES, FUNNEL_ORDER, get_category
+from .categories import categories_for, funnel_order_for, get_category
 from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
 
@@ -44,15 +44,11 @@ OPENROUTER_ROUTING = {
 # keep-alive comments it injects that mask upstream hangs from httpx's read
 # timeout). Pass --provider openrouter to fall back to the multiplexed route.
 #
-# Model is `deepseek-chat` (non-thinking variant) rather than `deepseek-v4-flash`
-# because the latter runs in thinking mode by default, which rejects ANY explicit
-# `tool_choice` (required, named, or otherwise) with a 400. Our agent loop uses
-# `tool_choice: required` to force tool calls — incompatible with thinking mode.
-# `deepseek-chat` deprecates 2026-07-24; revisit when DeepSeek exposes a way to
-# put `deepseek-v4-flash` into non-thinking mode, or relax the agent's reliance
-# on `tool_choice` so it works against thinking-mode APIs.
+# DeepSeek V4 thinking mode rejects explicit `tool_choice`. The direct provider
+# omits it for V4 models and replays the required `reasoning_content` across tool
+# turns, so the eval can use the current Flash model without a legacy alias.
 DEFAULT_PROVIDER = "deepseek"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 # Hard ceiling for scoring ONE query (generate_sql + execute + reference), run
 # in a child process so it can be killed. Legit scoring is seconds; this only
@@ -162,10 +158,11 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--category",
-        choices=sorted(CATEGORIES),
+        choices=sorted(categories_for(spec)),
         default=None,
-        help="which eval category this run is: sql_bare (db only), sql_schema "
-        "(db+schema.md), ingest (auto Trilogy model), enriched (curated model). "
+        help="which eval category this run is; shared options are sql_bare "
+        "(db only), sql_schema (db+schema.md), ingest (auto Trilogy model), "
+        "and enriched (curated model). Benchmarks may add variants. "
         "Defaults to 'enriched' if --enriched-model-dir is set, else 'ingest'.",
     )
     parser.add_argument(
@@ -363,7 +360,7 @@ def _run_categories(
     import subprocess
 
     for key in category_keys:
-        get_category(key)  # validate early
+        get_category(key, spec)  # validate early
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     script = Path(sys.argv[0]).resolve()
@@ -435,7 +432,9 @@ def _run_categories(
             print(f"[categories] {key} leg produced no report.json", file=sys.stderr)
 
     if len(reports_by_key) >= 2:
-        ordered = {k: reports_by_key[k] for k in FUNNEL_ORDER if k in reports_by_key}
+        ordered = {
+            k: reports_by_key[k] for k in funnel_order_for(spec) if k in reports_by_key
+        }
         png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
         md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")
         print(f"[categories] wrote {png} and {md}")
@@ -465,7 +464,7 @@ def run(spec: BenchmarkSpec) -> int:
     category_key = args.category or (
         "enriched" if args.enriched_model_dir else "ingest"
     )
-    category = get_category(category_key)
+    category = get_category(category_key, spec)
 
     load_env(args.env_file)
     if args.provider == "openrouter":
@@ -554,6 +553,7 @@ def run(spec: BenchmarkSpec) -> int:
         # Trilogy per-query tasks tell the agent raw/ is already populated;
         # without it every query starts from a broken premise. Abort.
         return 2
+    reference_db_path = cached if ingest.get("separate_reference_database") else None
 
     concurrency = max(1, args.concurrency)
     monitor_mode = "quiet" if concurrency > 1 else args.monitor
@@ -746,6 +746,7 @@ def run(spec: BenchmarkSpec) -> int:
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                             enable_python_datasources=spec.enable_python_datasources,
+                            reference_db_path=reference_db_path,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -814,6 +815,7 @@ def run(spec: BenchmarkSpec) -> int:
                             params=entry.get("params"),
                             custom_refs_dir=references_dir,
                             enable_python_datasources=spec.enable_python_datasources,
+                            reference_db_path=reference_db_path,
                         )
                 except Exception as exc:
                     score = scoring.QueryResult(
@@ -901,6 +903,7 @@ def run(spec: BenchmarkSpec) -> int:
     report["ingest"] = {
         "exit_code": ingest["exit_code"],
         "duration_seconds": round(ingest["duration"], 1),
+        "separate_reference_database": bool(reference_db_path),
     }
 
     if args.query_ids and args.splice_from != "none":

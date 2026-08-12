@@ -551,6 +551,39 @@ class CTE:
         except ValueError as e:
             return f"INVALID_ALIAS: {e!s}"
 
+    def filter_collapses_to_grain(self, c: BuildConcept) -> bool:
+        """A locally-computed filter virtual whose keys are covered by this
+        grouping CTE's grain but whose predicate reads columns outside it is a
+        property of the grain, not a grouping key: the per-row
+        ``CASE WHEN cond THEN content END`` fans a mixed key out into
+        ``{content, NULL}``, so keeping it in GROUP BY breaks the contract that
+        the stream is deduplicated to the grain (q16 ``count(<key>)``
+        double-count). The renderer collapses it with MAX instead (base.py).
+        When the CTE's own condition implies the predicate the CASE is elided
+        to bare content — grain-determined — and it stays a group key."""
+        from trilogy.core.processing.condition_utility import condition_implies
+
+        if not (
+            self.group_to_grain
+            and c.derivation == Derivation.FILTER
+            and isinstance(c.lineage, BuildFilterItem)
+        ):
+            return False
+        if self.source_map.get(c.address, []):
+            return False
+        grain_components = set(self.grain.components)
+        keys = c.keys or set()
+        if not keys or not keys <= grain_components:
+            return False
+        where_args = {a.address for a in c.lineage.where.row_arguments}
+        if where_args <= grain_components:
+            return False
+        where_cond = c.lineage.where.conditional
+        return self.condition is None or not (
+            self.condition == where_cond
+            or condition_implies(self.condition, where_cond)
+        )
+
     @property
     def group_concepts(self) -> list[BuildConcept]:
         from trilogy.core.processing.condition_utility import condition_implies
@@ -640,6 +673,9 @@ class CTE:
                 and isinstance(c.lineage, BuildFunction)
                 and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
             ):
+                return True
+
+            if self.filter_collapses_to_grain(c):
                 return True
 
             if (

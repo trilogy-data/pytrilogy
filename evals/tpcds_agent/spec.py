@@ -4,10 +4,50 @@ per-mode scripts; this module just defines SPEC."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from common.categories import Category
 from common.spec import BenchmarkSpec
 
+if TYPE_CHECKING:
+    from tpcds_agent import warehouse_variants
+elif __package__:
+    from . import warehouse_variants
+else:
+    import warehouse_variants
+
 EVAL_DIR = Path(__file__).resolve().parent
+
+MESSY_WAREHOUSE_CATEGORIES = (
+    Category(
+        "sql_schema_aggregates",
+        "db+schema+aggregates",
+        "sql",
+        ".sql",
+        warehouse_variants.setup_sql_schema_aggregates,
+    ),
+    Category(
+        "enriched_aggregates",
+        "enriched+aggregates",
+        "trilogy",
+        ".preql",
+        warehouse_variants.setup_enriched_aggregates,
+    ),
+    Category(
+        "sql_schema_noise",
+        "db+schema+aggregates+noise",
+        "sql",
+        ".sql",
+        warehouse_variants.setup_sql_schema_noise,
+    ),
+    Category(
+        "enriched_noise",
+        "enriched+aggregates+noise",
+        "trilogy",
+        ".preql",
+        warehouse_variants.setup_enriched_noise,
+    ),
+)
 
 SPEC = BenchmarkSpec(
     name="TPC-DS",
@@ -16,7 +56,7 @@ SPEC = BenchmarkSpec(
     # dsdgen is a lazy table function — common.db.build_database materializes
     # SELECT-shaped generators via fetchall and runs CALL-shaped ones directly.
     generator_sql="SELECT * FROM dsdgen(sf={sf})",
-    db_filename="tpcds.duckdb",
+    db_filename="warehouse.duckdb",
     eval_dir=EVAL_DIR,
     prompts_file=EVAL_DIR / "query_prompts.json",
     enriched_skip_prefixes=("query", "adhoc"),
@@ -34,4 +74,15 @@ SPEC = BenchmarkSpec(
     # Full TPC-DS set (99 queries) by default so a plain rebaseline covers
     # everything; pass --num-queries / --query-ids to scope a quick local run.
     default_num_queries=99,
+    additional_categories=MESSY_WAREHOUSE_CATEGORIES,
+    funnel_order=(
+        "sql_bare",
+        "sql_schema",
+        "sql_schema_aggregates",
+        "sql_schema_noise",
+        "ingest",
+        "enriched",
+        "enriched_aggregates",
+        "enriched_noise",
+    ),
 )

@@ -1,29 +1,27 @@
-# Item / product info: product name, free-form description, brand,
-# category and class hierarchies, manufacturer, current list price,
-# wholesale cost, color, size, and unit-of-measure.
+# Item / product dimension (an SCD: multiple sk rows per business id).
 
 import std.money;
 
 key sk int; # Unique key - use to filter unless specified otherwise
 
 properties sk (
-    id string, # Not unique. The item's business "item code" (i_item_id, 16-char). The typical per-item identifier: use this for per-item results, not the surrogate sk. Not unique - this table is an SCD.
-    product_name string?, # Marketing product name shown to customers. 
-    brand_id int?, # Numeric brand identifier (composite of category + class + brand digits).
-    brand_name string?, # Brand display name.
-    manufacturer_id int?, # Numeric manufacturer identifier (1-1000).
-    manufact string?, # Manufacturer display name.
-    category enum<string>['Books', 'Children', 'Electronics', 'Home', 'Jewelry', 'Men', 'Music', 'Shoes', 'Sports', 'Women']?, # Top-level product category.
-    category_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]?, # Numeric category identifier paired with category.
-    current_price numeric::usd?, # Current list/catalog price in USD.
-    wholesale_cost numeric::usd?, # Wholesale acquisition cost in USD.
-    class string?, # Product class (sub-category within a category).
-    class_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]?, # Numeric class identifier within the category.
-    desc string?, # Free-form item description.
-    color string?, # Primary color of the item.
-    manager_id int?, # Identifier of the merchandise manager responsible for the item (1-100).
-    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small']?, # Size descriptor.
-    units string?, # Unit-of-measure descriptor (e.g. 'Each', 'Ounce', 'Pound', 'Box').
+    id string, # Business "item code" (i_item_id), the typical per-item identifier. NOT unique (SCD): use for per-item results, not sk.
+    product_name string?,
+    brand_id int?, # Composite of category + class + brand digits.
+    brand_name string?,
+    manufacturer_id int?,
+    manufact string?, # Manufacturer name.
+    category enum<string>['Books', 'Children', 'Electronics', 'Home', 'Jewelry', 'Men', 'Music', 'Shoes', 'Sports', 'Women']?,
+    category_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]?, # Pairs with category.
+    current_price numeric::usd?, # Current list price.
+    wholesale_cost numeric::usd?,
+    class string?, # Sub-category within category.
+    class_id enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]?, # Within-category id; not globally unique.
+    desc string?,
+    color string?,
+    manager_id int?, # Merchandise manager responsible for the item.
+    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small']?,
+    units string?, # Unit of measure, e.g. 'Each', 'Ounce', 'Pound'.
 );
 
 datasource items (

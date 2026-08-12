@@ -1,12 +1,7 @@
 # For cross-channel questions, prefer `all_sales` (combines this with catalog_sales and web_sales).
-# Store channel sales AND returns at (item, ticket_number) grain — the single
-# model for all store-channel analysis, including returns-only questions.
-# Sales: quantity, sales / list / wholesale / extended prices, discount and
-# coupon amounts, net paid, extended tax, net profit. Returns (NULL on lines
-# never returned): is_returned flag, refund amount / quantity / tax / fee /
-# ship cost / refunded cash / reversed charge / store credit / net loss, plus
-# return date/time/store/customer/reason/demographics/address.
-#
+# Store channel sales AND returns at (item, ticket_number) grain — the single model
+# for all store-channel analysis, including returns-only questions. Return columns
+# are NULL on lines never returned.
 
 import std.money;
 
@@ -15,53 +10,53 @@ import date as sale_date;
 import date as return_date;
 import time as sale_time;
 import time as return_time;
-import customer as customer; # the customer account tied to the order
-import customer as return_customer; # the customer account tied to the return
+import customer as customer;
+import customer as return_customer; # may differ from the purchasing customer
 import promotion as promotion;
-import customer_demographic as pos_customer_demographic; # the customer demographics recorded on this sale (the buyer's demographic profile at the time of purchase)
-import customer_demographic as return_customer_demographic; # the customer demographics recorded on the return (the returner's demographic profile at return time)
-import household_demographic as pos_household_demographic; # the household demographics recorded on this sale (the buyer's household at the time of purchase)
-import household_demographic as return_household_demographic; # the household demographics recorded on the return (the returner's household at return time)
+import customer_demographic as pos_customer_demographic; # buyer's demographics AS OF the sale, not their current record
+import customer_demographic as return_customer_demographic; # returner's demographics AS OF the return, not their current record
+import household_demographic as pos_household_demographic; # buyer's household demographics AS OF the sale, not their current record
+import household_demographic as return_household_demographic; # returner's household demographics AS OF the return, not their current record
 import store as store;
 import store as return_store;
-import address as pos_address; # the customer's address as recorded on the sale (the purchase-time address)
-import address as return_address; # the returning customer's address as recorded on the return
+import address as pos_address; # customer's address AS OF the sale, not their current record
+import address as return_address; # returner's address AS OF the return, not their current record
 import reason as return_reason;
 
-key ticket_number int; # Store-sale ticket (receipt) number identifying a single in-store transaction.
+key ticket_number int; # receipt number identifying a single in-store transaction
 
 properties <ticket_number, item.sk> (
-    quantity int, # Number of units of the item sold on this ticket line.
-    sales_price numeric::usd, # Per-unit "unit price" actually charged for ONE unit. The whole-line total is ext_sales_price (the "total price").
-    list_price numeric::usd, # Per-unit list price before discounts.
-    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity, the extended line amount. The per-unit price is sales_price (the "unit price").
-    ext_wholesale_cost numeric::usd, # Line-extended wholesale cost.
-    ext_list_price numeric::usd, # Line-extended list price.
-    ext_discount_amount numeric::usd, # Extended discount applied to the line.
-    coupon_amt numeric::usd, # Coupon/credit amount applied to the line.
-    net_profit numeric::usd, # Reported net profit for the line. Distinct from the derived `profit` (extended gross value); use net_profit for "net profit" questions.
-    _returned_ticket int?, # The store_returns ticket number matched to this line.
-    net_paid numeric::usd, # Net amount paid by the customer for the line, excluding tax.
-    ext_tax numeric::usd?, # Extended sales tax on the line.
-    wholesale_cost numeric::usd, # Per-unit wholesale acquisition cost.
-    return_amount numeric::usd?, # Refund amount if the item on this line was returned.
-    return_quantity int?, # Number of units returned for this line.
-    return_net_loss numeric::usd?, # Net financial loss on the return for this line.
-    return_tax numeric::usd?, # Sales tax refunded on the return.
-    return_amount_inc_tax numeric::usd?, # Refund amount including tax.
-    return_fee numeric::usd?, # Fee charged on the return.
-    return_ship_cost numeric::usd?, # Shipping cost associated with the return.
-    refunded_cash numeric::usd?, # Cash portion of the refund.
-    reversed_charge numeric::usd?, # Refund portion credited back to the payment card.
-    store_credit numeric::usd?, # Refund portion issued as store credit.
-    row_counter int, # Constant 1, used for unconditional row counts.
+    quantity int,
+    sales_price numeric::usd, # Per-unit "unit price" charged; the whole-line total is ext_sales_price.
+    list_price numeric::usd, # Per-unit, before discounts.
+    ext_sales_price numeric(15,2)::usd, # Whole-line "total price" = sales_price x quantity; per-unit price is sales_price.
+    ext_wholesale_cost numeric::usd,
+    ext_list_price numeric::usd,
+    ext_discount_amount numeric::usd,
+    coupon_amt numeric::usd, # Coupon/credit applied to the line.
+    net_profit numeric::usd, # Reported net profit. Distinct from derived `profit`; use net_profit for "net profit" questions.
+    _returned_ticket int?, # Internal; NULL when not returned. Use is_returned instead.
+    net_paid numeric::usd, # Excludes tax.
+    ext_tax numeric::usd?,
+    wholesale_cost numeric::usd, # Per-unit.
+    return_amount numeric::usd?, # Refund excluding tax.
+    return_quantity int?,
+    return_net_loss numeric::usd?,
+    return_tax numeric::usd?,
+    return_amount_inc_tax numeric::usd?,
+    return_fee numeric::usd?,
+    return_ship_cost numeric::usd?,
+    refunded_cash numeric::usd?,
+    reversed_charge numeric::usd?, # Refund portion reversed on the original payment method.
+    store_credit numeric::usd?,
+    row_counter int, # Constant 1 per line item.
 );
 
-auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value" (extended list - extended wholesale - extended discount + extended sales). NOT the reported net_profit column.
+auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price; # Derived line "gross value". NOT the reported net_profit column.
 
-auto line_item <- concat(ticket_number::string, '-', item.sk::string); # Unique line-item identifier (one ticket + item). Count line items with count(line_item); do NOT use count(ticket_number), a receipt key that dedups and undercounts multi-item tickets.
-auto line_item_count<- sum(row_counter); # Number of line items (= count(line_item)); kept for queries that reference it.
-auto is_returned <- _returned_ticket is not null; # True if this ticket line was later returned, else False.
+auto line_item <- concat(ticket_number::string, '-', item.sk::string); # Unique line-item id. Count line items with count(line_item), NOT count(ticket_number) (dedups multi-item tickets).
+auto line_item_count<- sum(row_counter); # = count(line_item); kept for queries that reference it.
+auto is_returned <- _returned_ticket is not null; # True when a return row exists for this line, else False.
 
 datasource store_sales (
     raw('''1'''): row_counter,

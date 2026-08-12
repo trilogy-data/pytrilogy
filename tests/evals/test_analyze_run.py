@@ -10,6 +10,7 @@ from __future__ import annotations
 from evals.common.analyze_run import (
     _error_snippet,
     _format_args,
+    _funnel_rows,
     categorize_failure,
 )
 
@@ -92,3 +93,59 @@ def test_format_args_middle_truncates_preserving_head_and_tail():
     assert out.endswith("TAILTOKEN")
     assert "…" in out
     assert len(out) <= 121
+
+
+def test_funnel_rows_include_per_query_token_percentiles():
+    report = {
+        "meta": {"category_label": "test", "num_queries": 4},
+        "queries": [
+            {"id": 1, "status": "pass"},
+            {"id": 2, "status": "pass"},
+            {"id": 3, "status": "fail"},
+            {"id": 4, "status": "pass"},
+        ],
+        "summary": {"pass_rate": 0.75},
+        "agent": {"tokens": {"total": 100}},
+        "per_query_metrics": [
+            {"id": 1, "total_tokens": 10},
+            {"id": 2, "total_tokens": 20},
+            {"id": 3, "total_tokens": 30},
+            {"id": 4, "total_tokens": 40},
+        ],
+    }
+
+    row = _funnel_rows({"test": report})[0]
+
+    assert row["token_p50"] == 25
+    assert row["token_p90"] == 37
+
+
+def test_funnel_rows_overlap_is_order_independent():
+    def report(label: str, passing: set[int]) -> dict:
+        return {
+            "meta": {"category_label": label, "num_queries": 4},
+            "queries": [
+                {"id": qid, "status": "pass" if qid in passing else "fail"}
+                for qid in range(1, 5)
+            ],
+            "summary": {"pass_rate": len(passing) / 4},
+            "agent": {"tokens": {"total": 0}},
+        }
+
+    reports = {
+        "a": report("a", {1, 2, 3}),
+        "b": report("b", {2, 3, 4}),
+    }
+
+    rows = {row["key"]: row for row in _funnel_rows(reports)}
+    reversed_rows = {
+        row["key"]: row for row in _funnel_rows(dict(reversed(reports.items())))
+    }
+
+    assert rows["a"]["unique"] == [1]
+    assert rows["a"]["shared"] == [2, 3]
+    assert rows["b"]["unique"] == [4]
+    assert rows["b"]["shared"] == [2, 3]
+    assert {key: (row["unique"], row["shared"]) for key, row in rows.items()} == {
+        key: (row["unique"], row["shared"]) for key, row in reversed_rows.items()
+    }

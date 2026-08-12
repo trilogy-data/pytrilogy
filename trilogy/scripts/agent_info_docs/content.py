@@ -490,6 +490,9 @@ Requires `pytrilogy[serve]` extras.
 - `--port N`, `-p N`: Port number (default: 8100)
 - `--host HOST`, `-h HOST`: Host to bind (default: 0.0.0.0)
 - `--timeout N`, `-t N`: Shutdown after N seconds
+- `--studio-url URL`: Print a deep link into the studio already running at URL
+  instead of serving a bundled copy. Overrides `[serve] studio_url`; mutually
+  exclusive with `--studio-bundle`.
 
 **Endpoints exposed:**
 - `/` - Server info
