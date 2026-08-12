@@ -1,30 +1,22 @@
-# Trilogy failure analysis — 20260811-133917
+# Trilogy failure analysis — 20260811-145004
 
-- Run `20260811-133909_enriched_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 418 | failed: 21 (5%)
+- Run `20260811-145002_enriched_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 376 | failed: 25 (7%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `disabled-tool` | 9 | 43% |
-| `syntax-parse` | 4 | 19% |
-| `other` | 3 | 14% |
-| `undefined-concept` | 2 | 10% |
-| `type-error` | 1 | 5% |
-| `no-output` | 1 | 5% |
-| `file-not-found` | 1 | 5% |
+| `disabled-tool` | 16 | 64% |
+| `other` | 4 | 16% |
+| `syntax-parse` | 3 | 12% |
+| `no-output` | 2 | 8% |
 
 ## Detail
 
 ### `disabled-tool`
 
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under root/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read raw/web_sales.preql`
+- `trilogy file read raw/all_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -39,17 +31,47 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read answer_3697706765.preql`
+- `trilogy file read raw/_q04_agent_rowset_union_join.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/web_sales.preql`
+- `trilogy file read scratch_cust.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read probe_1455459008.preql`
+- `trilogy file read scratch_verify.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/all_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read scratch_verify.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read scratch_probe2.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read scratch_chk_store.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/catalog_store_returns.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -59,252 +81,194 @@
   ```text
   trilogy database introspection is disabled for this task. The semantic model is already built under root/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
   ```
-- `trilogy file read probe_1455459008.preql`
+- `trilogy file read probe_avg.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read probe_kept.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read probe_avg.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 
-### `syntax-parse`
-
-- `trilogy file write _probe4.preql --run-and-delete`
-
-  ```text
-  refused to write '_probe4.preql': not syntactically valid Trilogy.
-
-  Parse error:
-   --> 8:1
-    |
-  8 | select2:
-    | ^---
-    |
-    = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
-  Location:
-  ...here it.category is not null
-   ??? select2:
-  ```
-- `trilogy file write _probe8.preql --run-and-delete`
-
-  ```text
-  refused to write '_probe8.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [101]: Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).
-  Location:
-  ...d in (
-           select it2.id ??? from raw.item as it2 where it2...
-  ```
-- `trilogy file write diag_3697706765.preql`
-
-  ```text
-  refused to write 'diag_3697706765.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 14:1
-     |
-  14 | by *;
-     | ^---
-     |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ...) as num_qualifying_prefixes
-   ??? by *;
-  ```
-- `trilogy file write _diag_4199102535.preql`
-
-  ```text
-  refused to write '_diag_4199102535.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
-  Location:
-  ...ct count(c.sk) as n)
-   ) -> (n) ???
-
-   select diag.n;
-  ```
-
 ### `other`
 
-- `trilogy file write _probe5.preql --run-and-delete`
+- `trilogy run scratch1.preql`
 
   ```text
-  Unexpected error in _probe5.preql: name 'is_grouping_identity' is not defined
+  Syntax error in scratch1.preql: This script requires parameter "zips" to be set in environment.
   ```
-- `trilogy agent-info syntax example intersect-setops`
+- `trilogy run scratch2.preql`
 
   ```text
-  Unknown syntax example: 'intersect-setops'
-
-  Available Trilogy syntax examples - print one with `trilogy agent-info syntax example <name>`:
-
-  - `python-datasource` - run a local Python script as a datasource: wrap a function in `trilogy.io.run`, which writes the Arrow IPC stream to stdout for you from a table, dataframe, or list of dicts; declare concepts, map script columns in `datasource (...)`, use `grain (...) file `path.py`;`, then reference locally declared concepts WITHOUT the datasource name as a prefix
-  - `query-structure` - the clause order of a query (`where` -> `select` <cols> -> joi
-  …
-  subtotal/total rows and to sort by level
-  - `rank-over-rollup` - rank rollup subtotals/leaves with a SINGLE `rank(a,b) over (partition by level, parent ...)` - not separate ranks per level
-  - `staged-membership` - compute a membership set in a `rowset` (keys meeting a count/HAVING), then filter the main query with `<key> in <rowset>.<col>`
-  - `correlated-exists-via-grouped-counts` - translate `EXISTS other` / `NOT EXISTS other matching` over the same model into two `count(...) by <grain>` compared in `where` (`> 1` = another exists, `= 1` = no other matches) - pin the correlation grain with `by`
+  Syntax error in scratch2.preql: This script requires parameter "zips" to be set in environment.
   ```
-- `trilogy run probe3.preql`
+- `trilogy run scratch_verify.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,840…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
 
   ```text
-  Unexpected error in probe3.preql: (_duckdb.NotImplementedException) Not implemented Error: Unable to transform python value of type '<class 'trilogy.core.models.author.SubqueryItem'>' to DuckDB LogicalType
-  [SQL:
+  Unexpected error in scratch_verify.preql: Could not render the query: Missing source reference to qualifying_prefixes.prefix. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
+
+  Full SQL with sentinel(s):
+
   WITH
-  macho as (
+  abhorrent as (
   SELECT
-      "s_web_sales_unified"."WS_ITEM_SK" as "___tvf_arm_2_item_sk"
+      "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
+      "ss_store_store"."S_STORE_NAME" as "ss_store_name",
+      "ss_store_store"."S_ZIP" as "ss_store_zip"
   FROM
-      "fact_web_sales" as "s_web_sales_unified"
-      INNER JOIN "dim_date_dim" as "s_sale_date_date" on "s_web_sales_unified"."WS_SOLD_DATE_SK" = "s_sale_date_date"."D_DATE_SK"
+      "fact_store_sales" as "ss_store_sales"
+      INNER JOIN "dim_date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+      LEFT OUTER JOIN "dim_store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
   WHERE
-      "s_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001 and  'WEB'  = 'WEB'
-
-  GROUP BY
-      1),
-  young as (
+      "ss_sale_date_date"."D_YEAR" = 1998 and "ss_sale_date_date"."D_QOY" = 2
+  ),
+  quizzical as (
   SELECT
-      "s_catalog_sales_unified"."CS_ITEM_SK" as "___tvf_arm_1_item_sk"
-  FROM
-      "fact_catalog_sales" as "s_catalog_sales_unified"
-      INNER JOIN "dim_date_dim" as "s_sale_date_date" on "s_catalog_sales_unified"."CS_SOLD_DATE_SK" = "s_sale_date_date"."D_DATE_SK"
-  WHERE
-      "s_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001 and  'CATALOG'  = 'CATALOG'
-
-  GROUP BY
-      1),
-  uneven as (
-  SELECT
-      "s_store_sales_unified"."SS_ITEM_SK" as "___tvf_arm_0_item_sk"
-  FROM
-      "fact_store_sales" as "s_store_sales_unified"
-      INNER JOIN "dim_date_dim" as "s_sale_date_date" on "s_store_sales_unified"."SS_SOLD_DATE_SK" = "s_sale_date_date"."D_DATE_SK"
-  WHERE
-      "s_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001 and  'STORE'  = 'STORE'
-
-  GROUP BY
-      1),
-  busy as (
-  SELECT
-      "uneven"."___tvf_arm_0_item_sk" as "_channel_common_item_sk"
-  FROM
-      "uneven"
-  INTERSECT
-  SELECT
-      "young"."___tvf_arm_1_item_sk" as "_channel_common_item_sk"
-  FROM
-      "young"
-  INTERSECT
-  SELECT
-      "macho"."___tvf_arm_2_item_sk" as "_channel_common_item_sk"
-  FROM
-      "macho"),
-  charming as (
-  SELECT
-      "busy"."_channel_common_item_sk" as "channel_common_item_sk"
-  FROM
-      "busy"),
-  puzzled as (
-  SELECT
-      $1 as "overall_avg",
-      count(distinct "charming"."channel_common_item_sk") as "common_items"
-  FROM
-      "charming"),
+      STRING_SPLIT( :zips , ',' ) as "_virt_func_split_4785012549328100"
+  ),
   cheerful as (
   SELECT
-      "s_catalog_sales_unified"."CS_ITEM_SK" as "s_item_sk",
-      "s_catalog_sales_unified"."CS_ORDER_NUMBER" as "s_order_id",
-      "s_catalog_sales_unified"."CS_SOLD_DATE_SK" as "s_sale_date_sk"
+      "ss_customer_current_address_customer_address"."CA_ZIP" as "ss_customer_current_address_zip",
+      "ss_customer_customers"."C_CUSTOMER_SK" as "ss_customer_sk"
   FROM
-      "fact_catalog_sales" as "s_catalog_sales_unified"
-  UNION ALL
+      "dim_customer" as "ss_customer_customers"
+      INNER JOIN "dim_customer_address" as "ss_customer_current_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_current_address_customer_address"."CA_ADDRESS_SK"
+  WHERE
+      "ss_customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' and exists (select 1 from (select unnest(quizzical."_virt_func_split_4785012549328100") as unnest_member from quizzical) as unnest_members where unnest_member is not distinct from "ss_customer_current_address_customer_address"."CA_ZIP")
+  ),
+  thoughtful as (
   SELECT
-      "s_store_sales_unified"."SS_ITEM_SK" as "s_item_sk",
-      "s_store_sales_unified"."SS_TICKET_NUMBER" as "s_order_id",
-      "s_store_sales_unified"."SS_SOLD_DATE_SK" as "s_sale_date_sk"
-  FROM
-      "fact_store_sales" as "s_store_sales_unified"
-  UNION ALL
-  SELECT
-      "s_web_sales_unified"."WS_ITEM_SK" as "s_item_sk",
-      "s_web_sales_unified"."WS_ORDER_NUMBER" as "s_order_id",
-      "s_web_sales_unified"."WS_SOLD_DATE_SK" as "s_sale_date_sk"
-  FROM
-      "fact_web_sales" as "s_web_sales_unified"),
-  questionable as (
-  SELECT
-      "cheerful"."s_item_sk" as "s_item_sk",
-      "s_item_items"."I_BRAND_ID" as "s_item_brand_id",
-      "s_item_items"."I_CATEGORY_ID" as "s_item_category_id",
-      "s_item_items"."I_CLASS_ID" as "s_item_class_id",
-      "s_sale_date_date"."D_MOY" as "s_sale_date_month_of_year",
-      "s_sale_date_date"."D_YEAR" as "s_sale_date_year",
-      md5(CONCAT_WS('', coalesce(cast("cheerful"."s_item_sk" as string),'
-  '), coalesce(cast("cheerful"."s_order_id" as string),'
-  '))) as "_virt_func_hash_1026305025373187"
+      "cheerful"."ss_customer_current_address_zip" as "_qualifying_zips_zip"
   FROM
       "cheerful"
-      INNER JOIN "dim_item" as "s_item_items" on "cheerful"."s_item_sk" = "s_item_items"."I_ITEM_SK"
-      LEFT OUTER JOIN "dim_date_dim" as "s_sale_date_date" on "cheerful"."s_sale_date_sk" = "s_sale_date_date"."D_DATE_SK"),
-  protective as (
+  GROUP BY
+      1
+  HAVING
+      count(distinct "cheerful"."ss_customer_sk") > 10
+  ),
+  abundant as (
   SELECT
-      count(CASE WHEN "questionable"."s_sale_date_year" = 2001 and "questionable"."s_sale_date_month_of_year" = 11 and exists (select 1 from charming where charming."channel_common_item_sk" is not distinct from "questionable"."s_item_sk") and "questionable"."s_item_brand_id" is not null and "questionable"."s_item_class_id" is not null and "questionable"."s_item_category_id" is not null THEN "questionable"."_virt_func_hash_1026305025373187" ELSE NULL END) as "nov01_common_lines"
+      SUBSTRING("thoughtful"."_qualifying_zips_zip",1,2) as "qualifying_prefixes_prefix"
   FROM
-      "questionable")
+      "thoughtful"
+  GROUP BY
+      1),
+  macho as (
   SELECT
-      "puzzled"."overall_avg" as "overall_avg",
-      "puzzled"."common_items" as "common_items",
-      "protective"."nov01_common_lines" as "nov01_common_lines"
+      "abhorrent"."ss_store_name" as "store_name",
+      "abhorrent"."ss_store_zip" as "store_zip",
+      (exists (select 1 from abundant where abundant."qualifying_prefixes_prefix" is not distinct from SUBSTRING("abhorrent"."ss_store_zip",1,2))) as "qualifies",
+      SUBSTRING("abhorrent"."ss_store_zip",1,2) as "store_prefix"
   FROM
-      "protective"
-      INNER JOIN "puzzled" on 1=1
+      "abhorrent"),
+  sweltering as (
+  SELECT
+      "abhorrent"."ss_net_profit" as "ss_net_profit",
+      "abhorrent"."ss_store_name" as "ss_store_name",
+      "abhorrent"."ss_store_name" as "store_name",
+      "abhorrent"."ss_store_zip" as "ss_store_zip",
+      "abhorrent"."ss_store_zip" as "store_zip",
+      (exists (select 1 from INVALID_REFERENCE_BUG<Missing source reference to qualifying_prefixes.prefix> where INVALID_REFERENCE_BUG<Missing source reference to qualifying_prefixes.prefix>."qualifying_prefixes_prefix" is not distinct from SUBSTRING("abhorrent"."ss_store_zip",1,2))) as "qualifies"
+  FROM
+      "abhorrent"),
+  late as (
+  SELECT
+      "sweltering"."qualifies" as "qualifies",
+      "sweltering"."ss_store_name" as "ss_store_name",
+      "sweltering"."ss_store_zip" as "ss_store_zip",
+      sum("sweltering"."ss_net_profit") as "total_net_profit"
+  FROM
+      "sweltering"
   GROUP BY
       1,
       2,
-      3]
-  [parameters: (<Subquery: ref:_subquery_13_5.a>,)]
-  (Background on this error at: https://sqlalche.me/e/20/tw8g)
+      3)
+  SELECT
+      "macho"."store_name" as "store_name",
+      "macho"."store_zip" as "store_zip",
+      "macho"."store_prefix" as "store_prefix",
+      "late"."total_net_profit" as "total_net_profit"
+  FROM
+      "late"
+      INNER JOIN "macho" on "late"."qualifies" = "macho"."qualifies" AND "late"."ss_store_name" is not distinct from "macho"."store_name" AND "late"."ss_store_zip" is not distinct from "macho"."store_zip"
+  GROUP BY
+      1,
+      2,
+      3,
+      4,
+      "late"."qualifies"
+  ORDER BY
+      "macho"."store_name" asc,
+      "macho"."store_zip" asc
+  LIMIT (100)
   ```
-
-### `undefined-concept`
-
-- `trilogy run probe2_3697440276.preql`
+- `trilogy run probe8.preql`
 
   ```text
-  Syntax error in probe2_3697440276.preql: 3 undefined concept references; fix all before re-running:
-    - c.row_counter (line 3, in SELECT); did you mean: c.birth_country?
-    - c.row_counter (line 4, in SELECT); did you mean: c.birth_country?
-    - c.row_counter (line 5, in SELECT); did you mean: c.birth_country?
-  ```
-- `trilogy run answer_2524943990.preql`
-
-  ```text
-  Syntax error in answer_2524943990.preql: 2 undefined concept references; fix all before re-running:
-    - catalog.multi_warehouse_order (line 16, col 9, in WHERE); did you mean: catalog.warehouse.id, catalog.return_warehouse.id, catalog.warehouse.name, multi_warehouse_order?
-    - catalog.no_return_order (line 17, col 9, in WHERE); did you mean: catalog.return_fee, catalog.return_date.year, catalog.is_returned, no_return_order?
+  Syntax error in probe8.preql: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 29). Move the filter to WHERE to filter before aggregation.
   ```
 
-### `type-error`
+### `syntax-parse`
 
-- `trilogy file write answer_3705756794.preql --run`
+- `trilogy file write scratch_explore.preql`
 
   ```text
-  Type error in answer_3705756794.preql: Invalid argument type 'NULL' passed into SUM function in position 1 from concept: arms.returns_amt. Valid: 'BIGINT', 'BOOL', 'DOUBLE', 'FLOAT', 'INTEGER', 'NUMBER', 'NUMERIC'.
+  refused to write 'scratch_explore.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
+  Location:
+   not null) as with_category,
+   ???
+  ```
+- `trilogy file write scratch_probe.preql`
+
+  ```text
+  refused to write 'scratch_probe.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 15:1
+     |
+  15 | order by qualifying_line_items asc nulls first, ss.customer.current_address.state asc nulls first
+     | ^---
+     |
+     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+  Location:
+   qualifying_line_items >= 10
+   ??? order by qualifying_line_items...
+  ```
+- `trilogy file write scratch_probe_q25b.preql`
+
+  ```text
+  refused to write 'scratch_probe_q25b.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 10:30
+     |
+  10 |     --(max(cs.warehouse.sk) <> min(cs.warehouse.sk)) as differs,
+     |                              ^---
+     |
+     = expected sum_operator
+  Location:
+       --(max(cs.warehouse.sk) < ??? > min(cs.warehouse.sk)) as dif...
   ```
 
 ### `no-output`
 
-- `trilogy run _diag_4199102535.preql`
+- `trilogy run scratch4.preql --param zips=24128,76232,65084`
 
   ```text
-  Nothing was executed: parsed 12 definition statement(s) (5 rowsets, 4 imports, 3 concepts) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
+  Nothing was executed: parsed 3 definition statement(s) (1 concept, 1 import, 1 rowset) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
   ```
-
-### `file-not-found`
-
-- `trilogy run probe_1455459008.preql`
+- `trilogy run probe_counts.preql`
 
   ```text
-  Input 'probe_1455459008.preql' does not exist.
+  Nothing was executed: parsed 4 definition statement(s) (3 rowsets, 1 import) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
   ```

@@ -1,47 +1,58 @@
-# Trilogy failure analysis — 20260811-133917
+# Trilogy failure analysis — 20260811-145004
 
-- Run `20260811-133909_enriched_noise` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 407 | failed: 17 (4%)
+- Run `20260811-145002_enriched_noise` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 421 | failed: 24 (6%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `disabled-tool` | 8 | 47% |
-| `other` | 4 | 24% |
-| `syntax-parse` | 3 | 18% |
-| `join-resolution` | 2 | 12% |
+| `disabled-tool` | 14 | 58% |
+| `syntax-parse` | 5 | 21% |
+| `other` | 2 | 8% |
+| `join-resolution` | 2 | 8% |
+| `file-not-found` | 1 | 4% |
 
 ## Detail
 
 ### `disabled-tool`
 
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/all_sales.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/item.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/store_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/store_sales.preql`
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/catalog_sales.preql`
+- `trilogy file read probe1.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read verify_chunk1.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read verify_total.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read probe10.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read check_counts.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/all_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -51,293 +62,241 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
+- `trilogy file read check_counts.preql`
 
   ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under root/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-
-### `other`
-
-- `trilogy run scratch3.preql`
+- `trilogy file read myprobe10.preql`
 
   ```text
-  Syntax error in scratch3.preql: ORDER BY references 'a.item.sk', which is not in the SELECT projection (line 3). Add it to SELECT to sort by it — prefix with `--` to keep it out of the output rows, e.g. `select ..., --a.item.sk order by a.item.sk asc`.
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run probe_narrow.preql`
+- `trilogy file read probeG.preql`
 
   ```text
-  Unexpected error in probe_narrow.preql: name 'is_grouping_identity' is not defined
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_3697706765.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
+- `trilogy file read probe_check.preql`
 
   ```text
-  Unexpected error in answer_3697706765.preql: name '_aggregate_axis_members' is not defined
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy run answer_219203908.preql`
+- `trilogy file read myprobe2.preql`
 
   ```text
-  Unexpected error in answer_219203908.preql: Could not render the query: global (by *) aggregate local.overall_avg_sales rendered in CTE protective at keyed grain Grain<leaf.brand_id,leaf.category_id,leaf.channel,leaf.class_id. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
-
-  Full SQL with sentinel(s):
-
-  WITH
-  cheerful as (
-  SELECT
-       'CATALOG'  as "s_channel",
-      "s_catalog_sales_unified"."CS_ITEM_SK" as "s_item_sk",
-      "s_catalog_sales_unified"."CS_ORDER_NUMBER" as "s_order_id",
-      "s_catalog_sales_unified"."CS_SOLD_DATE_SK" as "s_sale_date_sk",
-      "s_catalog_sales_unified"."CS_LIST_PRICE" as "s_list_price",
-      "s_catalog_sales_unified"."CS_QUANTITY" as "s_quantity"
-  FROM
-      "fact_catalog_sales" as "s_catalog_sales_unified"
-  UNION ALL
-  SELECT
-       'STORE'  as "s_channel",
-      "s_store_sales_unified"."SS_ITEM_SK" as "s_item_sk",
-      "s_store_sales_unified"."SS_TICKET_NUMBER" as "s_order_id",
-      "s_store_sales_unified"."SS_SOLD_DATE_SK" as "s_sale_date_sk",
-      "s_store_sales_unified"."SS_LIST_PRICE" as "s_list_price",
-      "s_store_sales_unified"."SS_QUANTITY" as "s_quantity"
-  FROM
-      "fact_store_sales" as "s_store_sales_unified"
-  UNION ALL
-  SELECT
-       'WEB'  as "s_channel",
-      "s_web_sales_unified"."WS_ITEM_SK" as "s_item_sk",
-      "s_web_sales_unified"."WS_ORDER_NUMBER" as "s_order_id",
-      "s_web_sales_unified"."WS_SOLD_DATE_SK" as "s_sale_date_sk",
-      "s_web_sales_unified"."WS_LIST_PRICE" as "s_list_price",
-      "s_web_sales_unified"."WS_QUANTITY" as "s_quantity"
-  FROM
-      "fact_web_sales" as "s_web_sales_unified"),
-  abundant as (
-  SELECT
-      "cheerful"."s_channel" as "s_channel",
-      "cheerful"."s_item_sk" as "s_item_sk"
-  FROM
-      "cheerful"
-      INNER JOIN "dim_date_dim" as "s_sale_date_date" on "cheerful"."s_sale_date_sk" = "s_sale_date_date"."D_DATE_SK"
-  WHERE
-      "s_sale_date_date"."D_YEAR" BETWEEN 1999 AND 2001
-
-  GROUP BY
-      1,
-      2),
-  yummy as (
-  SELECT
-      "abundant"."s_item_sk" as "s_item_sk"
-  FROM
-      "abundant"
-  GROUP BY
-      1
-  HAVING
-      count(distinct "abundant"."s_channel") >= 3
-  ),
-  juicy as (
-  SELECT
-      "yummy"."s_item_sk" as "presence_item_sk"
-  FROM
-      "yummy"
-  GROUP BY
-      1),
-  abhorrent as (
-  SELECT
-      "s_item_items"."I_BRAND_ID" as "tups_brand_id",
-      "s_item_items"."I_CATEGORY_ID" as "tups_category_id",
-      "s_item_items"."I_CLASS_ID" as "tups_class_id"
-  FROM
-      "dim_item" as "s_item_items"
-  WHERE
-      exists (select 1 from juicy where juicy."presence_item_sk" is not distinct from "s_item_items"."I_ITEM_SK") and "s_item_items"."I_BRAND_ID" is not null and "s_item_items"."I_CLASS_ID" is not null and "s_item_items"."I_CATEGORY_ID" is not null
-  ),
-  questionable as (
-  SELECT
-      "cheerful"."s_channel" as "s_channel",
-      "cheerful"."s_item_sk" as "s_item_sk",
-      "cheerful"."s_list_price" as "s_list_price",
-      "cheerful"."s_order_id" as "s_order_id",
-      "cheerful"."s_quantity" as "s_quantity",
-      "s_item_items"."I_BRAND_ID" as "s_item_brand_id",
-      "s_item_items"."I_CATEGORY_ID" as "s_item_category_id",
-      "s_item_items"."I_CLASS_ID" as "s_item_class_id"
-  FROM
-      "cheerful"
-      INNER JOIN "dim_item" as "s_item_items" on "cheerful"."s_item_sk" = "s_item_items"."I_ITEM_SK"
-      INNER JOIN "dim_date_dim" as "s_sale_date_date" on "cheerful"."s_sale_date_sk" = "s_sale_date_date"."D_DATE_SK"
-  WHERE
-      "s_sale_date_date"."D_YEAR" = 2001 and "s_sale_date_date"."D_MOY" = 11 and exists (select 1 from abhorrent where abhorrent."tups_brand_id" is not distinct from "s_item_items"."I_BRAND_ID" and abhorrent."tups_class_id" is not distinct from "s_item_items"."I_CLASS_ID" and abhorrent."tups_category_id" is not distinct from "s_item_items"."I_CATEGORY_ID")
-  ),
-  macho as (
-  SELECT
-      "questionable"."s_item_brand_id" as "_leaf_brand_id",
-      "questionable"."s_item_brand_id" as "s_item_brand_id",
-      "questionable"."s_item_category_id" as "_leaf_category_id",
-      "questionable"."s_item_category_id" as "s_item_category_id",
-      "questionable"."s_item_class_id" as "_leaf_class_id",
-      "questionable"."s_item_class_id" as "s_item_class_id",
-      "questionable"."s_item_sk" as "s_item_sk",
-      "questionable"."s_list_price" as "s_list_price",
-      "questionable"."s_order_id" as "s_order_id",
-      "questionable"."s_quantity" as "s_quantity",
-      LOWER("questionable"."s_channel")  as "_leaf_channel"
-  FROM
-      "questionable"
-  WHERE
-      exists (select 1 from abhorrent where abhorrent."tups_brand_id" is not distinct from "questionable"."s_item_brand_id" and abhorrent."tups_class_id" is not distinct from "questionable"."s_item_class_id" and abhorrent."tups_category_id" is not distinct from "questionable"."s_item_category_id")
-  ),
-  kaput as (
-  SELECT
-      "macho"."_leaf_channel" as "_leaf_channel",
-      "macho"."s_item_brand_id" as "s_item_brand_id",
-      "macho"."s_item_category_id" as "s_item_category_id",
-      "macho"."s_item_class_id" as "s_item_class_id",
-      "macho"."s_item_sk" as "s_item_sk",
-      "macho"."s_order_id" as "s_order_id"
-  FROM
-      "macho"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6),
-  divergent as (
-  SELECT
-      "kaput"."_leaf_channel" as "_leaf_channel",
-      "kaput"."s_item_brand_id" as "s_item_brand_id",
-      "kaput"."s_item_category_id" as "s_item_category_id",
-      "kaput"."s_item_class_id" as "s_item_class_id",
-      count(md5(CONCAT_WS('', coalesce(cast("kaput"."s_order_id" as string),'
-  '), coalesce(cast("kaput"."s_item_sk" as string),'
-  ')))) as "_leaf_line_count"
-  FROM
-      "kaput"
-  GROUP BY
-      1,
-      2,
-      3,
-      4),
-  scrawny as (
-  SELECT
-      "macho"."_leaf_brand_id" as "_leaf_brand_id",
-      "macho"."_leaf_category_id" as "_leaf_category_id",
-      "macho"."_leaf_channel" as "_leaf_channel",
-      "macho"."_leaf_class_id" as "_leaf_class_id",
-      "macho"."s_item_brand_id" as "s_item_brand_id",
-      "macho"."s_item_category_id" as "s_item_category_id",
-      "macho"."s_item_class_id" as "s_item_class_id",
-      sum("macho"."s_quantity" * "macho"."s_list_price") as "_leaf_sales"
-  FROM
-      "macho"
-  GROUP BY
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7),
-  busy as (
-  SELECT
-      "divergent"."_leaf_line_count" as "leaf_line_count",
-      "scrawny"."_leaf_brand_id" as "leaf_brand_id",
-      "scrawny"."_leaf_category_id" as "leaf_category_id",
-      "scrawny"."_leaf_channel" as "leaf_channel",
-      "scrawny"."_leaf_class_id" as "leaf_class_id",
-      "scrawny"."_leaf_sales" as "leaf_sales"
-  FROM
-      "divergent"
-      INNER JOIN "scrawny" on "divergent"."_leaf_channel" = "scrawny"."_leaf_channel" AND "divergent"."s_item_brand_id" is not distinct from "scrawny"."s_item_brand_id" AND "divergent"."s_item_category_id" is not distinct from "scrawny"."s_item_category_id" AND "divergent"."s_item_class_id" is not distinct from "scrawny"."s_item_class_id"),
-  protective as (
-  SELECT
-      "busy"."leaf_brand_id" as "kept_brand_id",
-      "busy"."leaf_category_id" as "kept_category_id",
-      "busy"."leaf_channel" as "kept_channel",
-      "busy"."leaf_class_id" as "kept_class_id",
-      "busy"."leaf_line_count" as "kept_line_count",
-      "busy"."leaf_sales" as "kept_sales"
-  FROM
-      "busy"
-  WHERE
-      "busy"."leaf_sales" > INVALID_REFERENCE_BUG_AGG_GRAIN_MISMATCH<global (by *) aggregate local.overall_avg_sales rendered in CTE protective at keyed grain Grain<leaf.brand_id,leaf.category_id,leaf.channel,leaf.class_id>>
-  )
-  SELECT
-      "protective"."kept_channel" as "channel",
-      "protective"."kept_brand_id" as "brand_id",
-      "protective"."kept_class_id" as "class_id",
-      "protective"."kept_category_id" as "category_id",
-      sum("protective"."kept_sales") as "total_sales",
-      sum("protective"."kept_line_count") as "total_line_count"
-  FROM
-      "protective"
-  GROUP BY
-      ROLLUP (1, 2, 3, 4)
-  ORDER BY
-      "channel" asc nulls first,
-      "brand_id" asc nulls first,
-      "class_id" asc nulls first,
-      "category_id" asc nulls first
-  LIMIT (100)
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
 
 ### `syntax-parse`
 
-- `trilogy file write scratch2.preql`
+- `trilogy file write answer_3705756794.preql`
 
   ```text
-  refused to write 'scratch2.preql': not syntactically valid Trilogy.
+  refused to write 'answer_3705756794.preql': not syntactically valid Trilogy.
 
   Parse error:
-   --> 7:121
+  Syntax [222]: Missing `;` - a named definition must be terminated with a semicolon before the next statement. Terminate the `union(...) -> (...)` (or `with NAME as ... ` / `rowset NAME <- ...`) definition with a `;` after its `-> (...)` output signature, then start the consuming `select` on the next line. Example: `with u as union(...) -> (channel, np); select ...`.
+  Location:
+  ...amt, profit_amt, ret_loss_amt) ???
+
+   select
+       combined.chann...
+  ```
+- `trilogy file write probe6.preql`
+
+  ```text
+  refused to write 'probe6.preql': not syntactically valid Trilogy.
+
+  Parse error:
+  Syntax [103]: Using a GROUP BY clause? Trilogy has no GROUP BY - remove it. Grouping is automatic by the non-aggregated fields in your SELECT. To aggregate at a different grain than the select, write `agg(x) by dim1, dim2` inline (e.g. `sum(sales.amount) by sales.store.id`).
+  Location:
+  ...ere ss.sale_date.year = 2001
+   ??? group by ss.sale_date.year, ss...
+  ```
+- `trilogy file write probe11.preql`
+
+  ```text
+  refused to write 'probe11.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 14:1
+     |
+  14 | subset join cat_avg_rs.category = ss.item.category
+     | ^---
+     |
+     = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ....sale_date.month_of_year = 1
+   ??? subset join cat_avg_rs.categor...
+  ```
+- `trilogy file write probe11.preql`
+
+  ```text
+  refused to write 'probe11.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 14:1
+     |
+  14 | subset join cat_avg_rs.category = ss.item.category
+     | ^---
+     |
+     = expected limit, order_by, THEN_LA, having, LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, MULTIPLY_DIVIDE_PERCENT, or select_grouping
+  Location:
+  ....sale_date.month_of_year = 1
+   ??? subset join cat_avg_rs.categor...
+  ```
+- `trilogy file write answer_2133330107.preql`
+
+  ```text
+  refused to write 'answer_2133330107.preql': not syntactically valid Trilogy.
+
+  Parse error:
+   --> 6:57
     |
-  7 |   count(a.item.sk ? a.is_returned is not null and a.return_channel_dim_id is not null and a.return_channel_dim_text_id <> a.channel_dim_text_id) as ret_diff_entity,
-    |                                                                                                                         ^---
+  6 |   and substring(ss.customer.current_address.zip, 1, 5) <> substring(ss.store.zip, 1, 5)
+    |                                                         ^---
     |
     = expected sum_operator
   Location:
-  ...a.return_channel_dim_text_id < ??? > a.channel_dim_text_id) as re...
+  ...r.current_address.zip, 1, 5) < ??? > substring(ss.store.zip, 1, 5...
   ```
-- `trilogy run --stdin`
+
+### `other`
+
+- `trilogy run answer_507046194.preql`
 
   ```text
-  Syntax error in stdin:  --> 1:3
-    |
-  1 | --stdin;
-    |   ^---
-    |
-    = expected PURPOSE, PROPERTY, UNIQUE, or AUTO
-  Location:
-  -- ??? stdin;
+  Resolution error in answer_507046194.preql: WHERE input(s) ['ss.return_store.state'] cannot be related to the query outputs ['ss.return_customer.id', 'ss.return_customer.sk', 'ss.return_store.sk']: no join or merge connects the filter's source to any output-producing source. Add a join/merge relating them, or select a concept from the filter's model.
   ```
-- `trilogy file write probe_a.preql`
+- `trilogy run verify_alt.preql`
 
   ```text
-  refused to write 'probe_a.preql': not syntactically valid Trilogy.
+  Unexpected error in verify_alt.preql: (_duckdb.ParserException) Parser Error: zero-length delimited identifier at or near """"
 
-  Parse error:
-    --> 13:1
-     |
-  13 | by s.channel;
-     | ^---
-     |
-     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
-  Location:
-  ..._of_year = 11) as rows_nov01
-   ??? by s.channel;
+  LINE 100: ...er_id_at_ws_billing_customer_id_at_wb02_cid_at_wb02_cid']"."","friendly"."INVALID_ALIAS: [MODELS_EXECUTE] Concept local...
+                                                                          ^
+  [SQL:
+  WITH
+  kaput as (
+  SELECT
+      "ws_billing_customer_customers"."C_CUSTOMER_ID" as "wb02_cid",
+      sum("ws_web_sales"."WS_EXT_LIST_PRICE" - "ws_web_sales"."WS_EXT_DISCOUNT_AMT") as "wb02_rev"
+  FROM
+      "fact_web_sales" as "ws_web_sales"
+      INNER JOIN "dim_date_dim" as "ws_sale_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_sale_date_date"."D_DATE_SK"
+      LEFT OUTER JOIN "dim_customer" as "ws_billing_customer_customers" on "ws_web_sales"."WS_BILL_CUSTOMER_SK" = "ws_billing_customer_customers"."C_CUSTOMER_SK"
+  WHERE
+      "ws_sale_date_date"."D_YEAR" = 2002
+
+  GROUP BY
+      1),
+  protective as (
+  SELECT
+      "kaput"."wb02_cid" as "wb02_cid",
+      "kaput"."wb02_rev" as "web_02"
+  FROM
+      "kaput"),
+  sweltering as (
+  SELECT
+      "ws_billing_customer_customers"."C_CUSTOMER_ID" as "wb01_cid",
+      sum("ws_web_sales"."WS_EXT_LIST_PRICE" - "ws_web_sales"."WS_EXT_DISCOUNT_AMT") as "wb01_rev"
+  FROM
+      "fact_web_sales" as "ws_web_sales"
+      INNER JOIN "dim_date_dim" as "ws_sale_date_date" on "ws_web_sales"."WS_SOLD_DATE_SK" = "ws_sale_date_date"."D_DATE_SK"
+      LEFT OUTER JOIN "dim_customer" as "ws_billing_customer_customers" on "ws_web_sales"."WS_BILL_CUSTOMER_SK" = "ws_billing_customer_customers"."C_CUSTOMER_SK"
+  WHERE
+      "ws_sale_date_date"."D_YEAR" = 2001
+
+  GROUP BY
+      1),
+  friendly as (
+  SELECT
+      "sweltering"."wb01_cid" as "wb01_cid",
+      "sweltering"."wb01_rev" as "web_01"
+  FROM
+      "sweltering"),
+  uneven as (
+  SELECT
+      "ss_customer_customers"."C_CUSTOMER_ID" as "st02_cid",
+      sum("ss_store_sales"."SS_EXT_LIST_PRICE" - "ss_store_sales"."SS_EXT_DISCOUNT_AMT") as "st02_rev"
+  FROM
+      "fact_store_sales" as "ss_store_sales"
+      INNER JOIN "dim_date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+      LEFT OUTER JOIN "dim_customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+  WHERE
+      "ss_sale_date_date"."D_YEAR" = 2002
+
+  GROUP BY
+      1),
+  concerned as (
+  SELECT
+      "uneven"."st02_cid" as "st02_cid",
+      "uneven"."st02_rev" as "store_02"
+  FROM
+      "uneven"),
+  cheerful as (
+  SELECT
+      "ss_customer_customers"."C_CUSTOMER_ID" as "st01_cid",
+      sum("ss_store_sales"."SS_EXT_LIST_PRICE" - "ss_store_sales"."SS_EXT_DISCOUNT_AMT") as "st01_rev"
+  FROM
+      "fact_store_sales" as "ss_store_sales"
+      INNER JOIN "dim_date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
+      LEFT OUTER JOIN "dim_customer" as "ss_customer_customers" on "ss_store_sales"."SS_CUSTOMER_SK" = "ss_customer_customers"."C_CUSTOMER_SK"
+  WHERE
+      "ss_sale_date_date"."D_YEAR" = 2001
+
+  GROUP BY
+      1),
+  abundant as (
+  SELECT
+      "cheerful"."st01_cid" as "customer_id",
+      "cheerful"."st01_rev" as "store_01"
+  FROM
+      "cheerful")
+  SELECT
+      coalesce("abundant"."customer_id","concerned"."customer_id","friendly"."customer_id","protective"."wb02_cid") as "customer_id",
+      "abundant"."store_01" as "store_01",
+      "concerned"."store_02" as "store_02",
+      "friendly"."web_01" as "web_01",
+      "protective"."web_02" as "web_02"
+  FROM
+      "abundant"
+      INNER JOIN "protective" on "abundant"."customer_id" is not distinct from "protective"."wb02_cid"
+      INNER JOIN "friendly" on "abundant"."customer_id" is not distinct from "friendly"."wb01_cid" AND "protective"."wb02_cid" is not distinct from "friendly"."wb01_cid"
+      INNER JOIN "concerned" on "abundant"."customer_id" is not distinct from "concerned"."st02_cid" AND "friendly"."wb01_cid" is not distinct from "concerned"."st02_cid" AND "protective"."wb02_cid" is not distinct from "concerned"."st02_cid"
+  WHERE
+      "abundant"."store_01" is not null and "concerned"."store_02" is not null and "friendly"."web_01" is not null and "protective"."web_02" is not null and "abundant"."store_01" > 0 and "friendly"."web_01" > 0 and "protective"."web_02" * "abundant"."store_01" > "concerned"."store_02" * "friendly"."web_01"
+
+  GROUP BY
+      1,
+      2,
+      3,
+      4,
+      5
+  ORDER BY
+      coalesce("abundant"."customer_id","concerned"."INVALID_ALIAS: [MODELS_EXECUTE] Concept local"."customer_id@Grain<Abstract> not found on ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_150136837477875_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st01_cid_at_local_customer_id_st01_cid_join_ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_6121797038643255_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st02_cid_at_st02_cid_join_ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_726435513328491_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb01_cid_at_wb01_cid_join_ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_8397427776121232_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb02_cid_at_wb02_cid_grouped_by_local"."customer_id_at_local_customer_id_local_store_02_local_web_01_local_web_02; have ['local"."customer_id@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."store_01@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."store_02@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."web_01@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."web_02@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>'] from ['ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_150136837477875_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st01_cid_at_local_customer_id_st01_cid', 'ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_6121797038643255_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st02_cid_at_st02_cid', 'ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_726435513328491_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb01_cid_at_wb01_cid', 'ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_8397427776121232_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb02_cid_at_wb02_cid']"."","friendly"."INVALID_ALIAS: [MODELS_EXECUTE] Concept local"."customer_id@Grain<Abstract> not found on ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_150136837477875_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st01_cid_at_local_customer_id_st01_cid_join_ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_6121797038643255_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st02_cid_at_st02_cid_join_ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_726435513328491_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb01_cid_at_wb01_cid_join_ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_8397427776121232_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb02_cid_at_wb02_cid_grouped_by_local"."customer_id_at_local_customer_id_local_store_02_local_web_01_local_web_02; have ['local"."customer_id@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."store_01@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."store_02@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."web_01@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>', 'local"."web_02@Grain<local"."customer_id,local"."store_02,local"."web_01,local"."web_02>'] from ['ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_150136837477875_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st01_cid_at_local_customer_id_st01_cid', 'ss"."customer"."customers_at_ss_customer_sk_join_ss"."sale_date"."date_at_ss_sale_date_sk_join_ss"."store_sales_at_ss_item_sk_ss_ticket_number_at_ss_item_sk_ss_ticket_number_filtered_by_6121797038643255_grouped_by_ss"."customer"."id_at_ss_customer_id_at_ss_customer_id_at_st02_cid_at_st02_cid', 'ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_726435513328491_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb01_cid_at_wb01_cid', 'ws"."billing_customer"."customers_at_ws_billing_customer_sk_join_ws"."sale_date"."date_at_ws_sale_date_sk_join_ws"."web_sales_at_ws_item_sk_ws_order_number_at_ws_item_sk_ws_order_number_filtered_by_8397427776121232_grouped_by_ws"."billing_customer"."id_at_ws_billing_customer_id_at_ws_billing_customer_id_at_wb02_cid_at_wb02_cid']"."","protective"."wb02_cid") asc nulls first
+  LIMIT (200)]
+  (Background on this error at: https://sqlalche.me/e/20/f405)
   ```
 
 ### `join-resolution`
 
-- `trilogy run probe_item2.preql`
+- `trilogy run probe9.preql`
 
   ```text
-  Resolution error in probe_item2.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 6). The requested concepts split into 2 disconnected subgraphs: {avg_price}; {category, n_lines, ss.customer.current_address.sk, ss.item.category, ss.sale_date.month_of_year, ss.sale_date.year}. Are you missing a join or merge statement to relate them?
+  Resolution error in probe9.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {avg_used}; {ss.item.category, ss.sale_date.month_of_year, ss.sale_date.year}. Are you missing a join or merge statement to relate them?
   ```
-- `trilogy run scratch_probe10.preql`
+- `trilogy run probe9.preql`
 
   ```text
-  Resolution error in scratch_probe10.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {cs.billing_customer.sk, cs.item.id, cs.order_number, cs.quantity, cs.sale_date.year}; {ss.customer.sk, ss.item.id, ss.quantity, ss.return_customer.sk, ss.return_date.year, ss.return_quantity, ss.sale_date.year, ss.store.state, ss.ticket_number}. Are you missing a join or merge statement to relate them?
+  Resolution error in probe9.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 4). The requested concepts split into 2 disconnected subgraphs: {avg_used}; {ss.item.category, ss.sale_date.month_of_year, ss.sale_date.year}. Are you missing a join or merge statement to relate them?
+  ```
+
+### `file-not-found`
+
+- `trilogy run probe.preql`
+
+  ```text
+  Input 'probe.preql' does not exist.
   ```
