@@ -2548,6 +2548,7 @@ def _wrap_for_grain(
     needed_concepts: list[BuildConcept],
     environment: BuildEnvironment,
     merge_grain_components: frozenset[str] = frozenset(),
+    dedup_orthogonal: bool = False,
 ) -> list[StrategyNode]:
     """When a parent feeds a merge edge, its grain may be wider than the
     natural grain of the concepts the merge actually wants — joining the
@@ -2572,10 +2573,39 @@ def _wrap_for_grain(
     # key, so the FINAL merge cross-joins them ON 1=1 (a forced-join disambiguator
     # selecting a group property alongside an unrelated key). Keep the parent
     # whole at its row grain; the FINAL dedup groups it down to the output grain.
+    # UNLESS the caller says that dedup never runs (`dedup_orthogonal`: a
+    # ROLLUP/CUBE/GROUPING SETS sibling makes the FINAL skip it, since a dedup
+    # would re-aggregate the subtotal rows) — then collapse to distinct rows of
+    # the needed projection + join keys HERE, one GroupNode so the join keys
+    # stay beside the orthogonal dims (a leaf dim outside the grouping key list
+    # must join back per distinct pair, not per source row).
     if merge_grain_components and any(
         not _fd_at_grain(concept, merge_grain_components) for concept in needed_concepts
     ):
-        return [parent_node]
+        if not dedup_orthogonal:
+            return [parent_node]
+        parent_usable = {o.address for o in parent_node.usable_outputs}
+        distinct_by_addr: dict[str, BuildConcept] = {}
+        for needed in needed_concepts:
+            distinct_by_addr.setdefault(needed.address, needed)
+        for addr in sorted(merge_grain_components & parent_usable):
+            key_concept = _concept_at(environment, addr)
+            if key_concept is not None:
+                distinct_by_addr.setdefault(addr, key_concept)
+        distinct_outputs = list(distinct_by_addr.values())
+        if any(o.address not in parent_usable for o in distinct_outputs):
+            return [parent_node]
+        return [
+            GroupNode(
+                output_concepts=distinct_outputs,
+                input_concepts=distinct_outputs,
+                environment=environment,
+                parents=[parent_node],
+                partial_concepts=parent_node.partial_concepts,
+                preexisting_conditions=parent_node.preexisting_conditions,
+                force_group=True,
+            )
+        ]
 
     parent_grain_components = (
         frozenset(parent_node.grain.components) if parent_node.grain else frozenset()
@@ -3254,6 +3284,11 @@ def _assemble_final_node(
     )
     mangled_contents = _mangled_rowset_content_addresses(environment)
 
+    # A grouping-sets sibling suppresses the FINAL dedup (`_group_to_grain_if_
+    # required` passes a subtotal-bearing merge through), so a row-grain leaf
+    # contributor must dedup itself before the merge instead.
+    grouping_sibling = any(node_nulls_grouping_keys(built[g]) for g in contributing)
+
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
@@ -3338,6 +3373,7 @@ def _assemble_final_node(
                     group_concepts,
                     environment,
                     projection_grain,
+                    dedup_orthogonal=grouping_sibling,
                 )
             )
         else:

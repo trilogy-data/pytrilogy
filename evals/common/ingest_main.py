@@ -14,6 +14,7 @@ from pathlib import Path
 from . import agent_runner, archive, db, prompts, scoring
 from .main import (
     DEFAULT_MODEL,
+    DEFAULT_PROVIDER,
     OPENROUTER_ROUTING,
     PROVIDER_ENV,
     REPO_ROOT,
@@ -29,7 +30,7 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model id")
-    parser.add_argument("--provider", default="openrouter", help="LLM provider")
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="LLM provider")
     parser.add_argument(
         "--scale-factor",
         type=float,

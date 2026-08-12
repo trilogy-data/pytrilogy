@@ -541,6 +541,34 @@ def _cosource_component_groups(
                 key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
                 if key_node is not None and key_node != node:
                     undirected.add_edge(node, key_node)
+        # A PROPERTY root and another root BOUND BY THE SAME DATASOURCE sit on
+        # one physical row stream (`select group_id as g, nullable_amount as v`
+        # — the fact binds its FK column beside its property; each root feeds
+        # only its own rename, so no shared consumer relates them and splitting
+        # cross-joins ON 1=1 with any WHERE applied to just one leg). Only when
+        # NEITHER root feeds a grain-collapsing consumer: an aggregate defines
+        # its own input domain (`count(user_id)` counts the users table, not
+        # the fact FK column's fan) and must keep its independent source.
+        aggregate_reach = [
+            any(
+                concept_attrs[x].derivation
+                in (Derivation.AGGREGATE, Derivation.GROUP_TO)
+                for x in reaches[i]
+            )
+            for i in range(n)
+        ]
+        for i in range(n):
+            node_i, data_i = main_items[i]
+            if data_i.purpose != Purpose.PROPERTY or not data_i.datasource_bindings:
+                continue
+            if aggregate_reach[i]:
+                continue
+            for j in range(n):
+                if i == j or aggregate_reach[j]:
+                    continue
+                node_j, data_j = main_items[j]
+                if data_i.datasource_bindings & data_j.datasource_bindings:
+                    undirected.add_edge(node_i, node_j)
         comp_of: dict[str, int] = {}
         for ci, comp in enumerate(nx.connected_components(undirected)):
             for node in comp:

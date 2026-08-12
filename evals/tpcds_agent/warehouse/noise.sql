@@ -84,3 +84,24 @@ SELECT i AS audit_event_id, current_timestamp - INTERVAL (i % 10000) SECOND AS e
        'object-' || (i % 700) AS object_identifier,
        CASE i % 5 WHEN 0 THEN 'denied' ELSE 'success' END AS result
 FROM range(1, 15001) t(i);
+
+-- Descriptions matching the enrichment style of comments.sql: honest domain
+-- summaries only, no relevance hints.
+COMMENT ON TABLE dim_hr_department IS 'Internal HR department reference data.';
+COMMENT ON TABLE dim_hr_employee IS 'Internal HR employee roster.';
+COMMENT ON COLUMN dim_hr_employee.annual_salary IS 'USD.';
+COMMENT ON TABLE fact_payroll_entry IS 'Internal payroll entries, one row per employee pay event.';
+COMMENT ON COLUMN fact_payroll_entry.gross_amount IS 'Gross pay for the period (USD).';
+COMMENT ON TABLE fact_support_ticket IS 'Customer support tickets, one row per ticket.';
+COMMENT ON TABLE fact_support_ticket_event IS 'Event log for support tickets (comments, assignments, status changes).';
+COMMENT ON TABLE dim_marketing_campaign IS 'Marketing campaign reference data.';
+COMMENT ON COLUMN dim_marketing_campaign.planned_budget IS 'USD.';
+COMMENT ON TABLE fact_marketing_touch IS 'Marketing contact touches (delivered / view / click outcomes).';
+COMMENT ON TABLE dim_supplier_contract IS 'Supplier contract reference data.';
+COMMENT ON COLUMN dim_supplier_contract.committed_value IS 'USD.';
+COMMENT ON TABLE dim_fleet_vehicle IS 'Company fleet vehicle registry.';
+COMMENT ON TABLE fact_fleet_maintenance IS 'Fleet vehicle service events.';
+COMMENT ON COLUMN fact_fleet_maintenance.service_cost IS 'USD.';
+COMMENT ON COLUMN fact_fleet_maintenance.odometer_reading IS 'Miles at time of service.';
+COMMENT ON TABLE dim_project_milestone IS 'Internal project milestone tracker.';
+COMMENT ON TABLE fact_application_audit_event IS 'Application audit log (logins, exports, updates).';

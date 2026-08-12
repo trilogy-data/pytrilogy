@@ -87,6 +87,11 @@ def _prepare_database(db_path: Path, *, include_noise: bool) -> tuple[float, int
     duration = _rename_benchmark_tables(db_path)
     aggregate_duration, table_count = _run_sql(db_path, "aggregates.sql")
     duration += aggregate_duration
+    # Column/table descriptions matching the curated model's enrichment, so the
+    # sql_schema legs see equivalent documentation via schema.md (noise-table
+    # comments live in noise.sql, since those tables only exist with noise on).
+    comment_duration, table_count = _run_sql(db_path, "comments.sql")
+    duration += comment_duration
     if include_noise:
         noise_duration, table_count = _run_sql(db_path, "noise.sql")
         duration += noise_duration

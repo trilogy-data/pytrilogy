@@ -16,42 +16,48 @@ from pathlib import Path
 
 def generate_schema_md(db_path: Path) -> str:
     """Introspect ``db_path`` and return a markdown schema doc: one section per
-    base table with its columns/types and row count."""
+    base table with its columns/types, row count, and any COMMENT ON metadata."""
     import duckdb
 
     con = duckdb.connect(str(db_path), read_only=True)
     try:
-        tables = [
-            row[0]
-            for row in con.execute(
-                "select table_name from information_schema.tables "
-                "where table_schema = 'main' and table_type = 'BASE TABLE' "
-                "order by table_name"
-            ).fetchall()
-        ]
+        tables = con.execute(
+            "select table_name, comment from duckdb_tables() "
+            "where schema_name = 'main' and not internal order by table_name"
+        ).fetchall()
         lines = [
             "# Database schema",
             "",
             "DuckDB database. Tables and columns below; write standard DuckDB SQL.",
             "",
         ]
-        for table in tables:
+        for table, table_comment in tables:
             cols = con.execute(
-                "select column_name, data_type from information_schema.columns "
-                "where table_schema = 'main' and table_name = ? "
-                "order by ordinal_position",
+                "select column_name, data_type, comment from duckdb_columns() "
+                "where schema_name = 'main' and table_name = ? "
+                "order by column_index",
                 [table],
             ).fetchall()
             try:
-                row_count = con.execute(f'select count(*) from "{table}"').fetchone()[0]
+                row = con.execute(f'select count(*) from "{table}"').fetchone()
+                row_count = row[0] if row else "?"
             except Exception:
                 row_count = "?"
             lines.append(f"## {table} ({row_count} rows)")
             lines.append("")
-            lines.append("| column | type |")
-            lines.append("|---|---|")
-            for name, dtype in cols:
-                lines.append(f"| {name} | {dtype} |")
+            if table_comment:
+                lines.append(table_comment)
+                lines.append("")
+            if any(comment for _, _, comment in cols):
+                lines.append("| column | type | comment |")
+                lines.append("|---|---|---|")
+                for name, dtype, comment in cols:
+                    lines.append(f"| {name} | {dtype} | {comment or ''} |")
+            else:
+                lines.append("| column | type |")
+                lines.append("|---|---|")
+                for name, dtype, _ in cols:
+                    lines.append(f"| {name} | {dtype} |")
             lines.append("")
         return "\n".join(lines)
     finally:

@@ -44,15 +44,11 @@ OPENROUTER_ROUTING = {
 # keep-alive comments it injects that mask upstream hangs from httpx's read
 # timeout). Pass --provider openrouter to fall back to the multiplexed route.
 #
-# Model is `deepseek-chat` (non-thinking variant) rather than `deepseek-v4-flash`
-# because the latter runs in thinking mode by default, which rejects ANY explicit
-# `tool_choice` (required, named, or otherwise) with a 400. Our agent loop uses
-# `tool_choice: required` to force tool calls — incompatible with thinking mode.
-# `deepseek-chat` deprecates 2026-07-24; revisit when DeepSeek exposes a way to
-# put `deepseek-v4-flash` into non-thinking mode, or relax the agent's reliance
-# on `tool_choice` so it works against thinking-mode APIs.
+# DeepSeek V4 thinking mode rejects explicit `tool_choice`. The direct provider
+# omits it for V4 models and replays the required `reasoning_content` across tool
+# turns, so the eval can use the current Flash model without a legacy alias.
 DEFAULT_PROVIDER = "deepseek"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 # Hard ceiling for scoring ONE query (generate_sql + execute + reference), run
 # in a child process so it can be killed. Legit scoring is seconds; this only

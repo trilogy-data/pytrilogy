@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7914
+gen_length = 7928
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
@@ -49,7 +49,9 @@ FROM
     INNER JOIN \"friendly\" on 1=1
 WHERE
     \"divergent\".\"customer_total_overall\" > 0.5 * \"friendly\".\"max_total_cmax\"
-),
+
+GROUP BY
+    1),
 yummy as (
 SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",

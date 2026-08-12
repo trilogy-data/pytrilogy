@@ -1,5 +1,26 @@
 # Handoff: fuzzer extension found 2 partial-binder wrong-results bugs (+ 11 older regressions)
 
+**Status: FIXED 2026-08-11 (follow-up session). Full fuzzer corpus 218/218.
+Committed repros: `tests/engine/test_duckdb_fuzzer_regressions.py`.**
+
+- **Bug 1** (spurious partial-binder election): a derived concept over a bare
+  KEY inherited the key's fk-derived keys (`Environment.fk_derived_keys`,
+  last-declared fact wins — here `returns`), re-keying the derivation onto an
+  undemanded fact. Fixed in `trilogy/parsing/common.py`: a bare KEY arg
+  contributes ITSELF in `concept_list_to_keys` and the transitive-keys loops
+  of `function_to_concept`/`comparison_to_concept`; fk-derived keys stay
+  datasource-level FD facts.
+- **Bug 2** (named-derived filtered count): semantics settled as the handoff
+  suggested — a DERIVED row expression's filtered count ranges over the
+  condition's row population (matching the anonymous-inline plan); a BARE key
+  keeps distinct-domain semantics. Fixed in `filter_item_to_concept`: the
+  condition-grain widening (previously CONSTANT-content only) also applies to
+  BASIC-derivation property content.
+
+Original characterization below, kept for provenance.
+
+---
+
 **Status: BUGS CHARACTERIZED with minimal repros, NOT fixed. From the
 2026-08-11 fuzzer extension covering the new multi-arg `count_distinct` /
 `grain()` counting and composite-membership surfaces.**
@@ -72,22 +93,29 @@ injectivity makes `count(grain(...))` equal `count_distinct(grain(...))`
 holds only when every argument is a key (args at their own grain); for
 property args they differ. Both semantics now have explicit fuzzer cases.
 
-## Pre-existing red the full sweep surfaced (NOT from 2026-08-11 work)
+## Pre-existing red the full sweep also surfaced
 
-The full corpus had not run since 2026-07-08; it was green (166 cases) on
-2026-07-05. A HEAD-baseline worktree run reproduces all 20 old-family
-failures identically, splitting into:
+The full run additionally shows 20 old-family failures. Those were BISECTED
+(2026-08-11, follow-up session) to the V4-default flip `a6161b981` (#602) —
+all of them are V3→V4 parity gaps, none are from the fuzzer-extension work.
+Full attribution table, per-symptom breakdown, and probe-methodology traps:
+**`handoff_fuzzer_v4_default_regressions.md`**.
 
-- **11 regressions introduced between 2026-07-05 (green) and HEAD**:
-  `union__nullable_partition` (×2 seeds), `union__three_arm_partition` (×2),
-  all three `rowset_boundary` readback cases (×2 —
-  DisconnectedConceptsException at compile), and
-  `dense__coalescing_presence__union_plain_composite` (mismatch).
-- **9 `grouping_placement` failures** (rollup/cube extra-leaf-dim mismatches
-  off-by-one-row + two BinderExceptions): the family was added AFTER the last
-  green run and its docstring describes exactly these failure modes — likely
-  never-passing targets (compare the tpc_h q3/q22 assertion-target
-  precedent), not regressions. No green run exists to prove either way.
+The 2 bugs in THIS handoff have different era-provenance (probed at
+`418901be6`, 08-04, pre-flip v3-default, minimal repros):
+
+- **Bug 1 PREDATES the flip and is engine-independent**: the pre-flip engine
+  also joins `returns` and returns 5 (differently wrong — correct is 3
+  distinct values or 4 rows). The spurious partial-binder source election
+  lives in machinery both engines shared, so do not hunt for it in
+  flip-delta code.
+- **Bug 2's corruption is v4's**: pre-flip returned a self-consistent 3
+  (distinct values of the named derived concept, matching
+  `count(group_id ? cond)`); v4 returns 7, which matches NO semantic
+  (rows = 4, distinct = 3). Note the semantics wobble the fix must settle:
+  v3 counted a filtered named-derived concept by distinct VALUES, current v4
+  intends row-population (per the anonymous-inline plan) — pick one and pin
+  it in the fuzzer oracle.
 
 Repros for everything: `local_scripts/fuzzer/repros/<case_id>/` (repro.preql,
 oracle.sql, generated.sql, result.json). Full-run report:
@@ -101,8 +129,5 @@ oracle.sql, generated.sql, result.json). Full-run report:
    demanded (and must not join ANY extra source at row grain under a plain
    `count`). Gate with the fuzzer cases; both must go green with the
    `count(*)`-filter oracles.
-2. Bisect the 11 July regressions (rowset_boundary compile breaks are the
-   loudest — a DisconnectedConceptsException on a previously-planning query).
-3. Decide `grouping_placement`'s status: targets or regressions; if targets,
-   mark them via `accepted_compile_errors`/expected-fail metadata so real
-   regressions aren't buried in known red.
+2. The 20 old-family regressions: see
+   `handoff_fuzzer_v4_default_regressions.md` for the attack order.

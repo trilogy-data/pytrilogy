@@ -222,8 +222,10 @@ class OpenAIProvider(LLMProvider):
             payload["tool_choice"] = "required"
 
         data = self._post(payload)
-        message = data["choices"][0]["message"]
+        choice = data["choices"][0]
+        message = choice["message"]
         usage = data["usage"]
+        completion_details = usage.get("completion_tokens_details") or {}
         return LLMResponse(
             text=message.get("content") or "",
             reasoning_content=message.get("reasoning_content"),
@@ -236,5 +238,7 @@ class OpenAIProvider(LLMProvider):
                 prompt_tokens=usage["prompt_tokens"],
                 completion_tokens=usage["completion_tokens"],
                 total_tokens=usage["total_tokens"],
+                reasoning_tokens=completion_details.get("reasoning_tokens", 0),
             ),
+            finish_reason=choice.get("finish_reason"),
         )

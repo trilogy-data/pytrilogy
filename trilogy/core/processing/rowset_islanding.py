@@ -96,6 +96,33 @@ def island_rowsets_for_weak_merge(
         _add_hub(g, f"{ROWSET_HUB_PREFIX}{name}", members, bidirectional=True)
 
 
+def link_rowset_outputs_for_connectivity(g: "ReferenceGraph", cg) -> None:
+    """Rule 2 alone, with no severing: weld each rowset's co-produced outputs
+    through its per-rowset hub on the undirected connectivity copy ``cg``.
+
+    The non-islanding connectivity mode (the pre-discovery gate) keeps every
+    raw edge, but raw edges are not enough: a rowset whose handles wrap
+    genuinely unrelated base models — related only by a scoped join declared
+    INSIDE the rowset's own body (`with b as select s.k, a.total subset join
+    s.k = a.k`) — has no cross-model edge at the outer level, so its own
+    handles split into two components. They are co-produced by one sub-query
+    (`resolve_rowset` plans them together; the inner gate still validates the
+    body's own connectivity), so weld them here."""
+    members_by_rowset: dict[str, list[str]] = {}
+    for node, concept in g.concepts.items():
+        if concept.derivation != Derivation.ROWSET:
+            continue
+        if isinstance(concept.lineage, BuildRowsetItem):
+            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
+    for name, members in members_by_rowset.items():
+        present = [m for m in members if m in cg]
+        if len(present) < 2:
+            continue
+        hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
+        cg.add_node(hub)
+        _add_hub(cg, hub, present, bidirectional=False)
+
+
 def island_rowsets_for_connectivity(
     g: "ReferenceGraph", cg, grain_only: dict[str, set[str]] | None = None
 ) -> None:
