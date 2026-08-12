@@ -30,6 +30,17 @@ def _reset_output_format():
     display_core.set_output_format("rich")
 
 
+def _assert_ran(output: str) -> None:
+    """The run summary is a rich panel ("Execution Complete") only when rich is
+    installed; without it the same summary prints as plain text."""
+    from trilogy.scripts import display_core
+
+    if display_core.RICH_AVAILABLE and display_core.console is not None:
+        assert "Execution Complete" in output, output
+    else:
+        assert "Completed in" in output, output
+
+
 def test_list_empty_directory(runner, tmp_path: Path):
     result = runner.invoke(cli, ["file", "list", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -607,7 +618,7 @@ def test_write_run_executes_written_file(runner, tmp_path: Path):
     )
     assert result.exit_code == 0, result.output
     assert "Wrote" in result.output
-    assert "Execution Complete" in result.output
+    _assert_ran(result.output)
     assert target.exists()
 
 
@@ -636,7 +647,7 @@ def test_write_run_and_delete_removes_file_after_success(runner, tmp_path: Path)
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "Execution Complete" in result.output
+    _assert_ran(result.output)
     assert not target.exists()
 
 
