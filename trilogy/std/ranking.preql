@@ -5,3 +5,5 @@ type position int;
 type index int;
 type grade int;
 type letter_grade string;
+
+def is_top_x_by(val, metric, x=10) -> rank(val) over (order by metric desc) <= x; # true for the x values of val with the highest metric - filter with it in a where clause
