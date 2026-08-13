@@ -109,9 +109,13 @@ NOISE_DOSES = (4, 12, 24, 48)
 # no longer be settled by reading schema.md: near-duplicate row samples are
 # quietly wrong for every aggregate, daily rollups masquerade at line-grain
 # names, stale dim copies miss rows. The real tables stay present and complete
-# (reference results hold); traps carry NO comments — realistic for backups,
-# and the documentation asymmetry is a legitimate signal a careful agent may
-# use. Levels are cumulative: x1 = 7 tables, x2 = 20, x3 = 32.
+# (reference results hold). Traps carry the COMMENTS of the table they were
+# derived from: a deprecated copy was curated when it was made, so bare-column
+# traps would leak "this one is fake" through the documentation gap (the
+# 20260812-153111 run had that leak — its 0-trap-picks result conflates the
+# name prior with the doc asymmetry). Grain traps take the LINE fact's
+# comments to match their masquerading column names — the docs lie exactly as
+# hard as the names do. Levels are cumulative: x1 = 7 tables, x2 = 20, x3 = 32.
 CONFUSABLE_FACT_SAMPLES: dict[int, tuple[tuple[str, int], ...]] = {
     1: (("v2", 88),),
     2: (("bak", 93),),
@@ -136,6 +140,39 @@ _DAILY_TRAP_PREFIXES = {
 }
 
 
+def _copy_comments(
+    connection: duckdb.DuckDBPyConnection, source: str, target: str
+) -> None:
+    """Stamp ``target`` with ``source``'s table comment and every column
+    comment whose column name also exists on ``target``. CTAS drops comments,
+    which would leave traps visibly undocumented next to curated real tables."""
+
+    def quote(text: str) -> str:
+        return "'" + text.replace("'", "''") + "'"
+
+    table_comment = connection.execute(
+        "select comment from duckdb_tables() where table_name = ?", [source]
+    ).fetchone()
+    if table_comment and table_comment[0]:
+        connection.execute(f'COMMENT ON TABLE "{target}" IS {quote(table_comment[0])}')
+    target_cols = {
+        row[0]
+        for row in connection.execute(
+            "select column_name from duckdb_columns() where table_name = ?",
+            [target],
+        ).fetchall()
+    }
+    for column, comment in connection.execute(
+        "select column_name, comment from duckdb_columns() "
+        "where table_name = ? and comment is not null",
+        [source],
+    ).fetchall():
+        if column in target_cols:
+            connection.execute(
+                f'COMMENT ON COLUMN "{target}"."{column}" IS {quote(comment)}'
+            )
+
+
 def _confusable_ddl(connection: duckdb.DuckDBPyConnection, level: int) -> int:
     """Create trap tables for the cumulative dose ``level``; returns count."""
     created = 0
@@ -150,6 +187,7 @@ def _confusable_ddl(connection: duckdb.DuckDBPyConnection, level: int) -> int:
                     f'SELECT * FROM "{fact}" '
                     f"USING SAMPLE {percent} PERCENT (bernoulli, {lvl * 100 + seed_offset})"
                 )
+                _copy_comments(connection, fact, f"{fact}_{suffix}")
                 created += 1
     if level >= 2:
         for name, prefix in _DAILY_TRAP_PREFIXES.items():
@@ -173,6 +211,11 @@ def _confusable_ddl(connection: duckdb.DuckDBPyConnection, level: int) -> int:
                 f'CREATE OR REPLACE TABLE "fact_{name}_daily" AS '
                 f'SELECT {", ".join(selects)} FROM "fact_agg_{name}_daily"'
             )
+            # The line fact, not the aggregate: renamed measure columns share
+            # the line fact's names, so its docs complete the masquerade —
+            # aggregate-sourced docs would announce the daily grain and defuse
+            # the trap.
+            _copy_comments(connection, f"fact_{name}", f"fact_{name}_daily")
             created += 1
     if level >= 3:
         for seed_offset, dim in enumerate(CONFUSABLE_DIM_SNAPSHOTS):
@@ -181,6 +224,7 @@ def _confusable_ddl(connection: duckdb.DuckDBPyConnection, level: int) -> int:
                 f'SELECT * FROM "{dim}" '
                 f"USING SAMPLE 90 PERCENT (bernoulli, {400 + seed_offset})"
             )
+            _copy_comments(connection, dim, f"{dim}_snapshot")
             created += 1
     return created
 
@@ -703,6 +747,39 @@ def setup_sql_schema_confusable(
 
 def sql_confusable_dose_setup(level: int) -> Callable[..., dict]:
     return partial(setup_sql_schema_confusable, confusable_level=level)
+
+
+def setup_sql_bare_confusable(
+    workspace: Path,
+    spec: BenchmarkSpec,
+    *,
+    db_path: Path,
+    enriched_dir: Path | None,
+    confusable_level: int = 1,
+) -> dict:
+    """Discovery-regime arm of the confusable treatment: same trap tables, NO
+    schema.md. The bare agent's keyword LIKE filters surface the traps right
+    next to the real tables (unlike clean noise, whose vocabulary is
+    disjoint), and its usual tools — SHOW TABLES / information_schema /
+    DESCRIBE — expose neither the comments nor the grain, so the traps must
+    be resolved by the name prior or by probing. Closes the matrix cell wave
+    3 skipped."""
+    duration, table_count = _prepare_database(Path(db_path), include_noise=False)
+    conf_duration, created = _apply_confusable(Path(db_path), confusable_level)
+    return {
+        "exit_code": 0,
+        "duration": duration + conf_duration,
+        "stdout": (
+            f"sql_bare_confusable: {table_count + created} tables "
+            f"({created} traps at level {confusable_level}); no schema.md written.\n"
+        ),
+        "stderr": "",
+        "separate_reference_database": True,
+    }
+
+
+def bare_confusable_dose_setup(level: int) -> Callable[..., dict]:
+    return partial(setup_sql_bare_confusable, confusable_level=level)
 
 
 def setup_enriched_confusable(

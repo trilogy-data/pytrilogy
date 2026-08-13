@@ -124,6 +124,20 @@ MESSY_WAREHOUSE_CATEGORIES = (
         )
         for level in (1, 2, 3)
     ),
+    # Discovery-regime confusable cells: same traps, no schema.md. Traps now
+    # carry copied source comments (no documentation bleed), and the bare
+    # agent's LIKE filters surface them beside the real tables — the cell
+    # where the canonical-name prior is tested nearly alone.
+    *(
+        Category(
+            f"sql_bare_confusable_x{level}",
+            f"db-only+aggregates+confusable×{level}",
+            "sql",
+            ".sql",
+            warehouse_variants.bare_confusable_dose_setup(level),
+        )
+        for level in (1, 2, 3)
+    ),
     Category(
         "enriched_confusable",
         "enriched+aggregates+confusable",
@@ -176,6 +190,7 @@ SPEC = BenchmarkSpec(
             for multiplier in warehouse_variants.NOISE_DOSES
         ),
         *(f"sql_schema_confusable_x{level}" for level in (1, 2, 3)),
+        *(f"sql_bare_confusable_x{level}" for level in (1, 2, 3)),
         "ingest",
         "enriched",
         "enriched_aggregates",

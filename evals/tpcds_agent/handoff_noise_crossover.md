@@ -233,8 +233,24 @@ comment asymmetry resolves even in-domain near-duplicates by reading. Both
 enriched fails (q12, q14) are chronic queries — q12 manually re-scored:
 compiled to raw `fact_web_sales`, no summary/trap involvement.
 
-Three escalating treatments, one conclusion: **any treatment resolvable by
-reading will not move a modern model.** To induce the failure mode the trap
+**Treatment v2 (2026-08-12, post-run): the doc-bleed is closed and the bare
+cell added.** The run above had an information leak — traps carried NO
+comments while real tables carried curated docs, so the 0-trap-picks result
+conflates the canonical-name prior with the documentation asymmetry
+(deprecated tables were curated when created; undocumented traps are the
+eval telling the agent which tables are fake). `_confusable_ddl` now copies
+the source table's comments onto every trap (grain traps take the LINE
+fact's docs, completing the masquerade — the docs lie exactly as hard as the
+column names), and `sql_bare_confusable_x{1,2,3}` categories close the
+missing matrix cell: same traps, no schema.md, where the discovery agent's
+LIKE filters surface traps beside the real tables and its tools (SHOW
+TABLES / information_schema / DESCRIBE) expose neither comments nor grain.
+Any confusable numbers after this date are the no-bleed variant —
+**do not compare them against run `20260812-153111` cell-to-cell.**
+
+Three escalating treatments, one conclusion (as run, i.e. WITH the doc
+asymmetry): **any treatment resolvable by reading will not move a modern
+model.** To induce the failure mode the trap
 must remove the canonical-name signal itself — e.g. two equally-plain
 co-plausible tables (`fact_store_sales` vs `fact_store_transactions` at
 different grains), or semantic column traps (a materialized `net_profit`
