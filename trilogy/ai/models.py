@@ -10,6 +10,11 @@ class UsageDict:
     # Reasoning/thinking tokens, when the provider reports them separately
     # (e.g. Gemini's thoughtsTokenCount). Not included in completion_tokens.
     reasoning_tokens: int = 0
+    # Prompt tokens served from the provider's prompt cache (a subset of
+    # prompt_tokens), when reported — DeepSeek prompt_cache_hit_tokens,
+    # OpenAI cached_tokens, Anthropic cache_read_input_tokens. Cached input
+    # is billed at a steep discount, so raw prompt_tokens overstate cost.
+    cached_prompt_tokens: int = 0
 
 
 @dataclass

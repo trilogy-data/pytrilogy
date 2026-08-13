@@ -1,15 +1,14 @@
 from collections.abc import Iterable, Mapping
 
-from trilogy.core.enums import FunctionType, Granularity, Purpose
+from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.models.build import (
+    ADDITIVE_ROLLUP_FUNCTIONS,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
     BuildWhereClause,
 )
-
-ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
 
 
 def _concept_lookup(
@@ -31,34 +30,16 @@ def _is_additive_aggregate(concept: BuildConcept) -> bool:
     )
 
 
-def _aggregate_signature(
-    concept: BuildConcept,
-) -> tuple[FunctionType, tuple[str, ...]] | None:
-    if not isinstance(concept.lineage, BuildAggregateWrapper):
-        return None
-    return (
-        concept.lineage.function.operator,
-        tuple(
-            sorted(
-                arg.canonical_address
-                for arg in concept.lineage.function.concept_arguments
-            )
-        ),
-    )
-
-
 def _datasource_has_matching_additive_aggregate(
     datasource: BuildDatasource, concept: BuildConcept
 ) -> bool:
-    signature = _aggregate_signature(concept)
+    signature = concept.additive_aggregate_signature
     if signature is None:
         return False
-    for output in datasource.output_concepts:
-        if not _is_additive_aggregate(output):
-            continue
-        if _aggregate_signature(output) == signature:
-            return True
-    return False
+    return any(
+        output.additive_aggregate_signature == signature
+        for output in datasource.output_concepts
+    )
 
 
 def _base_keys(inputs: Iterable[BuildConcept]) -> set[str]:
@@ -104,6 +85,34 @@ def _safe_dropped_grain(
     return _datasource_proves_functional_dependency(dropped, base_keys, datasources)
 
 
+def _addresses_reachable(
+    datasource: BuildDatasource,
+    addresses: set[str],
+    concepts_by_address: Mapping[str, BuildConcept] | None,
+) -> bool:
+    """Every canonical address is bound by the datasource, or is a property the
+    datasource's grain functionally determines.
+
+    Property-of-key reachability: `region` is not on a customer-grain summary,
+    but `customer_id` is in its grain — the planner joins the dim that owns the
+    property. Without it, that summary is rejected for any use of a
+    customer-level attribute."""
+    datasource_addresses = {c.canonical_address for c in datasource.output_concepts}
+    missing = addresses - datasource_addresses
+    if not missing:
+        return True
+    if concepts_by_address is None:
+        return False
+    ds_grain_components = set(datasource.grain.components)
+    for address in missing:
+        concept = concepts_by_address.get(address)
+        if concept is None or concept.purpose != Purpose.PROPERTY:
+            return False
+        if not concept.keys or not set(concept.keys).issubset(ds_grain_components):
+            return False
+    return True
+
+
 def _conditions_supported(
     datasource: BuildDatasource,
     conditions: BuildWhereClause | None,
@@ -111,29 +120,15 @@ def _conditions_supported(
 ) -> bool:
     if not conditions:
         return True
-    condition_addresses = {
-        c.canonical_address
-        for c in conditions.row_arguments
-        if c.granularity != Granularity.SINGLE_ROW
-    }
-    datasource_addresses = {c.canonical_address for c in datasource.output_concepts}
-    if condition_addresses.issubset(datasource_addresses):
-        return True
-    # Property-of-key reachability: a condition concept (e.g. `region`) not in
-    # the datasource is still applicable when its key (e.g. `customer_id`) is
-    # in the datasource's grain — the planner will join the dim that owns the
-    # property and apply the WHERE there. Without this, an agg at customer_id
-    # grain is rejected for any WHERE on a customer-level property.
-    if concepts_by_address is None:
-        return False
-    ds_grain_components = set(datasource.grain.components)
-    for cond_addr in condition_addresses - datasource_addresses:
-        concept = concepts_by_address.get(cond_addr)
-        if concept is None or concept.purpose != Purpose.PROPERTY:
-            return False
-        if not concept.keys or not set(concept.keys).issubset(ds_grain_components):
-            return False
-    return True
+    return _addresses_reachable(
+        datasource,
+        {
+            c.canonical_address
+            for c in conditions.row_arguments
+            if c.granularity != Granularity.SINGLE_ROW
+        },
+        concepts_by_address,
+    )
 
 
 def filter_finer_row_args(
@@ -223,6 +218,14 @@ def get_additive_rollup_concepts(
     if len(target_canonicals) != len(set(target_canonicals)):
         return []
     if datasource_grain.issubset(target_grain):
+        return []
+    # The table must be able to GROUP BY the target grain — every component
+    # bound here or reachable as a property of this grain. A customer-grain
+    # summary cannot answer a per-product question no matter how safely its
+    # own grain drops.
+    if not _addresses_reachable(
+        datasource, set(target_canonicals), concepts_by_address
+    ):
         return []
 
     dropped = datasource_grain - target_grain

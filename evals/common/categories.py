@@ -36,10 +36,25 @@ class Category:
     setup: Callable[..., dict]
     """setup(workspace, spec, *, db_path, enriched_dir) -> result dict
     (same shape as agent_runner.run_pre_ingest: exit_code/duration/stdout/stderr)."""
+    tool_output_limit: int | None = None
+    """Per-category override for the agent's tool-output truncation cap.
+    Noise-dose cells need read_file('schema.md') to return the full schema —
+    middle-truncating it would silently delete real tables and flatten the
+    schema-rebilling slope the sweep exists to measure."""
+    prompt_field: str | None = None
+    """Alternate prompt-entry key (e.g. ``prompt_shifted``) — parameter-shifted
+    task variants live alongside the canonical ``prompt`` in the prompts file.
+    Falls back to ``prompt`` when the entry lacks the field."""
+    references_dir: Path | None = None
+    """Per-category custom-reference override (``query<NN>.sql`` files) —
+    parameter-shifted cells score against shifted references instead of the
+    spec's canonical ones."""
 
     def build_task(
         self, spec: BenchmarkSpec, entry: dict, include_docs: bool = False
     ) -> str:
+        if self.prompt_field and entry.get(self.prompt_field):
+            entry = {**entry, "prompt": entry[self.prompt_field]}
         if include_docs and spec.docs_preamble:
             entry = {**entry, "prompt": f"{spec.docs_preamble}\n\n{entry['prompt']}"}
         if self.harness == "sql":

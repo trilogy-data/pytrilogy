@@ -257,6 +257,12 @@ class OpenRouterProvider(LLMProvider):
                     prompt_tokens=usage.get("prompt_tokens", 0) or 0,
                     completion_tokens=usage.get("completion_tokens", 0) or 0,
                     total_tokens=usage.get("total_tokens", 0) or 0,
+                    cached_prompt_tokens=(
+                        (usage.get("prompt_tokens_details") or {}).get(
+                            "cached_tokens", 0
+                        )
+                        or 0
+                    ),
                 ),
                 finish_reason=finish_reason,
             )

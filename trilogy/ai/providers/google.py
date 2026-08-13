@@ -262,6 +262,9 @@ class GoogleProvider(LLMProvider):
                     completion_tokens=completion_tokens,
                     total_tokens=prompt_tokens + completion_tokens + reasoning_tokens,
                     reasoning_tokens=reasoning_tokens,
+                    cached_prompt_tokens=usage_metadata.get(
+                        "cachedContentTokenCount", 0
+                    ),
                 ),
             )
         except httpx.HTTPStatusError as error:

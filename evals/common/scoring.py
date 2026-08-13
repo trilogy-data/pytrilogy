@@ -5,6 +5,7 @@ each generated query against the benchmark's reference query (``PRAGMA
 from __future__ import annotations
 
 import json
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from itertools import pairwise
@@ -20,6 +21,11 @@ from trilogy.core.validation.rows import rows_equal_tolerant as _results_equal
 # Marker the agent's ``truncate_middle`` emits. We detect it in tool_result
 # bodies to count how many responses came back truncated.
 _TRUNCATION_MARKER = "...[truncated "
+
+# Messy-warehouse pre-aggregated tables are named ``fact_agg_*`` by
+# convention (see tpcds_agent/warehouse/aggregates.sql). Benchmarks without
+# such tables simply never match.
+AGGREGATE_TABLE_MARKER = "fact_agg_"
 
 
 @dataclass
@@ -51,6 +57,11 @@ class AgentMetrics:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Prompt tokens the provider served from its prompt cache (subset of
+    # prompt_tokens; 0 when the provider/agent didn't report it). Cached
+    # input is billed at ~1/10 the miss price, so raw totals overstate the
+    # cost of paths dominated by re-billed stable context.
+    cached_prompt_tokens: int = 0
     # Submit-reviewer activity. `reviewer_kickbacks` (NOT_DONE verdicts) should
     # stay low — each one is a forced re-loop; a high count signals the reviewer
     # is over-firing (false positives) and burning agent budget.
@@ -104,6 +115,15 @@ class QueryResult:
     cand_rows: int = 0
     generated_sql_len: int = 0
     detail: str = ""
+    # Wall-clock of executing the candidate / reference SQL during scoring
+    # (fetchall included). The performance half of the eval: a candidate that
+    # resolved to a pre-aggregated table should beat the raw-fact reference.
+    cand_ms: int = 0
+    ref_ms: int = 0
+    # Executed candidate SQL referenced a pre-aggregated warehouse table
+    # (AGGREGATE_TABLE_MARKER). For Trilogy candidates this reflects compiled
+    # datasource *selection*, which the agent never sees.
+    used_aggregate: bool = False
 
 
 def _is_error_result(name: str, result: str) -> bool:
@@ -176,6 +196,7 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
             m.prompt_tokens += usage.get("prompt_tokens") or 0
             m.completion_tokens += usage.get("completion_tokens") or 0
             m.total_tokens += usage.get("total_tokens") or 0
+            m.cached_prompt_tokens += usage.get("cached_prompt_tokens") or 0
         elif etype == "tool_call":
             name = str(event.get("name", "?"))
             by_name[name] += 1
@@ -256,6 +277,7 @@ def aggregate_metrics(metrics_list: list[AgentMetrics]) -> AgentMetrics:
         agg.prompt_tokens += m.prompt_tokens
         agg.completion_tokens += m.completion_tokens
         agg.total_tokens += m.total_tokens
+        agg.cached_prompt_tokens += m.cached_prompt_tokens
         agg.reviewer_verdicts += m.reviewer_verdicts
         agg.reviewer_kickbacks += m.reviewer_kickbacks
         by_name.update(m.tool_calls_by_name)
@@ -296,6 +318,7 @@ def metrics_to_dict(m: AgentMetrics) -> dict:
         "prompt_tokens": m.prompt_tokens,
         "completion_tokens": m.completion_tokens,
         "total_tokens": m.total_tokens,
+        "cached_prompt_tokens": m.cached_prompt_tokens,
         "reviewer_verdicts": m.reviewer_verdicts,
         "reviewer_kickbacks": m.reviewer_kickbacks,
         "farewell": m.farewell,
@@ -328,6 +351,7 @@ def metrics_from_dict(d: dict) -> AgentMetrics:
         prompt_tokens=d.get("prompt_tokens", 0),
         completion_tokens=d.get("completion_tokens", 0),
         total_tokens=d.get("total_tokens", 0),
+        cached_prompt_tokens=d.get("cached_prompt_tokens", 0),
         reviewer_verdicts=d.get("reviewer_verdicts", 0),
         reviewer_kickbacks=d.get("reviewer_kickbacks", 0),
         farewell=d.get("farewell", ""),
@@ -680,25 +704,33 @@ def _score_one(
             )
         sql = statements[-1]
 
+    used_aggregate = AGGREGATE_TABLE_MARKER in sql
     try:
+        cand_start = time.perf_counter()
         candidate = list(engine.execute_raw_sql(sql).fetchall())
+        cand_ms = round((time.perf_counter() - cand_start) * 1000)
     except Exception as exc:
         return QueryResult(
             id=idx,
             status="error",
             generated_sql_len=len(sql),
+            used_aggregate=used_aggregate,
             detail=f"execute: {type(exc).__name__}: {exc}",
         )
 
     try:
+        ref_start = time.perf_counter()
         reference = _load_reference(
             reference_engine or engine, idx, extension, custom_refs_dir
         )
+        ref_ms = round((time.perf_counter() - ref_start) * 1000)
     except Exception as exc:
         return QueryResult(
             id=idx,
             status="error",
             generated_sql_len=len(sql),
+            cand_ms=cand_ms,
+            used_aggregate=used_aggregate,
             detail=f"reference load failed: {exc}",
         )
 
@@ -709,5 +741,8 @@ def _score_one(
         ref_rows=len(reference),
         cand_rows=len(candidate),
         generated_sql_len=len(sql),
+        cand_ms=cand_ms,
+        ref_ms=ref_ms,
+        used_aggregate=used_aggregate,
         detail="" if passed else "result set differs from reference",
     )

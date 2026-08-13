@@ -58,6 +58,16 @@ def agent_metric_fields(metrics: scoring.AgentMetrics) -> dict:
             "prompt": metrics.prompt_tokens,
             "completion": metrics.completion_tokens,
             "total": metrics.total_tokens,
+            "cached_prompt": metrics.cached_prompt_tokens,
+            # Cost-weighted total: cache-hit input at ~1/10 the miss price
+            # (DeepSeek's published ratio; close enough for the others).
+            # Raw totals overstate paths dominated by re-billed stable
+            # context, which is exactly what the messy-warehouse eval varies.
+            "cache_adjusted": round(
+                (metrics.prompt_tokens - metrics.cached_prompt_tokens)
+                + 0.1 * metrics.cached_prompt_tokens
+                + metrics.completion_tokens
+            ),
         },
         "farewell": metrics.farewell,
     }
@@ -181,6 +191,12 @@ def render_markdown(spec: BenchmarkSpec, report: dict) -> str:
         f"- Tokens: {tok['total']} total "
         f"({tok['prompt']} prompt + {tok['completion']} completion)"
     )
+    if tok.get("cached_prompt"):
+        out.append(
+            f"- Cache: {tok['cached_prompt']} prompt tokens served from cache "
+            f"({tok['cached_prompt'] / tok['prompt'] * 100:.0f}%)  |  "
+            f"cache-adjusted cost: {tok['cache_adjusted']} token-equivalents"
+        )
     verdicts = agent.get("reviewer_verdicts", 0)
     kickbacks = agent.get("reviewer_kickbacks", 0)
     if verdicts:
@@ -212,12 +228,30 @@ def render_markdown(spec: BenchmarkSpec, report: dict) -> str:
         out.append("")
     out.append("## Per-query")
     out.append("")
-    out.append("| Query | Status | Ref rows | Cand rows | SQL len | Detail |")
-    out.append("|------:|:-------|---------:|----------:|--------:|:-------|")
+    out.append(
+        "| Query | Status | Ref rows | Cand rows | SQL len | Cand ms | Ref ms "
+        "| Agg | Detail |"
+    )
+    out.append(
+        "|------:|:-------|---------:|----------:|--------:|--------:|--------:|:---|:-------|"
+    )
     for q in report["queries"]:
         out.append(
             f"| {q['id']:02d} | {q['status']} | {q['ref_rows']} | {q['cand_rows']} "
-            f"| {q['generated_sql_len']} | {q['detail'][:80]} |"
+            f"| {q['generated_sql_len']} | {q.get('cand_ms', 0)} "
+            f"| {q.get('ref_ms', 0)} "
+            f"| {'yes' if q.get('used_aggregate') else ''} | {q['detail'][:80]} |"
+        )
+    agg_used = sum(1 for q in report["queries"] if q.get("used_aggregate"))
+    timed = [q for q in report["queries"] if q.get("cand_ms") and q.get("ref_ms")]
+    if timed:
+        cand_total = sum(q["cand_ms"] for q in timed)
+        ref_total = sum(q["ref_ms"] for q in timed)
+        out.append("")
+        out.append(
+            f"- Candidate latency: {cand_total}ms total vs reference {ref_total}ms "
+            f"({len(timed)} queries timed)  |  aggregate-table candidates: "
+            f"{agg_used}/{len(report['queries'])}"
         )
     out.append("")
     if agent["farewell"]:

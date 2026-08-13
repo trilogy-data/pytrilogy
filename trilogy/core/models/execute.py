@@ -68,6 +68,11 @@ def _datasource_column_for_concept(
             return column.alias
         if column.concept.canonical_address == concept.canonical_address:
             canonical_match = column.alias
+    if canonical_match is None:
+        # Last tier: a finer-grain aggregate this scan will SUM-roll up.
+        rollup = datasource.rollup_column_for(concept)
+        if rollup is not None:
+            return rollup.alias
     return canonical_match
 
 

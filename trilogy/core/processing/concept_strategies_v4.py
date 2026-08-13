@@ -38,6 +38,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
+    _datasource_has_matching_additive_aggregate,
     _is_additive_aggregate,
     get_additive_rollup_concepts,
 )
@@ -303,9 +304,13 @@ def _materialized_root_addresses(
             or not (is_aggregate and _is_additive_aggregate(concept))
         ):
             continue
-        # ROLLUP: a finer-grain table binds the same named concept (matched by
-        # address, since the finer instance has a different grain canonical), and
-        # the additive aggregate can be SUM-rolled up to the target grain.
+        # ROLLUP: a finer-grain table binds the same aggregate expression and it
+        # can be SUM-rolled up to the target grain. Neither address nor canonical
+        # address can gate this: the finer instance is grain-pinned to a
+        # different canonical, and an agent-authored alias (`sum(ss.price) as
+        # total`) never shares an address with the table's bound column. The gate
+        # is therefore the *lineage signature* — (operator, sorted canonical arg
+        # addresses) — which is exactly what the rollup matcher below re-checks.
         #
         # Marking the concept a root lets source-planning pick a table binding
         # it. `get_additive_rollup_concepts` below is passed the filter and only
@@ -318,7 +323,7 @@ def _materialized_root_addresses(
         # never matched under a finer filter, so post-rollup decoupling can't
         # double-count.
         for ds in datasources:
-            if concept.address not in {c.address for c in ds.output_concepts}:
+            if not _datasource_has_matching_additive_aggregate(ds, concept):
                 continue
             rolled = get_additive_rollup_concepts(
                 datasource=ds,
