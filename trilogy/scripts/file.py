@@ -329,6 +329,13 @@ _CONTENT_FROM_STDIN = "\x00__content_from_stdin__\x00"
     help="Like --run, but delete the written file once the run completes "
     "(success or failure) — one call for throwaway probe queries.",
 )
+@click.option(
+    "--param",
+    "param",
+    multiple=True,
+    help="Environment parameters as key=value pairs, forwarded to the "
+    "--run/--run-and-delete execution.",
+)
 @click.pass_context
 def write_cmd(
     ctx: click.Context,
@@ -343,6 +350,7 @@ def write_cmd(
     show_sql: bool,
     run_after: bool,
     run_and_delete: bool,
+    param: tuple[str, ...],
 ) -> None:
     """Write/overwrite the file at PATH.
 
@@ -368,6 +376,9 @@ def write_cmd(
         raise click.exceptions.Exit(2)
     if run_after and run_and_delete:
         print_error("Pass at most one of --run or --run-and-delete.")
+        raise click.exceptions.Exit(2)
+    if param and not (run_after or run_and_delete):
+        print_error("--param only applies with --run or --run-and-delete.")
         raise click.exceptions.Exit(2)
     if escapes and content is None:
         # `--escapes` interprets `\n`/`\t` in an INLINE `--content` value — its
@@ -432,7 +443,7 @@ def write_cmd(
             path, len(data), show_sql and not force and path.endswith(".preql")
         )
     if run_after or run_and_delete:
-        _run_written_file(ctx, backend, path, delete_after=run_and_delete)
+        _run_written_file(ctx, backend, path, delete_after=run_and_delete, param=param)
 
 
 def _report_write(path: str, byte_count: int, show_sql: bool) -> None:
@@ -458,7 +469,11 @@ def _report_write(path: str, byte_count: int, show_sql: bool) -> None:
 
 
 def _run_written_file(
-    ctx: click.Context, backend: FileBackend, path: str, delete_after: bool
+    ctx: click.Context,
+    backend: FileBackend,
+    path: str,
+    delete_after: bool,
+    param: tuple[str, ...] = (),
 ) -> None:
     """Execute the just-written file through the ``run`` command's own path so
     output events and exit-code semantics match ``trilogy run <path>`` exactly.
@@ -472,7 +487,7 @@ def _run_written_file(
     run_command = root_cli.get_command(ctx, "run")
     assert run_command is not None
     try:
-        ctx.invoke(run_command, input=path)
+        ctx.invoke(run_command, input=path, param=param)
     finally:
         if delete_after:
             try:

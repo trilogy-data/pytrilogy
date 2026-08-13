@@ -670,6 +670,47 @@ def test_write_run_and_delete_removes_file_after_failed_run(runner, tmp_path: Pa
     assert not target.exists()
 
 
+def test_write_run_forwards_params(runner, tmp_path: Path):
+    """``--param`` on write --run reaches the run execution, so parameterized
+    queries validate in the same single call as everything else."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "parameter threshold int;\nselect threshold -> x;",
+            "--run",
+            "--param",
+            "threshold=42",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _assert_ran(result.output)
+    assert "42" in result.output
+
+
+def test_write_param_requires_run_flag(runner, tmp_path: Path):
+    target = tmp_path / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--param",
+            "threshold=42",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "--param only applies with --run" in result.output
+    assert not target.exists()
+
+
 def test_write_run_flags_mutually_exclusive(runner, tmp_path: Path):
     target = tmp_path / "probe.preql"
     result = runner.invoke(

@@ -1752,6 +1752,41 @@ def test_truncate_json_events_non_json_falls_back_to_middle():
     assert "output_truncated" not in out
 
 
+def test_truncate_json_events_preserves_trailing_error_event():
+    rows = "\n".join(f'{{"event": "row", "i": {i}}}' for i in range(50))
+    error = '{"event": "error", "message": "planner exploded"}'
+    out = agent_tools_mod.truncate_json_events(rows + "\n" + error, 200)
+    assert "planner exploded" in out
+    assert "output_truncated" in out
+    assert '"i": 49' not in out
+
+
+def test_truncate_json_events_preserves_trailing_summary_event():
+    rows = "\n".join(f'{{"event": "row", "i": {i}}}' for i in range(50))
+    summary = '{"event": "summary", "rows": 50, "status": "ok"}'
+    out = agent_tools_mod.truncate_json_events(rows + "\n" + summary, 200)
+    assert '"status": "ok"' in out
+
+
+def test_truncate_json_events_oversized_error_still_surfaced():
+    rows = "\n".join(f'{{"event": "row", "i": {i}}}' for i in range(20))
+    error = '{"event": "error", "message": "BOOM %s END"}' % ("x" * 2000)
+    out = agent_tools_mod.truncate_json_events(rows + "\n" + error, 400)
+    assert "BOOM" in out
+    assert len(out) < 700
+
+
+def test_truncate_json_events_dropped_count_excludes_preserved_diagnostics():
+    rows = "\n".join(f'{{"event": "row", "i": {i}}}' for i in range(10))
+    error = '{"event": "error", "message": "bad"}'
+    out = agent_tools_mod.truncate_json_events(rows + "\n" + error, 120)
+    payload = json.loads("[" + out.replace("}\n{", "},{") + "]")
+    note = next(e for e in payload if e.get("event") == "output_truncated")
+    kept_rows = sum(1 for e in payload if e.get("event") == "row")
+    assert note["dropped_events"] == 10 - kept_rows
+    assert any(e.get("event") == "error" for e in payload)
+
+
 # --- _explore_output_cap ---
 
 

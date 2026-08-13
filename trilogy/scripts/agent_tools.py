@@ -43,14 +43,29 @@ def truncate_middle(text: str, limit: int) -> str:
     return f"{text[:head]}{marker}{text[-tail:]}" if tail else f"{text[:head]}{marker}"
 
 
+_DIAGNOSTIC_EVENTS = {"error", "summary"}
+
+
+def _diagnostic_event(raw: str) -> bool:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict) and parsed.get("event") in _DIAGNOSTIC_EVENTS
+
+
 def truncate_json_events(text: str, limit: int) -> str:
     """Cap a stream of concatenated JSON events at ``limit`` bytes WITHOUT
     slicing through an object — middle-truncating a JSON document hands the
     agent invalid JSON it can't parse. Keep whole leading events until the
     budget is hit (always at least the first, even if it alone exceeds the
     cap), drop the rest, and append a synthetic ``output_truncated`` event so
-    the agent knows to narrow the call. Non-JSON text (e.g. ``--format rich``)
-    falls back to the byte-level middle truncation."""
+    the agent knows to narrow the call. ``error``/``summary`` events are
+    always carried past the cut — they trail the row events in ``run``
+    output, and dropping them leaves a failed run indistinguishable from a
+    truncated successful one, sending the agent into blind retries. Non-JSON
+    text (e.g. ``--format rich``) falls back to byte-level middle
+    truncation."""
     if len(text) <= limit:
         return text
     decoder = json.JSONDecoder()
@@ -67,26 +82,35 @@ def truncate_json_events(text: str, limit: int) -> str:
             return truncate_middle(text, limit)
         raws.append(text[idx:end])
         idx = end
+    diagnostics = [raw for raw in raws if _diagnostic_event(raw)]
+    reserve = min(sum(len(raw) + 1 for raw in diagnostics), limit // 2)
     kept: list[str] = []
     used = 0
     for raw in raws:
-        if kept and used + len(raw) > limit:
+        if kept and used + len(raw) > limit - reserve:
             break
         kept.append(raw)
         used += len(raw) + 1
-    dropped = len(raws) - len(kept)
-    if dropped:
+    tail = [raw for raw in diagnostics if raw not in kept]
+    dropped = len(raws) - len(kept) - len(tail)
+    if dropped or tail:
         note = _pretty(
             {
                 "event": "output_truncated",
                 "dropped_events": dropped,
                 "note": (
-                    "Output exceeded the tool cap; trailing events dropped. "
-                    "Narrow the call (--regex, --show, fewer rows) to see the rest."
+                    "Output exceeded the tool cap; intermediate events dropped "
+                    "(any error/summary events are preserved below). Narrow the "
+                    "call (--regex, --show, fewer rows) to see the rest."
                 ),
             }
         )
         kept.append(note)
+    if tail:
+        blob = "\n".join(tail)
+        if len(blob) > reserve:
+            blob = truncate_middle(blob, reserve)
+        kept.append(blob)
     return "\n".join(kept)
 
 

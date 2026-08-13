@@ -1284,6 +1284,16 @@ class TestExecutionJsonMode:
         assert ev["event"] == "environment_params"
         assert ev["params"] == {"region": "us"}
 
+    def test_environment_params_elides_long_values(self, capsys):
+        long_value = ",".join(["12345"] * 400)
+        display.show_environment_params({"zips": long_value, "year": "1998"})
+        ev = self._events(capsys.readouterr().out)[0]
+        assert ev["params"]["year"] == "1998"
+        shown = ev["params"]["zips"]
+        assert len(shown) < 200
+        assert shown.startswith("12345,")
+        assert f"[{len(long_value)} chars total, elided]" in shown
+
     def test_debug_mode_emits_event(self, capsys):
         display.show_debug_mode()
         ev = self._events(capsys.readouterr().out)[0]

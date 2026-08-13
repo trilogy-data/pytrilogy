@@ -161,6 +161,11 @@ discovery agent, clean-noise token crossover **never** happens at any
 warehouse size. The layer's economic case must rest on confusable-mess
 accuracy, latency/aggregates, and authoring ergonomics — not raw tokens.
 
+(Enriched reference for this table: the same-day control, run
+`20260812-133647_enriched_aggregates` — 12.45M raw / 2.08M adj / 20/20 /
+312 iters — dose-independent by construction, so it is one horizontal line
+against all four bare cells.)
+
 **Recall discriminators: no smoking gun — TPC-DS survives.**
 
 | cell | pass | raw | iters |
@@ -238,6 +243,57 @@ distinction). That is the only remaining in-benchmark design lever; short of
 it, the layer's measurable value lives in aggregate routing (engine fix now
 live), latency at scale, and authoring ergonomics — not agent-side
 insulation.
+
+### Probe-count Pareto analysis (2026-08-12, post-wave-3)
+
+Token spend is only one axis; the other is **how many queries the agent
+fires at the warehouse** (probe load — at SF=1 probes are milliseconds, but
+against a real warehouse 400 probes/20 questions is real latency and real
+compute spend). Counted from `tool_calls_by_name` in each `report.json`
+(SQL legs: `run_query` + `run_file`; enriched: `trilogy run` — its
+`explore`/`agent-info`/`file` calls read the model, not the database):
+
+| leg | pass | adj tokens | DB queries | per question |
+|---|---:|---:|---:|---:|
+| bare x4 | 19 | 0.82M | 388 | 19.4 |
+| bare x12 | 18 | 1.06M | 445 | 22.2 |
+| bare x24 | 18 | 0.85M | 397 | 19.9 |
+| bare x48 | 18 | 0.91M | 418 | 20.9 |
+| inject x4 | 18 | 0.92M | 156 | 7.8 |
+| inject x12 | 16 | 1.23M | 176 | 8.8 |
+| inject x24 | 16 | 1.65M | 147 | 7.3 |
+| inject x48 | 16 | 2.71M | 147 | 7.3 |
+| enriched ctrl | 20 | 2.08M | 101 | 5.0 |
+| enriched 08-11 | 16 | (pre-cache-fields) | 94 | 4.7 |
+| enriched confusable (18q logs) | 15/17 | 1.87M | 91 | 5.1 |
+
+Three regime signatures, all dose-flat on probes:
+
+- **Bare discovery buys its token flatness with probes**: ~20 DB
+  queries/question at every dose — 4x the enriched rate. Discovery IS
+  querying; the warehouse is its schema document.
+- **Injection sits in the middle** (7.3–8.8/question): the schema payload
+  eliminates introspection probes but the agent still validation-loops
+  drafts.
+- **Enriched is probe-minimal** (4.7–5.1/question, stable across three runs
+  including the confusable workspace): the model answers exploration
+  questions that would otherwise be probes, and `trilogy run` fires only to
+  validate near-final drafts.
+
+**Pareto composition** (axes: adjusted tokens × DB probes × accuracy):
+bare anchors the token-minimal end at every dose; enriched anchors the
+probe-minimal end at every dose; **at x48 injection is strictly dominated
+by enriched on all three axes** (2.71M vs 2.08M adj, 147 vs 101 probes,
+16 vs 20 pass). At x4–x24 injection stays on the frontier only via its
+middling probe count. So the user-facing claim is now measured: the
+enriched path is on the Pareto frontier as the *probe-and-accuracy*
+optimum — you pay ~2.3x the discovery agent's adjusted tokens to cut
+warehouse queries 4x (and injection stops being defensible at all past
+~x24). Caveats: enriched accuracy swings 16↔20 across byte-identical
+replicates, so treat the accuracy edge as directional; and per-probe
+*weight* differs — bare's probes skew to cheap `information_schema`
+pagination, while each enriched `run` carries engine compile (~1.6s p50
+measured from log timestamps, client-side, not warehouse load).
 
 **q17 hang localized**: 3,854s inside one `trilogy run` tool call — but the
 saved candidate compiles in 0.3s to raw facts (planner and the new aggregate
