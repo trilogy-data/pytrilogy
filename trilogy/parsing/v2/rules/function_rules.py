@@ -1086,7 +1086,12 @@ def custom_function(
     if name not in context.functions:
         raise fail(node, f"Unknown function @{name}")
     factory = context.functions[name]
-    return FunctionCallWrapper(content=factory(*fn_args), name=name, args=fn_args)
+    expanded = factory(*fn_args)
+    # The body was typed at declaration against unbound parameters, so every
+    # type-dependent check passed vacuously; re-derive now that the arguments
+    # are bound (see FunctionFactory.retype_expression).
+    context.function_factory.retype_expression(expanded)
+    return FunctionCallWrapper(content=expanded, name=name, args=fn_args)
 
 
 # --- Build hydrator dict ---

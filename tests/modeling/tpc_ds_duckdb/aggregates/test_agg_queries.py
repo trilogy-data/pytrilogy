@@ -97,7 +97,12 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
-    with open(working_path / "aggregates" / f"zquery{idx:02d}.log", "w") as f:
+    with open(
+        working_path / "aggregates" / f"zquery{idx:02d}.log",
+        "w",
+        encoding="utf-8",
+        newline="\n",
+    ) as f:
         f.write(
             tomli_w.dumps(
                 {
@@ -112,10 +117,10 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
     timing = Path(working_path / "aggregates" / f"zquery_timing_{fingerprint}.log")
 
     if not timing.exists():
-        with open(timing, "w") as f:
+        with open(timing, "w", encoding="utf-8", newline="\n") as f:
             pass
 
-    with open(timing, "r+") as f:
+    with open(timing, "r+", encoding="utf-8", newline="\n") as f:
         # seek to 0, as we use append to ensure it exists
         current = tomllib.loads(f.read())
         # go back to 0, as we will rewrite the whole thing

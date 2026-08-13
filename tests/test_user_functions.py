@@ -1,7 +1,11 @@
 from pathlib import Path
 
+import pytest
+from pytest import raises
+
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.exceptions import FunctionArgumentException, InvalidSyntaxException
 
 
 def test_user_function_def():
@@ -359,7 +363,7 @@ import std.display;
 
 key state string::us_state;
 key year int;
-property state.val string;
+property state.val int;
 
 datasource states
 (
@@ -382,3 +386,58 @@ order by p_of_whole desc;
 
     results = results.fetchall()
     assert int(results[0].p_of_whole * 100) == 68
+
+
+TYPE_GAP_MODEL = """
+key pid int;
+property pid.name string;
+property pid.hr int;
+datasource p (pid:pid, name:name, hr:hr) grain (pid)
+query '''select 1 as pid, 'a' as name, 5 as hr'''
+;
+"""
+
+
+@pytest.mark.parametrize(
+    "body,args",
+    [
+        ("CASE WHEN {a} > 4 THEN {b} ELSE false END", ("hr", "name")),
+        ("concat({a}, {b})", ("hr", "hr")),
+        ("sum({a}) + 0*{b}", ("name", "hr")),
+        ("date_diff({a}, {b}, year)", ("name", "hr")),
+        ("upper({a}) || cast({b} as string)", ("hr", "hr")),
+        ("coalesce({a}, {b})", ("name", "hr")),
+        ("{a}[1] + {b}", ("hr", "hr")),
+    ],
+)
+def test_def_body_type_errors_match_inline(body, args):
+    """A type error inside a `def` must surface at parse time, exactly as the
+    same expression written inline does. The body is typed at declaration
+    against unbound parameters, so without a retype pass over the expanded tree
+    these reach the warehouse instead."""
+    a, b = args
+    inline = TYPE_GAP_MODEL + f"select {body.format(a=a, b=b)} as out;"
+    wrapped = (
+        TYPE_GAP_MODEL
+        + f"def f(x, y) -> {body.format(a='x', b='y')};\n"
+        + f"select @f({a}, {b}) as out;"
+    )
+
+    with raises((FunctionArgumentException, InvalidSyntaxException)):
+        Dialects.DUCK_DB.default_executor().execute_query(inline)
+    with raises((FunctionArgumentException, InvalidSyntaxException)):
+        Dialects.DUCK_DB.default_executor().execute_query(wrapped)
+
+
+def test_def_body_valid_types_still_run():
+    """The retype pass must not reject a body whose bound arguments agree."""
+    rows = (
+        Dialects.DUCK_DB.default_executor()
+        .execute_query(
+            TYPE_GAP_MODEL
+            + "def label(v, fallback) -> CASE WHEN v > 4 THEN cast(v as string) ELSE fallback END;\n"
+            + "select @label(hr, 'none') as out;"
+        )
+        .fetchall()
+    )
+    assert rows[0].out == "5"

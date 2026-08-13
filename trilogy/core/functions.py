@@ -20,6 +20,7 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
+    Between,
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
@@ -30,11 +31,15 @@ from trilogy.core.models.author import (
     CustomType,
     FilterItem,
     Function,
+    FunctionCallWrapper,
     NavigationWindowItem,
     NumberingWindowItem,
+    OrderItem,
     Parenthetical,
     RowsetItem,
+    SubselectItem,
     UndefinedConcept,
+    WhereClause,
 )
 from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.core import (
@@ -1452,7 +1457,6 @@ class FunctionFactory:
         config = FUNCTION_REGISTRY[operator]
         valid_inputs: VALID_INPUTS_TYPE = config.valid_inputs or set(DataType)
         output_purpose = config.output_purpose
-        base_output_type = config.output_type
         arg_count = config.arg_count
 
         if args:
@@ -1477,31 +1481,8 @@ class FunctionFactory:
                 "instead, for example `count(grain(key1, key2))`; for a "
                 "conditional count use `count(grain(key1, key2) ? condition)`."
             )
-        final_output_type: CONCRETE_TYPES
-        has_undefined = any(isinstance(x, UndefinedConcept) for x in full_args)
-        try:
-            if config.output_type_function:
-                final_output_type = config.output_type_function(full_args)
-            elif not base_output_type:
-                final_output_type = merge_datatypes(
-                    [arg_to_datatype(x) for x in full_args]
-                )
-            elif base_output_type:
-                final_output_type = base_output_type
-            else:
-                raise SyntaxError(f"Could not determine output type for {operator}")
-        except Exception:
-            # An unresolved reference is deferred to an UndefinedConcept (UNKNOWN
-            # type) during select parsing. Computing an output type over it can
-            # raise a confusing error (e.g. coalesce's same-type check on
-            # {STRING, UNKNOWN}) that masks the real problem. Defer: emit an
-            # UNKNOWN-typed Function so select finalization reports the clean
-            # UndefinedConceptException (with suggestions) instead. Only do this
-            # when an undefined arg is actually present and was the cause —
-            # functions whose output type is independent of that arg (e.g. CAST to
-            # an explicit target) compute fine and keep their real type.
-            if not has_undefined:
-                raise
+        final_output_type = self._derive_output_type(operator, full_args, config)
+        if final_output_type is None:
             return Function(
                 operator=operator,
                 arguments=full_args,  # type: ignore
@@ -1510,12 +1491,6 @@ class FunctionFactory:
                 valid_inputs=valid_inputs,
                 arg_count=arg_count,
             )
-        final_output_type = refine_output_type(
-            operator, final_output_type, self._resolve_type
-        )
-
-        if operator in (FunctionType.CASE, FunctionType.SIMPLE_CASE):
-            self._coerce_case_constant_branches(full_args, final_output_type)
 
         if not output_purpose:
             if operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
@@ -1533,6 +1508,118 @@ class FunctionFactory:
         )
         func.validate_arguments()
         return func
+
+    def retype_expression(self, node: Any) -> None:
+        """Re-derive types bottom-up over an expanded `def` body.
+
+        A custom function's body is typed once, at declaration, when every
+        parameter is still an unbound reference of UNKNOWN type - so
+        `output_type_function` and `valid_inputs` both pass vacuously and the
+        body's real types only surface in the warehouse. Expansion substitutes
+        arguments structurally without retyping, so this pass runs afterwards,
+        over the bound tree, to recover the checks an inline expression gets.
+
+        The walk is generic over every composite expression node, but only
+        Function is re-derived: it is the sole node that STORES a type. Every
+        other node exposes `output_datatype` as a property delegating to its
+        children (`AggregateWrapper` -> its function, `Parenthetical` ->
+        `arg_to_datatype(content)`), so substitution already corrected them -
+        they just have to be traversed to reach the Functions underneath.
+
+        Mutates in place; the caller owns a freshly expanded copy.
+        """
+        match node:
+            case list() | tuple():
+                for item in node:
+                    self.retype_expression(item)
+            case Function(arguments=arguments):
+                self.retype_expression(arguments)
+                self._retype_function(node)
+            case Parenthetical(content=content) | FunctionCallWrapper(content=content):
+                self.retype_expression(content)
+            case Comparison(left=left, right=right) | Conditional(
+                left=left, right=right
+            ):
+                self.retype_expression(left)
+                self.retype_expression(right)
+            case Between(left=left, low=low, high=high):
+                self.retype_expression(left)
+                self.retype_expression(low)
+                self.retype_expression(high)
+            case WhereClause(conditional=conditional):
+                self.retype_expression(conditional)
+            case OrderItem(expr=expr) | CaseElse(expr=expr):
+                self.retype_expression(expr)
+            case NumberingWindowItem(arguments=arguments, over=over, order_by=order_by):
+                self.retype_expression(arguments)
+                self.retype_expression(over)
+                self.retype_expression(order_by)
+            case NavigationWindowItem(content=content, over=over, order_by=order_by):
+                self.retype_expression(content)
+                self.retype_expression(over)
+                self.retype_expression(order_by)
+            case CaseSimpleWhen(value_expr=value_expr, expr=expr):
+                self.retype_expression(value_expr)
+                self.retype_expression(expr)
+            case CaseWhen(comparison=comparison, expr=expr):
+                self.retype_expression(comparison)
+                self.retype_expression(expr)
+            case AggregateWrapper(function=function, by=by):
+                self.retype_expression(function)
+                self.retype_expression(by)
+            case FilterItem(content=content, where=where):
+                self.retype_expression(content)
+                self.retype_expression(where)
+            case SubselectItem(content=content, where=where, order_by=order_by):
+                self.retype_expression(content)
+                self.retype_expression(where)
+                self.retype_expression(order_by)
+
+    def _retype_function(self, node: Function) -> None:
+        """Recompute one Function's output type against its now-bound arguments.
+
+        An operator missing from the registry, or a type left underivable by an
+        UndefinedConcept, keeps whatever declaration time produced - this pass
+        adds checks, it never invents a stricter failure than an inline
+        expression would hit.
+        """
+        config = FUNCTION_REGISTRY.get(node.operator)
+        if config is None:
+            return
+        derived = self._derive_output_type(node.operator, list(node.arguments), config)
+        if derived is not None:
+            node.output_datatype = derived
+        node.validate_arguments()
+
+    def _derive_output_type(
+        self, operator: FunctionType, args: list[Any], config: FunctionConfig
+    ) -> CONCRETE_TYPES | None:
+        """Compute a function's output type from already-processed arguments.
+
+        Returns None when an UndefinedConcept argument is what made the type
+        underivable - the caller emits an UNKNOWN-typed Function so select
+        finalization reports the clean UndefinedConceptException (with
+        suggestions) rather than a confusing type error masking it (e.g.
+        coalesce's same-type check on {STRING, UNKNOWN}). Functions whose
+        output type is independent of that arg (e.g. CAST to an explicit
+        target) compute fine and keep their real type.
+        """
+        final: CONCRETE_TYPES
+        try:
+            if config.output_type_function:
+                final = config.output_type_function(args)
+            elif config.output_type:
+                final = config.output_type
+            else:
+                final = merge_datatypes([arg_to_datatype(x) for x in args])
+        except Exception:
+            if not any(isinstance(x, UndefinedConcept) for x in args):
+                raise
+            return None
+        final = refine_output_type(operator, final, self._resolve_type)
+        if operator in (FunctionType.CASE, FunctionType.SIMPLE_CASE):
+            self._coerce_case_constant_branches(args, final)
+        return final
 
     def _coerce_case_constant_branches(
         self, branches: list[Any], target: CONCRETE_TYPES
