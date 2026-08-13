@@ -1,6 +1,6 @@
-# Trilogy failure analysis — 20260813-030820
+# Trilogy failure analysis — 20260813-035250
 
-- Run `20260813-030820_sql_bare_noise_x48` | `deepseek/deepseek-v4-flash` | sf=1
+- Run `20260813-035250_sql_bare_confusable_x3` | `deepseek/deepseek-v4-flash` | sf=1
 - `trilogy` calls: 0 | failed: 0
 
 ## Categories

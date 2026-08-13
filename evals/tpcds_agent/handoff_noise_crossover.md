@@ -322,6 +322,50 @@ clock. Worth a bounded-execution knob before long unattended runs.
   is live: compiled enriched aggregates now resolve to summary tables, so the
   funnel's `agg used` column measures Trilogy aggregate selection for real.
 
+### The 2026-08-13 fresh matrix (runs `20260813-{023115,030820,033754,035250}`)
+
+Everything rerun post-harness-changes (one-call `file write --run` idiom,
+trailing-error truncation, param elision) and with confusable v2 (documented
+traps). This supersedes all earlier cells for cross-regime comparison;
+dataset exported by `export_pareto_data.py` (also feeds the blog).
+
+| leg | pass | adj | DB/q | note |
+|---|---:|---:|---:|---|
+| bare x4 / x48 | 19 / 18 | 0.84M / 1.00M | 21.8 / 22.0 | unchanged — clean control |
+| inject base / x4 / x48 | 16 / 18 / 18 | 0.72M / 0.81M / 2.58M | 7.3–8.7 | slope intact |
+| enriched + replicate | 19 / 18 | **1.43M / 1.20M** | 5.4 / 4.0 | was 2.08M — **−31/−42%** |
+| confusable schema x2 / x3 | 18 / 16 | 1.13M / 1.36M | 8.1 / 8.5 | 1 trap ref (benign, passed) |
+| confusable bare x2 / x3 | 18 / 18 | 1.04M / 1.02M | 19.9 / **24.0** | **first trap kill** (x3) |
+| enriched confusable (full 20q) | 18 | 1.70M | 5.3 | fails q12/q14, chronic |
+
+Findings:
+
+1. **Harness idiom savings confirmed at scale**: enriched adjusted cost
+   dropped 31–42% (replicates 1.20M/1.43M vs 2.08M); `trilogy run` calls
+   collapsed to 1–3 per leg (validation folded into `file write --run`,
+   77–105 uses). Accuracy held (18–19/20). The enriched premium over bare
+   discovery narrowed from ~2.3x to **~1.4–1.7x**.
+2. **Confusable v2, reading agent: still immune.** 1 trap reference in 40
+   candidates — q13 through the `_daily` grain trap, which *passed* (daily
+   rollups are exactly correct at daily-or-coarser grain). The doc asymmetry
+   was not load-bearing; the canonical-name prior alone rejects documented
+   traps.
+3. **Confusable v2, discovery agent: the first genuine trap failure.**
+   `sql_bare_confusable_x3` query03 is a textbook q3 — correct joins,
+   filters, ordering — built on `fact_store_sales_v2` (an 88% bernoulli
+   sample), so every sum ran ~12% low. Probes also rose to 23.9/question
+   (+20% vs the ~20 clean-noise flatline): traps cost discovery probes even
+   when dodged. It took BOTH removing schema.md and max trap density to
+   produce one kill; x2 stayed clean.
+4. **Pareto update**: enriched (4.0–5.4 probes/q, 1.20–1.43M adj, 18–19
+   pass, dose-flat, trap-immune by construction) vs bare (~22 probes/q,
+   0.84–1.04M, 18–19 pass, first accuracy crack under traps) vs injection
+   (dominated by enriched at x48 again: 2.58M/174 probes/18 vs
+   1.43M/107/19). The layer's pitch after the matrix: near-frontier on
+   tokens, best-in-class on probes and warehouse-size flatness, and the only
+   regime whose exposure to trap tables is a curation decision rather than
+   an agent behavior.
+
 ## 3. Instrumentation landed with this memo
 
 - **Cache-aware tokens end-to-end**: `UsageDict.cached_prompt_tokens`

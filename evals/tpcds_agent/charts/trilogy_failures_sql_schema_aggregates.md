@@ -1,6 +1,6 @@
-# Trilogy failure analysis — 20260811-145004
+# Trilogy failure analysis — 20260813-030820
 
-- Run `20260811-145002_sql_schema_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
+- Run `20260813-030820_sql_schema_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
 - `trilogy` calls: 0 | failed: 0
 
 ## Categories

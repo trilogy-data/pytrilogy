@@ -41,110 +41,94 @@ class Leg:
     notes: str = ""
 
 
+# The 2026-08-13 fresh matrix: every leg run AFTER the one-call `file write
+# --run` idiom + trailing-error truncation + param-elision harness changes,
+# and with confusable treatment v2 (traps carry copied source docs — no
+# documentation bleed). Not comparable cell-to-cell with 2026-08-1[12] runs.
 LEGS = (
     Leg(
-        "sql_bare_x4", "20260812-144241_sql_bare_noise_x4", "sql", "bare_discovery", 72
-    ),
-    Leg(
-        "sql_bare_x12",
-        "20260812-144241_sql_bare_noise_x12",
-        "sql",
-        "bare_discovery",
-        168,
-    ),
-    Leg(
-        "sql_bare_x24",
-        "20260812-144241_sql_bare_noise_x24",
-        "sql",
-        "bare_discovery",
-        312,
+        "sql_bare_x4", "20260813-030820_sql_bare_noise_x4", "sql", "bare_discovery", 72
     ),
     Leg(
         "sql_bare_x48",
-        "20260812-144241_sql_bare_noise_x48",
+        "20260813-030820_sql_bare_noise_x48",
         "sql",
         "bare_discovery",
         600,
     ),
     Leg(
+        "sql_inject_base",
+        "20260813-030820_sql_schema_aggregates",
+        "sql",
+        "schema_injection",
+        42,
+    ),
+    Leg(
         "sql_inject_x4",
-        "20260812-133647_sql_schema_noise_x4",
+        "20260813-033754_sql_schema_noise_x4",
         "sql",
         "schema_injection",
         72,
     ),
     Leg(
-        "sql_inject_x12",
-        "20260812-133647_sql_schema_noise_x12",
-        "sql",
-        "schema_injection",
-        168,
-    ),
-    Leg(
-        "sql_inject_x24",
-        "20260812-133647_sql_schema_noise_x24",
-        "sql",
-        "schema_injection",
-        312,
-    ),
-    Leg(
         "sql_inject_x48",
-        "20260812-133647_sql_schema_noise_x48",
+        "20260813-033754_sql_schema_noise_x48",
         "sql",
         "schema_injection",
         600,
     ),
     Leg(
-        "sql_inject_base_0811",
-        "20260811-145002_sql_schema_aggregates",
-        "sql",
-        "schema_injection",
-        42,
-    ),
-    Leg(
-        "enriched_0811",
-        "20260811-145002_enriched_aggregates",
+        "enriched",
+        "20260813-030820_enriched_aggregates",
         "tri",
         "enriched_trilogy",
         42,
     ),
     Leg(
-        "enriched_ctrl_0812",
-        "20260812-133647_enriched_aggregates",
+        "enriched_replicate",
+        "20260813-023115",
         "tri",
         "enriched_trilogy",
         42,
-    ),
-    Leg(
-        "sql_confusable_x1",
-        "20260812-153111_sql_schema_confusable_x1",
-        "sql",
-        "schema_injection_confusable",
-        49,
+        notes="Same-day replicate (the harness-change A/B treatment leg).",
     ),
     Leg(
         "sql_confusable_x2",
-        "20260812-153111_sql_schema_confusable_x2",
+        "20260813-033754_sql_schema_confusable_x2",
         "sql",
         "schema_injection_confusable",
         62,
     ),
     Leg(
         "sql_confusable_x3",
-        "20260812-153111_sql_schema_confusable_x3",
+        "20260813-033754_sql_schema_confusable_x3",
         "sql",
         "schema_injection_confusable",
         74,
     ),
     Leg(
-        "enriched_confusable_partial",
-        "20260812-153111_enriched_confusable",
+        "sql_bare_confusable_x2",
+        "20260813-035250_sql_bare_confusable_x2",
+        "sql",
+        "bare_discovery_confusable",
+        62,
+    ),
+    Leg(
+        "sql_bare_confusable_x3",
+        "20260813-035250_sql_bare_confusable_x3",
+        "sql",
+        "bare_discovery_confusable",
+        74,
+        notes="First trap-caused failure of the experiment: query03 summed "
+        "fact_store_sales_v2 (an 88% sample) and failed. Probes rose to "
+        "23.9/question vs the ~20 clean-noise baseline.",
+    ),
+    Leg(
+        "enriched_confusable",
+        "20260813-035250_enriched_confusable",
         "tri",
         "enriched_trilogy_confusable",
         74,
-        pass_count_override=15,
-        notes="Launcher stopped at q18; 17 queries scored (15/17 pass), 18 "
-        "sessions logged. Computed from JSONL logs; no report.json exists.",
     ),
 )
 
@@ -168,6 +152,19 @@ def _is_tri_db_call(arguments: dict) -> bool:
     )
 
 
+def _tri_db_counts_from_logs(leg: Leg, results_dir: Path) -> list[int]:
+    counts: list[int] = []
+    for f in sorted(glob.glob(str(results_dir / leg.run_dir / "agent_log.q*.jsonl"))):
+        q_db = 0
+        with open(f, encoding="utf-8") as handle:
+            for line in handle:
+                rec = json.loads(line)
+                if rec.get("type") == "tool_call" and rec["name"] == "trilogy":
+                    q_db += _is_tri_db_call(rec["arguments"])
+        counts.append(q_db)
+    return counts
+
+
 def leg_from_report(leg: Leg, results_dir: Path) -> dict:
     rep = json.loads(
         (results_dir / leg.run_dir / "report.json").read_text(encoding="utf-8")
@@ -181,10 +178,11 @@ def leg_from_report(leg: Leg, results_dir: Path) -> dict:
             sum(q["tool_calls_by_name"].get(t, 0) for t in SQL_DB_TOOLS) for q in pq
         ]
     else:
-        # Subcommand counters can't see --run flags on `file write`; report-side
-        # runs predate the one-call idiom, where `run` alone is exact.
-        db = agent.get("trilogy_subcommands", {}).get("run", 0)
-        per_q_db = [q.get("trilogy_subcommands", {}).get("run", 0) for q in pq]
+        # The report's subcommand counter records `file write --run` as just
+        # `file`, so post-idiom executions are invisible to it — count DB
+        # calls from the JSONL logs, where the flags are recoverable.
+        per_q_db = _tri_db_counts_from_logs(leg, results_dir)
+        db = sum(per_q_db)
     prompt = sum(q["prompt_tokens"] for q in pq)
     cached = sum(q.get("cached_prompt_tokens", 0) for q in pq)
     completion = sum(q["completion_tokens"] for q in pq)
@@ -315,6 +313,13 @@ def build_dataset(
         },
         "caveats": [
             (
+                "All legs are the 2026-08-13 matrix: run with the one-call "
+                "`file write --run` harness idiom (enriched adjusted cost "
+                "dropped ~35-42% vs the 2026-08-12 baseline because of it) "
+                "and confusable treatment v2 (traps carry copied source docs). "
+                "Not comparable cell-to-cell with earlier runs."
+            ),
+            (
                 "SF=1 DuckDB: probes cost milliseconds locally; the probe axis "
                 "matters economically on cloud warehouses (per-query latency "
                 "floors, per-scan billing), not here."
@@ -333,12 +338,6 @@ def build_dataset(
                 "Enriched legs are dose-independent by construction (agent "
                 "never sees the noisy schema); plot as a horizontal reference "
                 "against dose sweeps."
-            ),
-            (
-                "Confusable legs from run 20260812-153111 are the v1 treatment "
-                "(trap tables undocumented — a since-closed information "
-                "bleed); do not compare v2 confusable runs against them "
-                "cell-to-cell."
             ),
         ],
         "legs": records,
