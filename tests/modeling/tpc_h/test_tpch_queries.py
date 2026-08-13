@@ -30,7 +30,7 @@ REPEAT_COUNT = 3
 def _load_toml_mapping(path: Path) -> dict[str, object]:
     if not path.exists():
         return {}
-    raw = path.read_text()
+    raw = path.read_text(encoding="utf-8")
     if not raw.strip():
         return {}
     try:
@@ -99,7 +99,12 @@ def run_query(
             row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
-    with open(working_path / f"zquery{query_label}.log", "w") as f:
+    with open(
+        working_path / f"zquery{query_label}.log",
+        "w",
+        encoding="utf-8",
+        newline="\n",
+    ) as f:
         f.write(
             tomli_w.dumps(
                 {
@@ -126,7 +131,9 @@ def run_query(
         tomli_w.dumps(
             final,
             multiline_strings=True,
-        )
+        ),
+        encoding="utf-8",
+        newline="\n",
     )
     temp_timing.replace(timing)
     return query

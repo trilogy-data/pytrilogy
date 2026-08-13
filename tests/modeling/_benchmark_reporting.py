@@ -101,7 +101,7 @@ def load_frames(
         # timing log is loaded separately below
         if filename.startswith("zquery_timing_"):
             continue
-        with open(config.root / filename, "r") as f:
+        with open(config.root / filename, "r", encoding="utf-8") as f:
             raw = f.read()
         if not raw.strip():
             continue
@@ -489,6 +489,7 @@ def write_summary(
     config.summary_path.write_text(
         build_summary(config, main_frame, alt_frame),
         encoding="utf-8",
+        newline="\n",
     )
 
 
