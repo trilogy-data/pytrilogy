@@ -288,6 +288,13 @@ class DeploySettings:
     setting is declared once here and accepted everywhere.
     """
 
+    #: What to call the job. Optional, and unlike everything else here it is
+    #: not part of the job's *content*: it feeds the ``name`` argument, never
+    #: :meth:`job_fields`. Unset means the name derives from the path under the
+    #: sync root, which is the right answer for a models repository and the
+    #: wrong one for a project that is its own repository — where the path is
+    #: the bare directory name and half of them are called ``data``.
+    name: str | None = None
     schedule: str | None = None
     operation: str | None = None
     timeout_seconds: int | None = None
@@ -306,7 +313,11 @@ class DeploySettings:
             raise _setting_error(
                 source, "priority", f"must be between 0 and {MAX_PRIORITY}"
             )
+        name = _typed_setting(table, source, "name", str, "a string")
+        if name is not None and not name.strip():
+            raise _setting_error(source, "name", "must not be empty")
         return cls(
+            name=name,
             schedule=_typed_setting(table, source, "schedule", str, "a string"),
             operation=_choice_setting(table, source, "operation", ALLOWED_OPERATIONS),
             timeout_seconds=_positive_int_setting(table, source, "timeout_seconds"),
@@ -320,7 +331,15 @@ class DeploySettings:
 
     def declared_fields(self) -> dict[str, Any]:
         """Only what the toml actually said, JSON-ready — ``None`` dropped and
-        tuples flattened, since a payload is JSON and JSON has no tuple."""
+        tuples flattened, since a payload is JSON and JSON has no tuple.
+
+        ``name`` is deliberately absent, which is what keeps it from doing two
+        jobs it should not: it is not a content field (it feeds the ``name=``
+        argument), and it does not make a directory deployable. A toml saying
+        only ``name = "reports"`` describes nothing to run, and deploying the
+        directory it sits in because of it is the surprise this method's
+        `declared` property exists to prevent.
+        """
         declared = {
             "schedule": self.schedule,
             "operation": self.operation,
@@ -355,12 +374,19 @@ class DeploySettings:
 #: out, so the parser, the deployability test and `execution.config`'s section
 #: audit cannot disagree about what a `[cloud]` block may contain.
 #:
-#: There is deliberately no ``name``: a job's name is derived from its path
-#: under the sync root, so two projects can never collide on one by accident.
-#: Note that identity (`SourceOrigin.source_key`) is path-derived too — moving
-#: a directory deploys a *new* job and orphans the old one, which is what
-#: ``--prune`` is for.
+#: ``name`` is among them but is not one of them in the sense that matters: it
+#: says what to *call* the job, not how it runs, so it is the one key that does
+#: not make a directory deployable (see :data:`JOB_DECLARING_KEYS`). Unset, the
+#: name derives from the path under the sync root. Note that identity
+#: (`SourceOrigin.source_key`) is path-derived and *not* declarable — moving a
+#: directory deploys a new job and orphans the old one whatever it is called,
+#: which is what ``--prune`` is for.
 DEPLOY_KEYS: tuple[str, ...] = tuple(f.name for f in dataclass_fields(DeploySettings))
+
+#: The subset that makes a directory a job. Split out so the "nothing
+#: deployable" error lists what would actually have helped: a toml declaring
+#: only a name still describes nothing to run.
+JOB_DECLARING_KEYS: tuple[str, ...] = tuple(k for k in DEPLOY_KEYS if k != "name")
 
 
 def resolve_api_url(explicit: str | None) -> str:
@@ -1818,7 +1844,8 @@ class DeployableProject:
     directory: Path
     config_path: Path
     settings: DeploySettings
-    #: Derived from the path relative to the sync root — never declared.
+    #: The ``[cloud] name``, or the path relative to the sync root when the
+    #: toml declares none.
     name: str
     #: `{origin}#{subpath}`; the identity a sync upserts against.
     source_key: str
@@ -1826,16 +1853,21 @@ class DeployableProject:
 
 
 def derive_job_name(root: Path, directory: Path) -> str:
-    """A job's name, from where it sits under the sync root.
+    """A job's name when its ``[cloud]`` block declares none.
 
     ``duckdb/covid19_open_data/data`` -> ``duckdb-covid19_open_data-data``. The
     whole relative path rather than the leaf, because leaves collide constantly
-    in a models repo — half of them are called ``data``.
+    in a models repo — half of them are called ``data``. Which is also the
+    limit of what a path can say: a project that *is* its own repository has no
+    path under the root to speak of and gets the bare directory name, so
+    ``sf_tree_reporting/data`` synced from ``data`` deploys a job called
+    ``data``. That is what ``[cloud] name`` is for.
 
     The name is display only — ``source_key`` is what a sync matches on — but
-    both are path-derived, so a *move* is a new job either way. What identity
-    buys is stability across branches and commits, which is what groups a
-    branch's job under the mainline job it forked from.
+    both are path-derived by default, so a *move* is a new job either way (a
+    declared name does not change that: identity is not declarable). What
+    identity buys is stability across branches and commits, which is what
+    groups a branch's job under the mainline job it forked from.
     """
     relative = directory.resolve().relative_to(root.resolve())
     parts = [p for p in relative.parts if p not in (".", "")]
@@ -1879,6 +1911,30 @@ def _reject_nested(found: Sequence[DeployableProject]) -> None:
                 )
 
 
+def _reject_duplicate_names(found: Sequence[DeployableProject]) -> None:
+    """Refuse a sync where two projects would deploy under one name.
+
+    Path-derived names cannot collide — the path is unique and nesting is
+    already refused — so this is the guard that comes with letting a toml
+    declare one. Both jobs would still deploy (identity is `source_key`, which
+    stays distinct), and nothing would break; they would simply be
+    indistinguishable in every list, every run row and every schedule binding,
+    including the one `_reconcile_schedule` reports on. Saying so at discovery
+    costs nothing and is the only moment both files are in view.
+    """
+    by_name: dict[str, list[DeployableProject]] = {}
+    for project in found:
+        by_name.setdefault(project.name, []).append(project)
+    for name, projects in by_name.items():
+        if len(projects) > 1:
+            files = ", ".join(str(p.config_path) for p in projects)
+            raise CloudError(
+                f"{len(projects)} projects would deploy as {name!r} ({files}). "
+                "Job names are how a deploy is read; give each its own "
+                "[cloud] name."
+            )
+
+
 def discover_projects(root: Path) -> list[DeployableProject]:
     """Every deployable project under *root*, in a stable order.
 
@@ -1915,12 +1971,13 @@ def discover_projects(root: Path) -> list[DeployableProject]:
                 directory=directory,
                 config_path=config_path,
                 settings=settings,
-                name=derive_job_name(root, directory),
+                name=settings.name or derive_job_name(root, directory),
                 source_key=origin.source_key(),
                 origin=origin,
             )
         )
     _reject_nested(found)
+    _reject_duplicate_names(found)
     return found
 
 
@@ -2011,16 +2068,26 @@ def cloud_sync(
         schedule = "0 0 7 * * *"
         secret_env = ["GOOGLE_HMAC_KEY", "GOOGLE_HMAC_SECRET"]
 
-    There is no ``name``: a job's name comes from its path under ROOT, and its
-    *identity* from the repository and subdirectory it lives in
-    (``source_key``). Identity is what groups a branch's job under the
-    production job it forked from — it is stable across branches and commits,
-    which a name is not.
+    A job's name comes from its path under ROOT unless the block declares one::
 
-    It is **not** stable across a move. Both the name and the identity are
-    derived from the path, so relocating a directory deploys a new job and
-    leaves the old one behind with its run history; ``--prune`` is what clears
-    it out.
+        [cloud]
+        name = "urban-tree-data"
+
+    which is worth doing when the path is not descriptive — a project that is
+    its own repository is synced from its own directory, so it inherits a bare
+    leaf name like ``data``. Renaming is safe at any time: the name is display
+    only, and everything that points at a job (schedules, runs, history, and
+    this command's own upsert) goes through its id or its ``source_key``.
+
+    *Identity* is not declarable. It comes from the repository and
+    subdirectory the project lives in (``source_key``), which is what groups a
+    branch's job under the production job it forked from — stable across
+    branches and commits, which a name is not.
+
+    It is **not** stable across a move. Identity is derived from the path, so
+    relocating a directory deploys a new job and leaves the old one behind with
+    its run history; ``--prune`` is what clears it out. A declared name does
+    not change that — it renames the job, it does not move it.
 
     Which environment it syncs into comes from the current branch, so the same
     command in CI deploys main to production and a feature branch to its own
@@ -2036,7 +2103,7 @@ def cloud_sync(
     if not projects:
         raise CloudError(
             f"No deployable projects under {root}: no trilogy.toml declares a "
-            f"[cloud] block with any of {', '.join(DEPLOY_KEYS)}."
+            f"[cloud] block with any of {', '.join(JOB_DECLARING_KEYS)}."
         )
 
     # The environment belongs to the checkout, so it is resolved from ROOT and
@@ -2197,6 +2264,16 @@ def _sync_one(
 
     job, outcome = _upsert_job(client, org, encoded, found)
 
+    # The server is authoritative on the name, and an API older than renameable
+    # jobs answers with the one it already had. Saying so is the difference
+    # between "this deployment cannot do that yet" and a sync that reports
+    # `updated` every time while the name never moves.
+    if job.name != project.name:
+        print_warning(
+            f"    {'not renamed':>12}  {project.name}: the API kept {job.name!r}. "
+            "It is running a build from before job names could be declared."
+        )
+
     # Schedules belong to production only. A branch environment inheriting the
     # declared cron would fire branch builds on production's cadence from the
     # moment it was created — running, and billing, continuously for as long as
@@ -2230,13 +2307,19 @@ def _reconcile_schedule(
 ) -> None:
     """Bring the job's schedule in line with what its config declares.
 
-    **Matched by binding, not by name.** A schedule this sync owns is one bound
-    to this job *and to nothing else*; its own name is incidental. Matching on
-    the name `{job.name}-schedule` instead looks right and breaks as soon as
-    anything renames a job: the old schedule keeps its old name, stays bound to
-    the same job id, goes unrecognized, and a second one is created beside it.
-    The job then fires twice a day. That is the same failure `jobs push` had
-    when it created instead of updating, and it is worth not repeating.
+    **Matched by binding — by job id, not by name.** A schedule this sync owns
+    is one bound to this job *and to nothing else*; its own name is incidental.
+    Matching on the bound job's name looks equivalent and is not, now that
+    ``[cloud] name`` can rename a job in place: the org's schedules are listed
+    *before* the job is PUT, so on the sync that renames, every schedule still
+    reports the old name, the one this job already has goes unrecognized, and a
+    second is created beside it. The job then fires twice a day — the same
+    failure `jobs push` had when it created instead of updating.
+
+    Falls back to the name for a schedule whose ``job_ids`` came back empty,
+    which is what an API older than that field looks like. Same answer as
+    before for every case that existed then, and no crash against a deployment
+    that has not rolled yet.
 
     A schedule binding *several* jobs is deliberately left alone: that is
     someone's grouping (and a shared tick identity, which is what lets siblings
@@ -2248,7 +2331,11 @@ def _reconcile_schedule(
 
     *schedules* is the org's list, fetched once by the caller.
     """
-    mine = [s for s in schedules if s.job_names == [job.name]]
+    mine = [
+        s
+        for s in schedules
+        if (s.job_ids == [job.id] if s.job_ids else s.job_names == [job.name])
+    ]
     if cron is None:
         for schedule in mine:
             client.delete(f"/orgs/{org}/schedules/{schedule.id}")

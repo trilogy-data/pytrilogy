@@ -330,6 +330,11 @@ class Schedule(BaseModel):
 class ScheduleExt(Schedule):
     """``routes/schedules.rs::ScheduleExt`` — a schedule plus its bound jobs."""
 
+    #: The binding, which is what reconciliation matches on. Defaulted empty
+    #: because it postdates the field below: an API that does not send it
+    #: leaves this list empty rather than failing to parse, and the caller
+    #: falls back to names for that schedule.
+    job_ids: list[str] = []
     job_names: list[str] = []
 
 

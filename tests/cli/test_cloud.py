@@ -18,6 +18,7 @@ from trilogy.scripts import cloud as cloud_mod
 from trilogy.scripts.cloud import (
     DEFAULT_API_URL,
     DEPLOY_KEYS,
+    JOB_DECLARING_KEYS,
     CloudClient,
     CloudError,
     DeploySettings,
@@ -1597,7 +1598,7 @@ class TestDeploySettings:
         as one job."""
         assert not self._parse({"api_url": "https://x", "org": "acme"}).declared
 
-    @pytest.mark.parametrize("key", DEPLOY_KEYS)
+    @pytest.mark.parametrize("key", JOB_DECLARING_KEYS)
     def test_any_deployment_key_makes_a_project_deployable(self, key):
         value = {"secret_env": ["A"], "cpus": 1.0, "schedule": "* * * * * *"}.get(
             key, 1
@@ -1605,6 +1606,22 @@ class TestDeploySettings:
         if key in ("operation", "vm_class"):
             value = {"operation": "run", "vm_class": "shared"}[key]
         assert self._parse({key: value}).declared
+
+    def test_a_name_alone_does_not_make_a_project_deployable(self):
+        """It says what to call a job, not that there is one — a toml naming a
+        directory and nothing else describes nothing to run."""
+        assert not self._parse({"name": "reports"}).declared
+
+    def test_a_declared_name_is_not_a_content_field(self):
+        """It feeds the `name` argument. In `job_fields()` it would ride the
+        content payload as a setting, and a PUT would carry it like one."""
+        settings = self._parse({"name": "urban-tree-data", "operation": "refresh"})
+        assert settings.name == "urban-tree-data"
+        assert "name" not in settings.job_fields()
+
+    def test_an_empty_name_is_refused_where_it_was_written(self):
+        with pytest.raises(CloudError, match="name"):
+            self._parse({"name": "  ", "operation": "run"})
 
     def test_unspecified_stays_unspecified(self):
         """`None` has to mean "carry what the job has", not "reset to default"
@@ -1952,6 +1969,45 @@ class TestDiscoverProjects:
         self._project(tmp_path / "etl_two", '[cloud]\noperation = "run"\n')
         assert len(cloud_mod.discover_projects(tmp_path)) == 2
 
+    def test_a_declared_name_wins_over_the_path(self, tmp_path):
+        """The path says `data` for a project that is its own repository, which
+        is the case the declaration exists for."""
+        self._project(
+            tmp_path / "data",
+            '[cloud]\nname = "urban-tree-data"\noperation = "refresh"\n',
+        )
+        found = cloud_mod.discover_projects(tmp_path)
+        assert [p.name for p in found] == ["urban-tree-data"]
+
+    def test_a_declared_name_does_not_move_the_identity(self, tmp_path):
+        """Renaming must be safe: `source_key` is what a sync upserts and
+        prunes on, so a rename has to update the job rather than deploy a
+        second one."""
+        directory = self._project(tmp_path / "data", '[cloud]\noperation = "run"\n')
+        before = cloud_mod.discover_projects(tmp_path)[0]
+        (directory / "trilogy.toml").write_text(
+            '[cloud]\nname = "urban-tree-data"\noperation = "run"\n', encoding="utf-8"
+        )
+        after = cloud_mod.discover_projects(tmp_path)[0]
+        assert (before.name, after.name) == ("data", "urban-tree-data")
+        assert before.source_key == after.source_key
+
+    def test_two_projects_may_not_deploy_under_one_name(self, tmp_path):
+        """The collision the derived name could not have: both would deploy
+        (identity keeps them apart) and be indistinguishable everywhere a name
+        is what you read."""
+        self._project(tmp_path / "a", '[cloud]\nname = "reports"\noperation = "run"\n')
+        self._project(tmp_path / "b", '[cloud]\nname = "reports"\noperation = "run"\n')
+        with pytest.raises(CloudError, match="reports"):
+            cloud_mod.discover_projects(tmp_path)
+
+    def test_a_declared_name_may_match_another_projects_derived_one(self, tmp_path):
+        """Still a collision — where it came from is not the point."""
+        self._project(tmp_path / "etl", '[cloud]\noperation = "run"\n')
+        self._project(tmp_path / "b", '[cloud]\nname = "etl"\noperation = "run"\n')
+        with pytest.raises(CloudError, match="etl"):
+            cloud_mod.discover_projects(tmp_path)
+
 
 class TestCloudSync:
     """`sync` end to end against the fake API."""
@@ -2009,6 +2065,37 @@ class TestCloudSync:
         assert result.exit_code == 0, result.output
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
         assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+
+    def test_a_declared_name_renames_the_job_it_already_deployed(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The rename path end to end: matched by `source_key`, so it is a PUT
+        on the existing job carrying the new name — not a second job, and not a
+        payload the server has to guess at."""
+        root = self._repo(tmp_path, name='"urban-tree-data"', operation='"run"')
+        key = cloud_mod.discover_projects(root)[0].source_key
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "etl", source_key=key)],
+        )
+        assert run_cloud("sync", str(root)).exit_code == 0
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+        put = logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")[0]
+        assert put["name"] == "urban-tree-data"
+
+    def test_an_api_that_cannot_rename_says_so(self, logged_in, run_cloud, tmp_path):
+        """An API older than renameable jobs ignores the name and answers with
+        the one it has. Silence there is a sync reporting `updated` forever
+        while the name never moves."""
+        root = self._repo(tmp_path, name='"urban-tree-data"', operation='"run"')
+        key = cloud_mod.discover_projects(root)[0].source_key
+        old = _job_payload("job-1", "etl", source_key=key)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [old])
+        logged_in.set("PUT", f"/orgs/{logged_in.org}/jobs/job-1", old)
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert "not renamed" in result.output
 
     def test_a_job_without_a_source_key_is_not_adopted(
         self, logged_in, run_cloud, tmp_path
@@ -2203,8 +2290,15 @@ class TestScheduleReconciliation:
         (directory / "model.preql").write_text("key id int;", encoding="utf-8")
         return tmp_path
 
-    def _bound(self, schedule_id: str, name: str, cron: str, job_names: list[str]):
-        return {
+    def _bound(
+        self,
+        schedule_id: str,
+        name: str,
+        cron: str,
+        job_names: list[str],
+        job_ids: list[str] | None = None,
+    ):
+        payload = {
             "id": schedule_id,
             "org_id": "org-acme",
             "name": name,
@@ -2215,6 +2309,11 @@ class TestScheduleReconciliation:
             "updated_at": TS,
             "job_names": job_names,
         }
+        # Omitted on purpose by default: that is an API older than `job_ids`,
+        # and the name fallback has to keep answering for it.
+        if job_ids is not None:
+            payload["job_ids"] = job_ids
+        return payload
 
     def test_a_renamed_job_does_not_gain_a_second_schedule(
         self, logged_in, run_cloud, tmp_path
@@ -2236,6 +2335,68 @@ class TestScheduleReconciliation:
         )
         assert run_cloud("sync", str(root)).exit_code == 0
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/schedules")
+
+    def test_the_sync_that_renames_a_job_keeps_its_one_schedule(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The rename case the binding match exists for. Schedules are listed
+        *before* the job is PUT, so on this sync the API still reports the old
+        name — matching on it would create a second schedule and fire the job
+        twice a day, on the very sync that renamed it."""
+        directory = tmp_path / "data"
+        directory.mkdir(parents=True)
+        (directory / "trilogy.toml").write_text(
+            '[cloud]\nname = "urban-tree-data"\noperation = "refresh"\n'
+            'schedule = "0 0 7 * * *"\n',
+            encoding="utf-8",
+        )
+        (directory / "model.preql").write_text("key id int;", encoding="utf-8")
+        key = cloud_mod.discover_projects(tmp_path)[0].source_key
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "data", source_key=key)],
+        )
+        logged_in.set(
+            "PUT",
+            f"/orgs/{logged_in.org}/jobs/job-1",
+            _job_payload("job-1", "urban-tree-data", source_key=key),
+        )
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/schedules",
+            [
+                self._bound(
+                    "sched-1", "data-schedule", "0 0 7 * * *", ["data"], ["job-1"]
+                )
+            ],
+        )
+        assert run_cloud("sync", str(tmp_path)).exit_code == 0
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/schedules")
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        )
+
+    def test_a_schedule_bound_to_another_job_is_not_claimed(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The binding is the whole test of ownership: a same-named schedule on
+        someone else's job must not be deleted and replaced."""
+        root = self._repo(tmp_path)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        logged_in.set(
+            "POST", f"/orgs/{logged_in.org}/jobs", _job_payload("job-1", "etl")
+        )
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/schedules",
+            [self._bound("sched-1", "etl-schedule", "0 0 7 * * *", ["etl"], ["job-2"])],
+        )
+        assert run_cloud("sync", str(root)).exit_code == 0
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        )
+        assert logged_in.requests_for("POST", f"/orgs/{logged_in.org}/schedules")
 
     def test_a_changed_cron_replaces_the_schedule(self, logged_in, run_cloud, tmp_path):
         """There is no schedule update route, so delete+create is the edit."""
