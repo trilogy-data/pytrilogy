@@ -407,6 +407,30 @@ def _decomposable(
     )
 
 
+def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
+    """The join axis a derived connector must advertise on top of its grain.
+
+    A connector exists to RELATE two sides, so it has to offer an address other
+    than the merged key it provides. Nearly every non-BASIC derivation already
+    does — an aggregate's grain is its `by`, a window's is its partition — and
+    for those this is empty. The row-multiplying family is the exception: parse
+    deliberately gives `unnest`/`date_spine` no grain at all (row identity is
+    the input's grain times the element, which no Grain can spell), so the
+    concept falls back to self-grain and the merge then rewrites that onto the
+    merged class. Such a grain says only "I am the merged key": the two sides
+    share no binding, the cover disconnects, and the plan degrades to a cross
+    join (`ecoregion_info` RIGHT JOIN `trees` on 1=1, every tree paired with
+    every ecoregion).
+
+    `keys` is where parse put the input axis, and it survives the canonical
+    rewrite the grain did not. Empty for a keyless spine (`unnest([1,2,3])`),
+    which has no axis to offer and needs none."""
+    provided = {alias, origin.address, origin.canonical_address} | origin.pseudonyms
+    if set(origin.grain.components) - provided:
+        return set()
+    return set(origin.keys or ()) - provided
+
+
 def _connector_candidates(
     environment: BuildEnvironment, equivalence: dict[str, str]
 ) -> dict[str, SourceCandidate]:
@@ -428,12 +452,13 @@ def _connector_candidates(
         if origin.lineage is None or origin.derivation is Derivation.BASIC:
             continue
         provided = {alias, origin.address, origin.canonical_address}
+        input_keys = connector_join_keys(alias, origin)
         grain = frozenset(
             equivalence.get(component, component)
-            for component in origin.grain.components
+            for component in (*origin.grain.components, *input_keys)
         )
         bindings: dict[str, Binding] = {}
-        for address in sorted(provided | set(origin.grain.components)):
+        for address in sorted(provided | set(origin.grain.components) | input_keys):
             bindings[equivalence.get(address, address)] = Binding(
                 address=alias if address in provided else address,
                 strength=BindingStrength.FULL,
