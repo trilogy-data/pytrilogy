@@ -9,7 +9,7 @@ language syntax use `agent-info query`; for models use `agent-info authoring`.
 - `trilogy file list [path] --recursive` - list files and model descriptions.
 - `trilogy file read <path>` - read a file when exploration is insufficient.
 - `trilogy file write <path>` - write stdin or use `--content`, `--from-file`, or `--from-url`.
-- `trilogy file write <path> --run` (or `--run-and-delete`) - write, then execute like `trilogy run <path>`; `--run-and-delete` also removes the file afterwards (probe workflow: write+execute+cleanup in one call).
+- `trilogy file write <path> --run` (or `--run-and-delete`) - write, then execute like `trilogy run <path>` in ONE call; forwards `--param k=v`. `--run-and-delete` also removes the file afterwards (probe workflow: write+execute+cleanup in one call). Prefer these over separate write/run/delete calls.
 - `trilogy file move|delete|exists ...` - manage workspace paths.
 - `trilogy fmt <file|dir>` - format Trilogy scripts.
 - `trilogy unit <file|dir>` - validate with mocked datasources.
@@ -24,8 +24,10 @@ Typical existing-model workflow:
 
 1. `trilogy file list . --recursive`
 2. `trilogy explore <fact.preql> --regex <business term>`
-3. `trilogy file write answer.preql` with the complete body on stdin
-4. `trilogy run answer.preql`
+3. `trilogy file write answer.preql --run` with the complete body on stdin —
+   validates syntax, executes, and shows results in one call; re-issue the
+   same call after edits. Use `--run-and-delete` for throwaway probes instead
+   of deleting them in a separate call.
 
 Adding a Python script datasource: write the script with `trilogy.io.run`, then
 `trilogy source describe <script.py>` and paste the `datasource` block it prints.

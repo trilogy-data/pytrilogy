@@ -23,7 +23,12 @@ files — do NOT re-run `trilogy ingest` and do NOT edit files in `{model_dir}/`
 
 Answer the ONE business question below by writing a Trilogy query file to
 `{filename}` in the working directory (alongside `trilogy.toml`, NOT inside
-`{model_dir}/`). Validate with `trilogy run {filename}{validate_params}`.
+`{model_dir}/`). Write and validate it in ONE call:
+`trilogy file write {filename} --run{validate_params}` (body on stdin —
+syntax-checks, executes, and shows results together; re-issue the same call
+after edits). For throwaway exploration probes use
+`trilogy file write <probe>.preql --run-and-delete` rather than separate
+write/run/delete calls.
 
 Return control once it runs cleanly to submit your result. This will be 
 your final action.
@@ -80,9 +85,13 @@ Your goal:
 
 Write one query file per question alongside `trilogy.toml` (NOT inside `raw/`).
 Each question below states its exact filename (`queryNN.preql`, where NN is the
-question number). Validate each file with `trilogy run <file>` before moving
-on. Typically, you will import one fact file from raw/ per question, though
-some rare ones may require merging multiple facts.
+question number). Write and validate each in ONE call before moving on:
+`trilogy file write queryNN.preql --run` (body on stdin — syntax-checks,
+executes, and shows results together; re-issue the same call after edits). For
+throwaway exploration probes use `trilogy file write <probe>.preql
+--run-and-delete` rather than separate write/run/delete calls. Typically, you
+will import one fact file from raw/ per question, though some rare ones may
+require merging multiple facts.
 
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
@@ -174,19 +183,27 @@ def _shell_quote(value: str) -> str:
 def _render_params_block(params: dict) -> tuple[str, str]:
     """Returns (params_block, validate_params_suffix). The block is appended
     to the prompt to describe each parameter; the suffix is appended to the
-    sample `trilogy run` invocation so the agent can copy-paste it."""
+    sample validation invocation so the agent can copy-paste it. Long values
+    appear ONCE (in the suffix) — repeating a 2.6K-char zip list in the block
+    doubles its rebilled context cost for zero information."""
     if not params:
         return "", ""
     lines: list[str] = [_PARAMS_HEADER]
     cli_suffix_parts: list[str] = []
     for name, spec in params.items():
         ptype = spec.get("type", "string")
-        value = spec.get("value", "")
+        value = str(spec.get("value", ""))
         desc = spec.get("description", "")
         desc_tail = f" - {desc}" if desc else ""
         lines.append(f"  - {name} ({ptype}){desc_tail}")
-        lines.append(f"      value: {value}")
-        cli_suffix_parts.append(f"--param {name}={_shell_quote(str(value))}")
+        if len(value) <= 120:
+            lines.append(f"      value: {value}")
+        else:
+            lines.append(
+                f"      value: {value[:60]}... ({len(value)} chars; full value "
+                "is in the validation command above — copy it from there)"
+            )
+        cli_suffix_parts.append(f"--param {name}={_shell_quote(value)}")
     suffix = " " + " ".join(cli_suffix_parts) if cli_suffix_parts else ""
     return "\n".join(lines), suffix
 

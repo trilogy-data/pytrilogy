@@ -1198,6 +1198,8 @@ def _funnel_rows(reports_by_key: dict[str, dict]) -> list[dict]:
         unique = passing - other_passes
         shared = passing & other_passes
         token_p50, token_p90 = _token_percentiles(report)
+        queries = report.get("queries", [])
+        cand_times = sorted(q["cand_ms"] for q in queries if q.get("cand_ms"))
         rows.append(
             {
                 "key": key,
@@ -1208,9 +1210,14 @@ def _funnel_rows(reports_by_key: dict[str, dict]) -> list[dict]:
                 "unique": sorted(unique),
                 "shared": sorted(shared),
                 "tokens": report.get("agent", {}).get("tokens", {}).get("total", 0),
+                "adjusted_tokens": report.get("agent", {})
+                .get("tokens", {})
+                .get("cache_adjusted", 0),
                 "token_p50": token_p50,
                 "token_p90": token_p90,
                 "pass_rate": report.get("summary", {}).get("pass_rate", 0.0),
+                "agg_used": sum(1 for q in queries if q.get("used_aggregate")),
+                "cand_ms_p50": _pct(cand_times, 50) if cand_times else None,
             }
         )
     return rows
@@ -1336,8 +1343,11 @@ def render_funnel(reports_by_key: dict[str, dict], out_path: Path) -> Path:
             f"{r['pass_count']}/{r['total']}",
             f"{r['pass_rate']:.2f}",
             f"{r['tokens']:,}",
+            f"{r['adjusted_tokens']:,}" if r["adjusted_tokens"] else "—",
             f"{r['token_p50']:,.0f}" if r["token_p50"] is not None else "—",
             f"{r['token_p90']:,.0f}" if r["token_p90"] is not None else "—",
+            f"{r['agg_used']}/{r['total']}",
+            f"{r['cand_ms_p50']:,.0f}" if r["cand_ms_p50"] is not None else "—",
         ]
         for r in rows
     ]
@@ -1348,10 +1358,13 @@ def render_funnel(reports_by_key: dict[str, dict], out_path: Path) -> Path:
             "pass",
             "rate",
             "total tokens",
-            "p50 tokens/query",
-            "p90 tokens/query",
+            "cache-adj cost",
+            "p50 tok/query",
+            "p90 tok/query",
+            "agg used",
+            "p50 cand ms",
         ],
-        colWidths=[0.32, 0.1, 0.1, 0.17, 0.15, 0.15],
+        colWidths=[0.24, 0.08, 0.07, 0.13, 0.13, 0.11, 0.11, 0.08, 0.09],
         loc="center",
         cellLoc="center",
     )
@@ -1460,11 +1473,16 @@ def write_funnel_report(reports_by_key: dict[str, dict], out_path: Path) -> Path
         "",
         "## Metrics",
         "",
-        "| category | pass rate | total tokens |",
-        "|---|---|---|",
+        "| category | pass rate | total tokens | cache-adj cost | agg used | p50 cand ms |",
+        "|---|---|---|---|---|---|",
     ]
     for r in rows:
-        lines.append(f"| {r['label']} | {r['pass_rate']:.2f} | {r['tokens']:,} |")
+        adj = f"{r['adjusted_tokens']:,}" if r["adjusted_tokens"] else "—"
+        cand = f"{r['cand_ms_p50']:,.0f}" if r["cand_ms_p50"] is not None else "—"
+        lines.append(
+            f"| {r['label']} | {r['pass_rate']:.2f} | {r['tokens']:,} | {adj} "
+            f"| {r['agg_used']}/{r['total']} | {cand} |"
+        )
 
     labels = [reports_by_key[k]["meta"].get("category_label", k) for k in keys]
     lines += ["", "## Per-query matrix", "", "| query | " + " | ".join(labels) + " |"]

@@ -81,11 +81,26 @@ def show_execution_info(
         print_info(msg)
 
 
+_PARAM_ECHO_LIMIT = 120
+
+
 def show_environment_params(env_params: dict) -> None:
-    """Display environment parameters if any."""
+    """Display environment parameters if any.
+
+    JSON mode elides long values: the caller supplied the value, so echoing
+    it back verbatim only doubles an agent's context (a --param list of 400
+    zips costs ~700 tokens per run call in echo alone)."""
     if env_params:
         if is_json_mode():
-            emit_event("environment_params", params=env_params)
+            shown = {
+                k: (
+                    v
+                    if not isinstance(v, str) or len(v) <= _PARAM_ECHO_LIMIT
+                    else f"{v[:_PARAM_ECHO_LIMIT]}... [{len(v)} chars total, elided]"
+                )
+                for k, v in env_params.items()
+            }
+            emit_event("environment_params", params=shown)
             return
         if _core.RICH_AVAILABLE and _core.console is not None:
             _core.console.print(

@@ -17,7 +17,6 @@ properties sk (
     month_of_year enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     quarter enum<int>[1, 2, 3, 4], # Use this, NOT a quarter derived from `date` — the dim's quarters don't match calendar quarters.
     quarter_name string?, # e.g. '1998Q3'.
-    --d_week_seq1 int, # Alternate week sequence (legacy duplicate of week_seq for joinable subselects).
     month_seq int, # Monotonic month-of-time sequence.
 );
 

@@ -33,6 +33,14 @@ class ConfigurationException(Exception):
     pass
 
 
+class QueryTimeoutException(Exception):
+    """A statement was cancelled for outliving the configured query timeout.
+
+    Deliberately not a subclass of anything the retry layer inspects: the
+    timeout is the caller's own verdict, so retrying it would just spend the
+    same budget again."""
+
+
 class UndefinedConceptException(Exception):
     def __init__(self, message, suggestions: list[str]):
         super().__init__(message)

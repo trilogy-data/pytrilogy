@@ -120,6 +120,11 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
+# SUM-rollable aggregates: re-aggregating a precomputed value with SUM reproduces
+# the coarser-grain value. (`trilogy.core.processing.aggregate_rollup` builds on
+# this; it lives here so the datasource column lookup can use it without a cycle.)
+ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
+
 
 def _gen_agg_name(parent: BuildAggregateWrapper) -> str:
     target = parent.with_abstract_by() if parent.is_abstract else parent
@@ -172,6 +177,24 @@ def generate_concept_name(
         return canonical_name
     parts = sorted({canonical_name, *merge_concepts})
     return f"{VIRTUAL_CONCEPT_PREFIX}_merge_{string_to_hash('|'.join(parts))}"
+
+
+def canonical_address_for(namespace: str | None, canonical_name: str) -> str:
+    """Identity key for canonical-space matching.
+
+    A `_virt_*` canonical name is a hash of the concept's lineage in which every
+    concept argument is spelled as a fully-qualified `canonical_address_grain`,
+    so the hash is already globally unique. Prefixing it with the *authoring*
+    namespace makes one expression written in two namespaces — a query's inline
+    `sum(ss.price)` (namespace `local`) and a summary table's bound
+    `ss.total_price` (namespace `ss`) — look like two different concepts, which
+    hides every datasource-materialized aggregate from canonical-keyed matching.
+    Named/root concepts keep the namespace: there `canonical_name` is just the
+    concept name and is only unique within its namespace.
+    """
+    if canonical_name.startswith(VIRTUAL_CONCEPT_PREFIX):
+        return f"{DEFAULT_NAMESPACE}.{canonical_name}"
+    return f"{namespace}.{canonical_name}"
 
 
 def _constant_bool_comparison(value: bool) -> BuildComparison:
@@ -1333,7 +1356,9 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
 
     def __post_init__(self):
         self.address = f"{self.namespace}.{self.name}"
-        self.canonical_address = f"{self.namespace}.{self.canonical_name}"
+        self.canonical_address = canonical_address_for(
+            self.namespace, self.canonical_name
+        )
         if (
             isinstance(self.lineage, BuildFunction)
             and self.lineage.operator == FunctionType.ALIAS
@@ -1386,7 +1411,32 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
 
     @cached_property
     def canonical_address_grain(self) -> str:
-        return f"{self.namespace}.{self.canonical_name}@{self.grain!s}"
+        return f"{self.canonical_address}@{self.grain!s}"
+
+    @cached_property
+    def additive_aggregate_signature(
+        self,
+    ) -> tuple[FunctionType, tuple[str, ...]] | None:
+        """`(operator, sorted canonical arg addresses)` for a SUM/COUNT aggregate.
+
+        Deliberately grain-free: it is the identity a precomputed aggregate shares
+        with every coarser aggregate it can SUM-roll up to. `canonical_address`
+        cannot serve here because it bakes in the by-grain, so a summary table's
+        column and the query aggregate it answers never match on it. ``None`` for
+        anything that is not an additive aggregate."""
+        if not isinstance(self.lineage, BuildAggregateWrapper):
+            return None
+        if self.lineage.function.operator not in ADDITIVE_ROLLUP_FUNCTIONS:
+            return None
+        return (
+            self.lineage.function.operator,
+            tuple(
+                sorted(
+                    arg.canonical_address
+                    for arg in self.lineage.function.concept_arguments
+                )
+            ),
+        )
 
     def __str__(self):
         grain = str(self.grain) if self.grain else "Grain<>"
@@ -2307,6 +2357,43 @@ class BuildDatasource:
             if Modifier.PARTIAL in c.modifiers and c.concept.address not in full
         ]
 
+    def aggregate_column_for(
+        self, concept: BuildConcept
+    ) -> BuildColumnAssignment | None:
+        """The column binding the same additive aggregate as `concept`, at
+        whatever grain this table happens to hold it.
+
+        This is the only tie between a summary table's `total_x` column and an
+        agent-authored `sum(x) as whatever`: they share no address, and their
+        canonical addresses differ because each bakes in its own by-grain (and
+        differ again when the target grain is spelled as a property of the
+        table's key — `carrier.name` over a `carrier.code` grain). Callers own
+        the grain question; this is purely "same metric"."""
+        signature = concept.additive_aggregate_signature
+        if signature is None:
+            return None
+        for column in self.columns:
+            if column.concept.additive_aggregate_signature == signature:
+                return column
+        return None
+
+    def rollup_column_for(self, concept: BuildConcept) -> BuildColumnAssignment | None:
+        """`aggregate_column_for`, restricted to tables this concept could be
+        SUM-rolled up from — i.e. not ones strictly coarser than it, which hold
+        no value that could be re-aggregated into the requested one.
+
+        The comparison is against the aggregate's own `by` grain, not
+        `concept.grain`: callers re-grain a concept onto the source they are
+        asking about (`QueryDatasource.get_alias`), which would make every
+        request look exact. Whether the render actually wraps the column in SUM
+        is decided separately, by `CTE.rollup_concepts`."""
+        lineage = concept.lineage
+        if not isinstance(lineage, BuildAggregateWrapper):
+            return None
+        if self.grain.components.issubset({c.address for c in lineage.by}):
+            return None
+        return self.aggregate_column_for(concept)
+
     @property
     def column_level_partial_concepts(self) -> list[BuildConcept]:
         """Columns with intrinsic (pre-stamp) PARTIAL — survive a covering UNION."""
@@ -2357,6 +2444,9 @@ class BuildDatasource:
             if x.concept.canonical_address == concept.canonical_address:
                 canonical_match = x
         match = native_match or exact_match or canonical_match
+        if match is None:
+            # Last tier: a finer-grain aggregate this scan will SUM-roll up.
+            match = self.rollup_column_for(concept)
         if match is not None:
             if use_raw_name:
                 return match.alias

@@ -47,6 +47,104 @@ MESSY_WAREHOUSE_CATEGORIES = (
         ".preql",
         warehouse_variants.setup_enriched_noise,
     ),
+    # Pretraining-recall discriminator: sql_schema_aggregates with the
+    # canonical TPC-DS column names replaced by warehouse-style names.
+    # A/B against sql_schema_aggregates isolates the identifier-mapping
+    # subsidy the model gets from having memorized the benchmark schema.
+    Category(
+        "sql_schema_colrename",
+        "db+schema+aggregates, renamed cols",
+        "sql",
+        ".sql",
+        warehouse_variants.setup_sql_schema_colrename,
+    ),
+    # Parameter-shift discriminator: canonical schema, but every prompt's
+    # parameter values (manufacturer 128, month 11, TN, ...) are replaced and
+    # scoring runs against matching shifted references in refs_shifted/.
+    # Combined with colrename, the only remaining recall surface is question
+    # structure itself.
+    Category(
+        "sql_schema_paramshift",
+        "db+schema+aggregates, shifted params",
+        "sql",
+        ".sql",
+        warehouse_variants.setup_sql_schema_aggregates,
+        prompt_field="prompt_shifted",
+        references_dir=EVAL_DIR / "refs_shifted",
+    ),
+    Category(
+        "sql_schema_colrename_paramshift",
+        "db+schema+aggs, renamed+shifted",
+        "sql",
+        ".sql",
+        warehouse_variants.setup_sql_schema_colrename,
+        prompt_field="prompt_shifted",
+        references_dir=EVAL_DIR / "refs_shifted",
+    ),
+    # Noise-dose sweep cells (SQL path only — the enriched path is insensitive
+    # to un-modeled physical tables by construction, so the enriched cells
+    # above are the flat reference line). xN = N times the 12-table base set.
+    # sql_schema_* = full-injection regime (whole schema.md handed over, cap
+    # raised to fit); sql_bare_* = discovery regime (no schema.md, default
+    # cap — the agent probes for itself, so cost tracks its behavior).
+    *(
+        Category(
+            f"sql_schema_noise_x{multiplier}",
+            f"db+schema+aggregates+noise×{multiplier}",
+            "sql",
+            ".sql",
+            warehouse_variants.sql_noise_dose_setup(multiplier),
+            tool_output_limit=warehouse_variants.noise_dose_output_limit(multiplier),
+        )
+        for multiplier in warehouse_variants.NOISE_DOSES
+    ),
+    *(
+        Category(
+            f"sql_bare_noise_x{multiplier}",
+            f"db-only+aggregates+noise×{multiplier}",
+            "sql",
+            ".sql",
+            warehouse_variants.bare_noise_dose_setup(multiplier),
+        )
+        for multiplier in warehouse_variants.NOISE_DOSES
+    ),
+    # Wave 3 — confusable in-domain traps (near-duplicate samples, grain
+    # traps, stale dim copies). Reading schema.md can no longer settle table
+    # choice, so this treatment can produce audit turns or wrong-table picks.
+    # The enriched arm models the daily summaries as own curated files;
+    # backup/staging junk stays unmodeled (plausible curation).
+    *(
+        Category(
+            f"sql_schema_confusable_x{level}",
+            f"db+schema+aggregates+confusable×{level}",
+            "sql",
+            ".sql",
+            warehouse_variants.sql_confusable_dose_setup(level),
+            tool_output_limit=131_072,
+        )
+        for level in (1, 2, 3)
+    ),
+    # Discovery-regime confusable cells: same traps, no schema.md. Traps now
+    # carry copied source comments (no documentation bleed), and the bare
+    # agent's LIKE filters surface them beside the real tables — the cell
+    # where the canonical-name prior is tested nearly alone.
+    *(
+        Category(
+            f"sql_bare_confusable_x{level}",
+            f"db-only+aggregates+confusable×{level}",
+            "sql",
+            ".sql",
+            warehouse_variants.bare_confusable_dose_setup(level),
+        )
+        for level in (1, 2, 3)
+    ),
+    Category(
+        "enriched_confusable",
+        "enriched+aggregates+confusable",
+        "trilogy",
+        ".preql",
+        warehouse_variants.setup_enriched_confusable,
+    ),
 )
 
 SPEC = BenchmarkSpec(
@@ -79,10 +177,24 @@ SPEC = BenchmarkSpec(
         "sql_bare",
         "sql_schema",
         "sql_schema_aggregates",
+        "sql_schema_colrename",
+        "sql_schema_paramshift",
+        "sql_schema_colrename_paramshift",
         "sql_schema_noise",
+        *(
+            f"sql_schema_noise_x{multiplier}"
+            for multiplier in warehouse_variants.NOISE_DOSES
+        ),
+        *(
+            f"sql_bare_noise_x{multiplier}"
+            for multiplier in warehouse_variants.NOISE_DOSES
+        ),
+        *(f"sql_schema_confusable_x{level}" for level in (1, 2, 3)),
+        *(f"sql_bare_confusable_x{level}" for level in (1, 2, 3)),
         "ingest",
         "enriched",
         "enriched_aggregates",
         "enriched_noise",
+        "enriched_confusable",
     ),
 )

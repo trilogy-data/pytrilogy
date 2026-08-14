@@ -519,6 +519,7 @@ def run(spec: BenchmarkSpec) -> int:
         # this leg ships doc files the agent must consult (DABstep's manual).
         allow_file_read=bool(leg_docs),
         disable_todo=not args.enable_todo,
+        tool_output_limit=category.tool_output_limit,
     )
     for doc in leg_docs:
         shutil.copy2(doc, workspace / doc.name)
@@ -613,7 +614,8 @@ def run(spec: BenchmarkSpec) -> int:
     # produce non-empty results at our scale factor (e.g. q32/q41/q44 at
     # SF=0.1). Falls back to PRAGMA when the dir is unset or the file is
     # missing for a given id.
-    references_dir: Path | None = spec.references_dir
+    # Parameter-shifted cells score against their own shifted references.
+    references_dir: Path | None = category.references_dir or spec.references_dir
     if references_dir is not None and not references_dir.exists():
         references_dir = None
     scoring_lock = threading.Lock()

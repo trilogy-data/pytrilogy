@@ -308,6 +308,16 @@ def create_datasource_node(
         or c.address in rollup_addresses
         or datasource_grain.issubset(c.grain)
         or (c.is_aggregate and c.address in datasource_output_addresses)
+        # Same metric, different spelling: an inline alias whose grain is a
+        # property of this table's grain key (`carrier.name` over a
+        # `carrier.code` summary) shares neither address nor canonical with the
+        # bound column. No re-aggregation is involved — the scan is already at
+        # or above the target grain, exactly like the address clause above.
+        or (
+            c.is_aggregate
+            and datasource_grain.issubset(target_grain)
+            and datasource.aggregate_column_for(c) is not None
+        )
     ]
     output_addresses = {c.address for c in output_concepts}
     # Partiality is a binding-level fact: an address also bound complete here
@@ -374,7 +384,15 @@ def create_datasource_node(
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
     for x in all_concepts:
-        if x not in all_inputs and x in canonical_all:
+        # A signature-matched aggregate is an input of this scan even though no
+        # column carries its address or canonical — `aggregate_column_for`
+        # resolves it, and without the input entry it has no source_map binding
+        # and renders as an unbound reference.
+        if x not in all_inputs and (
+            x in canonical_all
+            or x.address in rollup_addresses
+            or (x.address in output_addresses and x.is_aggregate)
+        ):
             all_inputs.append(x)
     all_inputs = [
         c for c in all_inputs if not c.is_aggregate or c.address in output_addresses

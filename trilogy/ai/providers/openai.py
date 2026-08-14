@@ -68,6 +68,7 @@ def _parse_response(data: dict[str, Any]) -> LLMResponse:
 
     usage = data.get("usage") or {}
     output_details = usage.get("output_tokens_details") or {}
+    input_details = usage.get("input_tokens_details") or {}
     incomplete = data.get("incomplete_details") or {}
     return LLMResponse(
         text="".join(text_parts),
@@ -81,6 +82,7 @@ def _parse_response(data: dict[str, Any]) -> LLMResponse:
             completion_tokens=usage.get("output_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
             reasoning_tokens=output_details.get("reasoning_tokens", 0),
+            cached_prompt_tokens=input_details.get("cached_tokens", 0),
         ),
     )
 
@@ -226,6 +228,12 @@ class OpenAIProvider(LLMProvider):
         message = choice["message"]
         usage = data["usage"]
         completion_details = usage.get("completion_tokens_details") or {}
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        # DeepSeek reports prompt_cache_hit_tokens; OpenAI-compatible servers
+        # report prompt_tokens_details.cached_tokens. Same quantity.
+        cached_prompt = usage.get("prompt_cache_hit_tokens") or prompt_details.get(
+            "cached_tokens", 0
+        )
         return LLMResponse(
             text=message.get("content") or "",
             reasoning_content=message.get("reasoning_content"),
@@ -239,6 +247,7 @@ class OpenAIProvider(LLMProvider):
                 completion_tokens=usage["completion_tokens"],
                 total_tokens=usage["total_tokens"],
                 reasoning_tokens=completion_details.get("reasoning_tokens", 0),
+                cached_prompt_tokens=cached_prompt,
             ),
             finish_reason=choice.get("finish_reason"),
         )

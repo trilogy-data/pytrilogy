@@ -612,6 +612,7 @@ def _run_turn_inner(
                     "prompt_tokens": response.usage.prompt_tokens,
                     "completion_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens,
+                    "cached_prompt_tokens": response.usage.cached_prompt_tokens,
                 },
                 "finish_reason": response.finish_reason,
             },

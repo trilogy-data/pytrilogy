@@ -1,15 +1,19 @@
 import random
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from trilogy.core.enums import Purpose
-from trilogy.core.models.author import Concept, ConceptRef
+from trilogy.core.enums import FunctionType, Purpose
+from trilogy.core.models.author import Concept, ConceptRef, Function
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
     ArrayType,
     DataType,
     EnumType,
+    MapType,
+    NumericType,
+    StructType,
     TraitDataType,
     ValidatedType,
 )
@@ -19,9 +23,15 @@ from trilogy.core.statements.execute import ProcessedMockStatement
 from trilogy.dialect.results import MockResult
 
 if TYPE_CHECKING:
+    import pyarrow
     from pyarrow import Table
 
 DEFAULT_SCALE_FACTOR = 100
+ARRAY_MOCK_SIZE = 5
+MAP_MOCK_SIZE = 3
+# element types assumed for parameterless `array`/`map` declarations
+BARE_ARRAY_DEFAULT = ArrayType(type=DataType.INTEGER)
+BARE_MAP_DEFAULT = MapType(key_type=DataType.STRING, value_type=DataType.INTEGER)
 
 
 def safe_name(name: str) -> str:
@@ -45,6 +55,131 @@ def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
     if is_key:
         return [f"#{i:06x}" for i in range(1, scale_factor + 1)]
     return [f"#{random.randint(0, 0xFFFFFF):06x}" for _ in range(scale_factor)]
+
+
+def mock_strings(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        return [f"key_{i}" for i in range(1, scale_factor + 1)]
+    return [f"mock_string_{random.randint(0, 999_999)}" for _ in range(scale_factor)]
+
+
+def mock_integers(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        return list(range(1, scale_factor + 1))
+    return [random.randint(0, 999_999) for _ in range(scale_factor)]
+
+
+def mock_floats(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        return [float(i) for i in range(1, scale_factor + 1)]
+    return [random.uniform(0, 999_999) for _ in range(scale_factor)]
+
+
+def mock_bytes(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        return [f"key_{i}".encode() for i in range(1, scale_factor + 1)]
+    return [random.randbytes(12) for _ in range(scale_factor)]
+
+
+def mock_bools(scale_factor: int, is_key: bool) -> list[Any]:
+    # booleans can only have 2 unique values, so keys don't make sense here
+    return [random.choice([True, False]) for _ in range(scale_factor)]
+
+
+def mock_dates(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        base_date = date(2023, 1, 1)
+        return [
+            date.fromordinal(base_date.toordinal() + i) for i in range(scale_factor)
+        ]
+    return [date(2023, 1, random.randint(1, 28)) for _ in range(scale_factor)]
+
+
+def mock_datetimes(scale_factor: int, is_key: bool) -> list[Any]:
+    if is_key:
+        base_dt = datetime(2023, 1, 1, 0, 0, 0)
+        return [
+            datetime.fromtimestamp(base_dt.timestamp() + i) for i in range(scale_factor)
+        ]
+    return [
+        datetime(
+            2023,
+            1,
+            1,
+            random.randint(0, 23),
+            random.randint(0, 59),
+            random.randint(0, 59),
+        )
+        for _ in range(scale_factor)
+    ]
+
+
+def mock_decimals(
+    precision: int, scale: int, scale_factor: int, is_key: bool
+) -> list[Any]:
+    # Decimal, not float: exact-numeric columns must not pick up binary-float
+    # artifacts. Values are quantized to the declared scale.
+    unit = Decimal(1).scaleb(-scale)
+    if is_key:
+        return [Decimal(i) * unit for i in range(1, scale_factor + 1)]
+    hi = min(10**precision - 1, 999_999 * 10**scale)
+    return [Decimal(random.randint(0, hi)) * unit for _ in range(scale_factor)]
+
+
+def mock_arrays(datatype: ArrayType, scale_factor: int, is_key: bool) -> list[Any]:
+    element = datatype.value_data_type
+    if is_key:
+        # rows are distinguished by a unique, same-typed leading element
+        leads = mock_datatype(element, element, scale_factor, True)
+        tail = mock_datatype(element, element, ARRAY_MOCK_SIZE - 1, False)
+        return [[lead, *tail] for lead in leads]
+    pool = mock_datatype(element, element, scale_factor * ARRAY_MOCK_SIZE, False)
+    return [
+        pool[i * ARRAY_MOCK_SIZE : (i + 1) * ARRAY_MOCK_SIZE]
+        for i in range(scale_factor)
+    ]
+
+
+def mock_maps(datatype: MapType, scale_factor: int, is_key: bool) -> list[Any]:
+    key_type = datatype.key_data_type
+    value_type = datatype.value_data_type
+    keys = mock_datatype(key_type, key_type, MAP_MOCK_SIZE, True)
+    if is_key:
+        # rows are distinguished by a unique value under the first key
+        firsts = mock_datatype(value_type, value_type, scale_factor, True)
+        rest = mock_datatype(value_type, value_type, MAP_MOCK_SIZE - 1, False)
+        return [dict(zip(keys, [first, *rest])) for first in firsts]
+    pool = mock_datatype(value_type, value_type, scale_factor * MAP_MOCK_SIZE, False)
+    return [
+        dict(zip(keys, pool[i * MAP_MOCK_SIZE : (i + 1) * MAP_MOCK_SIZE]))
+        for i in range(scale_factor)
+    ]
+
+
+def mock_structs(datatype: StructType, scale_factor: int, is_key: bool) -> list[Any]:
+    columns = {
+        name: mock_datatype(ftype, ftype, scale_factor, is_key and idx == 0)
+        for idx, (name, ftype) in enumerate(datatype.field_types.items())
+    }
+    return [
+        {name: values[i] for name, values in columns.items()}
+        for i in range(scale_factor)
+    ]
+
+
+BASE_GENERATORS: dict[DataType, Callable[[int, bool], list[Any]]] = {
+    DataType.STRING: mock_strings,
+    DataType.INTEGER: mock_integers,
+    DataType.BIGINT: mock_integers,
+    DataType.FLOAT: mock_floats,
+    DataType.DOUBLE: mock_floats,
+    DataType.NUMBER: mock_floats,
+    DataType.BYTES: mock_bytes,
+    DataType.BOOL: mock_bools,
+    DataType.DATE: mock_dates,
+    DataType.DATETIME: mock_datetimes,
+    DataType.TIMESTAMP: mock_datetimes,
+}
 
 
 def mock_validated(
@@ -128,70 +263,109 @@ def mock_datatype(
             elif full_type.traits == ["hex"]:
                 return mock_hex_code(scale_factor, is_key)
         return mock_datatype(full_type.type, full_type.type, scale_factor, is_key)
-    elif datatype == DataType.INTEGER:
-        if is_key:
-            # unique integers for keys
-            return list(range(1, scale_factor + 1))
-        return [random.randint(0, 999_999) for _ in range(scale_factor)]
-    elif datatype == DataType.STRING:
-        if is_key:
-            # unique strings for keys
-            return [f"key_{i}" for i in range(1, scale_factor + 1)]
-        return [
-            f"mock_string_{random.randint(0, 999_999)}" for _ in range(scale_factor)
-        ]
-    elif datatype in (DataType.FLOAT, DataType.DOUBLE):
-        if is_key:
-            # unique floats for keys
-            return [float(i) for i in range(1, scale_factor + 1)]
-        return [random.uniform(0, 999_999) for _ in range(scale_factor)]
-    elif datatype == DataType.NUMERIC:
-        if is_key:
-            # unique numerics for keys
-            return [float(i) for i in range(1, scale_factor + 1)]
-        return [round(random.uniform(0, 999_999), 2) for _ in range(scale_factor)]
-    elif datatype == DataType.BOOL:
-        # booleans can only have 2 unique values, so keys don't make sense here
-        return [random.choice([True, False]) for _ in range(scale_factor)]
-    elif datatype == DataType.DATE:
-        if is_key:
-            # unique dates for keys - spread across multiple months/years if needed
-            base_date = date(2023, 1, 1)
-            return [
-                date.fromordinal(base_date.toordinal() + i) for i in range(scale_factor)
-            ]
-        return [date(2023, 1, random.randint(1, 28)) for _ in range(scale_factor)]
-    elif datatype in (DataType.DATETIME, DataType.TIMESTAMP):
-        if is_key:
-            # unique datetimes for keys - increment by seconds
-            base_dt = datetime(2023, 1, 1, 0, 0, 0)
-            return [
-                datetime.fromtimestamp(base_dt.timestamp() + i)
-                for i in range(scale_factor)
-            ]
-        return [
-            datetime(
-                2023,
-                1,
-                1,
-                random.randint(0, 23),
-                random.randint(0, 59),
-                random.randint(0, 59),
-            )
-            for _ in range(scale_factor)
-        ]
-    elif isinstance(datatype, ArrayType):
-        # arrays as keys don't typically make sense, but generate unique if requested
-        if is_key:
-            return [
-                [mock_datatype(datatype.type, datatype.value_data_type, 5, False)[0], i]
-                for i in range(scale_factor)
-            ]
-        return [
-            [mock_datatype(datatype.type, datatype.value_data_type, 5, False)]
-            for _ in range(scale_factor)
-        ]
-    raise NotImplementedError(f"Mocking not implemented for datatype {datatype}")
+
+    concrete: Any = (
+        full_type
+        if isinstance(full_type, (NumericType, ArrayType, MapType, StructType))
+        else datatype
+    )
+    # parameterless spellings of parameterized types get canonical defaults
+    if concrete == DataType.NUMERIC:
+        concrete = NumericType()
+    elif concrete == DataType.ARRAY:
+        concrete = BARE_ARRAY_DEFAULT
+    elif concrete == DataType.MAP:
+        concrete = BARE_MAP_DEFAULT
+
+    if isinstance(concrete, NumericType):
+        return mock_decimals(concrete.precision, concrete.scale, scale_factor, is_key)
+    if isinstance(concrete, ArrayType):
+        return mock_arrays(concrete, scale_factor, is_key)
+    if isinstance(concrete, MapType):
+        return mock_maps(concrete, scale_factor, is_key)
+    if isinstance(concrete, StructType):
+        return mock_structs(concrete, scale_factor, is_key)
+
+    base = concrete if isinstance(concrete, DataType) else concrete.data_type
+    generator = BASE_GENERATORS.get(base)
+    if generator is None:
+        raise NotImplementedError(f"Mocking is not implemented for datatype {datatype}")
+    return generator(scale_factor, is_key)
+
+
+def arrow_column_type(datatype: CONCRETE_TYPES) -> "pyarrow.DataType | None":
+    """Explicit arrow type where inference would pick the wrong container:
+    python dicts infer as struct, so declared maps need pa.map_. Everything
+    else infers correctly from the generated values; None means infer."""
+    import pyarrow as pa
+
+    while isinstance(datatype, TraitDataType):
+        datatype = datatype.type
+    if datatype == DataType.MAP:
+        datatype = BARE_MAP_DEFAULT
+    if not isinstance(datatype, MapType):
+        return None
+    key = arrow_scalar_type(datatype.key_data_type)
+    value = arrow_scalar_type(datatype.value_data_type)
+    if key is None or value is None:
+        return None
+    return pa.map_(key, value)
+
+
+def arrow_scalar_type(datatype: CONCRETE_TYPES) -> "pyarrow.DataType | None":
+    import pyarrow as pa
+
+    while isinstance(datatype, TraitDataType):
+        datatype = datatype.type
+    if isinstance(datatype, NumericType):
+        return pa.decimal128(datatype.precision, datatype.scale)
+    if not isinstance(datatype, DataType):
+        return None
+    scalar_map: dict[DataType, pyarrow.DataType] = {
+        DataType.STRING: pa.string(),
+        DataType.INTEGER: pa.int64(),
+        DataType.BIGINT: pa.int64(),
+        DataType.FLOAT: pa.float64(),
+        DataType.DOUBLE: pa.float64(),
+        DataType.NUMBER: pa.float64(),
+        DataType.NUMERIC: pa.decimal128(NumericType().precision, NumericType().scale),
+        DataType.BOOL: pa.bool_(),
+        DataType.DATE: pa.date32(),
+        DataType.DATETIME: pa.timestamp("us"),
+        DataType.TIMESTAMP: pa.timestamp("us"),
+        DataType.BYTES: pa.binary(),
+    }
+    return scalar_map.get(datatype)
+
+
+def cast_target_map(environment: Environment) -> dict[str, CONCRETE_TYPES]:
+    """Concepts whose physical column feeds a datasource-declared cast
+    (`concept::type: other` column bindings) must mock as values that survive
+    that cast; a random string in a column cast to date aborts validation."""
+    out: dict[str, CONCRETE_TYPES] = {}
+    for ds in environment.datasources.values():
+        for col in ds.columns:
+            if (
+                isinstance(col.alias, Function)
+                and col.alias.operator == FunctionType.CAST
+                and len(col.alias.arguments) == 2
+                and isinstance(col.alias.arguments[0], ConceptRef)
+                and isinstance(
+                    col.alias.arguments[1],
+                    (
+                        DataType,
+                        MapType,
+                        ArrayType,
+                        NumericType,
+                        StructType,
+                        TraitDataType,
+                        EnumType,
+                        ValidatedType,
+                    ),
+                )
+            ):
+                out[col.alias.arguments[0].address] = col.alias.arguments[1]
+    return out
 
 
 class MockManager:
@@ -210,24 +384,47 @@ class MockManager:
         }
         for ds in environment.datasources.values():
             self.key_addresses.update(ds.grain.components)
+        self.cast_targets = cast_target_map(environment)
 
     def mock_concept(self, concept: Concept | ConceptRef):
         if concept.address in self.concept_mocks:
             return False
-        self.concept_mocks[concept.address] = mock_datatype(
-            concept.datatype,
-            concept.output_datatype,
-            self.scale_factor,
-            concept.address in self.key_addresses,
-        )
+        is_key = concept.address in self.key_addresses
+        cast_target = self.cast_targets.get(concept.address)
+        try:
+            if (
+                cast_target is not None
+                and concept.datatype.data_type == DataType.STRING
+            ):
+                self.concept_mocks[concept.address] = [
+                    str(v)
+                    for v in mock_datatype(
+                        cast_target, cast_target, self.scale_factor, is_key
+                    )
+                ]
+            else:
+                self.concept_mocks[concept.address] = mock_datatype(
+                    concept.datatype,
+                    concept.output_datatype,
+                    self.scale_factor,
+                    is_key,
+                )
+        except NotImplementedError as e:
+            raise NotImplementedError(
+                f"Cannot mock column bound to {concept.address}: {e}"
+            ) from e
         return True
 
     def create_mock_table(
         self, concepts: Iterable[Concept | ConceptRef], headers: list[str]
     ) -> "Table":
-        from pyarrow import table
+        from pyarrow import array, table
 
-        data = {h: self.concept_mocks[c.address] for h, c in zip(headers, concepts)}
+        data: dict[str, Any] = {}
+        for h, c in zip(headers, concepts):
+            values = self.concept_mocks[c.address]
+            explicit = arrow_column_type(c.datatype)
+            data[h] = array(values, type=explicit) if explicit is not None else values
         return table(data)
 
 

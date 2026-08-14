@@ -98,6 +98,7 @@ class AnthropicProvider(LLMProvider):
             prompt_tokens=input_tokens,
             completion_tokens=usage["output_tokens"],
             total_tokens=input_tokens + usage["output_tokens"],
+            cached_prompt_tokens=usage.get("cache_read_input_tokens", 0),
         )
 
     def generate_completion(

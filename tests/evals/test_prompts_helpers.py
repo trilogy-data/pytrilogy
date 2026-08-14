@@ -70,7 +70,7 @@ def test_build_single_query_task_no_params_omits_block():
     )
     assert "Parameters" not in task
     filename = candidate_filename(_spec(), 3, ".preql")
-    assert f"trilogy run {filename}`" in task
+    assert f"trilogy file write {filename} --run`" in task
     assert "Do the thing." in task
 
 
@@ -93,7 +93,20 @@ def test_build_single_query_task_with_params_appends_block_and_cli_flag():
     assert "zips (string)" in task
     assert "10001,20002" in task
     filename = candidate_filename(_spec(), 8, ".preql")
-    assert f"trilogy run {filename} --param zips=10001,20002`" in task
+    assert f"trilogy file write {filename} --run --param zips=10001,20002`" in task
+
+
+def test_render_params_block_elides_long_values_from_block():
+    """A long value appears once (in the CLI suffix), not twice — the block
+    shows a preview pointing at the validation command."""
+    long_value = ",".join(["12345"] * 400)
+    block, suffix = _render_params_block(
+        {"zips": {"type": "string", "value": long_value}}
+    )
+    assert long_value in suffix
+    assert long_value not in block
+    assert f"({len(long_value)} chars" in block
+    assert block.count("12345") < 20
 
 
 def test_build_single_query_task_with_params_preserves_question_body():

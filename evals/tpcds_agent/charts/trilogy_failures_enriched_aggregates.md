@@ -1,22 +1,37 @@
-# Trilogy failure analysis — 20260811-145004
+# Trilogy failure analysis — 20260813-030820
 
-- Run `20260811-145002_enriched_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 376 | failed: 25 (7%)
+- Run `20260813-030820_enriched_aggregates` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 295 | failed: 18 (6%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `disabled-tool` | 16 | 64% |
-| `other` | 4 | 16% |
-| `syntax-parse` | 3 | 12% |
-| `no-output` | 2 | 8% |
+| `disabled-tool` | 10 | 56% |
+| `other` | 4 | 22% |
+| `syntax-parse` | 3 | 17% |
+| `undefined-concept` | 1 | 6% |
 
 ## Detail
 
 ### `disabled-tool`
 
+- `trilogy file read raw/store_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy database list`
+
+  ```text
+  trilogy database introspection is disabled for this task. The semantic model is already built under root/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
+  ```
 - `trilogy file read raw/all_sales.preql`
+
+  ```text
+  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
+  ```
+- `trilogy file read raw/web_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -31,42 +46,12 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read raw/_q04_agent_rowset_union_join.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read scratch_cust.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read scratch_verify.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
 - `trilogy file read raw/all_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy file read scratch_verify.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read scratch_probe2.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read scratch_chk_store.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read raw/catalog_store_returns.preql`
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -76,22 +61,7 @@
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
   ```
-- `trilogy database list`
-
-  ```text
-  trilogy database introspection is disabled for this task. The semantic model is already built under root/ — use `explore <file.preql>` to see queryable concepts (it chains in imported dimensions too). Do not list raw database tables.
-  ```
-- `trilogy file read probe_avg.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read probe_kept.preql`
-
-  ```text
-  trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
-  ```
-- `trilogy file read probe_avg.preql`
+- `trilogy file read raw/catalog_sales.preql`
 
   ```text
   trilogy file read is disabled for this task. Use `explore <file.preql>` to inspect a model's queryable concepts (it chains in imported dimensions too) instead of reading raw file contents. `file list` and `file write` are still available.
@@ -99,176 +69,352 @@
 
 ### `other`
 
-- `trilogy run scratch1.preql`
+- `trilogy file write probe4.preql --run-and-delete`
 
   ```text
-  Syntax error in scratch1.preql: This script requires parameter "zips" to be set in environment.
-  ```
-- `trilogy run scratch2.preql`
-
-  ```text
-  Syntax error in scratch2.preql: This script requires parameter "zips" to be set in environment.
-  ```
-- `trilogy run scratch_verify.preql --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126,91137,61265,98294,25782,17920,18426,98235,40081,840…26689,96451,38193,46820,88885,84935,69035,83144,47537,56616,94983,48033,69952,25486,61547,27385,61860,58048,56910,16807,17871,35258,31387,35458,35576`
-
-  ```text
-  Unexpected error in scratch_verify.preql: Could not render the query: Missing source reference to qualifying_prefixes.prefix. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
+  Unexpected error in probe4.preql: Could not render the query: Missing source reference to a.sale_date.week_seq. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
 
   Full SQL with sentinel(s):
 
   WITH
-  abhorrent as (
-  SELECT
-      "ss_store_sales"."SS_NET_PROFIT" as "ss_net_profit",
-      "ss_store_store"."S_STORE_NAME" as "ss_store_name",
-      "ss_store_store"."S_ZIP" as "ss_store_zip"
-  FROM
-      "fact_store_sales" as "ss_store_sales"
-      INNER JOIN "dim_date_dim" as "ss_sale_date_date" on "ss_store_sales"."SS_SOLD_DATE_SK" = "ss_sale_date_date"."D_DATE_SK"
-      LEFT OUTER JOIN "dim_store" as "ss_store_store" on "ss_store_sales"."SS_STORE_SK" = "ss_store_store"."S_STORE_SK"
-  WHERE
-      "ss_sale_date_date"."D_YEAR" = 1998 and "ss_sale_date_date"."D_QOY" = 2
-  ),
-  quizzical as (
-  SELECT
-      STRING_SPLIT( :zips , ',' ) as "_virt_func_split_4785012549328100"
-  ),
   cheerful as (
   SELECT
-      "ss_customer_current_address_customer_address"."CA_ZIP" as "ss_customer_current_address_zip",
-      "ss_customer_customers"."C_CUSTOMER_SK" as "ss_customer_sk"
+       'CATALOG'  as "a_channel",
+      "a_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "a_ext_sales_price",
+      "a_catalog_sales_unified"."CS_SOLD_DATE_SK" as "a_sale_date_sk"
   FROM
-      "dim_customer" as "ss_customer_customers"
-      INNER JOIN "dim_customer_address" as "ss_customer_current_address_customer_address" on "ss_customer_customers"."C_CURRENT_ADDR_SK" = "ss_customer_current_address_customer_address"."CA_ADDRESS_SK"
-  WHERE
-      "ss_customer_customers"."C_PREFERRED_CUST_FLAG" = 'Y' and exists (select 1 from (select unnest(quizzical."_virt_func_split_4785012549328100") as unnest_member from quizzical) as unnest_members where unnest_member is not distinct from "ss_customer_current_address_customer_address"."CA_ZIP")
-  ),
-  thoughtful as (
+      "fact_catalog_sales" as "a_catalog_sales_unified"
+  UNION ALL
   SELECT
-      "cheerful"."ss_customer_current_address_zip" as "_qualifying_zips_zip"
+       'WEB'  as "a_channel",
+      "a_web_sales_unified"."WS_EXT_SALES_PRICE" as "a_ext_sales_price",
+      "a_web_sales_unified"."WS_SOLD_DATE_SK" as "a_sale_date_sk"
+  FROM
+      "fact_web_sales" as "a_web_sales_unified"),
+  cooperative as (
+  SELECT
+      "a_sale_date_date"."D_DOW" as "_dow_sales_dow",
+      "a_sale_date_date"."D_WEEK_SEQ" as "_dow_sales_wk",
+      sum("cheerful"."a_ext_sales_price") as "_dow_sales_sales"
   FROM
       "cheerful"
+      LEFT OUTER JOIN "dim_date_dim" as "a_sale_date_date" on "cheerful"."a_sale_date_sk" = "a_sale_date_date"."D_DATE_SK"
+  WHERE
+      ("cheerful"."a_channel" is not null and "cheerful"."a_channel" in ('WEB','CATALOG'))
+
   GROUP BY
-      1
-  HAVING
-      count(distinct "cheerful"."ss_customer_sk") > 10
-  ),
-  abundant as (
+      1,
+      2),
+  uneven as (
   SELECT
-      SUBSTRING("thoughtful"."_qualifying_zips_zip",1,2) as "qualifying_prefixes_prefix"
+      "cooperative"."_dow_sales_dow" as "dow_sales_dow",
+      "cooperative"."_dow_sales_dow" as "fut_dow",
+      "cooperative"."_dow_sales_sales" as "dow_sales_sales",
+      "cooperative"."_dow_sales_sales" as "fut_sales",
+      "cooperative"."_dow_sales_wk" + 53 as "_virt_func_add_2282303569819927",
+      "cooperative"."_dow_sales_wk" as "dow_sales_wk",
+      "cooperative"."_dow_sales_wk" as "fut_wk"
   FROM
-      "thoughtful"
-  GROUP BY
-      1),
-  macho as (
+      "cooperative"),
+  yummy as (
   SELECT
-      "abhorrent"."ss_store_name" as "store_name",
-      "abhorrent"."ss_store_zip" as "store_zip",
-      (exists (select 1 from abundant where abundant."qualifying_prefixes_prefix" is not distinct from SUBSTRING("abhorrent"."ss_store_zip",1,2))) as "qualifies",
-      SUBSTRING("abhorrent"."ss_store_zip",1,2) as "store_prefix"
+      "uneven"."dow_sales_sales" as "dow_sales_sales",
+      "uneven"."dow_sales_wk" as "dow_sales_wk",
+      CASE WHEN "uneven"."fut_sales" is not null THEN "uneven"."dow_sales_sales" ELSE NULL END as "_virt_filter_sales_5458029491157636"
   FROM
-      "abhorrent"),
-  sweltering as (
+      "uneven"),
+  juicy as (
   SELECT
-      "abhorrent"."ss_net_profit" as "ss_net_profit",
-      "abhorrent"."ss_store_name" as "ss_store_name",
-      "abhorrent"."ss_store_name" as "store_name",
-      "abhorrent"."ss_store_zip" as "ss_store_zip",
-      "abhorrent"."ss_store_zip" as "store_zip",
-      (exists (select 1 from INVALID_REFERENCE_BUG<Missing source reference to qualifying_prefixes.prefix> where INVALID_REFERENCE_BUG<Missing source reference to qualifying_prefixes.prefix>."qualifying_prefixes_prefix" is not distinct from SUBSTRING("abhorrent"."ss_store_zip",1,2))) as "qualifies"
+      "yummy"."_virt_filter_sales_5458029491157636" as "_virt_filter_sales_5458029491157636",
+      "yummy"."dow_sales_wk" as "dow_sales_wk"
   FROM
-      "abhorrent"),
-  late as (
-  SELECT
-      "sweltering"."qualifies" as "qualifies",
-      "sweltering"."ss_store_name" as "ss_store_name",
-      "sweltering"."ss_store_zip" as "ss_store_zip",
-      sum("sweltering"."ss_net_profit") as "total_net_profit"
-  FROM
-      "sweltering"
+      "yummy"
   GROUP BY
       1,
       2,
-      3)
+      "yummy"."dow_sales_sales"),
+  vacuous as (
   SELECT
-      "macho"."store_name" as "store_name",
-      "macho"."store_zip" as "store_zip",
-      "macho"."store_prefix" as "store_prefix",
-      "late"."total_net_profit" as "total_net_profit"
+      "juicy"."dow_sales_wk" as "dow_sales_wk",
+      max("juicy"."_virt_filter_sales_5458029491157636") as "has_future"
   FROM
-      "late"
-      INNER JOIN "macho" on "late"."qualifies" = "macho"."qualifies" AND "late"."ss_store_name" is not distinct from "macho"."store_name" AND "late"."ss_store_zip" is not distinct from "macho"."store_zip"
+      "juicy"
+  GROUP BY
+      1),
+  concerned as (
+  SELECT
+      "uneven"."_virt_func_add_2282303569819927" as "_virt_func_add_2282303569819927",
+      "uneven"."dow_sales_dow" as "dow_sales_dow",
+      "uneven"."dow_sales_wk" as "dow_sales_wk",
+      "vacuous"."has_future" as "has_future"
+  FROM
+      "uneven"
+      INNER JOIN "vacuous" on "uneven"."dow_sales_wk" is not distinct from "vacuous"."dow_sales_wk"),
+  young as (
+  SELECT
+      "concerned"."_virt_func_add_2282303569819927" as "_virt_func_add_2282303569819927",
+      "concerned"."dow_sales_dow" as "dow_sales_dow",
+      "concerned"."dow_sales_dow" as "fut_dow",
+      "concerned"."dow_sales_wk" as "wk",
+      "concerned"."has_future" as "has_future"
+  FROM
+      "concerned"),
+  sparkling as (
+  SELECT
+      "young"."_virt_func_add_2282303569819927" as "_virt_func_add_2282303569819927",
+      "young"."dow_sales_dow" as "dow_sales_dow",
+      "young"."fut_dow" as "fut_dow",
+      "young"."has_future" as "has_future",
+      "young"."wk" as "wk"
+  FROM
+      "young")
+  SELECT
+      "young"."wk" as "wk",
+      "young"."has_future" as "has_future"
+  FROM
+      "sparkling"
+      INNER JOIN "young" on "sparkling"."_virt_func_add_2282303569819927" = "young"."_virt_func_add_2282303569819927" AND "sparkling"."dow_sales_dow" is not distinct from "young"."dow_sales_dow" AND "sparkling"."has_future" is not distinct from "young"."has_future" AND "sparkling"."wk" = "young"."wk"
+  WHERE
+      INVALID_REFERENCE_BUG<Missing source reference to a.sale_date.week_seq> >= 5320
+
+  GROUP BY
+      1,
+      2
+  ORDER BY
+      "young"."wk" asc
+  ```
+- `trilogy file write answer_1858999935.preql --run`
+
+  ```text
+  Unexpected error in answer_1858999935.preql: Could not render the query: Missing source reference to a.sale_date.week_seq. A planned reference has no backing source CTE -- typically an unsupported cross-rowset or membership shape the planner could not wire. Review the rowset/join structure (or file an issue if the query looks valid).
+
+  Full SQL with sentinel(s):
+
+  WITH
+  sparkling as (
+  SELECT
+      "d_date"."D_WEEK_SEQ" as "weeks2001_wk"
+  FROM
+      "dim_date_dim" as "d_date"
+  WHERE
+      "d_date"."D_YEAR" = 2001
+
+  GROUP BY
+      1),
+  cheerful as (
+  SELECT
+       'CATALOG'  as "a_channel",
+      "a_catalog_sales_unified"."CS_EXT_SALES_PRICE" as "a_ext_sales_price",
+      "a_catalog_sales_unified"."CS_SOLD_DATE_SK" as "a_sale_date_sk"
+  FROM
+      "fact_catalog_sales" as "a_catalog_sales_unified"
+  UNION ALL
+  SELECT
+       'WEB'  as "a_channel",
+      "a_web_sales_unified"."WS_EXT_SALES_PRICE" as "a_ext_sales_price",
+      "a_web_sales_unified"."WS_SOLD_DATE_SK" as "a_sale_date_sk"
+  FROM
+      "fact_web_sales" as "a_web_sales_unified"),
+  cooperative as (
+  SELECT
+      "a_sale_date_date"."D_DOW" as "_dow_sales_dow",
+      "a_sale_date_date"."D_WEEK_SEQ" as "_dow_sales_wk",
+      sum("cheerful"."a_ext_sales_price") as "_dow_sales_sales"
+  FROM
+      "cheerful"
+      LEFT OUTER JOIN "dim_date_dim" as "a_sale_date_date" on "cheerful"."a_sale_date_sk" = "a_sale_date_date"."D_DATE_SK"
+  WHERE
+      ("cheerful"."a_channel" is not null and "cheerful"."a_channel" in ('WEB','CATALOG'))
+
+  GROUP BY
+      1,
+      2),
+  uneven as (
+  SELECT
+      "cooperative"."_dow_sales_dow" as "dow_sales_dow",
+      "cooperative"."_dow_sales_dow" as "fut_dow",
+      "cooperative"."_dow_sales_sales" as "dow_sales_sales",
+      "cooperative"."_dow_sales_sales" as "fut_sales",
+      "cooperative"."_dow_sales_wk" + 53 as "_virt_func_add_2282303569819927",
+      "cooperative"."_dow_sales_wk" as "dow_sales_wk",
+      "cooperative"."_dow_sales_wk" as "fut_wk"
+  FROM
+      "cooperative"),
+  yummy as (
+  SELECT
+      "uneven"."dow_sales_dow" as "dow_sales_dow",
+      "uneven"."dow_sales_sales" / "uneven"."fut_sales" as "_virt_func_divide_4096338924150021",
+      "uneven"."dow_sales_wk" as "dow_sales_wk",
+      "uneven"."fut_dow" as "fut_dow",
+      "uneven"."fut_wk" as "fut_wk"
+  FROM
+      "uneven"),
+  juicy as (
+  SELECT
+      "yummy"."dow_sales_dow" as "dow_sales_dow",
+      "yummy"."dow_sales_wk" as "dow_sales_wk",
+      "yummy"."fut_dow" as "fut_dow",
+      "yummy"."fut_wk" as "fut_wk",
+      CASE WHEN "yummy"."dow_sales_dow" = 0 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_5958033065751971",
+      CASE WHEN "yummy"."dow_sales_dow" = 1 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_601564596795895",
+      CASE WHEN "yummy"."dow_sales_dow" = 2 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_2946388091590669",
+      CASE WHEN "yummy"."dow_sales_dow" = 3 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_8565183181289158",
+      CASE WHEN "yummy"."dow_sales_dow" = 4 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_3283913797702838",
+      CASE WHEN "yummy"."dow_sales_dow" = 5 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_2437681644627202",
+      CASE WHEN "yummy"."dow_sales_dow" = 6 THEN "yummy"."_virt_func_divide_4096338924150021" ELSE NULL END as "_virt_filter_9399393513655732"
+  FROM
+      "yummy"),
+  vacuous as (
+  SELECT
+      "juicy"."_virt_filter_2437681644627202" as "_virt_agg_max_1235202847133100",
+      "juicy"."_virt_filter_2946388091590669" as "_virt_agg_max_7392672016673230",
+      "juicy"."_virt_filter_3283913797702838" as "_virt_agg_max_5114579565971939",
+      "juicy"."_virt_filter_5958033065751971" as "_virt_agg_max_4804741707063960",
+      "juicy"."_virt_filter_601564596795895" as "_virt_agg_max_9131047644678936",
+      "juicy"."_virt_filter_8565183181289158" as "_virt_agg_max_4064030836947737",
+      "juicy"."_virt_filter_9399393513655732" as "_virt_agg_max_9565596272094933",
+      "juicy"."dow_sales_wk" as "week_seq",
+      "juicy"."fut_dow" as "fut_dow",
+      "juicy"."fut_wk" as "fut_wk"
+  FROM
+      "juicy"),
+  concerned as (
+  SELECT
+      "vacuous"."fut_dow" as "dow_sales_dow",
+      "vacuous"."fut_dow" as "fut_dow",
+      "vacuous"."fut_wk" as "_virt_func_add_2282303569819927",
+      "vacuous"."fut_wk" as "fut_wk",
+      "vacuous"."week_seq" as "week_seq",
+      round("vacuous"."_virt_agg_max_1235202847133100",2) as "fri_ratio",
+      round("vacuous"."_virt_agg_max_4064030836947737",2) as "wed_ratio",
+      round("vacuous"."_virt_agg_max_4804741707063960",2) as "sun_ratio",
+      round("vacuous"."_virt_agg_max_5114579565971939",2) as "thu_ratio",
+      round("vacuous"."_virt_agg_max_7392672016673230",2) as "tue_ratio",
+      round("vacuous"."_virt_agg_max_9131047644678936",2) as "mon_ratio",
+      round("vacuous"."_virt_agg_max_9565596272094933",2) as "sat_ratio"
+  FROM
+      "vacuous"),
+  young as (
+  SELECT
+      "concerned"."_virt_func_add_2282303569819927" as "_virt_func_add_2282303569819927",
+      "concerned"."dow_sales_dow" as "dow_sales_dow",
+      "concerned"."fri_ratio" as "fri_ratio",
+      "concerned"."fut_dow" as "fut_dow",
+      "concerned"."fut_wk" as "fut_wk",
+      "concerned"."mon_ratio" as "mon_ratio",
+      "concerned"."sat_ratio" as "sat_ratio",
+      "concerned"."sun_ratio" as "sun_ratio",
+      "concerned"."thu_ratio" as "thu_ratio",
+      "concerned"."tue_ratio" as "tue_ratio",
+      "concerned"."wed_ratio" as "wed_ratio",
+      "concerned"."week_seq" as "week_seq"
+  FROM
+      "concerned")
+  SELECT
+      "concerned"."week_seq" as "week_seq",
+      "concerned"."sun_ratio" as "sun_ratio",
+      "concerned"."mon_ratio" as "mon_ratio",
+      "concerned"."tue_ratio" as "tue_ratio",
+      "concerned"."wed_ratio" as "wed_ratio",
+      "concerned"."thu_ratio" as "thu_ratio",
+      "concerned"."fri_ratio" as "fri_ratio",
+      "concerned"."sat_ratio" as "sat_ratio"
+  FROM
+      "young"
+      INNER JOIN "concerned" on "young"."dow_sales_dow" is not distinct from "concerned"."fut_dow" AND "young"."fri_ratio" is not distinct from "concerned"."fri_ratio" AND "young"."fut_wk" = "concerned"."fut_wk" AND "young"."mon_ratio" is not distinct from "concerned"."mon_ratio" AND "young"."sat_ratio" is not distinct from "concerned"."sat_ratio" AND "young"."sun_ratio" is not distinct from "concerned"."sun_ratio" AND "young"."thu_ratio" is not distinct from "concerned"."thu_ratio" AND "young"."tue_ratio" is not distinct from "concerned"."tue_ratio" AND "young"."wed_ratio" is not distinct from "concerned"."wed_ratio" AND "young"."week_seq" = "concerned"."week_seq"
+  WHERE
+      exists (select 1 from sparkling where sparkling."weeks2001_wk" is not distinct from INVALID_REFERENCE_BUG<Missing source reference to a.sale_date.week_seq>)
+
   GROUP BY
       1,
       2,
       3,
       4,
-      "late"."qualifies"
+      5,
+      6,
+      7,
+      8
   ORDER BY
-      "macho"."store_name" asc,
-      "macho"."store_zip" asc
-  LIMIT (100)
+      "concerned"."week_seq" asc
   ```
-- `trilogy run probe8.preql`
+- `trilogy file write probe2.preql --run-and-delete`
 
   ```text
-  Syntax error in probe8.preql: HAVING filters on a dimension outside the SELECT projection, but the select has no grain key to anchor a post-aggregation semijoin (line 29). Move the filter to WHERE to filter before aggregation.
+  Syntax error in probe2.preql: a `(select ...)` subquery used as a scalar value or membership set must select exactly one column; project only the key/value consumed by the outer expression (line 7, column 7)
+  ```
+- `trilogy agent-info syntax example intersect-setops`
+
+  ```text
+  Unknown syntax example: 'intersect-setops'
+
+  Available Trilogy syntax examples - print one with `trilogy agent-info syntax example <name>`:
+
+  - `python-datasource` - run a local Python script as a datasource: wrap a function in `trilogy.io.run`, which writes the Arrow IPC stream to stdout for you from a table, dataframe, or list of dicts; declare concepts, map script columns in `datasource (...)`, use `grain (...) file `path.py`;`, then reference locally declared concepts WITHOUT the datasource name as a prefix
+  - `query-structure` - the clause order of a query (`where` -> `select` <cols> -> joi
+  …
+  subtotal/total rows and to sort by level
+  - `rank-over-rollup` - rank rollup subtotals/leaves with a SINGLE `rank(a,b) over (partition by level, parent ...)` - not separate ranks per level
+  - `staged-membership` - compute a membership set in a `rowset` (keys meeting a count/HAVING), then filter the main query with `<key> in <rowset>.<col>`
+  - `correlated-exists-via-grouped-counts` - translate `EXISTS other` / `NOT EXISTS other matching` over the same model into two `count(...) by <grain>` compared in `where` (`> 1` = another exists, `= 1` = no other matches) - pin the correlation grain with `by`
   ```
 
 ### `syntax-parse`
 
-- `trilogy file write scratch_explore.preql`
+- `trilogy file write probe5.preql --run-and-delete`
 
   ```text
-  refused to write 'scratch_explore.preql': not syntactically valid Trilogy.
+  refused to write 'probe5.preql': not syntactically valid Trilogy.
 
   Parse error:
-  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
-  Location:
-   not null) as with_category,
-   ???
-  ```
-- `trilogy file write scratch_probe.preql`
-
-  ```text
-  refused to write 'scratch_probe.preql': not syntactically valid Trilogy.
-
-  Parse error:
-    --> 15:1
+    --> 16:1
      |
-  15 | order by qualifying_line_items asc nulls first, ss.customer.current_address.state asc nulls first
+  16 | ;
      | ^---
      |
-     = expected LOGICAL_OR, LOGICAL_AND, dot_tail, bracket_tail, dcolon_tail, PLUS_OR_MINUS, or MULTIPLY_DIVIDE_PERCENT
+     = expected EOI, block, or show_statement
   Location:
-   qualifying_line_items >= 10
-   ??? order by qualifying_line_items...
+  ...ales.dow = fut.dow
+   limit 5;
+   ??? ;
   ```
-- `trilogy file write scratch_probe_q25b.preql`
+- `trilogy file write probe6.preql --run-and-delete`
 
   ```text
-  refused to write 'scratch_probe_q25b.preql': not syntactically valid Trilogy.
+  refused to write 'probe6.preql': not syntactically valid Trilogy.
 
   Parse error:
-    --> 10:30
+    --> 21:1
      |
-  10 |     --(max(cs.warehouse.sk) <> min(cs.warehouse.sk)) as differs,
-     |                              ^---
+  21 | ;
+     | ^---
      |
-     = expected sum_operator
+     = expected EOI, block, or show_statement
   Location:
-       --(max(cs.warehouse.sk) < ??? > min(cs.warehouse.sk)) as dif...
+  ...atio_pairs.dow asc
+   limit 5;
+   ??? ;
   ```
-
-### `no-output`
-
-- `trilogy run scratch4.preql --param zips=24128,76232,65084`
+- `trilogy file write probe2.preql --run-and-delete`
 
   ```text
-  Nothing was executed: parsed 3 definition statement(s) (1 concept, 1 import, 1 rowset) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
+  refused to write 'probe2.preql': not syntactically valid Trilogy.
+
+  Parse error:
+    --> 25:1
+     |
+  25 | by *;
+     | ^---
+     |
+     = expected metadata, limit, order_by, where, having, select_grouping, or JOIN_TYPE
+  Location:
+  ...year = 11)) as nov2001_lines
+   ??? by *;
   ```
-- `trilogy run probe_counts.preql`
+
+### `undefined-concept`
+
+- `trilogy file write probe4.preql --run-and-delete --param zips=24128,76232,65084,87816,83926,77556,20548,26231,43848,15126`
 
   ```text
-  Nothing was executed: parsed 4 definition statement(s) (3 rowsets, 1 import) but none produce output. Did you mean to include a SELECT statement, or run a refresh on datasources instead?
+  Syntax error in probe4.preql: Undefined concept: local.zip (line 17, col 10, in ORDER BY). Suggestions: ['ss.store.zip', 'ss.pos_address.zip', 'ss.return_store.zip', 'qualifying_zips.zip', 'ss.return_address.zip', 'ss.customer.current_address.zip']
   ```

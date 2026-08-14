@@ -408,14 +408,18 @@ def prune_sources_for_aggregates(
                     continue
                 if not _target_reachable(ds_grain):
                     continue
-                # Address-match (not just signature): the DS must bind a
-                # column under the requested aggregate's exact address.
-                # Signature-only matches let an alias like
-                # `customer_daily_order_count` masquerade as `order_count`,
-                # which the renderer can't emit (no column with that name).
+                # The DS must bind a column the renderer can actually emit for
+                # this aggregate: its exact address, or — for an agent-authored
+                # alias that shares no address with anything — an additive
+                # column of the same lineage signature, which
+                # `BuildDatasource.rollup_column_for` resolves and the grouping
+                # CTE re-aggregates.
                 ds_output_addresses = {c.address for c in ds.output_concepts}
                 if all(
-                    c.address in ds_output_addresses
+                    (
+                        c.address in ds_output_addresses
+                        or ds.rollup_column_for(c) is not None
+                    )
                     and _datasource_materializes_aggregate(ds, c)
                     for c in additive
                 ):

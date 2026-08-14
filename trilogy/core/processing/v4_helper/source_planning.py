@@ -833,6 +833,37 @@ def _datasource_can_output(
     )
 
 
+def _datasource_rolls_up_to(
+    datasource: BuildDatasource | BuildUnionDatasource | None,
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> bool:
+    """`datasource` binds an additive aggregate that SUM-rolls up to `concept` at
+    `concept`'s own grain — the anonymous-alias analogue of binding it outright.
+
+    A named metric reaches its summary table because query and column share an
+    address; an agent-authored `sum(x) as total` shares an address with nothing,
+    and its grain-pinned canonical differs from the column's, so only the
+    lineage-signature rollup check can relate them."""
+    if not isinstance(datasource, BuildDatasource):
+        return False
+    if not (concept.is_aggregate and _is_additive_aggregate(concept)):
+        return False
+    return bool(
+        get_additive_rollup_concepts(
+            datasource=datasource,
+            requested_concepts=[concept],
+            concepts_by_address=environment.concepts,
+            datasources=[
+                ds
+                for ds in environment.datasources.values()
+                if isinstance(ds, BuildDatasource)
+            ],
+            target_grain=concept.grain,
+        )
+    )
+
+
 def _datasource_renders_derived(
     datasource: BuildDatasource | BuildUnionDatasource | None,
     concept: BuildConcept,
@@ -928,6 +959,15 @@ def _local_concept_nodes_for_datasource(
     environment: BuildEnvironment,
 ) -> list[str]:
     datasource = graph.datasources.get(ds_node)
+    # `canonical_concepts` keeps one concept per canonical address, so a query
+    # alias and an identically-derived named metric (`sum(x) as total` beside a
+    # declared `total_x`) collide there and the winner may not be the address the
+    # request asked for. Match the aggregate arm below on the canonical instead.
+    bridge_canonicals = {
+        concept.canonical_address
+        for address in bridge_addresses
+        if (concept := environment.concepts.get(address)) is not None
+    }
     queue: deque[str] = deque([ds_node])
     seen: set[str] = {ds_node}
     concepts: dict[str, str] = {}
@@ -993,9 +1033,17 @@ def _local_concept_nodes_for_datasource(
             renders_materialized_canonical = (
                 canonical is not None
                 and canonical.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
-                and canonical.address in bridge_addresses
+                and (
+                    canonical.address in bridge_addresses
+                    or address in bridge_canonicals
+                )
                 and datasource is not None
-                and _datasource_can_output(datasource, canonical.address)
+                and (
+                    _datasource_can_output(datasource, canonical.address)
+                    # ...or it binds a finer additive aggregate that rolls up to
+                    # it, which is how an anonymous alias reaches a summary table.
+                    or _datasource_rolls_up_to(datasource, canonical, environment)
+                )
             )
             if (
                 canonical is not None

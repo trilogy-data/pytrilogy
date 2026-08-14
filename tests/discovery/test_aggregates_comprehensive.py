@@ -310,10 +310,14 @@ SELECT
 WHERE order_date > '2024-01-15'::date
 ;
 """)[-1]
-    # Should fall back to base table or filtered customer_summary
+    # The customer-grain summary cannot express the date filter, but the
+    # customer/date summary can: filter it pre-aggregation and SUM-roll to
+    # customer_id rather than falling back to the raw orders scan.
+    assert "customer_daily_summary" in generated, generated
     assert (
-        "customer_summary" in generated or "orders" in generated
-    ), f"Expected customer_summary or orders table, got: {generated}"
+        'sum("customer_daily_summary"."customer_daily_revenue")' in generated
+    ), generated
+    assert "orders" not in generated, generated
 
 
 def test_cross_dimensional_aggregation():
