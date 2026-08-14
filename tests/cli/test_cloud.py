@@ -2832,6 +2832,50 @@ schedule = "0 0 6 * * *"
         assert len(posted) == 2
         assert all(len(p["job_ids"]) == 1 for p in posted)
 
+    def test_adding_a_job_replaces_the_schedule_instead_of_duplicating_it(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The failure this test exists for was live on dev: yesterday's
+        two-job schedule does not match today's three-job group, so with
+        exact-set ownership it goes unrecognized, a second schedule is created
+        beside it, and the two original jobs fire *twice a tick*.
+
+        Ownership is therefore "binds only jobs this toml declares", which
+        recognizes the older row and replaces it.
+        """
+        root = self._repo(tmp_path)
+        yesterday = _schedule_payload(
+            "space-refresh-schedule", "0 0 6 * * *", job_names=["space-refresh"]
+        )
+        yesterday["job_ids"] = ["job-refresh"]
+        self._seed(logged_in, schedules=[yesterday])
+
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        ), "the superseded schedule must be removed, not left firing"
+        posted = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/schedules")
+        assert len(posted) == 1 and len(posted[0]["job_ids"]) == 2
+
+    def test_another_groups_schedule_is_left_alone(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Ownership stops at the toml: a schedule binding a job this project
+        does not declare is somebody else's grouping."""
+        root = self._repo(tmp_path)
+        theirs = _schedule_payload(
+            "ops-nightly", "0 0 6 * * *", job_names=["space-refresh", "somebody-else"]
+        )
+        theirs["job_ids"] = ["job-refresh", "job-stranger"]
+        self._seed(logged_in, schedules=[theirs])
+
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        )
+
     def test_an_unchanged_group_schedule_is_left_alone(
         self, logged_in, run_cloud, tmp_path
     ):

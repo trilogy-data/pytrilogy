@@ -2323,6 +2323,11 @@ def cloud_sync(
     # in separate firings with nothing between them but wall clock, which is
     # the arrangement schedule ordering exists to replace.
     groups: dict[tuple[Path, str | None], list[Job]] = {}
+    # Every job a given toml declares, across all its groups — what decides
+    # whether an existing schedule is this toml's to replace. See
+    # `_reconcile_schedule`: matching on the group alone cannot recognize the
+    # row it wrote yesterday once the group has gained or lost a job.
+    declared_by_toml: dict[Path, list[Job]] = {}
     for project in projects:
         outcome, job = _sync_one(
             client, org, project, by_key, env_id, schedules, dry_run
@@ -2331,9 +2336,12 @@ def cloud_sync(
         print_info(f"  {outcome['outcome']:>12}  {project.name}")
         if job is not None and env_id is None:
             groups.setdefault((project.config_path, project.settings.schedule), []).append(job)
+            declared_by_toml.setdefault(project.config_path, []).append(job)
 
-    for (_config_path, cron), jobs in groups.items():
-        _reconcile_schedule(client, org, jobs, cron, schedules)
+    for (config_path, cron), jobs in groups.items():
+        _reconcile_schedule(
+            client, org, jobs, cron, schedules, declared_by_toml[config_path]
+        )
 
     pruned = _prune_stale(client, org, projects, by_key, dry_run) if prune else 0
 
@@ -2492,6 +2500,7 @@ def _reconcile_schedule(
     jobs: Sequence[Job],
     cron: str | None,
     schedules: Sequence[ScheduleExt],
+    owned: Sequence[Job],
 ) -> None:
     """Bring one group's schedule in line with what its config declares.
 
@@ -2517,10 +2526,18 @@ def _reconcile_schedule(
     before for every case that existed then, and no crash against a deployment
     that has not rolled yet.
 
-    A schedule binding jobs this group does not name is still left alone: that
-    is someone else's grouping, and the match is on the binding set being
-    *exactly* this group's — the same "bound to this and nothing else" test as
-    before, now with more than one thing allowed in "this".
+    **Ownership is "binds only jobs this toml declares", not "binds exactly
+    this group".** The difference is what happens the day a job is added: with
+    exact-set matching, yesterday's two-job schedule no longer matches today's
+    three-job group, goes unrecognized, and a second schedule is created beside
+    it — so the two original jobs fire *twice a tick*. That is the same
+    duplicate-schedule failure the rename bug had, reintroduced from the other
+    end, and it was live on dev for about a minute on 2026-08-14.
+
+    *owned* is every job this toml declares, across all its groups. A schedule
+    binding a job from outside it is somebody else's grouping and is left
+    alone; one binding a subset of it, and at least one job of this group, is
+    the row this sync wrote and is the row it replaces.
 
     A declared cron that differs is replaced rather than edited — there is no
     schedule update route — and an unchanged one is left untouched, so a sync
@@ -2530,18 +2547,38 @@ def _reconcile_schedule(
     """
     ids = {job.id for job in jobs}
     names = {job.name for job in jobs}
+    owned_ids = {job.id for job in owned}
+    owned_names = {job.name for job in owned}
     label = ", ".join(sorted(names))
-    mine = [
-        s
-        for s in schedules
-        if (set(s.job_ids) == ids if s.job_ids else set(s.job_names) == names)
-    ]
+
+    def is_mine(s: ScheduleExt) -> bool:
+        # `job_ids` is empty against an API older than the field; fall back to
+        # names, which is the same answer for every case that existed then.
+        bound_ids, bound_names = set(s.job_ids), set(s.job_names)
+        if bound_ids:
+            return bool(bound_ids) and bound_ids <= owned_ids and bool(bound_ids & ids)
+        return bool(bound_names) and bound_names <= owned_names and bool(bound_names & names)
+
+    mine = [s for s in schedules if is_mine(s)]
     if cron is None:
         for schedule in mine:
             client.delete(f"/orgs/{org}/schedules/{schedule.id}")
             print_info(f"    {'unscheduled':>12}  {label}")
         return
-    if any(s.cron_expr == cron for s in mine):
+
+    # "Already correct" means the cadence *and* the bindings match. Cadence
+    # alone is not enough now that ownership is broader than the group: a row
+    # left over from before a job was added has the right cron and the wrong
+    # jobs, and treating it as current is how the new job silently never runs.
+    def binds_this_group(s: ScheduleExt) -> bool:
+        return set(s.job_ids) == ids if s.job_ids else set(s.job_names) == names
+
+    current = [s for s in mine if s.cron_expr == cron and binds_this_group(s)]
+    stale = [s for s in mine if s not in current]
+    if current:
+        for schedule in stale:
+            client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+            print_info(f"    {'unscheduled':>12}  a superseded schedule for {label}")
         return
     for schedule in mine:
         client.delete(f"/orgs/{org}/schedules/{schedule.id}")
