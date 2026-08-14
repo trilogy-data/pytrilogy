@@ -260,11 +260,13 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     # pins the two against each other — without that pin, adding a deployment
     # setting there makes a valid toml audit as unknown here.
     #
-    # There is deliberately no `name` key: a job's name is derived from its
-    # path under the sync root, so two projects cannot collide on one.
+    # `name` is what the job is called; omitted, it derives from the path under
+    # the sync root, which is the right answer in a models repository and a bare
+    # leaf name for a project that is its own repository.
     "cloud": {
         "api_url",
         "org",
+        "name",
         "schedule",
         "operation",
         "timeout_seconds",

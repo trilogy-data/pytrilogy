@@ -54,7 +54,10 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.history import V4History
-from trilogy.core.processing.v4_helper.network_build import build_source_network
+from trilogy.core.processing.v4_helper.network_build import (
+    build_source_network,
+    connector_join_keys,
+)
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
     SearchResult,
@@ -102,6 +105,12 @@ class NetworkDecision:
 class BridgePlan:
     concepts: list[BuildConcept]
     graph: ReferenceGraph
+    # Connector aliases the network search CHOSE as join hops. Address coverage
+    # must not veto planning these: a merged key's surviving address is bound by
+    # the dimension scan and its input keys by the fact scan, so every address
+    # looks covered — yet the two scans share no column and only the connector's
+    # subplan (e.g. a merged-unnest bridge) can relate them.
+    connector_aliases: tuple[str, ...] = ()
 
 
 def _concept_node_address(node: str) -> str:
@@ -519,7 +528,13 @@ def _network_source(
         for pseudonym in concept.pseudonyms:
             synonyms[pseudonym] = concept.address
     reinject_common_join_keys_v2(request.graph, graph, synonyms)
-    return NetworkDecision(bridge=BridgePlan(concepts=bridge_concepts, graph=graph))
+    return NetworkDecision(
+        bridge=BridgePlan(
+            concepts=bridge_concepts,
+            graph=graph,
+            connector_aliases=tuple(connector_aliases),
+        )
+    )
 
 
 def _concept_has_non_basic_merge_origin(
@@ -710,7 +725,8 @@ def _derived_connector_nodes(
     covered = {
         c.address for parent in datasource_parents for c in parent.usable_outputs
     }
-    if {c.address for c in plan.concepts} <= covered:
+    forced = set(plan.connector_aliases)
+    if not forced and {c.address for c in plan.concepts} <= covered:
         return []
     # Imported lazily: `concept_strategies_v4` imports this module's package.
     from trilogy.core.processing.concept_strategies_v4 import search_concepts
@@ -731,7 +747,7 @@ def _derived_connector_nodes(
                 origin is None
                 or origin.lineage is None
                 or origin.address in planned
-                or origin.address in covered
+                or (origin.address in covered and alias not in forced)
                 or origin.address in history.connectors_in_progress
             ):
                 continue
@@ -746,7 +762,14 @@ def _derived_connector_nodes(
             # non-BASIC merge bridges, so no raw scan will ever supply it
             # (window-key join: `orders.amt` rides the rank connector at oid
             # grain, so the window computes inline on the amt-carrying scan).
-            grain_components = set(origin.grain.components)
+            # A connector whose grain offers no axis beyond the merged key emits
+            # its input keys instead (see `connector_join_keys`) — the same
+            # contract `_connector_candidates` bound when the search picked it.
+            # Without them the subplan joins the consumer only on the key it
+            # exists to relate, which is no join at all.
+            grain_components = set(origin.grain.components) | connector_join_keys(
+                alias, origin
+            )
             carried = [
                 c
                 for c in plan.concepts
@@ -760,7 +783,7 @@ def _derived_connector_nodes(
                 [origin]
                 + [
                     env.concepts[address]
-                    for address in origin.grain.components
+                    for address in sorted(grain_components)
                     if address in env.concepts
                 ]
                 + carried,
