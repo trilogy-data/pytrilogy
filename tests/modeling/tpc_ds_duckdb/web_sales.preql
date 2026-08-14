@@ -34,7 +34,6 @@ import household_demographic as pos_ship_household_demographic; # recorded at po
 import household_demographic as pos_bill_household_demographic; # recorded at point of sale
 
 key order_number int; # identifies a single web sales transaction
---key return_order_number int; # Web order number on the returns side, for return-only queries.
 
 properties <order_number, item.sk> (
     quantity int,

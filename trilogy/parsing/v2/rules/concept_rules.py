@@ -455,7 +455,7 @@ def concept_lit(
 
 
 # Spelling aliases resolved to a canonical DataType value before enum lookup.
-_DATATYPE_SPELLING_ALIASES = {"decimal": "numeric"}
+_DATATYPE_SPELLING_ALIASES = {"decimal": "numeric", "list": "array"}
 
 
 def data_type(

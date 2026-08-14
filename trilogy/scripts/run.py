@@ -119,6 +119,18 @@ def _format_import(value: str) -> str:
     help="Maximum parallel workers for directory execution",
 )
 @option(
+    "--timeout",
+    "timeout",
+    type=click.FloatRange(min=0, min_open=True),
+    default=None,
+    help=(
+        "Seconds a single statement may run before it is cancelled. Off by "
+        "default. The driver is asked to abort the query, so the warehouse stops "
+        "working rather than the CLI merely giving up on it; dialects whose "
+        "driver cannot cancel a statement reject the flag instead of ignoring it."
+    ),
+)
+@option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
 @option(
@@ -188,6 +200,7 @@ def run(
     dialect: str | None,
     param,
     parallelism: int | None,
+    timeout: float | None,
     config,
     env,
     imports: tuple[str, ...],
@@ -253,6 +266,7 @@ def run(
                 env=env,
                 row_limit=None if all_rows else displayed_rows,
                 show_scopes=scope,
+                timeout=timeout,
             )
             from trilogy.execution.envs import env_activation_scope
             from trilogy.scripts.env_commands import (

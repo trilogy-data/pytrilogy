@@ -17,6 +17,7 @@ there are no errors, crashes, hangs or timeouts, which is what retired the 2026-
 | `bug_q54_int32_arithmetic_overflow.md` | integer multiplication never promotes to BIGINT → INT32 overflow at execution |
 | `bug_q05_float32_union_placeholder_drift.md` | no 8-byte DOUBLE type; `FLOAT` → DuckDB REAL → silent money drift |
 | `handoff_q05_rollup_rowset_binding.md` | rollup over a joined rowset emits an ungrouped binding column (`repro_q05_rollup_rowset_binding.py`) |
+| `bug_q95_filtered_count_nested_max.md` | filtered count over `is_returned` emits invalid nested `count(max(CASE ...))` SQL |
 
 ## Language / DX gaps
 
@@ -27,6 +28,7 @@ there are no errors, crashes, hangs or timeouts, which is what retired the 2026-
 | `rowset_as_connector_support.md` | grammar still rejects `rowset name as select …`; error message is fixed, enhancement is not |
 | `q14_file_list_unsandboxed_crash_bug.md` | `trilogy file list` is not confined to the workspace root |
 | `bug_q95_explore_json_hides_fk_and_filter_scope.md` | `explore --format json` hides imported-dimension FKs |
+| `bug_q89_numeric_type_unit_mocking.md` | `trilogy unit` cannot mock precision-bearing `numeric(p,s)` columns |
 
 ## Not a bug — kept as design rationale
 

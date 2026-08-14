@@ -273,6 +273,9 @@ class CLIRuntimeParams:
     # Render the derived-value scope block after each result table (`run
     # --scope`). JSON mode always carries the scopes regardless of this flag.
     show_scopes: bool = False
+    # Seconds a single statement may run before the driver is asked to cancel
+    # it (`run --timeout`). ``None`` leaves statements unbounded.
+    timeout: float | None = None
 
 
 def merge_runtime_config(
@@ -683,6 +686,7 @@ def create_executor(
     debug: bool,
     config: RuntimeConfig,
     debug_file: str | None = None,
+    query_timeout: float | None = None,
 ) -> Executor:
     # Parse environment parameters from dedicated flag
     namespace = DEFAULT_NAMESPACE
@@ -730,6 +734,7 @@ def create_executor(
         staging=config.staging,
         chart_theme=config.report_theme,
         datasource_transform=datasource_transform_from_active(PathlibPath(directory)),
+        query_timeout=query_timeout,
     )
     if config.startup_sql:
         for script in config.startup_sql:
@@ -752,6 +757,7 @@ def create_executor_for_script(
     debug: bool,
     config: RuntimeConfig,
     debug_file: str | None = None,
+    query_timeout: float | None = None,
 ) -> Executor:
     """
     Create an executor for a specific script node.
@@ -761,7 +767,7 @@ def create_executor_for_script(
     """
     directory = node.path.parent
     return create_executor(
-        param, directory, conn_args, edialect, debug, config, debug_file
+        param, directory, conn_args, edialect, debug, config, debug_file, query_timeout
     )
 
 
@@ -933,6 +939,7 @@ def handle_execution_exception(
         FunctionArgumentException,
         InvalidSyntaxException,
         NothingExecutedException,
+        QueryTimeoutException,
         UndefinedConceptException,
         UnresolvableQueryException,
     )
@@ -970,6 +977,10 @@ def handle_execution_exception(
         # A function called on the wrong argument type is a fixable author
         # mistake (e.g. `year()` on an integer key), not an internal crash.
         print_error(f"Type error{location}: {e}")
+    elif isinstance(e, QueryTimeoutException):
+        # The caller asked for this abort; reporting it as an unexpected error
+        # would send the reader hunting for a fault that isn't there.
+        print_error(f"Timeout{location}: {e}")
     elif isinstance(e, ConfigurationException):
         # A bad connection/config parameter is a fixable invocation mistake.
         print_error(f"Configuration error{location}: {e}")

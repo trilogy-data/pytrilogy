@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 import uuid
 from collections.abc import Callable, Generator, Mapping, Sequence
@@ -19,6 +20,7 @@ from trilogy.core.enums import (
     PersistMode,
     ValidationScope,
 )
+from trilogy.core.exceptions import ConfigurationException, QueryTimeoutException
 from trilogy.core.models.author import Comment, Comparison, Concept, Function
 from trilogy.core.models.build import BuildDatasource, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
@@ -70,6 +72,7 @@ from trilogy.core.validation.common import (
     ValidationTest,
 )
 from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.cancel import resolve_query_canceller
 from trilogy.dialect.config import DialectConfig, RetryPolicy
 from trilogy.dialect.enums import Dialects
 from trilogy.dialect.metadata import (
@@ -187,6 +190,15 @@ def _is_catalog_write_conflict(error: BaseException) -> bool:
     return _CATALOG_WRITE_CONFLICT in str(error)
 
 
+def _fire_cancel(fired: threading.Event, cancel: Callable[[], None]) -> None:
+    """Timer body for a query timeout: record that we cancelled, then cancel.
+
+    The flag is set first so the executing thread can never see the driver's
+    abort error without also seeing why it happened."""
+    fired.set()
+    cancel()
+
+
 class Executor:
     def __init__(
         self,
@@ -199,9 +211,15 @@ class Executor:
         staging: StagingConfig | None = None,
         chart_theme: str | None = None,
         datasource_transform: Callable[[Datasource], None] | None = None,
+        query_timeout: float | None = None,
     ):
 
         self.dialect: Dialects = dialect
+        # Seconds a single statement may run before the driver is asked to
+        # cancel it. None (the default) means unbounded. Read by connect(), so
+        # it has to be set before the connection is opened.
+        self.query_timeout = query_timeout
+        self._cancel_query: Callable[[], None] | None = None
         self.engine = engine
         self.environment = environment or Environment()
         # Physical-address rewrite (e.g. deployment-env prefixing) applied to
@@ -243,6 +261,14 @@ class Executor:
         self.connection = self.engine.connect()
         self.connected = True
         self._owned_transaction = None
+        if self.query_timeout is not None:
+            self._cancel_query = resolve_query_canceller(self.connection)
+            if self._cancel_query is None:
+                raise ConfigurationException(
+                    f"A query timeout was requested, but the {self.dialect.value} "
+                    "driver exposes no way to cancel a running statement. Remove "
+                    "the timeout rather than let it silently not apply."
+                )
         return self.connection
 
     def commit(self) -> None:
@@ -1140,6 +1166,41 @@ class Executor:
             return None
         return self.config.retry_config.get_policy_for_error(str(error))
 
+    def _execute_now(self, statement: Any, final_params: dict | None) -> ResultProtocol:
+        if final_params:
+            return self.connection.execute(statement, final_params)
+        return self.connection.execute(statement)
+
+    def _execute_bounded(
+        self,
+        statement: Any,
+        final_params: dict | None,
+        timeout: float,
+        cancel: Callable[[], None],
+    ) -> ResultProtocol:
+        """Run a statement, asking the driver to abort it once the timeout passes.
+
+        Only the cancel runs off-thread; the statement itself stays here, so the
+        failure surfaces at the call site and the connection is left rolled back
+        and reusable rather than abandoned mid-cursor. A timer that fires just
+        after the statement finished is harmless — every canceller in
+        ``dialect/cancel.py`` is a no-op against an idle connection."""
+        fired = threading.Event()
+        timer = threading.Timer(timeout, _fire_cancel, args=(fired, cancel))
+        timer.start()
+        try:
+            return self._execute_now(statement, final_params)
+        except Exception as e:
+            if not fired.is_set():
+                raise
+            self.connection.rollback()
+            self._owned_transaction = None
+            raise QueryTimeoutException(
+                f"Query cancelled after exceeding the {timeout:g}s timeout."
+            ) from e
+        finally:
+            timer.cancel()
+
     def _execute_with_retry(
         self,
         command: str,
@@ -1156,13 +1217,19 @@ class Executor:
             attempt += 1
             implicit = not self.connection.in_transaction()
             try:
-                if final_params:
-                    result = self.connection.execute(text(command), final_params)
+                statement = text(command)
+                cancel, timeout = self._cancel_query, self.query_timeout
+                if cancel is None or timeout is None:
+                    result = self._execute_now(statement, final_params)
                 else:
-                    result = self.connection.execute(text(command))
+                    result = self._execute_bounded(
+                        statement, final_params, timeout, cancel
+                    )
                 if implicit and self.connection.in_transaction():
                     self._owned_transaction = self.connection.get_transaction()
                 return result
+            except QueryTimeoutException:
+                raise
             except Exception as e:
                 policy = self._get_retry_policy(e)
                 if policy is None or attempt >= policy.max_attempts:

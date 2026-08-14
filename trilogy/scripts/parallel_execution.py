@@ -555,6 +555,7 @@ def run_single_script_execution(
     debug_file: str | None = None,
     row_limit: int | None = None,
     show_scopes: bool = False,
+    query_timeout: float | None = None,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import create_executor
@@ -566,7 +567,7 @@ def run_single_script_execution(
     )
 
     exec = create_executor(
-        param, directory, conn_args, edialect, debug, config, debug_file
+        param, directory, conn_args, edialect, debug, config, debug_file, query_timeout
     )
     base = files[0]
     if isinstance(base, StringIO):
@@ -823,6 +824,7 @@ def run_parallel_execution(
                 debug_file=cli_params.debug_file,
                 row_limit=cli_params.row_limit,
                 show_scopes=cli_params.show_scopes,
+                query_timeout=cli_params.timeout,
             )
         except BaseException as e:
             _report_single_script_outcome(
@@ -901,6 +903,7 @@ def run_parallel_execution(
             cli_params.debug,
             config,
             cli_params.debug_file,
+            cli_params.timeout,
         )
 
     executor_factory = executor_factory_override or default_executor_factory

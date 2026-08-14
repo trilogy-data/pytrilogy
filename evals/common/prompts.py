@@ -85,9 +85,13 @@ Your goal:
 
 Write one query file per question alongside `trilogy.toml` (NOT inside `raw/`).
 Each question below states its exact filename (`queryNN.preql`, where NN is the
-question number). Validate each file with `trilogy run <file>` before moving
-on. Typically, you will import one fact file from raw/ per question, though
-some rare ones may require merging multiple facts.
+question number). Write and validate each in ONE call before moving on:
+`trilogy file write queryNN.preql --run` (body on stdin — syntax-checks,
+executes, and shows results together; re-issue the same call after edits). For
+throwaway exploration probes use `trilogy file write <probe>.preql
+--run-and-delete` rather than separate write/run/delete calls. Typically, you
+will import one fact file from raw/ per question, though some rare ones may
+require merging multiple facts.
 
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen

@@ -13,8 +13,10 @@ Answer the ONE task below by writing BOTH files:
   requested result.
 
 Do not print logs or any non-Arrow bytes to stdout. Diagnostics may go to stderr.
-Use `trilogy file write` to create either file. Validate the complete result
-with `trilogy run {filename}`, then return control.
+Use `trilogy file write` to create either file; write `{filename}` last with
+`trilogy file write {filename} --run` (body on stdin) so the write and the
+validating execution happen in one call, then return control once it runs
+cleanly.
 
 Exact response column names do not matter, but position and values do.
 

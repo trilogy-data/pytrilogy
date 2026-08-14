@@ -234,3 +234,25 @@ def test_run_select_returning_zero_rows_still_ok(tmp_path: Path):
     )
     assert summary["ok"] is True
     assert summary["rows"] == 0
+
+
+def test_run_timeout_cancels_a_long_query(tmp_path: Path):
+    """`--timeout` bounds a statement and reports the abort as a timeout rather
+    than as an unexpected internal error."""
+    f = tmp_path / "slow.preql"
+    f.write_text(
+        "raw_sql('''select count(*) from range(100000000000) a "
+        "join range(100000) b on a.range = b.range''');",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli, ["run", str(f), "duck_db", "--timeout", "1"])
+    assert result.exit_code != 0
+    assert "Timeout" in (result.output or "")
+
+
+def test_run_rejects_a_non_positive_timeout(tmp_path: Path):
+    f = tmp_path / "q.preql"
+    f.write_text("select 1 -> x;", encoding="utf-8")
+    result = CliRunner().invoke(cli, ["run", str(f), "duck_db", "--timeout", "0"])
+    assert result.exit_code != 0
+    assert "0" in (result.output or "")
