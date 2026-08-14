@@ -1,5 +1,14 @@
 # Bug: q89 `trilogy unit` cannot mock precision-bearing `NumericType`
 
+**FIXED 2026-08-13** in `trilogy/dialect/mock.py`: `NumericType(p,s)` now mocks
+as `Decimal` values honoring precision/scale, and `trilogy unit` passes on
+store_sales/catalog_sales/web_sales end to end. The broader sweep this exposed
+(BIGINT, NUMBER, BYTES, map/struct, array shape defects, cast-binding values)
+landed at the same time; see `audit_mock_datatype_coverage.md`. Regression
+coverage: `tests/test_mocking.py`.
+
+Original report below.
+
 **Reproduced OPEN 2026-08-13 against HEAD.** This is a deterministic unit-test
 mocking gap. It was exposed during q89, but it was not the primary reason q89
 failed the rebaseline: that trajectory had already been contaminated by the

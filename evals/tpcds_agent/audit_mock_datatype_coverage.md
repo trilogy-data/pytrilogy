@@ -1,5 +1,27 @@
 # Audit: `trilogy unit` mock interface datatype coverage
 
+**STATUS: FIXED 2026-08-13.** Everything below landed in
+`trilogy/dialect/mock.py` except GEOGRAPHY and regex-validated strings, which
+stay unsupported by design but now fail with an error naming the offending
+concept. Extras beyond this audit, found once mocking got far enough to run
+full validation:
+
+- Columns feeding a datasource-declared cast (`_date_string::date: date`)
+  now mock as values that survive the cast (`MockManager.cast_targets`);
+  random strings in a date-cast column were aborting the whole validation
+  transaction.
+- `map<k,v>` columns register as true DuckDB MAP columns via an explicit
+  arrow type; dict rows otherwise infer as STRUCT.
+- Bare `list` spelling parsed to a crash (`'list' is not a valid DataType`);
+  added to `_DATATYPE_SPELLING_ALIASES`.
+- Two stale hidden-and-unbound declarations (`date.preql` `--d_week_seq1`,
+  `web_sales.preql` `--key return_order_number`) removed from the corpus
+  models; validation correctly flags hidden concepts bound to no datasource
+  (the corpus idiom is hidden-but-bound).
+
+`trilogy unit` now passes on store_sales, catalog_sales, and web_sales.
+Regression coverage in `tests/test_mocking.py`. Original audit below.
+
 **Audited 2026-08-13 against HEAD.** Companion to
 `bug_q89_numeric_type_unit_mocking.md`, which reported one instance
 (`NumericType(15,2)`). This audit swept every type declarable in the grammar
@@ -16,26 +38,26 @@ column type aborts unit validation for all queries against that model.
 
 | Declarable type | Direct + e2e result | Exposure |
 |---|---|---|
-| `numeric(p,s)` (`NumericType`) | crash | **HIGH** — all TPC-DS sales models (`store_sales.preql` etc.); unit mode is dead on the eval corpus. The q89 bug. |
-| `numeric(p,s)::trait` | crash (trait unwrap re-dispatches the inner `NumericType`) | HIGH — same models (`::usd`) |
+| `numeric(p,s)` (`NumericType`) | crash | **HIGH** - all TPC-DS sales models (`store_sales.preql` etc.); unit mode is dead on the eval corpus. The q89 bug. |
+| `numeric(p,s)::trait` | crash (trait unwrap re-dispatches the inner `NumericType`) | HIGH - same models (`::usd`) |
 | `array<numeric(p,s)>` | crash (array branch re-dispatches element type) | follows from the above |
-| `bigint` | crash | MEDIUM — common warehouse type; no current corpus model uses it, but `bigint[1..10]` (validated) *works*, bare `bigint` doesn't |
-| `number` | crash | LOW — same inconsistency: supported under `ValidatedType`, not bare |
-| `map<k,v>` / bare `map` | crash | LOW-MED — iris only binds its map column via `raw()`, which the mocker skips; direct binding is grammar-legal and fails |
-| `struct<...>` / bare `struct` | crash | LOW-MED — same |
+| `bigint` | crash | MEDIUM - common warehouse type; no current corpus model uses it, but `bigint[1..10]` (validated) *works*, bare `bigint` doesn't |
+| `number` | crash | LOW - same inconsistency: supported under `ValidatedType`, not bare |
+| `map<k,v>` / bare `map` | crash | LOW-MED - iris only binds its map column via `raw()`, which the mocker skips; direct binding is grammar-legal and fails |
+| `struct<...>` / bare `struct` | crash | LOW-MED - same |
 | `bytes` | crash | LOW |
-| `geography` | crash | LOW — `std.geography` uses traits over string/float (those unwrap fine); the bare keyword is grammar-legal |
-| `string['regex']` (`ValidatedType.pattern`) | crash — explicit raise at `mock.py:53-55` | LOW; at least deliberate/loud |
+| `geography` | crash | LOW - `std.geography` uses traits over string/float (those unwrap fine); the bare keyword is grammar-legal |
+| `string['regex']` (`ValidatedType.pattern`) | crash - explicit raise at `mock.py:53-55` | LOW; at least deliberate/loud |
 
 Not reachable as column types (parse/function-internal only), no action needed:
 `DATE_PART`, `NULL`, `UNKNOWN`, `ANY`, `UNIX_SECONDS` (only appears as a trait
 base, which unwraps).
 
-## Silently-wrong-data defects (no crash — worse)
+## Silently-wrong-data defects (no crash - worse)
 
 1. **`ArrayType` non-key rows are double-nested** (`mock.py:190-193`). Each
-   row's value is `[mock_datatype(...)]` — a list *containing* the 5-element
-   list — so an `array<int>` column is registered in DuckDB as
+   row's value is `[mock_datatype(...)]` - a list *containing* the 5-element
+   list - so an `array<int>` column is registered in DuckDB as
    `INT[][]` with rows like `[[670487, 116739, ...]]`. Mock data contradicts
    the declared type; any unit query using array functions on it misbehaves.
 2. **`ArrayType` key rows mix element types** (`mock.py:186-189`): uniqueness
@@ -54,7 +76,7 @@ The dispatcher compares `datatype` to `DataType` enum members only. Every
 concrete type (`NumericType`, `MapType`, `StructType`, `ArrayType`, ...)
 already exposes a `.data_type` property returning its base enum
 (`trilogy/core/models/core.py`), but there is no normalization step, so each
-concrete class needs — and mostly lacks — its own `isinstance` branch.
+concrete class needs - and mostly lacks - its own `isinstance` branch.
 `mock_validated` independently grew support for `BIGINT`/`NUMBER`/date bases,
 which is why validated variants work while the bare types crash.
 
