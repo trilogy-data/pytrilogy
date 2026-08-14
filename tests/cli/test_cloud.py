@@ -1601,9 +1601,12 @@ class TestDeploySettings:
 
     @pytest.mark.parametrize("key", JOB_DECLARING_KEYS)
     def test_any_deployment_key_makes_a_project_deployable(self, key):
-        value = {"secret_env": ["A"], "cpus": 1.0, "schedule": "* * * * * *"}.get(
-            key, 1
-        )
+        value = {
+            "secret_env": ["A"],
+            "cpus": 1.0,
+            "schedule": "* * * * * *",
+            "entrypoint": "main.preql",
+        }.get(key, 1)
         if key in ("operation", "vm_class"):
             value = {"operation": "run", "vm_class": "shared"}[key]
         assert self._parse({key: value}).declared
@@ -1951,6 +1954,7 @@ exclude = ["*_local.preql"]
 [[cloud.job]]
 key = "refresh"
 name = "space-refresh"
+entrypoint = "refresh.preql"
 operation = "refresh"
 schedule = "0 0 6 * * *"
 timeout_seconds = 1800
@@ -1958,6 +1962,7 @@ timeout_seconds = 1800
 [[cloud.job]]
 key = "publish"
 name = "space-publish"
+entrypoint = "publish.preql"
 operation = "run"
 schedule = "0 0 6 * * *"
 """
@@ -2019,12 +2024,14 @@ schedule = "0 0 6 * * *"
 [[cloud.job]]
 key = "a"
 name = "job-a"
+entrypoint = "debug.preql"
 operation = "run"
 exclude = ["debug.preql"]
 
 [[cloud.job]]
 key = "b"
 name = "job-b"
+entrypoint = "only.preql"
 operation = "run"
 include = ["only.preql"]
 """,
@@ -2062,8 +2069,10 @@ include = ["only.preql"]
     def test_two_entries_sharing_a_key_are_refused(self, tmp_path):
         self._project(
             tmp_path / "data",
-            '[cloud]\n\n[[cloud.job]]\nkey = "x"\nname = "a"\noperation = "run"\n'
-            '\n[[cloud.job]]\nkey = "x"\nname = "b"\noperation = "run"\n',
+            '[cloud]\n\n[[cloud.job]]\nkey = "x"\nname = "a"\n'
+            'entrypoint = "m.preql"\noperation = "run"\n'
+            '\n[[cloud.job]]\nkey = "x"\nname = "b"\n'
+            'entrypoint = "m.preql"\noperation = "run"\n',
         )
         with pytest.raises(CloudError, match="reuses key"):
             cloud_mod.discover_projects(tmp_path)
@@ -2075,13 +2084,25 @@ include = ["only.preql"]
         with pytest.raises(CloudError, match="only meaningful inside"):
             cloud_mod.discover_projects(tmp_path)
 
-    def test_an_entry_deploys_even_when_it_declares_only_identity(self, tmp_path):
+    def test_an_entry_deploys_on_identity_alone(self, tmp_path):
         """Being *in* the array is the declaration — unlike a bare [cloud]
-        block, where a lone name describes nothing to run."""
+        block, where a lone name describes nothing to run. Identity here is
+        key + name + entrypoint: what it is, what to call it, what it runs."""
+        self._project(
+            tmp_path / "data",
+            '[cloud]\n\n[[cloud.job]]\nkey = "x"\nname = "a"\n'
+            'entrypoint = "model.preql"\n',
+        )
+        assert [p.name for p in cloud_mod.discover_projects(tmp_path)] == ["a"]
+
+    def test_an_entry_without_an_entrypoint_is_refused(self, tmp_path):
+        """Jobs sharing a workspace are distinguished by the script they run
+        and nothing else, so an entry that does not say is not a job."""
         self._project(
             tmp_path / "data", '[cloud]\n\n[[cloud.job]]\nkey = "x"\nname = "a"\n'
         )
-        assert [p.name for p in cloud_mod.discover_projects(tmp_path)] == ["a"]
+        with pytest.raises(CloudError, match="must declare an entrypoint"):
+            cloud_mod.discover_projects(tmp_path)
 
     def test_an_empty_job_array_is_refused(self, tmp_path):
         self._project(tmp_path / "data", "[cloud]\njob = []\n")
@@ -2764,12 +2785,14 @@ class TestSyncSchedulesDeclaredJobsTogether:
 [[cloud.job]]
 key = "refresh"
 name = "space-refresh"
+entrypoint = "refresh.preql"
 operation = "refresh"
 schedule = "0 0 6 * * *"
 
 [[cloud.job]]
 key = "publish"
 name = "space-publish"
+entrypoint = "publish.preql"
 operation = "run"
 schedule = "0 0 6 * * *"
 """
@@ -2782,6 +2805,17 @@ schedule = "0 0 6 * * *"
         return root
 
     def _seed(self, api, schedules: list[dict] | None = None) -> None:
+        # A multi-job toml deploys a workspace first, then binds its jobs to
+        # it — so a sync of this shape talks to the workspace routes before it
+        # touches a job at all.
+        api.set("GET", f"/orgs/{api.org}/workspaces", [])
+        api.set(
+            "POST",
+            f"/orgs/{api.org}/workspaces",
+            {"id": "ws-1", "org_id": "org-acme", "name": "data"},
+        )
+        api.set("PUT", f"/orgs/{api.org}/workspaces/*", {"id": "ws-1", "org_id": "org-acme", "name": "data"})
+        api.set("PATCH", f"/orgs/{api.org}/jobs/*", {})
         api.set("GET", f"/orgs/{api.org}/jobs", [])
         # Distinct ids per create, so "which jobs did the schedule bind" is a
         # question the assertions can actually ask.
@@ -2800,6 +2834,67 @@ schedule = "0 0 6 * * *"
             _schedule_payload("space-refresh-schedule", "0 0 6 * * *"),
         )
         api.set("DELETE", f"/orgs/{api.org}/schedules/*", {})
+
+    def test_the_workspace_holds_the_tree_and_the_jobs_hold_an_entrypoint(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The whole point of the arrangement.
+
+        Before entrypoints a job executed its entire workdir, so each one had
+        to ship its own disjoint copy of the project and a workspace could not
+        hold a shared model layer at all. Now the workspace holds every file
+        once and a job carries nothing but the script it runs.
+        """
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+
+        workspace = logged_in.body_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        assert {f["name"] for f in workspace["files"]} == {"model.preql"}
+
+        jobs = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert len(jobs) == 2
+        assert all(job["files"] == [] for job in jobs), "jobs ship no files"
+        assert {job["entrypoint"] for job in jobs} == {
+            "refresh.preql",
+            "publish.preql",
+        }
+        assert all(job["workspace_id"] == "ws-1" for job in jobs)
+
+    def test_an_existing_job_is_rebound_into_the_workspace(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A job's workspace is identity, so a content PUT leaves it alone —
+        which means migrating a project deployed the old way needs an explicit
+        rebind, or its jobs stay self-contained beside an unread workspace."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        live = _job_payload(
+            "job-refresh",
+            "space-refresh",
+            source_key=cloud_mod.discover_projects(root)[0].source_key,
+        )
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [live])
+        logged_in.set("PUT", f"/orgs/{logged_in.org}/jobs/*", live)
+
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert logged_in.requests_for("PATCH", f"/orgs/{logged_in.org}/jobs/job-refresh")
+
+    def test_a_single_job_project_still_deploys_self_contained(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """No siblings to share a tree with, so a workspace would be ceremony
+        with no reader — and this is every project deployed before now."""
+        root = self._repo(tmp_path, '[cloud]\noperation = "run"\n')
+        self._seed(logged_in)
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        job = logged_in.body_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert job.get("entrypoint") is None
+        assert {f["name"] for f in job["files"]} == {"model.preql"}
 
     def test_two_jobs_on_one_cron_get_one_schedule_binding_both(
         self, logged_in, run_cloud, tmp_path
@@ -2820,10 +2915,23 @@ schedule = "0 0 6 * * *"
         one."""
         root = self._repo(
             tmp_path,
-            self.TOML.replace(
-                'name = "space-publish"\noperation = "run"\nschedule = "0 0 6 * * *"',
-                'name = "space-publish"\noperation = "run"\nschedule = "0 0 7 * * *"',
-            ),
+            """
+[cloud]
+
+[[cloud.job]]
+key = "refresh"
+name = "space-refresh"
+entrypoint = "refresh.preql"
+operation = "refresh"
+schedule = "0 0 6 * * *"
+
+[[cloud.job]]
+key = "publish"
+name = "space-publish"
+entrypoint = "publish.preql"
+operation = "run"
+schedule = "0 0 7 * * *"
+""",
         )
         self._seed(logged_in)
         result = run_cloud("sync", str(root))
@@ -3215,7 +3323,12 @@ class TestDeployKeysArePinned:
         two keys that address a *deployment* rather than describe a job."""
         from trilogy.execution.config import _KNOWN_SECTIONS
 
-        assert _KNOWN_SECTIONS[f"cloud.{JOB_ARRAY_KEY}"] == set(DEPLOY_KEYS)
+        # `workspace` is block-level: there is one per toml, holding the tree
+        # its jobs share, so an entry declaring its own would be declaring a
+        # workspace nobody else is in.
+        assert _KNOWN_SECTIONS[f"cloud.{JOB_ARRAY_KEY}"] == set(DEPLOY_KEYS) - {
+            "workspace"
+        }
 
     def test_the_keys_are_the_settings(self):
         assert set(DEPLOY_KEYS) == set(

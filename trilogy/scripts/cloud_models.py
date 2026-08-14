@@ -186,6 +186,10 @@ class Job(BaseModel):
     #: self-contained. Identity, not content: it is moved by `PATCH`, and a
     #: content `PUT` leaves it alone.
     workspace_id: str | None = None
+    #: The one script this job executes, relative to the resolved workdir;
+    #: `None` = the whole directory. Content, like `operation`: a `PUT` that
+    #: omits it clears it, so an update has to resend what it means to keep.
+    entrypoint: str | None = None
     #: `--param key=value` pairs, merged per key over the workspace chain's.
     parameters: Any | None = None
     #: `"shared"` (may colocate with the tenant's other shared jobs on one VM)
@@ -345,3 +349,22 @@ class SecretMeta(BaseModel):
     name: str
     created_at: datetime
     updated_at: datetime
+
+
+class Workspace(BaseModel):
+    """``models/workspace.rs::Workspace`` — the fields a deploy needs.
+
+    A workspace is reusable job configuration: files, config, parameters and
+    resource defaults that its jobs inherit and may override. `cloud sync`
+    creates exactly one per multi-job project and puts the whole tree in it, so
+    the jobs can be what actually distinguishes them — an operation and an
+    entrypoint.
+
+    Deliberately partial: the CLI reads a workspace to find it by name and to
+    learn its id, and writes it wholesale. Nothing here needs the rest.
+    """
+
+    id: str
+    org_id: str
+    name: str
+    description: str | None = None

@@ -272,6 +272,8 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
         "job",
         "name",
         "key",
+        "entrypoint",
+        "workspace",
         "include",
         "exclude",
         "schedule",
@@ -287,6 +289,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "cloud.job": {
         "name",
         "key",
+        "entrypoint",
         "include",
         "exclude",
         "schedule",

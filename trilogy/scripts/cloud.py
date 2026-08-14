@@ -105,6 +105,7 @@ from trilogy.scripts.cloud_models import (
     SecretMeta,
     SourceFingerprint,
     TokenSummary,
+    Workspace,
 )
 from trilogy.scripts.display import (
     emit_event,
@@ -315,6 +316,18 @@ class DeploySettings:
     #: there rather than silently ignored.
     key: str | None = None
 
+    #: The one script this job runs, relative to the project root. Required
+    #: in the ``[[cloud.job]]`` form and meaningless outside it: a project
+    #: deployed as one job runs its whole directory, which is what it has
+    #: always done. It is what makes several jobs over one *shared* tree
+    #: possible at all — see `_ensure_workspace`.
+    entrypoint: str | None = None
+
+    #: The workspace a multi-job project deploys into. Block-level only: there
+    #: is exactly one per toml, holding the whole tree its jobs share. Unset,
+    #: it derives from the path like a job name does.
+    workspace: str | None = None
+
     #: Per-job bundle filters, the same glob semantics ``jobs push``
     #: ``--include``/``--exclude`` use. They exist because several jobs over
     #: one directory is the whole point of ``[[cloud.job]]``, and shipping
@@ -368,6 +381,8 @@ class DeploySettings:
         return cls(
             name=name,
             key=key,
+            entrypoint=_typed_setting(table, source, "entrypoint", str, "a string"),
+            workspace=_typed_setting(table, source, "workspace", str, "a string"),
             include=_glob_setting(table, source, "include"),
             exclude=_glob_setting(table, source, "exclude"),
             schedule=_typed_setting(table, source, "schedule", str, "a string"),
@@ -398,6 +413,7 @@ class DeploySettings:
         ``exclude = [...]`` describes nothing to run either.
         """
         declared = {
+            "entrypoint": self.entrypoint,
             "schedule": self.schedule,
             "operation": self.operation,
             "timeout_seconds": self.timeout_seconds,
@@ -443,7 +459,7 @@ DEPLOY_KEYS: tuple[str, ...] = tuple(f.name for f in dataclass_fields(DeploySett
 #: Keys that say *which* job this is, or which files it gets, rather than how
 #: it runs. None of them reaches the job payload, and none of them makes a
 #: directory deployable on its own.
-_NON_DECLARING_KEYS = ("name", "key", "include", "exclude")
+_NON_DECLARING_KEYS = ("name", "key", "include", "exclude", "workspace")
 
 #: The subset that makes a directory a job. Split out so the "nothing
 #: deployable" error lists what would actually have helped: a toml declaring
@@ -1330,6 +1346,7 @@ def _carried_settings(existing: Job | None) -> dict[str, Any]:
         "vm_class": existing.vm_class,
         "priority": existing.priority,
         "deadline_seconds": existing.deadline_seconds,
+        "entrypoint": existing.entrypoint,
     }
 
 
@@ -1338,6 +1355,7 @@ def _carried_settings(existing: Job | None) -> dict[str, Any]:
 #: "leave it unset" state, so it is always sent.
 CARRIED_FIELDS = (
     "description",
+    "entrypoint",
     "timeout_seconds",
     "memory_mb",
     "cpus",
@@ -2067,6 +2085,15 @@ def _job_entries(
                 f"{JOB_ARRAY_KEY}[{index}]",
                 f"(key {settings.key!r}) must declare a name",
             )
+        if not settings.entrypoint:
+            raise _setting_error(
+                source,
+                f"{JOB_ARRAY_KEY}[{index}]",
+                f"(key {settings.key!r}) must declare an entrypoint — several "
+                "jobs over one directory share a workspace holding the whole "
+                "tree, so the script each one runs is the only thing that "
+                "distinguishes them",
+            )
         if settings.key in seen:
             raise _setting_error(
                 source,
@@ -2322,6 +2349,39 @@ def cloud_sync(
     # schedule each would put a refresh and the jobs that publish its output
     # in separate firings with nothing between them but wall clock, which is
     # the arrangement schedule ordering exists to replace.
+    # One workspace per multi-job toml, built before its jobs so they can be
+    # created already bound to it. A single-job project keeps deploying
+    # self-contained: it has no siblings to share a tree with, and giving it a
+    # workspace would be ceremony with no reader.
+    workspace_ids: dict[Path, str | None] = {}
+    for project in projects:
+        if project.settings.key is None or project.config_path in workspace_ids:
+            continue
+        name = project.settings.workspace or derive_job_name(root, project.directory)
+        if env_name is not None:
+            # A workspace has no environment of its own, so a branch sync
+            # deploying into the production workspace would overwrite
+            # production's shared tree with the branch's. Namespacing the name
+            # keeps the two apart, the same way the environment keeps the jobs
+            # apart.
+            name = f"{name}-{env_name}"
+        # The whole tree, filtered only by the block's own hygiene globs: in
+        # workspace mode the per-job filters have nothing left to narrow.
+        files = collect_files(
+            project.directory.resolve(), project.include, project.exclude
+        )
+        files = [f for f in files if f["name"] != "trilogy.toml"]
+        ws_id, ws_outcome = _ensure_workspace(
+            client,
+            org,
+            name,
+            project.config_path.read_text(encoding="utf-8"),
+            files,
+            dry_run,
+        )
+        workspace_ids[project.config_path] = ws_id
+        print_info(f"  {ws_outcome:>12}  workspace {name} ({len(files)} file(s))")
+
     groups: dict[tuple[Path, str | None], list[Job]] = {}
     # Every job a given toml declares, across all its groups — what decides
     # whether an existing schedule is this toml's to replace. See
@@ -2330,7 +2390,14 @@ def cloud_sync(
     declared_by_toml: dict[Path, list[Job]] = {}
     for project in projects:
         outcome, job = _sync_one(
-            client, org, project, by_key, env_id, schedules, dry_run
+            client,
+            org,
+            project,
+            by_key,
+            env_id,
+            schedules,
+            dry_run,
+            workspace_ids.get(project.config_path),
         )
         results.append(outcome)
         print_info(f"  {outcome['outcome']:>12}  {project.name}")
@@ -2412,6 +2479,56 @@ def _prune_stale(
     return pruned
 
 
+def _ensure_workspace(
+    client: CloudClient,
+    org: str,
+    name: str,
+    config_text: str,
+    files: list[dict],
+    dry_run: bool,
+) -> tuple[str | None, str]:
+    """Create or update the workspace a multi-job project deploys into, and
+    say which happened.
+
+    **The workspace holds the whole tree.** Its jobs carry no files at all —
+    only which script of it they run — which is the arrangement the platform's
+    `entrypoint` exists to allow. Before it, a job executed its entire workdir,
+    so every job needed its own disjoint copy of the project and a workspace
+    could not hold a shared model layer at all: `refresh` adopts every managed
+    datasource it can reach, and a model file visible to a refresh job would
+    become one of its targets whether or not another job owned it.
+
+    `config` deliberately stays on the *jobs* rather than moving here.
+    Workspace config layering needs pytrilogy's `--config-overlay`, which has
+    not shipped (docs/handoff-pytrilogy-config-overlay.md in the platform
+    repo); a job inheriting workspace config fails today on the unknown flag.
+    Files are the part that can move, and the part worth moving.
+
+    Matched by name, which is what the platform makes unique per org. There is
+    no `source_key` on a workspace, so a renamed one is a new workspace and the
+    old one is left behind — the same trade a moved directory makes, and
+    `--prune` does not cover it.
+    """
+    existing = next(
+        (w for w in client.get_many(f"/orgs/{org}/workspaces", Workspace) if w.name == name),
+        None,
+    )
+    body = {
+        "name": name,
+        "description": f"Shared project tree for {name}",
+        "files": files,
+    }
+    if dry_run:
+        return (existing.id if existing else None), (
+            "would update" if existing else "would create"
+        )
+    if existing:
+        client.put_one(f"/orgs/{org}/workspaces/{existing.id}", Workspace, body)
+        return existing.id, "updated"
+    created = client.post_one(f"/orgs/{org}/workspaces", Workspace, body)
+    return created.id, "created"
+
+
 def _sync_one(
     client: CloudClient,
     org: str,
@@ -2420,6 +2537,7 @@ def _sync_one(
     env_id: str | None,
     schedules: Sequence[ScheduleExt],
     dry_run: bool,
+    workspace_id: str | None = None,
 ) -> tuple[dict, Job | None]:
     """Create or update one project's job.
 
@@ -2429,11 +2547,25 @@ def _sync_one(
     schedule row, because a schedule is what the platform co-executes and
     orders. `None` on a dry run, which deploys nothing to schedule.
     """
-    files = collect_files(project.directory.resolve(), project.include, project.exclude)
-    files = [f for f in files if f["name"] != "trilogy.toml"]
+    # A job in a workspace carries **no files**: the workspace holds the whole
+    # tree and the job says which script of it to run. That is the entire
+    # point of the arrangement — one copy of the project instead of one per
+    # job, and a Workspaces screen that shows what is actually shared.
+    if workspace_id is not None:
+        files: list[dict] = []
+    else:
+        files = collect_files(
+            project.directory.resolve(), project.include, project.exclude
+        )
+        files = [f for f in files if f["name"] != "trilogy.toml"]
     config_text = project.config_path.read_text(encoding="utf-8")
+    # Digest over what identifies *this* job. In workspace mode its files live
+    # elsewhere, so the entrypoint stands in for them: two jobs sharing a
+    # workspace differ by which script they run, and a fingerprint that
+    # ignored it would report them as the same content pushed twice.
     fingerprint = SourceFingerprint.build(
-        content_digest(config_text, files), project.origin
+        content_digest(config_text + (project.settings.entrypoint or ""), files),
+        project.origin,
     )
 
     found = by_key.get(project.source_key)
@@ -2445,7 +2577,13 @@ def _sync_one(
         fingerprint=fingerprint,
         declared=project.settings.job_fields(),
         existing=found,
-        extra={"source_key": project.source_key, "environment_id": env_id},
+        extra={
+            "source_key": project.source_key,
+            "environment_id": env_id,
+            # Sent on create; a content PUT leaves the binding alone, so an
+            # existing job is rebound below instead.
+            **({"workspace_id": workspace_id} if workspace_id else {}),
+        },
     )
     # Measured on a dry run too: a bundle over the queue limit is exactly the
     # kind of thing a dry run exists to find, and skipping the check here would
@@ -2461,6 +2599,17 @@ def _sync_one(
         }, None
 
     job, outcome = _upsert_job(client, org, encoded, found)
+
+    # A job's workspace is *identity*, so a content PUT deliberately leaves it
+    # alone — which means an existing job never moves into the workspace this
+    # sync just built unless it is rebound explicitly. Silently skipping this
+    # would leave a migrated project's jobs still self-contained while the
+    # workspace beside them sat empty of readers.
+    if workspace_id is not None and job.workspace_id != workspace_id:
+        client.request(
+            "PATCH", f"/orgs/{org}/jobs/{job.id}", {"workspace_id": workspace_id}
+        )
+        print_info(f"    {'bound':>12}  {project.name} to its project workspace")
 
     # The server is authoritative on the name, and an API older than renameable
     # jobs answers with the one it already had. Saying so is the difference
