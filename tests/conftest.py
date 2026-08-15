@@ -26,6 +26,49 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
+from trilogy.scripts import display_core
+
+#: Ambient terminal state the rich consoles read. `COLUMNS`/`LINES` size them,
+#: `FORCE_COLOR`/`CLICOLOR_FORCE` make them emit ANSI, and
+#: `TRILOGY_OUTPUT_FORMAT` swaps rendering for JSON events.
+_AMBIENT_CONSOLE_ENV = (
+    "FORCE_COLOR",
+    "CLICOLOR_FORCE",
+    "COLUMNS",
+    "LINES",
+    "TRILOGY_OUTPUT_FORMAT",
+)
+
+#: Whether rich was importable, read once before any test can toggle it.
+_RICH_AVAILABLE = display_core.RICH_AVAILABLE
+
+
+@fixture(autouse=True)
+def _pin_console_to_ci_defaults(monkeypatch):
+    """Contain ambient terminal state leaking into CLI output assertions.
+
+    `display_core` builds its rich consoles at import -- which for
+    `tests/cli/conftest.py` is collection time -- from whatever the developer's
+    shell advertises. `FORCE_COLOR` then wraps every rendered string in ANSI
+    codes and a narrow `COLUMNS` re-wraps tables, so assertions matching plain
+    substrings miss: 28 failures in tests/cli and 19 in tests/scripts on a
+    terminal, none of them in CI, which sets neither. Colour is re-read per
+    render, but width is captured in the constructor, so clearing the
+    environment is not enough -- the consoles have to be rebuilt behind it.
+
+    `set_rich_mode` is restored here for the same reason: a test that leaves it
+    off drops every later test to unstyled `click.echo`, which wraps nothing, so
+    the wrapping bugs above stop reproducing and the suite reads green over
+    them."""
+    for var in _AMBIENT_CONSOLE_ENV:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(display_core, "OUTPUT_FORMAT", "rich")
+    monkeypatch.setattr(display_core, "RICH_AVAILABLE", _RICH_AVAILABLE)
+    if _RICH_AVAILABLE:
+        monkeypatch.setattr(display_core, "console", display_core._make_console())
+        monkeypatch.setattr(
+            display_core, "error_console", display_core._make_error_console()
+        )
 
 
 @fixture(autouse=True)

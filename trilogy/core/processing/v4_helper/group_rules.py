@@ -273,6 +273,66 @@ def _fold_distinct_rewritable_buckets(
     return distinct_by_key
 
 
+def _aggregate_lineage_layers(
+    members: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+) -> list[list[NodeItem]]:
+    """Split same-key aggregate members into build layers so no bucket holds
+    both an aggregate and a lineage CONSUMER of it.
+
+    Two aggregates at one output grain normally co-source when their arguments
+    need the same row grain. But `count(line ? owc > 1) by order_id` where
+    `owc <- count_distinct(wh) by order_id` puts both at order grain over
+    line-grain rows, while the count's filtered input reads owc's OUTPUT: one
+    CTE cannot compute a value and consume it. Merging them wires
+    aggregate->filter->aggregate onto a single node and the group graph
+    2-cycles (the strategy builder's cycle guard then raises).
+
+    Layer i holds members whose longest chain of in-bucket lineage ancestors is
+    i, so each layer's inputs are complete before it builds. This is the
+    aggregate twin of `_feeds_extra_signature_group`'s producer/consumer split
+    for BASIC."""
+    if len(members) < 2:
+        return [members]
+    addrs = {node for node, _ in members}
+    ancestors: dict[str, set[str]] = {}
+    for node, _ in members:
+        found: set[str] = set()
+        visited: set[str] = {node}
+        stack: list[str] = [node]
+        while stack:
+            current = stack.pop()
+            for pred, _child in concept_graph.in_edges(current):
+                if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
+                    continue
+                if pred in visited:
+                    continue
+                visited.add(pred)
+                if pred in addrs:
+                    found.add(pred)
+                stack.append(pred)
+        ancestors[node] = found
+    if not any(ancestors.values()):
+        return [members]
+    # Longest-path layering, relaxation-capped so a (malformed) lineage cycle
+    # terminates instead of recursing.
+    level: dict[str, int] = dict.fromkeys(addrs, 0)
+    for _ in range(len(addrs)):
+        changed = False
+        for node in addrs:
+            want = max((level[a] + 1 for a in ancestors[node]), default=0)
+            if want > level[node]:
+                level[node] = want
+                changed = True
+        if not changed:
+            break
+    by_level: dict[int, list[NodeItem]] = defaultdict(list)
+    for node, data in members:
+        by_level[level[node]].append((node, data))
+    return [by_level[i] for i in sorted(by_level)]
+
+
 def _partition_standard_aggregates(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -296,20 +356,31 @@ def _partition_standard_aggregates(
     buckets: list[GroupBucket] = []
     for key, members in entries.items():
         label, depth_label, grain, input_grain, populations = key
-        bucket = _bucket_for(depth_label, members[0][1].derivation, grain, label=label)
-        segments: list[str] = []
-        if input_grain and input_grain != grain:
-            segments.append("input:" + "|".join(sorted(input_grain)))
-        if populations:
-            segments.append("pop:" + "|".join(sorted(populations)))
-        if segments:
-            bucket.discriminator = ":".join(segments)
-        if input_grain:
-            bucket.aggregate_input_grain = input_grain
-        bucket.aggregate_distinct_addrs = distinct_by_key.get(key, set())
-        for node, data in members:
-            _add_member(bucket, node, data)
-        buckets.append(bucket)
+        layers = _aggregate_lineage_layers(members, concept_graph, concept_edges)
+        for layer_index, layer in enumerate(layers):
+            bucket = _bucket_for(
+                depth_label, layer[0][1].derivation, grain, label=label
+            )
+            segments: list[str] = []
+            if input_grain and input_grain != grain:
+                segments.append("input:" + "|".join(sorted(input_grain)))
+            if populations:
+                segments.append("pop:" + "|".join(sorted(populations)))
+            # Layer 0 keeps the unsplit group id, so unaffected queries plan
+            # byte-identically to before layering existed.
+            if layer_index:
+                segments.append(f"layer:{layer_index}")
+            if segments:
+                bucket.discriminator = ":".join(segments)
+            if input_grain:
+                bucket.aggregate_input_grain = input_grain
+            layer_addrs = {data.address for _, data in layer}
+            bucket.aggregate_distinct_addrs = (
+                distinct_by_key.get(key, set()) & layer_addrs
+            )
+            for node, data in layer:
+                _add_member(bucket, node, data)
+            buckets.append(bucket)
     return buckets
 
 

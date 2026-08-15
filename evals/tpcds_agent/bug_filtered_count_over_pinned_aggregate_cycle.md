@@ -1,6 +1,9 @@
 # P1: inline-filtered aggregate whose condition reads a same-grain pinned aggregate plans a group-node cycle (hard crash)
 
-**Status: OPEN. Loud failure on a valid query.** The raise itself is the
+**Status: FIXED 2026-08-15** in `group_rules.py`
+(`_aggregate_lineage_layers`). The guard was NOT softened; see Resolution.
+
+**Was: OPEN. Loud failure on a valid query.** The raise itself is the
 deliberate cycle guard from `830fc4329` (#633) doing its job; the bug is the
 planner wiring a circular dependency for a construct that has an obvious valid
 build order. Before #633 this shape would have fallen through silently, so do
@@ -62,15 +65,15 @@ order): `(10, 2), (20, 0), (30, 0)`. Observed: the crash above.
 
 | # | Query | Result |
 |---|---|---|
-| 1 | `select order_id, count(line ? owc > 1) where region = 'A'` | CRASH |
-| 2 | `select order_id, count(line ? owc > 1)` (no WHERE at all) | CRASH |
+| 1 | `select order_id, count(line ? owc > 1) where region = 'A'` | was CRASH, now OK |
+| 2 | `select order_id, count(line ? owc > 1)` (no WHERE at all) | was CRASH, now OK |
 | 3 | `select order_id, count(line) where region = 'A'` | OK |
 | 4 | `select order_id, count(line ? region = 'A')` (plain-column condition) | OK |
 | 5 | `select count(line ? owc > 1) where region = 'A'` (global grain) | OK `(0,)` |
-| 6 | inline pin: `count(line ? (count_distinct(wh) by order_id) > 1)` at order grain | CRASH |
+| 6 | inline pin: `count(line ? (count_distinct(wh) by order_id) > 1)` at order grain | was CRASH, now OK |
 | 7 | `select order_id, owc where region = 'A'` (project the pinned agg) | OK |
-| 8 | cell 1 with `where wh = 1` instead | CRASH |
-| 9 | `sum(line ? owc > 1)` instead of count | CRASH |
+| 8 | cell 1 with `where wh = 1` instead | was CRASH, now OK |
+| 9 | `sum(line ? owc > 1)` instead of count | was CRASH, now OK |
 
 Minimal failing combination (cells 2, 5, 4): **select grain = the pin grain**,
 AND the `?` condition references the pinned aggregate, AND the reference sits
@@ -109,7 +112,50 @@ to discover them by trial.
 
 ## Verdict
 
-FRAMEWORK bug, planner group-graph edge construction. Fix locus:
-`group_graph.py` edge wiring for filter-condition dependencies when the
-condition references a pinned aggregate sharing the select grain. Do NOT relax
-the `strategy_builder.py:2039` cycle guard; it is what makes this loud.
+FRAMEWORK bug, planner group BUCKETING (not edge wiring). Do NOT relax the
+`strategy_builder.py:2039` cycle guard; it is what makes this loud.
+
+## Resolution (2026-08-15)
+
+The "wrong aggregate node" hypothesis above was close but off by one layer.
+Instrumenting `_materialize_group_graph` showed every CONCEPT edge is correct
+and acyclic: `local.owc -> _virt_filter_line -> local.n`, exactly the chain
+the hypothesis section predicts. The filter's condition dependency resolves
+onto the right node.
+
+The defect is that `owc` and `n` are not two nodes at all. Aggregate bucketing
+(`_partition_standard_aggregates`) keyed buckets on
+`(label, depth, grain, input_grain, populations)` alone. Both aggregates sit at
+grain `order_id` over `local.line`-grain rows, so they merged into ONE bucket,
+and collapsing a producer with its consumer folds the acyclic concept chain
+into a group-level 2-cycle. That is why the printed cycle names the
+`input:local.line` aggregate on both sides: it is one node wearing both roles.
+
+Fix: `_aggregate_lineage_layers` in
+`trilogy/core/processing/v4_helper/group_rules.py`. Within a candidate bucket,
+members are layered by longest chain of in-bucket lineage ancestors, so no
+bucket holds both an aggregate and a lineage consumer of it. This is the
+aggregate twin of `_feeds_extra_signature_group`, which already enforced the
+same producer/consumer split for BASIC. Layer 0 keeps the unsplit group id, so
+queries that do not hit the shape plan byte-identically.
+
+Resulting plan is the acyclic chain: scan -> `owc` aggregate -> broadcast join
+back to lines -> filter -> count.
+
+Regression tests: `tests/engine/test_duckdb_filter.py`
+(`test_filtered_aggregate_over_same_grain_pinned_aggregate`, 5 row-asserting
+cells, plus `test_same_grain_aggregates_without_lineage_still_co_source` as the
+over-split guard). All 5 fail with the layering patched off, reproducing the
+exact cycle above.
+
+Verification: all 9 matrix cells plan; full suite green (8004 passed);
+tpc-ds corpus render byte-identical A/B with 0 layering firings, so the rule
+only activates on this shape. Also probed: the window analog plans, two sibling
+consumers of one pin correctly share a layer, and a 3-level aggregate chain
+layers to exactly 3 GROUP BYs.
+
+Cells 1 and 8 now return `(10,0),(20,0)` rather than the report's naive
+expectation, because the WHERE narrows the pinned aggregate's population, which is the
+pre-existing behavior cell 7 already showed and which
+`bug_where_pinned_aggregate_ignored.md` resolved NOT-A-BUG. Cell 9's NULLs are
+standard SUM over an empty set.

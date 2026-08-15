@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from trilogy import Dialects
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
@@ -884,3 +886,79 @@ order by group_id asc;
         (3, 11, None, 0),
         (4, 4, None, 1),
     ]
+
+
+_PINNED_AGG_MODEL = """
+key line int;
+property line.order_id int;
+property line.wh int;
+property line.region string;
+
+datasource lines (line, order_id, wh, region) grain(line)
+query '''select 1 as line, 10 as order_id, 1 as wh, 'A' as region
+union all select 2, 10, 2, 'B'
+union all select 3, 20, 1, 'A'
+union all select 4, 20, 1, 'A'
+union all select 5, 30, 3, 'B'
+''';
+
+auto owc <- count_distinct(wh) by order_id;
+"""
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select order_id, count(line ? owc > 1) as n order by order_id asc;",
+            [(10, 2), (20, 0), (30, 0)],
+        ),
+        (
+            "select order_id, sum(line ? owc > 1) as n order by order_id asc;",
+            [(10, 3), (20, None), (30, None)],
+        ),
+        (
+            (
+                "select order_id, count(line ? (count_distinct(wh) by order_id) > 1)"
+                " as n order by order_id asc;"
+            ),
+            [(10, 2), (20, 0), (30, 0)],
+        ),
+        (
+            (
+                "select order_id, count(line ? owc > 1) as n where region = 'A'"
+                " order by order_id asc;"
+            ),
+            [(10, 0), (20, 0)],
+        ),
+        (
+            (
+                "select order_id, count(line ? owc > 1) as n where wh = 1"
+                " order by order_id asc;"
+            ),
+            [(10, 0), (20, 0)],
+        ),
+    ],
+)
+def test_filtered_aggregate_over_same_grain_pinned_aggregate(query, expected):
+    """An aggregate whose inline `?` condition reads an aggregate pinned by the
+    select grain must layer, not co-source: `owc` is a lineage ancestor of
+    `count(line ? owc > 1)` through the filter, so one aggregate bucket holding
+    both wires aggregate->filter->aggregate and cycles the group graph."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_PINNED_AGG_MODEL)
+    results = engine.execute_text(query)[-1].fetchall()
+    assert [tuple(r) for r in results] == expected
+
+
+def test_same_grain_aggregates_without_lineage_still_co_source():
+    """Layering must not split independent same-grain aggregates: these two read
+    the same line-grain stream with neither feeding the other, so they stay in
+    one GROUP BY."""
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_PINNED_AGG_MODEL)
+    sql = engine.generate_sql(
+        "select order_id, count(line) as n, count_distinct(wh) as w"
+        " order by order_id asc;"
+    )[-1]
+    assert sql.count("GROUP BY") == 1
