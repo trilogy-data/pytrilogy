@@ -6,11 +6,11 @@ With no arguments, views the run dir with the most recently modified agent log
 across every suite. ``--eval tpcds`` scopes the default to one suite; an
 explicit ``results_dir`` wins and its suite is inferred from its location.
 
-Always writes ``<results_dir>/viewer.html`` — a self-contained static page
-(the CSS/JS under ``static/`` is inlined at build time). With ``--serve`` it
-also starts a local server that adds live polling, an eval/run picker across
-all suites, an all-evals summary page, Replay/Archive actions, and a Launch
-screen that starts new ``run_eval.py`` runs.
+Always writes ``<results_dir>/viewer.html`` (the CSS/JS under ``static/`` is
+inlined at build time). Without ``--serve`` the run is baked into the file so it
+reads offline. With ``--serve`` the file is a shell - the page fetches what it
+needs from the server - and the server adds the cross-run grid, the all-evals
+summary, Replay/Archive and the Launch screen.
 """
 
 from __future__ import annotations
@@ -54,14 +54,33 @@ def render_html(title: str, data_json: str) -> str:
     return html.replace("__DATA__", data_json)
 
 
-def build_html(results_dir: Path, suite: Suite) -> Path:
-    runs = collect(results_dir, suite.spec)
-    if not runs:
-        raise SystemExit(f"no agent_log.*.jsonl found in {results_dir}")
-    data = json.dumps(runs).replace("</", "<\\/")
+def _bake_progress(done: int, total: int) -> None:
+    step = max(1, total // 20)
+    if done % step == 0 or done == total:
+        print(f"\r  baking {done}/{total} questions…", end="", flush=True)
+    if done == total:
+        print()
+
+
+def build_html(results_dir: Path, suite: Suite, preload: bool = True) -> Path:
+    """Write ``<run>/viewer.html``. With ``preload`` the run is baked into the
+    file so it reads offline (tens of seconds - every query is transpiled);
+    without it the page is a shell that fetches from the server, which is what
+    ``--serve`` wants and starts instantly."""
+    payload: dict = {"suite": suite.key, "run": results_dir.name}
+    if preload:
+        payload.update(collect(results_dir, suite.spec, _bake_progress))
+        if not payload["trajectories"]:
+            raise SystemExit(f"no agent_log.*.jsonl found in {results_dir}")
+    data = json.dumps(payload).replace("</", "<\\/")
     out = results_dir / "viewer.html"
     out.write_text(render_html(results_dir.name, data), encoding="utf-8")
-    print(f"wrote {out}  ({len(runs)} runs, {suite.label})")
+    what = (
+        f"{len(payload['trajectories'])} questions baked in"
+        if preload
+        else "served live"
+    )
+    print(f"wrote {out}  ({what}, {suite.label})")
     return out
 
 
@@ -116,7 +135,7 @@ def main() -> int:
             f"unknown eval {args.suite!r}; available: {', '.join(sorted(suites))}"
         )
     suite, results_dir = _resolve_target(suites, args.results_dir, args.suite)
-    build_html(results_dir, suite)
+    build_html(results_dir, suite, preload=args.serve is None)
     if args.serve is not None:
         serve(suites, suite, results_dir, args.serve, args.log_requests)
     return 0

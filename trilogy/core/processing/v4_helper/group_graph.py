@@ -1416,6 +1416,59 @@ def _resolve_rowset_key(addr: str, environment: BuildEnvironment | None) -> str:
     return addr
 
 
+def _lineage_pinned_grain(
+    addresses: frozenset[str] | set[str], environment: BuildEnvironment | None
+) -> frozenset[str]:
+    """Grain components pinned by fixed-grain barriers in the lineage of
+    ``addresses``. A BASIC that renames or derives from an aggregate
+    (`cust_state_amt as total`) is a fixed-grain barrier exactly like the
+    aggregate itself: its rows are unique at the aggregate's grain and cannot
+    be regenerated finer. Same for a rename of a rowset member
+    (`buyers_b.cust_id as b_cust`): its join axis is what the body value is
+    keyed by (`id`), which sibling contributors expose. The walk stops at each
+    barrier — grains BELOW it are pre-aggregation / body row grains, not join
+    axes. Members of an AUTHORED scoped-join relation are skipped: the
+    authored keys are the axis there, and pairing on internal grain too would
+    silently narrow the authored fan-out (q59 shape)."""
+    if environment is None:
+        return frozenset()
+    scoped_members = {
+        addr
+        for canonical, members in environment.scoped_join_key_groups.items()
+        for addr in (canonical, *members)
+    }
+    stack: list[BuildConcept] = []
+    for addr in addresses:
+        concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
+            addr
+        )
+        if concept is not None:
+            stack.append(concept)
+    grain: set[str] = set()
+    seen: set[str] = set()
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if concept.derivation in GROUPING_DERIVATIONS:
+            if concept.grain:
+                grain |= set(concept.grain.components)
+            continue
+        if concept.derivation == Derivation.ROWSET:
+            axis = set(concept.keys or set())
+            if not axis and isinstance(concept.lineage, BuildRowsetItem):
+                select_grain = concept.lineage.rowset.select.grain
+                if select_grain:
+                    axis = set(select_grain.components)
+            if not ({concept.address} | axis) & scoped_members:
+                grain |= {_resolve_rowset_key(a, environment) for a in axis}
+            continue
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return frozenset(grain)
+
+
 def _final_host_count(
     group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], address: str
 ) -> int:
@@ -1583,6 +1636,16 @@ def _group_final_grain_contribution(
         rowset_keys |= (
             _statement_scoped_relation_members(environment) & merge_grain & available
         )
+    # A non-grouping contributor whose outputs ride a fixed-grain barrier (a
+    # BASIC rename/derivation of an aggregate: `cust_state_amt as total`, or
+    # of a rowset member) is grain-pinned at that barrier's grain. Without
+    # advertising it the assembly-side merge grain (union of contributor
+    # projection grains) can collapse to empty, which disables every join-key
+    # preservation guard in `_wrap_for_grain` and cross-joins the FINAL
+    # parents ON 1=1 (q30: two keyless group parents fanning out to billions
+    # of rows).
+    pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
+    rowset_keys |= _lineage_pinned_grain(pinned, environment)
     return frozenset(rowset_keys)
 
 
@@ -2050,6 +2113,7 @@ def _compute_concept_sets(
     scoped_join_member_addresses: frozenset[str] = frozenset(),
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
+    environment: BuildEnvironment | None = None,
 ) -> None:
     """Per-group input/output/hidden concept sets.
 
@@ -2059,6 +2123,19 @@ def _compute_concept_sets(
     - reverse demand: which outputs/inputs each group must expose
     """
     mandatory_addresses = {c.address for c in mandatory_list}
+    # Members of authored scoped-join relations: the authored keys are the join
+    # axis for the buckets hosting them, so rowset-grain resolution must not
+    # volunteer extra equalities there (it would silently narrow the authored
+    # fan-out, q59 shape).
+    scoped_relation_members = scoped_join_member_addresses | (
+        frozenset(
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        )
+        if environment is not None
+        else frozenset()
+    )
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
     # match those aliases so the producing group keeps the field as an output.
@@ -2121,6 +2198,29 @@ def _compute_concept_sets(
                 if scoped_axis_mates:
                     grain_mates |= scoped_axis_mates.get(component, frozenset())
                 grain_mates |= pseudonym_mates.get(component, frozenset())
+        # A rowset boundary namespaces its grain key (`rs_a.grp_key` wraps
+        # `local.grp_key`): the base address a parent supplies IS the grain
+        # key, so it is preservable through the boundary and everything
+        # stacked on it.
+        for component in fact.grain:
+            resolved_component = _resolve_rowset_key(component, environment)
+            if resolved_component != component:
+                grain_mates.add(resolved_component)
+        # A rowset boundary always materializes its grain keys from its body
+        # even with no graph parent to inherit them from, and its key members
+        # render under their unwrapped BASE address (the shared join handle).
+        # Without this a sibling-rowset merge has no exposable join key and
+        # cross-joins ON 1=1. Skipped for authored-relation hosts (see
+        # `scoped_relation_members`).
+        if fact.derivation == Derivation.ROWSET and not (
+            (fact.primary | fact.grain) & scoped_relation_members
+        ):
+            cap |= {
+                resolved
+                for component in fact.grain
+                if (resolved := _resolve_rowset_key(component, environment))
+                != component
+            }
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
@@ -2227,6 +2327,16 @@ def _compute_concept_sets(
                                 outs.add(member)
                                 break
                 if fact.grain:
+                    # Rowset boundaries namespace their grain keys
+                    # (`rs_a.grp_key` vs `rs_b.grp_key` both wrap
+                    # `local.grp_key`), so sibling grains must compare after
+                    # resolving through the boundary — two aggregates renamed
+                    # out of sibling rowsets at the same base grain otherwise
+                    # never match, neither exposes the key, and the FINAL
+                    # merge cross-joins ON 1=1 (alias-collision aggregates).
+                    resolved_grain = frozenset(
+                        _resolve_rowset_key(a, environment) for a in fact.grain
+                    )
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
@@ -2239,11 +2349,27 @@ def _compute_concept_sets(
                         # body's `cid as s_cid` beside `sum(net)` grouped by
                         # `csk, year`). Without the axis the merge cross-joins
                         # every dimension row onto every fact row.
-                        if sibling_fact.grain == fact.grain or (
-                            fact.grain < sibling_fact.grain
-                            and fact.grain <= io.capability[sibling]
+                        resolved_sibling_match = resolved_grain == frozenset(
+                            _resolve_rowset_key(a, environment)
+                            for a in sibling_fact.grain
+                        ) and not (
+                            (
+                                fact.primary
+                                | fact.grain
+                                | facts[sibling].primary
+                                | sibling_fact.grain
+                            )
+                            & scoped_relation_members
+                        )
+                        if (
+                            sibling_fact.grain == fact.grain
+                            or resolved_sibling_match
+                            or (
+                                fact.grain < sibling_fact.grain
+                                and fact.grain <= io.capability[sibling]
+                            )
                         ):
-                            outs |= fact.grain & cap_gid
+                            outs |= (fact.grain | resolved_grain) & cap_gid
                             break
                 continue
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
@@ -2465,6 +2591,7 @@ def build_group_graph(
             concept_attrs,
             buckets,
             mandatory_list,
+            environment=environment,
         )
         merged = _merge_basic_into_window_parent(
             group_graph, group_edges, attrs, buckets, concept_attrs
@@ -2482,6 +2609,7 @@ def build_group_graph(
                 concept_attrs,
                 buckets,
                 mandatory_list,
+                environment=environment,
             )
     condition_group_ids = _inject_conditions(
         group_graph,
@@ -2544,6 +2672,7 @@ def build_group_graph(
             ),
             scoped_axis_mates=_scoped_axis_mates(environment),
             relation_edge_members=relation_edge_members,
+            environment=environment,
         )
         _refresh_input_contracts(
             group_graph, group_edges, attrs, concept_attrs, concept_edges

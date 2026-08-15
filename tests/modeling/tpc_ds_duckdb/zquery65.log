@@ -1,5 +1,5 @@
 query_id = "65"
-gen_length = 2003
+gen_length = 1913
 preql_size = 650
 comp_size = 1062
 generated_sql = """
@@ -43,14 +43,6 @@ FROM
 WHERE
     \"cheerful\".\"revenue\" <= 0.1 * \"questionable\".\"store_avg_revenue\"
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"questionable\".\"store_avg_revenue\"
 ORDER BY 
     \"store_sales_store_store\".\"S_STORE_NAME\" asc nulls first,
     \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first

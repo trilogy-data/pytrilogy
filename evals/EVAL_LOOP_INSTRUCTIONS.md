@@ -58,11 +58,16 @@ python evals/tpcds_agent/run_eval.py --both-modes
 python evals/tpcds_agent/run_eval.py --category enriched --query-ids 5,13,18
 ```
 
-The same combinations can be launched from the viewer's **Launch runs** screen
+The same combinations can be launched from the viewer's **Launch** page
 (`python evals/trajectory_viewer.py --serve 8080`): pick the eval, the
 categories, the question scope and the model, check the command it renders, and
 start it. Runs queue one at a time and stream their output into the page. It
 runs the same `run_eval.py`, so nothing here changes.
+
+The viewer's **Debug** page is the fastest way to find the SET of problem
+questions this loop is about: it grids every run against every question, so a
+column that is red across runs is a question worth investigating and a row that
+is red is a bad run. Click a cell to land on that trajectory.
 
 **Outputs** (under `evals/tpcds_agent/`):
 - `results/<ts>_<category>_<provider>_<model>[_effort-<level>]/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,

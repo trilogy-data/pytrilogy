@@ -162,8 +162,7 @@ SELECT
     # CollapseSingleParent folds the rename chain into the scan. Any depth
     # keeps the invariant this test pins: the chains never SWAP — bill only
     # ever renders under an a-side name, ship only under a b-side name. The
-    # executing row check lives in
-    # local_scripts/v4_evals/cases/rowset_alias_collision.
+    # executing row check lives in test_rowset_alias_collision_rows.
     a_names = ["_buyers_a_cust_id", "buyers_a_cust_id", "a_cust"]
     b_names = ["_buyers_b_cust_id", "buyers_b_cust_id", "b_cust"]
     assert any(
@@ -282,6 +281,116 @@ SELECT
     assert "INVALID_REFERENCE_BUG" not in sql, sql
     assert 'count("facts"."x")' in sql, f"rs_a.total should be count(x):\n{sql}"
     assert 'sum("facts"."y")' in sql, f"rs_b.total should be sum(y):\n{sql}"
+
+
+def test_rowset_alias_collision_rows() -> None:
+    """Executing check for the alias-collision shape: two rowsets renaming
+    DIFFERENT source columns to the same name, joined back through their
+    shared `id` key. Regression: the renamed handles carried no key
+    association, the FINAL merge grain collapsed to empty, and the merge
+    cross-joined `FULL JOIN ... on 1=1` (3 rows -> 9-row cartesian). The
+    planning-status parity case cannot catch this — the cartesian still
+    executes — so the rows are pinned here."""
+    declarations = """
+key id int;
+key bill_id int;
+key ship_id int;
+
+datasource orders (
+    id: id,
+    bill: bill_id,
+    ship: ship_id,
+)
+grain (id)
+query '''
+select 1 id, 100 bill, 200 ship
+union all select 2, 101, 201
+union all select 3, 102, 202
+''';
+
+with buyers_a as
+SELECT
+    id,
+    bill_id as cust_id
+;
+
+with buyers_b as
+SELECT
+    id,
+    ship_id as cust_id
+;
+
+SELECT
+    id,
+    buyers_a.cust_id as a_cust,
+    buyers_b.cust_id as b_cust,
+order by
+    id asc
+;
+"""
+    from trilogy import Dialects
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = engine.generate_sql(declarations)[-1]
+    assert " 1=1" not in sql, sql
+    rows = engine.execute_text(declarations)[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(1, 100, 200), (2, 101, 201), (3, 102, 202)]
+
+
+def test_rowset_alias_collision_distinct_aggregate_rows() -> None:
+    """Executing check for the distinct-aggregates collision shape: two
+    rowsets aliasing different aggregates over the same grouping key.
+    Regression: the aggregate-rowset boundary refused to expose its grain
+    key, neither BASIC rename advertised a projection grain, and the FINAL
+    merge cross-joined all three contributors ON 1=1 (wrong totals paired
+    with wrong keys)."""
+    declarations = """
+key id int;
+property id.x int;
+property id.y int;
+property id.grp_key int;
+
+datasource facts (
+    id: id,
+    x: x,
+    y: y,
+    grp: grp_key,
+)
+grain (id)
+query '''
+select 1 id, 10 x, 100 y, 7 grp union all
+select 2 id, 20 x, 200 y, 7 grp union all
+select 3 id, 30 x, 300 y, 8 grp
+''';
+
+with rs_a as
+SELECT
+    grp_key,
+    count(x) -> total
+;
+
+with rs_b as
+SELECT
+    grp_key,
+    sum(y) -> total
+;
+
+SELECT
+    grp_key,
+    rs_a.total as a,
+    rs_b.total as b,
+order by grp_key asc
+;
+"""
+    from trilogy import Dialects
+
+    env = Environment()
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = engine.generate_sql(declarations)[-1]
+    assert " 1=1" not in sql, sql
+    rows = engine.execute_text(declarations)[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(7, 2, 300), (8, 1, 300)]
 
 
 def test_basic_expression_over_rowset_output_keeps_scoped_join_keys() -> None:

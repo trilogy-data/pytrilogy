@@ -193,19 +193,19 @@ def resolve_rowset(
     # LEFT add, not be inner-joined away). A filtered rowset stays a separate
     # outer-added contributor.
     #
-    # Plain ROW-projection rowsets only: an AGGREGATE rowset's grain is its
-    # grouping key, which the producer renames to the handle (`dept_totals` groups
-    # by `dept` and renders it as `_dept_totals_department`), so the raw grain key
-    # isn't a separately renderable column — exposing it makes assembly demand a
-    # `local.dept` no CTE projects (query-structure syntax example). A plain
-    # projection's grain key (`id`) IS a passthrough column, safe to expose.
+    # An AGGREGATE rowset whose grain key is RENAMED into a handle (`dept_totals`
+    # groups by `dept as department`) renders only the handle, so the raw
+    # `local.dept` is not in `produced` and the gate below skips it — exposing it
+    # anyway made assembly demand a column no CTE projects (query-structure
+    # syntax example). A grain key the inner producer DOES render (a bare
+    # `grp_key` beside `count(x) -> total`, or a plain projection's passthrough
+    # `id`) is safe and necessary: without it two sibling rowsets at the same
+    # base grain have no exposable join key and the FINAL merge cross-joins
+    # ON 1=1 (alias-collision aggregates: 2 rows -> 2x2 cartesian).
     if (
         isinstance(built, BuildSelectLineage)
         and built.where_clause is None
         and built.having_clause is None
-        and not any(
-            o.derivation == Derivation.AGGREGATE for o in built.output_components
-        )
     ):
         handle_addrs = {h.address for h in handles}
         for key_addr in built.grain.components:

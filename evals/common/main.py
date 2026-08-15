@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import io
 import json
 import os
@@ -17,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, archive, db, prompts, scoring
+from . import agent_runner, analyze_run, archive, cleanup, db, prompts, scoring
 from .categories import categories_for, funnel_order_for, get_category
 from .report import agent_metric_fields, build_report, load_env, render_markdown
 from .spec import BenchmarkSpec
@@ -554,6 +555,10 @@ def run(spec: BenchmarkSpec) -> int:
     run_dir = (args.output_dir or default_run_dir).resolve()
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
+    # Safety net for the paths the explicit purges below don't reach: an
+    # exception, or Ctrl-C. (A hard kill runs nothing, so `clean_results.py
+    # --spill` still exists for that.)
+    atexit.register(cleanup.purge_spill, run_dir)
     dashboard_path = spec.charts_dir / f"dashboard_{run_dir.name}.png"
     failures_path = spec.charts_dir / f"trilogy_failures_{run_dir.name}.md"
     print(f"[1/5] Building {spec.name} DuckDB (sf={args.scale_factor:g}) ...")
@@ -830,6 +835,10 @@ def run(spec: BenchmarkSpec) -> int:
             )
             maybe_render_dashboard()
         finally:
+            # The agent is gone, so anything its DuckDB spilled is dead weight -
+            # and a single spilling query can leave tens of GB. Take it now
+            # rather than at the end of a 99-question run.
+            cleanup.purge_spill(worker, log=lambda m: print(m, flush=True))
             release_worker(worker)
 
     if concurrency == 1:
@@ -996,17 +1005,14 @@ def run(spec: BenchmarkSpec) -> int:
     markdown = render_markdown(spec, report)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
 
-    # Only base full runs feed the longitudinal trends. Targeted `--query-ids`
-    # reruns (prompt tuning, splice) would inflate pass rates toward 100% as
-    # fixed queries accumulate, so they never publish.
-    if args.query_ids:
-        print("  archive skipped: targeted rerun (--query-ids) is not published")
-    else:
-        try:
-            n = archive.publish_run(run_dir, spec.short_name)
-            print(f"  archived {n} question rows -> {archive.default_db_path().name}")
-        except Exception as exc:
-            print(f"  archive skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+    # Every run publishes: the db is the copy that outlives the (huge) run dir.
+    # A targeted `--query-ids` rerun is stored with curated=1 so it still shows
+    # in the question-by-run grid without walking a pass-rate trend toward 100%.
+    try:
+        n = archive.publish_run(run_dir, spec.short_name)
+        print(f"  archived {n} question rows -> {archive.default_db_path().name}")
+    except Exception as exc:
+        print(f"  archive skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     try:
         _, events = analyze_run.load_run_spliced(run_dir)
@@ -1027,6 +1033,9 @@ def run(spec: BenchmarkSpec) -> int:
         )
     except Exception as exc:
         print(f"  analyze_run skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    # Scoring spills too, and the run's own workspace outlives the workers.
+    cleanup.purge_spill(run_dir, log=print)
 
     print(f"[5/5] Done. Artifacts in {run_dir}\n")
     print(markdown)

@@ -64,12 +64,14 @@ def _live_row(suite: Suite, run_dir: Path) -> dict | None:
 
 
 # HAVING MAX(rep) = 0 keeps full runs (always rep 0) and drops repeat-harness
-# archives (reps 0..N of one question).
+# archives (reps 0..N of one question). `curated` runs are archived too (the
+# grid wants them) but spliced/replayed results would walk a trend toward 100%.
 _ARCHIVED_SQL = """
 SELECT suite, variant, run_name, MAX(model), MAX(provider),
        COUNT(*), SUM(passed), SUM(prompt_tokens),
        MAX(run_timestamp), MAX(archived_at)
 FROM questions
+WHERE curated = 0
 GROUP BY suite, variant, run_name
 HAVING MAX(rep) = 0
 """

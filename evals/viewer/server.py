@@ -1,11 +1,16 @@
 """Live HTTP server behind the viewer page.
 
-Serves the baked ``viewer.html`` plus JSON endpoints the page polls:
-``suites.json`` (eval + run pickers), ``data.json`` (one run's trajectories),
-``summary.json`` (cross-eval performance), ``replay_status.json``,
-``launch_options.json`` / ``launch_status.json`` (the Launch screen) - and POST
-endpoints for replay / rerun-all / archive / launch. Every endpoint that touches
-a run takes an explicit suite so one server drives all benchmarks.
+Serves the baked ``viewer.html`` plus the JSON endpoints the page reads, in
+increasing cost: ``suites.json`` and ``summary.json`` (cross-eval), and for the
+Debug page ``matrix.json`` (the question-by-run grid), ``run_index.json`` (one
+run's questions), ``trajectory.json`` (one question's log) and ``queries.json``
+(one question's SQL render). Plus ``replay_status.json`` /
+``launch_options.json`` / ``launch_status.json`` and the POST endpoints for
+replay / rerun-all / archive / launch. Every endpoint that touches a run takes
+an explicit suite so one server drives all benchmarks.
+
+Nothing here loads a whole run: the page fetches one question at a time, so the
+work per request stays bounded no matter how big the benchmark is.
 """
 
 from __future__ import annotations
@@ -17,9 +22,10 @@ import threading
 import urllib.parse
 from pathlib import Path
 
+from . import runs as runs_mod
 from . import suites as suites_mod
-from .collect import collect
 from .launch import LaunchJobs, build_command, command_text, launch_options
+from .matrix import MatrixCache
 from .suites import Suite
 from .summary import summary_payload
 
@@ -205,8 +211,8 @@ class ReplayJobs:
             }
 
 
-# A cold collect() transpiles every query (tens of seconds). Serialise it so
-# overlapping polls queue behind one build instead of each doing the work.
+# Transpiling is the one heavy read left; serialise it so overlapping requests
+# queue behind one render instead of each doing the work.
 _COLLECT_LOCK = threading.Lock()
 
 
@@ -220,6 +226,7 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     default_dir: Path
     jobs: ReplayJobs
     launcher: LaunchJobs
+    matrix: MatrixCache
     log_requests: bool = False
 
     def log_message(self, format: str, *args) -> None:
@@ -316,20 +323,87 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/launch_status.json":
             self._json(self.launcher.snapshot())
             return
-        if parsed.path == "/data.json":
-            # Re-read the chosen run's logs per request so a live (or
-            # just-finished) run streams in — the page polls this.
-            qs = urllib.parse.parse_qs(parsed.query)
+        qs = urllib.parse.parse_qs(parsed.query)
+        if parsed.path == "/matrix.json":
             suite = self._suite((qs.get("suite") or [None])[0])
-            target = self._target_dir(suite, (qs.get("run") or [None])[0])
-            if target is None:
-                self._json([])
-                return
-            with _COLLECT_LOCK:
-                payload = collect(target, suite.spec)
-            self._json(payload)
+            self._json(self.matrix.get(suite))
+            return
+        if parsed.path in ("/run_index.json", "/trajectory.json", "/queries.json"):
+            self._run_read(parsed.path, qs)
             return
         super().do_GET()
+
+    def _archived_read(self, path: str, suite: Suite, name: str, qs: dict) -> bool:
+        """Serve a run whose files were reclaimed, from the history db. Returns
+        False when the archive doesn't have it either."""
+        try:
+            if path == "/run_index.json":
+                index = runs_mod.archived_index(suite.key, name)
+                if index is None:
+                    return False
+                self._json(index)
+                return True
+            if path == "/trajectory.json":
+                # Logs are what cleanup reclaims; results and the final query
+                # survive, the turn-by-turn trace does not.
+                if runs_mod.archived_index(suite.key, name) is None:
+                    return False
+                self._json(
+                    {"error": f"{name} is archived: its agent logs were reclaimed"}, 410
+                )
+                return True
+            key = (qs.get("q") or [""])[0]
+            category = (qs.get("category") or [None])[0]
+            with _COLLECT_LOCK:
+                self._json(
+                    runs_mod.archived_query_pair(
+                        suite.spec, suite.key, name, key, category
+                    )
+                )
+            return True
+        except Exception as exc:
+            self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return True
+
+    def _run_read(self, path: str, qs: dict) -> None:
+        """The three per-run reads, cheapest first: the question index (report
+        only), one question's trajectory (one log), one question's query pair
+        (a transpile). Each is re-read per request so a live run streams in."""
+        suite = self._suite((qs.get("suite") or [None])[0])
+        name = (qs.get("run") or [None])[0]
+        # Strict: a name we don't advertise is a 404, never a silent fallback to
+        # some other run - the page would show it under the name it asked for.
+        target = (
+            self._resolve_run(suite, name) if name else self._target_dir(suite, None)
+        )
+        if target is None:
+            # Not on disk: the run may still live in the history db, which
+            # outlives the files.
+            if name and self._archived_read(path, suite, name, qs):
+                return
+            self._json({"error": f"unknown run {name!r} in {suite.key}"}, 404)
+            return
+        try:
+            if path == "/run_index.json":
+                self._json(runs_mod.run_index(target, suite.spec))
+                return
+            key = (qs.get("q") or [""])[0]
+            if path == "/trajectory.json":
+                found = runs_mod.trajectory(target, key)
+                if found is None:
+                    self._json({"error": f"unknown question {key!r}"}, 404)
+                else:
+                    self._json(found)
+                return
+            category = (qs.get("category") or [None])[0]
+            # Serialised: a cold transpile boots the engine, and two racing
+            # requests would boot two.
+            with _COLLECT_LOCK:
+                self._json(runs_mod.query_pair(target, suite.spec, key, category))
+        except Exception as exc:
+            # Without this the request dies with an empty body and the page has
+            # nothing to show for it.
+            self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
     def _launch(self, suite: Suite, body: dict) -> None:
         """Preview or start a run_eval.py run. ``preview`` renders the command
@@ -419,6 +493,7 @@ def serve(
     ViewerHandler.default_dir = results_dir
     ViewerHandler.jobs = ReplayJobs()
     ViewerHandler.launcher = LaunchJobs()
+    ViewerHandler.matrix = MatrixCache()
     ViewerHandler.log_requests = log_requests
     handler = functools.partial(ViewerHandler, directory=str(results_dir))
     # Threading: a replay runs off-thread, but the browser still opens parallel

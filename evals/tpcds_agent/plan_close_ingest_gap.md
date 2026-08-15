@@ -121,8 +121,41 @@ shapes because it lacks the pre-solved models):
     - global role-alias table so `*_sold_date_sk` becomes `sold_date` in every fact,
       including when a file has only one date FK.
 1.3 Enum/bounds gating in `ingest_helpers/typing.py`: never on key/FK columns; require
-    distinct-count small relative to row count; drop single-value enums entirely (or
-    demote to a comment: "sampled values: ...").
+    distinct-count small relative to row count. REVISED 2026-08-15: keep single-value
+    enums (knowing the data has exactly one value is genuinely useful); the trap is not
+    the domain, it is the agent concluding a whole-domain filter is droppable when the
+    field is reached through a nullable join. Addressed first via 1.5 below.
+1.5 (IMPLEMENTED 2026-08-15, under A/B) Explore effective-nullability rendering,
+    `trilogy/scripts/explore.py`: concepts in a namespace reached through a `?`
+    cross-namespace binding render with the effective `?` marker
+    (`county enum<string>['Williamson County']?;`), namespace entries carry
+    `join: "nullable"` (or `{"nullable": [subset]}` for mixed conformed role groups),
+    and the payload carries a one-time `join_note` legend. The edge, not the leaf,
+    carries the nullability (q16: `county` is non-null locally; `cs_call_center_sk` is
+    the `?`). Kill-switch for control legs: `TRILOGY_EXPLORE_EFFECTIVE_NULLS=0`.
+    Measured payload cost: +5.5% ingest / +5.0% enriched summed across model files
+    (mostly the per-payload legend; ~1.5-2% per explore call on a large fact).
+    Side finding: on the enriched model the marker renders `sale_date` nullable but
+    `return_date` NOT nullable, faithfully exposing the known q78-class defect
+    (return-side bindings not `?`-marked in the hand model).
+    A/B RESULT (2026-08-15, q16 ingest sf=1, 10 reps/leg, deepseek-v4-flash,
+    control = kill-switch on, runs repeat_q16_20260815-164641/-165916):
+    pass 9/10 -> 10/10; prompt tokens mean 337k -> 218k (-35%), median 313k -> 209k;
+    iterations 11.6 -> 8.8; explore calls 3.5 -> 2.4. Control logs contain zero
+    markers, treatment payloads carry them (73 hits); all treatment reps kept the
+    county predicate. Single-query evidence: confirm on the next full 4-leg run
+    before declaring category-wide.
+    Side finding from the control leg (r04 fail): apparent "pinned aggregate in
+    WHERE doesn't filter". PROBED 2026-08-15, verdict NOT-A-BUG
+    (bug_where_pinned_aggregate_ignored.md): the pin is honored; WHERE gates on the
+    POPULATION-scope value by design (where_scope_normalization.py), and the
+    population count made the predicate vacuously true. The WHERE form (233) matched
+    official TPC-DS q16; the agent's inline-`?` rewrite (178) regressed a correct
+    answer. Real follow-ups: (a) planner crash `select k, count(x ? pinned_agg > n)
+    where <plain pred>` raises UnresolvableQueryException
+    (strategy_builder.py:2039), needs a ticket; (b) sharpen the misleading
+    "(like `having`)" phrase at trilogy/ai/syntax_examples.py:900 with an explicit
+    population-vs-filtered scope note; (c) surface `run --scope` in agent guidance.
 1.4 Deterministic descriptions: leading file comment stating grain + linked dims
     ("Fact at (item_sk, ticket_number), links: date_dim, store, customer...") and
     template per-column notes where derivable (key, business id, FK role). This fills

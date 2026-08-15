@@ -2732,19 +2732,42 @@ def _wrap_for_grain(
         # the merge grain instead, keeping the join key. `from_concepts` folds
         # the FK key hierarchy, so reducing the concept grain together with the
         # merge grain collapses to just the merge grain iff it's determined by
-        # it (transitively, e.g. nation.id -> customer.id).
+        # it (transitively, e.g. nation.id -> customer.id). Only the part of
+        # the merge grain this parent can SUPPLY participates: a parent that
+        # carries `customer_sk` but not the sibling aggregate's `state` still
+        # projects its FD dims at {customer_sk} — demanding the full axis here
+        # (q30) shattered the scan into self-grain buckets with no join key.
+        #
+        # With no merge grain to supply (a pure projection: no aggregate, no
+        # rowset, so `_final_merge_grain` has nothing to declare) fall back to
+        # the parent's own grain, then to the concept's DECLARED KEYS. A
+        # dimension whose keys this parent supplies is functionally determined
+        # by them, so projecting it there keeps the shared row identity instead
+        # of deduping to its own key-grain: `city`/`usbos_source` (both
+        # keys={tree_id}) bound by one grain(tree_id) source otherwise became
+        # two keyless GroupNodes and the merge paired every tree with every
+        # enum value (boston_multi_enum).
         concept_keys = frozenset(concept.keys or set())
+        axis = (merge_grain_components or parent_grain_components) & parent_outputs
+        if not axis:
+            axis = concept_keys & parent_outputs
         if (
-            merge_grain_components
-            and grain_components.isdisjoint(merge_grain_components)
+            axis
+            and grain_components.isdisjoint(axis)
             and concept_keys
-            and BuildGrain.from_concepts(
-                grain_components | merge_grain_components, environment=environment
-            ).components
-            <= merge_grain_components
-            and merge_grain_components <= parent_outputs
+            and (
+                # Declared FD: the concept's own keys ARE the axis. Needed
+                # directly because `from_concepts` folds the PROPERTY hierarchy
+                # only — an enum declared `key city` that a source binds at
+                # grain(tree_id) carries keys={tree_id} but never folds into it.
+                concept_keys <= axis
+                or BuildGrain.from_concepts(
+                    grain_components | axis, environment=environment
+                ).components
+                <= axis
+            )
         ):
-            grain_components = merge_grain_components
+            grain_components = axis
         by_grain[grain_components].append(concept)
 
     wraps: list[StrategyNode] = []

@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from common import agent_runner, db, prompts, scoring
+from common import agent_runner, cleanup, db, prompts, scoring
 from common.categories import categories_for, get_category
 from common.main import DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_ENV
 from common.report import load_env
@@ -222,6 +222,8 @@ def main() -> int:
                 flush=True,
             )
         finally:
+            # The rep's agent is gone; whatever its DuckDB spilled is dead weight.
+            cleanup.purge_spill(worker, log=lambda m: print(m, flush=True))
             with pool_lock:
                 pool.append(worker)
 

@@ -3,29 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agent trajectories — __TITLE__</title>
+<title>Trilogy evals - __TITLE__</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a1d27'/%3E%3Cpath d='M5 24 Q13 22 18 15 T27 6' fill='none' stroke='%237aa2f7' stroke-width='2.5' stroke-linecap='round' stroke-dasharray='1 4.5'/%3E%3Ccircle cx='27' cy='6' r='3.5' fill='%23f7768e'/%3E%3C/svg%3E">
 <style>
 /*__CSS__*/
 </style>
 </head>
 <body>
-<div id="wrap">
-  <div id="side">
-    <div id="sidehead">
-      <div id="runbar">
-        <label>Eval<span id="live"></span></label>
-        <select id="suitesel" onchange="onSuiteChange()"></select>
-        <label class="runlbl">Run</label>
-        <select id="runsel" onchange="onRunChange()"></select>
-        <button class="fbtn sumbtn" id="sumbtn" onclick="showSummary()">All evals summary</button>
-        <button class="fbtn sumbtn" id="launchbtn" onclick="showLaunch()">Launch runs<span id="launchdot"></span></button>
-      </div>
-      <div id="tally"></div>
-    </div>
-    <div id="runs"></div>
-  </div>
-  <div id="main"></div>
+<div id="busy"></div>
+<div id="app">
+  <nav id="ribbon">
+    <div class="rib-logo" title="Trilogy evals">⌁</div>
+    <button class="rib" id="rib-evals" onclick="go('evals')"><span class="rib-i">▦</span><span class="rib-t">Evals</span></button>
+    <button class="rib" id="rib-launch" onclick="go('launch')"><span class="rib-i">▶</span><span class="rib-t">Launch</span><span class="rib-dot" id="dot-launch"></span></button>
+    <button class="rib" id="rib-debug" onclick="go('debug')"><span class="rib-i">◫</span><span class="rib-t">Debug</span><span class="rib-dot" id="dot-debug"></span></button>
+  </nav>
+  <main id="page"></main>
 </div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
