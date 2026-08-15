@@ -208,7 +208,9 @@ def test_keyless_join_against_self_grained_metric_allowed() -> None:
         ),
     }
     joins = [
-        JoinOrderOutput(right="ds~agg", type=JoinType.FULL, keys={}, left="ds~customers")
+        JoinOrderOutput(
+            right="ds~agg", type=JoinType.FULL, keys={}, left="ds~customers"
+        )
     ]
     _check(joins, sources)
 

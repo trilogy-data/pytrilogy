@@ -118,9 +118,15 @@ and demand layers — not in late re-injection):
    that barrier's grain as its projection grain, so the assembly-side merge
    grain can no longer collapse to empty. Authored scoped-join relation
    members are excluded (their authored keys stay the axis; q59 fan-out).
-2. `strategy_builder._wrap_for_grain`: the FK-hop collapse projects FD dims at
-   the SUPPLIED part of the merge grain (`merge_grain & parent_outputs`)
-   instead of requiring the parent to carry the whole axis.
+2. `strategy_builder._wrap_for_grain`: the FK-hop collapse now resolves its
+   axis in priority order (supplied merge grain, else the parent's own grain,
+   else the concept's own keys, each intersected with what the parent can
+   supply) and asks the concept-map FD closure `build_fd_determines` whether
+   the concept is determined by it. Two prior gaps: it demanded the parent
+   carry the WHOLE merge axis (q30), and it inferred FD via
+   `BuildGrain.from_concepts`, which folds the property hierarchy only, so an
+   enum declared `key city` and bound by a `grain (tree_id)` source never
+   folded even though it carries `keys={tree_id}` (boston_multi_enum).
 3. `group_graph._compute_concept_sets`: sibling-grain comparison and grain-key
    capability now resolve rowset-namespaced grain keys (`rs_a.grp_key` ==
    `local.grp_key`), and a rowset boundary's base grain keys count as
@@ -169,13 +175,22 @@ against the pre-fix planner; and the full test suite has zero triggers.
 
 ### What the guard caught
 
-Two MORE live wrong-results bugs of the same category, both previously green
-because their tests never validated rows: `rowset_alias_collision` (9-row
-cartesian instead of 3) and the distinct-aggregates collision (wrong totals
-paired with wrong keys). Both fixed by the same principle above. See
-Neither had a row assertion: `test_v4_parity_cases` checks PLANNING STATUS
-only, so a query that plans into a cartesian and returns garbage stays green.
-Any future fix in this area needs row-asserting tests.
+THREE more live wrong-results bugs of the same category, all previously green
+because no test validated rows:
+
+1. `rowset_alias_collision`: 9-row cartesian instead of 3.
+2. The distinct-aggregates rowset collision: wrong totals paired with wrong
+   keys.
+3. `boston_multi_enum` (tests/modeling/geography): `city` and `usbos_source`
+   both carry `keys={tree_id}`, each got deduped to its own grain (dropping
+   `tree_id`), and the merge paired every tree with every enum value. Its test
+   asserted only that two table names appear in the SQL, so a data-corrupting
+   cartesian passed CI.
+
+All three are fixed by the same principle. The lesson: `test_v4_parity_cases`
+checks PLANNING STATUS only, and several modeling tests assert on SQL text
+rather than rows, so a query that plans into a cartesian and returns garbage
+stays green. Any future fix in this area needs row-asserting tests.
 
 ### Tests
 

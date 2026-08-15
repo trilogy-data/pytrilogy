@@ -2740,31 +2740,27 @@ def _wrap_for_grain(
         #
         # With no merge grain to supply (a pure projection: no aggregate, no
         # rowset, so `_final_merge_grain` has nothing to declare) fall back to
-        # the parent's own grain, then to the concept's DECLARED KEYS. A
-        # dimension whose keys this parent supplies is functionally determined
-        # by them, so projecting it there keeps the shared row identity instead
-        # of deduping to its own key-grain: `city`/`usbos_source` (both
-        # keys={tree_id}) bound by one grain(tree_id) source otherwise became
-        # two keyless GroupNodes and the merge paired every tree with every
-        # enum value (boston_multi_enum).
-        concept_keys = frozenset(concept.keys or set())
+        # the parent's own grain, then to the concept's own keys. A dimension
+        # this parent's rows determine must ride that identity rather than
+        # dedup to its own key-grain: `city`/`usbos_source` (both keys={tree_id})
+        # bound by one grain(tree_id) source otherwise became two keyless
+        # GroupNodes and the merge paired every tree with every enum value
+        # (boston_multi_enum).
         axis = (merge_grain_components or parent_grain_components) & parent_outputs
         if not axis:
-            axis = concept_keys & parent_outputs
+            axis = frozenset(concept.keys or ()) & parent_outputs
         if (
             axis
             and grain_components.isdisjoint(axis)
-            and concept_keys
-            and (
-                # Declared FD: the concept's own keys ARE the axis. Needed
-                # directly because `from_concepts` folds the PROPERTY hierarchy
-                # only — an enum declared `key city` that a source binds at
-                # grain(tree_id) carries keys={tree_id} but never folds into it.
-                concept_keys <= axis
-                or BuildGrain.from_concepts(
-                    grain_components | axis, environment=environment
-                ).components
-                <= axis
+            # The concept-map FD closure is the authority on "is this
+            # determined by that": it walks grain, keys and equivalence
+            # classes transitively (nation.id -> customer.id), which neither a
+            # raw `keys` subset test nor `BuildGrain.from_concepts` does on its
+            # own — `from_concepts` folds the property hierarchy only, so an
+            # enum declared `key city` that a source binds at grain(tree_id)
+            # never folds into it.
+            and build_fd_determines(
+                environment, axis, concept.address, include_empty_grain=False
             )
         ):
             grain_components = axis
