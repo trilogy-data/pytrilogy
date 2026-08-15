@@ -263,10 +263,35 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     # `name` is what the job is called; omitted, it derives from the path under
     # the sync root, which is the right answer in a models repository and a bare
     # leaf name for a project that is its own repository.
+    # `job` is the array of tables that declares several jobs over one
+    # directory; its entries take the same keys, so `cloud.job` repeats the set
+    # minus the two that address a deployment rather than a job.
     "cloud": {
         "api_url",
         "org",
+        "job",
         "name",
+        "key",
+        "entrypoint",
+        "workspace",
+        "include",
+        "exclude",
+        "schedule",
+        "operation",
+        "timeout_seconds",
+        "memory_mb",
+        "cpus",
+        "secret_env",
+        "vm_class",
+        "priority",
+        "deadline_seconds",
+    },
+    "cloud.job": {
+        "name",
+        "key",
+        "entrypoint",
+        "include",
+        "exclude",
         "schedule",
         "operation",
         "timeout_seconds",
@@ -319,6 +344,14 @@ def audit_config_file(path: Path) -> list[str]:
                 continue
             if isinstance(value, dict) and qualified in _KNOWN_SECTIONS:
                 visit(qualified, value)
+            # An array of tables ([[cloud.job]]) is a section repeated, and
+            # each entry deserves the same audit: without this a typo inside
+            # one is silent, and a job that quietly loses a setting is exactly
+            # what a config audit is for.
+            elif isinstance(value, list) and qualified in _KNOWN_SECTIONS:
+                for entry in value:
+                    if isinstance(entry, dict):
+                        visit(qualified, entry)
 
     visit("", config_data)
     return warnings

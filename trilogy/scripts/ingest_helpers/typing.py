@@ -92,7 +92,9 @@ RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
             "value_range": (1, 12),
         },
         "day": {
-            "patterns": [r"(?:^|_)dom(?:$|_)", r"day_of_month"],
+            # A bare `day` also matches the `day_of_week` prefix; the longest-match
+            # tie-break in detect_rich_type keeps that column on day_of_week.
+            "patterns": [r"(?:^|_)dom(?:$|_)", r"day_of_month", r"(?:^|_)day(?:$|_)"],
             "import": "std.date",
             "type_name": "day",
             "base_type": _INT_TYPES,

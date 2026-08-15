@@ -34,6 +34,51 @@ pub enum EdgeReason {
     },
 }
 
+/// Collect .preql files in a directory, optionally recursing into subdirectories.
+pub fn collect_preql_files(
+    dir: &PathBuf,
+    recursive: bool,
+) -> Result<Vec<PathBuf>, std::io::Error> {
+    let mut files = Vec::new();
+
+    if recursive {
+        collect_preql_files_recursive(dir, &mut files)?;
+    } else {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() && is_preql_file(&path) {
+                files.push(path);
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
+}
+
+fn collect_preql_files_recursive(
+    dir: &PathBuf,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            collect_preql_files_recursive(&path, files)?;
+        } else if path.is_file() && is_preql_file(&path) {
+            files.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn is_preql_file(path: &PathBuf) -> bool {
+    path.extension().is_some_and(|ext| ext == "preql")
+}
+
 /// Process files in a directory, discovering transitive imports
 pub fn process_directory_with_imports(
     initial_files: Vec<PathBuf>,
@@ -383,5 +428,29 @@ mod tests {
             "Expected to to be incremental_sales.preql, got {:?}",
             edge.to
         );
+    }
+
+    #[test]
+    fn test_collect_preql_files_recursive_flag() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+
+        create_test_file(root, "top.preql", "");
+        create_test_file(root, "raw/nested.preql", "");
+        create_test_file(root, "raw/deep/deeper.preql", "");
+        create_test_file(root, "raw/notes.txt", "");
+
+        let flat = collect_preql_files(&root.to_path_buf(), false).unwrap();
+        assert_eq!(flat.len(), 1);
+        assert!(flat[0].ends_with("top.preql"));
+
+        let recursive = collect_preql_files(&root.to_path_buf(), true).unwrap();
+        let names: Vec<_> = recursive
+            .iter()
+            .filter_map(|p| p.file_name())
+            .collect();
+        assert_eq!(recursive.len(), 3, "got {:?}", names);
+        assert!(names.contains(&std::ffi::OsStr::new("nested.preql")));
+        assert!(names.contains(&std::ffi::OsStr::new("deeper.preql")));
     }
 }

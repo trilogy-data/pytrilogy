@@ -114,7 +114,9 @@ def resolve_with_errors(folder: Path) -> dict:
         )
     resolver = PyImportResolver()
 
-    result = resolver.resolve_directory(str(folder), False)
+    # Recursive to match resolve_input's **/*.preql discovery: run/refresh
+    # execute subdirectory scripts, so the graph must cover them too.
+    result = resolver.resolve_directory(str(folder), True)
 
     # Check for parse errors in warnings and raise ParseError
     warnings = result.get("warnings", [])

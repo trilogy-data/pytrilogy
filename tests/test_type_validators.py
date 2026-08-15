@@ -400,7 +400,8 @@ def test_mock_validated():
 
     vint = ValidatedType(type=DataType.INTEGER, ranges=(ValueRange(min=5, max=10),))
     vals = mock_datatype(vint, DataType.INTEGER, 50, is_key=True)
-    assert len(vals) == 50
+    # a key never repeats: the 6-value domain caps the row count
+    assert vals == list(range(5, 11))
     assert all(vint.check_value(v) for v in vals)
     vals = mock_datatype(vint, DataType.INTEGER, 50, is_key=False)
     assert all(vint.check_value(v) for v in vals)

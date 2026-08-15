@@ -45,7 +45,7 @@ def get_folder_all_imports(folder: PathlibPath) -> list[PathlibPath]:
     from _preql_import_resolver import PyImportResolver
 
     resolver = PyImportResolver()
-    result = resolver.resolve_directory(str(folder.resolve()), False)
+    result = resolver.resolve_directory(str(folder.resolve()), True)
     files = result.get("files", [])
     return [normalize_path_variants(p) for p in files]
 

@@ -105,6 +105,7 @@ from trilogy.scripts.cloud_models import (
     SecretMeta,
     SourceFingerprint,
     TokenSummary,
+    Workspace,
 )
 from trilogy.scripts.display import (
     emit_event,
@@ -261,6 +262,17 @@ def _secret_env_setting(
     return tuple(value)
 
 
+def _glob_setting(
+    table: Mapping[str, Any], source: Path, key: str
+) -> tuple[str, ...] | None:
+    value = table.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(e, str) for e in value):
+        raise _setting_error(source, key, "must be a list of glob patterns")
+    return tuple(value)
+
+
 def _cpus_setting(table: Mapping[str, Any], source: Path) -> float | None:
     value = table.get("cpus")
     if value is None:
@@ -295,6 +307,36 @@ class DeploySettings:
     #: wrong one for a project that is its own repository — where the path is
     #: the bare directory name and half of them are called ``data``.
     name: str | None = None
+
+    #: Identity fragment for one entry of a ``[[cloud.job]]`` array, appended
+    #: to the directory's `source_key` as ``::{key}``. **Immutable**: it is
+    #: what a sync upserts against, so editing it deploys a new job and
+    #: orphans the old one, exactly as moving a directory does. Meaningless
+    #: on a bare ``[cloud]`` block (there is only one job), and rejected
+    #: there rather than silently ignored.
+    key: str | None = None
+
+    #: The one script this job runs, relative to the project root. Required
+    #: in the ``[[cloud.job]]`` form and meaningless outside it: a project
+    #: deployed as one job runs its whole directory, which is what it has
+    #: always done. It is what makes several jobs over one *shared* tree
+    #: possible at all — see `_ensure_workspace`.
+    entrypoint: str | None = None
+
+    #: The workspace a multi-job project deploys into. Block-level only: there
+    #: is exactly one per toml, holding the whole tree its jobs share. Unset,
+    #: it derives from the path like a job name does.
+    workspace: str | None = None
+
+    #: Per-job bundle filters, the same glob semantics ``jobs push``
+    #: ``--include``/``--exclude`` use. They exist because several jobs over
+    #: one directory is the whole point of ``[[cloud.job]]``, and shipping
+    #: every file to every job is how a stray ``debug.preql`` ends up running
+    #: in production. ``exclude`` adds to the defaults; ``include`` replaces
+    #: them.
+    include: tuple[str, ...] | None = None
+    exclude: tuple[str, ...] | None = None
+
     schedule: str | None = None
     operation: str | None = None
     timeout_seconds: int | None = None
@@ -304,6 +346,23 @@ class DeploySettings:
     vm_class: str | None = None
     priority: int | None = None
     deadline_seconds: int | None = None
+
+    def merged_over(self, defaults: DeploySettings) -> DeploySettings:
+        """This entry's settings with *defaults* filling every unset field.
+
+        What makes ``[cloud]`` shared defaults and ``[[cloud.job]]`` the
+        per-job override: an org's `secret_env` and `exclude` are written once
+        at the top and each entry says only what differs. `name` and `key` are
+        never inherited — two jobs sharing either would be two jobs deploying
+        as one.
+        """
+        merged = {
+            field.name: getattr(self, field.name) or getattr(defaults, field.name)
+            for field in dataclass_fields(self)
+        }
+        merged["name"] = self.name
+        merged["key"] = self.key
+        return DeploySettings(**merged)
 
     @classmethod
     def from_table(cls, table: Mapping[str, Any], source: Path) -> DeploySettings:
@@ -316,8 +375,16 @@ class DeploySettings:
         name = _typed_setting(table, source, "name", str, "a string")
         if name is not None and not name.strip():
             raise _setting_error(source, "name", "must not be empty")
+        key = _typed_setting(table, source, "key", str, "a string")
+        if key is not None and not key.strip():
+            raise _setting_error(source, "key", "must not be empty")
         return cls(
             name=name,
+            key=key,
+            entrypoint=_typed_setting(table, source, "entrypoint", str, "a string"),
+            workspace=_typed_setting(table, source, "workspace", str, "a string"),
+            include=_glob_setting(table, source, "include"),
+            exclude=_glob_setting(table, source, "exclude"),
             schedule=_typed_setting(table, source, "schedule", str, "a string"),
             operation=_choice_setting(table, source, "operation", ALLOWED_OPERATIONS),
             timeout_seconds=_positive_int_setting(table, source, "timeout_seconds"),
@@ -339,8 +406,14 @@ class DeploySettings:
         only ``name = "reports"`` describes nothing to run, and deploying the
         directory it sits in because of it is the surprise this method's
         `declared` property exists to prevent.
+
+        ``key``, ``include`` and ``exclude`` are absent for the same reason
+        twice over: they describe *which* job this is and *which files* it
+        gets, neither of which the platform stores, and a toml saying only
+        ``exclude = [...]`` describes nothing to run either.
         """
         declared = {
+            "entrypoint": self.entrypoint,
             "schedule": self.schedule,
             "operation": self.operation,
             "timeout_seconds": self.timeout_seconds,
@@ -383,10 +456,23 @@ class DeploySettings:
 #: which is what ``--prune`` is for.
 DEPLOY_KEYS: tuple[str, ...] = tuple(f.name for f in dataclass_fields(DeploySettings))
 
+#: Keys that say *which* job this is, or which files it gets, rather than how
+#: it runs. None of them reaches the job payload, and none of them makes a
+#: directory deployable on its own.
+_NON_DECLARING_KEYS = ("name", "key", "include", "exclude", "workspace")
+
 #: The subset that makes a directory a job. Split out so the "nothing
 #: deployable" error lists what would actually have helped: a toml declaring
 #: only a name still describes nothing to run.
-JOB_DECLARING_KEYS: tuple[str, ...] = tuple(k for k in DEPLOY_KEYS if k != "name")
+JOB_DECLARING_KEYS: tuple[str, ...] = tuple(
+    k for k in DEPLOY_KEYS if k not in _NON_DECLARING_KEYS
+)
+
+#: The key that turns one directory into several jobs. Its entries are
+#: `DeploySettings` tables in their own right, merged over the block they sit
+#: in — so ``[cloud]`` keeps holding the org, the API and whatever every job
+#: shares, and each ``[[cloud.job]]`` says only what makes it different.
+JOB_ARRAY_KEY = "job"
 
 
 def resolve_api_url(explicit: str | None) -> str:
@@ -1260,6 +1346,7 @@ def _carried_settings(existing: Job | None) -> dict[str, Any]:
         "vm_class": existing.vm_class,
         "priority": existing.priority,
         "deadline_seconds": existing.deadline_seconds,
+        "entrypoint": existing.entrypoint,
     }
 
 
@@ -1268,6 +1355,7 @@ def _carried_settings(existing: Job | None) -> dict[str, Any]:
 #: "leave it unset" state, so it is always sent.
 CARRIED_FIELDS = (
     "description",
+    "entrypoint",
     "timeout_seconds",
     "memory_mb",
     "cpus",
@@ -1847,9 +1935,22 @@ class DeployableProject:
     #: The ``[cloud] name``, or the path relative to the sync root when the
     #: toml declares none.
     name: str
-    #: `{origin}#{subpath}`; the identity a sync upserts against.
+    #: `{origin}#{subpath}`, plus ``::{key}`` for one entry of a
+    #: ``[[cloud.job]]`` array; the identity a sync upserts against.
     source_key: str
     origin: SourceOrigin
+
+    @property
+    def include(self) -> tuple[str, ...]:
+        return self.settings.include or DEFAULT_INCLUDE
+
+    @property
+    def exclude(self) -> tuple[str, ...]:
+        """Declared excludes *add* to the defaults, the same way
+        ``jobs push --exclude`` does: the defaults exist to keep caches and
+        virtualenvs out of a bundle, and nobody excluding `debug.preql` means
+        to let `.venv` back in."""
+        return DEFAULT_EXCLUDE + (self.settings.exclude or ())
 
 
 def derive_job_name(root: Path, directory: Path) -> str:
@@ -1902,6 +2003,11 @@ def _reject_nested(found: Sequence[DeployableProject]) -> None:
         for inner in found:
             if inner is outer:
                 continue
+            # Several jobs declared by one toml share a directory on purpose —
+            # that is what `[[cloud.job]]` is — and each takes the slice of it
+            # its own include/exclude describes.
+            if inner.config_path == outer.config_path:
+                continue
             if inner.directory.resolve().is_relative_to(outer.directory.resolve()):
                 raise CloudError(
                     f"{inner.config_path} declares a deployable project inside "
@@ -1935,6 +2041,71 @@ def _reject_duplicate_names(found: Sequence[DeployableProject]) -> None:
             )
 
 
+def _job_entries(
+    table: Mapping[str, Any], defaults: DeploySettings, source: Path
+) -> list[DeploySettings]:
+    """The ``[[cloud.job]]`` entries of one toml, each merged over *defaults*.
+
+    Empty when the file declares none, which is the single-job form and every
+    toml written before this existed.
+
+    ``key`` and ``name`` are both required per entry, and the reason is the
+    same one that makes them different from each other: the path can no longer
+    tell two jobs apart. `key` is the identity a sync upserts on (immutable —
+    changing it deploys a new job and orphans the old), `name` is what the job
+    is called (free to change, which is the whole point of declaring it). A
+    directory deploying four jobs cannot derive either from the directory.
+    """
+    raw = table.get(JOB_ARRAY_KEY)
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(e, dict) for e in raw):
+        raise _setting_error(
+            source, JOB_ARRAY_KEY, "must be an array of tables ([[cloud.job]])"
+        )
+    if not raw:
+        raise _setting_error(
+            source, JOB_ARRAY_KEY, "declares no jobs; remove it or add an entry"
+        )
+
+    entries: list[DeploySettings] = []
+    seen: dict[str, int] = {}
+    for index, entry in enumerate(raw):
+        settings = DeploySettings.from_table(entry, source).merged_over(defaults)
+        if not settings.key:
+            raise _setting_error(
+                source,
+                f"{JOB_ARRAY_KEY}[{index}]",
+                "must declare a key — it is this job's identity, and a "
+                "directory with several jobs has no path to derive one from",
+            )
+        if not settings.name:
+            raise _setting_error(
+                source,
+                f"{JOB_ARRAY_KEY}[{index}]",
+                f"(key {settings.key!r}) must declare a name",
+            )
+        if not settings.entrypoint:
+            raise _setting_error(
+                source,
+                f"{JOB_ARRAY_KEY}[{index}]",
+                f"(key {settings.key!r}) must declare an entrypoint — several "
+                "jobs over one directory share a workspace holding the whole "
+                "tree, so the script each one runs is the only thing that "
+                "distinguishes them",
+            )
+        if settings.key in seen:
+            raise _setting_error(
+                source,
+                f"{JOB_ARRAY_KEY}[{index}]",
+                f"reuses key {settings.key!r} from entry {seen[settings.key]}; "
+                "keys are identities and two jobs sharing one would deploy as one",
+            )
+        seen[settings.key] = index
+        entries.append(settings)
+    return entries
+
+
 def discover_projects(root: Path) -> list[DeployableProject]:
     """Every deployable project under *root*, in a stable order.
 
@@ -1943,6 +2114,15 @@ def discover_projects(root: Path) -> list[DeployableProject]:
     configuration — the repo-root one usually is — and deploying the whole
     repository as one job because of it would be a surprising way to find that
     out.
+
+    A toml may also declare **several** jobs over one directory, as
+    ``[[cloud.job]]`` entries, each with its own identity, name and bundle
+    filters. That exists because a directory holds exactly one `trilogy.toml`,
+    so "one toml, one job" made a pipeline of a refresh plus the jobs that
+    publish its output impossible to declare — and the platform now orders
+    jobs *within a schedule*, which is the shape those pipelines want. The
+    entries share the directory and the block's defaults; each takes the slice
+    of the tree its `include`/`exclude` describes.
     """
     found: list[DeployableProject] = []
     for config_path in sorted(root.rglob("trilogy.toml")):
@@ -1955,9 +2135,17 @@ def discover_projects(root: Path) -> list[DeployableProject]:
             raise CloudError(f"Could not parse {config_path}: {exc}") from exc
         if not isinstance(table, dict):
             continue
-        settings = DeploySettings.from_table(table, config_path)
-        if not settings.declared:
+        defaults = DeploySettings.from_table(table, config_path)
+        entries = _job_entries(table, defaults, config_path)
+        if not entries and not defaults.declared:
             continue
+        if defaults.key and not entries:
+            raise _setting_error(
+                config_path,
+                "key",
+                "is only meaningful inside a [[cloud.job]] entry; a directory "
+                "declaring one job has its path for an identity",
+            )
         if _excluded_from_discovery(root, directory):
             print_warning(
                 f"Skipping {config_path}: it is under an excluded path "
@@ -1966,16 +2154,24 @@ def discover_projects(root: Path) -> list[DeployableProject]:
             )
             continue
         origin = resolve_origin(directory.resolve())
-        found.append(
-            DeployableProject(
-                directory=directory,
-                config_path=config_path,
-                settings=settings,
-                name=settings.name or derive_job_name(root, directory),
-                source_key=origin.source_key(),
-                origin=origin,
+        for settings in entries or [defaults]:
+            found.append(
+                DeployableProject(
+                    directory=directory,
+                    config_path=config_path,
+                    settings=settings,
+                    name=settings.name or derive_job_name(root, directory),
+                    # `::{key}` rather than a deeper `#` segment: the location
+                    # is split off `#` by the prune scope check, and a second
+                    # one there would make a repository look like a path.
+                    source_key=(
+                        f"{origin.source_key()}::{settings.key}"
+                        if settings.key
+                        else origin.source_key()
+                    ),
+                    origin=origin,
+                )
             )
-        )
     _reject_nested(found)
     _reject_duplicate_names(found)
     return found
@@ -2147,10 +2343,74 @@ def cloud_sync(
     )
 
     results: list[dict] = []
+    # (config_path, cron) -> the jobs that declared it. Several jobs from one
+    # toml on one cron share a schedule *row*, which is what makes them one
+    # tick — and the tick is what the platform orders by dependency. One
+    # schedule each would put a refresh and the jobs that publish its output
+    # in separate firings with nothing between them but wall clock, which is
+    # the arrangement schedule ordering exists to replace.
+    # One workspace per multi-job toml, built before its jobs so they can be
+    # created already bound to it. A single-job project keeps deploying
+    # self-contained: it has no siblings to share a tree with, and giving it a
+    # workspace would be ceremony with no reader.
+    workspace_ids: dict[Path, str | None] = {}
     for project in projects:
-        outcome = _sync_one(client, org, project, by_key, env_id, schedules, dry_run)
+        if project.settings.key is None or project.config_path in workspace_ids:
+            continue
+        name = project.settings.workspace or derive_job_name(root, project.directory)
+        if env_name is not None:
+            # A workspace has no environment of its own, so a branch sync
+            # deploying into the production workspace would overwrite
+            # production's shared tree with the branch's. Namespacing the name
+            # keeps the two apart, the same way the environment keeps the jobs
+            # apart.
+            name = f"{name}-{env_name}"
+        # The whole tree, filtered only by the block's own hygiene globs: in
+        # workspace mode the per-job filters have nothing left to narrow.
+        files = collect_files(
+            project.directory.resolve(), project.include, project.exclude
+        )
+        files = [f for f in files if f["name"] != "trilogy.toml"]
+        ws_id, ws_outcome = _ensure_workspace(
+            client,
+            org,
+            name,
+            project.config_path.read_text(encoding="utf-8"),
+            files,
+            dry_run,
+        )
+        workspace_ids[project.config_path] = ws_id
+        print_info(f"  {ws_outcome:>12}  workspace {name} ({len(files)} file(s))")
+
+    groups: dict[tuple[Path, str | None], list[Job]] = {}
+    # Every job a given toml declares, across all its groups — what decides
+    # whether an existing schedule is this toml's to replace. See
+    # `_reconcile_schedule`: matching on the group alone cannot recognize the
+    # row it wrote yesterday once the group has gained or lost a job.
+    declared_by_toml: dict[Path, list[Job]] = {}
+    for project in projects:
+        outcome, job = _sync_one(
+            client,
+            org,
+            project,
+            by_key,
+            env_id,
+            schedules,
+            dry_run,
+            workspace_ids.get(project.config_path),
+        )
         results.append(outcome)
         print_info(f"  {outcome['outcome']:>12}  {project.name}")
+        if job is not None and env_id is None:
+            groups.setdefault(
+                (project.config_path, project.settings.schedule), []
+            ).append(job)
+            declared_by_toml.setdefault(project.config_path, []).append(job)
+
+    for (config_path, cron), jobs in groups.items():
+        _reconcile_schedule(
+            client, org, jobs, cron, schedules, declared_by_toml[config_path]
+        )
 
     pruned = _prune_stale(client, org, projects, by_key, dry_run) if prune else 0
 
@@ -2221,6 +2481,60 @@ def _prune_stale(
     return pruned
 
 
+def _ensure_workspace(
+    client: CloudClient,
+    org: str,
+    name: str,
+    config_text: str,
+    files: list[dict],
+    dry_run: bool,
+) -> tuple[str | None, str]:
+    """Create or update the workspace a multi-job project deploys into, and
+    say which happened.
+
+    **The workspace holds the whole tree.** Its jobs carry no files at all —
+    only which script of it they run — which is the arrangement the platform's
+    `entrypoint` exists to allow. Before it, a job executed its entire workdir,
+    so every job needed its own disjoint copy of the project and a workspace
+    could not hold a shared model layer at all: `refresh` adopts every managed
+    datasource it can reach, and a model file visible to a refresh job would
+    become one of its targets whether or not another job owned it.
+
+    `config` deliberately stays on the *jobs* rather than moving here.
+    Workspace config layering needs pytrilogy's `--config-overlay`, which has
+    not shipped (docs/handoff-pytrilogy-config-overlay.md in the platform
+    repo); a job inheriting workspace config fails today on the unknown flag.
+    Files are the part that can move, and the part worth moving.
+
+    Matched by name, which is what the platform makes unique per org. There is
+    no `source_key` on a workspace, so a renamed one is a new workspace and the
+    old one is left behind — the same trade a moved directory makes, and
+    `--prune` does not cover it.
+    """
+    existing = next(
+        (
+            w
+            for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
+            if w.name == name
+        ),
+        None,
+    )
+    body = {
+        "name": name,
+        "description": f"Shared project tree for {name}",
+        "files": files,
+    }
+    if dry_run:
+        return (existing.id if existing else None), (
+            "would update" if existing else "would create"
+        )
+    if existing:
+        client.put_one(f"/orgs/{org}/workspaces/{existing.id}", Workspace, body)
+        return existing.id, "updated"
+    created = client.post_one(f"/orgs/{org}/workspaces", Workspace, body)
+    return created.id, "created"
+
+
 def _sync_one(
     client: CloudClient,
     org: str,
@@ -2229,13 +2543,35 @@ def _sync_one(
     env_id: str | None,
     schedules: Sequence[ScheduleExt],
     dry_run: bool,
-) -> dict:
-    """Create or update one project's job. Returns a result record."""
-    files = collect_files(project.directory.resolve())
-    files = [f for f in files if f["name"] != "trilogy.toml"]
+    workspace_id: str | None = None,
+) -> tuple[dict, Job | None]:
+    """Create or update one project's job.
+
+    Returns the result record and the deployed job — the latter so the caller
+    can reconcile schedules *by group*, which it cannot do one project at a
+    time: several jobs declared by one toml on one cron have to land on one
+    schedule row, because a schedule is what the platform co-executes and
+    orders. `None` on a dry run, which deploys nothing to schedule.
+    """
+    # A job in a workspace carries **no files**: the workspace holds the whole
+    # tree and the job says which script of it to run. That is the entire
+    # point of the arrangement — one copy of the project instead of one per
+    # job, and a Workspaces screen that shows what is actually shared.
+    if workspace_id is not None:
+        files: list[dict] = []
+    else:
+        files = collect_files(
+            project.directory.resolve(), project.include, project.exclude
+        )
+        files = [f for f in files if f["name"] != "trilogy.toml"]
     config_text = project.config_path.read_text(encoding="utf-8")
+    # Digest over what identifies *this* job. In workspace mode its files live
+    # elsewhere, so the entrypoint stands in for them: two jobs sharing a
+    # workspace differ by which script they run, and a fingerprint that
+    # ignored it would report them as the same content pushed twice.
     fingerprint = SourceFingerprint.build(
-        content_digest(config_text, files), project.origin
+        content_digest(config_text + (project.settings.entrypoint or ""), files),
+        project.origin,
     )
 
     found = by_key.get(project.source_key)
@@ -2247,7 +2583,13 @@ def _sync_one(
         fingerprint=fingerprint,
         declared=project.settings.job_fields(),
         existing=found,
-        extra={"source_key": project.source_key, "environment_id": env_id},
+        extra={
+            "source_key": project.source_key,
+            "environment_id": env_id,
+            # Sent on create; a content PUT leaves the binding alone, so an
+            # existing job is rebound below instead.
+            **({"workspace_id": workspace_id} if workspace_id else {}),
+        },
     )
     # Measured on a dry run too: a bundle over the queue limit is exactly the
     # kind of thing a dry run exists to find, and skipping the check here would
@@ -2260,7 +2602,27 @@ def _sync_one(
             "source_key": project.source_key,
             "action": action,
             "outcome": f"would {action}",
-        }
+        }, None
+
+    # A job's workspace is *identity*, so a content PUT deliberately leaves it
+    # alone — an existing job never moves into the workspace this sync just
+    # built unless it is rebound explicitly, and a migrated project would
+    # otherwise keep self-contained jobs beside a workspace nothing reads.
+    #
+    # **Before** the content write, not after: the API resolves the entrypoint
+    # against the job's *current* chain, so a job still unbound is a job whose
+    # files are the empty set the PUT is about to install — and the entrypoint
+    # names a file that, from where the API is standing, exists nowhere.
+    if (
+        found is not None
+        and workspace_id is not None
+        and found.workspace_id != workspace_id
+    ):
+        if not dry_run:
+            client.request(
+                "PATCH", f"/orgs/{org}/jobs/{found.id}", {"workspace_id": workspace_id}
+            )
+        print_info(f"    {'bound':>12}  {project.name} to its project workspace")
 
     job, outcome = _upsert_job(client, org, encoded, found)
 
@@ -2282,9 +2644,7 @@ def _sync_one(
     # what keeps the binding match unambiguous: derived names are identical
     # across environments, so if both had schedules, `job_names == [job.name]`
     # could not tell one environment's from another's.
-    if env_id is None:
-        _reconcile_schedule(client, org, job, project.settings.schedule, schedules)
-    elif project.settings.schedule:
+    if env_id is not None and project.settings.schedule:
         print_info(
             f"    {'unscheduled':>12}  {project.name} "
             "(branch build; trigger it by hand)"
@@ -2295,17 +2655,26 @@ def _sync_one(
         "source_key": project.source_key,
         "action": action,
         "outcome": outcome,
-    }
+    }, job
 
 
 def _reconcile_schedule(
     client: CloudClient,
     org: str,
-    job: Job,
+    jobs: Sequence[Job],
     cron: str | None,
     schedules: Sequence[ScheduleExt],
+    owned: Sequence[Job],
 ) -> None:
-    """Bring the job's schedule in line with what its config declares.
+    """Bring one group's schedule in line with what its config declares.
+
+    A *group* is the jobs one toml declares on one cron — usually one job, and
+    several when a ``[[cloud.job]]`` array puts a refresh and the jobs that
+    publish its output on the same cadence. They share a schedule **row** on
+    purpose: the platform fires a schedule as a single tick and orders that
+    tick by what each job reads and writes, so a shared row is what makes the
+    publish wait for the refresh instead of racing it. A schedule each would
+    put them in separate firings with only wall clock between them.
 
     **Matched by binding — by job id, not by name.** A schedule this sync owns
     is one bound to this job *and to nothing else*; its own name is incidental.
@@ -2321,9 +2690,18 @@ def _reconcile_schedule(
     before for every case that existed then, and no crash against a deployment
     that has not rolled yet.
 
-    A schedule binding *several* jobs is deliberately left alone: that is
-    someone's grouping (and a shared tick identity, which is what lets siblings
-    share one state probe), not something a per-directory config should own.
+    **Ownership is "binds only jobs this toml declares", not "binds exactly
+    this group".** The difference is what happens the day a job is added: with
+    exact-set matching, yesterday's two-job schedule no longer matches today's
+    three-job group, goes unrecognized, and a second schedule is created beside
+    it — so the two original jobs fire *twice a tick*. That is the same
+    duplicate-schedule failure the rename bug had, reintroduced from the other
+    end, and it was live on dev for about a minute on 2026-08-14.
+
+    *owned* is every job this toml declares, across all its groups. A schedule
+    binding a job from outside it is somebody else's grouping and is left
+    alone; one binding a subset of it, and at least one job of this group, is
+    the row this sync wrote and is the row it replaces.
 
     A declared cron that differs is replaced rather than edited — there is no
     schedule update route — and an unchanged one is left untouched, so a sync
@@ -2331,26 +2709,61 @@ def _reconcile_schedule(
 
     *schedules* is the org's list, fetched once by the caller.
     """
-    mine = [
-        s
-        for s in schedules
-        if (s.job_ids == [job.id] if s.job_ids else s.job_names == [job.name])
-    ]
+    ids = {job.id for job in jobs}
+    names = {job.name for job in jobs}
+    owned_ids = {job.id for job in owned}
+    owned_names = {job.name for job in owned}
+    label = ", ".join(sorted(names))
+
+    def is_mine(s: ScheduleExt) -> bool:
+        # `job_ids` is empty against an API older than the field; fall back to
+        # names, which is the same answer for every case that existed then.
+        bound_ids, bound_names = set(s.job_ids), set(s.job_names)
+        if bound_ids:
+            return bool(bound_ids) and bound_ids <= owned_ids and bool(bound_ids & ids)
+        return (
+            bool(bound_names)
+            and bound_names <= owned_names
+            and bool(bound_names & names)
+        )
+
+    mine = [s for s in schedules if is_mine(s)]
     if cron is None:
         for schedule in mine:
             client.delete(f"/orgs/{org}/schedules/{schedule.id}")
-            print_info(f"    {'unscheduled':>12}  {job.name}")
+            print_info(f"    {'unscheduled':>12}  {label}")
         return
-    if any(s.cron_expr == cron for s in mine):
+
+    # "Already correct" means the cadence *and* the bindings match. Cadence
+    # alone is not enough now that ownership is broader than the group: a row
+    # left over from before a job was added has the right cron and the wrong
+    # jobs, and treating it as current is how the new job silently never runs.
+    def binds_this_group(s: ScheduleExt) -> bool:
+        return set(s.job_ids) == ids if s.job_ids else set(s.job_names) == names
+
+    current = [s for s in mine if s.cron_expr == cron and binds_this_group(s)]
+    stale = [s for s in mine if s not in current]
+    if current:
+        for schedule in stale:
+            client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+            print_info(f"    {'unscheduled':>12}  a superseded schedule for {label}")
         return
     for schedule in mine:
         client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+    # Named after the group rather than any one member: with several jobs
+    # there is no member whose name describes the row, and a schedule called
+    # after the first one alphabetically would be a worse lie than a generic
+    # name. Alphabetical so the name is stable across syncs.
+    first = min(names)
+    name = (
+        f"{first}-schedule" if len(jobs) == 1 else f"{first}-+{len(jobs) - 1}-schedule"
+    )
     client.post_one(
         f"/orgs/{org}/schedules",
         Schedule,
-        {"name": f"{job.name}-schedule", "cron_expr": cron, "job_ids": [job.id]},
+        {"name": name, "cron_expr": cron, "job_ids": sorted(ids)},
     )
-    print_info(f"    {'scheduled':>12}  {job.name} at {cron!r}")
+    print_info(f"    {'scheduled':>12}  {label} at {cron!r}")
 
 
 @cloud.group("env")

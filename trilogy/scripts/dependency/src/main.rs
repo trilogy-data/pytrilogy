@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use trilogy_parser::{parse_file, DatasourceDeclaration, ImportResolver, ParsedFile};
+use trilogy_parser::{collect_preql_files, parse_file, DatasourceDeclaration, ImportResolver, ParsedFile};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -496,47 +496,6 @@ fn handle_datasources(
     }
 
     Ok(())
-}
-
-fn collect_preql_files(dir: &PathBuf, recursive: bool) -> Result<Vec<PathBuf>, std::io::Error> {
-    let mut files = Vec::new();
-
-    if recursive {
-        collect_preql_files_recursive(dir, &mut files)?;
-    } else {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && is_preql_file(&path) {
-                files.push(path);
-            }
-        }
-    }
-
-    files.sort();
-    Ok(files)
-}
-
-fn collect_preql_files_recursive(
-    dir: &PathBuf,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), std::io::Error> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            collect_preql_files_recursive(&path, files)?;
-        } else if path.is_file() && is_preql_file(&path) {
-            files.push(path);
-        }
-    }
-
-    Ok(())
-}
-
-fn is_preql_file(path: &PathBuf) -> bool {
-    path.extension().is_some_and(|ext| ext == "preql")
 }
 
 fn handle_resolve(

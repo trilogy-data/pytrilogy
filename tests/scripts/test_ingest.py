@@ -44,6 +44,14 @@ from trilogy.scripts.trilogy import cli
 _DIALECT = BaseDialect()
 
 
+@pytest.fixture
+def config_dir() -> Path:
+    """The shared checked-in project. Ingest tests write into its root/ on
+    purpose: test_config's directory-wide unit/integration sweep that output,
+    validating that ingested models round-trip."""
+    return Path(__file__).parent / "config_directory"
+
+
 def test_ingest_digit_leading_columns_produce_parseable_output(tmp_path):
     """Lahman-style `2B`/`3B` columns must not render illegal identifiers."""
     csv = tmp_path / "batting.csv"
@@ -72,10 +80,8 @@ def test_ingest_digit_leading_columns_produce_parseable_output(tmp_path):
     assert result.exit_code == 0
 
 
-def test_ingest():
-    path = Path(__file__).parent
+def test_ingest(config_dir):
     runner = CliRunner()
-    config_dir = path / "config_directory"
     args = [
         "ingest",
         "world_capitals",
@@ -137,10 +143,8 @@ def test_detect_numeric_bounds():
     assert "name" not in bounds
 
 
-def test_ingest_infers_numeric_bounds_end_to_end():
-    path = Path(__file__).parent
+def test_ingest_infers_numeric_bounds_end_to_end(config_dir):
     runner = CliRunner()
-    config_dir = path / "config_directory"
     results = runner.invoke(
         cli,
         [
@@ -158,15 +162,13 @@ def test_ingest_infers_numeric_bounds_end_to_end():
     assert "population int[" in content
 
 
-def test_ingest_with_db_primary_key():
+def test_ingest_with_db_primary_key(config_dir):
     """Test that ingesting a table with a database-defined primary key uses it as the grain.
 
     This test verifies that the get_table_primary_keys method correctly detects primary keys
     from the database schema and uses them as the grain for the ingested table.
     """
-    path = Path(__file__).parent
     runner = CliRunner()
-    config_dir = path / "config_directory"
     args = [
         "ingest",
         "users_with_pk",
@@ -315,11 +317,9 @@ sql = ["{setup_sql_file.as_posix()}"]
         assert output_file.exists()
 
 
-def test_ingest_with_config_dialect_only():
+def test_ingest_with_config_dialect_only(config_dir):
     """Test ingest with dialect from config file only (no CLI dialect)."""
-    path = Path(__file__).parent
     runner = CliRunner()
-    config_dir = path / "config_directory"
 
     result = runner.invoke(
         cli,
@@ -422,11 +422,9 @@ sql = ["{setup_sql_file.as_posix()}"]
         assert "test_schema.test_table" in content
 
 
-def test_ingest_no_tables_specified():
+def test_ingest_no_tables_specified(config_dir):
     """Test that ingest fails when no tables are specified."""
-    path = Path(__file__).parent
     runner = CliRunner()
-    config_dir = path / "config_directory"
 
     result = runner.invoke(
         cli,
@@ -824,6 +822,39 @@ class TestRichTypeDetection:
         assert detect_rich_type("qoy", DataType.INTEGER, [1, 4]) == (
             "std.date",
             "quarter",
+        )
+
+    def test_bare_day_detection(self):
+        assert detect_rich_type("day", DataType.INTEGER, [1, 15, 31]) == (
+            "std.date",
+            "day",
+        )
+        assert detect_rich_type("birth_day", DataType.BIGINT, [1, 15, 31]) == (
+            "std.date",
+            "day",
+        )
+        assert detect_rich_type("death_day", DataType.BIGINT, [1, 31]) == (
+            "std.date",
+            "day",
+        )
+        # `day_of_week` is a longer match than the bare `day` prefix it contains,
+        # including when its values also fall inside 1..31.
+        assert detect_rich_type("day_of_week", DataType.INTEGER, [1, 7]) == (
+            "std.date",
+            "day_of_week",
+        )
+        assert detect_rich_type("weekday", DataType.INTEGER, [0, 6]) == (
+            "std.date",
+            "day_of_week",
+        )
+        # Bare `day` needs a word boundary, and is still value-gated.
+        assert detect_rich_type("days_since_signup", DataType.INTEGER, [1, 5]) == (
+            None,
+            None,
+        )
+        assert detect_rich_type("day_count", DataType.INTEGER, [400, 900]) == (
+            None,
+            None,
         )
 
     def test_date_part_value_gate_rejects_out_of_range(self):

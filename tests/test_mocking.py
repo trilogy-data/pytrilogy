@@ -34,10 +34,25 @@ def test_mock_datatype_enum_string_random():
     assert set(rows).issubset({"A", "B", "C"})
 
 
-def test_mock_datatype_enum_key_cycles_deterministically():
+def test_mock_datatype_enum_key_unique_capped():
+    """A key never repeats: a domain smaller than scale_factor caps the row
+    count rather than cycling into grain violations."""
     enum = EnumType(type=DataType.INTEGER, values=[0, 1, 2])
     rows = mock_datatype(enum, DataType.INTEGER, scale_factor=7, is_key=True)
-    assert rows == [0, 1, 2, 0, 1, 2, 0]
+    assert rows == [0, 1, 2]
+
+
+def test_mock_datatype_trait_over_enum_stays_in_domain():
+    enum = EnumType(type=DataType.STRING, values=["a@example.com", "b@example.com"])
+    traited = TraitDataType(type=enum, traits=["email_address"])
+    rows = mock_datatype(traited, traited, scale_factor=20)
+    assert len(rows) == 20
+    assert set(rows).issubset(set(enum.values))
+
+
+def test_mock_datatype_bool_key_unique_capped():
+    rows = mock_datatype(DataType.BOOL, DataType.BOOL, scale_factor=10, is_key=True)
+    assert rows == [False, True]
 
 
 def test_mock_datatype_enum_empty_raises():
@@ -311,6 +326,97 @@ def test_mock_validate_passes_with_enum_key_property():
     """)
 
     cli_validate_environment(executor, mock=True, quiet=True)
+
+
+def test_mock_validate_passes_with_bool_grain_component():
+    """A datasource grained on a boolean must mock as at most one row per
+    truth value, or grain validation can never pass."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.is_active bool;
+        auto record_count <- count(id);
+
+        datasource records (
+            id: id,
+            is_active: is_active,
+        )
+        grain (id)
+        address records_tbl;
+
+        datasource counts_by_active (
+            is_active: is_active,
+            record_count: record_count,
+        )
+        grain (is_active)
+        address counts_by_active_tbl;
+
+        mock datasource records, counts_by_active;
+    """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_mock_composite_grain_fills_combination_space():
+    """A composite grain must not cap the table at its smallest component:
+    (id, is_active) mocks the full scale_factor with the tuple unique, every
+    id present, and both truth values present."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        key is_active bool;
+        property <id, is_active>.amount float;
+
+        datasource id_by_active (
+            id: id,
+            is_active: is_active,
+            amount: amount,
+        )
+        grain (id, is_active)
+        address id_by_active_tbl;
+
+        mock datasource id_by_active;
+    """)
+
+    validate_environment(executor.environment, exec=executor)
+
+    total, combos, ids, actives = executor.execute_raw_sql("""select count(*),
+                  (select count(*) from (select distinct id, is_active from id_by_active_tbl)),
+                  count(distinct id),
+                  count(distinct is_active)
+           from id_by_active_tbl""").fetchall()[0]
+    assert total == 100
+    assert combos == 100
+    assert ids == 100
+    assert actives == 2
+
+
+def test_mock_validate_passes_with_enum_key_grain():
+    """The ingest round-trip shape (users_with_pk): a key with a finite enum
+    domain caps the mock table's rows so grain holds, and an enum property
+    under a trait stays inside its declared domain."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        import std.net;
+
+        key user_id enum<int>[1, 2, 3];
+        property user_id.email enum<string>['a@example.com', 'b@example.com', 'c@example.com']::email_address;
+
+        datasource users (
+            user_id: user_id,
+            email: email,
+        )
+        grain (user_id)
+        address users_tbl;
+    """)
+
+    cli_validate_environment(executor, mock=True, quiet=True)
+
+    rows = executor.execute_raw_sql(
+        "select count(*), count(distinct user_id) from users_tbl"
+    ).fetchall()
+    assert rows[0][0] == 3
+    assert rows[0][1] == 3
 
 
 def test_cli_validate_quiet_collects_target_failures():

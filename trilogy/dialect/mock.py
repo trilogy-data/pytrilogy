@@ -1,3 +1,4 @@
+import math
 import random
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
@@ -82,7 +83,11 @@ def mock_bytes(scale_factor: int, is_key: bool) -> list[Any]:
 
 
 def mock_bools(scale_factor: int, is_key: bool) -> list[Any]:
-    # booleans can only have 2 unique values, so keys don't make sense here
+    if is_key:
+        # the whole 2-value domain, once each: a solely bool-grained mock
+        # table caps at 2 rows; in a composite grain the other components
+        # carry the row count (see create_mock_table)
+        return [False, True][:scale_factor]
     return [random.choice([True, False]) for _ in range(scale_factor)]
 
 
@@ -198,9 +203,9 @@ def mock_validated(
             hi = int(r.max) if r.max is not None else int(r.min) + 999_999  # type: ignore[arg-type]
             pool.extend(range(lo, min(hi, lo + scale_factor - 1) + 1))
         if is_key:
-            # cycle: strict uniqueness isn't possible when the domain is smaller
-            # than scale_factor
-            return [pool[i % len(pool)] for i in range(scale_factor)]
+            # A key must not repeat: a domain smaller than scale_factor caps
+            # the row count (the mock table sizes to its grain).
+            return pool[:scale_factor]
         return [random.choice(pool) for _ in range(scale_factor)]
     if base in (DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER, DataType.NUMERIC):
         bounds: list[tuple[float, float]] = []
@@ -230,7 +235,8 @@ def mock_validated(
         if is_key:
             tlo, units = spans[0]
             return [
-                tlo + timedelta(**{unit: i % (units + 1)}) for i in range(scale_factor)
+                tlo + timedelta(**{unit: i})
+                for i in range(min(scale_factor, units + 1))
             ]
         out: list[Any] = []
         for _ in range(scale_factor):
@@ -250,12 +256,20 @@ def mock_datatype(
         if not values:
             raise ValueError(f"Enum {full_type} has no values to mock")
         if is_key:
-            # Cycle through the enum so each row gets a deterministic, valid value.
-            # Strict uniqueness isn't possible when scale_factor > len(values).
-            return [values[i % len(values)] for i in range(scale_factor)]
+            # A key must not repeat: each enum value at most once. A domain
+            # smaller than scale_factor caps the row count instead — the mock
+            # table sizes to its grain (see create_mock_table).
+            return values[:scale_factor]
         return [random.choice(values) for _ in range(scale_factor)]
     if isinstance(full_type, TraitDataType):
-        if full_type.type == DataType.STRING:
+        # An enum under a trait keeps its finite domain — the trait generator
+        # would step outside it (e.g. enum<string>[...]::email_address). A
+        # regex-validated string under a trait is the opposite case: the
+        # generator is the only way to satisfy the pattern.
+        if (
+            not isinstance(full_type.type, EnumType)
+            and full_type.type == DataType.STRING
+        ):
             # TODO: get stdlib inventory some other way?
             if full_type.traits == ["email_address"]:
                 # email mock function
@@ -416,13 +430,33 @@ class MockManager:
         return True
 
     def create_mock_table(
-        self, concepts: Iterable[Concept | ConceptRef], headers: list[str]
+        self,
+        concepts: Iterable[Concept | ConceptRef],
+        headers: list[str],
+        grain: set[str] | None = None,
     ) -> "Table":
         from pyarrow import array, table
 
+        concepts = list(concepts)
+        pools = [self.concept_mocks[c.address] for c in concepts]
+        grain = grain or set()
+        grain_lens = [
+            len(pool) for c, pool in zip(concepts, pools) if c.address in grain
+        ]
+        # Every column cycles its own pool, so row i of a grain column is
+        # pool[i % len]: the grain tuple stays unique through the lcm of its
+        # components' domain sizes (equal rows require i ≡ j mod every length).
+        # A composite grain over small domains therefore fills the combination
+        # space rather than capping at its smallest column, while each
+        # concept's distinct-value set stays the same pool prefix in every
+        # table — which validate_multi_datasource_concept compares.
+        n = min(
+            self.scale_factor,
+            math.lcm(*grain_lens) if grain_lens else self.scale_factor,
+        )
         data: dict[str, Any] = {}
-        for h, c in zip(headers, concepts):
-            values = self.concept_mocks[c.address]
+        for h, c, pool in zip(headers, concepts, pools):
+            values = [pool[i % len(pool)] for i in range(n)]
             explicit = arrow_column_type(c.datatype)
             data[h] = array(values, type=explicit) if explicit is not None else values
         return table(data)
@@ -457,7 +491,9 @@ def mock_datasource(datasource: Datasource, manager: MockManager, executor):
         concrete.append(col.concept)
         headers.append(k)
 
-    table = manager.create_mock_table(concrete, headers)
+    table = manager.create_mock_table(
+        concrete, headers, set(datasource.grain.components)
+    )
 
     # duckdb load the pyarrow table
     executor.execute_raw_sql(
