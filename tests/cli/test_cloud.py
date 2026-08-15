@@ -2814,7 +2814,11 @@ schedule = "0 0 6 * * *"
             f"/orgs/{api.org}/workspaces",
             {"id": "ws-1", "org_id": "org-acme", "name": "data"},
         )
-        api.set("PUT", f"/orgs/{api.org}/workspaces/*", {"id": "ws-1", "org_id": "org-acme", "name": "data"})
+        api.set(
+            "PUT",
+            f"/orgs/{api.org}/workspaces/*",
+            {"id": "ws-1", "org_id": "org-acme", "name": "data"},
+        )
         api.set("PATCH", f"/orgs/{api.org}/jobs/*", {})
         api.set("GET", f"/orgs/{api.org}/jobs", [])
         # Distinct ids per create, so "which jobs did the schedule bind" is a
@@ -2880,7 +2884,9 @@ schedule = "0 0 6 * * *"
 
         result = run_cloud("sync", str(root))
         assert result.exit_code == 0, result.output
-        assert logged_in.requests_for("PATCH", f"/orgs/{logged_in.org}/jobs/job-refresh")
+        assert logged_in.requests_for(
+            "PATCH", f"/orgs/{logged_in.org}/jobs/job-refresh"
+        )
 
     def test_a_single_job_project_still_deploys_self_contained(
         self, logged_in, run_cloud, tmp_path

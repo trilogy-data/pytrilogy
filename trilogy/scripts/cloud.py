@@ -2402,7 +2402,9 @@ def cloud_sync(
         results.append(outcome)
         print_info(f"  {outcome['outcome']:>12}  {project.name}")
         if job is not None and env_id is None:
-            groups.setdefault((project.config_path, project.settings.schedule), []).append(job)
+            groups.setdefault(
+                (project.config_path, project.settings.schedule), []
+            ).append(job)
             declared_by_toml.setdefault(project.config_path, []).append(job)
 
     for (config_path, cron), jobs in groups.items():
@@ -2510,7 +2512,11 @@ def _ensure_workspace(
     `--prune` does not cover it.
     """
     existing = next(
-        (w for w in client.get_many(f"/orgs/{org}/workspaces", Workspace) if w.name == name),
+        (
+            w
+            for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
+            if w.name == name
+        ),
         None,
     )
     body = {
@@ -2607,7 +2613,11 @@ def _sync_one(
     # against the job's *current* chain, so a job still unbound is a job whose
     # files are the empty set the PUT is about to install — and the entrypoint
     # names a file that, from where the API is standing, exists nowhere.
-    if found is not None and workspace_id is not None and found.workspace_id != workspace_id:
+    if (
+        found is not None
+        and workspace_id is not None
+        and found.workspace_id != workspace_id
+    ):
         if not dry_run:
             client.request(
                 "PATCH", f"/orgs/{org}/jobs/{found.id}", {"workspace_id": workspace_id}
@@ -2711,7 +2721,11 @@ def _reconcile_schedule(
         bound_ids, bound_names = set(s.job_ids), set(s.job_names)
         if bound_ids:
             return bool(bound_ids) and bound_ids <= owned_ids and bool(bound_ids & ids)
-        return bool(bound_names) and bound_names <= owned_names and bool(bound_names & names)
+        return (
+            bool(bound_names)
+            and bound_names <= owned_names
+            and bool(bound_names & names)
+        )
 
     mine = [s for s in schedules if is_mine(s)]
     if cron is None:
@@ -2741,7 +2755,9 @@ def _reconcile_schedule(
     # after the first one alphabetically would be a worse lie than a generic
     # name. Alphabetical so the name is stable across syncs.
     first = min(names)
-    name = f"{first}-schedule" if len(jobs) == 1 else f"{first}-+{len(jobs) - 1}-schedule"
+    name = (
+        f"{first}-schedule" if len(jobs) == 1 else f"{first}-+{len(jobs) - 1}-schedule"
+    )
     client.post_one(
         f"/orgs/{org}/schedules",
         Schedule,
