@@ -50,6 +50,11 @@ def test_mock_datatype_trait_over_enum_stays_in_domain():
     assert set(rows).issubset(set(enum.values))
 
 
+def test_mock_datatype_bool_key_unique_capped():
+    rows = mock_datatype(DataType.BOOL, DataType.BOOL, scale_factor=10, is_key=True)
+    assert rows == [False, True]
+
+
 def test_mock_datatype_enum_empty_raises():
     enum = EnumType(type=DataType.INTEGER, values=[])
     with pytest.raises(ValueError):
@@ -321,6 +326,69 @@ def test_mock_validate_passes_with_enum_key_property():
     """)
 
     cli_validate_environment(executor, mock=True, quiet=True)
+
+
+def test_mock_validate_passes_with_bool_grain_component():
+    """A datasource grained on a boolean must mock as at most one row per
+    truth value, or grain validation can never pass."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.is_active bool;
+        auto record_count <- count(id);
+
+        datasource records (
+            id: id,
+            is_active: is_active,
+        )
+        grain (id)
+        address records_tbl;
+
+        datasource counts_by_active (
+            is_active: is_active,
+            record_count: record_count,
+        )
+        grain (is_active)
+        address counts_by_active_tbl;
+
+        mock datasource records, counts_by_active;
+    """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_mock_composite_grain_fills_combination_space():
+    """A composite grain must not cap the table at its smallest component:
+    (id, is_active) mocks the full scale_factor with the tuple unique, every
+    id present, and both truth values present."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        key is_active bool;
+        property <id, is_active>.amount float;
+
+        datasource id_by_active (
+            id: id,
+            is_active: is_active,
+            amount: amount,
+        )
+        grain (id, is_active)
+        address id_by_active_tbl;
+
+        mock datasource id_by_active;
+    """)
+
+    validate_environment(executor.environment, exec=executor)
+
+    total, combos, ids, actives = executor.execute_raw_sql("""select count(*),
+                  (select count(*) from (select distinct id, is_active from id_by_active_tbl)),
+                  count(distinct id),
+                  count(distinct is_active)
+           from id_by_active_tbl""").fetchall()[0]
+    assert total == 100
+    assert combos == 100
+    assert ids == 100
+    assert actives == 2
 
 
 def test_mock_validate_passes_with_enum_key_grain():

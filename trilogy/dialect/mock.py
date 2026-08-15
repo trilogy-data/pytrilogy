@@ -1,3 +1,4 @@
+import math
 import random
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta
@@ -82,7 +83,11 @@ def mock_bytes(scale_factor: int, is_key: bool) -> list[Any]:
 
 
 def mock_bools(scale_factor: int, is_key: bool) -> list[Any]:
-    # booleans can only have 2 unique values, so keys don't make sense here
+    if is_key:
+        # the whole 2-value domain, once each: a solely bool-grained mock
+        # table caps at 2 rows; in a composite grain the other components
+        # carry the row count (see create_mock_table)
+        return [False, True][:scale_factor]
     return [random.choice([True, False]) for _ in range(scale_factor)]
 
 
@@ -199,7 +204,7 @@ def mock_validated(
             pool.extend(range(lo, min(hi, lo + scale_factor - 1) + 1))
         if is_key:
             # A key must not repeat: a domain smaller than scale_factor caps
-            # the row count (the mock table truncates to its shortest column).
+            # the row count (the mock table sizes to its grain).
             return pool[:scale_factor]
         return [random.choice(pool) for _ in range(scale_factor)]
     if base in (DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER, DataType.NUMERIC):
@@ -253,7 +258,7 @@ def mock_datatype(
         if is_key:
             # A key must not repeat: each enum value at most once. A domain
             # smaller than scale_factor caps the row count instead — the mock
-            # table is truncated to its shortest column.
+            # table sizes to its grain (see create_mock_table).
             return values[:scale_factor]
         return [random.choice(values) for _ in range(scale_factor)]
     if isinstance(full_type, TraitDataType):
@@ -425,18 +430,33 @@ class MockManager:
         return True
 
     def create_mock_table(
-        self, concepts: Iterable[Concept | ConceptRef], headers: list[str]
+        self,
+        concepts: Iterable[Concept | ConceptRef],
+        headers: list[str],
+        grain: set[str] | None = None,
     ) -> "Table":
         from pyarrow import array, table
 
         concepts = list(concepts)
-        # A key with a finite domain (enum, validated range) yields fewer than
-        # scale_factor values; the table caps at its shortest column so keys
-        # stay unique.
-        n = min(len(self.concept_mocks[c.address]) for c in concepts)
+        pools = [self.concept_mocks[c.address] for c in concepts]
+        grain = grain or set()
+        grain_lens = [
+            len(pool) for c, pool in zip(concepts, pools) if c.address in grain
+        ]
+        # Every column cycles its own pool, so row i of a grain column is
+        # pool[i % len]: the grain tuple stays unique through the lcm of its
+        # components' domain sizes (equal rows require i ≡ j mod every length).
+        # A composite grain over small domains therefore fills the combination
+        # space rather than capping at its smallest column, while each
+        # concept's distinct-value set stays the same pool prefix in every
+        # table — which validate_multi_datasource_concept compares.
+        n = min(
+            self.scale_factor,
+            math.lcm(*grain_lens) if grain_lens else self.scale_factor,
+        )
         data: dict[str, Any] = {}
-        for h, c in zip(headers, concepts):
-            values = self.concept_mocks[c.address][:n]
+        for h, c, pool in zip(headers, concepts, pools):
+            values = [pool[i % len(pool)] for i in range(n)]
             explicit = arrow_column_type(c.datatype)
             data[h] = array(values, type=explicit) if explicit is not None else values
         return table(data)
@@ -471,7 +491,9 @@ def mock_datasource(datasource: Datasource, manager: MockManager, executor):
         concrete.append(col.concept)
         headers.append(k)
 
-    table = manager.create_mock_table(concrete, headers)
+    table = manager.create_mock_table(
+        concrete, headers, set(datasource.grain.components)
+    )
 
     # duckdb load the pyarrow table
     executor.execute_raw_sql(

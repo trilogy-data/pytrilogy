@@ -249,7 +249,9 @@ def _materialize_mock_tables(flattened_env, db_path: Path) -> None:
                 manager.mock_concept(column.concept)
                 concrete.append(column.concept)
                 headers.append(key)
-            table = manager.create_mock_table(concrete, headers)
+            table = manager.create_mock_table(
+                concrete, headers, set(datasource.grain.components)
+            )
             executor.execute_raw_sql(
                 "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
             )
