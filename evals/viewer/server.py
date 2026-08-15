@@ -2,9 +2,10 @@
 
 Serves the baked ``viewer.html`` plus JSON endpoints the page polls:
 ``suites.json`` (eval + run pickers), ``data.json`` (one run's trajectories),
-``summary.json`` (cross-eval performance), ``replay_status.json`` — and POST
-endpoints for replay / rerun-all / archive. Every endpoint that touches a run
-takes an explicit suite so one server drives all benchmarks.
+``summary.json`` (cross-eval performance), ``replay_status.json``,
+``launch_options.json`` / ``launch_status.json`` (the Launch screen) - and POST
+endpoints for replay / rerun-all / archive / launch. Every endpoint that touches
+a run takes an explicit suite so one server drives all benchmarks.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from . import suites as suites_mod
 from .collect import collect
+from .launch import LaunchJobs, build_command, command_text, launch_options
 from .suites import Suite
 from .summary import summary_payload
 
@@ -217,6 +219,7 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
     default_suite: Suite
     default_dir: Path
     jobs: ReplayJobs
+    launcher: LaunchJobs
     log_requests: bool = False
 
     def log_message(self, format: str, *args) -> None:
@@ -302,6 +305,17 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/replay_status.json":
             self._json(self.jobs.snapshot())
             return
+        if parsed.path == "/launch_options.json":
+            # First call pulls in the eval pipeline (categories, prompts, the
+            # history db) - seconds, then cached by the import system.
+            try:
+                self._json(launch_options(self.suites))
+            except Exception as exc:
+                self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+        if parsed.path == "/launch_status.json":
+            self._json(self.launcher.snapshot())
+            return
         if parsed.path == "/data.json":
             # Re-read the chosen run's logs per request so a live (or
             # just-finished) run streams in — the page polls this.
@@ -317,9 +331,30 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def _launch(self, suite: Suite, body: dict) -> None:
+        """Preview or start a run_eval.py run. ``preview`` renders the command
+        line the same code path would run, so the page never guesses at it."""
+        try:
+            if body.get("preview"):
+                argv, label = build_command(suite, body)
+                self._json({"command": command_text(argv), "label": label})
+                return
+            self._json(self.launcher.submit(suite, body))
+        except ValueError as exc:
+            self._json({"error": str(exc)}, 400)
+        except Exception as exc:
+            self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path not in ("/replay", "/replay_all", "/replay_cancel", "/archive"):
+        if path not in (
+            "/replay",
+            "/replay_all",
+            "/replay_cancel",
+            "/archive",
+            "/launch",
+            "/launch_cancel",
+        ):
             self.send_error(404)
             return
         try:
@@ -327,6 +362,16 @@ class ViewerHandler(http.server.SimpleHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError):
             self._json({"error": "expected a JSON body"}, 400)
+            return
+        if path == "/launch":
+            self._launch(self._suite(body.get("suite")), body)
+            return
+        if path == "/launch_cancel":
+            try:
+                job_id = int(body["id"]) if body.get("id") is not None else None
+            except (TypeError, ValueError):
+                job_id = None
+            self._json(self.launcher.cancel(job_id))
             return
         if path == "/replay_cancel":
             try:
@@ -373,6 +418,7 @@ def serve(
     ViewerHandler.default_suite = default_suite
     ViewerHandler.default_dir = results_dir
     ViewerHandler.jobs = ReplayJobs()
+    ViewerHandler.launcher = LaunchJobs()
     ViewerHandler.log_requests = log_requests
     handler = functools.partial(ViewerHandler, directory=str(results_dir))
     # Threading: a replay runs off-thread, but the browser still opens parallel

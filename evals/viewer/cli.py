@@ -9,7 +9,8 @@ explicit ``results_dir`` wins and its suite is inferred from its location.
 Always writes ``<results_dir>/viewer.html`` — a self-contained static page
 (the CSS/JS under ``static/`` is inlined at build time). With ``--serve`` it
 also starts a local server that adds live polling, an eval/run picker across
-all suites, an all-evals summary page, and Replay/Archive actions.
+all suites, an all-evals summary page, Replay/Archive actions, and a Launch
+screen that starts new ``run_eval.py`` runs.
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ let RUNS = JSON.parse(document.getElementById('data').textContent);
 let SUITES = [];             // [{key,label,runs:[...]}] from suites.json
 let currentSuite = null;     // suite key (null until suites.json answers)
 let currentRun = null;       // results-dir name within the suite
-let view = 'run';            // 'run' | 'summary'
+let view = 'run';            // 'run' | 'summary' | 'launch'
 let summaryData = null;      // last summary.json payload
 let selectedName = RUNS.length ? RUNS[0].name : null;
 let lastPayload = null;
@@ -24,6 +24,17 @@ let localErrors = {};           // rejected replay POSTs, keyed suite|run|qid
 let followedForks = new Set();  // rerun-all job ids whose fork we've already jumped to
 let archiveState = {busy:false, msg:'', ok:null};   // "archive this run to history db"
 let loading = null;          // {run} while a user-initiated run swap waits on data.json
+// --- launch screen ---
+let launchOpts = null;       // /launch_options.json: categories, questions, providers
+let launchSuite = null;      // suite the launch form targets (independent of the viewer's)
+let launchForms = {};        // per-suite form state, persisted in localStorage
+let launchJobs = {running:false, queued:0, jobs:[]};  // /launch_status.json snapshot
+let launchPreview = '';      // exact command line, rendered by the server
+let launchError = '';
+let launchBusy = false;
+let previewTimer = null;
+let logOpen = new Set();     // launch job ids whose log is expanded
+let logSeen = new Set();     // launch job ids we've already applied the default to
 
 const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 function badge(s){ const k=['pass','exhausted','error','fail'].includes(s)?s:'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
@@ -350,6 +361,8 @@ function markActive(){
     n.classList.toggle('active', view==='run' && RUNS[+n.dataset.i].name===selectedName));
   const sb = document.getElementById('sumbtn');
   if(sb) sb.classList.toggle('on', view==='summary');
+  const lb = document.getElementById('launchbtn');
+  if(lb) lb.classList.toggle('on', view==='launch');
 }
 // Rows whose queries are being replayed right now — their metrics are stale
 // until the jobs land, so we pulse them instead of showing them.
@@ -555,6 +568,291 @@ function renderSummary(){
   });
 }
 
+// ---------- launch screen ----------
+// Configure a run_eval.py invocation and fire it off. Every control maps to a
+// CLI flag; the command line shown above the button is rendered by the server
+// from the same code that runs it, so the page never guesses at it.
+const LF_STORE = 'evalLaunchForms';
+function loadForms(){ try{ return JSON.parse(localStorage.getItem(LF_STORE) || '{}'); }catch(e){ return {}; } }
+function saveForms(){ try{ localStorage.setItem(LF_STORE, JSON.stringify(launchForms)); }catch(e){ /* private mode */ } }
+launchForms = loadForms();
+
+const suiteOpts = key => (launchOpts ? launchOpts.suites.find(s=>s.key===key) : null) || null;
+function defaultForm(s){
+  const d = s.defaults;
+  return {categories: s.base.slice(), num_queries: d.num_queries, query_ids: '', splice: false,
+          scale_factor: d.scale_factor, provider: d.provider, model: d.model, reasoning_effort: '',
+          concurrency: d.concurrency, max_iterations: d.max_iterations, timeout: d.timeout,
+          enable_todo: false};
+}
+// The stored form is merged over the suite's defaults, so a spec default that
+// moves (or a category that disappears) doesn't leave a stale form behind.
+function formFor(key){
+  const s = suiteOpts(key);
+  if(!s) return null;
+  const f = {...defaultForm(s), ...(launchForms[key] || {})};
+  f.categories = (f.categories||[]).filter(c=>s.categories.some(x=>x.key===c));
+  if(!f.categories.length) f.categories = s.base.slice();
+  launchForms[key] = f;
+  return f;
+}
+function countIds(raw){
+  let n = 0;
+  for(const part of String(raw||'').trim().split(/[,\s]+/)){
+    if(!part) continue;
+    const m = /^(\d+)\s*-\s*(\d+)$/.exec(part);
+    n += m ? Math.max(0, +m[2] - +m[1] + 1) : 1;
+  }
+  return n;
+}
+function setField(key, value, rerender){
+  const f = formFor(launchSuite);
+  if(!f) return;
+  f[key] = value; saveForms();
+  if(rerender) renderLaunch(); else queuePreview();
+}
+function toggleCategory(key){
+  const f = formFor(launchSuite), order = suiteOpts(launchSuite).categories.map(c=>c.key);
+  const i = f.categories.indexOf(key);
+  if(i>=0) f.categories.splice(i,1); else f.categories.push(key);
+  f.categories.sort((a,b)=>order.indexOf(a)-order.indexOf(b));
+  saveForms(); renderLaunch();
+}
+function pickCategories(which){
+  const s = suiteOpts(launchSuite), f = formFor(launchSuite);
+  const of = pred => s.categories.filter(pred).map(c=>c.key);
+  f.categories = which==='base' ? s.base.slice()
+    : which==='trilogy' ? of(c=>c.harness==='trilogy')
+    : which==='sql' ? of(c=>c.harness==='sql')
+    : which==='all' ? of(()=>true) : [];
+  saveForms(); renderLaunch();
+}
+function launchOnSuite(key){ launchSuite = key; renderLaunch(); }
+
+function queuePreview(){ clearTimeout(previewTimer); previewTimer = setTimeout(refreshPreview, 300); }
+async function refreshPreview(){
+  const f = formFor(launchSuite);
+  if(!f) return;
+  saveForms();
+  try{
+    const r = await fetch('launch', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({...f, suite: launchSuite, preview: true})});
+    const j = await r.json();
+    launchPreview = r.ok ? j.command : '';
+    launchError = r.ok ? '' : (j.error || ('HTTP '+r.status));
+  }catch(e){ launchPreview = ''; launchError = String(e); }
+  updatePreview();
+}
+function updatePreview(){
+  const prev = document.getElementById('lprev');
+  if(prev) prev.innerHTML = launchPreview ? `<pre class="lcmd">${esc(launchPreview)}</pre>` : '';
+  const err = document.getElementById('lerr');
+  if(err) err.innerHTML = launchError ? `<div class="rerun-st err">${esc(launchError)}</div>` : '';
+  const btn = document.getElementById('lgo');
+  if(btn) btn.disabled = launchBusy || !launchPreview;
+}
+async function loadLaunchOptions(){
+  try{
+    const r = await fetch('launch_options.json', {cache:'no-store'});
+    const j = await r.json();
+    if(!r.ok){ launchError = j.error || ('HTTP '+r.status); renderLaunch(); return; }
+    launchOpts = j;
+    if(!suiteOpts(launchSuite)) launchSuite = (j.suites[0]||{}).key || null;
+    renderLaunch();
+  }catch(e){ /* static file - no launching */ }
+}
+function showLaunch(){
+  view = 'launch';
+  if(!launchSuite) launchSuite = currentSuite;
+  markActive();
+  renderLaunch();
+  if(!launchOpts) loadLaunchOptions();
+  pollLaunch();
+}
+async function submitLaunch(){
+  const f = formFor(launchSuite), s = suiteOpts(launchSuite);
+  if(!f || !launchPreview) return;
+  const scope = f.query_ids.trim() ? `questions ${f.query_ids.trim()}` : `the first ${f.num_queries} questions`;
+  if(!confirm(`Launch ${f.categories.length} leg(s) over ${scope} on ${s.label}?\n\n${launchPreview}\n\n`
+    + `This spends real API budget and can run for hours.`)) return;
+  launchBusy = true; updatePreview();
+  try{
+    const r = await fetch('launch', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({...f, suite: launchSuite})});
+    const j = await r.json();
+    if(r.ok){ launchJobs = j; launchError = ''; } else launchError = j.error || ('HTTP '+r.status);
+  }catch(e){ launchError = String(e); }
+  launchBusy = false;
+  renderLaunch();
+}
+async function cancelLaunch(id){
+  if(!confirm('Stop this run?\n\nThe eval process and every agent under it are killed. '
+    + 'Artifacts written so far stay on disk.')) return;
+  try{
+    const r = await fetch('launch_cancel', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id})});
+    if(r.ok) launchJobs = await r.json();
+  }catch(e){ /* the poll will reflect it */ }
+  renderLaunchJobs();
+}
+async function pollLaunch(){
+  try{
+    const r = await fetch('launch_status.json', {cache:'no-store'});
+    if(!r.ok) return;
+    launchJobs = await r.json();
+    updateLaunchDot();
+    if(view==='launch') renderLaunchJobs();
+  }catch(e){ /* static file - no launching */ }
+}
+function updateLaunchDot(){
+  const el = document.getElementById('launchdot');
+  if(!el) return;
+  const q = launchJobs.queued ? ` +${launchJobs.queued}` : '';
+  el.innerHTML = launchJobs.running ? `<span class="ldot">● running${esc(q)}</span>` : '';
+}
+function toggleLaunchLog(id){
+  if(logOpen.has(id)) logOpen.delete(id); else logOpen.add(id);
+  renderLaunchJobs();
+}
+const fmtDur = s => s < 60 ? `${Math.round(s)}s`
+  : s < 3600 ? `${Math.floor(s/60)}m ${Math.round(s%60)}s`
+  : `${Math.floor(s/3600)}h ${Math.round(s%3600/60)}m`;
+
+function launchFormHtml(s, f){
+  const num = n => `<input class="lin num" type="number" value="${esc(String(f[n]))}" `
+    + `oninput="setField('${n}', this.value)">`;
+  const cats = s.categories.map(c=>{
+    const on = f.categories.includes(c.key);
+    return `<button class="lchip${on?' on':''}" onclick="toggleCategory('${esc(c.key)}')" `
+         + `title="${esc(c.harness)} toolset">${esc(c.key)}<span class="lsub">${esc(c.label)}</span></button>`;
+  }).join('');
+  const preset = (key,label) => `<button class="fbtn lpre" onclick="pickCategories('${key}')">${esc(label)}</button>`;
+  const providers = launchOpts.providers.map(p=>
+    `<option value="${esc(p.key)}"${p.key===f.provider?' selected':''}>`
+    + `${esc(p.key)}${p.configured?'':' (no key)'}</option>`).join('');
+  const models = launchOpts.models.filter(m=>!f.provider || m.provider===f.provider)
+    .map(m=>`<option value="${esc(m.model)}">`).join('');
+  const efforts = launchOpts.efforts.map(e=>
+    `<option value="${esc(e)}"${e===f.reasoning_effort?' selected':''}>${esc(e||'default')}</option>`).join('');
+  const total = s.query_ids.length;
+  const ids = f.query_ids.trim();
+  const perLeg = ids ? countIds(ids) : Math.min(+f.num_queries || 0, total || +f.num_queries || 0);
+  const key = (launchOpts.providers.find(p=>p.key===f.provider)||{});
+  const keyWarn = key.configured===false
+    ? `<div class="rerun-st err">${esc(key.env)} not found in the environment or ${esc(launchOpts.env_file)}</div>` : '';
+  const scopeNote = ids ? 'ids override the count'
+    : (total ? `${total} questions available` : 'question list unavailable');
+  return `<div class="lform">
+    <div class="lrow"><label>Eval</label><div>
+      <select class="cmpsel" onchange="launchOnSuite(this.value)">`
+      + launchOpts.suites.map(x=>`<option value="${esc(x.key)}"${x.key===s.key?' selected':''}>`
+        + `${esc(x.label)}${x.runnable?'':' (no run_eval.py)'}</option>`).join('')
+      + `</select>
+      ${s.enriched_dir ? '' : '<span class="lnote">no enriched model dir configured</span>'}
+    </div></div>
+    <div class="lrow"><label>Categories</label><div>
+      <div class="lchips">${cats}</div>
+      <div class="lpresets">${preset('base','Base funnel')}${preset('trilogy','Trilogy legs')}`
+      + `${preset('sql','SQL legs')}${preset('all','All')}${preset('none','None')}</div>
+    </div></div>
+    <div class="lrow"><label>Questions</label><div class="linline">
+      ${num('num_queries')}<span class="lnote">${esc(scopeNote)}</span>
+      <input class="lin ids" type="text" placeholder="ids, e.g. 5,13,18 or 1-20"
+             value="${esc(f.query_ids)}" oninput="setField('query_ids', this.value)">
+      <button class="fbtn lpre" onclick="setField('query_ids','',true)">Clear ids</button>
+      ${total ? `<button class="fbtn lpre" onclick="setField('num_queries',${total},true)">All ${total}</button>` : ''}
+    </div>${ids ? `<div class="linline"><label class="lcheck"><input type="checkbox"${f.splice?' checked':''} `
+      + `onchange="setField('splice', this.checked)"> splice the unrun questions in from the latest run</label></div>` : ''}</div>
+    <div class="lrow"><label>Model</label><div class="linline">
+      <select class="cmpsel" onchange="setField('provider', this.value, true)">${providers}</select>
+      <input class="lin" type="text" list="lmodels" value="${esc(f.model)}" oninput="setField('model', this.value)">
+      <datalist id="lmodels">${models}</datalist>
+      <span class="lnote">effort</span>
+      <select class="cmpsel" onchange="setField('reasoning_effort', this.value)">${efforts}</select>
+    </div>${keyWarn}</div>
+    <div class="lrow"><label>Knobs</label><div class="linline">
+      <span class="lnote">scale factor</span>${num('scale_factor')}
+      <span class="lnote">agents per leg</span>${num('concurrency')}
+      <span class="lnote">max iters</span>${num('max_iterations')}
+      <span class="lnote">timeout s</span>${num('timeout')}
+      <label class="lcheck"><input type="checkbox"${f.enable_todo?' checked':''}
+        onchange="setField('enable_todo', this.checked)"> todo tool</label>
+    </div></div>
+    <div class="lrow"><label>Plan</label><div>
+      <div class="lplan">${f.categories.length} leg(s) × ${perLeg} question(s) = `
+      + `<b>${f.categories.length * perLeg}</b> agent runs · ${esc(String(f.concurrency))} in flight per leg</div>
+      <div id="lprev"></div><div id="lerr"></div>
+      <button class="fbtn lgo" id="lgo" onclick="submitLaunch()">Launch run</button>
+      <span class="lnote">${launchJobs.running ? 'a run is already going - this one queues behind it'
+        : 'one run at a time; extra launches queue'}</span>
+    </div></div>
+  </div>`;
+}
+function renderLaunch(){
+  const main = document.getElementById('main');
+  if(!served){ main.innerHTML = `<div class="meta">Launching needs the served viewer: `
+    + `<code>python evals/trajectory_viewer.py --serve 8080</code></div>`; return; }
+  if(!launchOpts){
+    main.innerHTML = `<div class="meta loadmsg"><span class="spin"></span>loading launch options…</div>`
+      + (launchError ? `<div class="rerun-st err">${esc(launchError)}</div>` : '');
+    return;
+  }
+  const s = suiteOpts(launchSuite), f = formFor(launchSuite);
+  if(!s){ main.innerHTML = `<div class="meta">no runnable eval suites found</div>`; return; }
+  main.innerHTML = `<h1 class="sum-title">Launch a run</h1>`
+    + `<div class="sum-note">runs <code>run_eval.py</code> as a subprocess with the flags below · `
+    + `results land in the eval's results dir and open in the run picker</div>`
+    + launchFormHtml(s, f)
+    + `<h2 class="sum-suite">Launched from here</h2><div id="ljobs"></div>`;
+  renderLaunchJobs();
+  refreshPreview();
+}
+function launchBadge(state){
+  const cls = state==='done' ? 'pass' : state==='error' ? 'error'
+    : state==='running' ? 'replaying' : 'other';
+  return `<span class="badge ${cls}">${esc(state)}</span>`;
+}
+function renderLaunchJobs(){
+  const el = document.getElementById('ljobs');
+  if(!el) return;
+  const jobs = [...launchJobs.jobs].reverse();
+  if(!jobs.length){ el.innerHTML = `<div class="empty">nothing launched from here yet</div>`; return; }
+  // A job's log starts expanded while it is live and stays wherever the user
+  // last put it - hence "first sighting" rather than "is running".
+  for(const j of jobs){
+    if(logSeen.has(j.id)) continue;
+    logSeen.add(j.id);
+    if(j.state==='running' || j.state==='queued') logOpen.add(j.id);
+  }
+  el.innerHTML = jobs.map(j=>{
+    const live = j.state==='running';
+    const open = logOpen.has(j.id);
+    const runs = (j.runs||[]).map(r=> r.ready
+      ? `<span class="sum-runlink" data-suite="${esc(j.suite)}" data-run="${esc(r.name)}">${esc(r.name)}</span>`
+      : `<span class="sum-muted">${esc(r.name)} (starting…)</span>`).join(' ');
+    const stop = (live || j.state==='queued')
+      ? `<button class="fbtn cancel linline-btn" onclick="cancelLaunch(${j.id})">Stop</button>` : '';
+    const err = j.error ? `<div class="rerun-st err">${esc(j.error)}</div>` : '';
+    return `<div class="ljob${live?' live':''}">
+      <div class="ljob-h">${launchBadge(j.state)}<b>${esc(j.label)}</b>
+        <span class="sum-muted">${j.elapsed?fmtDur(j.elapsed):''}`
+        + `${j.exit_code!=null?` · exit ${j.exit_code}`:''}</span>${stop}</div>
+      <div class="ljob-cmd">${esc(j.command)}</div>
+      ${runs ? `<div class="ljob-runs">${runs}</div>` : ''}
+      ${err}
+      <div class="head" onclick="toggleLaunchLog(${j.id})"><span class="name">output`
+      + ` (${(j.log||[]).length} lines)</span><span class="chev">▼ click to toggle</span></div>
+      <pre class="out ljob-log${open?' show':''}" id="llog${j.id}">${esc((j.log||[]).join('\n'))}</pre>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-run]').forEach(n=>{ n.onclick = ()=>openRun(n.dataset.suite, n.dataset.run); });
+  for(const j of jobs){
+    if(j.state!=='running') continue;
+    const pre = document.getElementById('llog'+j.id);
+    if(pre) pre.scrollTop = pre.scrollHeight;
+  }
+}
+
 // ---------- data loading ----------
 // Swap in fresh data without losing the user's place: keep the selected run and
 // (for a background poll) its scroll position.
@@ -645,6 +943,8 @@ function onRunChange(){
 
 // ---------- boot ----------
 applyData(RUNS, false);
-loadSuites().then(()=>loadData(true)).then(initReplay);
+loadSuites().then(()=>loadData(true)).then(initReplay).then(pollLaunch);
 setInterval(()=>loadData(), 4000);
 setInterval(()=>{ loadSuites(); if(view==='summary') loadSummary(); }, 10000);
+// Cheap when idle: only hits the server while the screen is open or work is live.
+setInterval(()=>{ if(view==='launch' || launchJobs.running || launchJobs.queued) pollLaunch(); }, 3000);

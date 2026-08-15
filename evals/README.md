@@ -68,6 +68,27 @@ the environment). Useful flags:
 | `--env-file` | `.env.secrets` | file providing the API key |
 | `--monitor` | `feed` | live monitoring mode (see below) |
 
+### Viewer UI
+
+```bash
+python evals/trajectory_viewer.py --serve 8080     # http://127.0.0.1:8080/viewer.html
+```
+
+Three screens, all suites in one server:
+
+- **Runs** — the trajectory of every question in a run: tool calls, token cost,
+  canonical-vs-agent query compare, plus Replay (one question) and Rerun-all
+  (fork the run and redo it).
+- **All evals summary** — latest pass rate per suite and variant, with trend.
+- **Launch runs** — build a `run_eval.py` invocation (eval, categories,
+  questions, model, scale factor, concurrency) and start it. The exact command
+  is shown before you launch it; the run streams its output into the page and
+  links its result dirs once they have trajectories. One run executes at a
+  time, so several combinations can be queued in one sitting.
+
+Without `--serve` the page is a static snapshot of one run dir (no pickers,
+replay, or launching).
+
 ### Validating a single query (10x)
 
 A single `run_eval` result is noisy (LLM variance). To A/B a change, repeat one

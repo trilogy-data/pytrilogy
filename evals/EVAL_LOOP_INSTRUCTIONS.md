@@ -58,6 +58,12 @@ python evals/tpcds_agent/run_eval.py --both-modes
 python evals/tpcds_agent/run_eval.py --category enriched --query-ids 5,13,18
 ```
 
+The same combinations can be launched from the viewer's **Launch runs** screen
+(`python evals/trajectory_viewer.py --serve 8080`): pick the eval, the
+categories, the question scope and the model, check the command it renders, and
+start it. Runs queue one at a time and stream their output into the page. It
+runs the same `run_eval.py`, so nothing here changes.
+
 **Outputs** (under `evals/tpcds_agent/`):
 - `results/<ts>_<category>_<provider>_<model>[_effort-<level>]/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,
   `task.qNN.txt`, `workspace/` (the agent's `.sql`/`.preql` files + DB copy).

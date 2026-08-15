@@ -33,17 +33,29 @@ class Suite:
 
 def _load_spec(spec_file: Path) -> BenchmarkSpec | None:
     """Import a per-eval spec.py under a unique module name (every eval dir has a
-    ``spec.py``, so plain import would collide)."""
+    ``spec.py``, so plain import would collide). The eval dir goes on sys.path
+    for the import: a spec run as a script imports its siblings by bare name
+    (``import warehouse_variants``), which nothing else here puts in scope."""
     module_name = f"_viewer_spec_{spec_file.parent.name}"
     loader_spec = importlib.util.spec_from_file_location(module_name, spec_file)
     if loader_spec is None or loader_spec.loader is None:
         return None
     module = importlib.util.module_from_spec(loader_spec)
     sys.modules[module_name] = module
+    eval_dir = str(spec_file.parent)
+    added = eval_dir not in sys.path
+    if added:
+        sys.path.insert(0, eval_dir)
     try:
         loader_spec.loader.exec_module(module)
-    except Exception:
+    except Exception as exc:
+        # Silence here used to drop a whole benchmark from the picker with no
+        # trace of why.
+        print(f"viewer: skipping {spec_file} ({type(exc).__name__}: {exc})")
         return None
+    finally:
+        if added:
+            sys.path.remove(eval_dir)
     found = module.__dict__.get("SPEC")
     return found if isinstance(found, BenchmarkSpec) else None
 
