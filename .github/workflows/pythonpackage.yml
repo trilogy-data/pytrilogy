@@ -103,6 +103,26 @@ jobs:
         if: matrix.run_llm_tests == true
         run: |
           python -m local_scripts.fuzzer
+      - name: Test against live BigQuery
+        # These need a dataset they may create and drop tables in, and without
+        # `TRILOGY_BIGQUERY_TEST_DATASET` every `bigquery_execution` test skips.
+        # They did skip, silently, on every run before this step existed — which
+        # is how a native-persist bug walked past the parity suite written to
+        # catch exactly it (#643). The dataset is named here rather than at job
+        # level so the steps above keep skipping them: this must stay one cell.
+        #
+        # One cell, because these exercise BigQuery's behaviour rather than the
+        # python version's, and each cell is ~7min of wall clock and real spend.
+        # Skipped for fork PRs, which have no credentials — same condition as
+        # the auth step, so the tests never run half-configured.
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        run: |
+          python -m pytest tests/ --cov=trilogy --cov-append -m bigquery_execution
+        env:
+          # Explicit rather than relying on the auth step's exported project:
+          # the whole point of this step is that it must not silently skip.
+          GOOGLE_CLOUD_PROJECT: preqldata
+          TRILOGY_BIGQUERY_TEST_DATASET: trilogy_integration
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests. One invocation, not three: the -k
