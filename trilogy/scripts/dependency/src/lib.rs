@@ -22,7 +22,8 @@ pub use resolver::{
     ResolveError,
 };
 pub use directory_resolver::{
-    process_directory_with_imports, build_edges, DirectoryGraph, Edge, EdgeReason, FileInfo,
+    collect_preql_files, process_directory_with_imports, build_edges, DirectoryGraph, Edge,
+    EdgeReason, FileInfo,
 };
 pub use graph::GraphCore;
 pub use network_search::{enumerate_covers, CandidateSpec, LimitKind, NetworkSpec};

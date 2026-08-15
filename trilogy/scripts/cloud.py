@@ -2598,18 +2598,23 @@ def _sync_one(
             "outcome": f"would {action}",
         }, None
 
-    job, outcome = _upsert_job(client, org, encoded, found)
-
     # A job's workspace is *identity*, so a content PUT deliberately leaves it
-    # alone — which means an existing job never moves into the workspace this
-    # sync just built unless it is rebound explicitly. Silently skipping this
-    # would leave a migrated project's jobs still self-contained while the
-    # workspace beside them sat empty of readers.
-    if workspace_id is not None and job.workspace_id != workspace_id:
-        client.request(
-            "PATCH", f"/orgs/{org}/jobs/{job.id}", {"workspace_id": workspace_id}
-        )
+    # alone — an existing job never moves into the workspace this sync just
+    # built unless it is rebound explicitly, and a migrated project would
+    # otherwise keep self-contained jobs beside a workspace nothing reads.
+    #
+    # **Before** the content write, not after: the API resolves the entrypoint
+    # against the job's *current* chain, so a job still unbound is a job whose
+    # files are the empty set the PUT is about to install — and the entrypoint
+    # names a file that, from where the API is standing, exists nowhere.
+    if found is not None and workspace_id is not None and found.workspace_id != workspace_id:
+        if not dry_run:
+            client.request(
+                "PATCH", f"/orgs/{org}/jobs/{found.id}", {"workspace_id": workspace_id}
+            )
         print_info(f"    {'bound':>12}  {project.name} to its project workspace")
+
+    job, outcome = _upsert_job(client, org, encoded, found)
 
     # The server is authoritative on the name, and an API older than renameable
     # jobs answers with the one it already had. Saying so is the difference

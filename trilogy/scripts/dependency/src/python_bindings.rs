@@ -365,9 +365,8 @@ impl PyImportResolver {
     }
 
     /// Resolve dependencies for all files in a directory
-    fn resolve_directory(&mut self, py: Python<'_>, dir_path: &str, _recursive: bool) -> PyResult<Py<PyAny>> {
-        use crate::directory_resolver::{process_directory_with_imports, build_edges, EdgeReason};
-        use std::fs;
+    fn resolve_directory(&mut self, py: Python<'_>, dir_path: &str, recursive: bool) -> PyResult<Py<PyAny>> {
+        use crate::directory_resolver::{collect_preql_files, process_directory_with_imports, build_edges, EdgeReason};
 
         let dir = PathBuf::from(dir_path);
         if !dir.is_dir() {
@@ -376,18 +375,8 @@ impl PyImportResolver {
             ));
         }
 
-        // Collect all .preql files in the top-level directory
-        let mut initial_files = Vec::new();
-        let read_dir = fs::read_dir(&dir)
+        let initial_files = collect_preql_files(&dir, recursive)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to read directory: {}", e)))?;
-
-        for entry in read_dir {
-            let entry = entry.map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to read entry: {}", e)))?;
-            let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "preql") {
-                initial_files.push(path);
-            }
-        }
 
         if initial_files.is_empty() {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(

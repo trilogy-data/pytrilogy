@@ -252,6 +252,53 @@ def test_etl_transitive_persist_order():
     )
 
 
+def test_etl_dependency_subdirectory_only_project():
+    """A project keeping every preql under a subdirectory must still resolve.
+
+    Discovery for run/refresh globs **/*.preql recursively, so the dependency
+    graph (and the state-snapshot path built on it) must see the same files.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        sub = Path(tmpdir) / "raw"
+        sub.mkdir()
+        (sub / "base.preql").write_text(
+            "key order_id int;\n"
+            "datasource orders (order_id) grain (order_id) address db.orders;\n"
+        )
+        (sub / "consumer.preql").write_text("import base;\n")
+
+        strategy = ETLDependencyStrategy()
+        graph = strategy.build_folder_graph(Path(tmpdir))
+
+        base_node, consumer_node = create_script_nodes(
+            [sub / "base.preql", sub / "consumer.preql"]
+        )
+        assert graph.has_edge(str(base_node.path), str(consumer_node.path))
+
+
+def test_etl_dependency_includes_unimported_subdirectory_files():
+    """Subdirectory scripts not reachable from any top-level import are still
+    executed by run/refresh, so they must appear as graph nodes."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "main.preql").write_text(
+            "key order_id int;\n"
+            "datasource orders (order_id) grain (order_id) address db.orders;\n"
+        )
+        sub = tmppath / "raw"
+        sub.mkdir()
+        (sub / "standalone.preql").write_text(
+            "key item_id int;\n"
+            "datasource items (item_id) grain (item_id) address db.items;\n"
+        )
+
+        strategy = ETLDependencyStrategy()
+        graph = strategy.build_folder_graph(tmppath)
+
+        (standalone_node,) = create_script_nodes([sub / "standalone.preql"])
+        assert str(standalone_node.path) in graph.nodes
+
+
 def test_etl_dependency_parse_error_raises():
     """Test that a parse error in a .preql file raises ParseError instead of silently skipping."""
     with tempfile.TemporaryDirectory() as tmpdir:
