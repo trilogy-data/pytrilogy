@@ -6,9 +6,7 @@ duckdb-engine
 mypy
 # 0.16.0 false-positives PYI041 on the build-dispatch union; fixed in 0.16.2
 ruff>=0.16.2
-# Pinned: black --check is a CI gate, and an unpinned formatter fails every
-# open PR the day a new stable style ships.
-black==26.5.1
+black
 pandas<3.0.0
 types-tabulate
 google-cloud-bigquery
