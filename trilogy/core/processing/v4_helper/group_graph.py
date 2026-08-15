@@ -693,7 +693,6 @@ def _split_root_dimension_clusters(
     primary_group: dict[str, str],
     environment: BuildEnvironment,
     output_addresses: frozenset[str],
-    projected_basic_root_args: frozenset[str],
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
@@ -879,17 +878,19 @@ def _split_root_dimension_clusters(
                     addr, DepthLabel.ROOT
                 )
                 moved.add(idx)
-            if any(
-                bucket.primary_members[idx] in projected_basic_root_args
-                for idx in indices
-            ):
-                for key_address in key:
-                    if (
-                        key_address in environment.concepts
-                        and key_address not in dim_bucket.primary_members
-                    ):
-                        dim_bucket.secondary_members.append(key_address)
-                        dim_bucket.member_depths[key_address] = DepthLabel.ROOT
+            # The peel's premise is "source independently, join back on the
+            # entity key" — so the bucket must DEMAND that key. Without it the
+            # source search sees only the peeled members and can tie-break to
+            # the member's own root table (a foreign key's `centers` over the
+            # `user_center` binding that carries the axis), leaving the FINAL
+            # merge no shared column and degrading to a 1=1 cross join.
+            for key_address in key:
+                if (
+                    key_address in environment.concepts
+                    and key_address not in dim_bucket.primary_members
+                ):
+                    dim_bucket.secondary_members.append(key_address)
+                    dim_bucket.member_depths[key_address] = DepthLabel.ROOT
             dim_gid = _group_id_for(dim_bucket)
             buckets[dim_gid] = dim_bucket
             for idx in indices:
@@ -1421,6 +1422,13 @@ def _final_merge_grain(
             continue
         if attrs[gid].derivation in GROUPING_DERIVATIONS:
             grain |= set(attrs[gid].grain_components)
+        # A peeled dimension ROOT bucket carries its entity key as a secondary
+        # member — the axis the FINAL merge must join it back on. Without it in
+        # the merge grain, the ROOT's fresh re-source demands only the peeled
+        # members and can land on a source without the axis (a foreign key's
+        # own root table), degrading the merge to a 1=1 cross join.
+        elif attrs[gid].derivation == Derivation.ROOT:
+            grain |= set(attrs[gid].secondary_members)
     for concept in mandatory_list:
         if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
             grain |= set(concept.grain.components)
@@ -1534,6 +1542,11 @@ def _group_final_grain_contribution(
         _resolve_rowset_key(addr, environment) for addr in attrs[gid].grain_components
     }
     rowset_keys = (resolved - set(attrs[gid].grain_components)) & merge_grain
+    # A peeled dimension ROOT bucket advertises its entity key (carried as a
+    # secondary member) so the FINAL merge grain keeps the join axis and the
+    # bucket's fresh re-source demands a source that binds it.
+    if attrs[gid].derivation == Derivation.ROOT:
+        rowset_keys |= frozenset(attrs[gid].secondary_members) & merge_grain
     # A STATEMENT-scoped relation member the group carries is the merge's join
     # axis whether or not it is the group's grain: `subset join
     # best.pair_rank_best = worst.pair_rank_worst` projects only the two product
@@ -2060,6 +2073,17 @@ def _compute_concept_sets(
             mate_accumulator.setdefault(ca.address, set()).add(twin)
     pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
 
+    # A peeled dimension bucket (`dim:<entity_key>` discriminator) carries its
+    # entity key as a secondary member: the peel's contract is "source apart,
+    # join back on the key", so the key must be part of the bucket's demand and
+    # outputs — else the source search can pick a source without the axis (a
+    # foreign key's own root table) and the FINAL merge cross-joins ON 1=1.
+    dim_axis_keys: dict[str, frozenset[str]] = {
+        gid: frozenset(b.secondary_members)
+        for gid, b in buckets.items()
+        if b.derivation == Derivation.ROOT and b.discriminator.startswith("dim:")
+    }
+
     io = GroupIOPlan.for_groups(group_graph)
     for gid in topo:
         if gid == FINAL_NODE_ID:
@@ -2069,6 +2093,7 @@ def _compute_concept_sets(
         if fact.behavior is None or fact.derivation == Derivation.ROOT:
             for addr in list(cap):
                 cap.update(source_grain_of.get(addr, frozenset()))
+            cap.update(dim_axis_keys.get(gid, frozenset()))
             io.capability[gid] = cap
             continue
         # A grouping group's grain component that is a STATEMENT-scoped join axis
@@ -2146,6 +2171,9 @@ def _compute_concept_sets(
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
                 outs |= mand
+                # A peeled dimension scan always exposes its entity key: the
+                # FINAL merge joins it back to the fact stream on that key.
+                outs |= dim_axis_keys.get(gid, frozenset()) & cap_gid
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
                 # A FINAL-deferred presence-probe filter joins its producer
@@ -2372,7 +2400,6 @@ def build_group_graph(
             primary_group,
             environment,
             output_addresses | projected_basic_root_args,
-            projected_basic_root_args,
             _pre_aggregate_filter_args(conditions),
             _post_aggregate_filter_args(conditions)
             | _post_aggregate_basic_args(mandatory_list or []),
