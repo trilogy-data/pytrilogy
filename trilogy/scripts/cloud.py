@@ -2739,8 +2739,8 @@ def _reconcile_schedule(
     # Named after the group rather than any one member: with several jobs
     # there is no member whose name describes the row, and a schedule called
     # after the first one alphabetically would be a worse lie than a generic
-    # name. Sorted so the name is stable across syncs.
-    first = sorted(names)[0]
+    # name. Alphabetical so the name is stable across syncs.
+    first = min(names)
     name = f"{first}-schedule" if len(jobs) == 1 else f"{first}-+{len(jobs) - 1}-schedule"
     client.post_one(
         f"/orgs/{org}/schedules",
