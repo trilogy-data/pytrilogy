@@ -202,14 +202,31 @@ def resolve_rowset(
     # `id`) is safe and necessary: without it two sibling rowsets at the same
     # base grain have no exposable join key and the FINAL merge cross-joins
     # ON 1=1 (alias-collision aggregates: 2 rows -> 2x2 cartesian).
+    #
+    # A key an EXPOSED handle already covers is not re-exposed under its raw
+    # address. The handle is the rowset's own column for that key; adding the
+    # base address beside it publishes a second name for the same value, and two
+    # sibling rowsets over one base then appear to share a join axis they do not
+    # own. That silently outranks an authored scoped join on a derived key
+    # (`agg.period + 53 = fut.period`), which re-typed the relation from a
+    # subset LEFT to a FULL join.
     if (
         isinstance(built, BuildSelectLineage)
         and built.where_clause is None
         and built.having_clause is None
     ):
         handle_addrs = {h.address for h in handles}
+        handle_contents = {
+            h.lineage.content.address
+            for h in handles
+            if isinstance(h.lineage, BuildRowsetItem)
+        }
         for key_addr in built.grain.components:
-            if key_addr in produced and key_addr not in handle_addrs:
+            if (
+                key_addr in produced
+                and key_addr not in handle_addrs
+                and key_addr not in handle_contents
+            ):
                 key_concept = produced[key_addr]
                 handles.append(key_concept)
                 inputs.append(key_concept)

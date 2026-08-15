@@ -3480,7 +3480,7 @@ def _assemble_final_node(
             # hidden cross-join input via `_filter_arg_parents`) is untouched.
             bucket_members = _members_of(attrs, gid)
             seen_group_addrs = {c.address for c in group_concepts}
-            group_concepts.extend(
+            filter_only_concepts = [
                 c
                 for address in sorted(
                     arg.address
@@ -3490,7 +3490,8 @@ def _assemble_final_node(
                 )
                 if address not in seen_group_addrs
                 and (c := _concept_at(environment, address)) is not None
-            )
+            ]
+            group_concepts.extend(filter_only_concepts)
             root_conditions = _wrap_atoms(
                 _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
             )
@@ -3506,10 +3507,20 @@ def _assemble_final_node(
             )
             if fresh is not None:
                 node = fresh
+            # The filter-only args above exist so the scan can SOURCE and APPLY
+            # the WHERE; they are not columns the merge consumes. Bucketing them
+            # by natural grain shatters off a GroupNode at the filter's own grain
+            # (`date_dim.date` -> {date_sk}) that projects nothing anyone reads,
+            # and it shares no key with the real projection, so the merge
+            # cross-joins it ON 1=1. The condition is already applied inside
+            # `node`, so dropping them here loses nothing.
+            merge_concepts = [
+                c for c in group_concepts if c not in filter_only_concepts
+            ]
             parents.extend(
                 _wrap_for_grain(
                     node,
-                    group_concepts,
+                    merge_concepts,
                     environment,
                     projection_grain,
                     dedup_orthogonal=grouping_sibling,

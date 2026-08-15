@@ -171,7 +171,20 @@ checked.
 
 Precision: **10 of the 141 corpus queries legitimately render `ON 1=1`, and
 the guard fires on none of them**; it fires on all three real bugs when run
-against the pre-fix planner; and the full test suite has zero triggers.
+against the pre-fix planner.
+
+An earlier revision of this section claimed the full suite had zero triggers.
+That was wrong: it was written after roughly two thirds of the suite. The
+root-level `tests/test_*.py` and `tests/persistence` chunk held two more
+triggers, both genuine pre-existing bugs, both since fixed (see "Two further
+latent bugs" below). The suite is clean now, verified across every chunk.
+
+One trap in that chunk, recorded so it is not re-diagnosed: `tests/cli`
+reports 57 failures when the chunk runs as a whole, and none of them are the
+guard. They are a pre-existing collection-time `conftest.py` import
+interaction, reproducible at HEAD and visible with `-k test_cloud` (where only
+cloud tests execute and still fail). `tests/cli` passes alone and in small
+combinations. Split it out when bisecting planner work.
 
 ### What the guard caught
 
@@ -192,6 +205,36 @@ checks PLANNING STATUS only, and several modeling tests assert on SQL text
 rather than rows, so a query that plans into a cartesian and returns garbage
 stays green. Any future fix in this area needs row-asserting tests.
 
+### Two further latent bugs (found by the root-level chunk)
+
+Both pre-existing at HEAD — verified by running a worktree holding HEAD's
+planner with only the guard added, where both fire with identical node
+identifiers.
+
+4. **Dead condition-source contributor.** For a ROOT contributor, filter-only
+   WHERE args are appended to `group_concepts` so the fresh scan can source and
+   apply the condition. That same list was then handed to `_wrap_for_grain`,
+   which buckets by natural grain: `wr.date_dim.date` bucketed to `{date_sk}`
+   and became a second `GroupNode` projecting nothing any consumer reads and
+   sharing no key with the real projection, so the merge cross-joined it. Rows
+   stayed correct only because a `GROUP BY` above collapsed the fan-out — an
+   incorrect plan that happened to be neutralized. Fix: pass
+   `group_concepts` minus the filter-only additions to `_wrap_for_grain`; the
+   condition is already applied inside the node.
+
+5. **Key-dropping PERSIST through `_cross_component_source`.** That fallback
+   exists for the `sum(samt) + sum(wamt)` shape: components related only
+   through a derived expression's lineage, with no key relationship, each
+   collapsing to a scalar, where a cross product genuinely is the answer. It
+   was gated on `_lineage_connected` alone. `PERSIST split_only FROM SELECT
+   generic.split` materializes a table with no `scalar` column even though
+   `split` carries `keys={scalar}`, so `select split, scalar` cross-joined two
+   ROW-BEARING components. Fix: refuse the cross product when one component's
+   addresses fall in another's `build_fd_closure` — a key relationship makes
+   the join mandatory. Confirmed wrong results: 4 rows became 8 with two scalar
+   rows. `tests/persistence/test_complex` missed it because its fixture holds
+   exactly one scalar row, where a cartesian and a join agree.
+
 ### Tests
 
 `tests/core/processing/test_v4_grouping_alias_merge_grain.py` (distilled q30,
@@ -200,11 +243,37 @@ three shapes, row-asserted), `tests/core/processing/test_join_keyless_guard.py`
 axis-disjoint, unprojected-grain, empty-grain, single-row, keyless-scalar and
 rollup-padded shapes stay legal),
 `tests/complex/test_rowset.py::test_rowset_alias_collision_rows` /
-`::test_rowset_alias_collision_distinct_aggregate_rows` (row-asserted).
+`::test_rowset_alias_collision_distinct_aggregate_rows` (row-asserted),
+`tests/persistence/test_persist_lossy_source.py` (two-scalar-row fixture, the
+one the original persistence test lacked),
+`test_union_arm_subset_join_full_grain.py::test_arm_filter_arg_is_not_a_merge_contributor`.
 
 Corpus A/B vs a clean HEAD worktree: 4 tpc-ds queries changed plan (q59, q65,
 q79, q98 — join keys preserved / redundant dedups dropped); all pass the
 executing tpc_ds suite (169 passed) and tpc_h (30 passed).
+
+Note the corpus is **not** a sufficient gate for this area. It stayed
+byte-identical across every fix added after the first pass, including the two
+regressions below, because no corpus query exercises rowset or scoped-join
+shapes. Root-level `tests/test_*.py` is what caught them.
+
+### Two regressions these fixes caused, and their fixes
+
+Both were caught by the root-level chunk, not the corpus.
+
+- `rowset.py` grain-key exposure re-exposed a key that an already-exposed
+  handle covers, publishing a second name for the same value. Two sibling
+  rowsets over one base then appeared to share a join axis, which silently
+  outranked an authored scoped join on a derived key
+  (`agg.period + 53 = fut.period`) and re-typed a subset `LEFT` to `FULL`.
+  Fix: skip a key already covered by an exposed handle's content.
+- `_compute_concept_sets` rowset-grain resolution volunteered ROLLUP grouping
+  keys as a join axis, dropping every subtotal row. Fix: exclude
+  `_rollup_padded_addresses(environment)`. The trap: at demand time the rowset
+  members are still STANDARD aggregates, so
+  `wrapper.grouping.nulls_grouping_keys` is `False`; the spec lives on
+  `concept.lineage.rowset.select.grouping.mode` (narrow with `isinstance`
+  against `SelectLineage` — `UnionSelectLineage` has no `grouping`).
 
 ### Acceptance
 

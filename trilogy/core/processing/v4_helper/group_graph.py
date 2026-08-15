@@ -23,12 +23,14 @@ from typing import Literal, overload
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
+    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
@@ -1416,6 +1418,37 @@ def _resolve_rowset_key(addr: str, environment: BuildEnvironment | None) -> str:
     return addr
 
 
+def _rollup_padded_addresses(
+    environment: BuildEnvironment | None,
+) -> frozenset[str]:
+    """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
+    The subtotal rows NULL these, so they are not a row identity and must never
+    be volunteered as a join axis: pairing on one drops every subtotal row (a
+    rolled-up NULL matches nothing). The join resolver applies the same rule
+    per-datasource via `rollup_padded_addresses`; this is the environment-wide
+    view the demand pass needs before any datasource exists."""
+    if environment is None:
+        return frozenset()
+    padded: set[str] = set()
+    for concept in (
+        *environment.concepts.values(),
+        *environment.alias_origin_lookup.values(),
+    ):
+        wrapper = get_grouped_aggregate_wrapper(concept)
+        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
+            padded |= {c.address for c in wrapper.by}
+        # A rowset carries the spec on the SELECT it wraps, not on the
+        # aggregate: at demand time the members are still plain STANDARD
+        # aggregates and only `select.grouping` says the pass NULL-pads.
+        if isinstance(concept.lineage, BuildRowsetItem):
+            select = concept.lineage.rowset.select
+            if isinstance(select, SelectLineage):
+                grouping = select.grouping
+                if grouping is not None and grouping.mode.nulls_grouping_keys:
+                    padded |= {ref.address for ref in grouping.by}
+    return frozenset(padded)
+
+
 def _lineage_pinned_grain(
     addresses: frozenset[str] | set[str], environment: BuildEnvironment | None
 ) -> frozenset[str]:
@@ -1451,6 +1484,15 @@ def _lineage_pinned_grain(
         if concept.address in seen:
             continue
         seen.add(concept.address)
+        # A ROLLUP/CUBE/GROUPING SETS aggregate NULLs its grouping keys on the
+        # subtotal rows, so those keys are not a row identity and cannot serve
+        # as a join axis: pinning them drops every subtotal row from the merge
+        # (a rolled-up NULL never pairs). The `nulls_grouping_keys` wrapper is
+        # the same authority `_renders_nonstandard_grouping` uses, and it sees
+        # through a rowset handle to the aggregate underneath.
+        wrapper = get_grouped_aggregate_wrapper(concept)
+        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
+            continue
         if concept.derivation in GROUPING_DERIVATIONS:
             if concept.grain:
                 grain |= set(concept.grain.components)
@@ -2136,6 +2178,7 @@ def _compute_concept_sets(
         if environment is not None
         else frozenset()
     )
+    rollup_padded = _rollup_padded_addresses(environment)
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
     # match those aliases so the producing group keeps the field as an output.
@@ -2204,7 +2247,9 @@ def _compute_concept_sets(
         # stacked on it.
         for component in fact.grain:
             resolved_component = _resolve_rowset_key(component, environment)
-            if resolved_component != component:
+            if resolved_component != component and resolved_component not in (
+                rollup_padded
+            ):
                 grain_mates.add(resolved_component)
         # A rowset boundary always materializes its grain keys from its body
         # even with no graph parent to inherit them from, and its key members
@@ -2220,6 +2265,7 @@ def _compute_concept_sets(
                 for component in fact.grain
                 if (resolved := _resolve_rowset_key(component, environment))
                 != component
+                and resolved not in rollup_padded
             }
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
@@ -2349,17 +2395,28 @@ def _compute_concept_sets(
                         # body's `cid as s_cid` beside `sum(net)` grouped by
                         # `csk, year`). Without the axis the merge cross-joins
                         # every dimension row onto every fact row.
-                        resolved_sibling_match = resolved_grain == frozenset(
+                        resolved_sibling_grain = frozenset(
                             _resolve_rowset_key(a, environment)
                             for a in sibling_fact.grain
-                        ) and not (
-                            (
-                                fact.primary
-                                | fact.grain
-                                | facts[sibling].primary
-                                | sibling_fact.grain
+                        )
+                        resolved_sibling_match = (
+                            resolved_grain == resolved_sibling_grain
+                            and not (
+                                (
+                                    fact.primary
+                                    | fact.grain
+                                    | facts[sibling].primary
+                                    | sibling_fact.grain
+                                )
+                                & scoped_relation_members
                             )
-                            & scoped_relation_members
+                            # A resolved match on ROLLUP grouping keys is not a
+                            # shared row identity: the subtotal rows NULL them,
+                            # so joining there drops every subtotal.
+                            and not (
+                                (resolved_grain | resolved_sibling_grain)
+                                & rollup_padded
+                            )
                         )
                         if (
                             sibling_fact.grain == fact.grain
@@ -2369,7 +2426,9 @@ def _compute_concept_sets(
                                 and fact.grain <= io.capability[sibling]
                             )
                         ):
-                            outs |= (fact.grain | resolved_grain) & cap_gid
+                            outs |= (
+                                fact.grain | (resolved_grain - rollup_padded)
+                            ) & cap_gid
                             break
                 continue
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
