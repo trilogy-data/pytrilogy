@@ -7,6 +7,7 @@ import argparse
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -56,6 +57,36 @@ DEFAULT_MODEL = "deepseek-v4-flash"
 SCORE_TIMEOUT = 180.0
 
 
+def _artifact_component(value: str) -> str:
+    component = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("._-")
+    return component or "unknown"
+
+
+def model_namespace(
+    provider: str, model: str, reasoning_effort: str | None = None
+) -> str:
+    parts = [_artifact_component(provider), _artifact_component(model)]
+    if reasoning_effort:
+        parts.append(f"effort-{_artifact_component(reasoning_effort)}")
+    return "_".join(parts)
+
+
+def run_artifact_slug(
+    timestamp: str,
+    category: str,
+    provider: str,
+    model: str,
+    reasoning_effort: str | None = None,
+) -> str:
+    return "_".join(
+        (
+            _artifact_component(timestamp),
+            _artifact_component(category),
+            model_namespace(provider, model, reasoning_effort),
+        )
+    )
+
+
 def _force_utf8_stdio() -> None:
     """Survive redirection on Windows, where stdout defaults to cp1252 and
     chokes on non-ASCII in the feed and report."""
@@ -77,6 +108,12 @@ def _build_argparser(spec: BenchmarkSpec) -> argparse.ArgumentParser:
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model id")
     parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="LLM provider")
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["none", "low", "medium", "high", "xhigh", "max"],
+        default=None,
+        help="reasoning effort for providers that support it",
+    )
     parser.add_argument(
         "--scale-factor",
         type=float,
@@ -365,6 +402,8 @@ def _run_categories(
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     script = Path(sys.argv[0]).resolve()
     common_argv = _filter_both_modes_argv(raw_argv)
+    args = _build_argparser(spec).parse_args(raw_argv)
+    namespace = model_namespace(args.provider, args.model, args.reasoning_effort)
 
     # Split the single-leg default concurrency across the parallel legs so they
     # don't together exceed it (rate-limit pressure). Respect an explicit
@@ -382,7 +421,15 @@ def _run_categories(
         per_leg_concurrency = ["--concurrency", str(split)]
 
     outs: dict[str, Path] = {
-        key: spec.results_dir / f"{timestamp}_{key}" for key in category_keys
+        key: spec.results_dir
+        / run_artifact_slug(
+            timestamp,
+            key,
+            args.provider,
+            args.model,
+            args.reasoning_effort,
+        )
+        for key in category_keys
     }
     print("[categories] spawning parallel runs:")
     for key, out in outs.items():
@@ -435,8 +482,13 @@ def _run_categories(
         ordered = {
             k: reports_by_key[k] for k in funnel_order_for(spec) if k in reports_by_key
         }
-        png = analyze_run.render_funnel(ordered, spec.charts_dir / "funnel_v2.png")
-        md = analyze_run.write_funnel_report(ordered, spec.charts_dir / "funnel.md")
+        funnel_slug = f"{timestamp}_{namespace}"
+        png = analyze_run.render_funnel(
+            ordered, spec.charts_dir / f"funnel_{funnel_slug}.png"
+        )
+        md = analyze_run.write_funnel_report(
+            ordered, spec.charts_dir / f"funnel_{funnel_slug}.md"
+        )
         print(f"[categories] wrote {png} and {md}")
     else:
         print(
@@ -492,9 +544,18 @@ def run(spec: BenchmarkSpec) -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     # Absolute: agent subprocesses run with cwd set to their per-worker workspace
     # copy, so a relative run dir would resolve to a path that doesn't exist there.
-    run_dir = (args.output_dir or (spec.results_dir / timestamp)).resolve()
+    default_run_dir = spec.results_dir / run_artifact_slug(
+        timestamp,
+        category.key,
+        args.provider,
+        args.model,
+        args.reasoning_effort,
+    )
+    run_dir = (args.output_dir or default_run_dir).resolve()
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
+    dashboard_path = spec.charts_dir / f"dashboard_{run_dir.name}.png"
+    failures_path = spec.charts_dir / f"trilogy_failures_{run_dir.name}.md"
     print(f"[1/5] Building {spec.name} DuckDB (sf={args.scale_factor:g}) ...")
     cached = db.build_database(spec, args.scale_factor)
     workspace_db = db.copy_database(cached, workspace / spec.db_filename)
@@ -520,6 +581,7 @@ def run(spec: BenchmarkSpec) -> int:
         allow_file_read=bool(leg_docs),
         disable_todo=not args.enable_todo,
         tool_output_limit=category.tool_output_limit,
+        reasoning_effort=args.reasoning_effort,
     )
     for doc in leg_docs:
         shutil.copy2(doc, workspace / doc.name)
@@ -592,10 +654,6 @@ def run(spec: BenchmarkSpec) -> int:
         with pool_lock:
             worker_pool.append(worker)
 
-    # All categories share charts/; the per-category suffix keeps each leg's
-    # in-flight and final dashboard from clobbering the others.
-    suffix = f"_{category.key}"
-
     # --- live dashboard machinery ---------------------------------------
     # Build the scoring engine ONCE and reuse per query — avoids paying
     # engine setup + extension load on every grade.
@@ -653,7 +711,7 @@ def run(spec: BenchmarkSpec) -> int:
                 analyze_run.render(
                     partial_report,
                     events,
-                    spec.charts_dir / f"dashboard{suffix}_v2.png",
+                    dashboard_path,
                 )
             except Exception as exc:
                 print(
@@ -955,14 +1013,14 @@ def run(spec: BenchmarkSpec) -> int:
         dashboard = analyze_run.render(
             report,
             events,
-            spec.charts_dir / f"dashboard{suffix}_v2.png",
+            dashboard_path,
         )
         failures = analyze_run.collect_failures(events)
         failures_md = analyze_run.write_failures_report(
             run_dir,
             report,
             failures,
-            spec.charts_dir / f"trilogy_failures{suffix}.md",
+            failures_path,
         )
         print(
             f"  wrote {dashboard}  ({len(failures)} trilogy failures -> {failures_md})"

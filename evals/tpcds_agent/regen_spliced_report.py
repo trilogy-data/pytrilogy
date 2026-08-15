@@ -64,10 +64,8 @@ def regen(run_dir: Path) -> None:
     (run_dir / "report.md").write_text(render_markdown(SPEC, merged), encoding="utf-8")
     try:
         _, events = analyze_run.load_run_spliced(run_dir)
-        cat = merged.get("meta", {}).get("category")
-        suffix = f"_{cat}" if cat else ""
         analyze_run.render(
-            merged, events, SPEC.charts_dir / f"dashboard{suffix}_v2.png"
+            merged, events, SPEC.charts_dir / f"dashboard_{run_dir.name}.png"
         )
     except Exception as exc:
         print(f"  {run_dir.name}: chart render skipped ({type(exc).__name__}: {exc})")

@@ -249,7 +249,12 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
         "Client",
         lambda timeout: _FakeClient(response_payload=response_payload, sink=sink),
     )
-    provider = OpenAIProvider(name="openai", model="gpt-test", api_key="x")
+    provider = OpenAIProvider(
+        name="openai",
+        model="gpt-test",
+        api_key="x",
+        reasoning_effort="max",
+    )
     result = provider.generate_completion(
         LLMRequestOptions(tools=[_tool_def()], require_tool=True),
         [LLMMessage(role="user", content="hi")],
@@ -259,6 +264,7 @@ def test_openai_provider_builds_required_tool_payload(monkeypatch):
     assert sink["url"] == "https://api.openai.com/v1/responses"
     assert sink["json"]["input"] == [{"role": "user", "content": "hi"}]
     assert sink["json"]["tools"][0]["name"] == "submit_query"
+    assert sink["json"]["reasoning"] == {"effort": "max"}
     assert "function" not in sink["json"]["tools"][0]
     assert result.tool_calls[0].arguments["query"] == "select 1"
     assert result.reasoning == "reasoning summary"
@@ -297,6 +303,27 @@ def test_openai_provider_prefers_named_tool_choice(monkeypatch):
         "type": "function",
         "name": "submit_query",
     }
+
+
+def test_openai_reasoning_uses_longer_default_request_timeout() -> None:
+    reasoning = OpenAIProvider(
+        name="openai",
+        model="gpt-test",
+        api_key="x",
+        reasoning_effort="max",
+    )
+    plain = OpenAIProvider(name="openai", model="gpt-test", api_key="x")
+    explicit = OpenAIProvider(
+        name="openai",
+        model="gpt-test",
+        api_key="x",
+        reasoning_effort="max",
+        request_timeout=45.0,
+    )
+
+    assert reasoning.request_timeout == 120.0
+    assert plain.request_timeout == 30.0
+    assert explicit.request_timeout == 45.0
 
 
 def test_openai_response_input_threads_tool_calls():

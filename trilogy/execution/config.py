@@ -152,6 +152,7 @@ class AgentConfig:
     provider: Provider | None = None
     model: str | None = None
     api_key_env: str | None = None
+    reasoning_effort: str | None = None
     max_iterations: int = 50
     tool_output_limit: int = 8192
     # Drop ``show_message`` from the tool list (and its discipline rule from
@@ -481,6 +482,7 @@ def load_config_file(
         provider=agent_provider,
         model=agent_raw.get("model"),
         api_key_env=agent_raw.get("api_key_env"),
+        reasoning_effort=agent_raw.get("reasoning_effort"),
         max_iterations=int(agent_raw.get("max_iterations", 50)),
         tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
         quiet=bool(agent_raw.get("quiet", False)),

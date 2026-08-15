@@ -307,6 +307,7 @@ def write_trilogy_toml(
     disable_todo: bool = False,
     allow_file_read: bool = True,
     tool_output_limit: int | None = None,
+    reasoning_effort: str | None = None,
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
@@ -328,6 +329,9 @@ def write_trilogy_toml(
             "evals/common/agent_runner.py:write_trilogy_toml."
         )
     api_key_env = api_key_env_map[provider]
+    reasoning_effort_line = (
+        f'reasoning_effort = "{reasoning_effort}"\n' if reasoning_effort else ""
+    )
     workspace.joinpath("trilogy.toml").write_text(
         f"""\
 [engine]
@@ -341,7 +345,7 @@ enable_python_datasources = {str(spec.enable_python_datasources).lower()}
 provider = "{provider}"
 model = "{model}"
 api_key_env = "{api_key_env}"
-max_iterations = {max_iterations}
+{reasoning_effort_line}max_iterations = {max_iterations}
 # Focused agent-info drilldowns can carry complete language/model references;
 # give them enough room to arrive without truncating load-bearing examples.
 # Noise-dose cells raise this so read_file('schema.md') stays untruncated.

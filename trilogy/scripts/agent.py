@@ -299,9 +299,14 @@ def _build_provider(
             f"Missing API key: environment variable {env_var} is not set."
         )
     cls = PROVIDER_CLASSES[provider_enum]
-    return cls(
-        name=f"trilogy-agent-{provider_enum.value}", model=model, api_key=api_key
-    )
+    kwargs: dict[str, Any] = {
+        "name": f"trilogy-agent-{provider_enum.value}",
+        "model": model,
+        "api_key": api_key,
+    }
+    if provider_enum == Provider.OPENAI:
+        kwargs["reasoning_effort"] = cfg.reasoning_effort
+    return cls(**kwargs)
 
 
 def _read_context_files(paths: tuple[str, ...]) -> str:

@@ -94,7 +94,8 @@ class OpenAIProvider(LLMProvider):
         model: str,
         api_key: str | None = None,
         retry_options: RetryOptions | None = None,
-        request_timeout: float = 30.0,
+        request_timeout: float | None = None,
+        reasoning_effort: str | None = None,
     ):
         api_key = api_key or environ.get("OPENAI_API_KEY")
         if not api_key:
@@ -107,7 +108,10 @@ class OpenAIProvider(LLMProvider):
         self.models: list[str] = []
         self.type = Provider.OPENAI
         self.use_responses_api = True
+        if request_timeout is None:
+            request_timeout = 120.0 if reasoning_effort not in (None, "none") else 30.0
         self.request_timeout = request_timeout
+        self.reasoning_effort = reasoning_effort
 
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
@@ -127,6 +131,8 @@ class OpenAIProvider(LLMProvider):
             "model": self.model,
             "input": to_openai_response_input(history),
         }
+        if self.reasoning_effort is not None:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
         if options.max_tokens is not None:
             payload["max_output_tokens"] = options.max_tokens
         if options.temperature is not None:
