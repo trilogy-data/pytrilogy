@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 
 import pytest
@@ -46,13 +45,11 @@ _DIALECT = BaseDialect()
 
 
 @pytest.fixture
-def config_dir(tmp_path: Path) -> Path:
-    """Copy of the config_directory fixture: ingest's default output (root/)
-    must not pollute the shared checked-in project, which directory-wide
-    commands in other tests sweep recursively."""
-    dest = tmp_path / "config_directory"
-    shutil.copytree(Path(__file__).parent / "config_directory", dest)
-    return dest
+def config_dir() -> Path:
+    """The shared checked-in project. Ingest tests write into its root/ on
+    purpose: test_config's directory-wide unit/integration sweep that output,
+    validating that ingested models round-trip."""
+    return Path(__file__).parent / "config_directory"
 
 
 def test_ingest_digit_leading_columns_produce_parseable_output(tmp_path):
