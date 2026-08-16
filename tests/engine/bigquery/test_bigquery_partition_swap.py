@@ -47,9 +47,7 @@ grain (id)
 query '''{source}''';
 
 datasource facts (
-    id: id,
-    created_at: created_at,
-    label: label,
+    {columns}
 )
 grain (id)
 address `{table}`
@@ -58,6 +56,22 @@ partition by created_at;
 
 CREATE = "create or replace datasources facts;"
 APPEND = "append into facts by created_at from select id, created_at, label;"
+
+#: How the target datasource declares its columns, and the physical names that
+#: gives the table. The declared names are the only ones the target has, and a
+#: select names its outputs after *concepts* — so a layout whose two halves
+#: differ is the ordinary case, and the one that catches anything asking the
+#: select for the target's columns.
+LAYOUTS = {
+    "concept-named": (
+        "id: id,\n    created_at: created_at,\n    label: label,",
+        ("id", "created_at", "label"),
+    ),
+    "declared-named": (
+        "fact_id: id,\n    event_date: created_at,\n    row_label: label,",
+        ("fact_id", "event_date", "row_label"),
+    ),
+}
 
 #: One row per slice plus the null slice. `label` is what a replace has to
 #: overwrite: rerunning the append with a new label must leave one row per id
@@ -122,26 +136,42 @@ def table(bq_write_dataset, bq_client) -> Generator[tuple[str, str], None, None]
     bq_client.delete_table(f"{bq_write_dataset}.{name}", not_found_ok=True)
 
 
-def _define(executor: Executor, table: str, datatype: str, label: str) -> None:
+def _define(
+    executor: Executor,
+    table: str,
+    datatype: str,
+    label: str,
+    layout: str = "concept-named",
+) -> None:
     """Redefine the model — including the source rows — without touching the
     target table."""
     executor.execute_text(
         MODEL.format(
-            table=table, datatype=datatype, source=SOURCES[datatype].format(label=label)
+            table=table,
+            datatype=datatype,
+            source=SOURCES[datatype].format(label=label),
+            columns=LAYOUTS[layout][0],
         )
     )
 
 
-def _seed(executor: Executor, table: str, datatype: str, label: str) -> None:
-    _define(executor, table, datatype, label)
+def _seed(
+    executor: Executor,
+    table: str,
+    datatype: str,
+    label: str,
+    layout: str = "concept-named",
+) -> None:
+    _define(executor, table, datatype, label, layout)
     executor.execute_text(CREATE)
 
 
-def _rows(executor: Executor, table: str) -> list[tuple]:
+def _rows(executor: Executor, table: str, layout: str = "concept-named") -> list[tuple]:
+    key, *rest = LAYOUTS[layout][1]
     return [
         tuple(row)
         for row in executor.execute_raw_sql(
-            f"SELECT id, created_at, label FROM `{table}` ORDER BY id"
+            f"SELECT {', '.join([key, *rest])} FROM `{table}` ORDER BY {key}"
         ).fetchall()
     ]
 
@@ -241,6 +271,29 @@ def test_native_and_sql_paths_write_the_same_rows(
     finally:
         for executor, qualified in tables.values():
             executor.execute_raw_sql(f"drop table if exists `{qualified}`")
+
+
+def test_declared_column_names_survive_the_swap(executors, bq_write_dataset, table):
+    """The target's columns are named by the datasource, not by the concepts the
+    select outputs. Nothing on the write path may ask the select for them: the
+    staging table brings the names and the rows land positionally. Staging them
+    under concept names instead fails as "The field specified for partitioning
+    cannot be found in the schema" — or, worse, lands them in the wrong column.
+    """
+    executor = executors(native=True)
+    qualified, name = table
+    _seed(executor, qualified, "date", "first", layout="declared-named")
+    executor.execute_text(APPEND)
+    first = _rows(executor, qualified, layout="declared-named")
+    assert [row[0] for row in first] == [1, 2, 3]
+    assert [row[1] for row in first] == [date(2024, 1, 1), date(2024, 1, 2), None]
+
+    _define(executor, qualified, "date", "second", layout="declared-named")
+    executor.execute_text(APPEND)
+    second = _rows(executor, qualified, layout="declared-named")
+    assert {row[2] for row in second} == {"second"}
+    assert [row[1] for row in second] == [row[1] for row in first]
+    assert "__NULL__" in _partition_ids(executor, bq_write_dataset, name)
 
 
 def test_an_empty_select_replaces_nothing(executors, table):

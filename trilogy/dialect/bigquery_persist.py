@@ -9,7 +9,15 @@ BigQuery can do the same thing as metadata. A destination table id may carry a
 **partition decorator** (``dataset.table$20240103``), and writing to one with
 ``WRITE_TRUNCATE`` replaces that partition alone, atomically. So:
 
-1. one query job stages the select into a table partitioned like the target;
+1. ``CREATE TABLE LIKE`` makes a staging table with the target's schema,
+   partitioning and clustering, and one ``INSERT`` job fills it. The write is
+   an INSERT rather than a query with a destination table because a select's
+   output columns are named after its concepts, not after the datasource's
+   declared columns — a destination write would stage
+   ``events_created_at_date`` where the target has ``date``, which no copy job
+   can move and no partition spec can name. Landing the rows positionally into
+   a table shaped like the target is also exactly what the SQL path does
+   (``BaseDialect.render_staging_create``);
 2. ``INFORMATION_SCHEMA.PARTITIONS`` names the slices it produced — metadata,
    no scan, and the ids it reports *are* the decorators, so no value formatting
    is involved anywhere here;
@@ -92,6 +100,9 @@ class TableName:
     def qualified(self, table: str | None = None) -> str:
         return f"{self.project}.{self.dataset}.{table if table else self.table}"
 
+    def quoted(self, table: str | None = None) -> str:
+        return f"`{self.qualified(table)}`"
+
 
 @dataclass(frozen=True)
 class SwapTarget:
@@ -162,7 +173,6 @@ def execute_partition_swap(
     default_project: str | None,
 ) -> ResultProtocol | None:
     """Perform a partitioned APPEND as staged write plus per-slice copy jobs."""
-    from google.cloud import bigquery
     from sqlalchemy import text
 
     from trilogy.dialect.bigquery_engine import to_bigquery_sql
@@ -173,24 +183,21 @@ def execute_partition_swap(
         return None
 
     staging = f"{STAGING_PREFIX}{target.name.table}_{uuid4().hex[:8]}"
+    staged_table = target.name.qualified(staging)
     # The same preparation the normal query path applies: a rendered select can
     # carry bind markers, and BigQuery spells them `@name` rather than `:name`.
     prepared, params = executor.prepare_sql(
-        executor.generator.render_select_only(query), query.local_concepts
+        executor.generator.render_insert_into(query, staged_table),
+        query.local_concepts,
     )
     sql, query_parameters = to_bigquery_sql(text(prepared), params)
     # Carries whatever per-job external tables the SQL names, so a persist
     # reading a staged python datasource resolves here exactly as it does on
     # the normal query path.
     config = connection.query_job_config(sql, query_parameters)
-    config.destination = target.name.qualified(staging)
-    config.write_disposition = "WRITE_TRUNCATE"
-    config.time_partitioning = bigquery.TimePartitioning(
-        type_=target.partitioning.type_, field=target.partitioning.field
-    )
     try:
+        client.query(_render_staging_create(target, staging)).result()
         client.query(sql, job_config=config).result()
-        _set_staging_ttl(client, target.name, staging)
         ids = _partition_ids(client, target.name, staging)
         if not ids:
             # An empty select covers no slices, so it replaces none — the same
@@ -207,8 +214,28 @@ def execute_partition_swap(
             if NULL_PARTITION in ids:
                 _replace_null_partition(client, target, staging)
     finally:
-        client.delete_table(target.name.qualified(staging), not_found_ok=True)
+        client.delete_table(staged_table, not_found_ok=True)
     return BufferedResult([], [])
+
+
+def _render_staging_create(target: SwapTarget, staging: str) -> str:
+    """The staging table: shaped like the target, and self-expiring.
+
+    ``LIKE`` copies the target's schema, partitioning and clustering, so the
+    staged rows carry the target's *declared* column names — which the select
+    does not produce, it names its outputs after concepts — and the partition
+    ids of the two tables line up by construction. That is what makes both the
+    positional INSERT and ``staging$id -> target$id`` correct.
+
+    The expiry is set in the same statement rather than by a follow-up
+    ``update_table``: it is the backstop for a process killed before the drop,
+    so it must not itself have a window in which the table exists without it."""
+    expires = datetime.now(timezone.utc) + STAGING_TTL
+    return (
+        f"CREATE TABLE {target.name.quoted(staging)}"
+        f" LIKE {target.name.quoted()}"
+        f" OPTIONS(expiration_timestamp = TIMESTAMP '{expires.isoformat()}')"
+    )
 
 
 def _replace_null_partition(
@@ -220,8 +247,8 @@ def _replace_null_partition(
     wholly-new like every other one; it just costs a scan of the target's null
     partition instead of being free."""
     key = f"`{target.partitioning.field}`"
-    into = f"`{target.name.qualified()}`"
-    staged = f"`{target.name.qualified(staging)}`"
+    into = target.name.quoted()
+    staged = target.name.quoted(staging)
     logger.info(
         "%s replacing the null partition of %s by DML (no decorator exists)",
         LOGGER_PREFIX,
@@ -233,14 +260,6 @@ def _replace_null_partition(
         f"INSERT INTO {into} SELECT * FROM {staged} WHERE {key} IS NULL;\n"
         "COMMIT TRANSACTION;"
     ).result()
-
-
-def _set_staging_ttl(client: bigquery.Client, target: TableName, staging: str) -> None:
-    from google.cloud import bigquery
-
-    table = bigquery.Table(target.qualified(staging))
-    table.expires = datetime.now(timezone.utc) + STAGING_TTL
-    client.update_table(table, ["expires"])
 
 
 def _partition_ids(

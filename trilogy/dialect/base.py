@@ -3641,16 +3641,32 @@ class BaseDialect:
 
         return self._render_query(query, output)
 
-    def _persist_insert_prefix(self, query: ProcessedQueryPersist) -> str:
-        return f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
+    def _persist_insert_prefix(
+        self, query: ProcessedQueryPersist, location: str | None = None
+    ) -> str:
+        return (
+            "INSERT INTO "
+            f"{self.safe_quote(location or query.output_to.address.location)} "
+        )
 
-    def render_select_only(self, query: ProcessedQueryPersist) -> str:
-        """The rows a persist produces, with no write prefix.
+    def render_insert_into(self, query: ProcessedQueryPersist, location: str) -> str:
+        """The persist's select, written into ``location`` by positional INSERT.
 
         For a writer that performs the write through an engine API rather than
         by running SQL (see ``SupportsNativePersist``): it still needs the
-        select, and the dialect remains the only thing that renders one."""
-        return self._render_query(query, None)
+        rows landed somewhere it can move them from, and the dialect remains
+        the only thing that renders a select.
+
+        It is an INSERT and not a bare select handed to an engine's
+        destination-table setting, because a select's output columns are named
+        after its *concepts* (``events_created_at_date``) while a datasource
+        declares its own (``date``): a destination write would name the staged
+        columns after the concepts and no longer match the target at all.
+
+        ``INSERT INTO t <select>`` carries no column list, here or in
+        ``_persist_insert_prefix`` — the mapping from select to table is
+        positional, and always has been."""
+        return self._render_query(query, self._persist_insert_prefix(query, location))
 
     def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
         """The same SQL as ``compile_statement``, split into statements that can

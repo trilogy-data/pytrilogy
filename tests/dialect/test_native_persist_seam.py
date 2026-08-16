@@ -119,16 +119,19 @@ def test_declining_leaves_the_repeated_append_idempotent():
     assert _rows(executor) == first
 
 
-def test_render_select_only_has_no_write_prefix():
-    """What a native writer runs instead of the INSERT."""
+def test_render_insert_into_writes_somewhere_other_than_the_target():
+    """What a native writer runs instead of the persist's own INSERT: the same
+    select, landed positionally in a staging table of the writer's choosing."""
     env = Environment()
     _, statements = parse(MODEL + APPEND, env)
     renderer = Dialects.BIGQUERY.default_renderer()
     (processed,) = renderer.generate_queries(env, [statements[-1]])
-    select = renderer.render_select_only(processed)
-    assert "INSERT" not in select
-    assert "CREATE" not in select
-    assert "created_at" in select
+    rendered = renderer.render_insert_into(processed, "proj.ds.staged")
+    assert rendered.lstrip().startswith("INSERT INTO `proj`.`ds`.`staged` \nSELECT")
+    assert "CREATE" not in rendered
+    assert "created_at" in rendered
+    # No column list: the mapping from select to table is positional.
+    assert "`staged` (" not in rendered
 
 
 class FakeTable:

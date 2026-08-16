@@ -33,7 +33,8 @@ physically on one column.
 `trilogy/dialect/bigquery_persist.py` performs the same write through the jobs
 API instead:
 
-1. one query job stages the select into a table partitioned like the target;
+1. `CREATE TABLE ... LIKE <target>` makes a staging table with the target's
+   schema, partitioning and clustering, and one `INSERT` job fills it;
 2. `INFORMATION_SCHEMA.PARTITIONS` names the slices it produced — metadata
    only, no scan, and the ids it reports *are* the decorators;
 3. one **copy** job per slice, `staging$id` → `target$id`, with
@@ -42,6 +43,16 @@ API instead:
 
 The target is read once instead of three times, the delete is not billed, and
 an interrupted run leaves each slice either wholly old or wholly new.
+
+Step 1 is `CREATE ... LIKE` plus an `INSERT`, not a single query job writing to
+a destination table, because **a select names its output columns after
+concepts** (`events_created_at_date`) while a datasource declares its own
+(`date`). A destination write would stage the concept names, which no copy job
+can move onto the target and no partition spec can name. `LIKE` brings the
+target's names, and the rows land positionally — exactly what the SQL form does
+with its temp table. The staging table also carries an `expiration_timestamp`
+from the same statement, so a process killed before the drop cannot leave it
+billing storage.
 
 **The null slice is the exception.** BigQuery reports it as `__NULL__` but
 rejects that as a decorator (`Invalid date partitioned partition key:
@@ -91,6 +102,10 @@ the old loop cannot represent one.
 | 30 | old | 119.2s | 64 | 610 MiB |
 | 30 | new-sql | 10.0s | 6 | 40 MiB |
 | 30 | **native** | **9.5s** | 32 | **10 MiB** |
+
+Measured before the staged write was split into `CREATE ... LIKE` + `INSERT`;
+add one job to each native row. The DDL is metadata-only, so the bytes and the
+wall clock are unaffected.
 
 The old loop scaled linearly in every column — 2 DML statements per partition —
 and is gone. Between the two survivors:

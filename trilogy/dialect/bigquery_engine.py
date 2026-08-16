@@ -194,22 +194,9 @@ class BigQueryEngine(ExecutionEngine):
         self.config = config
         self._connection: BigQueryConnection | None = None
 
-    def _client(self) -> bigquery.Client:
-        if self.config.client:
-            return self.config.client
-        from google.auth import default
-        from google.cloud import bigquery
-
-        credentials, project = default()
-        self.config.client = bigquery.Client(
-            credentials=credentials, project=self.config.project or project
-        )
-        self.config.project = self.config.client.project
-        return self.config.client
-
     def _bigquery_connection(self) -> BigQueryConnection:
         if self._connection is None:
-            self._connection = BigQueryConnection(self._client())
+            self._connection = BigQueryConnection(self.config.resolve_client())
         return self._connection
 
     def connect(self) -> EngineConnection:
@@ -225,9 +212,11 @@ class BigQueryEngine(ExecutionEngine):
             return None
         from trilogy.dialect.bigquery_persist import execute_partition_swap
 
-        return execute_partition_swap(
-            query, executor, self._bigquery_connection(), self.config.project
-        )
+        # Read `project` only after the connection exists: resolving the client
+        # is what completes it (see `BigQueryConfig.resolve_client`), and the
+        # swap declines a `dataset.table` address without one.
+        connection = self._bigquery_connection()
+        return execute_partition_swap(query, executor, connection, self.config.project)
 
     def setup(self, env: Environment, connection: Any) -> None:
         return None

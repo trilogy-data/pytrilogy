@@ -176,7 +176,8 @@ class SupportsNativePersist(Protocol):
     partition columns and their types, so a plan object would only re-encode it
     — and would then be a second description of the write that could drift from
     the SQL. The dialect stays the single renderer; an engine that wants the
-    rows without a write prefix asks it for them (``render_select_only``).
+    rows staged somewhere of its own asks it for them
+    (``BaseDialect.render_insert_into``).
 
     Returning ``None`` means "I do not handle this one", and the executor runs
     the SQL instead. Implementations must be conservative: recognize the exact

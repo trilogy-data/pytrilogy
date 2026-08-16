@@ -7,11 +7,13 @@ accepts the jobs — that is what
 every choice this module makes on the way there.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.dialect.bigquery_engine import BigQueryConnection
-from trilogy.dialect.bigquery_persist import execute_partition_swap
+from trilogy.dialect.bigquery_persist import STAGING_TTL, execute_partition_swap
 from trilogy.parser import parse
 
 pytest.importorskip("google.cloud.bigquery")
@@ -38,6 +40,34 @@ partition by created_at;
 append into facts by created_at from select id, created_at;
 """
 
+#: The same shape, but with the datasource's declared column names *different*
+#: from its concept names — which is the ordinary case, and the one MODEL above
+#: cannot see. A select names its output columns after concepts
+#: (``created_at``), a datasource after its own columns (``event_date``), and
+#: only a positional INSERT into a table shaped like the target reconciles the
+#: two.
+ALIASED_MODEL = """
+key id int;
+property id.created_at date;
+
+root datasource source_facts (
+    id: id,
+    created_at: created_at,
+)
+grain (id)
+address raw_facts;
+
+datasource facts (
+    fact_id: id,
+    event_date: created_at,
+)
+grain (id)
+address my_ds.my_facts
+partition by created_at;
+
+append into facts by created_at from select id, created_at;
+"""
+
 
 class FakeJob:
     def __init__(self, rows=()):
@@ -55,6 +85,9 @@ class FakeTable:
 
 
 class FakeClient:
+    #: Every real client has one, from ADC or set explicitly.
+    project = "from-the-client"
+
     def __init__(self, partition_ids=("20240101", "20240102"), copy_error=None):
         self.partition_ids = partition_ids
         self.copy_error = copy_error
@@ -113,38 +146,104 @@ def _swap(client, model: str = MODEL):
     return execute_partition_swap(processed, executor, connection, "proj")
 
 
+def _sql_containing(client, needle: str) -> str:
+    """The one statement matching ``needle``. By content, not by index: the
+    number of statements this module issues is not the property under test."""
+    matches = [sql for sql, _ in client.queries if needle in sql]
+    assert len(matches) == 1, f"expected exactly one {needle!r}, got {len(matches)}"
+    return matches[0]
+
+
+def _config_for(client, sql: str):
+    return next(config for issued, config in client.queries if issued is sql)
+
+
 def _staging_name(client) -> str:
-    return client.queries[0][1].destination.table_id
+    create = _sql_containing(client, "CREATE TABLE")
+    return create.split("`")[1].split(".")[-1]
 
 
-def test_the_staging_write_is_partitioned_like_the_target():
-    """The partition ids of the two tables have to line up, which is what makes
-    `staging$id -> target$id` correct without formatting any value."""
+def test_the_staging_table_is_created_from_the_target():
+    """`LIKE` is what gives the staged rows the target's column names, its
+    partitioning and its granularity at once — so the partition ids of the two
+    tables line up, which is what makes `staging$id -> target$id` correct
+    without formatting any value."""
     client = FakeClient()
     _swap(client)
-    sql, config = client.queries[0]
-    assert "INSERT" not in sql
-    assert config.write_disposition == "WRITE_TRUNCATE"
-    assert config.time_partitioning.field == "created_at"
-    assert config.time_partitioning.type_ == "DAY"
-    assert config.destination.dataset_id == "my_ds"
-    assert config.destination.project == "proj"
-    assert config.destination.table_id.startswith("trilogy_swap_my_facts_")
+    create = _sql_containing(client, "CREATE TABLE")
+    assert create.startswith("CREATE TABLE `proj.my_ds.trilogy_swap_my_facts_")
+    assert " LIKE `proj.my_ds.my_facts` " in create
 
 
-def test_staging_granularity_follows_the_target():
-    """Hourly/monthly targets are addressed by their own id shape; nothing here
-    assumes days."""
+def test_the_staged_write_is_a_positional_insert_not_a_destination_write():
+    """A destination write names the staged columns after the select's
+    *concepts*, so it stages `created_at` where a datasource may declare
+    `event_date` — nothing a copy job can move and nothing a partition spec can
+    name. The INSERT carries no column list because the mapping is positional,
+    exactly as on the SQL path."""
     client = FakeClient()
-    client.get_table = lambda name: FakeTable(type_="MONTH")
     _swap(client)
-    assert client.queries[0][1].time_partitioning.type_ == "MONTH"
+    insert = _sql_containing(client, "INSERT INTO")
+    assert insert.lstrip().startswith(
+        "INSERT INTO `proj`.`my_ds`.`trilogy_swap_my_facts_"
+    )
+    config = _config_for(client, insert)
+    assert config.destination is None
+    assert config.time_partitioning is None
+
+
+def test_declared_column_names_are_never_asked_of_the_select():
+    """The regression: with aliases that differ from concept names, nothing may
+    depend on the select producing the target's columns. It does not — the
+    staging table brings them, and the rows land positionally."""
+    client = FakeClient()
+    # The target is partitioned on the *declared column*, which is what
+    # `swap_target` matches against — the divergence this test is about.
+    client.get_table = lambda name: FakeTable(field="event_date")
+    _swap(client, model=ALIASED_MODEL)
+    create = _sql_containing(client, "CREATE TABLE")
+    assert " LIKE `proj.my_ds.my_facts` " in create
+    insert = _sql_containing(client, "INSERT INTO")
+    # The old code set this from the *target's* column name against a schema
+    # named after concepts: "The field specified for partitioning cannot be
+    # found in the schema".
+    assert _config_for(client, insert).time_partitioning is None
+    assert "event_date" not in insert
+
+
+@pytest.mark.parametrize(
+    "project,expected",
+    [(None, "from-the-client"), ("explicit", "explicit")],
+    ids=["adopted", "explicit-wins"],
+)
+def test_a_supplied_client_supplies_the_project(project, expected):
+    """`dataset.table` only becomes a copy-job address once something completes
+    it with a project, and a supplied client is the one that knows. Until it was
+    adopted the swap declined silently for every 2-part address — including the
+    one this suite's live counterpart writes to. Adopting is a fallback, not an
+    override: an explicit project is what a user wrote."""
+    from trilogy.dialect.bigquery_engine import BigQueryEngine
+    from trilogy.dialect.config import BigQueryConfig
+
+    engine = BigQueryEngine(BigQueryConfig(client=FakeClient(), project=project))
+    engine.connect()
+    assert engine.config.project == expected
+
+
+def test_the_sqlalchemy_path_completes_the_project_the_same_way():
+    """The same resolution, one seam: without it the escape-hatch path built a
+    `bigquery://None` URL from a perfectly good client."""
+    from trilogy.dialect.config import BigQueryConfig
+
+    config = BigQueryConfig(client=FakeClient())
+    assert config.create_connect_args() == {"client": config.client}
+    assert config.connection_string().startswith("bigquery://from-the-client?")
 
 
 def test_partitions_are_read_from_metadata_for_the_staging_table():
     client = FakeClient()
     _swap(client)
-    sql, _ = client.queries[1]
+    sql = _sql_containing(client, "INFORMATION_SCHEMA.PARTITIONS")
     assert "INFORMATION_SCHEMA.PARTITIONS" in sql
     assert "`proj.my_ds`" in sql
     assert f"table_name = '{_staging_name(client)}'" in sql
@@ -204,13 +303,18 @@ def test_unpartitioned_rows_raise_rather_than_being_skipped():
     assert client.copies == []
 
 
-def test_staging_is_dropped_and_given_a_ttl():
+def test_staging_is_dropped_and_expires_on_its_own():
+    """The expiry is the backstop for a process killed before the drop, so it
+    is set by the CREATE rather than by a follow-up — a table that exists
+    without one, however briefly, is the case the backstop is for."""
     client = FakeClient()
     _swap(client)
     assert client.deleted == [f"proj.my_ds.{_staging_name(client)}"]
-    table, fields = client.updated[0]
-    assert fields == ["expires"]
-    assert table.expires is not None
+    create = _sql_containing(client, "CREATE TABLE")
+    assert "OPTIONS(expiration_timestamp = TIMESTAMP '" in create
+    expires = datetime.fromisoformat(create.split("TIMESTAMP '")[1].split("'")[0])
+    assert timedelta(hours=5) < expires - datetime.now(timezone.utc) <= STAGING_TTL
+    assert client.updated == []
 
 
 COLON_MODEL = (
@@ -236,7 +340,7 @@ def test_the_staged_select_goes_through_the_normal_sql_preparation():
     than rendering straight into a job."""
     client = FakeClient()
     _swap(client, COLON_MODEL)
-    sql, _ = client.queries[0]
+    sql = _sql_containing(client, "INSERT INTO")
     assert "'http://a:b'" in sql
     assert "\\:" not in sql
 

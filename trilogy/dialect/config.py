@@ -112,19 +112,31 @@ class BigQueryConfig(DialectConfig):
     def native_partition_swap(self) -> bool:
         return self._native_partition_swap is not False
 
-    def connection_string(self) -> str:
-        return f"bigquery://{self.project}?user_supplied_client=True"
+    def resolve_client(self) -> Any:
+        """The client to use, with ``project`` completed from it.
 
-    def create_connect_args(self) -> dict:
+        Adopting the client's project matters beyond bookkeeping: anything that
+        addresses a table through the jobs API rather than in SQL has only
+        ``project`` to complete a ``dataset.table`` address with — see
+        ``bigquery_persist.parse_table_name``, which declines without one — and
+        a supplied client is what knows it."""
         if not self.client:
             from google.auth import default
             from google.cloud import bigquery
 
             credentials, project = default()
-            self.client = bigquery.Client(credentials=credentials, project=project)
-            self.project = project
+            self.client = bigquery.Client(
+                credentials=credentials, project=self.project or project
+            )
+        if not self.project:
+            self.project = self.client.project
+        return self.client
 
-        return {"client": self.client}
+    def connection_string(self) -> str:
+        return f"bigquery://{self.project}?user_supplied_client=True"
+
+    def create_connect_args(self) -> dict:
+        return {"client": self.resolve_client()}
 
 
 class DuckDBConfig(DialectConfig):

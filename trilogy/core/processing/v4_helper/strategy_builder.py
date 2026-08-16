@@ -15,13 +15,16 @@ style fall back inside `v4_node_generators.dispatch.build_node`."""
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
+from datetime import date, datetime
 from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
+    ComparisonOperator,
     Derivation,
     FunctionType,
+    JoinType,
     Purpose,
 )
 from trilogy.core.exceptions import UnresolvableQueryException
@@ -29,6 +32,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
+    BuildComparison,
     BuildConcept,
     BuildConceptArgs,
     BuildDatasource,
@@ -41,10 +45,12 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.execute import BaseJoin
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
+    decompose_condition,
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
@@ -53,6 +59,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     History,
     MergeNode,
+    MultiSelectMergeNode,
     SelectNode,
     StrategyNode,
     WindowNode,
@@ -1273,6 +1280,94 @@ def _project_basic_aggregate_inputs(
     return [parent]
 
 
+def _equality_pinned_addresses(condition: BoolExpr | None) -> set[str]:
+    """Addresses a conjunctive condition pins to a single literal
+    (`channel = 'STORE'`). A pinned column is single-valued and non-null on
+    every row that passes, so it cannot contribute distinct rows to a grain
+    that omits it."""
+    if condition is None:
+        return set()
+    pinned: set[str] = set()
+    for atom in decompose_condition(condition):
+        if (
+            not isinstance(atom, BuildComparison)
+            or atom.operator != ComparisonOperator.EQ
+        ):
+            continue
+        for concept_side, literal_side in (
+            (atom.left, atom.right),
+            (atom.right, atom.left),
+        ):
+            if isinstance(concept_side, BuildConcept) and isinstance(
+                literal_side, (str, int, float, bool, date, datetime)
+            ):
+                pinned.add(concept_side.address)
+    return pinned
+
+
+def _subtree_pinned_addresses(
+    node: StrategyNode, seen: set[int] | None = None
+) -> set[str]:
+    """Literal-pinned addresses that hold on every row `node` emits.
+
+    A pin keeps holding downstream through row-preserving or row-reducing
+    shapes (select/filter/group/window) and through joins for children on a
+    preserved side (each output row embeds one of their rows). It does NOT
+    survive a union (other arms are unpinned) or null-extension (an outer
+    join's non-preserved side), so those pins are dropped. At a join, a
+    child's pin counts only when every sibling exposing the same address
+    also pins it non-extended — otherwise the merged column may bind to the
+    unpinned (or NULL-padded) source."""
+    seen = seen or set()
+    if id(node) in seen:
+        return set()
+    seen.add(id(node))
+    pinned = _equality_pinned_addresses(node.conditions)
+    if isinstance(node, MultiSelectMergeNode) or not isinstance(
+        node, (SelectNode, GroupNode, FilterNode, WindowNode, MergeNode)
+    ):
+        return pinned
+    if isinstance(node, MergeNode):
+        extended: set[str] = set()
+        # A RIGHT_OUTER/FULL with an implicit (None) left side extends the
+        # whole accumulated left — treat every child but the named right
+        # side as extended (a superset of the true accumulation: safe).
+        implicit_left_rights: list[str] = []
+        for join in node.resolve().joins:
+            if not isinstance(join, BaseJoin):
+                continue
+            if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
+                extended.add(join.right_datasource.identifier)
+            if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+                if join.left_datasource is None:
+                    implicit_left_rights.append(join.right_datasource.identifier)
+                else:
+                    extended.add(join.left_datasource.identifier)
+        child_pins: list[set[str]] = []
+        child_outputs: list[set[str]] = []
+        for parent in node.parents:
+            identifier = parent.resolve().identifier
+            null_extended = identifier in extended or any(
+                identifier != right for right in implicit_left_rights
+            )
+            child_pins.append(
+                set() if null_extended else _subtree_pinned_addresses(parent, seen)
+            )
+            child_outputs.append({c.address for c in parent.output_concepts})
+        for i, pins in enumerate(child_pins):
+            for addr in pins:
+                if all(
+                    addr not in outputs or addr in child_pins[j]
+                    for j, outputs in enumerate(child_outputs)
+                    if j != i
+                ):
+                    pinned.add(addr)
+        return pinned
+    for parent in node.parents:
+        pinned |= _subtree_pinned_addresses(parent, seen)
+    return pinned
+
+
 def _parents_already_at_input_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -1308,13 +1403,19 @@ def _parents_already_at_input_grain(
             return False
         seen.add(id(parent))
         resolved_grain = parent.resolve().grain.components
-        if all(
-            component in keys
-            or build_fd_determines(
+        unresolved = [
+            component
+            for component in resolved_grain
+            if component not in keys
+            and not build_fd_determines(
                 environment, keys, component, include_empty_grain=False
             )
-            for component in resolved_grain
-        ):
+        ]
+        # A leftover component the stream pins to a single literal (q23's
+        # `channel = 'STORE'` under the all-channel union model) can't split
+        # any input-grain key group, so the rows are still unique at the
+        # input grain without it.
+        if not unresolved or set(unresolved) <= _subtree_pinned_addresses(parent):
             return True
         if (
             isinstance(parent, SelectNode)
@@ -3297,14 +3398,33 @@ def _assemble_final_node(
         preserve_keys = contributor_contract.preserve_keys & final_merge_grain
         group_concepts = list(per_group[gid])
         if is_root:
+            # `final_merge_grain` is the union of what contributors ADVERTISE
+            # (their projection grain), which a non-grouping contributor leaves
+            # empty — so a ROOT sibling's join key was filtered away and the
+            # merge cross-joined ON 1=1. A sibling's own grain is a stronger
+            # guarantee than its advertisement: a group at user grain emits the
+            # user key whether or not it projects it. Preserve the merge keys
+            # some sibling's grain vouches for.
+            sibling_grain = {
+                address
+                for other in contributing
+                if other != gid and other in attrs
+                for address in attrs[other].grain_components
+            }
+            preserve_keys |= contributor_contract.preserve_keys & sibling_grain
             preserve_keys = _relevant_root_preserve_keys(
                 environment,
                 group_concepts,
                 preserve_keys,
                 frozenset(_members_of(attrs, gid)),
             )
+        # A preserved join key must survive the wrap: grouping the contributor
+        # to a grain that excludes the key it was just re-sourced to carry
+        # dedups that key straight back out, and the merge cross-joins anyway.
         projection_grain = (
-            final_merge_grain if is_root else contributor_contract.projection_grain
+            final_merge_grain | preserve_keys
+            if is_root
+            else contributor_contract.projection_grain
         )
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
