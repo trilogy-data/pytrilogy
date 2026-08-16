@@ -352,19 +352,46 @@ class SecretMeta(BaseModel):
 
 
 class Workspace(BaseModel):
-    """``models/workspace.rs::Workspace`` — the fields a deploy needs.
+    """``models/workspace.rs::Workspace`` — reusable job configuration.
 
-    A workspace is reusable job configuration: files, config, parameters and
-    resource defaults that its jobs inherit and may override. `cloud sync`
-    creates exactly one per multi-job project and puts the whole tree in it, so
-    the jobs can be what actually distinguishes them — an operation and an
-    entrypoint.
+    A workspace is files, config, parameters and resource defaults that its
+    jobs inherit and may override. `cloud sync` creates exactly one per
+    multi-job project and puts the whole tree in it, so the jobs can be what
+    actually distinguishes them — an operation and an entrypoint.
 
-    Deliberately partial: the CLI reads a workspace to find it by name and to
-    learn its id, and writes it wholesale. Nothing here needs the rest.
+    The content fields are here because a workspace is now *exported* as well
+    as written (``workspaces fetch``), and because ``PUT`` replaces a workspace
+    wholesale — an omitted field is cleared, exactly as for a job — so anything
+    an update means to keep has to be read back off the workspace and resent.
+    A field this model does not carry cannot be carried, which is why the list
+    below is the whole write surface of ``routes/workspaces.rs::WorkspaceWrite``
+    and not just the parts one command happens to need.
+
+    Timestamps are deliberately absent: nothing here has a use for them, and
+    the API returns the same struct from the list and detail routes, so a
+    workspace read for its files is read complete either way.
     """
 
     id: str
     org_id: str
     name: str
     description: str | None = None
+    #: The workspace this one extends. Its files sit *behind* this one's —
+    #: nearest to the job wins — so a chain has to be walked, not merged from
+    #: one row. Capped at `MAX_WORKSPACE_DEPTH` platform-side, cycles refused.
+    parent_workspace_id: str | None = None
+    #: trilogy.toml text, like `Job.config`. Set by nobody today: layering a
+    #: workspace's config onto a job's needs pytrilogy's `--config-overlay`,
+    #: which has not shipped, so `cloud sync` leaves config on the jobs.
+    config: Any = None
+    files: Any | None = None
+    secret_env: Any | None = None
+    parameters: Any | None = None
+    timeout_seconds: int | None = None
+    memory_mb: int | None = None
+    cpus: float | None = None
+    vm_class: str | None = None
+    #: `None` on rows that predate versioning and have never been PUT. The
+    #: movement of this pointer across a write is how the CLI tells a real
+    #: update from a content no-op, the same as for a job.
+    current_version_id: str | None = None

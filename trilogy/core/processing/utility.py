@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -8,6 +9,7 @@ if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -210,6 +212,44 @@ def find_nullable_concepts(
     return sorted(final_nullable)
 
 
+def _resolve_output_target(
+    cte: CTE | UnionCTE,
+    target: BuildConcept | ConceptRef,
+    scoped_merge_map: dict[str, str],
+) -> tuple[BuildConcept, bool] | None:
+    """The CTE column that renders `target`, and whether it must be re-aliased
+    to the written name. None when the CTE cannot render it at all."""
+    mapping = {x.address: x for x in cte.output_columns}
+    if target.address in mapping:
+        return mapping[target.address], False
+    for oc in cte.output_columns:
+        if target.address in oc.pseudonyms:
+            return oc, True
+    # an in-query JOIN collapses a source onto its canonical target; the
+    # target's column is present, render it under the written source name
+    canonical = scoped_merge_map.get(target.address)
+    if canonical is not None and canonical in mapping:
+        return mapping[canonical], True
+    return None
+
+
+def unrenderable_outputs(
+    cte: CTE | UnionCTE,
+    targets: Sequence[BuildConcept | ConceptRef],
+    scoped_merge_map: dict[str, str] | None = None,
+) -> list[str]:
+    """Target addresses `sort_select_output` would silently omit from the
+    projection. A caller that cannot tolerate a short SELECT — a persist writes
+    positionally, so a missing column shifts every later one — asks here and
+    fails naming the column instead."""
+    merge_map = scoped_merge_map or {}
+    return [
+        target.address
+        for target in targets
+        if _resolve_output_target(cte, target, merge_map) is None
+    ]
+
+
 def sort_select_output_processed(
     cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE | UnionCTE:
@@ -221,7 +261,6 @@ def sort_select_output_processed(
         hidden = query.hidden_components
 
     output_addresses = {c.address for c in targets}
-    mapping = {x.address: x for x in cte.output_columns}
     scoped_merge_map: dict[str, str] = (
         query.scoped_merge_map if isinstance(query, ProcessedQuery) else {}
     )
@@ -243,19 +282,14 @@ def sort_select_output_processed(
 
     new_output: list[BuildConcept] = []
     for x in targets:
-        if x.address in mapping:
-            new_output.append(mapping[x.address])
+        # A target the CTE cannot render is dropped here; `unrenderable_outputs`
+        # is the same resolution, asked ahead of time by callers that must fail
+        # rather than emit a short projection.
+        resolved = _resolve_output_target(cte, x, scoped_merge_map)
+        if resolved is None:
             continue
-        for oc in cte.output_columns:
-            if x.address in oc.pseudonyms:
-                new_output.append(render_as(x, oc))
-                break
-        else:
-            # an in-query JOIN collapses a source onto its canonical target; the
-            # target's column is present, render it under the written source name
-            canonical = scoped_merge_map.get(x.address)
-            if canonical is not None and canonical in mapping:
-                new_output.append(render_as(x, mapping[canonical]))
+        source, rename = resolved
+        new_output.append(render_as(x, source) if rename else source)
 
     for oc in cte.output_columns:
         # add hidden back

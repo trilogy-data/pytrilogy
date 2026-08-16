@@ -45,8 +45,25 @@ the source directory is in a repository, and an opaque local token when it is
 not. Absolute paths never leave the machine. A server that does not record the
 field ignores it, so nothing here depends on reading it back.
 
-``jobs fetch`` is the inverse: a job's config and inline files written back to
-a directory at the paths they were bundled from.
+``jobs fetch`` and ``workspaces fetch`` are the inverse, and the read half of a
+fetch-edit-push loop: an entity's config and inline files written back to a
+directory at the paths they were bundled from, ready to be edited and sent back
+with ``jobs push`` / ``workspaces push``.
+
+**A fetch writes what a push would send back.** Each command exports exactly
+the entity's *own* content, so the round trip is lossless and re-pushing an
+unedited fetch mints no version. ``--resolved`` is the deliberate exception: it
+also materializes the files a job or workspace *inherits* from the workspace
+chain above it, which is what makes the directory something you can run — and
+which is why the result is no longer a bundle to push back, since pushing it
+would install a copy of the shared tree into the thing that was inheriting it.
+That is said out loud at fetch time and again at push time.
+
+A job in a workspace carries **no files of its own** — the workspace holds the
+whole tree and the job names the one script it runs — so fetching such a job
+without ``--resolved`` writes a config and nothing else. The command says where
+its files actually live rather than leaving an empty directory to explain
+itself.
 
 ``jobs run`` returns as soon as the run is queued, so on its own a zero exit
 means "accepted", not "succeeded" — a CI step that stops there is green
@@ -165,6 +182,11 @@ RUNS_MAX_LIMIT = 200
 # push has to distinguish "unspecified" from "explicitly run" to preserve an
 # existing job's operation across an update.
 DEFAULT_OPERATION = "run"
+# Mirrors the platform's `job_limits::MAX_WORKSPACE_DEPTH`. A chain walk here
+# needs a bound of its own regardless: the platform refuses a cycle at the
+# write, but a client that trusted that would hang on a database someone
+# repaired by hand.
+MAX_WORKSPACE_DEPTH = 5
 
 M = TypeVar("M", bound=BaseModel)
 
@@ -770,6 +792,28 @@ def _fmt_schedule(schedule: ScheduleExt) -> str:
     )
 
 
+def _file_count(files: Any) -> int:
+    """How many inline files an entity carries.
+
+    ``files`` is untyped JSON on both sides of the wire (the column is a blob),
+    so a row holding ``null`` — every job in a workspace — and one holding an
+    object rather than a list both have to answer 0 instead of raising.
+    """
+    return len(files) if isinstance(files, list) else 0
+
+
+def _fmt_workspace(workspace: Workspace) -> str:
+    parent = (
+        f"  extends: {workspace.parent_workspace_id}"
+        if workspace.parent_workspace_id
+        else ""
+    )
+    return (
+        f"{workspace.id}  {workspace.name!r}  "
+        f"files: {_file_count(workspace.files)}{parent}"
+    )
+
+
 def _fmt_secret(secret: SecretMeta) -> str:
     return f"{secret.name}  updated: {_ts(secret.updated_at)}"
 
@@ -1277,6 +1321,18 @@ def jobs_push(
         print_info(f"Applied rewrites to {touched} file(s)")
 
     existing = _existing_job(client, org, name, force_create)
+    if existing is not None and existing.workspace_id and files:
+        # The natural way to reach here is `jobs fetch --resolved` followed by
+        # a push: the directory holds the workspace's tree, and sending it as
+        # the job's own files gives this job a private copy that shadows the
+        # shared one — so the edit lands, the siblings never see it, and the
+        # two copies drift from the next workspace push onwards.
+        print_warning(
+            f"{name!r} runs out of a workspace, which holds its files; this "
+            f"push adds {len(files)} file(s) to the job itself, shadowing the "
+            "shared tree. Push a shared tree with `trilogy cloud workspaces "
+            "push` instead."
+        )
 
     origin = resolve_origin(source.resolve())
     fingerprint = SourceFingerprint.build(content_digest(config_text, files), origin)
@@ -1367,6 +1423,27 @@ CARRIED_FIELDS = (
 )
 
 
+def _apply_carried(
+    payload: dict,
+    fields: Sequence[str],
+    declared: Mapping[str, Any],
+    carried: Mapping[str, Any],
+) -> None:
+    """Fill *payload* from what the caller declared, falling back to what the
+    entity being updated already holds.
+
+    A field neither supplies is left out rather than sent as null, which on a
+    create is "let the platform decide". Shared by the job and workspace writes
+    so the two cannot drift on the rule.
+    """
+    for field in fields:
+        value = declared.get(field)
+        if value is None:
+            value = carried.get(field)
+        if value is not None:
+            payload[field] = value
+
+
 def _job_payload(
     name: str,
     config_text: str,
@@ -1398,12 +1475,7 @@ def _job_payload(
         or DEFAULT_OPERATION,
         **(extra or {}),
     }
-    for field in CARRIED_FIELDS:
-        value = declared.get(field)
-        if value is None:
-            value = carried.get(field)
-        if value is not None:
-            payload[field] = value
+    _apply_carried(payload, CARRIED_FIELDS, declared, carried)
     return payload
 
 
@@ -1529,24 +1601,116 @@ def _resolve_bundle_entries(dest: Path, files: Any) -> list[tuple[Path, str]]:
     return resolved
 
 
-def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path]:
-    """Write a job's config and inline files under *dest*, mirroring the layout
-    ``jobs push`` bundled them from. Returns ``(file_count, config_path)``."""
+def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path | None]:
+    """Write a config and inline files under *dest*, mirroring the layout they
+    were bundled from. Returns ``(file_count, config_path)``.
+
+    ``config`` of ``None`` writes no trilogy.toml at all — a workspace normally
+    has none (config stays on its jobs until pytrilogy's ``--config-overlay``
+    ships), and a file holding the four bytes ``null`` is not a config anyone
+    can edit or push back.
+
+    **Bytes land as stored** (``newline=""``). Python's text mode otherwise
+    rewrites every ``\\n`` as ``\\r\\n`` on Windows, so a fetch produced a file
+    that differed from the platform's copy on every line — invisible to a push
+    back, which reads with universal newlines and normalizes it again, and
+    glaring in the case the fetch is *for*: dropped over a checkout with
+    ``--force``, where it turns a two-line edit into a whole-file diff.
+    """
     entries = _resolve_bundle_entries(dest, files)
 
     dest.mkdir(parents=True, exist_ok=True)
-    config_path = dest / "trilogy.toml"
-    # A job's config is TOML text, but the column is JSON — a server that
-    # stored an object hands one back, and writing `{'engine': ...}` to a
-    # trilogy.toml would produce a file that parses as neither.
-    config_path.write_text(
-        config if isinstance(config, str) else json.dumps(config, indent=2),
-        encoding="utf-8",
-    )
+    config_path: Path | None = None
+    if config is not None:
+        config_path = dest / "trilogy.toml"
+        # A config is TOML text, but the column is JSON — a server that stored
+        # an object hands one back, and writing `{'engine': ...}` to a
+        # trilogy.toml would produce a file that parses as neither.
+        config_path.write_text(
+            config if isinstance(config, str) else json.dumps(config, indent=2),
+            encoding="utf-8",
+            newline="",
+        )
     for target, content in entries:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        target.write_text(content, encoding="utf-8", newline="")
     return len(entries), config_path
+
+
+def _guard_destination(dest: Path, force: bool) -> None:
+    """Refuse a non-empty destination unless *force*.
+
+    The natural mistake is fetching over a checkout and silently reverting
+    local edits to whatever the cloud last received. Shared by both fetches so
+    the two cannot answer the question differently.
+    """
+    if dest.exists() and any(dest.iterdir()) and not force:
+        raise CloudError(
+            f"{dest} is not empty; pass --force to write into it. (Fetching over "
+            "a checkout replaces its files with the stored copy.)"
+        )
+
+
+def _find_workspace(
+    workspaces_: Sequence[Workspace], org: str, name_or_id: str
+) -> Workspace:
+    """Resolve a workspace reference against an already-fetched list.
+
+    No ambiguity to refuse, unlike ``_find_job``: the platform makes workspace
+    names unique per org, which is also why ``cloud sync`` matches them by name.
+    """
+    for workspace in workspaces_:
+        if workspace.id == name_or_id or workspace.name == name_or_id:
+            return workspace
+    raise CloudError(f"No workspace named {name_or_id!r} in org {org!r}.")
+
+
+def _workspace_chain(
+    workspaces_: Sequence[Workspace], workspace_id: str | None
+) -> list[Workspace]:
+    """The chain above a job or workspace, **nearest first**.
+
+    Resolved against one already-fetched list rather than by walking the API:
+    the list and detail routes return the same struct, files included, so a
+    chain costs one request however deep it is.
+
+    A parent the caller cannot see (deleted mid-read, or a chain that crosses
+    into another org) ends the walk rather than failing it — the point of the
+    walk is to materialize what there is, and a partial tree is a better answer
+    to "give me this job's files" than a refusal. Depth and a visited set bound
+    it: the platform refuses cycles at the write, but a client that trusted
+    that alone would spin forever on a database repaired by hand.
+    """
+    by_id = {w.id: w for w in workspaces_}
+    chain: list[Workspace] = []
+    seen: set[str] = set()
+    current = workspace_id
+    while current and current not in seen and len(chain) < MAX_WORKSPACE_DEPTH:
+        seen.add(current)
+        workspace = by_id.get(current)
+        if workspace is None:
+            break
+        chain.append(workspace)
+        current = workspace.parent_workspace_id
+    return chain
+
+
+def _merge_chain_files(layers: Sequence[Any]) -> list[dict]:
+    """Flatten file layers given **nearest first** into one bundle.
+
+    Nearest to the job wins on a path collision, which is the platform's own
+    resolution rule (`db/workspace_resolution.py`): a job's copy of
+    ``model.preql`` shadows its workspace's, and a workspace's shadows its
+    parent's. Applied by writing the layers in reverse and letting the nearer
+    one overwrite, so the merged bundle is what the executor would actually
+    see rather than a union in arbitrary order.
+    """
+    merged: dict[str, str] = {}
+    for layer in reversed(list(layers)):
+        for entry in layer if isinstance(layer, list) else []:
+            if isinstance(entry, dict) and entry.get("name"):
+                merged[str(entry["name"])] = str(entry.get("content") or "")
+    return [{"name": name, "content": merged[name]} for name in sorted(merged)]
 
 
 @jobs.command("fetch")
@@ -1562,14 +1726,31 @@ def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path]:
     is_flag=True,
     help="Write into a non-empty directory, overwriting files of the same name.",
 )
+@click.option(
+    "--resolved",
+    is_flag=True,
+    help="Also write the files the job inherits from its workspace chain, so "
+    "the directory runs. The result is then not a bundle to push back as the "
+    "job — edits to inherited files belong to the workspace.",
+)
 @click.pass_context
-def jobs_fetch(ctx: click.Context, job: str, dest: Path, force: bool) -> None:
+def jobs_fetch(
+    ctx: click.Context, job: str, dest: Path, force: bool, resolved: bool
+) -> None:
     """Write a cloud job's project to a local directory.
 
     The inverse of ``jobs push``: the job's ``trilogy.toml`` and every inline
     file land at their bundled paths, so the result is a working project you
     can run, edit and push back. Round-trips exactly — the bundle is stored as
-    sent.
+    sent, and re-pushing an unedited fetch mints no version.
+
+    A job **in a workspace carries no files of its own**: the workspace holds
+    the whole tree and the job names the one script it runs. Fetching one
+    without ``--resolved`` therefore writes a config and nothing else, and says
+    where the files actually are. ``--resolved`` materializes the whole chain
+    (nearest wins on a collision, as the executor sees it), which makes the
+    directory runnable and makes it the *workspace's* content rather than this
+    job's — push edits back with ``workspaces push``.
 
     Refuses a non-empty destination unless ``--force``, because the natural
     mistake is fetching over a checkout and silently reverting local edits to
@@ -1577,14 +1758,22 @@ def jobs_fetch(ctx: click.Context, job: str, dest: Path, force: bool) -> None:
     """
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
+    _guard_destination(dest, force)
 
-    if dest.exists() and any(dest.iterdir()) and not force:
-        raise CloudError(
-            f"{dest} is not empty; pass --force to write into it. (Fetching over "
-            "a checkout replaces its files with the job's stored copy.)"
+    chain: list[Workspace] = []
+    if found.workspace_id:
+        chain = _workspace_chain(
+            client.get_many(f"/orgs/{org}/workspaces", Workspace), found.workspace_id
         )
+    # Layers nearest-first: the job's own files shadow its workspace's, which
+    # shadow its parent's — the platform's rule, not this command's.
+    files = (
+        _merge_chain_files([found.files, *(w.files for w in chain)])
+        if resolved
+        else found.files
+    )
 
-    written, config_path = _write_bundle(dest, found.config, found.files)
+    written, config_path = _write_bundle(dest, found.config, files)
     if is_json_mode():
         emit_event(
             "job_fetched",
@@ -1592,12 +1781,45 @@ def jobs_fetch(ctx: click.Context, job: str, dest: Path, force: bool) -> None:
             job=found.model_dump(mode="json"),
             dest=str(dest),
             files=written,
+            resolved=resolved,
+            workspaces=[w.name for w in chain],
         )
         return
     print_success(f"Fetched {found.name!r} ({found.id}) into {dest}")
-    print_info(f"  {config_path.name} + {written} file(s)")
+    config_label = f"{config_path.name} + " if config_path else ""
+    print_info(f"  {config_label}{written} file(s)")
+    if found.entrypoint:
+        print_info(f"  Entrypoint: {found.entrypoint}")
     if found.source_fingerprint is not None:
         print_info(f"  Source: {found.source_fingerprint.origin}")
+    _report_chain(chain, resolved)
+
+
+def _report_chain(chain: Sequence[Workspace], resolved: bool) -> None:
+    """Say what the workspace chain contributed, or would have.
+
+    An unresolved fetch of a workspace-bound job writes a config and no files,
+    and an empty directory is a bad way to learn that a job's tree lives
+    somewhere else. A resolved one is the opposite problem: it looks like a
+    bundle and is not one, so the warning names the command that *does* accept
+    those edits back.
+    """
+    if not chain:
+        return
+    names = ", ".join(w.name for w in chain)
+    if resolved:
+        print_warning(
+            f"  Includes inherited files from {names}. Push edits to them with "
+            f"`trilogy cloud workspaces push --name {chain[0].name}` — pushing "
+            "this directory as the job would install a private copy of the "
+            "shared tree."
+        )
+        return
+    inherited = sum(_file_count(w.files) for w in chain)
+    print_info(
+        f"  Inherits {inherited} file(s) from {names}; pass --resolved to write "
+        f"them too, or `trilogy cloud workspaces fetch {chain[0].name}`."
+    )
 
 
 @jobs.command("run")
@@ -1677,6 +1899,376 @@ def jobs_versions(ctx: click.Context, job: str, limit: int) -> None:
         lambda v: _fmt_version(v, current=v.id == found.current_version_id),
         org=org,
     )
+
+
+@cloud.group()
+def workspaces() -> None:
+    """Manage workspaces — the shared project tree a job's files come from."""
+
+
+@workspaces.command("list")
+@click.pass_context
+def workspaces_list(ctx: click.Context) -> None:
+    """List the org's workspaces."""
+    client, org = _org_client(ctx)
+    _show_rows(
+        "workspaces",
+        "workspaces",
+        client.get_many(f"/orgs/{org}/workspaces", Workspace),
+        f"No workspaces in org {org!r}.",
+        _fmt_workspace,
+        org=org,
+    )
+
+
+@workspaces.command("jobs")
+@click.argument("workspace")
+@click.pass_context
+def workspaces_jobs(ctx: click.Context, workspace: str) -> None:
+    """List the jobs that run out of a workspace.
+
+    Which is what a workspace is *for*, and the question a fetch raises: the
+    tree on disk is shared, so what each job does with it is the entrypoint it
+    names and nothing else.
+    """
+    client, org = _org_client(ctx)
+    found = _find_workspace(
+        client.get_many(f"/orgs/{org}/workspaces", Workspace), org, workspace
+    )
+    _show_rows(
+        "workspace_jobs",
+        "jobs",
+        client.get_many(f"/orgs/{org}/workspaces/{found.id}/jobs", Job),
+        f"No jobs use workspace {found.name!r}.",
+        lambda j: f"{_fmt_job(j)}  entrypoint: {j.entrypoint or 'whole directory'}",
+        org=org,
+    )
+
+
+@workspaces.command("fetch")
+@click.argument("workspace")
+@click.option(
+    "--dest",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Directory to write the workspace's tree into.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Write into a non-empty directory, overwriting files of the same name.",
+)
+@click.option(
+    "--resolved",
+    is_flag=True,
+    help="Also write the files this workspace inherits from the one it extends. "
+    "The result is then not a bundle to push back — pushing it would copy the "
+    "parent's tree into the child.",
+)
+@click.pass_context
+def workspaces_fetch(
+    ctx: click.Context, workspace: str, dest: Path, force: bool, resolved: bool
+) -> None:
+    """Write a workspace's shared tree to a local directory.
+
+    The inverse of ``workspaces push``, and the read half of editing a
+    multi-job project: the whole tree lands at its bundled paths and the jobs
+    that run out of it are listed, each with the script it executes.
+
+    Round-trips exactly — only the workspace's *own* files are written, so
+    pushing an unedited fetch mints no version. ``--resolved`` adds what it
+    inherits from its parent, which makes the directory runnable and makes it
+    no longer this workspace's content.
+
+    A workspace usually has no ``trilogy.toml`` of its own: config layering
+    needs pytrilogy's ``--config-overlay``, so ``cloud sync`` leaves config on
+    the jobs. Nothing is written for it when there is none.
+    """
+    client, org = _org_client(ctx)
+    all_workspaces = client.get_many(f"/orgs/{org}/workspaces", Workspace)
+    found = _find_workspace(all_workspaces, org, workspace)
+    _guard_destination(dest, force)
+
+    parents = _workspace_chain(all_workspaces, found.parent_workspace_id)
+    files = (
+        _merge_chain_files([found.files, *(w.files for w in parents)])
+        if resolved
+        else found.files
+    )
+
+    written, config_path = _write_bundle(dest, found.config, files)
+    bound = client.get_many(f"/orgs/{org}/workspaces/{found.id}/jobs", Job)
+    if is_json_mode():
+        emit_event(
+            "workspace_fetched",
+            org=org,
+            workspace=found.model_dump(mode="json"),
+            dest=str(dest),
+            files=written,
+            resolved=resolved,
+            jobs=[j.model_dump(mode="json") for j in bound],
+        )
+        return
+    print_success(f"Fetched workspace {found.name!r} ({found.id}) into {dest}")
+    config_label = f"{config_path.name} + " if config_path else ""
+    print_info(f"  {config_label}{written} file(s)")
+    for job in bound:
+        print_info(f"  job {job.name!r}: {job.operation} {job.entrypoint or '.'}")
+    _report_chain(parents, resolved)
+
+
+@workspaces.command("push")
+@click.option(
+    "--source",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Directory holding the shared tree.",
+)
+@click.option("--name", required=True, help="Workspace name (unique per org).")
+@click.option("--description", default=None)
+# Same "unspecified means carry" rule as `jobs push`, and for the same reason:
+# a workspace PUT replaces its content wholesale, so an omitted field is
+# cleared rather than left alone.
+@click.option(
+    "--secret-env",
+    multiple=True,
+    help="Org secret names its jobs inherit (repeatable). Replaces the "
+    "workspace's existing set; omit to keep it.",
+)
+@click.option("--timeout-seconds", type=int, default=None)
+@click.option("--memory-mb", type=int, default=None)
+@click.option("--cpus", type=float, default=None)
+@click.option("--vm-class", default=None, type=click.Choice(list(ALLOWED_VM_CLASSES)))
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Store this trilogy.toml as the workspace's config. Rarely wanted: "
+    "workspace config is not layered onto its jobs yet.",
+)
+@click.option(
+    "--include",
+    multiple=True,
+    help=f"Glob to include (default: {', '.join(DEFAULT_INCLUDE)}).",
+)
+@click.option("--exclude", multiple=True, help="Glob to exclude (adds to defaults).")
+@click.option(
+    "--rewrite",
+    multiple=True,
+    callback=parse_rewrite,
+    help="Literal OLD=NEW substitution applied to file contents (repeatable).",
+)
+@click.option(
+    "--rewrite-glob",
+    multiple=True,
+    help="Restrict --rewrite to files matching these globs (default: all).",
+)
+@click.pass_context
+def workspaces_push(
+    ctx: click.Context,
+    source: Path,
+    name: str,
+    description: str | None,
+    secret_env: tuple[str, ...],
+    timeout_seconds: int | None,
+    memory_mb: int | None,
+    cpus: float | None,
+    vm_class: str | None,
+    config_path: Path | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    rewrite: list[tuple[str, str]],
+    rewrite_glob: tuple[str, ...],
+) -> None:
+    """Push a local directory to a workspace, creating or updating it.
+
+    The write half of the loop ``workspaces fetch`` opens, and where edits to a
+    shared tree belong: the jobs that run out of the workspace carry no files,
+    so pushing the tree to *them* would give each a private copy of it.
+
+    Matched by name, which the platform makes unique per org — the same key
+    ``cloud sync`` deploys against, so this and a sync of the same project
+    write the same row. Settings not named on the command line are carried
+    over from the workspace being updated, since a ``PUT`` replaces content
+    wholesale.
+    """
+    client, org = _org_client(ctx)
+
+    include_pats = tuple(include) if include else DEFAULT_INCLUDE
+    exclude_pats = DEFAULT_EXCLUDE + tuple(exclude)
+    files = collect_files(source.resolve(), include_pats, exclude_pats)
+    # Same reason as `jobs push`: the config is a field, not a bundled file,
+    # and a copy in the tree would shadow it in the executor's workdir.
+    local_config = next((f for f in files if f["name"] == "trilogy.toml"), None)
+    files = [f for f in files if f["name"] != "trilogy.toml"]
+    if not files:
+        raise CloudError(f"No files matched under {source}.")
+
+    if rewrite:
+        globs = rewrite_glob or ("*",)
+        touched = 0
+        for f in files:
+            if _matches(f["name"], globs):
+                rewritten = apply_rewrites(f["content"], rewrite)
+                if rewritten != f["content"]:
+                    f["content"] = rewritten
+                    touched += 1
+        print_info(f"Applied rewrites to {touched} file(s)")
+
+    existing = next(
+        (
+            w
+            for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
+            if w.name == name
+        ),
+        None,
+    )
+
+    # An explicit --config always wins. Otherwise a trilogy.toml in the tree is
+    # sent only when the workspace already has a config — that is the file a
+    # fetch wrote from it, so dropping the edit would break the round trip —
+    # and is left alone when it does not, because giving a workspace a config
+    # it never had breaks every job under it on today's CLI (the unknown
+    # `--config-overlay` flag).
+    config_text: str | None = None
+    if config_path is not None:
+        config_text = config_path.read_text(encoding="utf-8")
+    elif local_config is not None and existing is not None and existing.config:
+        config_text = local_config["content"]
+    elif local_config is not None:
+        print_info(
+            "Ignoring trilogy.toml: a workspace's config is not layered onto "
+            "its jobs yet, so storing one would break them. Pass --config to "
+            "store it anyway."
+        )
+    if config_text is not None and rewrite:
+        config_text = apply_rewrites(config_text, rewrite)
+
+    payload = _workspace_payload(
+        name=name,
+        files=files,
+        config_text=config_text,
+        declared={
+            "description": description,
+            "secret_env": list(secret_env) or None,
+            "timeout_seconds": timeout_seconds,
+            "memory_mb": memory_mb,
+            "cpus": cpus,
+            "vm_class": vm_class,
+        },
+        existing=existing,
+    )
+    encoded = check_bundle_size(payload)
+    print_info(f"Bundled {len(files)} files ({len(encoded):,} bytes) from {source}")
+
+    workspace, outcome = _upsert_workspace(client, org, encoded, existing)
+    if is_json_mode():
+        emit_event(
+            f"workspace_{outcome}",
+            org=org,
+            outcome=outcome,
+            workspace=workspace.model_dump(mode="json"),
+        )
+        return
+    if outcome == "unchanged":
+        print_success(
+            f"Workspace {workspace.name!r} ({workspace.id}) already matches this "
+            "content; no new version"
+        )
+        return
+    verb = "Created" if outcome == "created" else "Updated"
+    print_success(f"{verb} workspace {workspace.name!r} ({workspace.id}) in {org!r}")
+
+
+#: Content fields a workspace write has to resend to keep. **Every content
+#: field on `Workspace` belongs here** — a `PUT` clears what it omits, so one
+#: this list forgets is silently reset on every push, the same failure the job
+#: side's `CARRIED_FIELDS` exists to prevent. Pinned against the model in
+#: `tests/cli/test_cloud.py`.
+WORKSPACE_CARRIED_FIELDS = (
+    "description",
+    "parent_workspace_id",
+    "secret_env",
+    "parameters",
+    "timeout_seconds",
+    "memory_mb",
+    "cpus",
+    "vm_class",
+)
+
+
+def _carried_workspace_settings(existing: Workspace | None) -> dict[str, Any]:
+    """The settings a workspace write has to send back when it is updating one.
+
+    The workspace twin of `_carried_settings`, and typed the same way rather
+    than read off the model by name: a key here that the model does not carry
+    is a mypy error instead of a field that silently never carries.
+    """
+    if existing is None:
+        return {}
+    return {
+        "description": existing.description,
+        "parent_workspace_id": existing.parent_workspace_id,
+        "secret_env": existing.secret_env,
+        "parameters": existing.parameters,
+        "timeout_seconds": existing.timeout_seconds,
+        "memory_mb": existing.memory_mb,
+        "cpus": existing.cpus,
+        "vm_class": existing.vm_class,
+    }
+
+
+def _workspace_payload(
+    name: str,
+    files: list[dict],
+    config_text: str | None,
+    declared: Mapping[str, Any],
+    existing: Workspace | None,
+) -> dict:
+    """The body of a workspace create or update.
+
+    *declared* is "what the caller asked for", ``None`` meaning unspecified and
+    therefore carried off *existing*. ``config`` is carried the same way: a
+    workspace that has one keeps it unless the push supplies a replacement.
+    """
+    payload: dict = {"name": name, "files": files}
+    if config_text is not None:
+        payload["config"] = config_text
+    elif existing is not None and existing.config is not None:
+        payload["config"] = existing.config
+    _apply_carried(
+        payload,
+        WORKSPACE_CARRIED_FIELDS,
+        declared,
+        _carried_workspace_settings(existing),
+    )
+    return payload
+
+
+def _upsert_workspace(
+    client: CloudClient, org: str, encoded: bytes, existing: Workspace | None
+) -> tuple[Workspace, str]:
+    """Create or replace a workspace, and say which happened.
+
+    ``current_version_id`` moving is what distinguishes a real update from a
+    content no-op, exactly as for a job. A server old enough not to send it
+    reports every push as an update rather than claiming a no-op it cannot
+    know about.
+    """
+    if existing is None:
+        return (
+            client.post_one(f"/orgs/{org}/workspaces", Workspace, encoded),
+            "created",
+        )
+    workspace = client.put_one(
+        f"/orgs/{org}/workspaces/{existing.id}", Workspace, encoded
+    )
+    unchanged = (
+        workspace.current_version_id is not None
+        and workspace.current_version_id == existing.current_version_id
+    )
+    return workspace, "unchanged" if unchanged else "updated"
 
 
 @cloud.group()
@@ -2510,6 +3102,13 @@ def _ensure_workspace(
     no `source_key` on a workspace, so a renamed one is a new workspace and the
     old one is left behind — the same trade a moved directory makes, and
     `--prune` does not cover it.
+
+    Everything a sync does not declare is **carried** off the workspace being
+    updated, through the same payload builder `workspaces push` uses. A `PUT`
+    replaces a workspace wholesale, and this body names only the tree: sending
+    it bare cleared the parameters, secrets and resource defaults of every
+    workspace it touched, on every sync, silently — the failure the job side's
+    `_carried_settings` has always existed to prevent.
     """
     existing = next(
         (
@@ -2519,11 +3118,13 @@ def _ensure_workspace(
         ),
         None,
     )
-    body = {
-        "name": name,
-        "description": f"Shared project tree for {name}",
-        "files": files,
-    }
+    body = _workspace_payload(
+        name=name,
+        files=files,
+        config_text=None,
+        declared={"description": f"Shared project tree for {name}"},
+        existing=existing,
+    )
     if dry_run:
         return (existing.id if existing else None), (
             "would update" if existing else "would create"

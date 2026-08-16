@@ -83,6 +83,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.processing.utility import unrenderable_outputs
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
@@ -1150,6 +1151,35 @@ def process_auto(
     raise ValueError(f"Do not know how to process {type(statement)}")
 
 
+def _validate_persist_projection(
+    statement: PersistStatement, select: ProcessedQuery
+) -> None:
+    """Reject a persist whose plan cannot render every column it declares.
+
+    The write is positional: the select's Nth column lands in the datasource's
+    Nth declared column, so a projection short one column is not a missing value
+    but a SHIFT of every column after it. The warehouse only catches that when
+    the counts disagree AND it checks arity before types; one more trailing
+    column, or compatible shifted types, and it writes silently wrong data. The
+    counts are known here, before any SQL is sent."""
+    declared = [c for c in statement.datasource.columns if c.is_concrete]
+    missing = unrenderable_outputs(
+        select.base, [c.concept for c in declared], select.scoped_merge_map
+    )
+    if not missing:
+        return
+    aliases = {c.concept.address: c.alias for c in declared}
+    detail = ", ".join(f"{aliases[address]} ({address})" for address in missing)
+    target = statement.address
+    raise UnresolvableQueryException(
+        f"Persist to {target.location if isinstance(target, Address) else target}"
+        f" would write "
+        f"{len(declared) - len(missing)} of {len(declared)} declared columns: "
+        f"the plan's final projection has no source for {detail}. Writing it "
+        "would shift every later column into the wrong field."
+    )
+
+
 def process_persist(
     environment: Environment,
     statement: PersistStatement,
@@ -1184,6 +1214,7 @@ def process_persist(
         )
     finally:
         ds.status = original_status
+    _validate_persist_projection(statement, select)
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
