@@ -12,6 +12,8 @@ bug-pytrilogy-persist-grain-cross-join-2026-08).
 Executed row assertions, not just SQL shape: the cross join produced valid SQL.
 """
 
+import re
+
 import pytest
 
 from trilogy import Dialects
@@ -107,3 +109,33 @@ def test_dim_peel_foreign_key_rows(query: str, expected: list[tuple]):
 def test_dim_peel_foreign_key_sql_shape(query: str, expected: list[tuple]):
     sql = _engine().generate_sql(query)[-1]
     assert "1=1" not in sql, sql
+
+
+def test_dim_peel_foreign_key_persist_writes_one_row_per_user():
+    """The reported shape: the fan-out was silently WRITTEN, not just selected.
+
+    A select shows a wrong answer on screen; a persist commits it as the table
+    every downstream model reads (100k rows became 1M in production).
+    """
+    engine = _engine()
+    engine.execute_query(
+        "persist centers_by_user into user_center_export from "
+        "select user_id, customer_status, center_id;"
+    )
+    rows = engine.execute_raw_sql("select * from user_center_export").fetchall()
+    assert sorted(tuple(r) for r in rows) == [(10, "Returning", 1), (11, "New", 3)]
+
+
+def test_dim_peel_aggregate_is_not_dragged_below_the_dimension_join():
+    """The dimension joins the finished aggregate; it does not feed it.
+
+    Declining the peel (or otherwise sourcing the dim with the fact) pulls
+    `user_center` into the aggregate's own input, so min/max run over the
+    joined stream and the aggregate CTE grows a centre key in its GROUP BY.
+    Correct here only because the binding is 1:1 — a fragile plan to rely on,
+    and strictly more work.
+    """
+    sql = _engine().generate_sql("SELECT customer_status, center_id;")[-1]
+    blocks = re.split(r"\n(?=\w+ as \()", sql)
+    aggregate_cte = next(block for block in blocks if "min(" in block)
+    assert "user_center" not in aggregate_cte, sql

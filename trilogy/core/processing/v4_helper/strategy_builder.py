@@ -3297,14 +3297,33 @@ def _assemble_final_node(
         preserve_keys = contributor_contract.preserve_keys & final_merge_grain
         group_concepts = list(per_group[gid])
         if is_root:
+            # `final_merge_grain` is the union of what contributors ADVERTISE
+            # (their projection grain), which a non-grouping contributor leaves
+            # empty — so a ROOT sibling's join key was filtered away and the
+            # merge cross-joined ON 1=1. A sibling's own grain is a stronger
+            # guarantee than its advertisement: a group at user grain emits the
+            # user key whether or not it projects it. Preserve the merge keys
+            # some sibling's grain vouches for.
+            sibling_grain = {
+                address
+                for other in contributing
+                if other != gid and other in attrs
+                for address in attrs[other].grain_components
+            }
+            preserve_keys |= contributor_contract.preserve_keys & sibling_grain
             preserve_keys = _relevant_root_preserve_keys(
                 environment,
                 group_concepts,
                 preserve_keys,
                 frozenset(_members_of(attrs, gid)),
             )
+        # A preserved join key must survive the wrap: grouping the contributor
+        # to a grain that excludes the key it was just re-sourced to carry
+        # dedups that key straight back out, and the merge cross-joins anyway.
         projection_grain = (
-            final_merge_grain if is_root else contributor_contract.projection_grain
+            final_merge_grain | preserve_keys
+            if is_root
+            else contributor_contract.projection_grain
         )
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}

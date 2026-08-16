@@ -356,6 +356,60 @@ def test_final_contributor_contract_uses_rowset_lineage_join_key():
     assert rowset_contract.projection_grain == {order_id.address}
 
 
+def test_final_merge_grain_takes_a_non_grouping_contributor_grain():
+    """A BASIC contributor's grain is a merge axis too.
+
+    `customer_status <- case ... min(order_date) by user` is BASIC, not
+    grouping, but it sits at user grain and its CTE emits that key. Counting
+    only grouping contributors left the merge grain empty, so a ROOT sibling
+    holding a foreign key got no join key and FINAL fell to `FULL JOIN ON 1=1`.
+    """
+    user_id = _build_concept("user_id", Purpose.KEY)
+    center_id = _build_concept(
+        "center_id",
+        Purpose.KEY,
+        grain={"local.center_id"},
+        keys={user_id.address},
+    )
+    customer_status = _build_concept(
+        "customer_status",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        derivation=Derivation.BASIC,
+        grain={user_id.address},
+        keys={user_id.address},
+    )
+    group_graph = nx.DiGraph()
+    group_edges: EdgeMap = {}
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            output_concepts=(center_id.address,),
+        ),
+        "basic": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.BASIC,
+            grain_components=frozenset({user_id.address}),
+            output_concepts=(customer_status.address,),
+        ),
+        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
+    }
+    group_graph.add_nodes_from(attrs)
+    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
+    add_edge(group_graph, group_edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
+
+    _refresh_final_contract(group_graph, attrs, [customer_status, center_id])
+
+    contract = attrs[FINAL_NODE_ID].final_contract
+    assert contract is not None
+    root_contract = next(
+        item for item in contract.contributor_contracts if item.group_id == "root"
+    )
+    assert contract.merge_grain == {user_id.address}
+    assert root_contract.preserve_keys == {user_id.address}
+
+
 def test_stage3_requires_declared_final_contract():
     attrs = {FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL)}
 
