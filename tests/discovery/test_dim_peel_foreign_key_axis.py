@@ -126,6 +126,44 @@ def test_dim_peel_foreign_key_persist_writes_one_row_per_user():
     assert sorted(tuple(r) for r in rows) == [(10, "Returning", 1), (11, "New", 3)]
 
 
+_FILTER_MODEL = """
+key store_id int;
+property store_id.store_size int;
+key sale_id int;
+property sale_id.region string;
+property sale_id.amount float;
+
+datasource stores (id: store_id, sz: store_size)
+grain (store_id)
+query '''select 1 id, 100 sz union all select 2 id, 200 sz''';
+
+datasource sales (sale_id: sale_id, store_id: store_id, region: region, amount: amount)
+grain (sale_id)
+query '''select 1 sale_id, 1 store_id, 'US' region, 10.0 amount
+union all select 2 sale_id, 1 store_id, 'EU' region, 20.0 amount
+union all select 3 sale_id, 2 store_id, 'EU' region, 30.0 amount''';
+
+auto total_amount <- sum(amount) by store_id;
+auto us_size <- store_size ? region = 'US';
+"""
+
+
+def test_dim_attribute_peels_through_a_filter_alias():
+    """A filter alias is scalar, so its ROOT args peel like a BASIC's.
+
+    `us_size <- store_size ? region = 'US'` reads a dim attribute (store grain)
+    under a condition at the finer sale grain. Peeling `store_size` onto
+    `dim:store_id` must still restrict to stores with a US sale: store 2 is
+    EU-only and drops, store 1 keeps its unfiltered total beside its size.
+    """
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_FILTER_MODEL)
+    rows = engine.execute_text(
+        "SELECT store_id, total_amount, us_size ORDER BY store_id asc;"
+    )[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(1, 30.0, 100)]
+
+
 def test_dim_peel_aggregate_is_not_dragged_below_the_dimension_join():
     """The dimension joins the finished aggregate; it does not feed it.
 

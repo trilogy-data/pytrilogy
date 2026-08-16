@@ -607,24 +607,38 @@ def _post_aggregate_basic_args(
     return frozenset(args)
 
 
-def _projected_basic_root_args(
+# Derivations whose output is a per-ROW scalar over its args, so an arg can be
+# re-sourced from a dim table and joined back on an entity key without changing
+# what the consumer reads. FILTER is included: it is not a row-shape barrier
+# (see ROW_SHAPE_BARRIER_DERIVATIONS) and subsets rows without changing any
+# surviving row's value — the same call the aggregate-input walk makes in
+# `_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS`.
+_SCALAR_PROJECTION_DERIVATIONS = {Derivation.BASIC, Derivation.FILTER}
+
+
+def _projected_scalar_root_args(
     mandatory_list: list[BuildConcept],
 ) -> frozenset[str]:
-    """ROOT leaves projected through row-preserving BASIC output aliases.
+    """ROOT leaves projected through a scalar output alias.
 
-    BASIC here is the only ROW-PRESERVING derivation, not an arbitrary pick: a
-    peeled arg leaves the row stream it was read from and comes back joined on
-    an entity key at post-aggregate grain. A scalar alias (q66's
-    ``sales / square_feet``) is one output row per input row, so that
-    substitution is faithful. Every barrier derivation reads the arg as a
-    POPULATION — an aggregate over the fact rows, a window over its partition —
-    and a key-join reintroduces it at the wrong multiplicity, so their args must
-    stay on the fact bucket. Widening this to all non-barrier derivations was
-    measured as a no-op on the corpus; it is left narrow rather than broadened
-    without a query that needs it (FILTER is non-barrier but drops rows)."""
+    The peeled arg leaves the row stream it was read from and comes back joined
+    on an entity key at post-aggregate grain, so the alias must read it PER ROW
+    for that substitution to be faithful. A scalar expression (q66's
+    ``sales / square_feet``) qualifies; a barrier reads its arg as a POPULATION
+    — an aggregate over the fact rows, a window over its partition — and the
+    key-join reintroduces it at the wrong multiplicity, so barrier args stay on
+    the fact bucket.
+
+    A filter is scalar in that sense, not a barrier: it subsets rows without
+    changing any surviving row's value. Widening the whole walk to every
+    non-barrier derivation (MULTISELECT/TVF_UNION/SUBSELECT) is NOT done — those
+    are unexamined here."""
     args: set[str] = set()
     for concept in mandatory_list:
-        if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        if (
+            concept.derivation not in _SCALAR_PROJECTION_DERIVATIONS
+            or concept.lineage is None
+        ):
             continue
         stack = list(concept.lineage.concept_arguments)
         seen: set[str] = set()
@@ -635,7 +649,10 @@ def _projected_basic_root_args(
             seen.add(arg.address)
             if arg.derivation == Derivation.ROOT:
                 args.add(arg.address)
-            elif arg.derivation == Derivation.BASIC and arg.lineage is not None:
+            elif (
+                arg.derivation in _SCALAR_PROJECTION_DERIVATIONS
+                and arg.lineage is not None
+            ):
                 stack.extend(arg.lineage.concept_arguments)
     return frozenset(args)
 
@@ -704,7 +721,7 @@ def _split_root_dimension_clusters(
     primary_group: dict[str, str],
     environment: BuildEnvironment,
     output_addresses: frozenset[str],
-    projected_basic_root_args: frozenset[str],
+    projected_scalar_root_args: frozenset[str],
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
@@ -891,7 +908,7 @@ def _split_root_dimension_clusters(
                 )
                 moved.add(idx)
             if any(
-                bucket.primary_members[idx] in projected_basic_root_args
+                bucket.primary_members[idx] in projected_scalar_root_args
                 for idx in indices
             ):
                 for key_address in key:
@@ -2386,13 +2403,13 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
     if environment is not None:
-        projected_basic_root_args = _projected_basic_root_args(mandatory_list or [])
+        projected_scalar_root_args = _projected_scalar_root_args(mandatory_list or [])
         _split_root_dimension_clusters(
             buckets,
             primary_group,
             environment,
-            output_addresses | projected_basic_root_args,
-            projected_basic_root_args,
+            output_addresses | projected_scalar_root_args,
+            projected_scalar_root_args,
             _pre_aggregate_filter_args(conditions),
             _post_aggregate_filter_args(conditions)
             | _post_aggregate_basic_args(mandatory_list or []),
