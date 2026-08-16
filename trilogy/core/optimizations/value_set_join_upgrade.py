@@ -577,11 +577,22 @@ def _proven_subset_of(
     address — the two relation endpoints are distinct concepts, one per side,
     so the plain address is side-specific — while the sup side matches through
     its pseudonym/canonical closure, since rendering may have re-addressed
-    it."""
+    it.
+
+    That closure is NOT a free stand-in for the sup side: a scoped ∦ merge
+    collapses every member of a chained group (`a = b = c`) onto one canonical,
+    so the sup side's pseudonyms include its own ∦ SIBLINGS — independent
+    populations the declaration says are incomparable. Proving `sub ⊑ sibling`
+    says nothing about `sub ⊑ sup` (with the sub side's own alias as that
+    sibling it is outright vacuous), and rule-B narrowing on it drops the rows
+    present on only one side. Siblings are excluded; sup's own address stays,
+    so a genuine ⊑ path through the ∦ still narrows."""
     if sub_concept.address == sup_concept.address:
         return False
+    group = graph.join_key_groups().get(graph.canonical(sup_concept.address), set())
+    siblings = (group & graph.coalescing_relation_members()) - {sup_concept.address}
     for candidate in sorted(_key_addresses(sup_concept)):
-        if candidate == sub_concept.address:
+        if candidate == sub_concept.address or candidate in siblings:
             continue
         if graph.proven_subset(sub_concept.address, candidate):
             return True

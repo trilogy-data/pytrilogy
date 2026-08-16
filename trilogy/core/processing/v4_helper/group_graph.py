@@ -2020,15 +2020,36 @@ def _build_group_facts(
     return facts
 
 
-def _apply_grouping_parent_grain_overrides(
+def _grouping_output_contributors(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    rides: dict[str, frozenset[str]],
+    gid: str,
+) -> list[str]:
+    """`gid`'s lineage predecessors that sit on a grouping output — the grouping
+    groups themselves plus any group already established as riding one. ROOT
+    predecessors never qualify: they carry raw fact columns the grouped rows do
+    not have."""
+    return [
+        pred
+        for pred in group_graph.predecessors(gid)
+        if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE and pred in rides
+    ]
+
+
+def _extend_grouping_output_rides(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     facts: dict[str, GroupFacts],
     lineage_parents: dict[str, set[str]],
-) -> None:
-    """Correct non-grouping groups that compute pointwise over grouping parents."""
+    rides: dict[str, frozenset[str]],
+) -> bool:
+    """One pass: mark every non-grouping group whose whole input demand is met
+    by grouping-output contributors as riding that grouping grain, re-anchoring
+    its grain when it was pinned finer. Returns whether anything changed."""
+    changed = False
     for gid, fact in facts.items():
-        if gid == FINAL_NODE_ID:
+        if gid == FINAL_NODE_ID or gid in rides:
             continue
         if (
             fact.derivation == Derivation.ROOT
@@ -2038,24 +2059,53 @@ def _apply_grouping_parent_grain_overrides(
         leaves = _leaf_inputs(fact.primary, lineage_parents)
         if not leaves:
             continue
-        grouping_preds = [
-            pred
-            for pred in group_graph.predecessors(gid)
-            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-            and facts[pred].derivation in GROUPING_DERIVATIONS
-        ]
-        grains = {facts[pred].grain for pred in grouping_preds}
+        contributors = _grouping_output_contributors(
+            group_graph, group_edges, rides, gid
+        )
+        grains = {rides[pred] for pred in contributors}
         if len(grains) != 1:
             continue
         grouping_grain = next(iter(grains))
-        if fact.grain <= grouping_grain:
-            continue
         covered = set(grouping_grain)
-        for pred in grouping_preds:
+        for pred in contributors:
             covered |= facts[pred].primary
-        if leaves <= covered:
+        if not leaves <= covered:
+            continue
+        rides[gid] = grouping_grain
+        changed = True
+        if not fact.grain <= grouping_grain:
             fact.grain = grouping_grain
             fact.native_grain = grouping_grain
+    return changed
+
+
+def _apply_grouping_parent_grain_overrides(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+    lineage_parents: dict[str, set[str]],
+) -> None:
+    """Correct non-grouping groups that compute pointwise over grouping parents.
+
+    Iterated to a fixed point because a *chained* named intermediate reaches the
+    grouping output one bucket further out than the one-hop spelling: `parent <-
+    case when level = 0 then category end` over `level <- grouping(category) +
+    grouping(class)` consumes `level`, a primary of a sibling BASIC rather than
+    of the ROLLUP itself, so `parent` only reads as pointwise-over-the-rollup
+    once that sibling has been marked. Left pinned at its key-transitive fact
+    grain, `parent` keeps a redundant fact rescan alive through parent election,
+    and that rescan INNER JOINs back onto the ROLLUP rows on their NULL-injected
+    grouping keys, fanning every subtotal row out (q36). Each pass only adds to
+    `rides`, so this terminates."""
+    rides: dict[str, frozenset[str]] = {
+        gid: fact.grain
+        for gid, fact in facts.items()
+        if gid != FINAL_NODE_ID and fact.derivation in GROUPING_DERIVATIONS
+    }
+    while _extend_grouping_output_rides(
+        group_graph, group_edges, facts, lineage_parents, rides
+    ):
+        pass
 
 
 def _widen_window_grain_to_grouping_parent(

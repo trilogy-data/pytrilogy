@@ -17,7 +17,6 @@ there are no errors, crashes, hangs or timeouts, which is what retired the 2026-
 | `bug_q54_int32_arithmetic_overflow.md` | integer multiplication never promotes to BIGINT → INT32 overflow at execution |
 | `bug_q05_float32_union_placeholder_drift.md` | no 8-byte DOUBLE type; `FLOAT` → DuckDB REAL → silent money drift |
 | `handoff_q05_rollup_rowset_binding.md` | rollup over a joined rowset emits an ungrouped binding column (`repro_q05_rollup_rowset_binding.py`) |
-| `bug_q95_filtered_count_nested_max.md` | filtered count over `is_returned` emits invalid nested `count(max(CASE ...))` SQL |
 
 ## Language / DX gaps
 
