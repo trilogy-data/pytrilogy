@@ -32,6 +32,7 @@ from trilogy.core.models.author import (
     Metadata,
     NumberingWindowItem,
     Parenthetical,
+    SubqueryItem,
     SubselectItem,
     WindowItem,
 )
@@ -60,7 +61,10 @@ from trilogy.core.statements.author import (
     ShowStatement,
 )
 from trilogy.parsing.common import constant_to_concept
-from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
+from trilogy.parsing.v2.concept_factory import (
+    arbitrary_to_concept_v2,
+    unwrap_transformation_v2,
+)
 from trilogy.parsing.v2.concept_syntax import (
     ConceptDeclarationSyntax,
     ConceptDerivationSyntax,
@@ -287,6 +291,10 @@ def concept_derivation(
     source_value = hydrate(syntax.source)
     while isinstance(source_value, Parenthetical):
         source_value = source_value.content
+    if isinstance(source_value, SubqueryItem):
+        # `auto x <- (select ...)` aliases the subquery's rowset output; share
+        # the select-output lowering so both placements behave identically.
+        source_value = unwrap_transformation_v2(source_value, context)
     if isinstance(
         source_value,
         (

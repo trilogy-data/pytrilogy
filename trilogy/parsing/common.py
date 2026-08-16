@@ -43,6 +43,7 @@ from trilogy.core.models.author import (
     NumberingWindowItem,
     Parenthetical,
     RowsetItem,
+    SubqueryItem,
     SubselectComparison,
     SubselectItem,
     TupleWrapper,
@@ -123,6 +124,22 @@ def unwrap_transformation(
         (FilterItem, WindowItem, FunctionCallWrapper, Parenthetical, SubselectItem),
     ):
         return input
+    elif isinstance(input, SubqueryItem):
+        # A scalar `(select ...)` IS its single rowset output, so it aliases
+        # that concept. It must not fall through to the CONSTANT wrapper below —
+        # that relabels the subquery as a literal, and the outer select then
+        # re-resolves the subquery's expression against its own scope, silently
+        # dropping the subquery's filter and grain. Alias the SubqueryItem
+        # itself rather than its `content`: build lowers the item to the rowset
+        # concept, while the renderer still sees it and reproduces the inline
+        # `(select ...)` form instead of leaking the synthetic `_subquery_*`.
+        concept = environment.concepts[input.content.address]
+        return Function(
+            operator=FunctionType.ALIAS,
+            output_datatype=concept.datatype,
+            output_purpose=concept.purpose,
+            arguments=[input],
+        )
     elif isinstance(input, Comparison):
         # A comparison / membership (`x > 5`, `x in other`) references real
         # concepts, so it must not fall through to the CONSTANT wrapper below —
@@ -744,9 +761,15 @@ def _grain_contribution(
         and x.lineage.operator == FunctionType.ALIAS
         and environment
     ):
-        source_addr = x.lineage.arguments[0].address  # type: ignore
-        source = lookup(source_addr)
-        if source is None or source_addr in _seen:
+        arg = x.lineage.arguments[0]
+        # an alias of an inline `(select ...)` contributes the subquery's rowset
+        # output concept, exactly as a bare reference to it would
+        if isinstance(arg, SubqueryItem):
+            arg = arg.content
+        if not isinstance(arg, (Concept, ConceptRef)):
+            return [x]
+        source = lookup(arg.address)
+        if source is None or arg.address in _seen:
             return [x]
         return _grain_contribution(source, lookup, environment, _seen | {x.address})
     if x.derivation == Derivation.WINDOW and x.keys and environment:
