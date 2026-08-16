@@ -652,11 +652,10 @@ def constant_domain_violation(
     comparison provably never match; None when satisfiable or undecidable.
 
     Only provably-FALSE predicates are flagged. In-domain predicates — even
-    ones matching every declared value — must parse untouched: they can carry
-    load-bearing join null-rejection through nullable FK paths
-    (evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md),
-    and a narrower authored intent than the current domain snapshot is
-    legitimate. Error messages must never advise removing a predicate."""
+    ones matching every declared value — must parse untouched: through a
+    nullable FK they carry load-bearing join null-rejection, and a narrower
+    authored intent than the current domain snapshot is legitimate. Error
+    messages must never advise removing a predicate."""
     while isinstance(expected, TraitDataType):
         expected = expected.type
     if isinstance(value, Enum):

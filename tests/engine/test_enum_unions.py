@@ -85,8 +85,7 @@ select 1 as warehouse_sk, 138504 as sq_ft
 # Only provably-FALSE predicates are rejected. In-domain predicates — even ones
 # matching every declared member (tautology / is-not-null shaped) — must parse
 # and generate SQL untouched: through a nullable FK they carry load-bearing join
-# null-rejection, and advising their removal caused a silent wrong result
-# (evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md).
+# null-rejection.
 @pytest.mark.parametrize(
     "predicate",
     [

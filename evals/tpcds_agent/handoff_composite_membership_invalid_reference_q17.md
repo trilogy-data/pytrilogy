@@ -1,7 +1,9 @@
 # Handoff: composite membership across two facts leaks `INVALID_REFERENCE_BUG` (q17)
 
 **Status: error surface FIXED (2026-08-10); capability gap CHARACTERIZED, not
-implemented.** Originally from
+implemented. Re-verified 2026-08-16 (`a65b13c9c`):** shape (b) still raises the
+clean `ValueError` naming the logical concepts and the anchored-rowset remedy;
+control shape (a), the same membership in a plain `where`, still plans. Originally from
 `results/20260810-211903_enriched_aggregates/agent_log.q17.jsonl`.
 
 ## Reduction result (the localization the original handoff asked for)

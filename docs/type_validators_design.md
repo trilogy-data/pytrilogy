@@ -52,8 +52,9 @@ key code string['[A-Z]+'];          -- full-match regex (re.fullmatch)
    **Only provably-FALSE predicates are flagged — never tautologies.**
    Always-true predicates (`!= 500`, `not in (500,)`, domain-covering filters)
    parse untouched: through a nullable FK they carry load-bearing join
-   null-rejection, and advising their removal caused a silent wrong result
-   (`evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md`).
+   null-rejection, so advising their removal produces a silent wrong result.
+   Enum domains are also *sampled* by auto-ingest, which makes "always true
+   over the domain" unsound reasoning to begin with.
    Error messages advise fixing the constant or updating the declaration —
    never removing the predicate.
 3. **Mocks** (`trilogy.dialect.mock`): range-validated columns generate
