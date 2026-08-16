@@ -10,7 +10,12 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildFunction
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildFunction,
+    BuildRowsetItem,
+)
 from trilogy.core.models.core import DataType
 
 
@@ -161,6 +166,21 @@ class BuildEnvironment:
                 out.append((canonical, distinct))
         return out
 
+    def all_scoped_join_group_members(self) -> frozenset[str]:
+        """Every address participating in a scoped-join key group — each
+        group's canonical plus all its members, with no identity filter.
+
+        The authored keys ARE the join axis for these, so passes that
+        volunteer extra equalities (rowset-grain resolution, lineage grain
+        pinning) must skip them or they silently narrow the authored fan-out
+        (q59 shape). Contrast `distinct_scoped_join_group_members`, which asks
+        the narrower question of who must MATERIALIZE a column."""
+        return frozenset(
+            addr
+            for canonical, members in self.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        )
+
     def distinct_scoped_join_group_members(self) -> set[str]:
         """Addresses of scoped-join key-group members that keep their own
         physical identity, for groups with two or more such members.
@@ -293,3 +313,26 @@ class BuildEnvironment:
                 self.non_partial_materialized_canonical_concepts.add(
                     c.canonical_address
                 )
+
+
+def resolve_rowset_content_address(
+    addr: str, environment: BuildEnvironment | None
+) -> str:
+    """A rowset namespaces its grain key (`buyers_a.id` is a ROWSET concept
+    wrapping `local.id`). Sibling rowsets / the outer query expose the unwrapped
+    base key, so resolve through the `BuildRowsetItem` content to the address
+    they actually share; return `addr` unchanged when it isn't a rowset key.
+
+    Shared by the group graph (which compares sibling grains across rowset
+    boundaries) and join resolution (which tests whether two sources share a
+    join axis) — one boundary rule, so the two passes cannot drift on what
+    "the same key" means.
+    """
+    if environment is None:
+        return addr
+    concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
+        addr
+    )
+    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
+        return concept.lineage.content.address
+    return addr

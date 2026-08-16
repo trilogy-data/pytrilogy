@@ -17,6 +17,7 @@ lives next to its rule.
 """
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal, overload
 
@@ -32,7 +33,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     get_grouped_aggregate_wrapper,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import (
+    BuildEnvironment,
+    resolve_rowset_content_address,
+)
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -1403,19 +1407,33 @@ def _rowset_join_key_addresses(
     return output
 
 
-def _resolve_rowset_key(addr: str, environment: BuildEnvironment | None) -> str:
-    """A rowset namespaces its grain key (`buyers_a.id` is a ROWSET concept
-    wrapping `local.id`). Sibling rowsets / the outer query expose the unwrapped
-    base key, so resolve through the `BuildRowsetItem` content to the address they
-    actually share; return `addr` unchanged when it isn't a rowset key."""
-    if environment is None:
-        return addr
-    concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
-        addr
+def _resolved_rowset_grain(
+    grain: Iterable[str], environment: BuildEnvironment | None
+) -> frozenset[str]:
+    """`grain` with every rowset key resolved through its boundary. Sibling
+    grains must be compared in these terms — `rs_a.grp_key` and `rs_b.grp_key`
+    both wrap `local.grp_key`, so the raw addresses never match even when the
+    two sit at the same base grain."""
+    return frozenset(resolve_rowset_content_address(a, environment) for a in grain)
+
+
+def _unwrapped_rowset_grain(
+    grain: Iterable[str],
+    environment: BuildEnvironment | None,
+    rollup_padded: frozenset[str],
+) -> frozenset[str]:
+    """Just the BASE addresses that `grain`'s rowset keys unwrap to — per
+    component, so a key already spelled at its base contributes nothing while a
+    sibling that unwraps ONTO that same base still does. ROLLUP-padded keys are
+    dropped: their subtotal rows are NULL, so they are not a row identity and
+    must never be volunteered as a join axis."""
+    return frozenset(
+        resolved
+        for component in grain
+        if (resolved := resolve_rowset_content_address(component, environment))
+        != component
+        and resolved not in rollup_padded
     )
-    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
-        return concept.lineage.content.address
-    return addr
 
 
 def _rollup_padded_addresses(
@@ -1465,11 +1483,7 @@ def _lineage_pinned_grain(
     silently narrow the authored fan-out (q59 shape)."""
     if environment is None:
         return frozenset()
-    scoped_members = {
-        addr
-        for canonical, members in environment.scoped_join_key_groups.items()
-        for addr in (canonical, *members)
-    }
+    scoped_members = environment.all_scoped_join_group_members()
     stack: list[BuildConcept] = []
     for addr in addresses:
         concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
@@ -1504,7 +1518,7 @@ def _lineage_pinned_grain(
                 if select_grain:
                     axis = set(select_grain.components)
             if not ({concept.address} | axis) & scoped_members:
-                grain |= {_resolve_rowset_key(a, environment) for a in axis}
+                grain |= {resolve_rowset_content_address(a, environment) for a in axis}
             continue
         if concept.lineage is not None:
             stack.extend(concept.lineage.concept_arguments)
@@ -1530,11 +1544,7 @@ def _final_merge_grain(
 ) -> frozenset[str]:
     mandatory_by_address = {concept.address: concept for concept in mandatory_list}
     scoped_members = (
-        frozenset(
-            addr
-            for canonical, members in environment.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        )
+        environment.all_scoped_join_group_members()
         if environment is not None
         else frozenset()
     )
@@ -1592,7 +1602,7 @@ def _final_merge_grain(
             # collision: cartesian). Only fires when a key actually unwraps a
             # rowset, so plain BASIC concepts don't widen the grain.
             for key_address in concept.keys or set():
-                resolved = _resolve_rowset_key(key_address, environment)
+                resolved = resolve_rowset_content_address(key_address, environment)
                 if resolved != key_address:
                     grain.add(resolved)
     # A mixed root↔rowset relation (`union join return_demos.demo_id = c_demo`)
@@ -1663,7 +1673,8 @@ def _group_final_grain_contribution(
     # (`buyers_a.id`); resolve it to the shared base key so its projection_grain
     # advertises the join key the merge needs (mirrors `_final_merge_grain`).
     resolved = {
-        _resolve_rowset_key(addr, environment) for addr in attrs[gid].grain_components
+        resolve_rowset_content_address(addr, environment)
+        for addr in attrs[gid].grain_components
     }
     rowset_keys = (resolved - set(attrs[gid].grain_components)) & merge_grain
     # A STATEMENT-scoped relation member the group carries is the merge's join
@@ -1728,11 +1739,7 @@ def _refresh_final_contract(
     # independent_rowset_matrix). Deduping to the members' combined "grain"
     # would collapse those rows to distinct key pairs.
     scoped_members = (
-        frozenset(
-            addr
-            for canonical, members in environment.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        )
+        environment.all_scoped_join_group_members()
         if environment is not None
         else frozenset()
     )
@@ -2220,11 +2227,7 @@ def _compute_concept_sets(
     # volunteer extra equalities there (it would silently narrow the authored
     # fan-out, q59 shape).
     scoped_relation_members = scoped_join_member_addresses | (
-        frozenset(
-            addr
-            for canonical, members in environment.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        )
+        environment.all_scoped_join_group_members()
         if environment is not None
         else frozenset()
     )
@@ -2295,12 +2298,10 @@ def _compute_concept_sets(
         # `local.grp_key`): the base address a parent supplies IS the grain
         # key, so it is preservable through the boundary and everything
         # stacked on it.
-        for component in fact.grain:
-            resolved_component = _resolve_rowset_key(component, environment)
-            if resolved_component != component and resolved_component not in (
-                rollup_padded
-            ):
-                grain_mates.add(resolved_component)
+        unwrapped_grain = _unwrapped_rowset_grain(
+            fact.grain, environment, rollup_padded
+        )
+        grain_mates |= unwrapped_grain
         # A rowset boundary always materializes its grain keys from its body
         # even with no graph parent to inherit them from, and its key members
         # render under their unwrapped BASE address (the shared join handle).
@@ -2310,13 +2311,7 @@ def _compute_concept_sets(
         if fact.derivation == Derivation.ROWSET and not (
             (fact.primary | fact.grain) & scoped_relation_members
         ):
-            cap |= {
-                resolved
-                for component in fact.grain
-                if (resolved := _resolve_rowset_key(component, environment))
-                != component
-                and resolved not in rollup_padded
-            }
+            cap |= unwrapped_grain
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
@@ -2430,9 +2425,7 @@ def _compute_concept_sets(
                     # out of sibling rowsets at the same base grain otherwise
                     # never match, neither exposes the key, and the FINAL
                     # merge cross-joins ON 1=1 (alias-collision aggregates).
-                    resolved_grain = frozenset(
-                        _resolve_rowset_key(a, environment) for a in fact.grain
-                    )
+                    resolved_grain = _resolved_rowset_grain(fact.grain, environment)
                     for sibling in group_graph.predecessors(succ):
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
@@ -2445,9 +2438,8 @@ def _compute_concept_sets(
                         # body's `cid as s_cid` beside `sum(net)` grouped by
                         # `csk, year`). Without the axis the merge cross-joins
                         # every dimension row onto every fact row.
-                        resolved_sibling_grain = frozenset(
-                            _resolve_rowset_key(a, environment)
-                            for a in sibling_fact.grain
+                        resolved_sibling_grain = _resolved_rowset_grain(
+                            sibling_fact.grain, environment
                         )
                         resolved_sibling_match = (
                             resolved_grain == resolved_sibling_grain

@@ -181,6 +181,19 @@ class ConceptAttrs:
     # node in its own scan bucket (side-channel subselect source).
     existence_only: bool = False
 
+    @property
+    def keys_are_conditional_fd(self) -> bool:
+        """True when `keys` do NOT functionally determine this concept's value.
+
+        An empty-grain FILTER virtual renders as `CASE WHEN pred THEN content
+        END`, which varies with predicate inputs the keys never capture (q16),
+        and a parent-sourced copy gets no MAX collapse
+        (`filter_collapses_to_grain` needs an empty source_map). Nothing may be
+        PROVEN through such a concept's keys; it can still ride a grouping via
+        the lineage-parents rule once its content and predicate inputs are all
+        determined."""
+        return not self.grain_components and self.derivation == Derivation.FILTER
+
 
 @dataclass
 class BuildInfo:

@@ -24,7 +24,10 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     get_grouped_aggregate_wrapper,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import (
+    BuildEnvironment,
+    resolve_rowset_content_address,
+)
 from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
@@ -729,17 +732,6 @@ def _row_independent(ds: DataSource) -> bool:
     )
 
 
-def _rowset_content_address(addr: str, environment: BuildEnvironment | None) -> str:
-    if environment is None:
-        return addr
-    concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
-        addr
-    )
-    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
-        return concept.lineage.content.address
-    return addr
-
-
 def _raise_if_keyless_row_bearing_join(
     joins: list[JoinOrderOutput],
     ds_node_map: dict[str, DataSource],
@@ -769,9 +761,21 @@ def _raise_if_keyless_row_bearing_join(
     upstream in the demand/contract passes that let the axis go missing, not
     in relaxing the check."""
 
+    # Both axis views are pure functions of the node, and every keyless join
+    # re-asks them for the same already-joined sources; memoize so the guard
+    # stays proportional to the tree rather than to joins x tree.
+    direct_cache: dict[str, frozenset[str]] = {}
+    closure_cache: dict[str, frozenset[str]] = {}
+    independent_cache: dict[str, bool] = {}
+
     def _canon(addr: str) -> str:
-        content = _rowset_content_address(addr, environment)
+        content = resolve_rowset_content_address(addr, environment)
         return canonical.get(content, content)
+
+    def row_independent(node: str) -> bool:
+        if node not in independent_cache:
+            independent_cache[node] = _row_independent(ds_node_map[node])
+        return independent_cache[node]
 
     def direct_axis(node: str) -> frozenset[str]:
         """Addresses this source can actually be JOINED ON: the columns it
@@ -780,6 +784,8 @@ def _raise_if_keyless_row_bearing_join(
         emits does NOT count: you cannot join on a column that isn't there
         (a merge at grain {name, value} projecting only {value, dim} has no
         `name` to pair with)."""
+        if node in direct_cache:
+            return direct_cache[node]
         ds = ds_node_map[node]
         addrs: set[str] = set()
         for concept in ds.output_concepts:
@@ -788,7 +794,9 @@ def _raise_if_keyless_row_bearing_join(
             # source column) — the axis a sibling renders under the original
             # name.
             addrs.update(concept.pseudonyms)
-        return frozenset({_canon(a) for a in addrs}) - rollup_padded_addresses
+        result = frozenset({_canon(a) for a in addrs}) - rollup_padded_addresses
+        direct_cache[node] = result
+        return result
 
     def key_closure(node: str) -> frozenset[str]:
         """Direct axis plus everything reachable through concept ``keys``,
@@ -797,6 +805,8 @@ def _raise_if_keyless_row_bearing_join(
         key several environment hops deep (`b_cust` -> `buyers_b.cust_id` ->
         `_buyers_b_cust_id` -> keys {ship_id} -> keys {id}). Seeded from
         outputs only, for the same reason as `direct_axis`."""
+        if node in closure_cache:
+            return closure_cache[node]
         ds = ds_node_map[node]
         frontier: set[str] = set()
         for concept in ds.output_concepts:
@@ -820,20 +830,22 @@ def _raise_if_keyless_row_bearing_join(
             frontier.update(concept_ref.pseudonyms)
             if isinstance(concept_ref.lineage, BuildRowsetItem):
                 frontier.add(concept_ref.lineage.content.address)
-        return frozenset({_canon(a) for a in closure}) - rollup_padded_addresses
+        result = frozenset({_canon(a) for a in closure}) - rollup_padded_addresses
+        closure_cache[node] = result
+        return result
 
     tree: set[str] = set()
     for j in joins:
         if j.left is not None:
             tree.add(j.left)
-        tree.update(j.keys.keys())
-        if not j.keys and not _row_independent(ds_node_map[j.right]):
+        tree.update(j.lefts)
+        if not j.keys and not row_independent(j.right):
             right_direct = direct_axis(j.right)
             right_closure = key_closure(j.right)
             offenders = sorted(
                 d
                 for d in tree
-                if not _row_independent(ds_node_map[d])
+                if not row_independent(d)
                 and (right_closure & direct_axis(d) or right_direct & key_closure(d))
             )
             if offenders:

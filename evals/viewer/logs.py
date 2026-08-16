@@ -1,4 +1,4 @@
-"""Agent trajectory log parsing.
+"""Agent trajectory log parsing, plus the defensive run-dir readers.
 
 One ``agent_log.*.jsonl`` in, one renderable timeline out. Kept free of any
 run/benchmark knowledge so both the lazy per-question API (``runs.py``) and the
@@ -17,6 +17,15 @@ from pathlib import Path
 KEY_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 QID_RE = re.compile(r"\bq(\d+)\b")
 REP_RE = re.compile(r"\br(\d+)\b")
+
+
+def read_json(path: Path) -> dict:
+    """A run-dir JSON artifact, or ``{}``. Missing and half-written files are
+    normal here — the viewer reads runs that are still in flight."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def log_path(run_dir: Path, key: str) -> Path | None:

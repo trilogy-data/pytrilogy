@@ -37,9 +37,13 @@ def concept_attr_fd_closure(
                 changed = True
                 continue
             # Declared keys are an FD even when the concept carries no grain,
-            # mirroring build_fd_closure.
+            # mirroring build_fd_closure — unless they only determine the value
+            # conditionally, which is not an FD at all (see
+            # `ConceptAttrs.keys_are_conditional_fd`).
             if (attrs.grain_components and attrs.grain_components <= closure) or (
-                bool(attrs.keys) and attrs.keys <= closure
+                bool(attrs.keys)
+                and not attrs.keys_are_conditional_fd
+                and attrs.keys <= closure
             ):
                 closure.add(attrs.address)
                 changed = True

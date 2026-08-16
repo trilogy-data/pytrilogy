@@ -8,7 +8,6 @@ queries - 41s and 13.5MB - to show one of them.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from common.spec import BenchmarkSpec
@@ -24,13 +23,6 @@ _METRIC_FIELDS = (
     "completion_tokens",
     "total_tokens",
 )
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
 
 
 def _log_index(run_dir: Path) -> dict[str, Path]:
@@ -134,8 +126,8 @@ def run_index(run_dir: Path, spec: BenchmarkSpec) -> dict:
     """Everything the drilldown needs before you pick a question."""
     logs.touch_cache_dir(run_dir.parent)
     log_files = _log_index(run_dir)
-    repeat = _read_json(run_dir / "repeat_report.json")
-    report = repeat or _read_json(run_dir / "report.json")
+    repeat = logs.read_json(run_dir / "repeat_report.json")
+    report = repeat or logs.read_json(run_dir / "report.json")
     meta = report.get("meta", {})
     kind = "repeat" if repeat else "eval"
     questions = (
@@ -240,7 +232,7 @@ def query_pair(
     if qid is None:
         return {"candidate": None, "canonical": None}
     if category is None:
-        report = _read_json(run_dir / "repeat_report.json") or _read_json(
+        report = logs.read_json(run_dir / "repeat_report.json") or logs.read_json(
             run_dir / "report.json"
         )
         category = report.get("meta", {}).get("category") or report.get("meta", {}).get(

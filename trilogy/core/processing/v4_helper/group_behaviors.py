@@ -234,20 +234,11 @@ def can_preserve_grouping(
     node = _attrs_for_address(concept_attrs, address)
     if node is None:
         return False
-    # An empty-grain FILTER virtual's declared keys are a CONDITIONAL FD: its
-    # rendered value is CASE WHEN pred THEN content END, which varies with
-    # predicate inputs the keys don't capture (q16), and a parent-sourced copy
-    # gets no MAX collapse (filter_collapses_to_grain requires an empty
-    # source_map). Exclude those facts from the closure so nothing is proven
-    # through them; such a virtual can still ride via the lineage-parents rule
-    # when its content and predicate inputs are all determined.
-    closure_attrs = {
-        key: attrs
-        for key, attrs in concept_attrs.items()
-        if attrs.grain_components or attrs.derivation != Derivation.FILTER
-    }
+    # Nothing is proven through an empty-grain FILTER virtual's keys — the
+    # closure itself enforces that (`ConceptAttrs.keys_are_conditional_fd`), so
+    # such a virtual reaches the lineage-parents rule below instead.
     closure = concept_attr_fd_closure(
-        closure_attrs, native_grain, include_empty_grain=False
+        concept_attrs, native_grain, include_empty_grain=False
     )
     if address in closure:
         return True

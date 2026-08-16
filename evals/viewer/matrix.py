@@ -18,12 +18,12 @@ grid around 10KB instead of megabytes of JSON objects.
 
 from __future__ import annotations
 
-import json
 import re
 import threading
 import time
 from pathlib import Path
 
+from . import logs
 from .suites import Suite
 
 STATUS_CHARS = {
@@ -59,13 +59,6 @@ def _timestamp(run_dir: Path, meta: dict) -> str:
     return found or time.strftime(
         "%Y%m%d-%H%M%S", time.localtime(run_dir.stat().st_mtime)
     )
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
 
 
 def _dir_stamp(run_dir: Path) -> tuple:
@@ -162,11 +155,11 @@ def _live_row(run_dir: Path) -> dict | None:
 
 def _build_row(run_dir: Path) -> dict | None:
     row: dict | None
-    repeat = _read_json(run_dir / "repeat_report.json")
+    repeat = logs.read_json(run_dir / "repeat_report.json")
     if repeat:
         row = _repeat_row(run_dir, repeat)
     else:
-        report = _read_json(run_dir / "report.json")
+        report = logs.read_json(run_dir / "report.json")
         row = (
             _eval_row(run_dir, report) if report.get("queries") else _live_row(run_dir)
         )
