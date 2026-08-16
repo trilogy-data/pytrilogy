@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 2991
+gen_length = 2905
 preql_size = 745
 comp_size = 811
 generated_sql = """
@@ -42,7 +42,6 @@ questionable as (
 SELECT
     \"thoughtful\".\"item_revenue\" as \"item_revenue\",
     \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"thoughtful\".\"store_sales_item_sk\" as \"store_sales_item_sk\",
     ( \"thoughtful\".\"item_revenue\" * 100.0 ) / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
@@ -52,16 +51,16 @@ SELECT
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_id\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"questionable\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     \"questionable\".\"item_revenue\" as \"item_revenue\",
     \"questionable\".\"revenueratio\" as \"revenueratio\"
 FROM
     \"questionable\"
-    LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"questionable\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"questionable\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 ORDER BY 
     \"questionable\".\"store_sales_item_category\" asc nulls first,
-    \"questionable\".\"store_sales_item_class\" asc nulls first,
+    \"store_sales_item_items\".\"I_CLASS\" asc nulls first,
     \"store_sales_item_items\".\"I_ITEM_ID\" asc nulls first,
     \"store_sales_item_items\".\"I_ITEM_DESC\" asc nulls first,
     \"questionable\".\"revenueratio\" asc nulls first"""

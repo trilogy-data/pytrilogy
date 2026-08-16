@@ -241,8 +241,12 @@ order by iris.species asc;
 #   aggregate just SOME rows    -> inline `?` `sum(x.amount ? x.amount > 10000)`
 #
 # An aggregate condition CAN go in WHERE as a pre-filter (`where count(x) > 0`);
-# it auto-grains to the SELECT grain (same groups as HAVING). Use `by <grain>` to
-# pin a different grain, or `by *` to compare against a whole-table total.
+# it groups by the SELECT grain unless pinned with `by <grain>` (`by *` = a
+# whole-table total). SCOPE: a WHERE aggregate computes over ALL rows of the
+# model - the other WHERE predicates never narrow its input (HAVING, selected,
+# and inline-`?` aggregates DO see the filtered rows). `by` pins the groups,
+# never the input rows; for an aggregate over the filtered rows use `having`
+# or a `then where` stage.
 """,
     ),
     SyntaxExample(
@@ -897,10 +901,16 @@ limit 100;
 #   count(k) by <grain> > 1            # EXISTS another row in the group
 #   count(k ? cond) by <grain> = 1     # NOT EXISTS another row matching cond
 #                                         (exactly one matches: the row itself)
-# An aggregate condition in `where` auto-grains to the SELECT grain (like
-# `having`). When the correlation grain DIFFERS from the select grain - as here
+# An aggregate condition in `where` groups by the SELECT grain unless pinned.
+# When the correlation grain DIFFERS from the select grain - as here
 # (correlate by course, select per student) - you MUST pin it with `by <grain>`;
 # a bare `count(...) > 0` would group by the select grain and give wrong rows.
+# SCOPE: the pin fixes only the GROUPS. A `where` aggregate always computes
+# over ALL rows of the model; the other `where` predicates never narrow its
+# input rows - exactly right for whole-table EXISTS checks like this one. If
+# the aggregate should see only already-filtered rows, use `having` or stage
+# it with `then where` (a stage's aggregates see only rows passing earlier
+# stages).
 import enrollments as enroll;
 
 auto enrollees_per_course <- count(enroll.student_id) by enroll.course;

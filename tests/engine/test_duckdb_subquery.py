@@ -9,6 +9,8 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.constants import CONFIG, ParserBackend
+from trilogy.core.enums import FunctionType
+from trilogy.core.models.author import Function
 from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.model import HydrationError
 
@@ -207,3 +209,128 @@ def test_tuple_subquery_round_trips(backend):
     assert "(val,cat)in(select" in flat
     engine2 = _engine()
     assert engine2.execute_text(_TUPLE_SETUP + rendered)[-1].fetchall() == [(2,), (3,)]
+
+
+# Select-output placement (`select (select ...) as x`). The rowset is filtered
+# so its scalar differs from the outer scope: min over rs is 20, min over the
+# base table is 10. A subquery mislowered to a literal loses the filter and
+# re-resolves the aggregate outside, yielding 10.
+_SCALAR_SETUP = "with rs as select id, val where val >= 20;"
+# per-cat maxima -> {cat 1: 20, cat 2: 30}; min of those is 20
+_AGG_SETUP = "with agg as select cat, max(val) by cat -> tot;"
+
+
+@pytest.mark.parametrize(
+    "setup,query,expected",
+    [
+        (_SCALAR_SETUP, "select (select min(rs.val)) as m;", [(20,)]),
+        (
+            _SCALAR_SETUP,
+            "select (select min(rs.val)) as m, sum(val) as grand;",
+            [(20, 60)],
+        ),
+        (
+            _SCALAR_SETUP,
+            "select cat, (select min(rs.val)) as m order by cat asc;",
+            [(1, 20), (2, 20)],
+        ),
+        # scalar over an aggregate rowset: must layer as CTEs, not collapse to a
+        # nested `min(max(val))` the binder rejects
+        (
+            _AGG_SETUP,
+            "select (select min(agg.tot)) as m, sum(val) as grand;",
+            [(20, 60)],
+        ),
+        # subquery over a base concept rather than a rowset
+        ("", "select (select max(val) -> mx) as m;", [(30,)]),
+        # assignment form: `auto x <- (select ...)`
+        (
+            _SCALAR_SETUP,
+            "auto m <- (select min(rs.val)); select m, sum(val) as grand;",
+            [(20, 60)],
+        ),
+    ],
+)
+def test_scalar_subquery_as_select_output(backend, setup, query, expected):
+    assert _engine().execute_text(setup + query)[-1].fetchall() == expected
+
+
+@pytest.mark.parametrize(
+    "expr,expected",
+    [("min(rs.val)", [(20, 60)]), ("max(rs.val)", [(30, 60)])],
+)
+def test_scalar_subquery_select_output_matches_named(backend, expr, expected):
+    q = _SCALAR_SETUP + "select {} as m, sum(val) as grand;"
+    assert (
+        _engine().execute_text(q.format(f"(select {expr})"))[-1].fetchall()
+        == _engine().execute_text(q.format(expr))[-1].fetchall()
+        == expected
+    )
+
+
+def test_scalar_subquery_select_output_is_not_a_literal(backend):
+    # the subquery must keep its rowset lineage rather than being wrapped as a
+    # CONSTANT and handed to the driver as a bind parameter
+    engine = _engine()
+    query = _SCALAR_SETUP + "select (select min(rs.val)) as m;"
+    _, parsed = engine.environment.parse(query)
+    lineage = parsed[-1].selection[0].content.function
+    assert not (
+        isinstance(lineage, Function) and lineage.operator == FunctionType.CONSTANT
+    )
+    sql = engine.generate_sql(query)[-1]
+    assert "$1" not in sql
+    assert "Subquery" not in sql
+
+
+@pytest.mark.parametrize(
+    "setup,query,expected",
+    [
+        # two distinct subqueries in one select
+        (
+            _SCALAR_SETUP,
+            "select (select min(rs.val)) as a, (select max(rs.val)) as b;",
+            [(20, 30)],
+        ),
+        # two identical subqueries collapse to one source, not two literals
+        (
+            _SCALAR_SETUP,
+            (
+                "select (select min(rs.val)) as a, "
+                "(select min(rs.val)) as b, sum(val) as g;"
+            ),
+            [(20, 20, 60)],
+        ),
+        # nested: the inner subquery is the outer subquery's source
+        (
+            _SCALAR_SETUP,
+            (
+                "select id where val >= (select min((select max(rs.val)))) "
+                "order by id asc;"
+            ),
+            [(3,)],
+        ),
+        (
+            _AGG_SETUP,
+            (
+                "select (select min(agg.tot)) as a, "
+                "(select max(agg.tot)) as b, sum(val) as g;"
+            ),
+            [(20, 30, 60)],
+        ),
+    ],
+)
+def test_scalar_subquery_multiple_and_nested(backend, setup, query, expected):
+    assert _engine().execute_text(setup + query)[-1].fetchall() == expected
+
+
+def test_scalar_subquery_select_output_round_trips(backend):
+    query = _SCALAR_SETUP + "select (select min(rs.val)) as m, sum(val) as grand;"
+    engine = _engine()
+    _, parsed = engine.environment.parse(query)
+    rendered = Renderer(environment=engine.environment).to_string(parsed[-1])
+    # the aliased output reproduces the inline form, not the synthetic rowset
+    assert "_subquery_" not in rendered
+    assert "(select" in rendered.replace(" ", "").replace("\n", "").lower()
+    engine2 = _engine()
+    assert engine2.execute_text(_SCALAR_SETUP + rendered)[-1].fetchall() == [(20, 60)]

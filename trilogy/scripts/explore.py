@@ -8,6 +8,8 @@ so a 378-concept fact like ``store_sales`` collapses to ~25 group lines.
 
 from __future__ import annotations
 
+import dataclasses
+import os
 import re
 import textwrap
 from collections import defaultdict
@@ -18,6 +20,7 @@ from pathlib import Path
 import click
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.enums import Modifier
 from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment, Import
 from trilogy.parser import parse_text
@@ -474,8 +477,44 @@ def _grain_grouped(
     return groups
 
 
+def _join_nullable_namespaces(env: Environment) -> set[str]:
+    """Namespaces reached from this model through a ``?`` (Nullable)
+    cross-namespace binding, plus every namespace nested under one.
+
+    From the exploring model's perspective a row may have no joined entity at
+    all, so every field in such a namespace reads NULL on those rows — and an
+    equality filter on any of them also excludes those rows. Surfacing this is
+    what stops an agent that reasons from a field's rendered value domain
+    (``county enum<'Williamson County'>``) from concluding a filter matching
+    the whole domain is a droppable tautology; dropping it also drops the
+    join's null-rejection (see
+    evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md).
+
+    The edge, not the leaf, carries the nullability: the dimension's own
+    column is typically non-null, while the fact's binding of its key is
+    ``?``-marked. Namespaces nested under a nullable one inherit it — if the
+    row can lack a customer, it can lack the customer's address too."""
+    direct: set[str] = set()
+    for ds in env.datasources.values():
+        ds_ns = ds.namespace or DEFAULT_NAMESPACE
+        for col in ds.columns:
+            cns = col.concept.namespace
+            if cns in (DEFAULT_NAMESPACE, ds_ns):
+                continue
+            if Modifier.NULLABLE in col.modifiers:
+                direct.add(cns)
+    result = set(direct)
+    for ns in {c.namespace for c in env.concepts.values()}:
+        parts = ns.split(".")
+        if any(".".join(parts[:i]) in direct for i in range(1, len(parts))):
+            result.add(ns)
+    return result
+
+
 def _grouped_decls(
-    env: Environment, items: list[tuple[str, Concept]]
+    env: Environment,
+    items: list[tuple[str, Concept]],
+    join_nullable: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, list[dict]]:
     """Group concepts by namespace and, within each, by role + grain:
 
@@ -499,6 +538,20 @@ def _grouped_decls(
     renderer = Renderer(environment=env)
 
     def decl(concept: Concept) -> str:
+        # Effective nullability: a typed concept in a join-nullable namespace
+        # renders with the same trailing ``?`` a nullable column gets, since
+        # from this model's perspective it reads NULL whenever the row lacks
+        # the joined entity. Lineage-bearing (``auto``) declarations have no
+        # ``?`` slot in the grammar; the namespace-level ``join`` flag covers
+        # them.
+        if (
+            concept.namespace in join_nullable
+            and not concept.lineage
+            and Modifier.NULLABLE not in concept.modifiers
+        ):
+            concept = dataclasses.replace(
+                concept, modifiers=[*concept.modifiers, Modifier.NULLABLE]
+            )
         return renderer.to_string(ConceptDeclarationStatement(concept=concept))
 
     by_ns: dict[str, list[tuple[str, Concept]]] = defaultdict(list)
@@ -699,12 +752,29 @@ def _role_provenance(member: str, description: str) -> dict:
     return entry
 
 
+def _join_flag(members: list[str], nullable: dict[str, bool]):
+    """Entry-level ``join`` value for a (possibly combined) namespace entry:
+    ``"nullable"`` when every member is reached through a ``?`` binding,
+    ``{"nullable": [subset]}`` when they differ, ``None`` when none are. The
+    single home for the flag — kept out of the per-role provenance map so a
+    mixed group never forces that map open just to carry it. The concept body
+    renders the canonical member's ``?`` state, so for mixed groups the
+    subset list is what disambiguates the other roles."""
+    marked = [m for m in members if nullable[m]]
+    if not marked:
+        return None
+    if len(marked) == len(members):
+        return "nullable"
+    return {"nullable": marked}
+
+
 def _imported_payload(
     env: Environment,
     imported_items: list[tuple[str, Concept]],
     descriptions: dict[str, str],
     expand_roles: bool,
     version: int,
+    join_nullable: set[str] | frozenset[str] = frozenset(),
 ) -> dict[str, dict]:
     """Full-detail rendering of imported namespaces: the same grouped
     declaration layout as the local ``namespaces`` section, with role-played
@@ -732,7 +802,7 @@ def _imported_payload(
     ]
     if not visible:
         return {}
-    grouped = _grouped_decls(env, visible)
+    grouped = _grouped_decls(env, visible, join_nullable)
     if version >= 2 and not expand_roles:
         grouped = _dedup_conformed(env, grouped, visible)
     out: dict[str, dict] = {}
@@ -746,6 +816,9 @@ def _imported_payload(
                 entry["roles"] = {m: _role_provenance(m, descs[m]) for m in members}
         elif descs[members[0]]:
             entry["description"] = descs[members[0]]
+        flag = _join_flag(members, {m: m in join_nullable for m in members})
+        if flag:
+            entry["join"] = flag
         entry["concepts"] = groups
         out[key] = entry
     return out
@@ -782,17 +855,39 @@ def build_concepts_payload(
     imported_items = [
         (a, c) for a, c in concept_items if c.namespace != DEFAULT_NAMESPACE
     ]
+    # Kill-switch for eval A/B dose-response runs: the control leg sets
+    # TRILOGY_EXPLORE_EFFECTIVE_NULLS=0 to render the pre-feature payload
+    # without needing a second checkout.
+    join_nullable: set[str] = (
+        set()
+        if os.environ.get("TRILOGY_EXPLORE_EFFECTIVE_NULLS") == "0"
+        else _join_nullable_namespaces(env)
+    )
     namespaces = _grouped_decls(env, local_items)
     if namespaces and version >= 2 and not expand_roles:
         namespaces = _dedup_conformed(env, namespaces, local_items)
     imported = _imported_payload(
-        env, imported_items, import_descriptions or {}, expand_roles, version
+        env,
+        imported_items,
+        import_descriptions or {},
+        expand_roles,
+        version,
+        join_nullable,
+    )
+    # One-time legend for the ``?``/``join=nullable`` markers so the
+    # per-namespace flags stay one token each.
+    join_note = (
+        "join=nullable: rows may have no such entity; its fields (marked ?) "
+        "read NULL there, and any filter on them also excludes those rows."
+        if imported and join_nullable & {c.namespace for _, c in imported_items}
+        else None
     )
     payload = {
         "version": version,
         "count": len(concept_items),
         "namespaces": namespaces or None,
         "namespaced": imported or None,
+        "join_note": join_note,
     }
     return {k: v for k, v in payload.items() if v is not None}
 

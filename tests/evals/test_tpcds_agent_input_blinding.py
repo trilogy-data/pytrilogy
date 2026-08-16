@@ -59,6 +59,20 @@ def test_agent_config_does_not_name_benchmark(tmp_path: Path) -> None:
     )
 
 
+def test_agent_config_records_reasoning_effort(tmp_path: Path) -> None:
+    agent_runner.write_trilogy_toml(
+        tmp_path,
+        SPEC,
+        provider="openai",
+        model="gpt-5.6-luna",
+        max_iterations=1,
+        reasoning_effort="max",
+    )
+
+    text = (tmp_path / "trilogy.toml").read_text(encoding="utf-8")
+    assert 'reasoning_effort = "max"' in text
+
+
 def test_replay_accepts_the_previous_database_filename(tmp_path: Path) -> None:
     legacy = tmp_path / "tpcds.duckdb"
     legacy.touch()

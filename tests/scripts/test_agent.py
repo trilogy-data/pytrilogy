@@ -940,10 +940,15 @@ def test_build_provider_env_model_override(monkeypatch):
 def test_build_provider_uses_toml_provider_and_model(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("TRILOGY_AGENT_MODEL", raising=False)
-    cfg = AgentConfig(provider=Provider.OPENAI, model="gpt-x")
+    cfg = AgentConfig(
+        provider=Provider.OPENAI,
+        model="gpt-x",
+        reasoning_effort="max",
+    )
     provider = _build_provider(cfg, None)
     assert isinstance(provider, OpenAIProvider)
     assert provider.model == "gpt-x"
+    assert provider.reasoning_effort == "max"
 
 
 def test_build_provider_custom_api_key_env(monkeypatch):

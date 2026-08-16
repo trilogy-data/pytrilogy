@@ -1,3 +1,5 @@
+import adhoc02_imports;
+
 WHERE
     store_sales.sale_date.sk is not null
 SELECT

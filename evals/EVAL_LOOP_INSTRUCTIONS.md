@@ -37,7 +37,8 @@ read from repo `.env.secrets`). Defaults: `--scale-factor 1`, `--num-queries 99`
 
 ```bash
 # All four legs in parallel, then render the cross-category funnel + matrix.
-# Each leg writes results/<ts>_<category>/. Pass --concurrency 2 (≈8 concurrent
+# Each leg writes a provider/model-namespaced results directory. Pass
+# --concurrency 2 (≈8 concurrent
 # across 4 legs); the default (1) is auto-split to 1/leg, and 3/leg = 12 is too
 # much DeepSeek pressure.
 python evals/tpcds_agent/run_eval.py \
@@ -46,6 +47,10 @@ python evals/tpcds_agent/run_eval.py \
 # One leg only:
 python evals/tpcds_agent/run_eval.py --category sql_schema --num-queries 10
 
+# OpenAI reasoning model at an explicit effort level:
+python evals/tpcds_agent/run_eval.py --category enriched --num-queries 20 \
+  --provider openai --model gpt-5.6-luna --reasoning-effort max
+
 # Legacy two-way (alias for --categories ingest,enriched):
 python evals/tpcds_agent/run_eval.py --both-modes
 
@@ -53,12 +58,23 @@ python evals/tpcds_agent/run_eval.py --both-modes
 python evals/tpcds_agent/run_eval.py --category enriched --query-ids 5,13,18
 ```
 
+The same combinations can be launched from the viewer's **Launch** page
+(`python evals/trajectory_viewer.py --serve 8080`): pick the eval, the
+categories, the question scope and the model, check the command it renders, and
+start it. Runs queue one at a time and stream their output into the page. It
+runs the same `run_eval.py`, so nothing here changes.
+
+The viewer's **Debug** page is the fastest way to find the SET of problem
+questions this loop is about: it grids every run against every question, so a
+column that is red across runs is a question worth investigating and a row that
+is red is a bad run. Click a cell to land on that trajectory.
+
 **Outputs** (under `evals/tpcds_agent/`):
-- `results/<ts>_<category>/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,
+- `results/<ts>_<category>_<provider>_<model>[_effort-<level>]/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,
   `task.qNN.txt`, `workspace/` (the agent's `.sql`/`.preql` files + DB copy).
-- `charts/dashboard_<category>.png` — per-leg dashboard.
-- `charts/funnel.{png,md}` — cross-category lift (only when ≥2 legs ran).
-- `charts/trilogy_failures_<category>.md` — per-leg failure detail.
+- `charts/dashboard_<run-dir-name>.png` — per-leg dashboard.
+- `charts/funnel_<ts>_<provider>_<model>[_effort-<level>].{png,md}` — cross-category lift (only when ≥2 legs ran).
+- `charts/trilogy_failures_<run-dir-name>.md` — per-leg failure detail.
 
 ### Validating a candidate change (10x harness)
 
@@ -203,5 +219,3 @@ detector, which is why the >500k prior is load-bearing. Collect findings into a 
 - Specify the output grain when the reference groups finer than it reports (e.g. q91 groups by
   marital/education but only shows call-center columns → say so) and the exact identifier
   (id vs name vs full_name).
-
-

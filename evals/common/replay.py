@@ -29,7 +29,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import agent_runner, analyze_run, db, prompts, scoring
+from . import agent_runner, analyze_run, cleanup, db, prompts, scoring
 from .categories import Category, get_category
 from .main import PROVIDER_ENV, SCORE_TIMEOUT
 from .report import agent_metric_fields, load_env, render_markdown
@@ -456,6 +456,9 @@ def replay_query(
         f"q{qid:02d}: agent exit={result['exit_code']} "
         f"in {result['duration']:.0f}s - scoring"
     )
+    # The agent is done with this worker: drop whatever its DuckDB spilled
+    # before the next replay reuses the copy.
+    cleanup.purge_spill(worker_dir, log=log)
     metrics = scoring.parse_agent_log(log_path)
     refs = (
         spec.references_dir
@@ -537,7 +540,9 @@ def replay_query(
             _, events = analyze_run.load_run_spliced(run_dir)
             with _RENDER_LOCK:
                 analyze_run.render(
-                    report, events, spec.charts_dir / f"dashboard_{category.key}_v2.png"
+                    report,
+                    events,
+                    spec.charts_dir / f"dashboard_{run_dir.name}.png",
                 )
         except Exception as exc:
             log(f"  dashboard render skipped: {type(exc).__name__}: {exc}")

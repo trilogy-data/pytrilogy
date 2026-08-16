@@ -106,6 +106,7 @@ def _attrs(address: str, spec: dict) -> ConceptAttrs:
         rowset_name=spec.get("rowset_name"),
         aggregate_input_grain=frozenset(spec.get("aggregate_input_grain", ())),
         existence_only=spec.get("existence_only", False),
+        keys=frozenset(spec.get("keys", ())),
     )
 
 
@@ -746,6 +747,67 @@ class TestCanPreserveGrouping:
         cg, ce, ca = _cg({"flag": {"grain": set(), "derivation": Derivation.BASIC}})
         assert (
             can_preserve_grouping(cg, ce, ca, frozenset({"week_seq"}), "flag") is False
+        )
+
+    def test_empty_grain_with_determined_keys_rides_through(self):
+        """A keyed empty-grain column (a select-processing virtual bound to a
+        group key) is FD-determined by the grain: grouping by it is
+        cardinality-neutral, so it rides."""
+        cg, ce, ca = _cg(
+            {
+                "week_seq": {"grain": {"week_seq"}},
+                "virt": {
+                    "grain": set(),
+                    "keys": {"week_seq"},
+                    "derivation": Derivation.BASIC,
+                },
+            }
+        )
+        assert (
+            can_preserve_grouping(cg, ce, ca, frozenset({"week_seq"}), "virt") is True
+        )
+
+    def test_filter_virtual_declared_keys_do_not_ride(self):
+        """q16 shape: an empty-grain FILTER virtual declares keys={content key}
+        but renders CASE WHEN pred THEN content END, so its value varies with
+        the predicate input `receipt`, which the grain does not determine.
+        The declared-keys FD must not admit it."""
+        cg, ce, ca = _cg(
+            {
+                "order.id": {"grain": {"order.id"}},
+                "receipt": {"grain": {"line.id"}},
+                "_virt_filter": {
+                    "grain": set(),
+                    "keys": {"order.id"},
+                    "derivation": Derivation.FILTER,
+                    "parents": ["order.id", "receipt"],
+                },
+            }
+        )
+        assert (
+            can_preserve_grouping(cg, ce, ca, frozenset({"order.id"}), "_virt_filter")
+            is False
+        )
+
+    def test_filter_virtual_rides_when_all_inputs_determined(self):
+        """The same FILTER virtual rides once every lineage input (content and
+        predicate columns) is determined by the grain: the CASE is then fully
+        determined per group."""
+        cg, ce, ca = _cg(
+            {
+                "order.id": {"grain": {"order.id"}},
+                "order.status": {"grain": {"order.id"}},
+                "_virt_filter": {
+                    "grain": set(),
+                    "keys": {"order.id"},
+                    "derivation": Derivation.FILTER,
+                    "parents": ["order.id", "order.status"],
+                },
+            }
+        )
+        assert (
+            can_preserve_grouping(cg, ce, ca, frozenset({"order.id"}), "_virt_filter")
+            is True
         )
 
     def test_non_subset_grain_with_non_key_parents_blocked(self):

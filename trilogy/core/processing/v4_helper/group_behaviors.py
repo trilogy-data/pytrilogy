@@ -234,6 +234,9 @@ def can_preserve_grouping(
     node = _attrs_for_address(concept_attrs, address)
     if node is None:
         return False
+    # Nothing is proven through an empty-grain FILTER virtual's keys — the
+    # closure itself enforces that (`ConceptAttrs.keys_are_conditional_fd`), so
+    # such a virtual reaches the lineage-parents rule below instead.
     closure = concept_attr_fd_closure(
         concept_attrs, native_grain, include_empty_grain=False
     )

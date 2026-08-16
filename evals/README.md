@@ -68,6 +68,102 @@ the environment). Useful flags:
 | `--env-file` | `.env.secrets` | file providing the API key |
 | `--monitor` | `feed` | live monitoring mode (see below) |
 
+### Viewer UI
+
+```bash
+python evals/trajectory_viewer.py --serve 8080     # http://127.0.0.1:8080/viewer.html
+```
+
+Three screens, all suites in one server:
+
+- **Runs** — the trajectory of every question in a run: tool calls, token cost,
+  canonical-vs-agent query compare, plus Replay (one question) and Rerun-all
+  (fork the run and redo it).
+- **All evals summary** — latest pass rate per suite and variant, with trend.
+- **Launch runs** — build a `run_eval.py` invocation (eval, categories,
+  questions, model, scale factor, concurrency) and start it. The exact command
+  is shown before you launch it; the run streams its output into the page and
+  links its result dirs once they have trajectories. One run executes at a
+  time, so several combinations can be queued in one sitting.
+
+Without `--serve` the page is a static snapshot of one run dir (no pickers,
+replay, or launching).
+
+### Viewer UI
+
+```bash
+python evals/trajectory_viewer.py --serve 8080     # http://127.0.0.1:8080/viewer.html
+```
+
+Three pages behind the left ribbon, all suites in one server:
+
+- **Evals** - latest pass rate per suite and variant, with trend. Click a run to
+  debug it.
+- **Launch** - build a `run_eval.py` invocation (eval, categories, questions,
+  model, scale factor, concurrency) and start it. The exact command is shown
+  before you launch it; the run streams its output into the page and links its
+  result dirs. One run executes at a time, so several combinations can be
+  queued in one sitting.
+- **Debug** - a question-by-run grid: one row per run (newest first), one cell
+  per question, plus a pass-rate strip, so a red column is a problem question
+  and a red row is a bad run. Filter by category/model, cap the rows, or show
+  only questions that fail somewhere. Click a cell for that trajectory, a run
+  name to open the run. The drilldown has the question list, the trajectory
+  with per-tool token cost, the canonical-vs-agent query compare, and
+  Replay / Rerun-all / Archive.
+
+Reads are lazy and cached per request: the grid reads `report.json` only
+(~30ms for 94 runs), a question's log is parsed when you open it (~40ms), and
+the SQL render happens only when you open the compare panel (~0.2s, plus a
+one-off engine boot). Anything slower than that reports progress rather than
+blocking on a blank page.
+
+### History outlives the run dirs
+
+Run dirs are enormous (TPC-DS results here run to hundreds of GB) and get
+reclaimed; `evals/eval_history.db` is a few KB per run and doesn't. Building the
+grid syncs every changed run dir into it, so **the grid spans both what is on
+disk and everything ever archived** - a cleaned-up run keeps its row, its
+per-question results, and the query the agent wrote. What cleanup does take away
+is the turn-by-turn trajectory.
+
+- Archived-only rows are italic/dimmed in the grid; "on disk only" filters them
+  out, and the drilldown says plainly what was reclaimed.
+- Every run publishes at the end (`run_eval.py`), and the viewer picks up
+  anything else it finds. Runs whose numbers are curated (a `--query-ids` rerun
+  that spliced older results in, or a run with offline replays) are stored with
+  `curated = 1`: they show in the grid but stay out of the summary's trend.
+- It is sqlite, not duckdb, because an eval run writes to it while the viewer
+  holds it open and duckdb takes a single-writer lock on its file. To query it
+  analytically: `INSTALL sqlite; ATTACH 'evals/eval_history.db' AS h (TYPE sqlite);`
+### Reclaiming disk
+
+Run dirs are ~99.9% regenerable byproduct. A measured TPC-DS tree: 435 GB of
+DuckDB temp spill, 151 GB of per-run database copies, and **0.7 GB of agent
+logs** - the only part that is evidence. So sweep the byproduct first:
+
+```bash
+python evals/clean_results.py --spill                          # dead temp files, loses nothing
+python evals/clean_results.py --db-copies --older-than 7       # re-copied from .cache next run
+python evals/clean_results.py --runs --older-than 2            # archive, then delete whole run dirs
+```
+
+Runs now clean up their own spill as they go: each worker is purged the moment
+its agent exits, the run purges again at the end, and an `atexit` hook covers a
+crash or Ctrl-C. So `--spill` is mostly there for what a hard kill leaves behind
+(nothing runs on `taskkill`) and for runs from before this existed.
+
+Every mode dry-runs until you pass `--yes`, skips anything touched in the last
+`--skip-recent` hours (6 by default, so a run in flight is never disturbed), and
+covers all suites unless you pass `--eval`. `--db-copies` costs in-place Replay
+for the runs it touches; `--runs` costs the trajectories (results and the
+agent's final query survive in the history db). `tpcds_agent/clean_runs.py` is a
+deprecated shim that forwards to `--runs`.
+
+Without `--serve` the run is baked into `viewer.html` so the file reads offline
+on its own (tens of seconds to write, since every query is transpiled up front);
+there is no grid, summary or launching in that mode.
+
 ### Validating a single query (10x)
 
 A single `run_eval` result is noisy (LLM variance). To A/B a change, repeat one

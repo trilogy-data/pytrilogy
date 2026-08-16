@@ -2896,11 +2896,23 @@ class Factory:
             # side's derivation, exactly as the global-merge path resolves it.
             # Sub-factories inherit the already-augmented map, so skip the copy
             # when the links are present.
-            pending: list[tuple[str, str]] = []
+            # The links are the EQUIVALENCE CLASS of the group, not a star
+            # around the canonical: a chained relation (`a = b = c`) puts two
+            # non-canonical members one hop apart only THROUGH the canonical,
+            # and resolution walks pseudonym edges within the scope of a single
+            # side — where the canonical (a different side's column) is absent,
+            # so the members are unreachable from each other. Close the group.
+            groups: dict[str, set[str]] = defaultdict(set)
             for source in scoped_pseudonym_sources:
                 canonical_addr = self.scoped_merge_map[source]
-                if source not in self.pseudonym_map.get(canonical_addr, ()):
-                    pending.append((source, canonical_addr))
+                groups[canonical_addr].update((source, canonical_addr))
+            pending: list[tuple[str, str]] = [
+                (a, b)
+                for members in groups.values()
+                for a in sorted(members)
+                for b in sorted(members)
+                if a != b and b not in self.pseudonym_map.get(a, ())
+            ]
             if pending:
                 augmented = {k: set(v) for k, v in self.pseudonym_map.items()}
                 for source_addr, target_addr in pending:

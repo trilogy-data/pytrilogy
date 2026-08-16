@@ -255,6 +255,22 @@ def _aggregate_collapse_safe(cte: "CTE | UnionCTE", agg: BuildAggregateWrapper) 
     return not agg_by_abstract or cte.grain.abstract
 
 
+def _aggregate_over_collapsed_filter(
+    cte: "CTE | UnionCTE", agg: BuildAggregateWrapper
+) -> bool:
+    """True when this grouping CTE renders one of the aggregate's arguments with
+    the filter-collapse MAX wrap (render_concept_sql). The wrap already reduces
+    the group to the single grain-determined value the filter denotes, so
+    composing the real aggregate around it nests aggregates (q95
+    `count(max(CASE ...))`). The aggregate of that one value is its single-row
+    collapse formula instead: the same grain-match reduction used when a CTE is
+    already at the aggregate's grain, applied here because the collapse has
+    consumed the group."""
+    if not isinstance(cte, CTE):
+        return False
+    return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
+
+
 def _is_build_row_tuple(x: Any) -> bool:
     """True for a ROW_TUPLE operand of composite (row-wise) membership."""
     return isinstance(x, BuildFunction) and x.operator == FunctionType.ROW_TUPLE
@@ -1510,7 +1526,12 @@ class BaseDialect:
                     for v in c.lineage.function.arguments
                 ]
                 if cte.group_to_grain:
-                    rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
+                    if _aggregate_over_collapsed_filter(cte, c.lineage):
+                        rval = self.FUNCTION_GRAIN_MATCH_MAP[
+                            c.lineage.function.operator
+                        ](args, [])
+                    else:
+                        rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
                 elif _aggregate_collapse_safe(cte, c.lineage):
                     # at (or beyond) the aggregate's grain: agg(x) == x (the
                     # single-row collapse formula per operator).

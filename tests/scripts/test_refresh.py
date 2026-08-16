@@ -42,6 +42,13 @@ requires_rich = pytest.mark.skipif(
 )
 
 
+def _unwrapped(output: str) -> str:
+    """CLI text rendered through rich is word-wrapped to the console width, so a
+    phrase asserted verbatim can arrive split across a line break. Collapse the
+    whitespace so these assertions read content rather than layout."""
+    return " ".join(output.split())
+
+
 def _sample_watermarks() -> dict[str, DatasourceWatermark]:
     return {
         "orders": DatasourceWatermark(
@@ -1172,7 +1179,7 @@ class TestRefreshWithoutASourceOfTruth:
         result = CliRunner().invoke(cli, ["refresh", str(ws)])
 
         assert result.exit_code == 1, result.output
-        assert "no `root datasource`" in result.output
+        assert "no `root datasource`" in _unwrapped(result.output)
         # Actionable, not just a complaint.
         assert "--force" in result.output
 
@@ -1183,7 +1190,7 @@ class TestRefreshWithoutASourceOfTruth:
         result = CliRunner().invoke(cli, ["refresh", str(ws / "model.preql")])
 
         assert result.exit_code == 1, result.output
-        assert "no `root datasource`" in result.output
+        assert "no `root datasource`" in _unwrapped(result.output)
 
     def test_a_single_file_refresh_with_a_built_target_is_not_an_error(self, tmp_path):
         ws = _rootless_workspace(tmp_path)

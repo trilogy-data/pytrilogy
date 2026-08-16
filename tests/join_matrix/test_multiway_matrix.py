@@ -80,3 +80,57 @@ def test_three_way_derived_key(tmp_path: Path, join_type: str, form: str):
     rows = run_cell(_write(tmp_path), query)
     want = _oracle(join_type, form)
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"
+
+
+# Three-way chain over ROWSET sides — the q83 shape, pinning two defects the
+# derived-key cells above cannot reach (there the merge CTE never has to read
+# the merged key from all three parents):
+#
+# - HAVING cells: pseudonyms for a chained group were registered as a STAR
+#   around the union-find canonical, so two non-canonical members related only
+#   THROUGH the canonical — absent from the side being resolved, leaving the key
+#   unreachable and rendered as an INVALID_ALIAS sentinel / a wrong column name.
+# - no-HAVING cells: rule-B ∦ narrowing read a sibling out of the sup side's
+#   pseudonym closure and "proved" the sub side a subset of its own alias,
+#   narrowing FULL to RIGHT OUTER and silently dropping side-exclusive rows.
+ROWSET_HEAD = (
+    "import left_fact as a;\nimport right_fact as b;\nimport mid_fact as c;\n"
+    "rowset ra <- select a.l_key as k, sum(a.l_val) as v, count(a.l_id) as n;\n"
+    "rowset rb <- select b.r_key as k, sum(b.r_val) as v, count(b.r_id) as n;\n"
+    "rowset rc <- select c.m_key as k, sum(c.m_val) as v, count(c.m_id) as n;\n"
+)
+ROWSET_CHAIN = "union join ra.k = rb.k = rc.k\n"
+
+ROWSET_CELLS = {
+    "measures_only": "select ra.k as k, ra.v as av, rb.v as bv, rc.v as cv,\n",
+    "counts_only": "select ra.k as k, ra.n as an, rb.n as bn, rc.n as cn,\n",
+    "both": (
+        "select ra.k as k, ra.v as av, rb.v as bv, rc.v as cv,"
+        " ra.n as an, rb.n as bn, rc.n as cn,\n"
+    ),
+}
+
+
+def _counts(rows: list[tuple[int, int | None, int]]) -> dict:
+    out: dict = {}
+    for _, k, _v in rows:
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def _rowset_oracle(cell: str, having: bool) -> list[tuple]:
+    vals = [aggregate(r) for r in (LEFT_ROWS, RIGHT_ROWS, MID_ROWS)]
+    cnts = [_counts(r) for r in (LEFT_ROWS, RIGHT_ROWS, MID_ROWS)]
+    keys = set(vals[0]) & set(vals[1]) & set(vals[2]) if having else set().union(*vals)
+    picked = {"measures_only": vals, "counts_only": cnts, "both": vals + cnts}[cell]
+    return sort_rows([(k,) + tuple(m.get(k) for m in picked) for k in keys])
+
+
+@pytest.mark.parametrize("having", [False, True])
+@pytest.mark.parametrize("cell", sorted(ROWSET_CELLS))
+def test_three_way_chain_over_rowsets(tmp_path: Path, cell: str, having: bool):
+    query = ROWSET_HEAD + ROWSET_CELLS[cell] + ROWSET_CHAIN
+    query += "having ra.n > 0 and rb.n > 0 and rc.n > 0;" if having else ";"
+    rows = run_cell(_write(tmp_path), query)
+    want = _rowset_oracle(cell, having)
+    assert rows == want, f"{cell}/having={having}:\n{query}\ngot {rows}\nwant {want}"

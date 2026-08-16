@@ -32,13 +32,18 @@ def concept_attr_fd_closure(
         for attrs in concept_attrs.values():
             if attrs.address in closure:
                 continue
-            if not attrs.grain_components:
-                if include_empty_grain:
-                    closure.add(attrs.address)
-                    changed = True
+            if not attrs.grain_components and include_empty_grain:
+                closure.add(attrs.address)
+                changed = True
                 continue
-            if attrs.grain_components <= closure or (
-                bool(attrs.keys) and attrs.keys <= closure
+            # Declared keys are an FD even when the concept carries no grain,
+            # mirroring build_fd_closure — unless they only determine the value
+            # conditionally, which is not an FD at all (see
+            # `ConceptAttrs.keys_are_conditional_fd`).
+            if (attrs.grain_components and attrs.grain_components <= closure) or (
+                bool(attrs.keys)
+                and not attrs.keys_are_conditional_fd
+                and attrs.keys <= closure
             ):
                 closure.add(attrs.address)
                 changed = True
@@ -193,12 +198,13 @@ def build_fd_closure(
         for address, grain, keys in facts.rows:
             if address in closure:
                 continue
-            if not grain:
-                if include_empty_grain:
-                    closure.add(address)
-                    changed = True
+            if not grain and include_empty_grain:
+                closure.add(address)
+                changed = True
                 continue
-            if grain <= closure or (bool(keys) and keys <= closure):
+            # Declared keys are an FD even when the concept carries no grain
+            # (q28 filter virtuals: keys={lp_avg}, empty grain).
+            if (bool(grain) and grain <= closure) or (bool(keys) and keys <= closure):
                 closure.add(address)
                 changed = True
     result = frozenset(closure)

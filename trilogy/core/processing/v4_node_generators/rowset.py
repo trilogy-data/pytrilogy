@@ -193,23 +193,40 @@ def resolve_rowset(
     # LEFT add, not be inner-joined away). A filtered rowset stays a separate
     # outer-added contributor.
     #
-    # Plain ROW-projection rowsets only: an AGGREGATE rowset's grain is its
-    # grouping key, which the producer renames to the handle (`dept_totals` groups
-    # by `dept` and renders it as `_dept_totals_department`), so the raw grain key
-    # isn't a separately renderable column — exposing it makes assembly demand a
-    # `local.dept` no CTE projects (query-structure syntax example). A plain
-    # projection's grain key (`id`) IS a passthrough column, safe to expose.
+    # An AGGREGATE rowset whose grain key is RENAMED into a handle (`dept_totals`
+    # groups by `dept as department`) renders only the handle, so the raw
+    # `local.dept` is not in `produced` and the gate below skips it — exposing it
+    # anyway made assembly demand a column no CTE projects (query-structure
+    # syntax example). A grain key the inner producer DOES render (a bare
+    # `grp_key` beside `count(x) -> total`, or a plain projection's passthrough
+    # `id`) is safe and necessary: without it two sibling rowsets at the same
+    # base grain have no exposable join key and the FINAL merge cross-joins
+    # ON 1=1 (alias-collision aggregates: 2 rows -> 2x2 cartesian).
+    #
+    # A key an EXPOSED handle already covers is not re-exposed under its raw
+    # address. The handle is the rowset's own column for that key; adding the
+    # base address beside it publishes a second name for the same value, and two
+    # sibling rowsets over one base then appear to share a join axis they do not
+    # own. That silently outranks an authored scoped join on a derived key
+    # (`agg.period + 53 = fut.period`), which re-typed the relation from a
+    # subset LEFT to a FULL join.
     if (
         isinstance(built, BuildSelectLineage)
         and built.where_clause is None
         and built.having_clause is None
-        and not any(
-            o.derivation == Derivation.AGGREGATE for o in built.output_components
-        )
     ):
         handle_addrs = {h.address for h in handles}
+        handle_contents = {
+            h.lineage.content.address
+            for h in handles
+            if isinstance(h.lineage, BuildRowsetItem)
+        }
         for key_addr in built.grain.components:
-            if key_addr in produced and key_addr not in handle_addrs:
+            if (
+                key_addr in produced
+                and key_addr not in handle_addrs
+                and key_addr not in handle_contents
+            ):
                 key_concept = produced[key_addr]
                 handles.append(key_concept)
                 inputs.append(key_concept)

@@ -8,14 +8,26 @@ if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import AggregateGroupingMode, JoinType, Modifier, SourceType
+from trilogy.core.enums import (
+    AggregateGroupingMode,
+    Granularity,
+    JoinType,
+    Modifier,
+    Purpose,
+    SourceType,
+)
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildRowsetItem,
     get_grouped_aggregate_wrapper,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import (
+    BuildEnvironment,
+    resolve_rowset_content_address,
+)
 from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
@@ -690,6 +702,164 @@ def build_canonical_address_map(
     return canonical
 
 
+def _row_independent(ds: DataSource) -> bool:
+    """True when cross-joining this source cannot fan out row counts: no
+    grain, an authored literal fan-out, or every column it exposes is
+    single-row (the `utility.calculate_graph_relevance` rule: a single-row
+    concept can always be crossjoined)."""
+    if not ds.grain.components:
+        return True
+    # An UNNEST source here is the standalone literal flavor (`unnest([1,2,3])
+    # as value` beside an unrelated scan): its fan-out is authored by the
+    # query, not a lost join key. A row-correlated unnest rides an UnnestJoin,
+    # never a keyless BaseJoin.
+    if isinstance(ds, QueryDatasource) and ds.source_type == SourceType.UNNEST:
+        return True
+    outputs = ds.output_concepts
+    if bool(outputs) and all(c.granularity == Granularity.SINGLE_ROW for c in outputs):
+        return True
+    # A global-aggregate scalar carries a SELF-grain (grain = the metric
+    # itself) rather than an empty grain; with no keys there is no row axis to
+    # pair on and the cross join is the plan (the `calculate_graph_relevance`
+    # metric rule). A KEYED metric is a per-group aggregate whose self-grain is
+    # just a mislabel — it has a real axis, so it stays subject to the guard.
+    output_by_addr = {c.address: c for c in outputs}
+    return all(
+        (c := output_by_addr.get(component)) is not None
+        and c.purpose == Purpose.METRIC
+        and not c.keys
+        for component in ds.grain.components
+    )
+
+
+def _raise_if_keyless_row_bearing_join(
+    joins: list[JoinOrderOutput],
+    ds_node_map: dict[str, DataSource],
+    canonical: dict[str, str],
+    rollup_padded_addresses: frozenset[str],
+    environment: BuildEnvironment | None,
+) -> None:
+    """A keyless join between row-bearing sources is a planner bug exactly
+    when the sides SHARE a join axis the planner failed to use. The axis test
+    is FD-aware: one side's addresses (grain components and outputs, hidden
+    included — hidden is how the axis gets lost) closed over concept ``keys``,
+    pseudonyms and rowset content, intersected with the other side's direct
+    addresses, after canonicalization. q30's group parents
+    projected `review_date` (keys={customer_sk}) at self-grain beside a scan
+    carrying `customer_sk` — the FD key existed and was dropped, a 5.7B-row
+    cross product. Axis-DISJOINT row-bearing sides cross-join legitimately
+    (selecting an aggregate without its grouping key is an authored fan-out:
+    `by_item` at grain {iid} beside `sid` shares no carried address), as does
+    a row-independent side (constant / global-aggregate scalar). ROLLUP-padded
+    keys are excluded — subtotal rows NULL them, so consumers deliberately
+    avoid joining on them.
+
+    Hard failure by design: no known valid query trips it (verified across the
+    full suite and the 141-query tpc-ds/tpc-h corpus, 10 of which legitimately
+    render `ON 1=1`). Silently shipping the cartesian is the worse outcome —
+    wrong results plus an unbounded fan-out. If this fires, the fix belongs
+    upstream in the demand/contract passes that let the axis go missing, not
+    in relaxing the check."""
+
+    # Both axis views are pure functions of the node, and every keyless join
+    # re-asks them for the same already-joined sources; memoize so the guard
+    # stays proportional to the tree rather than to joins x tree.
+    direct_cache: dict[str, frozenset[str]] = {}
+    closure_cache: dict[str, frozenset[str]] = {}
+    independent_cache: dict[str, bool] = {}
+
+    def _canon(addr: str) -> str:
+        content = resolve_rowset_content_address(addr, environment)
+        return canonical.get(content, content)
+
+    def row_independent(node: str) -> bool:
+        if node not in independent_cache:
+            independent_cache[node] = _row_independent(ds_node_map[node])
+        return independent_cache[node]
+
+    def direct_axis(node: str) -> frozenset[str]:
+        """Addresses this source can actually be JOINED ON: the columns it
+        projects. Hidden outputs count — they are rendered, just masked, which
+        is exactly how q30 lost its axis. A grain component the source never
+        emits does NOT count: you cannot join on a column that isn't there
+        (a merge at grain {name, value} projecting only {value, dim} has no
+        `name` to pair with)."""
+        if node in direct_cache:
+            return direct_cache[node]
+        ds = ds_node_map[node]
+        addrs: set[str] = set()
+        for concept in ds.output_concepts:
+            addrs.add(concept.address)
+            # Pseudonyms are same-value addresses (an alias output IS its
+            # source column) — the axis a sibling renders under the original
+            # name.
+            addrs.update(concept.pseudonyms)
+        result = frozenset({_canon(a) for a in addrs}) - rollup_padded_addresses
+        direct_cache[node] = result
+        return result
+
+    def key_closure(node: str) -> frozenset[str]:
+        """Direct axis plus everything reachable through concept ``keys``,
+        pseudonyms, and rowset content, to fixpoint: the addresses whose rows
+        FD-determine this source's PROJECTED values. A rename chain hides its
+        key several environment hops deep (`b_cust` -> `buyers_b.cust_id` ->
+        `_buyers_b_cust_id` -> keys {ship_id} -> keys {id}). Seeded from
+        outputs only, for the same reason as `direct_axis`."""
+        if node in closure_cache:
+            return closure_cache[node]
+        ds = ds_node_map[node]
+        frontier: set[str] = set()
+        for concept in ds.output_concepts:
+            frontier.add(concept.address)
+            frontier.update(concept.pseudonyms)
+            frontier.update(concept.keys or set())
+        closure: set[str] = set()
+        while frontier:
+            addr = frontier.pop()
+            if addr in closure:
+                continue
+            closure.add(addr)
+            if environment is None:
+                continue
+            concept_ref = environment.concepts.get(
+                addr
+            ) or environment.alias_origin_lookup.get(addr)
+            if concept_ref is None:
+                continue
+            frontier.update(concept_ref.keys or set())
+            frontier.update(concept_ref.pseudonyms)
+            if isinstance(concept_ref.lineage, BuildRowsetItem):
+                frontier.add(concept_ref.lineage.content.address)
+        result = frozenset({_canon(a) for a in closure}) - rollup_padded_addresses
+        closure_cache[node] = result
+        return result
+
+    tree: set[str] = set()
+    for j in joins:
+        if j.left is not None:
+            tree.add(j.left)
+        tree.update(j.lefts)
+        if not j.keys and not row_independent(j.right):
+            right_direct = direct_axis(j.right)
+            right_closure = key_closure(j.right)
+            offenders = sorted(
+                d
+                for d in tree
+                if not row_independent(d)
+                and (right_closure & direct_axis(d) or right_direct & key_closure(d))
+            )
+            if offenders:
+                raise UnresolvableQueryException(
+                    "Planner emitted a keyless join between row-bearing sources "
+                    "that share a join axis: "
+                    f"{ds_node_map[j.right].identifier} onto "
+                    f"{', '.join(ds_node_map[d].identifier for d in offenders)}. "
+                    "This would render as a cross join (ON 1=1) and fan out; "
+                    "the join axis was lost upstream. This is a planner bug."
+                )
+        tree.add(j.right)
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -788,6 +958,17 @@ def get_node_joins(
         anchor_key_nodes=anchor_key_nodes,
         authored_key_nodes=authored_key_nodes,
         rollup_padded=rollup_padded,
+    )
+    _raise_if_keyless_row_bearing_join(
+        joins,
+        ds_node_map,
+        canonical,
+        frozenset(
+            node.removeprefix("c~")
+            for nodes in rollup_padded.values()
+            for node in nodes
+        ),
+        environment,
     )
     return [
         BaseJoin(

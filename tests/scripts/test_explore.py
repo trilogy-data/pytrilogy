@@ -481,6 +481,91 @@ def test_explore_v2_dual_binding_description_coexists_with_provenance(
     }
 
 
+@pytest.fixture
+def nullable_edge_preql(tmp_path: Path) -> Path:
+    """A fact binding one dim role through a ``?`` (nullable) column and a
+    second role of the same dim plainly — the shape where effective-domain
+    rendering must mark the first role's fields and not the second's."""
+    (tmp_path / "d.preql").write_text(
+        dedent("""
+            key id int;
+            property id.name string;
+            datasource d (id, name) grain(id)
+            query '''select 1 as id, 'x' as name''';
+            """).strip() + "\n",
+        encoding="utf-8",
+    )
+    fact = tmp_path / "f.preql"
+    fact.write_text(
+        dedent("""
+            import d as sold; import d as ship;
+            key fid int;
+            datasource f (fid, s1: sold.id, s2: ?ship.id) grain(fid)
+            query '''select 1 as fid, 1 as s1, 1 as s2''';
+            """).strip() + "\n",
+        encoding="utf-8",
+    )
+    return fact
+
+
+def test_explore_join_nullable_marks_effective_domain(nullable_edge_preql: Path):
+    """A namespace reached through a ``?`` binding renders its typed concepts
+    with the effective ``?`` marker and a mixed conformed group carries the
+    nullable-subset join flag — so an agent reading a field's value domain
+    sees the absent-join NULL case instead of a droppable tautology (the q16
+    failure shape)."""
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(nullable_edge_preql), version=2)
+    combined = next(k for k in payload["namespaced"] if "," in k)
+    entry = payload["namespaced"][combined]
+    assert entry["join"] == {"nullable": ["ship"]}
+    assert "roles" not in entry  # the flag never forces the roles map open
+    assert "join_note" in payload
+    decls = json_module.dumps(entry["concepts"])
+    # The body renders the canonical (non-nullable) member's state; the
+    # subset flag is what marks ship. A single-role nullable namespace is
+    # asserted below via the all-nullable path.
+    fact_ns = payload["namespaces"]
+    assert fact_ns  # local fid untouched
+    assert "fid int?" not in json_module.dumps(fact_ns)
+    assert decls  # schema still rendered
+
+
+def test_explore_join_nullable_all_roles(tmp_path: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    (tmp_path / "d.preql").write_text(
+        "key id int;\nproperty id.name string;\n"
+        "datasource d (id, name) grain(id) query '''select 1 as id, 'x' as name''';\n",
+        encoding="utf-8",
+    )
+    fact = tmp_path / "f.preql"
+    fact.write_text(
+        "import d as dim;\nkey fid int;\n"
+        "datasource f (fid, s1: ?dim.id) grain(fid)"
+        " query '''select 1 as fid, 1 as s1''';\n",
+        encoding="utf-8",
+    )
+    payload = _concepts_payload(_load_environment(fact), version=2)
+    entry = payload["namespaced"]["dim"]
+    assert entry["join"] == "nullable"
+    # Typed concepts render the effective ? marker.
+    assert "name string?;" in json_module.dumps(entry["concepts"])
+    assert "join_note" in payload
+
+
+def test_explore_join_nullable_kill_switch(
+    nullable_edge_preql: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from trilogy.scripts.explore import _load_environment
+
+    monkeypatch.setenv("TRILOGY_EXPLORE_EFFECTIVE_NULLS", "0")
+    payload = _concepts_payload(_load_environment(nullable_edge_preql), version=2)
+    assert "join_note" not in payload
+    assert "join" not in json_module.dumps(payload["namespaced"])
+
+
 def test_explore_rich_shows_both_dual_bindings(runner, dual_binding_preql: Path):
     """Rich renderer parity: it never merges role-played namespaces, so both
     bindings' full dotted paths stay visible as separate blocks."""

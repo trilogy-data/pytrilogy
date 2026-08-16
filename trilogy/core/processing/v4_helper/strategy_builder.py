@@ -2732,19 +2732,38 @@ def _wrap_for_grain(
         # the merge grain instead, keeping the join key. `from_concepts` folds
         # the FK key hierarchy, so reducing the concept grain together with the
         # merge grain collapses to just the merge grain iff it's determined by
-        # it (transitively, e.g. nation.id -> customer.id).
-        concept_keys = frozenset(concept.keys or set())
+        # it (transitively, e.g. nation.id -> customer.id). Only the part of
+        # the merge grain this parent can SUPPLY participates: a parent that
+        # carries `customer_sk` but not the sibling aggregate's `state` still
+        # projects its FD dims at {customer_sk} — demanding the full axis here
+        # (q30) shattered the scan into self-grain buckets with no join key.
+        #
+        # With no merge grain to supply (a pure projection: no aggregate, no
+        # rowset, so `_final_merge_grain` has nothing to declare) fall back to
+        # the parent's own grain, then to the concept's own keys. A dimension
+        # this parent's rows determine must ride that identity rather than
+        # dedup to its own key-grain: `city`/`usbos_source` (both keys={tree_id})
+        # bound by one grain(tree_id) source otherwise became two keyless
+        # GroupNodes and the merge paired every tree with every enum value
+        # (boston_multi_enum).
+        axis = (merge_grain_components or parent_grain_components) & parent_outputs
+        if not axis:
+            axis = frozenset(concept.keys or ()) & parent_outputs
         if (
-            merge_grain_components
-            and grain_components.isdisjoint(merge_grain_components)
-            and concept_keys
-            and BuildGrain.from_concepts(
-                grain_components | merge_grain_components, environment=environment
-            ).components
-            <= merge_grain_components
-            and merge_grain_components <= parent_outputs
+            axis
+            and grain_components.isdisjoint(axis)
+            # The concept-map FD closure is the authority on "is this
+            # determined by that": it walks grain, keys and equivalence
+            # classes transitively (nation.id -> customer.id), which neither a
+            # raw `keys` subset test nor `BuildGrain.from_concepts` does on its
+            # own — `from_concepts` folds the property hierarchy only, so an
+            # enum declared `key city` that a source binds at grain(tree_id)
+            # never folds into it.
+            and build_fd_determines(
+                environment, axis, concept.address, include_empty_grain=False
+            )
         ):
-            grain_components = merge_grain_components
+            grain_components = axis
         by_grain[grain_components].append(concept)
 
     wraps: list[StrategyNode] = []
@@ -3461,7 +3480,7 @@ def _assemble_final_node(
             # hidden cross-join input via `_filter_arg_parents`) is untouched.
             bucket_members = _members_of(attrs, gid)
             seen_group_addrs = {c.address for c in group_concepts}
-            group_concepts.extend(
+            filter_only_concepts = [
                 c
                 for address in sorted(
                     arg.address
@@ -3471,7 +3490,8 @@ def _assemble_final_node(
                 )
                 if address not in seen_group_addrs
                 and (c := _concept_at(environment, address)) is not None
-            )
+            ]
+            group_concepts.extend(filter_only_concepts)
             root_conditions = _wrap_atoms(
                 _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
             )
@@ -3487,10 +3507,20 @@ def _assemble_final_node(
             )
             if fresh is not None:
                 node = fresh
+            # The filter-only args above exist so the scan can SOURCE and APPLY
+            # the WHERE; they are not columns the merge consumes. Bucketing them
+            # by natural grain shatters off a GroupNode at the filter's own grain
+            # (`date_dim.date` -> {date_sk}) that projects nothing anyone reads,
+            # and it shares no key with the real projection, so the merge
+            # cross-joins it ON 1=1. The condition is already applied inside
+            # `node`, so dropping them here loses nothing.
+            merge_concepts = [
+                c for c in group_concepts if c not in filter_only_concepts
+            ]
             parents.extend(
                 _wrap_for_grain(
                     node,
-                    group_concepts,
+                    merge_concepts,
                     environment,
                     projection_grain,
                     dedup_orthogonal=grouping_sibling,

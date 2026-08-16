@@ -53,6 +53,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 )
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
+from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
     build_source_network,
@@ -1557,6 +1558,27 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
         return None
     if not _lineage_connected(request.graph, request.outputs):
         return None
+    # Lineage-connected is not enough to license a CROSS PRODUCT. The shape this
+    # exists for (`sum(samt) + sum(wamt)`) relates two components only through a
+    # derived expression: neither side's rows are identified by the other, so
+    # each collapses to a scalar and the cross join is the answer. When one
+    # component's concepts are FD-determined by another's, the components have a
+    # real key relationship and a JOIN on it is mandatory: crossing them
+    # multiplies rows instead (a PERSIST of `split` alone drops the `scalar` it
+    # is keyed by, and `select split, scalar` then paired every split with every
+    # scalar). Refuse, so the caller reports a disconnect rather than silently
+    # returning a cartesian.
+    component_addresses = [
+        frozenset(concept.address for concept in members)
+        for members in grouped.values()
+    ]
+    for index, addresses in enumerate(component_addresses):
+        closure = build_fd_closure(
+            request.environment, addresses, include_empty_grain=False
+        )
+        for other_index, other in enumerate(component_addresses):
+            if other_index != index and closure & other:
+                return None
     parents: list[StrategyNode] = []
     for index in sorted(grouped):
         component = plan_source(

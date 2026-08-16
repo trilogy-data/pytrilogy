@@ -90,6 +90,7 @@ def build_report(
             "benchmark": spec.name,
             "model": args.model,
             "provider": args.provider,
+            "reasoning_effort": getattr(args, "reasoning_effort", None),
             "scale_factor": args.scale_factor,
             "num_queries": total,
             "max_iterations": args.max_iterations,

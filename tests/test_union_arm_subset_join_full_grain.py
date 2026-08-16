@@ -171,8 +171,27 @@ with combined as union(
 ) -> (eid, ret);
 select combined.eid, sum(combined.ret) as total;
 """
+    assert " on 1=1" not in executor.generate_sql(query)[-1].lower()
     rows = sorted(tuple(r) for r in executor.execute_query(query).fetchall())
     assert rows == [(10, 2.0), (11, 0.0)]
+
+
+def test_arm_filter_arg_is_not_a_merge_contributor(executor: Executor) -> None:
+    """The arm's date filter is applied inside the shared parent; it must not
+    also be bucketed to its own grain as a contributor that projects nothing.
+    That contributor shared no key with the arm's projection, so the merge
+    cross-joined it (rows stayed correct only because a GROUP BY above
+    collapsed the fan-out)."""
+    query = """
+import sales as ws;
+import returns as wr;
+
+where wr.date_dim.date between '2000-01-01'::date and '2000-12-31'::date
+select wr.order_number, coalesce(sum(wr.return_amt), 0.0) as ret;
+"""
+    assert " on 1=1" not in executor.generate_sql(query)[-1].lower()
+    rows = sorted(tuple(r) for r in executor.execute_query(query).fetchall())
+    assert rows == [(10, 2.0)]
 
 
 def test_standalone_arm_control(executor: Executor) -> None:
