@@ -160,6 +160,17 @@ def quote_column_alias(alias: str) -> str:
     return f"`{alias}`"
 
 
+# The grammar's ``FILE_PATH`` token (see trilogy.lark); a target outside it — a
+# shell script, a compiled binary — only parses back as a string literal.
+_FILE_PATH = re.compile(r"[^`]+\.(py|csv|json|parquet|tsv|sql)", re.IGNORECASE)
+
+
+def render_script_target(target: str) -> str:
+    if _FILE_PATH.fullmatch(target):
+        return f"`{target}`"
+    return f"'{target}'"
+
+
 DEFAULT_MAX_LINE_LENGTH = 100
 
 # FunctionType.value isn't always a keyword the parser accepts; map those to
@@ -1191,9 +1202,10 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: CallStatement):
+        target = render_script_target(arg.target)
         if arg.select is not None:
-            return f"call `{arg.target}` from {self.to_string(arg.select)}"
-        return f"call `{arg.target}`;"
+            return f"call {target} from {self.to_string(arg.select)}"
+        return f"call {target};"
 
     @to_string.register
     def _(self, arg: AlignClause):

@@ -566,6 +566,11 @@ class CallStatement:
     meta: Metadata | None = field(default_factory=Metadata)
 
 
+def call_arg_name(address: str) -> str:
+    """The ``--flag`` name a call select output supplies (validated at parse)."""
+    return address.rsplit(".", 1)[-1]
+
+
 @dataclass
 class MultiSelectStatement(HasUUID, SelectTypeMixin):
     selects: list[SelectStatement]

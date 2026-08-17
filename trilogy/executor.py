@@ -55,6 +55,7 @@ from trilogy.core.statements.author import (
     TypeDeclaration,
     ValidateNaturalStatement,
     ValidateStatement,
+    call_arg_name,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
@@ -927,7 +928,7 @@ class Executor:
                     f"{len(row)} columns for {len(visible)} visible outputs"
                 )
             for ref, value in zip(visible, row):
-                arg_pairs.append((ref.address.rsplit(".", 1)[-1], value))
+                arg_pairs.append((call_arg_name(ref.address), value))
         command = build_script_command(self._resolve_copy_target(query.target))
         for name, value in arg_pairs:
             serialized = serialize_call_arg(value)
@@ -1026,6 +1027,7 @@ class Executor:
     # Already-processed statements: compiling is all that's left.
     @generate_sql.register(ProcessedQuery)
     @generate_sql.register(ProcessedCopyStatement)
+    @generate_sql.register(ProcessedCallStatement)
     @generate_sql.register(ProcessedCreateStatement)
     @generate_sql.register(ProcessedPublishStatement)
     def _(
@@ -1033,6 +1035,7 @@ class Executor:
         command: (
             ProcessedQuery
             | ProcessedCopyStatement
+            | ProcessedCallStatement
             | ProcessedCreateStatement
             | ProcessedPublishStatement
         ),

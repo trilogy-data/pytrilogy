@@ -117,11 +117,22 @@ def test_call_fmt_round_trip_bare():
     assert rendered == rendered2
 
 
+def test_call_fmt_round_trip_string_target():
+    exec = Dialects.DUCK_DB.default_executor()
+    _, statements = exec.environment.parse("call './send_report.sh';")
+    rendered = Renderer(environment=exec.environment).to_string(statements[-1])
+    assert rendered == "call './send_report.sh';"
+    exec2 = Dialects.DUCK_DB.default_executor()
+    _, statements2 = exec2.environment.parse(rendered)
+    assert statements2[-1].target == "./send_report.sh"
+
+
 def test_call_compile_is_comment_sql():
     exec = Dialects.DUCK_DB.default_executor()
     results = exec.parse_text("call `./notify.py`;")
     sql = exec.generator.compile_statement(results[0])
     assert sql.startswith("--Trilogy call statements")
+    assert exec.generate_sql(results[0]) == [sql]
 
 
 def test_serialize_call_arg():

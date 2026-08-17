@@ -21,6 +21,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ValidateNaturalStatement,
     ValidateStatement,
+    call_arg_name,
 )
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
@@ -402,7 +403,7 @@ def call_statement(
         for ref in select.output_components:
             if ref.address in select.hidden_components:
                 continue
-            name = ref.address.rsplit(".", 1)[-1]
+            name = call_arg_name(ref.address)
             if not _CALL_ARG_NAME.fullmatch(name):
                 raise fail(
                     node,

@@ -373,7 +373,7 @@ def _probe_root_max_values(
     concept_addresses: list[str],
     executor: Executor,
     root_assets: set[str],
-) -> list | None:
+) -> list[Any] | None:
     """One root-only MAX probe statement; None when planning fails.
 
     Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`)."""
