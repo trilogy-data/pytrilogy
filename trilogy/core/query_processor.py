@@ -1281,17 +1281,32 @@ def process_call(
     return ProcessedCallStatement(target=statement.target, query=query)
 
 
-def _binding_safe_address(binding, environment: Environment) -> str:
+def _binding_safe_address(
+    binding, environment: Environment, output_fields: set[str]
+) -> str:
+    """The select-output field a binding names.
+
+    An `as` alias resolves to a projected output of that name when one exists;
+    otherwise it is a display label only and the bound concept itself is the
+    field. Computed expressions have no address, so they require a projected
+    alias."""
     from trilogy.core.models.author import compute_safe_address
 
     if binding.alias is not None:
         namespace = environment.namespace or DEFAULT_NAMESPACE
-        return compute_safe_address(namespace, binding.alias)
+        alias_safe = compute_safe_address(namespace, binding.alias)
+        if alias_safe in output_fields:
+            return alias_safe
     if isinstance(binding.expr, ConceptRef):
         return binding.expr.safe_address
+    if binding.alias is None:
+        raise ValueError(
+            f"Chart binding for role '{binding.role}' has a computed expression"
+            " without an alias"
+        )
     raise ValueError(
-        f"Chart binding for role '{binding.role}' has a computed expression"
-        " without an alias"
+        f"Chart role '{binding.role}' aliases '{binding.alias}' but no select"
+        f" output has that name: {output_fields}"
     )
 
 
@@ -1306,14 +1321,17 @@ def _process_chart_layer(
     output_fields = {c.safe_address for c in layer.select.output_components}
 
     role_map: dict[str, str] = {}
+    field_labels: dict[str, str] = {}
     for binding in layer.bindings:
-        safe = _binding_safe_address(binding, environment)
+        safe = _binding_safe_address(binding, environment, output_fields)
         if safe not in output_fields:
             raise ValueError(
                 f"Chart role '{binding.role}' resolves to '{safe}' which is"
                 f" not in select output: {output_fields}"
             )
         role_map[binding.role] = safe
+        if binding.alias is not None:
+            field_labels[safe] = binding.alias
 
     def _single(role: str) -> str | None:
         return role_map.get(role)
@@ -1323,6 +1341,7 @@ def _process_chart_layer(
     return ProcessedChartLayer(
         layer_type=layer.layer_type,
         query=select,
+        field_labels=field_labels,
         x_fields=[x_field] if x_field else [],
         y_fields=[y_field] if y_field else [],
         color_field=_single("color"),

@@ -181,6 +181,9 @@ class ProcessedShowStatement:
 class ProcessedChartLayer:
     layer_type: "ChartType"
     query: ProcessedQuery | None = None
+    # display names for fields whose binding carried an `as` alias, keyed by
+    # the field's safe address; renderers fall back to the address itself
+    field_labels: dict[str, str] = field(default_factory=dict)
     x_fields: list[str] = field(default_factory=list)
     y_fields: list[str] = field(default_factory=list)
     color_field: str | None = None
