@@ -1926,68 +1926,6 @@ def _contains_shape_barrier(node: StrategyNode) -> bool:
     return any(_contains_shape_barrier(parent) for parent in node.parents)
 
 
-def _window_carry_path(
-    node: StrategyNode, address: str, seen: set[int] | None = None
-) -> list[StrategyNode] | None:
-    """Nodes to widen so `address` reaches `node`'s projection, or None.
-
-    The path ends at a window that READ `address` and did not emit it. A window
-    preserves rows, so projecting one of its own inputs beside its output cannot
-    change the row count — where re-deriving the value above the window would
-    have nothing to derive it from. Nodes in between are pass-throughs and are
-    widened with it; a grouping node is not one (widening it moves the group
-    grain), so a path through one is refused."""
-    seen = seen if seen is not None else set()
-    if id(node) in seen:
-        return None
-    seen.add(id(node))
-    if isinstance(node, WindowNode):
-        emitted = {concept.address for concept in node.output_concepts}
-        if address in emitted:
-            return None
-        if any(concept.address == address for concept in node.input_concepts):
-            return [node]
-        return None
-    if isinstance(node, GroupNode) or node.force_group:
-        return None
-    for parent in node.parents:
-        sub = _window_carry_path(parent, address, seen)
-        if sub is not None:
-            return [node] + sub
-    return None
-
-
-def _carry_window_inputs(outputs: list[BuildConcept], parents: list[StrategyNode]) -> bool:
-    """Recover an output whose lineage names a value a window consumed.
-
-    `satisfiable_outputs` measures an output against what the parents PROJECT,
-    so a derivation reading both a window's output and one of its inputs —
-    `date_diff(lag(event_time) over (...), event_time)` — was unsatisfiable and
-    dropped, silently shortening the projection (and, for a persist, shifting
-    every later column). Carrying the input through is the fix rather than
-    re-deriving it above, since above the window it no longer exists."""
-    available = {
-        concept.address for parent in parents for concept in parent.output_concepts
-    }
-    changed = False
-    for concept in outputs:
-        if concept_satisfiable(concept, available):
-            continue
-        for needed in _row_lineage_closure(concept):
-            if needed.address in available:
-                continue
-            for parent in parents:
-                path = _window_carry_path(parent, needed.address)
-                if path is None:
-                    continue
-                for target in reversed(path):
-                    widen_projection(target, [needed], input_candidates=[needed])
-                available.add(needed.address)
-                changed = True
-                break
-    return changed
-
-
 def _input_contract_projection_grain(
     group_attrs: GroupAttrs, parent_group_ids: set[str] | None = None
 ) -> frozenset[str]:
@@ -2081,6 +2019,15 @@ def _satisfy_parent_projection_contract(
     if not any(_contains_shape_barrier(parent) for parent in parents):
         return parents
 
+    # Two different questions, two different sets. "What is available TO this
+    # parent" is its own parents' outputs (`parent_output_addresses`) — that is
+    # what `parent_needed` asks, and a leaf scan's empty answer is what keeps
+    # leaf scans out of this projection entirely (q66). "What does a SIBLING
+    # supply to the merge" is that sibling's own projection: a WINDOW sibling
+    # READS `event_time` and emits only `lag(event_time)`, so crediting it with
+    # its inputs made this projection strip `event_time` off the dimension
+    # parent — and the consumer computing `event_time - prior_event_time` then
+    # had no source for it and was dropped from the plan outright.
     outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
     own_outputs_by_parent = [
         {output.address for output in parent.usable_outputs} for parent in parents

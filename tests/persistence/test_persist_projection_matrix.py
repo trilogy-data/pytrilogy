@@ -61,6 +61,7 @@ select 11, 2.5
 key item_id int;
 property item_id.created_at timestamp;
 property item_id.sale_price float;
+property item_id.list_price float?;
 property item_id.item_status string;
 
 auto revenue <- item_count * sale_price;
@@ -70,20 +71,29 @@ auto total_quantity <- sum(item_quantity);
 auto total_cost <- sum(product_cost * item_count);
 auto max_price <- max(sale_price);
 
+# A window over a DERIVED input, plus a value reading both the window's output
+# and that same input. `charged_price` exists only above the scan, so nothing
+# downstream of the window can re-derive it.
+auto charged_price <- coalesce(list_price, sale_price);
+auto prior_charged_price <- lag(charged_price, 1) over (partition by order_id order by item_id asc);
+auto price_gap <- charged_price - prior_charged_price;
+auto order_avg_gap <- avg(price_gap) by order_id;
+
 datasource order_items (
     id: item_id,
     order_id: order_id,
     product_id: ~product_id,
     created_at: created_at,
     sale_price: sale_price,
+    list_price: ?list_price,
     status: item_status,
 )
 grain (item_id)
 query '''
-select 1 as id, 1 as order_id, 10 as product_id, timestamp '2024-01-01' as created_at, 10.0 as sale_price, 'Complete' as status union all
-select 2, 1, 11, timestamp '2024-01-01', 5.0, 'Complete' union all
-select 3, 2, 10, timestamp '2024-01-02', 7.0, 'Shipped' union all
-select 4, 3, 11, timestamp '2024-01-03', 3.0, 'Complete'
+select 1 as id, 1 as order_id, 10 as product_id, timestamp '2024-01-01' as created_at, 10.0 as sale_price, 12.0 as list_price, 'Complete' as status union all
+select 2, 1, 11, timestamp '2024-01-01', 5.0, null, 'Complete' union all
+select 3, 2, 10, timestamp '2024-01-02', 7.0, 9.0, 'Shipped' union all
+select 4, 3, 11, timestamp '2024-01-03', 3.0, null, 'Complete'
 ''';
 """
 
@@ -176,6 +186,21 @@ CASES = [
             ("total_quantity", "total_quantity"),
         ),
         grain=("order_id", "created_at.date"),
+    ),
+    # A window's own input read beside its output, and an aggregate over the
+    # result. The window sibling consumes `charged_price` without emitting it,
+    # so the projection contract used to strip it off the dimension parent as
+    # already-supplied and the whole `price_gap` branch left the plan.
+    Case(
+        name="window_over_derived_input",
+        columns=(
+            ("item_id", "item_id"),
+            ("order_id", "order_id"),
+            ("item_status", "item_status"),
+            ("price_gap", "price_gap"),
+            ("order_avg_gap", "order_avg_gap"),
+        ),
+        grain=("item_id",),
     ),
     # The reported model is a partitioned incremental append, not a plain
     # overwrite; the projection is assembled after the partition condition is
