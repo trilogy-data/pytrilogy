@@ -1993,7 +1993,7 @@ class BaseDialect:
                 "the right side of a tuple membership `(a, b) in (m.a, m.b)` "
                 f"must come from ONE model or rowset, but {addresses} did not "
                 "resolve to a single source in this scope. Stage the pair "
-                "through a rowset anchored on its fact first — e.g. `with "
+                "through a rowset anchored on its fact first - e.g. `with "
                 "pairs as select m.a as a, m.b as b, count(m.key) as _anchor;`"
                 " then `(x, y) in (pairs.a, pairs.b)`."
             )
@@ -2740,6 +2740,11 @@ class BaseDialect:
     ) -> list[str] | None:
         mode, by, grouping_sets = self._get_aggregate_grouping(cte)
         if mode == AggregateGroupingMode.STANDARD:
+            return None
+        if not by and not grouping_sets:
+            # `ROLLUP ()`/`CUBE ()`/`GROUPING SETS ()` are syntax errors; a
+            # keyless grouping mode is one grand-total set, so defer to the
+            # standard keyless rendering below.
             return None
         if not self.SUPPORTS_AGGREGATE_GROUPING_MODES:
             raise NotImplementedError(
