@@ -168,6 +168,12 @@ The DELETE reads the STAGED keys, so **one statement replaces exactly the N slic
 
 **Iteration hazard**: the expected-partition probe hides non-root datasources for the duration of its query, mutating `env.datasources`. Any loop calling `is_stale` over that dict must iterate a materialized copy (`get_stale_assets`, `execute_refresh_plan`'s cascade).
 
+### Hiding datasources and probe statements (planning-cache neutrality)
+
+Never pop/restore `env.datasources` by hand — use `isolation.py::hidden_datasources`. The dict's `pop`/`update` bump `content_version` unconditionally, and that counter stamps the cross-statement planning caches in `query_processor`; a bare pop/restore evicted every cached build baseline once per probe (O(N²) refresh planning). The context manager restores the counters on exit exactly when the restore is object-identical, so the full environment's caches survive the window while the hidden window keeps its own honest stamp (datasource membership is part of the stamp).
+
+Probe statements (`get_concept_max_watermarks_abstract`, `probe_expected_partitions`) run through `Executor.execute_ephemeral`, not `execute_query`: an ephemeral parse rolls back instead of committing, so probe aliases never land in the durable concept dict (each landing was one more eviction — and worse, made same-membership hidden windows with *different* alias lineages stamp-collide). Derived-concept MAX probes batch into one statement (`_ensure_concept_max_watermarks`); a batch that fails planning falls back to per-concept probes to preserve the "unanswerable → null, not exception" contract. `tests/execution/state/test_planning_cache_stability.py` pins the whole mechanism: ≤2 `materialize_baseline` calls per refresh plan.
+
 ### Targeted refresh (`RefreshPolicy` / `--partition`)
 
 What the caller asked for travels as one `RefreshPolicy` (force set + partition selector), not as loose keyword arguments — a new kind of intent then reaches every planning call site by construction, and `RefreshParams.policy()` is the single CLI→plan mapping.

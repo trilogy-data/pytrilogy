@@ -240,7 +240,14 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         ]
         return SelectLineage(
             selection=[
-                environment.concepts[x.concept.address].reference
+                # An ephemeral parse never commits its select aliases, so a
+                # locally-derived output may exist only on the statement.
+                (
+                    self.local_concepts[x.concept.address]
+                    if x.concept.address not in environment.concepts
+                    and x.concept.address in self.local_concepts
+                    else environment.concepts[x.concept.address]
+                ).reference
                 for x in self.selection
             ],
             order_by=self.order_by,

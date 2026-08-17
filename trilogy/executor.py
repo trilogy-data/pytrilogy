@@ -1438,6 +1438,23 @@ class Executor:
                 output.append(result)
         return output
 
+    def execute_ephemeral(self, command: str) -> ResultProtocol | None:
+        """Plan and run select statements whose parse artifacts stay
+        statement-local: nothing lands in the durable environment, so the
+        content_version-stamped planning caches survive. State probes use this
+        — they run one throwaway select per question against a long-lived
+        session environment."""
+        if not self.connected:
+            self.connect()
+        _, parsed = parse_text(command, self.environment, ephemeral=True)
+        result: ResultProtocol | None = None
+        for statement in parsed:
+            if not isinstance(statement, GENERATABLE_STATEMENT_TYPES):
+                continue
+            for processed in self._generate([statement]):
+                result = self.execute_query(processed)
+        return result
+
     def execute_file(
         self, file: str | Path, non_interactive: bool = False
     ) -> list[ResultProtocol]:

@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import replace
 from math import ceil
 
@@ -874,9 +874,16 @@ def _authored_reference_addresses(
     return closure
 
 
-# id(environment) -> (weak handle, stamp, {join key: BuildCaches}). Same
+# id(environment) -> (weak handle, {stamp: {join key: BuildCaches}}). Same
 # identity idiom + mutation stamp as domain_graph._MINTED_CACHE.
 _SESSION_CACHE_STORE: dict[int, tuple] = {}
+
+# Stamp generations retained per environment. More than one because refresh
+# planning alternates between two long-lived states — the full environment and
+# the probes' hidden-datasource window (see execution/state/isolation.py, which
+# restores the stamp on exit exactly when content is restored) — and a
+# single-generation store made every alternation a full baseline rebuild.
+_SESSION_CACHE_GENERATIONS = 4
 
 
 def _evict_session_caches(key: int, _dead) -> None:
@@ -895,12 +902,16 @@ def _session_build_caches(
     datasource dict effective-write counters (content_version, not mutations —
     overlay push/pop and identical re-registrations from a re-parsed script
     must not evict the bundle), in-place datasource status flips (persist
-    marks PUBLISHED without a dict write), and the alias map; env merges ride
-    in the join key. If a concept overlay is somehow live at generation time,
-    fall back to the raw mutation counter so overlay-visible state is covered.
-    A statement with its own scoped joins gets its own bundle
-    — address/grain-keyed cache entries are only shareable under ONE join set
-    (the same rule that gives nested arms fresh caches)."""
+    marks PUBLISHED without a dict write), datasource membership, and the
+    alias map; env merges ride in the join key. If a concept overlay is
+    somehow live at generation time, fall back to the raw mutation counter so
+    overlay-visible state is covered. A statement with its own scoped joins
+    gets its own bundle — address/grain-keyed cache entries are only shareable
+    under ONE join set (the same rule that gives nested arms fresh caches).
+    A few recent stamps are retained per environment so states an executor
+    alternates between (full env / probe-hidden env) keep their bundles;
+    correctness rests on a stamp identifying exactly one content state, which
+    holds because counters only ever rewind on provably identical content."""
     from functools import partial
     from weakref import ref
 
@@ -913,15 +924,22 @@ def _session_build_caches(
     )
     store_key = id(environment)
     cached = _SESSION_CACHE_STORE.get(store_key)
-    if cached is None or cached[0]() is not environment or cached[1] != stamp:
-        bundles: dict[tuple, BuildCaches] = {}
+    if cached is None or cached[0]() is not environment:
+        generations: OrderedDict[tuple, dict[tuple, BuildCaches]] = OrderedDict()
         _SESSION_CACHE_STORE[store_key] = (
             ref(environment, partial(_evict_session_caches, store_key)),
-            stamp,
-            bundles,
+            generations,
         )
     else:
-        bundles = cached[2]
+        generations = cached[1]
+    bundles = generations.get(stamp)
+    if bundles is None:
+        bundles = {}
+        generations[stamp] = bundles
+        while len(generations) > _SESSION_CACHE_GENERATIONS:
+            generations.popitem(last=False)
+    else:
+        generations.move_to_end(stamp)
     key = environment.materialize_join_key(scoped_joins)
     caches = bundles.get(key)
     if caches is None:
