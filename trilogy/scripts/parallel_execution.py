@@ -772,6 +772,7 @@ def run_parallel_execution(
     from trilogy.scripts.dependency import ETLDependencyStrategy
     from trilogy.scripts.display import (
         ParallelProgressTracker,
+        failure_report,
         print_error,
         print_success,
         show_dry_run_queries,
@@ -993,7 +994,7 @@ def run_parallel_execution(
     )
 
     if not summary.all_succeeded:
-        print_error("Some scripts failed during execution.")
+        print_error(failure_report(summary))
         if fail_on_error:
             raise Exit(1)
         return summary

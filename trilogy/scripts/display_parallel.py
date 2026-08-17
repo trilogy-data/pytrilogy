@@ -54,10 +54,47 @@ def show_parallel_execution_start(
         print(f"  Strategy: {strategy}")
 
 
+def failed_script_entries(
+    summary: "ParallelExecutionSummary",
+) -> list[tuple[str, str | None]]:
+    """(label, error) for each failed result, in execution order."""
+    from trilogy.scripts.dependency import ScriptNode
+
+    return [
+        (
+            (
+                str(result.node.path)
+                if isinstance(result.node, ScriptNode)
+                else result.node.address
+            ),
+            str(result.error) if result.error else None,
+        )
+        for result in summary.results
+        if not result.success
+    ]
+
+
+def failure_report(summary: "ParallelExecutionSummary") -> str:
+    """The stderr message for a failed run.
+
+    The per-script errors are only on stdout (the summary table), so a caller
+    that keeps just stderr -- a cloud job log, a CI step -- saw that something
+    failed and nothing about what. JSON mode already carries them structured on
+    the `parallel_summary` event, so it keeps the bare sentence."""
+    headline = "Some scripts failed during execution."
+    if is_json_mode():
+        return headline
+    lines = [headline]
+    for label, error in failed_script_entries(summary):
+        lines.append(f"  ✗ {label}")
+        if error:
+            lines.append(f"    Error: {error}")
+    return "\n".join(lines)
+
+
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
     from trilogy.scripts.common import ExecutionStats
-    from trilogy.scripts.dependency import ScriptNode
 
     total_stats = ExecutionStats()
     for result in summary.results:
@@ -66,16 +103,8 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
 
     if is_json_mode():
         failed = [
-            {
-                "node": (
-                    str(result.node.path)
-                    if isinstance(result.node, ScriptNode)
-                    else result.node.address
-                ),
-                "error": str(result.error) if result.error else None,
-            }
-            for result in summary.results
-            if not result.success
+            {"node": node_label, "error": error}
+            for node_label, error in failed_script_entries(summary)
         ]
         emit_event(
             "parallel_summary",
@@ -111,16 +140,10 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
 
         if summary.failed > 0:
             _core.console.print("\n[bold red]Failed Scripts:[/bold red]")
-            for result in summary.results:
-                if not result.success:
-                    node_label = (
-                        result.node.path
-                        if isinstance(result.node, ScriptNode)
-                        else result.node.address
-                    )
-                    _core.console.print(f"  [red]\u2717[/red] {node_label}")
-                    if result.error:
-                        _core.console.print(f"    Error: {result.error}")
+            for node_label, error in failed_script_entries(summary):
+                _core.console.print(f"  [red]\u2717[/red] {node_label}")
+                if error:
+                    _core.console.print(f"    Error: {error}")
     else:
         print("Execution Summary:")
         print(f"  Total Scripts: {summary.total_scripts}")
@@ -137,16 +160,10 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
 
         if summary.failed > 0:
             print("\nFailed Scripts:")
-            for result in summary.results:
-                if not result.success:
-                    node_label = (
-                        result.node.path
-                        if isinstance(result.node, ScriptNode)
-                        else result.node.address
-                    )
-                    print(f"  \u2717 {node_label}")
-                    if result.error:
-                        print(f"    Error: {result.error}")
+            for node_label, error in failed_script_entries(summary):
+                print(f"  \u2717 {node_label}")
+                if error:
+                    print(f"    Error: {error}")
 
 
 def show_script_result(

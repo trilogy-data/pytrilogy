@@ -62,6 +62,8 @@ from trilogy.scripts.display_models import (  # noqa: F401
 from trilogy.scripts.display_parallel import (  # noqa: F401
     ParallelProgressTracker,
     _make_futures_context_getter,
+    failed_script_entries,
+    failure_report,
     show_execution_plan,
     show_parallel_execution_start,
     show_parallel_execution_summary,
