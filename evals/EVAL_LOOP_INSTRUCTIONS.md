@@ -72,9 +72,13 @@ is red is a bad run. Click a cell to land on that trajectory.
 **Outputs** (under `evals/tpcds_agent/`):
 - `results/<ts>_<category>_<provider>_<model>[_effort-<level>]/` per leg — `report.{md,json}`, `agent_log.qNN.jsonl`,
   `task.qNN.txt`, `workspace/` (the agent's `.sql`/`.preql` files + DB copy).
-- `charts/dashboard_<run-dir-name>.png` — per-leg dashboard.
-- `charts/funnel_<ts>_<provider>_<model>[_effort-<level>].{png,md}` — cross-category lift (only when ≥2 legs ran).
-- `charts/trilogy_failures_<run-dir-name>.md` — per-leg failure detail.
+- `charts/dashboard_<category>_<provider>_<model>[_effort-<level>].png` — per-leg
+  dashboard. Charts are committed and deliberately NOT timestamped: re-running a
+  configuration overwrites its chart, so `git diff` shows what moved. A custom
+  `--output-dir` name keeps whatever label follows the timestamp (an A/B arm, say),
+  so the arms do not clobber each other.
+- `charts/funnel_<provider>_<model>[_effort-<level>].{png,md}` — cross-category lift (only when ≥2 legs ran).
+- `charts/trilogy_failures_<category>_<provider>_<model>[_effort-<level>].md` — per-leg failure detail.
 
 ### Validating a candidate change (10x harness)
 

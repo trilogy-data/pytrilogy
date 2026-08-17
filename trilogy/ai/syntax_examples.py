@@ -94,12 +94,7 @@ order by index;
     SyntaxExample(
         name="query-structure",
         title="Full query structure - every clause and where it goes (+ rowsets)",
-        summary=(
-            "the clause order of a query (`where` -> `select` <cols> -> join(s) -> "
-            "`having` -> `order by` -> `limit`) and how to define a rowset (a NAME "
-            "then a select); joins sit right after the select list - filter a "
-            "joined or aggregated RESULT in `having`, input rows in `where`"
-        ),
+        summary="the exact clause order of a query, and how to define a rowset",
         body="""\
 # Every Trilogy query has the SAME fixed skeleton. Top-level statements come
 # first (each ends with `;`), then ONE query whose clauses appear in this exact
@@ -169,9 +164,8 @@ limit 100;
         name="filtered-aggregate",
         title="Filtered aggregate - aggregate only the rows matching a condition",
         summary=(
-            "`sum(x ? cond)` / `count(x ? cond)` aggregate just the matching rows; "
-            "to COUNT ROWS count the unique grain/row key, or `count(grain(k1, k2))` "
-            "when several keys identify it; `by <grain>` pins the aggregate's grain"
+            "aggregating only the rows matching a condition, and counting rows "
+            "correctly"
         ),
         body="""\
 # `?` is a local filter - a filter that applies only to the prior expression-
@@ -207,11 +201,7 @@ order by iris.species asc;
             "Row-level filter (WHERE) vs aggregate filter (HAVING) - don't wrap a "
             "per-row threshold in max()/min()"
         ),
-        summary=(
-            "a plain per-ROW condition (`x.col > N`) goes in WHERE (filters the rows "
-            "feeding every aggregate); HAVING filters an aggregate RESULT. "
-            "`max(col) by g > N` in HAVING filters GROUPS, not rows - different meaning"
-        ),
+        summary="choosing between WHERE and HAVING for a threshold condition",
         body="""\
 # A non-aggregate, per-ROW condition belongs in WHERE - it filters the rows that
 # feed every aggregate, BEFORE grouping. HAVING is ONLY for filtering on an
@@ -396,12 +386,7 @@ order by enroll.year asc nulls first;
     SyntaxExample(
         name="union-stack-channels",
         title="Stack rows from several sources/channels with the union(...) TVF",
-        summary=(
-            "`with combined as union((armA), (armB), (armC), ...) -> (o1, o2, ...)` "
-            "row-STACKS self-contained inline selects positionally (SQL UNION ALL) - "
-            "the PREFERRED way to combine channels/sources; pass TWO OR MORE arms, one "
-            "per source; reference outputs as `combined.o1`"
-        ),
+        summary="stacking several sources/channels together as rows",
         body="""\
 # `union(...)` is a relational table-valued function: it STACKS the rows of TWO OR
 # MORE self-contained `select` arms, positionally (like SQL `UNION ALL`), into one
@@ -476,14 +461,7 @@ limit 100;
     SyntaxExample(
         name="except-intersect-setops",
         title="Set difference / co-occurrence across sources with except(...) / intersect(...)",
-        summary=(
-            "`with only_a as except((armA), (armB)) -> (o1, o2)` keeps the distinct "
-            "rows of the FIRST arm that appear in NO later arm (SQL EXCEPT); "
-            "`intersect(...)` keeps rows present in EVERY arm. PREFERRED over "
-            "multi-column `not in` for 'in A but not B' questions when you also "
-            "want the distinct combinations themselves: whole ROWS are compared "
-            "(any column mix) and the output is deduplicated"
-        ),
+        summary="set difference or co-occurrence across sources",
         body="""\
 # `except(...)` and `intersect(...)` are relational table-valued functions with the
 # SAME shape as `union(...)`: TWO OR MORE inline self-contained select arms, matched
@@ -529,12 +507,7 @@ limit 100;
     SyntaxExample(
         name="scoped-join",
         title="Blend two models in one query with a scoped subset/union join",
-        summary=(
-            "`select <cols> subset|union join a.key = b.key (= other.key ...)?` (right after "
-            "the select list) blends a second model into ONE query - the PREFERRED "
-            "alternative to `merge`. JOIN ON THE FULL GRAIN: one clause per key in "
-            "the shared `@<k1, k2>` grain"
-        ),
+        summary="blending a second fact model or rowset into one query",
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
 # model files (the query-local equivalent of `merge`). A join DECLARES how the
@@ -643,11 +616,7 @@ limit 100;
     SyntaxExample(
         name="existence-anti-join",
         title="Existence / anti-join across models",
-        summary=(
-            "keep or exclude rows by whether a key matches another model: "
-            "`key in other.key` (semi-join) / `not in` (anti-join); a MULTI-part "
-            "key uses a row-wise tuple `(a, b) in (set.a, set.b)`"
-        ),
+        summary=("keeping or excluding rows by whether a key matches another model"),
         body="""\
 # `in` / `not in` against another model's key is the semi-join / anti-join
 # idiom - no manual JOIN. Use it instead of `count(...) is null` hacks.
@@ -757,12 +726,7 @@ order by unique_sc.course asc;
     SyntaxExample(
         name="rollup",
         title="Subtotals + grand total in one pass with `by rollup (…)`",
-        summary=(
-            "the select-level `by rollup (d1, d2)` clause computes EVERY aggregate "
-            "in the select at every level (leaf, per-d1 subtotal, grand total) in one "
-            "pass; `grouping(d)` = 1 on a rolled-up row - use it to LABEL "
-            "subtotal/total rows and to sort by level"
-        ),
+        summary="subtotals and a grand total in one pass, and labeling the levels",
         body="""\
 # A `by rollup (d1, d2)` clause AFTER the select list (before having/order by)
 # computes the whole select at MULTIPLE grain levels in one pass - the grouping
@@ -858,10 +822,7 @@ limit 100;
     SyntaxExample(
         name="staged-membership",
         title="Stage a coarse-grain membership set, then filter a fine-grain query",
-        summary=(
-            "compute a membership set in a `rowset` (keys meeting a count/HAVING), "
-            "then filter the main query with `<key> in <rowset>.<col>`"
-        ),
+        summary=("filtering a fine-grain query by a set computed at a coarser grain"),
         body="""\
 # When a query filters on a condition computed at a COARSER grain (e.g. "items
 # sold in all 3 channels", "courses offered in more than one year"), compute that

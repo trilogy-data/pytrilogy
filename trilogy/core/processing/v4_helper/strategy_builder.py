@@ -13,6 +13,7 @@ graph's lineage edges. Generators that haven't been ported to the v4 flat
 style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
@@ -210,12 +211,26 @@ def _group_existence_arg_groups(
     out: list[tuple[BuildConcept, ...]] = []
     for atom in _atoms_at(attrs, gid):
         out.extend(atom.existence_arguments)
-    # Walk each primary member's lineage: a FILTER with a semijoin where
-    # (q08 `_virt_filter_zips`) is often inlined into the BASIC concept that
-    # wraps it (`final_zips = substring(filter, 1, 2)`) rather than built as
-    # its own node, so the existence arg lives a few lineage hops down.
+    out.extend(
+        _lineage_existence_arg_groups(
+            [environment.concepts.get(a) for a in attrs[gid].primary_members]
+        )
+    )
+    return _dedupe_arg_groups(out)
+
+
+def _lineage_existence_arg_groups(
+    concepts: Sequence[BuildConcept | None],
+) -> list[tuple[BuildConcept, ...]]:
+    """Existence arg groups reachable through the lineage of `concepts`.
+
+    A FILTER with a semijoin where (q08 `_virt_filter_zips`) is often inlined
+    into the BASIC concept that wraps it (`final_zips = substring(filter, 1,
+    2)`) rather than built as its own node, so the existence arg lives a few
+    lineage hops down."""
+    out: list[tuple[BuildConcept, ...]] = []
     visited: set[str] = set()
-    stack = [environment.concepts.get(a) for a in attrs[gid].primary_members]
+    stack = list(concepts)
     while stack:
         concept = stack.pop()
         if concept is None or concept.address in visited:
@@ -410,10 +425,25 @@ def _filter_lineage_existence_arg_groups(
     return _dedupe_arg_groups(out)
 
 
+def _locally_derived_outputs(node: StrategyNode) -> list[BuildConcept]:
+    """Outputs this node computes itself rather than passing a parent's through."""
+    inherited = {
+        output.address for parent in node.parents for output in parent.output_concepts
+    }
+    return [c for c in node.output_concepts if c.address not in inherited]
+
+
 def _node_existence_arg_groups(node: StrategyNode) -> list[tuple[BuildConcept, ...]]:
+    # A membership the node computes itself (`x in <set> as flag` projected
+    # alongside an aggregate) needs the subselect feeder wired HERE: the group
+    # sweep attaches it to `built[gid]`, but a consumer took its copy of that
+    # node before the attach ran, so only the assembled tree can see which node
+    # actually renders the comparison. Pass-through outputs are excluded -- the
+    # feeder belongs to the deriving node, not everyone who forwards the column.
     return _dedupe_arg_groups(
         _condition_existence_arg_groups(node.conditions)
         + _filter_lineage_existence_arg_groups(list(node.output_concepts))
+        + _lineage_existence_arg_groups(_locally_derived_outputs(node))
     )
 
 

@@ -207,9 +207,13 @@ Each leg writes to `evals/tpcds_agent/results/<timestamp>[_<category>]/`:
 - `task.qNN.txt` — the exact task prompt per query
 - `workspace/` — the agent's working dir (its `.sql`/`.preql` files + DB copy)
 
-Cross-category charts land in `evals/tpcds_agent/charts/`:
-`dashboard_<category>.png` (per leg), `funnel.{png,md}` (rendered when ≥2 legs
-ran), and `trilogy_failures_<category>.md` (per-leg failure detail).
+Cross-category charts land in `evals/tpcds_agent/charts/`, keyed by category and
+model and never by timestamp, so a re-run overwrites its own chart and the commit
+diff shows what moved: `dashboard_<category>_<provider>_<model>.png` (per leg),
+`funnel_<provider>_<model>.{png,md}` (rendered when ≥2 legs ran), and
+`trilogy_failures_<category>_<provider>_<model>.md` (per-leg failure detail).
+A `--effort-<level>` suffix appears when reasoning effort is set, and a custom
+`--output-dir` label (an A/B arm) is preserved.
 
 ### Mining a run for framework bugs
 

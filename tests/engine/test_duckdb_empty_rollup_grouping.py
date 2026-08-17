@@ -5,7 +5,6 @@ projecting only constants and aggregates has an empty grain, so the key list is
 empty. A rollup over zero keys is one grouping set - the grand total - which is
 what a keyless standard grouping already renders. Emitting the literal
 `GROUP BY ROLLUP ()` is a parser error in DuckDB (and everywhere else).
-See evals/tpcds_agent/bug_q05_empty_rollup_generated_sql.md (q05).
 """
 
 import pytest
