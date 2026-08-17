@@ -60,6 +60,7 @@ const qlabel = q => 'q' + String(q).padStart(2,'0');
 const fmtTok = n => !n ? '0' : n < 1000 ? String(n) : n < 1e6 ? (n/1000).toFixed(0)+'k' : (n/1e6).toFixed(2)+'M';
 const fmtDur = s => s == null ? '' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s/60)}m ${Math.round(s%60)}s` : `${Math.floor(s/3600)}h ${Math.round(s%3600/60)}m`;
 const fmtTs = ts => ts && ts.length >= 13 ? `${ts.slice(4,6)}-${ts.slice(6,8)} ${ts.slice(9,11)}:${ts.slice(11,13)}` : (ts||'');
+const fmtScore = r => r.total ? `${r.passed}/${r.total} (${Math.round(r.passed/r.total*100)}%)` : '';
 function badge(s){ const k = ['pass','exhausted','error','fail'].includes(s) ? s : 'other'; return `<span class="badge ${k}">${esc(s||'?')}</span>`; }
 // Status colors mirror the dashboard PNG: green=pass, orange=fail, red=error,
 // purple family=out of time, blue=in flight.
@@ -324,7 +325,7 @@ function renderGrid(){
        + (gridGroup ? '' : `<span class="gcat">${esc(r.category||'?')}</span>`)
        + `<span class="gts">${esc(fmtTs(r.ts))}</span>`
        + `<span class="gmodel">${esc(r.model||'')}</span>`
-       + `<span class="gscore">${r.total ? r.passed + '/' + r.total : ''}</span></div>`
+       + `<span class="gscore">${fmtScore(r)}</span></div>`
        + cells + `</div>`;
   };
   if(!gridGroup){
