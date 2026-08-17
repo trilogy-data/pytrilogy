@@ -2049,6 +2049,28 @@ def _satisfy_parent_projection_contract(
         if not concepts or non_fd_needed:
             projected.append(parent)
             continue
+        # `parent_needed` is measured off the parent's INPUTS, so a value the
+        # parent computes itself — a BASIC sibling's `revenue`, a date
+        # projection — is invisible to it and the projection below would strip
+        # it, leaving the consuming aggregate with no source for that output
+        # (sibling aggregates where one reads a derived row value: the plan
+        # computed `revenue` in a CTE and then never projected `total_revenue`).
+        # Carry those through. Restricted to FD-at-grain so the projection's
+        # row count is unchanged, and to what no sibling parent already
+        # supplies, so this never re-shapes a plain dimension re-join.
+        carry = {
+            output.address
+            for output in parent.usable_outputs
+            if output.address in needed
+            and output.address not in parent_needed
+            and output.address not in other_outputs
+            and _fd_at_grain(output, projection_grain_components)
+        }
+        concepts.extend(
+            c
+            for addr in sorted(carry)
+            if (c := _concept_at(environment, addr)) is not None
+        )
         # When the dimension's projected grain (fd_needed) shares NO key with the
         # barrier sibling, the post-projection merge has nothing to join on and
         # cross-joins ON 1=1 — the bridge between the two is a projection-grain key
@@ -2079,7 +2101,7 @@ def _satisfy_parent_projection_contract(
             parent_outputs = {o.address for o in parent.usable_outputs}
             grain_concepts = [
                 c
-                for addr in sorted((fd_needed | join_keys) & parent_outputs)
+                for addr in sorted((fd_needed | join_keys | carry) & parent_outputs)
                 if (c := _concept_at(environment, addr)) is not None
             ]
             projected.append(

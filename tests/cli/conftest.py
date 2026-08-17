@@ -147,6 +147,30 @@ def _job_version(number: int = 1, job_id: str = "job-1", **over: Any) -> dict:
     }
 
 
+def _workspace(workspace_id: str = "ws-1", name: str = "space", **over: Any) -> dict:
+    """A workspace as the API serializes it — every key present, `null` where
+    unset, since the Rust struct has no `skip_serializing_if`."""
+    return {
+        "id": workspace_id,
+        "org_id": f"org-{ORG}",
+        "name": name,
+        "description": None,
+        "parent_workspace_id": None,
+        "config": None,
+        "files": [{"name": "model.preql", "content": "key id int;"}],
+        "secret_env": None,
+        "parameters": None,
+        "timeout_seconds": None,
+        "memory_mb": None,
+        "cpus": None,
+        "vm_class": None,
+        "current_version_id": f"{workspace_id}-v1",
+        "created_at": TS,
+        "updated_at": TS,
+        **over,
+    }
+
+
 def _run(run_id: str = "run-1", **over: Any) -> dict:
     return {
         "id": run_id,
@@ -255,6 +279,17 @@ class FakeCloudAPI:
                     ],
                     stdout="hello from the worker\n",
                     stderr="  ",
+                ),
+                ("GET", f"/orgs/{ORG}/workspaces"): [_workspace()],
+                ("GET", f"/orgs/{ORG}/workspaces/*/jobs"): [
+                    _job("job-1", "nightly", workspace_id="ws-1", entrypoint="a.preql")
+                ],
+                ("POST", f"/orgs/{ORG}/workspaces"): _workspace("ws-new", "fresh"),
+                # A PUT that moved the workspace on: same id, a version id the
+                # caller did not already hold — how push tells an update from a
+                # content no-op, exactly as for a job.
+                ("PUT", f"/orgs/{ORG}/workspaces/*"): _workspace(
+                    current_version_id="ws-1-v2"
                 ),
                 ("GET", f"/orgs/{ORG}/schedules"): [_schedule(job_names=["nightly"])],
                 ("POST", f"/orgs/{ORG}/schedules"): _schedule("sched-new"),

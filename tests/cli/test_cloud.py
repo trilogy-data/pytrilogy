@@ -1822,6 +1822,17 @@ class TestJobFetch:
         ]
         assert event["files"] == 1 and event["dest"] == str(dest)
 
+    def test_stored_bytes_land_verbatim(self, logged_in, run_cloud, tmp_path):
+        """Python's text mode rewrites every \\n as \\r\\n on Windows, so a
+        fetch produced a file differing from the platform's copy on every line.
+        A push back hides it — it reads with universal newlines and normalizes
+        again — but dropping the fetch over a checkout with --force turns a
+        two-line edit into a whole-file diff."""
+        self._seed(logged_in, [{"name": "model.preql", "content": "key id int;\n"}])
+        dest = tmp_path / "out"
+        assert run_cloud("jobs", "fetch", "nightly", "--dest", str(dest)).exit_code == 0
+        assert (dest / "model.preql").read_bytes() == b"key id int;\n"
+
     def test_an_object_config_is_written_as_readable_toml_text(
         self, logged_in, run_cloud, tmp_path
     ):
@@ -1846,6 +1857,650 @@ class TestJobFetch:
         dest = tmp_path / "out"
         assert run_cloud("jobs", "fetch", "nightly", "--dest", str(dest)).exit_code == 0
         assert "'" not in (dest / "trilogy.toml").read_text(encoding="utf-8")
+
+
+def _workspace(workspace_id: str = "ws-1", name: str = "space", **over) -> dict:
+    """A workspace as the API serializes it — see conftest's copy; repeated
+    here so a fetch test can declare the row it is fetching inline."""
+    return {
+        "id": workspace_id,
+        "org_id": "org-acme",
+        "name": name,
+        "files": [{"name": "model.preql", "content": "key id int;"}],
+        "current_version_id": f"{workspace_id}-v1",
+        **over,
+    }
+
+
+class TestWorkspaceListing:
+    """Finding a workspace, and finding out what runs out of it — the two
+    questions that precede a fetch."""
+
+    def test_list_renders_a_row_per_workspace(self, logged_in, run_cloud):
+        output = run_cloud("workspaces", "list").output
+        assert "'space'" in output and "files: 1" in output
+
+    def test_list_names_the_workspace_a_row_extends(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(parent_workspace_id="ws-base")],
+        )
+        assert "extends: ws-base" in run_cloud("workspaces", "list").output
+
+    def test_a_row_without_files_counts_zero_rather_than_failing(
+        self, logged_in, run_cloud
+    ):
+        """`files` is an untyped blob on both sides of the wire, so a workspace
+        holding `null` — or an object — has to render a count, not a traceback."""
+        logged_in.set(
+            "GET", f"/orgs/{logged_in.org}/workspaces", [_workspace(files=None)]
+        )
+        result = run_cloud("workspaces", "list")
+        assert result.exit_code == 0, result.output
+        assert "files: 0" in result.output
+
+    def test_list_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/workspaces", [])
+        assert "No workspaces in org 'acme'." in run_cloud("workspaces", "list").output
+
+    def test_list_emits_a_json_event_tagged_with_the_org(
+        self, logged_in, run_cloud, json_mode
+    ):
+        payload = json.loads(run_cloud("workspaces", "list").output)
+        assert payload["event"] == "workspaces" and payload["org"] == "acme"
+
+    def test_jobs_reports_each_job_with_the_script_it_runs(self, logged_in, run_cloud):
+        result = run_cloud("workspaces", "jobs", "space")
+        assert result.exit_code == 0, result.output
+        assert "nightly" in result.output and "entrypoint: a.preql" in result.output
+
+    def test_jobs_names_a_job_that_runs_the_whole_directory(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces/ws-1/jobs",
+            [
+                {
+                    "id": "job-1",
+                    "org_id": "org-acme",
+                    "name": "nightly",
+                    "operation": "run",
+                    "workspace_id": "ws-1",
+                    "created_at": TS,
+                    "updated_at": TS,
+                }
+            ],
+        )
+        assert (
+            "entrypoint: whole directory"
+            in run_cloud("workspaces", "jobs", "space").output
+        )
+
+    def test_jobs_resolves_the_workspace_by_id_as_well_as_name(
+        self, logged_in, run_cloud
+    ):
+        assert run_cloud("workspaces", "jobs", "ws-1").exit_code == 0
+
+    def test_jobs_has_a_dedicated_empty_message(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/workspaces/ws-1/jobs", [])
+        assert (
+            "No jobs use workspace 'space'."
+            in run_cloud("workspaces", "jobs", "space").output
+        )
+
+    def test_an_unknown_workspace_is_named_in_the_error(self, logged_in, run_cloud):
+        result = run_cloud("workspaces", "jobs", "ghost")
+        assert result.exit_code != 0
+        assert "No workspace named 'ghost'" in result.output
+
+
+class TestWorkspaceFetch:
+    """Exporting the shared tree, which is where a multi-job project's files
+    actually live — the jobs above it carry none."""
+
+    def test_the_tree_lands_at_its_bundled_paths(self, logged_in, run_cloud, tmp_path):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                _workspace(
+                    files=[
+                        {"name": "model.preql", "content": "key id int;"},
+                        {"name": "nested/helper.py", "content": "x = 1"},
+                    ]
+                )
+            ],
+        )
+        dest = tmp_path / "out"
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        assert result.exit_code == 0, result.output
+        assert (dest / "model.preql").read_text(encoding="utf-8") == "key id int;"
+        assert (dest / "nested" / "helper.py").read_text(encoding="utf-8") == "x = 1"
+
+    def test_a_workspace_without_a_config_writes_no_trilogy_toml(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Which is every workspace `cloud sync` deploys: config layering needs
+        pytrilogy's --config-overlay, so config stays on the jobs. A file
+        holding the four bytes `null` is not something anyone can push back."""
+        dest = tmp_path / "out"
+        assert (
+            run_cloud("workspaces", "fetch", "space", "--dest", str(dest)).exit_code
+            == 0
+        )
+        assert not (dest / "trilogy.toml").exists()
+
+    def test_a_workspace_config_is_written_when_it_has_one(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(config="[engine]\ndialect = 'duck_db'\n")],
+        )
+        dest = tmp_path / "out"
+        assert (
+            run_cloud("workspaces", "fetch", "space", "--dest", str(dest)).exit_code
+            == 0
+        )
+        assert (
+            (dest / "trilogy.toml").read_text(encoding="utf-8").startswith("[engine]")
+        )
+
+    def test_the_jobs_that_run_out_of_it_are_reported(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The tree on disk is shared, so what each job does with it is the
+        entrypoint it names and nothing else."""
+        dest = tmp_path / "out"
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        assert result.exit_code == 0, result.output
+        assert "nightly" in result.output and "a.preql" in result.output
+
+    def test_a_non_empty_destination_is_refused_without_force(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        dest = tmp_path / "out"
+        dest.mkdir()
+        (dest / "mine.preql").write_text("local work", encoding="utf-8")
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        assert result.exit_code != 0 and "--force" in result.output
+        assert (dest / "mine.preql").read_text(encoding="utf-8") == "local work"
+
+    def test_an_escaping_name_is_refused(self, logged_in, run_cloud, tmp_path):
+        """A stored bundle is data wherever it is stored; the workspace routes
+        are no more trusted than the job ones."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(files=[{"name": "../escaped.preql", "content": "pwned"}])],
+        )
+        dest = tmp_path / "out"
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        assert result.exit_code != 0 and "escapes" in result.output
+        assert not (tmp_path / "escaped.preql").exists()
+
+    def test_an_unknown_workspace_is_named_in_the_error(self, logged_in, run_cloud):
+        result = run_cloud("workspaces", "fetch", "ghost", "--dest", "out")
+        assert result.exit_code != 0 and "ghost" in result.output
+
+    def test_resolved_adds_the_parent_tree_and_the_child_wins(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Nearest to the job wins on a collision — the platform's own
+        resolution rule, so the merged directory is what an executor sees."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                _workspace(
+                    parent_workspace_id="ws-base",
+                    files=[{"name": "model.preql", "content": "child"}],
+                ),
+                _workspace(
+                    "ws-base",
+                    "base",
+                    files=[
+                        {"name": "model.preql", "content": "parent"},
+                        {"name": "shared.preql", "content": "from the parent"},
+                    ],
+                ),
+            ],
+        )
+        dest = tmp_path / "out"
+        result = run_cloud(
+            "workspaces", "fetch", "space", "--dest", str(dest), "--resolved"
+        )
+        assert result.exit_code == 0, result.output
+        assert (dest / "model.preql").read_text(encoding="utf-8") == "child"
+        assert (dest / "shared.preql").read_text(encoding="utf-8") == "from the parent"
+
+    def test_without_resolved_only_its_own_files_are_written(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A fetch writes what a push would send back, so an unedited round
+        trip mints nothing. Inheriting the parent's files here would push them
+        into the child on the way back."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                _workspace(parent_workspace_id="ws-base"),
+                _workspace(
+                    "ws-base",
+                    "base",
+                    files=[{"name": "shared.preql", "content": "from the parent"}],
+                ),
+            ],
+        )
+        dest = tmp_path / "out"
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        assert result.exit_code == 0, result.output
+        assert not (dest / "shared.preql").exists()
+        assert "--resolved" in result.output
+
+    def test_a_parent_cycle_terminates(self, logged_in, run_cloud, tmp_path):
+        """The platform refuses cycles at the write; a client that trusted that
+        alone would spin forever on a database repaired by hand."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                _workspace(parent_workspace_id="ws-2"),
+                _workspace("ws-2", "other", parent_workspace_id="ws-1"),
+            ],
+        )
+        dest = tmp_path / "out"
+        result = run_cloud(
+            "workspaces", "fetch", "space", "--dest", str(dest), "--resolved"
+        )
+        assert result.exit_code == 0, result.output
+
+    def test_fetch_emits_a_json_event(self, logged_in, run_cloud, tmp_path, json_mode):
+        dest = tmp_path / "out"
+        result = run_cloud("workspaces", "fetch", "space", "--dest", str(dest))
+        event = [
+            e for e in _json_stream(result.output) if e["event"] == "workspace_fetched"
+        ][-1]
+        assert event["files"] == 1 and event["dest"] == str(dest)
+        assert [j["name"] for j in event["jobs"]] == ["nightly"]
+
+
+class TestJobFetchWithWorkspace:
+    """A job in a workspace carries no files of its own, which is the whole
+    point of the arrangement and used to make `jobs fetch` write an empty
+    directory with nothing to say about it."""
+
+    def _seed(self, api, job_files=None, **workspace_over):
+        api.set(
+            "GET",
+            f"/orgs/{api.org}/jobs",
+            [
+                {
+                    "id": "job-1",
+                    "org_id": "org-acme",
+                    "name": "nightly",
+                    "operation": "refresh",
+                    "config": "[engine]\n",
+                    "files": job_files if job_files is not None else [],
+                    "workspace_id": "ws-1",
+                    "entrypoint": "refresh.preql",
+                    "created_at": TS,
+                    "updated_at": TS,
+                }
+            ],
+        )
+        api.set("GET", f"/orgs/{api.org}/workspaces", [_workspace(**workspace_over)])
+
+    def test_an_unresolved_fetch_says_where_the_files_are(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        self._seed(logged_in)
+        dest = tmp_path / "out"
+        result = run_cloud("jobs", "fetch", "nightly", "--dest", str(dest))
+        assert result.exit_code == 0, result.output
+        assert not (dest / "model.preql").exists()
+        assert "space" in result.output and "--resolved" in result.output
+
+    def test_resolved_materializes_the_workspace_tree(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        self._seed(logged_in)
+        dest = tmp_path / "out"
+        result = run_cloud(
+            "jobs", "fetch", "nightly", "--dest", str(dest), "--resolved"
+        )
+        assert result.exit_code == 0, result.output
+        assert (dest / "model.preql").read_text(encoding="utf-8") == "key id int;"
+        assert (
+            (dest / "trilogy.toml").read_text(encoding="utf-8").startswith("[engine]")
+        )
+
+    def test_the_jobs_own_file_shadows_the_workspaces(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        self._seed(logged_in, job_files=[{"name": "model.preql", "content": "mine"}])
+        dest = tmp_path / "out"
+        result = run_cloud(
+            "jobs", "fetch", "nightly", "--dest", str(dest), "--resolved"
+        )
+        assert result.exit_code == 0, result.output
+        assert (dest / "model.preql").read_text(encoding="utf-8") == "mine"
+
+    def test_a_resolved_fetch_warns_that_it_is_not_a_bundle_to_push_back(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Pushing it as the job would install a private copy of the shared
+        tree: the edit lands, the siblings never see it, and the two drift."""
+        self._seed(logged_in)
+        dest = tmp_path / "out"
+        result = run_cloud(
+            "jobs", "fetch", "nightly", "--dest", str(dest), "--resolved"
+        )
+        assert "workspaces push" in result.output
+
+    def test_a_self_contained_job_asks_the_workspace_route_nothing(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The chain read is worth one request, and only when there is a chain."""
+        dest = tmp_path / "out"
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [
+                {
+                    "id": "job-1",
+                    "org_id": "org-acme",
+                    "name": "nightly",
+                    "operation": "run",
+                    "config": "[engine]\n",
+                    "files": [{"name": "model.preql", "content": "key id int;"}],
+                    "created_at": TS,
+                    "updated_at": TS,
+                }
+            ],
+        )
+        assert run_cloud("jobs", "fetch", "nightly", "--dest", str(dest)).exit_code == 0
+        assert not logged_in.requests_for("GET", f"/orgs/{logged_in.org}/workspaces")
+
+
+class TestWorkspacePush:
+    """The write half of the loop: edits to a shared tree belong to the
+    workspace, because the jobs above it carry no files."""
+
+    def _source(self, tmp_path: Path, **files: str) -> Path:
+        source = tmp_path / "src"
+        source.mkdir()
+        for name, content in (files or {"model.preql": "key id int;"}).items():
+            path = source / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        return source
+
+    def test_a_missing_workspace_is_created(self, logged_in, run_cloud, tmp_path):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/workspaces", [])
+        result = run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path)),
+            "--name",
+            "fresh",
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        assert body["name"] == "fresh"
+        assert {f["name"] for f in body["files"]} == {"model.preql"}
+
+    def test_an_existing_workspace_is_replaced_in_place(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """By name, which the platform makes unique per org — the same key
+        `cloud sync` deploys against, so the two write one row."""
+        result = run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path, **{"model.preql": "edited"})),
+            "--name",
+            "space",
+        )
+        assert result.exit_code == 0, result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["files"] == [{"name": "model.preql", "content": "edited"}]
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("parameters", {"region": "eu"}),
+            ("secret_env", ["SNOWFLAKE_PASSWORD"]),
+            ("timeout_seconds", 1800),
+            ("memory_mb", 4096),
+            ("cpus", 2.0),
+            ("vm_class", "shared"),
+            ("parent_workspace_id", "ws-base"),
+            ("description", "the shared tree"),
+        ],
+    )
+    def test_an_unnamed_setting_survives_the_push(
+        self, logged_in, run_cloud, tmp_path, field, value
+    ):
+        """A PUT replaces a workspace wholesale, so anything the caller was not
+        told about has to be read off the workspace and resent."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(**{field: value})],
+        )
+        result = run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path)),
+            "--name",
+            "space",
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body[field] == value
+
+    def test_a_named_setting_wins_over_the_carried_one(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(timeout_seconds=60)],
+        )
+        run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path)),
+            "--name",
+            "space",
+            "--timeout-seconds",
+            "1800",
+        )
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["timeout_seconds"] == 1800
+
+    def test_every_content_field_on_the_model_is_carried(self):
+        """The pin behind all of the above: a content field `Workspace` models
+        but the payload omits is cleared on every push, and nothing else in the
+        suite would notice."""
+        from trilogy.scripts.cloud_models import Workspace
+
+        content_fields = set(Workspace.model_fields) - {
+            "id",
+            "org_id",
+            "name",
+            "files",
+            # Carried by its own branch: a config is replaced, not merged, and
+            # a push only supplies one deliberately.
+            "config",
+            "current_version_id",
+        }
+        assert content_fields == set(cloud_mod.WORKSPACE_CARRIED_FIELDS)
+        # And the reader that supplies them, so neither half can drift alone.
+        assert content_fields == set(
+            cloud_mod._carried_workspace_settings(Workspace(**_workspace()))
+        )
+
+    def test_a_content_no_op_is_reported_as_one(self, logged_in, run_cloud, tmp_path):
+        """Re-pushing an unedited fetch must not claim to have changed
+        anything — the version pointer is what says whether it did."""
+        logged_in.set("PUT", f"/orgs/{logged_in.org}/workspaces/*", _workspace())
+        result = run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path)),
+            "--name",
+            "space",
+        )
+        assert result.exit_code == 0, result.output
+        assert "no new version" in result.output
+
+    def test_a_trilogy_toml_in_the_tree_is_not_bundled_as_a_file(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A copy in the tree would shadow the config in the executor's
+        workdir — the same reason `jobs push` keeps it out of the file list."""
+        source = self._source(
+            tmp_path, **{"model.preql": "key id int;", "trilogy.toml": "[engine]\n"}
+        )
+        result = run_cloud(
+            "workspaces", "push", "--source", str(source), "--name", "space"
+        )
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert [f["name"] for f in body["files"]] == ["model.preql"]
+
+    def test_a_config_is_not_invented_for_a_workspace_that_has_none(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """Storing one would break every job under it on today's CLI, which
+        fails on the unknown --config-overlay flag."""
+        source = self._source(
+            tmp_path, **{"model.preql": "key id int;", "trilogy.toml": "[engine]\n"}
+        )
+        result = run_cloud(
+            "workspaces", "push", "--source", str(source), "--name", "space"
+        )
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert "config" not in body
+        assert "Ignoring trilogy.toml" in result.output
+
+    def test_an_edited_config_round_trips_when_the_workspace_has_one(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """It is the file a fetch wrote, so dropping the edit would break the
+        loop this command exists to close."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace(config="[engine]\n")],
+        )
+        source = self._source(
+            tmp_path,
+            **{"model.preql": "key id int;", "trilogy.toml": "[engine]\nedited = 1\n"},
+        )
+        run_cloud("workspaces", "push", "--source", str(source), "--name", "space")
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["config"] == "[engine]\nedited = 1\n"
+
+    def test_an_explicit_config_is_stored_even_without_one_already(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._source(tmp_path)
+        config = tmp_path / "other.toml"
+        config.write_text("[engine]\ndeliberate = 1\n", encoding="utf-8")
+        run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "space",
+            "--config",
+            str(config),
+        )
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["config"] == "[engine]\ndeliberate = 1\n"
+
+    def test_an_empty_source_is_refused(self, logged_in, run_cloud, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = run_cloud(
+            "workspaces", "push", "--source", str(empty), "--name", "space"
+        )
+        assert result.exit_code != 0 and "No files matched" in result.output
+
+    def test_rewrites_apply_to_the_tree(self, logged_in, run_cloud, tmp_path):
+        source = self._source(tmp_path, **{"model.preql": "address prod.orders;"})
+        run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "space",
+            "--rewrite",
+            "prod.=dev.",
+        )
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["files"][0]["content"] == "address dev.orders;"
+
+    def test_push_emits_a_json_event(self, logged_in, run_cloud, tmp_path, json_mode):
+        result = run_cloud(
+            "workspaces",
+            "push",
+            "--source",
+            str(self._source(tmp_path)),
+            "--name",
+            "space",
+        )
+        event = [
+            e
+            for e in _json_stream(result.output)
+            if e["event"].startswith("workspace_")
+        ][-1]
+        assert event["outcome"] == "updated"
+
+
+class TestPushingATreeIntoAWorkspaceBoundJob:
+    def test_it_warns_and_names_the_command_that_accepts_it(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The natural way to reach here is `jobs fetch --resolved` followed by
+        a push: the job gets a private copy of the shared tree, so the edit
+        lands, the siblings never see it, and the two copies drift."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [
+                {
+                    "id": "job-1",
+                    "org_id": "org-acme",
+                    "name": "nightly",
+                    "operation": "run",
+                    "config": "[engine]\n",
+                    "files": [],
+                    "workspace_id": "ws-1",
+                    "created_at": TS,
+                    "updated_at": TS,
+                }
+            ],
+        )
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "trilogy.toml").write_text("[engine]\n", encoding="utf-8")
+        (source / "model.preql").write_text("key id int;", encoding="utf-8")
+        result = run_cloud("jobs", "push", "--source", str(source), "--name", "nightly")
+        assert result.exit_code == 0, result.output
+        assert "workspaces push" in result.output
 
 
 class TestDeriveJobName:
@@ -2887,6 +3542,36 @@ schedule = "0 0 6 * * *"
         assert logged_in.requests_for(
             "PATCH", f"/orgs/{logged_in.org}/jobs/job-refresh"
         )
+
+    def test_a_sync_carries_what_the_workspace_already_holds(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A workspace PUT replaces its content wholesale, and this body names
+        only the tree — sending it bare cleared the parameters, secrets and
+        resource defaults of every workspace a sync touched, silently, on
+        every run."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                {
+                    "id": "ws-1",
+                    "org_id": "org-acme",
+                    "name": "data",
+                    "parameters": {"region": "eu"},
+                    "secret_env": ["SNOWFLAKE_PASSWORD"],
+                    "timeout_seconds": 1800,
+                }
+            ],
+        )
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
+        assert body["parameters"] == {"region": "eu"}
+        assert body["secret_env"] == ["SNOWFLAKE_PASSWORD"]
+        assert body["timeout_seconds"] == 1800
 
     def test_a_single_job_project_still_deploys_self_contained(
         self, logged_in, run_cloud, tmp_path
