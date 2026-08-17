@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, ClassVar
 
@@ -7,6 +8,8 @@ from trilogy.constants import logger
 from trilogy.core.enums import (
     AddressType,
     FunctionType,
+    JoinType,
+    Modifier,
     UnnestMode,
 )
 from trilogy.core.models.core import (
@@ -22,6 +25,7 @@ from trilogy.dialect.base import (
     TableColumn,
     safe_quote,
 )
+from trilogy.dialect.base import null_wrapper as base_null_wrapper
 from trilogy.dialect.bigquery_engine import BigQueryConnection
 from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
 
@@ -55,6 +59,47 @@ def render_geo_transform(args: list[str]) -> str:
             f"got ({args[1]}, {args[2]})"
         )
     return f"{args[0]}"
+
+
+# A bare column reference, quoted the way every join key this module renders is
+# (`alias`.`column`, or a bare `column` when the key is the rendering branch's
+# own). Anything else -- a COALESCE over several sources, a CAST, a function --
+# is an expression as far as BigQuery's join planner is concerned.
+FIELD_REFERENCE = re.compile(r"`[^`]+`(?:\.`[^`]+`)*")
+
+
+def null_wrapper(
+    lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
+) -> str:
+    """Null-safe join key, in a shape BigQuery's FULL join planner accepts.
+
+    A FULL OUTER JOIN's ON clause must contain "an equality of fields from both
+    sides of the join". A top-level ``X = Y`` satisfies that whatever X and Y
+    are, but the base dialect's null-safe expansion
+    ``(l = r or (l is null and r is null))`` is an OR, and BigQuery only reads
+    an OR back as a join key while *both* operands are plain fields -- an
+    expression on either side is rejected, as is ``IS NOT DISTINCT FROM``. The
+    expression case is the ordinary one: a key merged across several
+    row-preserving sources renders as ``coalesce(a.x, b.x, c.x) = d.x``.
+
+    ``TO_JSON_STRING`` on both sides restores a top-level equality and is
+    null-safe for free (NULL encodes as bare ``null``, the string 'null' as
+    ``"null"``). It costs a computed hash-join key, so field-keyed joins keep
+    the cheaper expansion. Encoded FLOAT64s compare textually, so NaN matches
+    itself and ``-0.0`` stops matching ``0.0``; a float join key is
+    pathological, and the alternative is a query that does not run.
+
+    Only FULL is restricted, and only the OR form -- everything else falls
+    through to the base wrapper. Details, and the planner fixes that would make
+    this dead code, in ``docs/handoff_bigquery_full_join_merged_keys.md``.
+    """
+    if (
+        jointype is JoinType.FULL
+        and Modifier.NULLABLE in modifiers
+        and not (FIELD_REFERENCE.fullmatch(lval) and FIELD_REFERENCE.fullmatch(rval))
+    ):
+        return f"TO_JSON_STRING({lval}) = TO_JSON_STRING({rval})"
+    return base_null_wrapper(lval, rval, modifiers, jointype)
 
 
 FUNCTION_MAP = {
@@ -213,6 +258,7 @@ class BigqueryDialect(BaseDialect):
         **FUNCTION_GRAIN_MATCH_MAP,
     }
     QUOTE_CHARACTER = "`"
+    NULL_WRAPPER = staticmethod(null_wrapper)
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST

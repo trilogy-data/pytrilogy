@@ -22,6 +22,7 @@ from trilogy.core.enums import (
     AddressType,
     FunctionType,
     GroupMode,
+    JoinType,
     Modifier,
     UnnestMode,
 )
@@ -37,6 +38,7 @@ def null_wrapper(
     lval: str,
     rval: str,
     modifiers: list[Modifier],
+    jointype: JoinType | None = None,
 ) -> str:
 
     if Modifier.NULLABLE in modifiers:

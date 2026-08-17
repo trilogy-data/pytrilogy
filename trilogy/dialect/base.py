@@ -38,6 +38,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     GroupMode,
+    JoinType,
     Modifier,
     Ordering,
     PersistMode,
@@ -191,8 +192,12 @@ def nullable_from_str(value: object) -> bool:
     return str(value).strip().upper() != "NO"
 
 
-def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
-
+def null_wrapper(
+    lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
+) -> str:
+    # ``jointype`` is the join this key belongs to. The base expansion is legal
+    # under every join type and ignores it; dialects that restrict what a FULL
+    # OUTER JOIN's ON clause may contain (BigQuery) key off it.
     if Modifier.NULLABLE in modifiers:
         return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
     return f"{lval} = {rval}"
