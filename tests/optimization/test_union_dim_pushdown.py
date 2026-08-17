@@ -17,6 +17,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
     UnionCTE,
 )
+from trilogy.core.optimization import reorder_ctes
 from trilogy.core.optimizations.union_dim_pushdown import (
     UnionDimPushdown,
     _add_render_dependencies,
@@ -656,3 +657,89 @@ def test_dim_cte_exposes_rejects_filter_derivative_of_dim(test_environment):
 
     derivative = _branch_cte("dim_derived", category, [category_name_length])
     assert rule._dim_cte_exposes(derivative, descriptor) is False
+
+
+def _union_derived_dim(name: str, union: UnionCTE, key: BuildConcept) -> CTE:
+    """A single-concept projection OF the union — the shape the planner peels
+    out when a union is the only source of a dimension key."""
+    grain = BuildGrain(components={key.address})
+    return CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=[key],
+            output_concepts=[key],
+            datasources=[union.source],
+            grain=grain,
+            joins=[],
+            source_map={key.address: {union.source}},
+        ),
+        output_columns=[key],
+        parent_ctes=[union],
+        grain=grain,
+        source_map={key.address: [union.name]},
+        existence_source_map={},
+    )
+
+
+def test_union_dim_pushdown_refuses_dim_derived_from_the_union(test_environment):
+    """A "dim" that is itself a projection of the union cannot be pushed into
+    that union's branches — the branch would depend on a CTE that depends on
+    the union, and ``reorder_ctes`` rejects the graph with "CTE dependency
+    graph contains a cycle"."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+
+    branch1 = _branch_cte("branch1", products, [product_id, category_id])
+    branch2 = _branch_cte("branch2", products, [product_id, category_id])
+    union = _union_cte("unioned", [branch1, branch2], [product_id, category_id])
+    dim = _union_derived_dim("category_dim", union, category_id)
+    consumer = _dim_consumer(union, dim, category_id, category_id, category_id)
+
+    optimized, _ = UnionDimPushdown().optimize(
+        union, {union.name: [dim, consumer], dim.name: [consumer]}
+    )
+
+    assert optimized is False
+    assert branch1.parent_ctes == [] and branch2.parent_ctes == []
+    reorder_ctes([branch1, branch2, union, dim, consumer])
+
+
+def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
+    test_environment,
+):
+    """Same guard on the ``_apply_plain`` entry point: the pass-through target
+    must not absorb a dim that is (or reads from) the target itself."""
+    env = test_environment.materialize_for_select()
+    products = env.datasources["products"]
+    product_id = env.concepts["product_id"]
+    category_id = env.concepts["category_id"]
+    category_name = env.concepts["category_name"]
+
+    target = _branch_cte("dedup", products, [product_id, category_id])
+    dim = _union_derived_dim("category_dim", target, category_id)
+    atom = BuildComparison(
+        left=category_name,
+        right="special",
+        operator=ComparisonOperator.EQ,
+    )
+    consumer = _dim_consumer(target, dim, category_id, category_id, category_id, atom)
+    descriptor = _DimDescriptor(
+        dim_qds=dim.source,
+        join_qds_id=dim.source.identifier,
+        key_pairs=[
+            ConceptPair(
+                left=category_id,
+                right=category_id,
+                existing_datasource=target.source,
+            )
+        ],
+        dim_concepts=[category_id],
+        where_atoms=[atom],
+        strip_safe=True,
+    )
+
+    assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
+    assert target.source.joins == []
+    assert target.parent_ctes == []

@@ -79,6 +79,10 @@ from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
     ArgBinding,
     CallStatement,
+    ChartLayer,
+    ChartLayerBinding,
+    ChartPlacement,
+    ChartStatement,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,
@@ -1128,7 +1132,62 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: CopyStatement):
-        return f"copy into {arg.target_type.value} '{arg.target}' from {self.to_string(arg.select)}"
+        options = ""
+        if arg.options:
+            rendered = ", ".join(
+                f"{k}={self.to_string(v)}" for k, v in arg.options.items()
+            )
+            options = f" ({rendered})"
+        return (
+            f"copy into {arg.target_type.value} '{arg.target}'{options} "
+            f"from {self.to_string(arg.select)}"
+        )
+
+    @to_string.register
+    def _(self, arg: ChartLayerBinding):
+        base = f"{arg.role} <- {self.to_string(arg.expr)}"
+        if arg.alias:
+            base += f" as {arg.alias}"
+        return base
+
+    @to_string.register
+    def _(self, arg: ChartLayer):
+        with self.indented():
+            bindings = [self.indent_lines(self.to_string(b)) for b in arg.bindings]
+        out = f"layer {arg.layer_type.value} (\n" + ",\n".join(bindings) + "\n)"
+        select = arg.select
+        if select is None:
+            return out
+        if arg.explicit_select:
+            return out + f" from {self.to_string(select).removesuffix(';').rstrip()}"
+        # An implicit select is regenerated from the bindings on reparse; only
+        # its layer-level `order by` / `limit` were authored.
+        if select.order_by:
+            out += f"\norder by\n{self.to_string(select.order_by)}"
+        if select.limit is not None:
+            out += f"\nlimit {select.limit}"
+        return out
+
+    @to_string.register
+    def _(self, arg: ChartPlacement):
+        label = f" as {arg.label}" if arg.label else ""
+        return f"place {arg.kind.value} at {self.to_string(arg.value)}{label}"
+
+    @to_string.register
+    def _(self, arg: ChartStatement):
+        components: list[str] = [self.to_string(layer) for layer in arg.layers]
+        components += [self.to_string(place) for place in arg.placements]
+        if arg.scale_x:
+            components.append(f"set scale_x: {arg.scale_x}")
+        if arg.scale_y:
+            components.append(f"set scale_y: {arg.scale_y}")
+        if arg.hide_legend:
+            components.append("set hide_legend")
+        if arg.show_title:
+            components.append("set show_title")
+        with self.indented():
+            body = "\n".join(self.indent_lines(c) for c in components)
+        return f"chart\n{body}\n;"
 
     @to_string.register
     def _(self, arg: CallStatement):

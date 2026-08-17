@@ -848,6 +848,9 @@ class ChartLayer:
     layer_type: ChartType
     bindings: list[ChartLayerBinding] = field(default_factory=list)
     select: SelectStatement | None = None
+    # True when the author wrote `from select ...`; an implicit select is
+    # rebuilt from the bindings, so rendering must not echo it back.
+    explicit_select: bool = False
 
 
 @dataclass
