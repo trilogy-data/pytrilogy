@@ -94,6 +94,12 @@ class ProcessedRawSQLStatement:
 
 
 @dataclass
+class ProcessedCallStatement:
+    target: str
+    query: ProcessedQuery | None = None
+
+
+@dataclass
 class ProcessedValidateStatement:
     scope: ValidationScope
     targets: list[str] | None
@@ -210,6 +216,7 @@ from trilogy.core.statements.author import ChartPlacement
 
 PROCESSED_STATEMENT_TYPES = (
     ProcessedCopyStatement
+    | ProcessedCallStatement
     | ProcessedQuery
     | ProcessedRawSQLStatement
     | ProcessedQueryPersist

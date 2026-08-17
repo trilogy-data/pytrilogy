@@ -553,6 +553,13 @@ class CopyStatement:
 
 
 @dataclass
+class CallStatement:
+    target: str
+    select: SelectStatement | None = None
+    meta: Metadata | None = field(default_factory=Metadata)
+
+
+@dataclass
 class MultiSelectStatement(HasUUID, SelectTypeMixin):
     selects: list[SelectStatement]
     align: AlignClause
@@ -865,6 +872,7 @@ STATEMENT_TYPES = (
     SelectStatement
     | RawSQLStatement
     | CopyStatement
+    | CallStatement
     | MultiSelectStatement
     | RowsetDerivationStatement
     | MergeStatementV2

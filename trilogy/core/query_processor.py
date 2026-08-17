@@ -89,6 +89,7 @@ from trilogy.core.scope_diagnostics import (
     extract_derived_value_scopes,
 )
 from trilogy.core.statements.author import (
+    CallStatement,
     ChartLayer,
     ChartStatement,
     ConceptDeclarationStatement,
@@ -99,6 +100,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     MaterializedDataset,
+    ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartLayer,
     ProcessedChartStatement,
@@ -1264,6 +1266,19 @@ def process_copy(
         target_type=statement.target_type,
         options=dict(statement.options),
     )
+
+
+def process_call(
+    environment: Environment,
+    statement: CallStatement,
+    hooks: list[BaseHook] | None = None,
+) -> ProcessedCallStatement:
+    if statement.select is None:
+        return ProcessedCallStatement(target=statement.target)
+    query = process_query(
+        environment=environment, statement=statement.select, hooks=hooks
+    )
+    return ProcessedCallStatement(target=statement.target, query=query)
 
 
 def _binding_safe_address(binding, environment: Environment) -> str:

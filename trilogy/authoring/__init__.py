@@ -55,6 +55,7 @@ from trilogy.core.models.datasource import Address, Datasource, DatasourceMetada
 from trilogy.core.models.environment import DictImportResolver, Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
+    CallStatement,
     ConceptDeclarationStatement,
     ConceptTransform,
     CopyStatement,
@@ -89,6 +90,7 @@ __all__ = [
     "ArrayType",
     # trilogy.core.enums
     "BooleanOperator",
+    "CallStatement",
     "CaseElse",
     "CaseWhen",
     "Comment",

@@ -13,6 +13,7 @@
     | selective_import_statement
     | self_import_statement
     | copy_statement
+    | call_statement
     | merge_statement
     | rawsql_statement
     | natural_select_statement
@@ -213,6 +214,11 @@
     copy_option: IDENTIFIER "=" literal
     copy_options: "(" copy_option ("," copy_option)* ","? ")"
     copy_statement: "copy"i "into"i COPY_TYPE (FILE_PATH | string_lit) copy_options? "from"i (select_statement | chart_statement)
+
+    // call statement: run an external program (`.py` via uv, anything else executed
+    // directly). The optional select must yield exactly one row; each visible output
+    // column becomes a --name value argument.
+    call_statement: "call"i (FILE_PATH | string_lit) ("from"i select_statement)?
 
     // chart statement
     CHART_TYPE: "line"i | "bar"i | "barh"i | "point"i | "area"i | "headline"i | "donut"i | "heatmap"i | "boxplot"i | "treemap"i

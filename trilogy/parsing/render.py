@@ -78,6 +78,7 @@ from trilogy.core.models.datasource import (
 from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
     ArgBinding,
+    CallStatement,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,
@@ -1128,6 +1129,12 @@ class Renderer:
     @to_string.register
     def _(self, arg: CopyStatement):
         return f"copy into {arg.target_type.value} '{arg.target}' from {self.to_string(arg.select)}"
+
+    @to_string.register
+    def _(self, arg: CallStatement):
+        if arg.select is not None:
+            return f"call `{arg.target}` from {self.to_string(arg.select)}"
+        return f"call `{arg.target}`;"
 
     @to_string.register
     def _(self, arg: AlignClause):
