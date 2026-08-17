@@ -1783,16 +1783,37 @@ def _consumer_required_input_grain(
     # a raw scan with it is unrenderable. The parent's grain (added below) is
     # the joinable identity.
     parent_computed: set[str] = set()
-    for pred in group_graph.predecessors(gid):
-        if pred == FINAL_NODE_ID or pred not in attrs:
-            continue
-        if edge_kind(group_edges, pred, gid) == EdgeKind.EXISTENCE:
-            continue
+    row_preds = [
+        pred
+        for pred in group_graph.predecessors(gid)
+        if pred != FINAL_NODE_ID
+        and pred in attrs
+        and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+    ]
+    for pred in row_preds:
         if (
             attrs[pred].derivation in GROUPING_DERIVATIONS
             or attrs[pred].derivation == Derivation.ROWSET
         ):
-            grain |= set(attrs[pred].grain_components)
+            # A pred whose row stream reaches this consumer through a GROUPING
+            # descendant pred that grouped the axis away has no such axis at
+            # this merge: requiring it resurrects the raw pred as a parent CTE
+            # beside the descendant, and the two share no joinable key (rollup
+            # over union-joined rowsets: the raw `r` rowset beside the rollup
+            # aggregate, whose ROLLUP grain is `channel` only). The
+            # descendant's own grain, declared below on its own iteration, is
+            # the merge axis.
+            pred_grain = set(attrs[pred].grain_components)
+            axis_grouped_away = any(
+                other != pred
+                and pred in nx.ancestors(group_graph, other)
+                and attrs[other].derivation in GROUPING_DERIVATIONS
+                and not (pred_grain <= set(attrs[other].output_concepts))
+                for other in row_preds
+            )
+            if axis_grouped_away:
+                continue
+            grain |= pred_grain
     return frozenset(grain - parent_computed)
 
 
@@ -2271,6 +2292,21 @@ def _compute_concept_sets(
     pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
 
     io = GroupIOPlan.for_groups(group_graph)
+    # Non-ROWSET members of authored statement relations that NO group hosts:
+    # the axis vocabulary a fresh scan may advertise below. A member some group
+    # already carries as a primary needs no re-sourcing, and advertising it
+    # there only widens the scan and the merge keys with equalities the fact
+    # grain already determines.
+    scan_advertisable_members: list[str] = []
+    if environment is not None:
+        for member in sorted(_statement_scoped_relation_members(environment)):
+            member_concept = environment.concepts.get(member)
+            if (
+                member_concept is not None
+                and member_concept.derivation != Derivation.ROWSET
+                and member not in all_primary_members
+            ):
+                scan_advertisable_members.append(member)
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
@@ -2279,6 +2315,20 @@ def _compute_concept_sets(
         if fact.behavior is None or fact.derivation == Derivation.ROOT:
             for addr in list(cap):
                 cap.update(source_grain_of.get(addr, frozenset()))
+            # A fresh scan can re-source an authored scoped-join axis member
+            # its columns FD-determine (`billing_customer.sk` determines the
+            # unique `billing_customer.id` a `subset join cust.cid = ...id`
+            # names). Advertise it so the demand rules can elect the axis for
+            # the merge; without it the address intersection fails and the
+            # FINAL merge loses the authored join key (all_sales pivot).
+            # Rowset handles are excluded: a scan that absorbs one would drop
+            # the rowset's internal filter.
+            if environment is not None:
+                for member in scan_advertisable_members:
+                    if member not in cap and build_fd_determines(
+                        environment, cap, member, include_empty_grain=False
+                    ):
+                        cap.add(member)
             io.capability[gid] = cap
             continue
         # A grouping group's grain component that is a STATEMENT-scoped join axis

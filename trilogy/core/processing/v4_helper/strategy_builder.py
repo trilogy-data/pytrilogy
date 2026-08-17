@@ -2887,11 +2887,24 @@ def _relevant_root_preserve_keys(
     if not preserve_keys:
         return frozenset()
     output_addresses = {concept.address for concept in output_concepts}
+    statement_members = _statement_scoped_relation_members(environment)
     relevant: set[str] = set()
     for key in preserve_keys:
         if key in output_addresses:
             relevant.add(key)
             continue
+        # An AUTHORED statement-relation member is the declared merge axis: it
+        # already survived the merge-grain intersection, and the FD test below
+        # cannot vouch for it (a `unique` business key determines the outputs
+        # only through a uniqueness the FD tables don't encode). Dropping it
+        # re-loses the authored join key (`subset join cust.cid = id` with
+        # only `id`-determined properties projected). ROWSET handles stay out:
+        # a root scan must never claim a rowset boundary's own member.
+        if key in statement_members:
+            key_concept = environment.concepts.get(key)
+            if key_concept is not None and key_concept.derivation != Derivation.ROWSET:
+                relevant.add(key)
+                continue
         # A key the ROOT group itself carries as a member is a genuine BRIDGE
         # join key even when it doesn't FD-determine any output: the group put
         # this key beside the output because a shared finer member (the fact's
