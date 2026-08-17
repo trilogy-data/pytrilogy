@@ -944,6 +944,45 @@ incremental by event_ts;
     assert "All scripts executed successfully!" in result.output
 
 
+def test_refresh_directory_dry_run_wording(tmp_path: Path):
+    """Directory dry-run must say "would", matching single-file mode."""
+    script_content = """
+key event_id int;
+property event_id.event_ts datetime;
+
+root datasource source_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+query '''
+SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+UNION ALL
+SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
+''';
+datasource target_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+address target_events_table
+incremental by event_ts;
+    """
+    test_file = tmp_path / "stale_test.preql"
+    test_file.write_text(script_content)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["refresh", str(tmp_path), "duckdb", "--dry-run"])
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "1 datasource would be updated" in result.output
+    assert "Datasources That Would Be Updated" in result.output
+    assert "Dry run: 1 asset(s) would be refreshed" in result.output
+    assert "All scripts executed successfully!" not in result.output
+    assert "Datasources Updated" not in result.output
+
+
 @pytest.mark.parametrize(
     "cmd,args",
     [

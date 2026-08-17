@@ -774,6 +774,7 @@ def run_parallel_execution(
         ParallelProgressTracker,
         failure_report,
         print_error,
+        print_info,
         print_success,
         show_dry_run_queries,
         show_execution_info,
@@ -950,9 +951,11 @@ def run_parallel_execution(
         )
 
     # For dry-run refresh, print collected SQL after all scripts complete
+    refresh_dry_run = False
     if execution_mode == ExecutionMode.REFRESH:
         rp = cli_params.refresh_params or RefreshParams()
-        if rp.dry_run:
+        refresh_dry_run = rp.dry_run
+        if refresh_dry_run:
             show_dry_run_queries(summary.results)
 
     # For refresh mode, calculate skipped (successful but no updates)
@@ -999,5 +1002,9 @@ def run_parallel_execution(
             raise Exit(1)
         return summary
 
-    print_success("All scripts executed successfully!")
+    if refresh_dry_run:
+        would_refresh = sum(r.stats.update_count for r in summary.results if r.stats)
+        print_info(f"Dry run: {would_refresh} asset(s) would be refreshed")
+    else:
+        print_success("All scripts executed successfully!")
     return summary

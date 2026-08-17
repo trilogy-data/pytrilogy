@@ -92,6 +92,10 @@ def failure_report(summary: "ParallelExecutionSummary") -> str:
     return "\n".join(lines)
 
 
+def _stat_row_label(noun: str, verb: str, dry_run: bool) -> str:
+    return f"{noun} That Would Be {verb}" if dry_run else f"{noun} {verb}"
+
+
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
     from trilogy.scripts.common import ExecutionStats
@@ -100,6 +104,12 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
     for result in summary.results:
         if result.stats:
             total_stats = total_stats + result.stats
+
+    dry_run = total_stats.dry_run
+    title = "Execution Summary (Dry Run)" if dry_run else "Execution Summary"
+    updated_label = _stat_row_label("Datasources", "Updated", dry_run)
+    validated_label = _stat_row_label("Datasources", "Validated", dry_run)
+    persisted_label = _stat_row_label("Tables", "Persisted", dry_run)
 
     if is_json_mode():
         failed = [
@@ -116,11 +126,12 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
             datasources_updated=total_stats.update_count or None,
             datasources_validated=total_stats.validate_count or None,
             tables_persisted=total_stats.persist_count or None,
+            dry_run=dry_run or None,
             failures=failed or None,
         )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
-        table = Table(title="Execution Summary", show_header=False)
+        table = Table(title=title, show_header=False)
         table.add_column("Metric", style=_core.COL_CYAN)
         table.add_column("Value", style=_core.COL_WHITE)
 
@@ -130,11 +141,11 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
         table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
 
         if total_stats.update_count > 0:
-            table.add_row("Datasources Updated", str(total_stats.update_count))
+            table.add_row(updated_label, str(total_stats.update_count))
         if total_stats.validate_count > 0:
-            table.add_row("Datasources Validated", str(total_stats.validate_count))
+            table.add_row(validated_label, str(total_stats.validate_count))
         if total_stats.persist_count > 0:
-            table.add_row("Tables Persisted", str(total_stats.persist_count))
+            table.add_row(persisted_label, str(total_stats.persist_count))
 
         _core.console.print(table)
 
@@ -145,18 +156,18 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
                 if error:
                     _core.console.print(f"    Error: {error}")
     else:
-        print("Execution Summary:")
+        print(f"{title}:")
         print(f"  Total Scripts: {summary.total_scripts}")
         print(f"  Successful: {summary.successful}")
         print(f"  Failed: {summary.failed}")
         print(f"  Total Duration: {summary.total_duration:.2f}s")
 
         if total_stats.update_count > 0:
-            print(f"  Datasources Updated: {total_stats.update_count}")
+            print(f"  {updated_label}: {total_stats.update_count}")
         if total_stats.validate_count > 0:
-            print(f"  Datasources Validated: {total_stats.validate_count}")
+            print(f"  {validated_label}: {total_stats.validate_count}")
         if total_stats.persist_count > 0:
-            print(f"  Tables Persisted: {total_stats.persist_count}")
+            print(f"  {persisted_label}: {total_stats.persist_count}")
 
         if summary.failed > 0:
             print("\nFailed Scripts:")

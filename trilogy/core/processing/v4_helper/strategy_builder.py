@@ -3951,10 +3951,7 @@ def build_strategy_node(
             Derivation.UNNEST,
             Derivation.ROWSET,
         ):
-            narrowed = satisfiable_outputs(outputs, parents)
-            if len(narrowed) != len(outputs) and _carry_window_inputs(outputs, parents):
-                narrowed = satisfiable_outputs(outputs, parents)
-            outputs = narrowed
+            outputs = satisfiable_outputs(outputs, parents)
             if not outputs:
                 continue
         # For aggregating derivations, peel `injected` off into a pre-filter

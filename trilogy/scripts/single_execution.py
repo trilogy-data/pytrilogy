@@ -502,7 +502,7 @@ def execute_script_for_refresh(
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }
-    stats = ExecutionStats()
+    stats = ExecutionStats(dry_run=dry_run)
     result = _plan_and_execute_refresh(
         exec,
         plan,
