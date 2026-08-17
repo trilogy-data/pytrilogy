@@ -252,6 +252,7 @@ class SyntaxNodeKind(str, Enum):
     COPY_STATEMENT = "copy_statement"
     COPY_OPTIONS = "copy_options"
     COPY_OPTION = "copy_option"
+    CALL_STATEMENT = "call_statement"
     RAWSQL_STATEMENT = "rawsql_statement"
     VALIDATE_STATEMENT = "validate_statement"
     VALIDATE_QUERY_OPTION = "validate_query_option"
@@ -612,6 +613,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "copy_statement": SyntaxNodeKind.COPY_STATEMENT,
     "copy_options": SyntaxNodeKind.COPY_OPTIONS,
     "copy_option": SyntaxNodeKind.COPY_OPTION,
+    "call_statement": SyntaxNodeKind.CALL_STATEMENT,
     "rawsql_statement": SyntaxNodeKind.RAWSQL_STATEMENT,
     "validate_statement": SyntaxNodeKind.VALIDATE_STATEMENT,
     "validate_query_option": SyntaxNodeKind.VALIDATE_QUERY_OPTION,

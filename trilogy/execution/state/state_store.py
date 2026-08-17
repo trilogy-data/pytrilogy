@@ -16,6 +16,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.isolation import hidden_datasources
 from trilogy.execution.state.partitions import (
     PartitionObservation,
     is_partitioned,
@@ -30,8 +31,8 @@ from trilogy.execution.state.watermarks import (
     RefreshKind,
     StaleAsset,
     _compare_watermark_values,
-    get_concept_max_watermark_abstract,
     get_concept_max_watermarks,
+    get_concept_max_watermarks_abstract,
     get_freshness_watermarks,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
@@ -402,12 +403,14 @@ class BaseStateStore:
                     if concept is not None and concept.lineage is not None:
                         missing_derived[key] = concept.address
 
-        for key, concept_address in missing_derived.items():
-            wm = get_concept_max_watermark_abstract(
-                concept_address, executor, root_assets
+        if missing_derived:
+            derived_maxes = get_concept_max_watermarks_abstract(
+                list(missing_derived.values()), executor, root_assets
             )
-            if wm.value is not None:
-                concept_max_watermarks[key] = wm
+            for key, concept_address in missing_derived.items():
+                wm = derived_maxes[concept_address]
+                if wm.value is not None:
+                    concept_max_watermarks[key] = wm
 
         self.concept_max_watermarks = concept_max_watermarks
 
@@ -992,12 +995,7 @@ def _execute_one_asset(
                 "refreshable roots (with refresh_script) are managed"
             ),
         )
-    hidden = {
-        ds_id: executor.environment.datasources.pop(ds_id)
-        for ds_id in pending_sql_ds_ids
-        if ds_id in executor.environment.datasources
-    }
-    try:
+    with hidden_datasources(executor.environment, pending_sql_ds_ids):
         try:
             sql = executor.update_datasource(
                 datasource,
@@ -1009,8 +1007,6 @@ def _execute_one_asset(
             raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
         if on_refresh_query and sql is not None:
             on_refresh_query(asset.datasource_id, sql)
-    finally:
-        executor.environment.datasources.update(hidden)
     # Invalidate so any downstream re-eval queries the post-refresh state.
     store.invalidate_address(executor.environment, datasource.safe_address)
 

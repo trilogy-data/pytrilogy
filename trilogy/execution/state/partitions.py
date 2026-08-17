@@ -56,6 +56,7 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
+from trilogy.execution.state.isolation import hidden_datasources
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     _resolve_table_ref,
@@ -510,27 +511,26 @@ def probe_expected_partitions(
         f"MAX({ref.address}) -> _expected_{i}" for i, ref in enumerate(wm_refs)
     ]
 
-    hidden = {
-        ds_id: executor.environment.datasources.pop(ds_id)
+    non_roots = [
+        ds_id
         for ds_id in list(executor.environment.datasources)
         if ds_id not in root_assets
-    }
-    try:
-        result = executor.execute_query(f"SELECT {', '.join(selected)};")
-        rows = list(result.fetchall()) if result else []
-    except UNRESOLVABLE_ERRORS as e:
-        # A real answer, not a failure: the partition key may not be derivable
-        # from roots alone, and a rootless project has nothing to derive it
-        # from. Narrow on purpose — see UNRESOLVABLE_ERRORS.
-        logger.debug(
-            "%s no root-derived expectation for %s: %s",
-            LOGGER_PREFIX,
-            ds.identifier,
-            e,
-        )
-        return []
-    finally:
-        executor.environment.datasources.update(hidden)
+    ]
+    with hidden_datasources(executor.environment, non_roots):
+        try:
+            result = executor.execute_ephemeral(f"SELECT {', '.join(selected)};")
+            rows = list(result.fetchall()) if result else []
+        except UNRESOLVABLE_ERRORS as e:
+            # A real answer, not a failure: the partition key may not be
+            # derivable from roots alone, and a rootless project has nothing to
+            # derive it from. Narrow on purpose — see UNRESOLVABLE_ERRORS.
+            logger.debug(
+                "%s no root-derived expectation for %s: %s",
+                LOGGER_PREFIX,
+                ds.identifier,
+                e,
+            )
+            return []
 
     offset = len(assignments)
     return [

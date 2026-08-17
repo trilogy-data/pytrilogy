@@ -823,7 +823,7 @@ def execute_managed_node_for_refresh(
     the live probe thinks, so the selector is re-applied here against this
     node's own datasources.
     """
-    stats = ExecutionStats()
+    stats = ExecutionStats(dry_run=dry_run)
     store = state_store if state_store is not None else new_state_store()
 
     # Resolve which datasources at this address to evaluate. Prefer the explicit

@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import replace
 from math import ceil
 
@@ -89,6 +89,7 @@ from trilogy.core.scope_diagnostics import (
     extract_derived_value_scopes,
 )
 from trilogy.core.statements.author import (
+    CallStatement,
     ChartLayer,
     ChartStatement,
     ConceptDeclarationStatement,
@@ -99,6 +100,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     MaterializedDataset,
+    ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartLayer,
     ProcessedChartStatement,
@@ -872,9 +874,16 @@ def _authored_reference_addresses(
     return closure
 
 
-# id(environment) -> (weak handle, stamp, {join key: BuildCaches}). Same
+# id(environment) -> (weak handle, {stamp: {join key: BuildCaches}}). Same
 # identity idiom + mutation stamp as domain_graph._MINTED_CACHE.
 _SESSION_CACHE_STORE: dict[int, tuple] = {}
+
+# Stamp generations retained per environment. More than one because refresh
+# planning alternates between two long-lived states — the full environment and
+# the probes' hidden-datasource window (see execution/state/isolation.py, which
+# restores the stamp on exit exactly when content is restored) — and a
+# single-generation store made every alternation a full baseline rebuild.
+_SESSION_CACHE_GENERATIONS = 4
 
 
 def _evict_session_caches(key: int, _dead) -> None:
@@ -893,12 +902,16 @@ def _session_build_caches(
     datasource dict effective-write counters (content_version, not mutations —
     overlay push/pop and identical re-registrations from a re-parsed script
     must not evict the bundle), in-place datasource status flips (persist
-    marks PUBLISHED without a dict write), and the alias map; env merges ride
-    in the join key. If a concept overlay is somehow live at generation time,
-    fall back to the raw mutation counter so overlay-visible state is covered.
-    A statement with its own scoped joins gets its own bundle
-    — address/grain-keyed cache entries are only shareable under ONE join set
-    (the same rule that gives nested arms fresh caches)."""
+    marks PUBLISHED without a dict write), datasource membership, and the
+    alias map; env merges ride in the join key. If a concept overlay is
+    somehow live at generation time, fall back to the raw mutation counter so
+    overlay-visible state is covered. A statement with its own scoped joins
+    gets its own bundle — address/grain-keyed cache entries are only shareable
+    under ONE join set (the same rule that gives nested arms fresh caches).
+    A few recent stamps are retained per environment so states an executor
+    alternates between (full env / probe-hidden env) keep their bundles;
+    correctness rests on a stamp identifying exactly one content state, which
+    holds because counters only ever rewind on provably identical content."""
     from functools import partial
     from weakref import ref
 
@@ -911,15 +924,22 @@ def _session_build_caches(
     )
     store_key = id(environment)
     cached = _SESSION_CACHE_STORE.get(store_key)
-    if cached is None or cached[0]() is not environment or cached[1] != stamp:
-        bundles: dict[tuple, BuildCaches] = {}
+    if cached is None or cached[0]() is not environment:
+        generations: OrderedDict[tuple, dict[tuple, BuildCaches]] = OrderedDict()
         _SESSION_CACHE_STORE[store_key] = (
             ref(environment, partial(_evict_session_caches, store_key)),
-            stamp,
-            bundles,
+            generations,
         )
     else:
-        bundles = cached[2]
+        generations = cached[1]
+    bundles = generations.get(stamp)
+    if bundles is None:
+        bundles = {}
+        generations[stamp] = bundles
+        while len(generations) > _SESSION_CACHE_GENERATIONS:
+            generations.popitem(last=False)
+    else:
+        generations.move_to_end(stamp)
     key = environment.materialize_join_key(scoped_joins)
     caches = bundles.get(key)
     if caches is None:
@@ -1266,17 +1286,45 @@ def process_copy(
     )
 
 
-def _binding_safe_address(binding, environment: Environment) -> str:
+def process_call(
+    environment: Environment,
+    statement: CallStatement,
+    hooks: list[BaseHook] | None = None,
+) -> ProcessedCallStatement:
+    if statement.select is None:
+        return ProcessedCallStatement(target=statement.target)
+    query = process_query(
+        environment=environment, statement=statement.select, hooks=hooks
+    )
+    return ProcessedCallStatement(target=statement.target, query=query)
+
+
+def _binding_safe_address(
+    binding, environment: Environment, output_fields: set[str]
+) -> str:
+    """The select-output field a binding names.
+
+    An `as` alias resolves to a projected output of that name when one exists;
+    otherwise it is a display label only and the bound concept itself is the
+    field. Computed expressions have no address, so they require a projected
+    alias."""
     from trilogy.core.models.author import compute_safe_address
 
     if binding.alias is not None:
         namespace = environment.namespace or DEFAULT_NAMESPACE
-        return compute_safe_address(namespace, binding.alias)
+        alias_safe = compute_safe_address(namespace, binding.alias)
+        if alias_safe in output_fields:
+            return alias_safe
     if isinstance(binding.expr, ConceptRef):
         return binding.expr.safe_address
+    if binding.alias is None:
+        raise ValueError(
+            f"Chart binding for role '{binding.role}' has a computed expression"
+            " without an alias"
+        )
     raise ValueError(
-        f"Chart binding for role '{binding.role}' has a computed expression"
-        " without an alias"
+        f"Chart role '{binding.role}' aliases '{binding.alias}' but no select"
+        f" output has that name: {output_fields}"
     )
 
 
@@ -1291,14 +1339,17 @@ def _process_chart_layer(
     output_fields = {c.safe_address for c in layer.select.output_components}
 
     role_map: dict[str, str] = {}
+    field_labels: dict[str, str] = {}
     for binding in layer.bindings:
-        safe = _binding_safe_address(binding, environment)
+        safe = _binding_safe_address(binding, environment, output_fields)
         if safe not in output_fields:
             raise ValueError(
                 f"Chart role '{binding.role}' resolves to '{safe}' which is"
                 f" not in select output: {output_fields}"
             )
         role_map[binding.role] = safe
+        if binding.alias is not None:
+            field_labels[safe] = binding.alias
 
     def _single(role: str) -> str | None:
         return role_map.get(role)
@@ -1308,6 +1359,7 @@ def _process_chart_layer(
     return ProcessedChartLayer(
         layer_type=layer.layer_type,
         query=select,
+        field_labels=field_labels,
         x_fields=[x_field] if x_field else [],
         y_fields=[y_field] if y_field else [],
         color_field=_single("color"),

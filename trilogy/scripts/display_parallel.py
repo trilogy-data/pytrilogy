@@ -54,28 +54,67 @@ def show_parallel_execution_start(
         print(f"  Strategy: {strategy}")
 
 
+def failed_script_entries(
+    summary: "ParallelExecutionSummary",
+) -> list[tuple[str, str | None]]:
+    """(label, error) for each failed result, in execution order."""
+    from trilogy.scripts.dependency import ScriptNode
+
+    return [
+        (
+            (
+                str(result.node.path)
+                if isinstance(result.node, ScriptNode)
+                else result.node.address
+            ),
+            str(result.error) if result.error else None,
+        )
+        for result in summary.results
+        if not result.success
+    ]
+
+
+def failure_report(summary: "ParallelExecutionSummary") -> str:
+    """The stderr message for a failed run.
+
+    The per-script errors are only on stdout (the summary table), so a caller
+    that keeps just stderr -- a cloud job log, a CI step -- saw that something
+    failed and nothing about what. JSON mode already carries them structured on
+    the `parallel_summary` event, so it keeps the bare sentence."""
+    headline = "Some scripts failed during execution."
+    if is_json_mode():
+        return headline
+    lines = [headline]
+    for label, error in failed_script_entries(summary):
+        lines.append(f"  ✗ {label}")
+        if error:
+            lines.append(f"    Error: {error}")
+    return "\n".join(lines)
+
+
+def _stat_row_label(noun: str, verb: str, dry_run: bool) -> str:
+    return f"{noun} That Would Be {verb}" if dry_run else f"{noun} {verb}"
+
+
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
     from trilogy.scripts.common import ExecutionStats
-    from trilogy.scripts.dependency import ScriptNode
 
     total_stats = ExecutionStats()
     for result in summary.results:
         if result.stats:
             total_stats = total_stats + result.stats
 
+    dry_run = total_stats.dry_run
+    title = "Execution Summary (Dry Run)" if dry_run else "Execution Summary"
+    updated_label = _stat_row_label("Datasources", "Updated", dry_run)
+    validated_label = _stat_row_label("Datasources", "Validated", dry_run)
+    persisted_label = _stat_row_label("Tables", "Persisted", dry_run)
+
     if is_json_mode():
         failed = [
-            {
-                "node": (
-                    str(result.node.path)
-                    if isinstance(result.node, ScriptNode)
-                    else result.node.address
-                ),
-                "error": str(result.error) if result.error else None,
-            }
-            for result in summary.results
-            if not result.success
+            {"node": node_label, "error": error}
+            for node_label, error in failed_script_entries(summary)
         ]
         emit_event(
             "parallel_summary",
@@ -87,11 +126,12 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
             datasources_updated=total_stats.update_count or None,
             datasources_validated=total_stats.validate_count or None,
             tables_persisted=total_stats.persist_count or None,
+            dry_run=dry_run or None,
             failures=failed or None,
         )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
-        table = Table(title="Execution Summary", show_header=False)
+        table = Table(title=title, show_header=False)
         table.add_column("Metric", style=_core.COL_CYAN)
         table.add_column("Value", style=_core.COL_WHITE)
 
@@ -101,52 +141,40 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
         table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
 
         if total_stats.update_count > 0:
-            table.add_row("Datasources Updated", str(total_stats.update_count))
+            table.add_row(updated_label, str(total_stats.update_count))
         if total_stats.validate_count > 0:
-            table.add_row("Datasources Validated", str(total_stats.validate_count))
+            table.add_row(validated_label, str(total_stats.validate_count))
         if total_stats.persist_count > 0:
-            table.add_row("Tables Persisted", str(total_stats.persist_count))
+            table.add_row(persisted_label, str(total_stats.persist_count))
 
         _core.console.print(table)
 
         if summary.failed > 0:
             _core.console.print("\n[bold red]Failed Scripts:[/bold red]")
-            for result in summary.results:
-                if not result.success:
-                    node_label = (
-                        result.node.path
-                        if isinstance(result.node, ScriptNode)
-                        else result.node.address
-                    )
-                    _core.console.print(f"  [red]\u2717[/red] {node_label}")
-                    if result.error:
-                        _core.console.print(f"    Error: {result.error}")
+            for node_label, error in failed_script_entries(summary):
+                _core.console.print(f"  [red]\u2717[/red] {node_label}")
+                if error:
+                    _core.console.print(f"    Error: {error}")
     else:
-        print("Execution Summary:")
+        print(f"{title}:")
         print(f"  Total Scripts: {summary.total_scripts}")
         print(f"  Successful: {summary.successful}")
         print(f"  Failed: {summary.failed}")
         print(f"  Total Duration: {summary.total_duration:.2f}s")
 
         if total_stats.update_count > 0:
-            print(f"  Datasources Updated: {total_stats.update_count}")
+            print(f"  {updated_label}: {total_stats.update_count}")
         if total_stats.validate_count > 0:
-            print(f"  Datasources Validated: {total_stats.validate_count}")
+            print(f"  {validated_label}: {total_stats.validate_count}")
         if total_stats.persist_count > 0:
-            print(f"  Tables Persisted: {total_stats.persist_count}")
+            print(f"  {persisted_label}: {total_stats.persist_count}")
 
         if summary.failed > 0:
             print("\nFailed Scripts:")
-            for result in summary.results:
-                if not result.success:
-                    node_label = (
-                        result.node.path
-                        if isinstance(result.node, ScriptNode)
-                        else result.node.address
-                    )
-                    print(f"  \u2717 {node_label}")
-                    if result.error:
-                        print(f"    Error: {result.error}")
+            for node_label, error in failed_script_entries(summary):
+                print(f"  \u2717 {node_label}")
+                if error:
+                    print(f"    Error: {error}")
 
 
 def show_script_result(

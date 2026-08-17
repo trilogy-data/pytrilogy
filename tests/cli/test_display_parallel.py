@@ -13,6 +13,7 @@ from trilogy.scripts import display_core
 from trilogy.scripts.display_parallel import (
     ParallelProgressTracker,
     _make_futures_context_getter,
+    failure_report,
     show_parallel_execution_start,
     show_parallel_execution_summary,
     show_script_result,
@@ -214,6 +215,34 @@ class TestShowParallelExecutionSummary:
             captured = buf.getvalue()
         assert "3" in captured  # update count
         assert "2" in captured  # validate count
+
+
+class TestFailureReport:
+    def test_names_every_failure_and_error(self):
+        results = [
+            _make_result(_make_script_node("ok.preql"), success=True),
+            _make_result(
+                _make_script_node("first.preql"), success=False, error="boom one"
+            ),
+            _make_result(
+                _make_managed_node("schema.tbl"), success=False, error="boom two"
+            ),
+        ]
+        report = failure_report(_make_summary(results))
+        assert report.splitlines()[0] == "Some scripts failed during execution."
+        assert "first.preql" in report
+        assert "boom one" in report
+        assert "schema.tbl" in report
+        assert "boom two" in report
+        assert "ok.preql" not in report
+
+    def test_json_mode_keeps_bare_headline(self, json_mode):
+        results = [
+            _make_result(_make_script_node("f.preql"), success=False, error="boom")
+        ]
+        assert failure_report(_make_summary(results)) == (
+            "Some scripts failed during execution."
+        )
 
 
 class TestParallelProgressTracker:

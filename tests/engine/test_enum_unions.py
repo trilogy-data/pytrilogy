@@ -795,3 +795,56 @@ with combined as union(
 select combined.entity, sum(combined.meas) as total order by combined.entity;
 """)[0].fetchall()
     assert [tuple(r) for r in results] == _EXPECTED_RETURNS + [("zzz", 7.0)]
+
+
+FANOUT_PREQL = """
+key tree_id string;
+key species string;
+key city enum<string>['A', 'B'];
+property tree_id.dbh float;
+property species.species_upper <- upper(species);
+
+partial datasource a_trees (
+    tree_id,
+    city,
+    species,
+    dbh
+)
+grain (tree_id)
+complete where city = 'A'
+query '''
+select 'a1' as tree_id, 'A' as city, 'Quercus' as species, 10.0 as dbh
+union all select 'a2', 'A', 'Quercus', 12.0
+union all select 'a3', 'A', 'Tilia', 8.0
+''';
+
+partial datasource b_trees (
+    tree_id,
+    city,
+    species,
+    dbh
+)
+grain (tree_id)
+complete where city = 'B'
+query '''
+select 'b1' as tree_id, 'B' as city, 'Quercus' as species, 20.0 as dbh
+union all select 'b2', 'B', 'Acer', 5.0
+''';
+"""
+
+
+def test_union_coarse_property_projection_does_not_fan_out():
+    """A property of a coarser key, selected AND filtered over a union source,
+    is projected into its own key-grain CTE. That CTE reads a `tree_id`-grain
+    union, so it only holds one row per species if it groups — otherwise the
+    final join on `species` multiplies every tree by the number of trees
+    sharing its species (3 of these 5 are 'Quercus', so 11 rows came back)."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(FANOUT_PREQL)
+    rows = executor.execute_text(
+        "select tree_id, city, species, species_upper, dbh"
+        " where species_upper != 'X';"
+    )[-1].fetchall()
+
+    assert len(rows) == 5, f"expected one row per tree, got {len(rows)}: {rows}"
+    assert sorted(r[0] for r in rows) == ["a1", "a2", "a3", "b1", "b2"]
