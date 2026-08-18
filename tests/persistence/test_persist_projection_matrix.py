@@ -21,9 +21,14 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.enums import DatasourceState
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
-from trilogy.core.query_processor import _validate_persist_projection, process_query
+from trilogy.core.query_processor import (
+    _validate_persist_projection,
+    get_query_node,
+    process_query,
+)
 from trilogy.core.statements.author import PersistStatement
 from trilogy.executor import Executor
 from trilogy.parser import parse
@@ -220,9 +225,94 @@ CASES = [
 ]
 
 
+# A property populated ONLY via `merge` (no datasource binds it), persisted next
+# to an abstract-grain watermark column from a separate root source. The
+# watermark makes the FINAL assembly a multi-contributor merge, whose projection
+# used to match parent outputs by address alone — the merge target is exposed
+# only as its origin's pseudonym, so it silently dropped (2026-08, dbh
+# imputation: 0.3.316 wrote a shifted 2-of-3 projection; 0.3.331's arity guard
+# turned that into a hard error).
+MERGED_PROPERTY_MODEL = """
+key entity_id string;
+
+property <*>.updated_through datetime;
+
+property entity_id.city string;
+property entity_id.raw_measure float?;
+property entity_id.measure float;
+property entity_id.imputed_measure float;
+
+auto derived_measure <- raw_measure + 1.0;
+merge derived_measure into measure;
+
+auto derived_imputed <- coalesce(raw_measure, avg(raw_measure) by city);
+merge derived_imputed into imputed_measure;
+
+datasource update_time (
+    updated_at: updated_through
+)
+query '''SELECT TIMESTAMP '2026-08-01 00:00:00' AS updated_at''';
+
+datasource raw_rows (
+    entity_id: entity_id,
+    city: city,
+    raw_measure: raw_measure,
+)
+grain (entity_id)
+query '''SELECT * FROM (VALUES
+    ('p1', 'boston', 10.0),
+    ('p2', 'boston', null),
+    ('p3', 'cambridge', 3.5)
+) t(entity_id, city, raw_measure)''';
+"""
+
+
+@dataclass(frozen=True)
+class MergedCase:
+    name: str
+    concepts: tuple[str, ...]
+
+    def datasource(self) -> str:
+        body = ",\n    ".join(self.concepts)
+        return (
+            f"datasource {self.name} (\n    {body},\n)\n"
+            f"grain (entity_id)\naddress tbl_{self.name};"
+        )
+
+
+MERGED_CASES = [
+    # The reported repro: trivial scalar derivation merged into the property.
+    MergedCase(
+        name="merge_scalar_beside_watermark",
+        concepts=("entity_id", "measure", "updated_through"),
+    ),
+    # The real downstream shape (Boston dbh): a partitioned imputation
+    # aggregate `coalesce(x, avg(x) by k)` merged into the property.
+    MergedCase(
+        name="merge_imputed_beside_watermark",
+        concepts=("entity_id", "imputed_measure", "updated_through"),
+    ),
+    # Both merge targets beside the watermark: two pseudonym-covered outputs
+    # must survive the same multi-contributor projection.
+    MergedCase(
+        name="merge_both_beside_watermark",
+        concepts=("entity_id", "measure", "imputed_measure", "updated_through"),
+    ),
+    # Control: no watermark, so the plan is single-contributor and rides the
+    # _bridge_pseudonyms path — pins the OTHER assembly path against drift.
+    MergedCase(
+        name="merge_scalar_no_watermark",
+        concepts=("entity_id", "measure"),
+    ),
+]
+
+
 @pytest.fixture
 def models(tmp_path: Path) -> Path:
     (tmp_path / "model.preql").write_text(MODEL, encoding="utf-8")
+    (tmp_path / "merged_property.preql").write_text(
+        MERGED_PROPERTY_MODEL, encoding="utf-8"
+    )
     return tmp_path
 
 
@@ -258,6 +348,57 @@ def test_persist_writes_every_declared_column(models: Path, case: Case):
     )
     assert written, "matrix case wrote no rows, so it proves nothing"
     assert written == expected
+
+
+@pytest.mark.parametrize("case", MERGED_CASES, ids=lambda c: c.name)
+def test_merge_populated_property_writes_every_column(models: Path, case: MergedCase):
+    engine = _executor(models)
+    engine.execute_text(
+        f"import merged_property;\n{case.datasource()}\n"
+        f"create if not exists datasources {case.name};\n"
+        f"OVERWRITE {case.name};"
+    )
+    written = _sorted_rows(
+        engine.execute_raw_sql(f"select * from tbl_{case.name}").fetchall()
+    )
+    reference = _executor(models)
+    expected = _sorted_rows(
+        reference.execute_text(
+            f"import merged_property;\nselect {', '.join(case.concepts)};"
+        )[-1].fetchall()
+    )
+    assert written, "persist wrote no rows, so it proves nothing"
+    assert written == expected
+
+
+def test_merged_property_rides_final_merge_as_output_not_input(models: Path):
+    """The fix's mechanics, pinned at the strategy-node layer: the merge target
+    is exposed only as its origin's pseudonym, so the multi-contributor FINAL
+    node must carry it as an OUTPUT (resolve_concept_map's targets loop maps it
+    to the producing parent via the pseudonym) and never as an INPUT (inherited
+    inputs are skipped by that loop, leaving the column dangling)."""
+    environment = Environment(working_path=models)
+    engine = Dialects.DUCK_DB.default_executor(environment=environment)
+    target = MERGED_CASES[0]
+    engine.parse_text(f"import merged_property;\n{target.datasource()}")
+    ds = environment.datasources[target.name]
+    lineage = ds.create_update_statement(environment, None, line_no=None).as_lineage(
+        environment
+    )
+    original_status = ds.status
+    ds.status = DatasourceState.UNPUBLISHED
+    try:
+        node = get_query_node(environment, lineage)
+    finally:
+        ds.status = original_status
+    output_addrs = {c.address for c in node.output_concepts}
+    assert "local.measure" in output_addrs
+    assert "local.measure" not in {c.address for c in node.input_concepts}
+    assert any(
+        "local.measure" in o.pseudonyms
+        for parent in node.parents
+        for o in parent.output_concepts
+    ), "no parent exposes the merge origin under the target's pseudonym"
 
 
 def test_short_projection_is_rejected_naming_the_column(models: Path):

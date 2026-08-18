@@ -995,12 +995,17 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedChartCopyStatement) -> ResultProtocol | None:
-        from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
+        from trilogy.rendering.altair_renderer import (
+            ALTAIR_AVAILABLE,
+            AltairRenderer,
+            chart_dependency_message,
+        )
         from trilogy.rendering.chart_theme import theme_chart
 
         if not ALTAIR_AVAILABLE:
             raise RuntimeError(
-                "Copying a chart to a file requires altair. Install with 'pip install altair vl-convert-python'."
+                chart_dependency_message("Copying a chart to a file")
+                + " Saving to png also requires vl-convert-python."
             )
         size_props, save_kwargs, theme_name, background = _chart_copy_options(
             query.options

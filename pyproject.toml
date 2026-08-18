@@ -72,8 +72,8 @@ snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
 cli = ["rich", "plotext"]
 serve = ["fastapi", "uvicorn"]
-analysis = ["altair", "vl-convert-python"]
-report = ["markdown", "altair", "vl-convert-python", "playwright"]
+analysis = ["altair", "pandas", "vl-convert-python"]
+report = ["markdown", "altair", "pandas", "vl-convert-python", "playwright"]
 
 
 [tool.setuptools.dynamic]
