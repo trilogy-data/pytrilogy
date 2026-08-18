@@ -529,7 +529,12 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
         ],
     )
 
-    def null_wrapper(left: str, right: str, modifiers: list[Modifier]) -> str:
+    def null_wrapper(
+        left: str,
+        right: str,
+        modifiers: list[Modifier],
+        jointype: JoinType | None = None,
+    ) -> str:
         return f"{left} = {right}"
 
     result = render_join(

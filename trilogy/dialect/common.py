@@ -20,6 +20,10 @@ from trilogy.core.models.execute import (
     _datasource_column_for_concept,
 )
 
+# Renders one join key. The join type is passed because dialects may restrict
+# what a given join's ON clause can contain (BigQuery, FULL joins).
+NullWrapper = Callable[[str, str, list[Modifier], JoinType], str]
+
 
 def render_unnest(
     unnest_mode: UnnestMode,
@@ -259,7 +263,7 @@ def _build_joinkeys(
     quote_character: str,
     render_expr_func: Callable,
     use_map: dict[str, set[str]],
-    null_wrapper: Callable[[str, str, list[Modifier]], str],
+    null_wrapper: NullWrapper,
 ) -> list[str]:
     if not join.joinkey_pairs:
         return ["1=1"]
@@ -298,6 +302,7 @@ def _build_joinkeys(
                             for pair in pairs
                             for modifier in _collect_modifiers(pair, join)
                         ],
+                        join.jointype,
                     )
                 )
                 continue
@@ -324,6 +329,7 @@ def _build_joinkeys(
                         unique_renders[0],
                         right_render,
                         _collect_modifiers(sub_pairs[0], join),
+                        join.jointype,
                     )
                 )
     return result or ["1=1"]
@@ -344,7 +350,7 @@ def render_join(
     ],
     cte: CTE,
     use_map: dict[str, set[str]],
-    null_wrapper: Callable[[str, str, list[Modifier]], str],
+    null_wrapper: NullWrapper,
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:
     if isinstance(join, InstantiatedUnnestJoin):
