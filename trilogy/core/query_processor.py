@@ -83,6 +83,10 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.processing.partial_bridging import (
+    heal_pinned_partials,
+    validate_partial_bridges,
+)
 from trilogy.core.processing.utility import unrenderable_outputs
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
@@ -1024,6 +1028,18 @@ def get_query_node(
     )
 
     _carry_order_by_concepts(build_statement)
+
+    # Effective partiality is a per-query fact: a `~` binding whose licensed
+    # extension rows the WHERE filters out is complete for this statement, and
+    # a key span that only a partial bridge can relate is rejected with
+    # guidance. One rewrite here keeps every downstream consumer consistent.
+    # Staged (`then where`) chains are excluded: intermediate stages see
+    # populations the combined WHERE has not yet filtered.
+    if isinstance(build_statement, BuildSelectLineage) and not (
+        build_statement.where_clauses
+    ):
+        heal_pinned_partials(build_environment, build_statement.where_clause)
+        validate_partial_bridges(build_environment, build_statement)
 
     graph = generate_graph(build_environment)
 

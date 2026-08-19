@@ -24,8 +24,8 @@ SELECT
     \"order_orders\".\"o_orderdate\" as \"order_date\",
     \"order_orders\".\"o_shippriority\" as \"order_ship_priority\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"orders\" as \"order_orders\" on \"cheerful\".\"order_id\" = \"order_orders\".\"o_orderkey\"
+    \"memory\".\"orders\" as \"order_orders\"
+    INNER JOIN \"cheerful\" on \"order_orders\".\"o_orderkey\" = \"cheerful\".\"order_id\"
 WHERE
     \"order_orders\".\"o_orderdate\" < date '1995-03-15'
 

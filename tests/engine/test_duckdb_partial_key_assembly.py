@@ -1,22 +1,37 @@
-"""Row-level contract for multi-group FINAL assembly over `~` (partial) keys.
+"""Row-level contract for queries over `~` (partial) key bindings.
 
-The passing tests pin the domain-extension semantics the assembly rewrite must
-preserve: a `~` key's unmatched dimension rows survive into the output exactly
-once, carrying their own attributes, with NULLs elsewhere.
+Semantics (see ``trilogy.core.processing.partial_bridging``):
 
-The xfail(strict) tests pin the CORRECT output for column combinations the
-assembler currently corrupts (split extension rows, phantom all-NULL rows,
-mismatched pair values, or an UnresolvableQueryException). Same model, same
-semantics — correctness flips on incidental column choice. They flip to XPASS
-when the assembly fix lands; promote them to plain asserts then.
+- A SINGLE live partial key extends: its unmatched dimension rows survive into
+  the output exactly once, carrying their own attributes, with NULLs elsewhere.
+- A multi-`~` fact whose COMPLETE row identity is in the output still anchors
+  the result: each row is a fact row or one dimension's extension row (the
+  ``item_id``-selecting tests below, extension rows included).
+- A span whose only bridge is a multi-`~` fact with its row identity ABSENT
+  from the output (or the identity IS the partial keys) has no well-defined
+  population and raises ``UnconstrainedPartialBridgeException``, whose
+  ``suggestion`` is the exact not-null pin that makes it generatable.
+- With that pin, the WHERE kills every extension row a partial key could
+  license, the bindings heal to complete for the statement, and the query
+  plans as a plain star over the fact's own rows — asserted here as the
+  ``_PIN`` variant of each spanning shape.
+
+The xfail(strict) tests pin the CORRECT output for shapes a pre-existing
+non-partial discovery defect still corrupts (a by-key aggregate compared
+against a row value beside additional keys — reproduces with no `~` in the
+model at all). They flip to XPASS when that fix lands; promote them to plain
+asserts then.
 """
 
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    UnconstrainedPartialBridgeException,
+    UnresolvableQueryException,
+)
 
-# users: 3 never orders. products: 30 never sold. items redundantly bind
+# users: 1 never orders. products: 1 never sold. items redundantly bind
 # ~user_id (the thelook order_items shape).
 _SIMPLE = """
 key user_id int;
@@ -105,6 +120,8 @@ auto order_status <- case when amount = user_first_amount then 'FIRST' else 'LAT
     )
 )
 
+_PIN = "where product_id is not null and user_id is not null\n"
+
 
 @pytest.fixture(scope="module")
 def simple():
@@ -125,21 +142,22 @@ def _rows(executor, query: str):
 
 
 def test_all_keys_dims_and_metric(simple):
-    assert (
-        _rows(
-            simple,
-            """select item_id, order_id, product_id, user_id, state, brand, total_qty
-        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", "A", 5),
-            (1001, 100, 20, 1, "CA", "B", 7),
-            (1002, 101, 10, 2, "NY", "A", 11),
-            (1003, 102, 20, 1, "CA", "B", 13),
-            (None, None, None, 3, "TX", None, None),
-            (None, None, 30, None, None, "C", None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, brand, total_qty
+        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(simple, query) == [
+        (1000, 100, 10, 1, "CA", "A", 5),
+        (1001, 100, 20, 1, "CA", "B", 7),
+        (1002, 101, 10, 2, "NY", "A", 11),
+        (1003, 102, 20, 1, "CA", "B", 13),
+        (None, None, None, 3, "TX", None, None),
+        (None, None, 30, None, None, "C", None),
+    ]
+    assert _rows(simple, _PIN + query) == [
+        (1000, 100, 10, 1, "CA", "A", 5),
+        (1001, 100, 20, 1, "CA", "B", 7),
+        (1002, 101, 10, 2, "NY", "A", 11),
+        (1003, 102, 20, 1, "CA", "B", 13),
+    ]
 
 
 def test_dim_only_uses_dim_domain(simple):
@@ -189,112 +207,160 @@ def test_by_dim_key_aggregate_vs_row_value(simple):
 
 
 def test_keys_only(simple):
-    assert (
-        _rows(
-            simple,
-            """select order_id, item_id, product_id, user_id
-        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (100, 1000, 10, 1),
-            (100, 1001, 20, 1),
-            (101, 1002, 10, 2),
-            (102, 1003, 20, 1),
-            (None, None, None, 3),
-            (None, None, 30, None),
-        ]
+    query = """select order_id, item_id, product_id, user_id
+        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(simple, query) == [
+        (100, 1000, 10, 1),
+        (100, 1001, 20, 1),
+        (101, 1002, 10, 2),
+        (102, 1003, 20, 1),
+        (None, None, None, 3),
+        (None, None, 30, None),
+    ]
+    assert _rows(simple, _PIN + query) == [
+        (100, 1000, 10, 1),
+        (100, 1001, 20, 1),
+        (101, 1002, 10, 2),
+        (102, 1003, 20, 1),
+    ]
+
+
+def test_keys_without_fact_anchor_require_pin(simple):
+    """The pair grain WITHOUT the fact's own row key is only relatable through
+    the multi-`~` items fact — undefined unpinned, a star pinned."""
+    query = "select user_id, product_id order by user_id asc, product_id asc;"
+    with pytest.raises(UnconstrainedPartialBridgeException) as err:
+        simple.generate_sql(query)
+    assert "product_id is not null" in err.value.suggestion
+    assert "user_id is not null" in err.value.suggestion
+    assert _rows(simple, _PIN + query) == [
+        (1, 10),
+        (1, 20),
+        (2, 10),
+    ]
+
+
+def test_dims_without_fact_anchor_require_pin(simple):
+    """The flagship shape: customer attributes x product attributes, related
+    only by the partial fact."""
+    with pytest.raises(UnconstrainedPartialBridgeException) as err:
+        simple.generate_sql("select state, brand order by state asc, brand asc;")
+    assert err.value.suggestion == (
+        "where product_id is not null and user_id is not null"
     )
+    assert "items" in err.value.datasources
+    assert _rows(
+        simple, _PIN + "select state, brand order by state asc, brand asc;"
+    ) == [
+        ("CA", "A"),
+        ("CA", "B"),
+        ("NY", "A"),
+    ]
 
 
 def test_pair_grain_aggregate(forked):
-    assert _rows(
-        forked,
-        "select order_id, product_id, total_pair_cost order by order_id asc nulls last, product_id asc nulls last;",
-    ) == [
+    # order_id is complete in items, so only product's extension family is in
+    # play — a single-family span stays generatable, extension row included.
+    query = "select order_id, product_id, total_pair_cost order by order_id asc nulls last, product_id asc nulls last;"
+    assert _rows(forked, query) == [
         (100, 10, 100),
         (100, 20, 150),
         (101, 10, 120),
         (102, 20, 210),
         (None, 30, None),
     ]
+    assert _rows(forked, _PIN + query) == [
+        (100, 10, 100),
+        (100, 20, 150),
+        (101, 10, 120),
+        (102, 20, 210),
+    ]
 
 
 def test_forked_with_state(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, state, total_qty, total_pair_cost
-        order by item_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", 5, 100),
-            (1001, 100, 20, 1, "CA", 7, 150),
-            (1002, 101, 10, 2, "NY", 11, 120),
-            (1003, 102, 20, 1, "CA", 13, 210),
-            (None, None, 30, None, None, None, None),
-            (None, None, None, 3, "TX", None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, total_qty, total_pair_cost
+        order by item_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "CA", 5, 100),
+        (1001, 100, 20, 1, "CA", 7, 150),
+        (1002, 101, 10, 2, "NY", 11, 120),
+        (1003, 102, 20, 1, "CA", 13, 210),
+        (None, None, 30, None, None, None, None),
+        (None, None, None, 3, "TX", None, None),
+    ]
+    assert _rows(forked, _PIN + query) == [
+        (1000, 100, 10, 1, "CA", 5, 100),
+        (1001, 100, 20, 1, "CA", 7, 150),
+        (1002, 101, 10, 2, "NY", 11, 120),
+        (1003, 102, 20, 1, "CA", 13, 210),
+    ]
 
 
 def test_forked_with_state_and_brand(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, state, brand, total_qty, total_pair_cost
-        order by item_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", "A", 5, 100),
-            (1001, 100, 20, 1, "CA", "B", 7, 150),
-            (1002, 101, 10, 2, "NY", "A", 11, 120),
-            (1003, 102, 20, 1, "CA", "B", 13, 210),
-            (None, None, 30, None, None, "C", None, None),
-            (None, None, None, 3, "TX", None, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, brand, total_qty, total_pair_cost
+        order by item_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "CA", "A", 5, 100),
+        (1001, 100, 20, 1, "CA", "B", 7, 150),
+        (1002, 101, 10, 2, "NY", "A", 11, 120),
+        (1003, 102, 20, 1, "CA", "B", 13, 210),
+        (None, None, 30, None, None, "C", None, None),
+        (None, None, None, 3, "TX", None, None, None),
+    ]
+    assert _rows(forked, _PIN + query) == [
+        (1000, 100, 10, 1, "CA", "A", 5, 100),
+        (1001, 100, 20, 1, "CA", "B", 7, 150),
+        (1002, 101, 10, 2, "NY", "A", 11, 120),
+        (1003, 102, 20, 1, "CA", "B", 13, 210),
+    ]
 
 
 def test_forked_keys_and_metrics(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, total_qty, total_pair_cost
-        order by item_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, 5, 100),
-            (1001, 100, 20, 1, 7, 150),
-            (1002, 101, 10, 2, 11, 120),
-            (1003, 102, 20, 1, 13, 210),
-            (None, None, 30, None, None, None),
-            (None, None, None, 3, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, total_qty, total_pair_cost
+        order by item_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, 5, 100),
+        (1001, 100, 20, 1, 7, 150),
+        (1002, 101, 10, 2, 11, 120),
+        (1003, 102, 20, 1, 13, 210),
+        (None, None, 30, None, None, None),
+        (None, None, None, 3, None, None),
+    ]
+    assert _rows(forked, _PIN + query) == [
+        (1000, 100, 10, 1, 5, 100),
+        (1001, 100, 20, 1, 7, 150),
+        (1002, 101, 10, 2, 11, 120),
+        (1003, 102, 20, 1, 13, 210),
+    ]
 
 
 def test_forked_with_brand_only(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, brand, total_qty, total_pair_cost
-        order by item_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "A", 5, 100),
-            (1001, 100, 20, 1, "B", 7, 150),
-            (1002, 101, 10, 2, "A", 11, 120),
-            (1003, 102, 20, 1, "B", 13, 210),
-            (None, None, 30, None, "C", None, None),
-            (None, None, None, 3, None, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, brand, total_qty, total_pair_cost
+        order by item_id asc nulls last, product_id asc nulls last;"""
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "A", 5, 100),
+        (1001, 100, 20, 1, "B", 7, 150),
+        (1002, 101, 10, 2, "A", 11, 120),
+        (1003, 102, 20, 1, "B", 13, 210),
+        (None, None, 30, None, "C", None, None),
+        (None, None, None, 3, None, None, None),
+    ]
+    assert _rows(forked, _PIN + query) == [
+        (1000, 100, 10, 1, "A", 5, 100),
+        (1001, 100, 20, 1, "B", 7, 150),
+        (1002, 101, 10, 2, "A", 11, 120),
+        (1003, 102, 20, 1, "B", 13, 210),
+    ]
 
 
 @pytest.mark.xfail(
     strict=True,
     raises=UnresolvableQueryException,
-    reason="keyless-join guard rejects keys+metrics+order_status",
+    reason=(
+        "pre-existing non-partial defect: a by-key aggregate compared against "
+        "a row value beside additional keys trips the keyless-join guard "
+        "(reproduces with no `~` in the model at all)"
+    ),
 )
 def test_forked_with_status(forked):
     assert (
@@ -316,7 +382,33 @@ def test_forked_with_status(forked):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="full column set fans out to 25 rows with cross-paired keys and values",
+    raises=UnresolvableQueryException,
+    reason=(
+        "same keyless-join guard rejection as test_forked_with_status, under "
+        "the pin that heals the `~` keys — the defect is grain composition, "
+        "not partiality"
+    ),
+)
+def test_forked_with_status_pinned(forked):
+    assert (
+        _rows(
+            forked,
+            _PIN
+            + """select item_id, order_id, product_id, user_id, order_status, total_qty, total_pair_cost
+        order by item_id asc nulls last;""",
+        )
+        == [
+            (1000, 100, 10, 1, "FIRST", 5, 100),
+            (1001, 100, 20, 1, "FIRST", 7, 150),
+            (1002, 101, 10, 2, "FIRST", 11, 120),
+            (1003, 102, 20, 1, "LATER", 13, 210),
+        ]
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="full column set fans out with cross-paired keys and values",
 )
 def test_forked_full_column_set(forked):
     assert (

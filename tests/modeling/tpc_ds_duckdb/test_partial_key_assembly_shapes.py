@@ -19,7 +19,10 @@ from pathlib import Path
 import pytest
 
 from trilogy import Executor
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import (
+    UnconstrainedPartialBridgeException,
+    UnresolvableQueryException,
+)
 from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
@@ -27,6 +30,88 @@ working_path = Path(__file__).parent
 
 def _scans(sql: str, table: str) -> int:
     return sql.count(f'"memory"."{table}"')
+
+
+# A custom reporting fact at a pure dimension-pair grain: the only datasource
+# relating item to customer in this model, with both keys bound `~` (the
+# customer/product/sales-list shape). Distinct from the store channel, where a
+# complete sibling (store_sales) anchors store_returns' `~` grain keys.
+_PAIR_FACT_MODEL = """import std.money;
+
+import item as item;
+import customer as customer;
+
+properties <item.sk, customer.sk> (
+    pair_paid numeric::usd,
+);
+
+datasource item_customer_sales (
+    item_sk: ~item.sk,
+    customer_sk: ~customer.sk,
+    total_paid: pair_paid,
+)
+grain (item.sk, customer.sk)
+address memory.item_customer_sales;
+"""
+
+_PAIR_FACT_SELECT = """select
+    item.sk,
+    customer.sk,
+    item.brand_name,
+    customer.current_address.state,
+    sum(pair_paid) as total_pair_paid,
+;"""
+
+
+@pytest.fixture(scope="module")
+def pair_fact_engine(engine_sf001: Executor) -> Executor:
+    engine_sf001.execute_raw_sql(
+        """create or replace table memory.item_customer_sales as
+        select ss_item_sk as item_sk, ss_customer_sk as customer_sk,
+               sum(ss_net_paid) as total_paid
+        from memory.store_sales
+        where ss_customer_sk is not null
+        group by 1, 2"""
+    )
+    return engine_sf001
+
+
+def test_pair_fact_span_requires_pin(pair_fact_engine: Executor):
+    """item x customer attributes relate only through the `~`-keyed pair fact:
+    unpinned, the population is undefined and the planner must say which pin
+    fixes it rather than guessing at an extension shape."""
+    pair_fact_engine.environment = Environment(working_path=working_path)
+    pair_fact_engine.parse_text(_PAIR_FACT_MODEL)
+    with pytest.raises(UnconstrainedPartialBridgeException) as err:
+        pair_fact_engine.generate_sql(_PAIR_FACT_SELECT)
+    assert "item.sk is not null" in err.value.suggestion
+    assert "customer.sk is not null" in err.value.suggestion
+    assert "item_customer_sales" in err.value.datasources
+
+
+def test_pair_fact_pinned_star(pair_fact_engine: Executor):
+    """The suggested pin heals both `~` keys (each key's extension rows carry
+    the OTHER key as NULL, so the pin filters them all out) and the query plans
+    as a plain star over the pair fact's own rows."""
+    pair_fact_engine.environment = Environment(working_path=working_path)
+    pair_fact_engine.parse_text(_PAIR_FACT_MODEL)
+    sql = pair_fact_engine.generate_sql(
+        "where item.sk is not null and customer.sk is not null\n" + _PAIR_FACT_SELECT
+    )[-1]
+    assert sql.count("FULL JOIN") == 0, sql
+    for table in ("item_customer_sales", "item", "customer", "customer_address"):
+        assert _scans(sql, table) == 1, (table, sql)
+
+    rows = pair_fact_engine.execute_raw_sql(sql).fetchall()
+    keys = [(r[0], r[1]) for r in rows]
+    truth = pair_fact_engine.execute_raw_sql(
+        "select count(*), sum(total_paid) from memory.item_customer_sales"
+    ).fetchone()
+    assert len(rows) == truth[0]
+    assert all(k[0] is not None and k[1] is not None for k in keys)
+    assert len(set(keys)) == len(keys)
+    total = sum(r[4] for r in rows if r[4] is not None)
+    assert round(total, 2) == round(truth[1], 2)
 
 
 def test_adhoc_three(engine_sf001: Executor):

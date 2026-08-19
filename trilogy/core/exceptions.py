@@ -91,6 +91,30 @@ class UnresolvableQueryException(Exception):
     pass
 
 
+class UnconstrainedPartialBridgeException(UnresolvableQueryException):
+    """The selected concepts need two (or more) keys related, but every
+    datasource relating them binds a needed key partially (``~``) — the
+    relationship is only defined for rows where those datasources have a row,
+    and unmatched members of either key have no defined counterpart.
+
+    Carries the offending ``keys``, the bridging ``datasources``, and a
+    ready-to-paste ``suggestion`` WHERE clause that pins the population so
+    callers can render targeted guidance."""
+
+    def __init__(
+        self,
+        message: str,
+        keys: list[str],
+        datasources: list[str],
+        suggestion: str,
+    ):
+        super().__init__(message)
+        self.message = message
+        self.keys = keys
+        self.datasources = datasources
+        self.suggestion = suggestion
+
+
 class NoDatasourceException(UnresolvableQueryException):
     pass
 
