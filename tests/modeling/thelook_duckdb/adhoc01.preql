@@ -1,0 +1,8 @@
+# Naive unpinned pair span: must raise UnconstrainedPartialBridgeException.
+import order_items;
+
+select
+    user.state,
+    product.brand,
+    revenue
+;

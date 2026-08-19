@@ -1,0 +1,15 @@
+# Pinned pair span with a derived metric (margin) and top-N ordering.
+import order_items;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.state,
+    product.department,
+    margin
+order by
+    margin desc,
+    user.state asc,
+    product.department asc
+limit 10;

@@ -1,0 +1,12 @@
+# query06's extension family with the aggregate tables declared: never-ordered
+# users must survive, and per-user revenue may roll up from the pair rollup
+# instead of the base fact.
+import sales_agg;
+
+select
+    user.id,
+    user.state,
+    revenue
+order by
+    user.id asc
+;

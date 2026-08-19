@@ -1,0 +1,13 @@
+query_id = "12"
+gen_length = 111
+preql_size = 58
+comp_size = 51
+generated_sql = """
+SELECT
+    \"products\".\"brand\" as \"brand\"
+FROM
+    \"products\"
+GROUP BY
+    1
+ORDER BY 
+    \"products\".\"brand\" asc"""

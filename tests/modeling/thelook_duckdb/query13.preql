@@ -1,0 +1,12 @@
+# Attribute-filter heal: a bound equality on the product side proves the
+# bridge row exists, so the user key heals without an explicit pin.
+import order_items;
+
+where
+    product.brand = 'Brand 01'
+select
+    user.state,
+    revenue
+order by
+    user.state asc
+;

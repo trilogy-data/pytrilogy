@@ -1,0 +1,18 @@
+query_id = "09"
+gen_length = 366
+preql_size = 116
+comp_size = 242
+generated_sql = """
+SELECT
+    \"order_items\".\"order_id\" as \"order_id\",
+    \"user_users\".\"state\" as \"user_state\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"order_items\".\"order_id\" asc,
+    \"user_users\".\"state\" asc"""

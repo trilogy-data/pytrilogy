@@ -1,0 +1,9 @@
+# The unpinned pair span must STILL error with the multi-~ aggregate declared:
+# a rollup whose keys are both partial is not a safe bridge.
+import sales_agg;
+
+select
+    user.state,
+    product.brand,
+    revenue
+;

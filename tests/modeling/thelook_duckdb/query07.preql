@@ -1,0 +1,11 @@
+# Single extension family, unpinned: every product survives, never-sold
+# products get NULL revenue.
+import order_items;
+
+select
+    product.id,
+    product.brand,
+    revenue
+order by
+    product.id asc
+;

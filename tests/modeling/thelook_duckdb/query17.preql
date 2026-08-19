@@ -1,0 +1,19 @@
+# Wide pinned select of everything the pair rollup binds plus dimension
+# attributes: every requested column must render (the managed-aggregate
+# column-drop guard) off an INNER star anchored on the rollup.
+import sales_agg;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.id,
+    product.id,
+    user.state,
+    product.brand,
+    revenue,
+    sale_line_count,
+order by
+    user.id asc,
+    product.id asc
+;

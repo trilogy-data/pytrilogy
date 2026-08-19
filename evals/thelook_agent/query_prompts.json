@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "grade": "medium",
+    "kind": "error_triggering",
+    "prompt": "Report total recorded sale revenue for every customer-state and product-brand combination that occurs in the sales data. Return three columns: customer state, product brand, and revenue. Use the semantic model's existing state, brand, and revenue fields directly without renaming them."
+  },
+  {
+    "id": 2,
+    "grade": "medium",
+    "kind": "error_triggering",
+    "prompt": "Which product categories do customers from each traffic source buy? Return one row per observed traffic-source and product-category pair, with two columns: traffic source and product category. Use the semantic model's existing traffic_source and category fields directly without renaming them."
+  },
+  {
+    "id": 3,
+    "grade": "medium",
+    "kind": "error_triggering",
+    "prompt": "Find the 10 customer-state and product-department pairs with the highest total margin, where margin is recorded sale value minus product cost. Return the semantic model's existing state, department, and margin fields directly without renaming them, highest first; break ties by state and then department ascending."
+  },
+  {
+    "id": 4,
+    "grade": "medium",
+    "kind": "error_triggering",
+    "prompt": "For each customer age and product category represented in recorded sales, report the average sale price. Return the semantic model's existing age, category, and average_sale_price fields directly without renaming them."
+  },
+  {
+    "id": 5,
+    "grade": "medium",
+    "kind": "error_triggering",
+    "prompt": "Report total recorded sale revenue by customer traffic source and product department. Return the semantic model's existing traffic_source, department, and revenue fields directly without renaming them for every observed pair."
+  },
+  {
+    "id": 6,
+    "grade": "easy",
+    "kind": "single_family_control",
+    "prompt": "List every customer, including customers who never bought anything, with their customer ID, state, and lifetime recorded sale revenue. Return NULL revenue for customers with no sale."
+  },
+  {
+    "id": 7,
+    "grade": "easy",
+    "kind": "single_family_control",
+    "prompt": "List every product, including products that never sold, with its product ID, brand, and lifetime recorded sale revenue. Return NULL revenue for products with no sale."
+  },
+  {
+    "id": 8,
+    "grade": "easy",
+    "kind": "fact_anchor_control",
+    "prompt": "Show the first 25 recorded sale lines by order-item ID. Return order-item ID, order ID, customer state, product brand, sale price, and item margin, ordered by order-item ID ascending."
+  },
+  {
+    "id": 9,
+    "grade": "easy",
+    "kind": "fact_anchor_control",
+    "prompt": "For each order, report its order ID, customer state, and total recorded sale revenue. Return one row per order, and only include rows whose order ID is recorded."
+  },
+  {
+    "id": 10,
+    "grade": "medium",
+    "kind": "pre_pinned_control",
+    "prompt": "List the distinct customer-state and product-brand combinations only where a recorded sale line exists. Do not include unmatched customers or unmatched products. Return state and brand."
+  },
+  {
+    "id": 11,
+    "grade": "easy",
+    "kind": "separate_side_judgment",
+    "prompt": "List the distinct customer states available in the customer population. Do not relate them to products. Return one column: state."
+  },
+  {
+    "id": 12,
+    "grade": "easy",
+    "kind": "separate_side_judgment",
+    "prompt": "List the distinct product brands available in the catalog. Do not relate them to customers. Return one column: brand."
+  }
+]

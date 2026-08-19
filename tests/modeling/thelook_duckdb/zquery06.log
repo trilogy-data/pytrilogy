@@ -1,0 +1,25 @@
+query_id = "06"
+gen_length = 607
+preql_size = 94
+comp_size = 175
+generated_sql = """
+
+WITH 
+wakeful as (
+SELECT
+    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+GROUP BY
+    1)
+SELECT
+    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") as \"user_id\",
+    \"user_users\".\"state\" as \"user_state\",
+    \"wakeful\".\"revenue\" as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    FULL JOIN \"wakeful\" on \"user_users\".\"id\" = \"wakeful\".\"user_id\"
+ORDER BY 
+    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") asc"""

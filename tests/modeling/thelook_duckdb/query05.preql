@@ -1,0 +1,14 @@
+# Pinned pair span: revenue by acquisition channel x department.
+import order_items;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.traffic_source,
+    product.department,
+    revenue
+order by
+    user.traffic_source asc,
+    product.department asc
+;

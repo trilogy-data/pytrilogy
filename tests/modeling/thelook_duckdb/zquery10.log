@@ -1,0 +1,29 @@
+query_id = "10"
+gen_length = 563
+preql_size = 175
+comp_size = 170
+generated_sql = """
+
+WITH 
+quizzical as (
+SELECT
+    \"order_items\".\"product_id\" as \"product_id\",
+    \"order_items\".\"user_id\" as \"user_id\"
+FROM
+    \"order_items\"
+GROUP BY
+    1,
+    2)
+SELECT
+    \"user_users\".\"state\" as \"user_state\",
+    \"product_products\".\"brand\" as \"product_brand\"
+FROM
+    \"quizzical\"
+    INNER JOIN \"users\" as \"user_users\" on \"quizzical\".\"user_id\" = \"user_users\".\"id\"
+    INNER JOIN \"products\" as \"product_products\" on \"quizzical\".\"product_id\" = \"product_products\".\"id\"
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"user_users\".\"state\" asc,
+    \"product_products\".\"brand\" asc"""

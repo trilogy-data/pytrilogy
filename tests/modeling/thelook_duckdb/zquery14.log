@@ -1,0 +1,12 @@
+query_id = "14"
+gen_length = 173
+preql_size = 104
+comp_size = 177
+generated_sql = """
+SELECT
+    \"daily_sales\".\"order_date\" as \"order_created_at_date\",
+    \"daily_sales\".\"revenue\" as \"revenue\"
+FROM
+    \"daily_sales\"
+ORDER BY 
+    \"daily_sales\".\"order_date\" asc"""

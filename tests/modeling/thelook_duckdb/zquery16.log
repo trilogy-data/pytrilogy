@@ -1,0 +1,22 @@
+query_id = "16"
+gen_length = 625
+preql_size = 185
+comp_size = 222
+generated_sql = """
+SELECT
+    \"user_users\".\"state\" as \"user_state\",
+    \"product_products\".\"brand\" as \"product_brand\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    INNER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    INNER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+WHERE
+    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") is not null and coalesce(\"order_items\".\"product_id\",\"product_products\".\"id\") is not null
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"user_users\".\"state\" asc,
+    \"product_products\".\"brand\" asc"""

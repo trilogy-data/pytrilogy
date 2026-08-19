@@ -1,0 +1,13 @@
+# Fact-anchored wide select: the fact's own key licenses both ~ dims.
+import order_items;
+
+select
+    id,
+    order.id,
+    user.state,
+    product.brand,
+    sale_price,
+    item_margin
+order by
+    id asc
+limit 25;

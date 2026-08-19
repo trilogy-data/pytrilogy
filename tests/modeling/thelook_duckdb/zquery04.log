@@ -1,0 +1,22 @@
+query_id = "04"
+gen_length = 577
+preql_size = 200
+comp_size = 236
+generated_sql = """
+SELECT
+    \"user_users\".\"age\" as \"user_age\",
+    \"product_products\".\"category\" as \"product_category\",
+    avg(\"order_items\".\"sale_price\") as \"average_sale_price\"
+FROM
+    \"users\" as \"user_users\"
+    INNER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    INNER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+WHERE
+    \"order_items\".\"user_id\" is not null and \"order_items\".\"product_id\" is not null
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"user_users\".\"age\" asc,
+    \"product_products\".\"category\" asc"""

@@ -1,0 +1,19 @@
+query_id = "13"
+gen_length = 430
+preql_size = 121
+comp_size = 218
+generated_sql = """
+SELECT
+    \"user_users\".\"state\" as \"user_state\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    INNER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    INNER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+WHERE
+    \"product_products\".\"brand\" = 'Brand 01'
+
+GROUP BY
+    1
+ORDER BY 
+    \"user_users\".\"state\" asc"""
