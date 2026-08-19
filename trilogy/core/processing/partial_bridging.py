@@ -55,6 +55,20 @@ def _bound_spellings(datasources: Iterable[BuildDatasource]) -> set[str]:
     return out
 
 
+def _structural_partial(ds: BuildDatasource, column: BuildColumnAssignment) -> bool:
+    """True for a column-level ``~``, the only mark that licenses extension.
+
+    A table-level partial stamp (``partial datasource ... complete where``) is
+    a row-subset contract the union machinery completes across siblings, and
+    still relates its keys — treating it as an extension license breaks that
+    assembly.
+    """
+    return (
+        Modifier.PARTIAL in column.modifiers
+        and column.concept.address in ds.column_level_partial_addresses
+    )
+
+
 def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
     return [
         ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
@@ -62,7 +76,6 @@ def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
 
 
 def _proven_bound(
-    environment: BuildEnvironment,
     conditions: BuildWhereClause | None,
     datasources: list[BuildDatasource],
 ) -> set[str]:
@@ -144,6 +157,16 @@ def _component_reach(
     return reach
 
 
+def _reach(
+    ds: BuildDatasource, datasources: list[BuildDatasource], cache: dict[str, set[str]]
+) -> set[str]:
+    reach = cache.get(ds.identifier)
+    if reach is None:
+        reach = _component_reach(ds, datasources)
+        cache[ds.identifier] = reach
+    return reach
+
+
 def heal_pinned_partials(
     environment: BuildEnvironment, conditions: BuildWhereClause | None
 ) -> None:
@@ -153,34 +176,21 @@ def heal_pinned_partials(
     statement) mapping; the shared build-cache objects are never mutated.
     """
     datasources = _build_datasources(environment)
-    # Only structural column-level `~` marks are extension licenses. A table-
-    # level partial stamp (`partial datasource ... complete where`) is a row-
-    # subset contract the union machinery completes across siblings — healing
-    # it would break that assembly.
     partial_hosts = [
-        ds
-        for ds in datasources
-        if ds.column_level_partial_addresses
-        and any(
-            Modifier.PARTIAL in c.modifiers
-            and c.concept.address in ds.column_level_partial_addresses
-            for c in ds.columns
-        )
+        ds for ds in datasources if any(_structural_partial(ds, c) for c in ds.columns)
     ]
     if not partial_hosts:
         return
-    proven_bound = _proven_bound(environment, conditions, datasources)
+    proven_bound = _proven_bound(conditions, datasources)
     if not proven_bound:
         return
+    reach_cache: dict[str, set[str]] = {}
     replacements: dict[str, BuildDatasource] = {}
     for ds in partial_hosts:
-        reach = _component_reach(ds, datasources)
+        reach = _reach(ds, datasources, reach_cache)
         healed: set[str] = set()
         for column in ds.columns:
-            if (
-                Modifier.PARTIAL not in column.modifiers
-                or column.concept.address not in ds.column_level_partial_addresses
-            ):
+            if not _structural_partial(ds, column):
                 continue
             key = column.concept
             if _pair_anchored(_spellings(key), ds, datasources):
@@ -297,7 +307,7 @@ def validate_partial_bridges(
         required |= _home_keys(environment, concept)
     if len(required) < 2:
         return
-    proven_bound = _proven_bound(environment, statement.where_clause, datasources)
+    proven_bound = _proven_bound(statement.where_clause, datasources)
 
     complete = _UnionFind()
     full = _UnionFind()
@@ -309,18 +319,9 @@ def validate_partial_bridges(
             if column.concept.purpose != Purpose.KEY:
                 continue
             canonical = _canonical_key(environment, column.concept.address)
-            # Only structural `~` marks make a partial edge; a table-level
-            # partial stamp is completed across union siblings and still
-            # relates its keys (see heal_pinned_partials).
-            is_partial = (
-                Modifier.PARTIAL in column.modifiers
-                and column.concept.address in ds.column_level_partial_addresses
-            )
+            is_partial = _structural_partial(ds, column)
             if is_partial and proven_bound:
-                reach = reach_cache.get(ds.identifier)
-                if reach is None:
-                    reach = _component_reach(ds, datasources)
-                    reach_cache[ds.identifier] = reach
+                reach = _reach(ds, datasources, reach_cache)
                 if _extension_killed(environment, column.concept, proven_bound, reach):
                     is_partial = False
             bound_keys.append((canonical, is_partial))

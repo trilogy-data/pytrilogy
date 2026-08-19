@@ -90,7 +90,7 @@ value, selected beside additional keys and metrics) still trips the
 keyless-join guard EVEN pinned — it reproduces with no `~` in the model at
 all, so it is a pre-existing discovery defect, not a partial-bridging one.
 Pinned as xfail(strict) with correct expected rows in
-`test_forked_with_status_pinned` / `test_forked_full_column_set_pinned`; the
+`test_forked_with_status_pinned` / `test_forked_full_column_set`; the
 FINAL-merge cover strands each key on a different computed group with no
 shared join axis (a spine-contributor reassignment was prototyped and
 reverted — see git history — because eager key-carrying corrupted sibling

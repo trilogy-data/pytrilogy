@@ -2,7 +2,7 @@ from pathlib import Path
 
 from tests.modeling._benchmark_reporting import BenchmarkConfig
 from tests.modeling._benchmark_reporting import analyze as _analyze
-from tests.modeling.thelook_duckdb.query_size import query_size
+from tests.modeling._query_size import query_size
 
 CONFIG = BenchmarkConfig(
     name="thelook",

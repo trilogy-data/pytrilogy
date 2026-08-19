@@ -11,7 +11,6 @@ Conftests call this from session teardown to keep the artifacts fresh.
 from __future__ import annotations
 
 import os
-import platform
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -23,6 +22,8 @@ import numpy as np
 import pandas as pd
 import tomllib
 from matplotlib.ticker import StrMethodFormatter
+
+from tests.modeling._benchmark_artifacts import fingerprint
 
 
 @dataclass(frozen=True)
@@ -52,15 +53,6 @@ def _ensure_tcl_library() -> None:
         environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
     elif minor == 12:
         environ["TCL_LIBRARY"] = r"C:\Program Files\Python312\tcl\tcl8.6"
-
-
-def fingerprint() -> str:
-    machine = platform.machine()
-    cpu_name = platform.processor()
-    cpu_count = os.cpu_count()
-    return (
-        f"{machine}-{cpu_name}-{cpu_count}".lower().replace(" ", "_").replace(",", "")
-    )
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,15 @@ Without the wording, `state as state` can bypass the error and compile an
 unconstrained cross product, turning this into a test of an unrelated alias
 gap instead of the user-facing recovery message.
 
+## Fixtures shared with the regression battery
+
+`tests/modeling/thelook_duckdb` is the same model over the same data, run as a
+row-level regression battery. `db_build.py` here owns the generators, the
+counts and `SEED`; the battery imports them (tests may import evals, not the
+reverse). `enriched_model/*.preql` is deliberately a separate copy of the
+battery's model files rather than a shared directory — the agent under test
+must not be able to read the battery's reference queries sitting beside them.
+
 Run the enriched leg with:
 
 ```powershell

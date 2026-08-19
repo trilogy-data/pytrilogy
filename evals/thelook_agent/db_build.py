@@ -1,9 +1,20 @@
-"""Build the deterministic DuckDB database for the thelook bridge eval."""
+"""Build the deterministic DuckDB database for the thelook bridge eval.
+
+The generators and invariants below are also what seeds the partial-bridge
+regression battery (`tests/modeling/thelook_duckdb/db_build.py` imports them).
+They live here rather than there because tests may import evals but not the
+reverse — `run_eval.py` puts only `evals/` on the path. Changing a generator
+or `SEED` reshapes both fixtures, so keep `assert_properties` passing: it is
+what guarantees the never-ordered users and never-sold products that the `~`
+semantics exist to describe.
+"""
 
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,7 +33,7 @@ SOLD_PRODUCT_COUNT = 450
 SEED = 8675309
 
 
-def _user_rows(rng: random.Random) -> list[tuple[int, str, int, str]]:
+def user_rows(rng: random.Random) -> list[tuple[int, str, int, str]]:
     states = ("CA", "NY", "TX", "FL", "WA", "IL", "MA", "CO", "GA", "NC")
     sources = ("Search", "Organic", "Email", "Facebook", "Display")
     return [
@@ -31,7 +42,7 @@ def _user_rows(rng: random.Random) -> list[tuple[int, str, int, str]]:
     ]
 
 
-def _product_rows(
+def product_rows(
     rng: random.Random,
 ) -> list[tuple[int, str, str, str, float, float]]:
     brands = tuple(f"Brand {index:02d}" for index in range(1, 26))
@@ -64,7 +75,7 @@ def _product_rows(
     return rows
 
 
-def _order_rows(
+def order_rows(
     rng: random.Random,
 ) -> list[tuple[int, int, str, datetime]]:
     start = datetime(2024, 1, 1)
@@ -84,7 +95,7 @@ def _order_rows(
     ]
 
 
-def _order_item_rows(
+def order_item_rows(
     rng: random.Random,
     orders: list[tuple[int, int, str, datetime]],
     products: list[tuple[int, str, str, str, float, float]],
@@ -116,24 +127,26 @@ def _count(connection: DuckDBPyConnection, sql: str) -> int:
     return int(row[0])
 
 
-def _assert_properties(connection: DuckDBPyConnection) -> None:
-    never_ordered = _count(
-        connection,
-        "SELECT count(*) FROM users u ANTI JOIN orders o ON o.user_id = u.id",
+def assert_properties(count: Callable[[str], int]) -> None:
+    """The four invariants both fixtures exist to provide.
+
+    `count` runs one scalar query — the eval holds a raw connection, the test
+    battery a trilogy Executor.
+    """
+    never_ordered = count(
+        "SELECT count(*) FROM users u ANTI JOIN orders o ON o.user_id = u.id"
     )
-    never_sold = _count(
-        connection,
-        "SELECT count(*) FROM products p ANTI JOIN order_items oi ON oi.product_id = p.id",
+    never_sold = count(
+        "SELECT count(*) FROM products p ANTI JOIN order_items oi "
+        "ON oi.product_id = p.id"
     )
-    mismatched_users = _count(
-        connection,
+    mismatched_users = count(
         "SELECT count(*) FROM order_items oi JOIN orders o USING (order_id) "
-        "WHERE oi.user_id != o.user_id",
+        "WHERE oi.user_id != o.user_id"
     )
-    null_foreign_keys = _count(
-        connection,
+    null_foreign_keys = count(
         "SELECT count(*) FROM order_items WHERE order_id IS NULL "
-        "OR user_id IS NULL OR product_id IS NULL",
+        "OR user_id IS NULL OR product_id IS NULL"
     )
     assert never_ordered > 0
     assert never_sold > 0
@@ -149,10 +162,10 @@ def build_database() -> Path:
         return CACHE_DB
 
     rng = random.Random(SEED)
-    users = _user_rows(rng)
-    products = _product_rows(rng)
-    orders = _order_rows(rng)
-    order_items = _order_item_rows(rng, orders, products)
+    users = user_rows(rng)
+    products = product_rows(rng)
+    orders = order_rows(rng)
+    order_items = order_item_rows(rng, orders, products)
 
     CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
     temporary = CACHE_DB.with_suffix(".building")
@@ -183,7 +196,7 @@ def build_database() -> Path:
         connection.executemany(
             "INSERT INTO order_items VALUES (?, ?, ?, ?, ?, ?)", order_items
         )
-        _assert_properties(connection)
+        assert_properties(partial(_count, connection))
         connection.execute("CHECKPOINT")
     finally:
         connection.close()

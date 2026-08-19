@@ -1,3 +1,10 @@
+"""Comment-stripped source length, the size measure every benchmark reports.
+
+Shared so the three suites cannot drift into measuring different things: a
+`preql_size` that counted comments in one suite and not another would make
+their summaries incomparable.
+"""
+
 from typing import Literal
 
 Language = Literal["preql", "sql"]
