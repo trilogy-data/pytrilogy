@@ -1,24 +1,61 @@
 """Partial-bridge regression battery over a thelook-style model.
 
 order_items binds BOTH ~user.id and ~product.id with no complete sibling —
-the shape that makes unpinned user x product spans unsafe. Queries cover the
-pinned INNER-star heal, extension-family and fact-anchored controls, and the
-UnconstrainedPartialBridgeException boundary.
+the two-`~` span shape. Queries cover the pinned INNER-star heal,
+extension-family and fact-anchored controls, and the unpinned span itself:
+fact pairs at the requested grain plus one extension row per unmatched
+member of each `~` dimension, with the extension families never
+cross-pairing.
 """
 
 from pathlib import Path
-
-from pytest import raises
 
 from tests.modeling._benchmark_artifacts import record_timing, write_query_log
 from tests.modeling._benchmark_timing import benchmark_query
 from tests.modeling._query_size import query_size
 from tests.modeling._row_compare import rows_match
 from trilogy import Executor
-from trilogy.core.exceptions import UnconstrainedPartialBridgeException
 from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
+
+# state x brand span truth: recorded pairs aggregated, plus each side's
+# extension rows (states with a never-ordering user / brands never sold).
+_SPAN_TRUTH = """
+select u.state as state, p.brand as brand, sum(oi.sale_price) as revenue
+from order_items oi
+join users u on oi.user_id = u.id
+join products p on oi.product_id = p.id
+group by 1, 2
+union all
+select distinct u.state, null, null from users u
+where u.id not in (select user_id from order_items where user_id is not null)
+union all
+select distinct null, p.brand, null from products p
+where p.id not in (select product_id from order_items where product_id is not null)
+"""
+
+
+def _span_sort_key(t):
+    return (t[0] is None, t[0] or "", t[1] is None, t[1] or "")
+
+
+def _assert_span_matches_truth(engine: Executor, name: str) -> None:
+    truth = sorted(
+        (tuple(r) for r in engine.execute_raw_sql(_SPAN_TRUTH).fetchall()),
+        key=_span_sort_key,
+    )
+    engine.environment = Environment(working_path=working_path)
+    text = (working_path / f"{name}.preql").read_text()
+    sql = engine.generate_sql(text)[-1]
+    rows = sorted(
+        (tuple(r) for r in engine.execute_raw_sql(sql).fetchall()),
+        key=_span_sort_key,
+    )
+    assert len(rows) == len(truth)
+    for got, want in zip(rows, truth):
+        assert rows_match(got, want), (got, want)
+
 
 REPEAT_TIME_CUTOFF = 0.15
 REPEAT_COUNT = 3
@@ -74,16 +111,8 @@ def run_query(engine: Executor, idx: int, label: str | None = None) -> str:
     return query
 
 
-def test_adhoc01_unpinned_span_errors(engine: Executor):
-    engine.environment = Environment(working_path=working_path)
-    text = (working_path / "adhoc01.preql").read_text()
-    with raises(UnconstrainedPartialBridgeException) as err:
-        engine.generate_sql(text)
-    exc = err.value
-    assert any("order_items" in ds for ds in exc.datasources), exc.datasources
-    assert "user.id is not null" in exc.suggestion, exc.suggestion
-    assert "product.id is not null" in exc.suggestion, exc.suggestion
-    assert exc.suggestion in exc.message
+def test_adhoc01_unpinned_span(engine: Executor):
+    _assert_span_matches_truth(engine, "adhoc01")
 
 
 def test_one(engine):
@@ -149,14 +178,9 @@ def test_thirteen(engine):
     assert "FULL" not in query, query
 
 
-def test_adhoc02_agg_does_not_anchor_span(engine: Executor):
-    engine.environment = Environment(working_path=working_path)
-    text = (working_path / "adhoc02.preql").read_text()
-    with raises(UnconstrainedPartialBridgeException) as err:
-        engine.generate_sql(text)
-    exc = err.value
-    for name in ("order_items", "user_product_sales"):
-        assert any(name in ds for ds in exc.datasources), exc.datasources
+def test_adhoc02_span_through_agg(engine: Executor):
+    """Same span sourced through the multi-`~` rollup: identical output."""
+    _assert_span_matches_truth(engine, "adhoc02")
 
 
 def test_fourteen(engine):

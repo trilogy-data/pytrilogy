@@ -19,10 +19,7 @@ from pathlib import Path
 import pytest
 
 from trilogy import Executor
-from trilogy.core.exceptions import (
-    UnconstrainedPartialBridgeException,
-    UnresolvableQueryException,
-)
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
@@ -76,17 +73,36 @@ def pair_fact_engine(engine_sf001: Executor) -> Executor:
     return engine_sf001
 
 
-def test_pair_fact_span_requires_pin(pair_fact_engine: Executor):
-    """item x customer attributes relate only through the `~`-keyed pair fact:
-    unpinned, the population is undefined and the planner must say which pin
-    fixes it rather than guessing at an extension shape."""
+def test_pair_fact_span(pair_fact_engine: Executor):
+    """item x customer attributes related only through the `~`-keyed pair
+    fact: every real pair exactly once, one extension row per unmatched member
+    of each `~` key, and no cross-paired or all-null rows."""
     pair_fact_engine.environment = Environment(working_path=working_path)
     pair_fact_engine.parse_text(_PAIR_FACT_MODEL)
-    with pytest.raises(UnconstrainedPartialBridgeException) as err:
-        pair_fact_engine.generate_sql(_PAIR_FACT_SELECT)
-    assert "item.sk is not null" in err.value.suggestion
-    assert "customer.sk is not null" in err.value.suggestion
-    assert "item_customer_sales" in err.value.datasources
+    sql = pair_fact_engine.generate_sql(_PAIR_FACT_SELECT)[-1]
+    rows = pair_fact_engine.execute_raw_sql(sql).fetchall()
+    truth_pairs, truth_paid = pair_fact_engine.execute_raw_sql(
+        "select count(*), sum(total_paid) from memory.item_customer_sales"
+    ).fetchone()
+    never_items = pair_fact_engine.execute_raw_sql(
+        "select count(*) from memory.item where i_item_sk not in "
+        "(select item_sk from memory.item_customer_sales)"
+    ).fetchone()[0]
+    never_cust = pair_fact_engine.execute_raw_sql(
+        "select count(*) from memory.customer where c_customer_sk not in "
+        "(select customer_sk from memory.item_customer_sales)"
+    ).fetchone()[0]
+    paired = [r for r in rows if r[0] is not None and r[1] is not None]
+    item_ext = [r for r in rows if r[0] is not None and r[1] is None]
+    cust_ext = [r for r in rows if r[0] is None and r[1] is not None]
+    all_null = [r for r in rows if r[0] is None and r[1] is None]
+    assert len(paired) == truth_pairs
+    assert len({(r[0], r[1]) for r in paired}) == truth_pairs
+    assert len(item_ext) == never_items
+    assert len(cust_ext) == never_cust
+    assert not all_null
+    total = sum(r[4] for r in rows if r[4] is not None)
+    assert round(total, 2) == round(truth_paid, 2)
 
 
 def test_pair_fact_pinned_star(pair_fact_engine: Executor):
@@ -181,15 +197,9 @@ select
     assert len(set(keys)) == len(keys)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "assembly manufactures one NULL-key row per never-purchasing customer; "
-        "customer.sk is bound `?` (nullable), not `~` (partial), so no "
-        "domain extension is licensed"
-    ),
-)
 def test_partial_grain_with_customer_dim(engine_sf001: Executor):
+    """customer.sk is bound `?` (nullable), not `~` (partial), so no domain
+    extension is licensed: no NULL-key rows for never-purchasing customers."""
     engine_sf001.environment = Environment(working_path=working_path)
     sql = engine_sf001.generate_sql("""import store_sales as ss;
 
@@ -210,14 +220,9 @@ select
     assert all(k[0] is not None and k[1] is not None for k in keys)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "at (item, customer) grain the merge manufactures NULL-key rows and "
-        "duplicate key pairs (297/31 at sf=0.01)"
-    ),
-)
 def test_item_customer_grain(engine_sf001: Executor):
+    """No manufactured NULL-key rows or duplicate key pairs at (item,
+    customer) grain — the unlicensed dim stitch stays LEFT, not FULL."""
     engine_sf001.environment = Environment(working_path=working_path)
     sql = engine_sf001.generate_sql("""import store_sales as ss;
 

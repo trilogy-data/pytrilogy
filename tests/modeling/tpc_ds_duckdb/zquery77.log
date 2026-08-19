@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 9186
+gen_length = 9153
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -25,8 +25,8 @@ SELECT
     sum(\"ws_web_returns\".\"WR_RETURN_AMT\") as \"wr_grouped_wr_returns\"
 FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
-    LEFT OUTER JOIN \"memory\".\"web_returns\" as \"ws_web_returns\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_web_returns\".\"WR_ITEM_SK\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"ws_web_returns\".\"WR_ORDER_NUMBER\"
-    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"web_returns\" as \"ws_web_returns\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_web_returns\".\"WR_ITEM_SK\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"ws_web_returns\".\"WR_ORDER_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ws_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 
@@ -75,8 +75,8 @@ SELECT
     sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"sr_grouped_sr_returns\"
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
-    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 
@@ -125,8 +125,8 @@ SELECT
     sum(\"cs_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    LEFT OUTER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
-    RIGHT OUTER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"cs_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
 

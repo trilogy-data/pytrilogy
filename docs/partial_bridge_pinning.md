@@ -1,36 +1,85 @@
-# Partial-key bridges: pin-healing and the unconstrained-span error
+# Partial keys, value NULLs, and pin-healing
 
-Implementation: `trilogy/core/processing/partial_bridging.py`, invoked once per
-single-stage SELECT in `query_processor.get_query_node`, after the build
-environment materializes and before `generate_graph`. Tests:
+Implementation: `trilogy/core/processing/partial_bridging.py` (pin-healing),
+invoked once per single-stage SELECT in `query_processor.get_query_node`,
+after the build environment materializes and before `generate_graph`; join
+licensing in `trilogy/core/processing/join_resolution.py`
+(`get_join_type`, `get_modifiers`, `ensure_content_preservation`). Tests:
 `tests/engine/test_duckdb_partial_key_assembly.py`,
-`tests/modeling/tpc_ds_duckdb/test_partial_key_assembly_shapes.py`.
+`tests/engine/test_duckdb_nullability_matrix.py`,
+`tests/modeling/tpc_ds_duckdb/test_partial_key_assembly_shapes.py`,
+`tests/modeling/thelook_duckdb/test_thelook_queries.py` (adhoc01/adhoc02).
 
-## The semantics
+## Two kinds of NULL, two orthogonal declarations
 
-A structural column-level `~` binding (`user_id: ~user_id`) licenses domain
-extension: unmatched members of that key's dimension enter the result once,
-carrying their own attributes, with every concept outside the key's functional
-closure NULL. That is well-defined for a SINGLE key
-(`select user_id, total_amount` keeps the user who never ordered) but not for a
-span: when a query needs two keys related and the only datasource relating them
-binds a needed key `~`, unmatched members of one side have no defined
-counterpart on the other (customer list x product list related only by a
-partial sales list). Trilogy no longer guesses at a shape for that span.
+A bound column can deviate from its key's domain in two independent ways, and
+each has its own mark:
 
-Two rules, sharing one analysis, applied at one seam so search, condition
-routing, join planning and the optimizers all see the same judgment:
+- **`~` (partial): the column covers a SUBSET of the key's members.** The
+  missing members exist in the dimension but have no row here. `~` licenses
+  *domain extension*: unmatched members of that key's dimension enter the
+  result once, carrying their own attributes, with every concept outside the
+  key's FD closure NULL (a *padding* NULL — absence, not a value).
+- **`?` (nullable): the column carries NULL as a VALUE.** A guest order's
+  NULL customer is data, not absence. Value NULLs form their own group under
+  aggregation, survive as fact rows at every grain, pair null-safely only
+  with other value NULLs, and are *removed* by a `is not null` filter.
 
-## 1. Pin-healing (`heal_pinned_partials`)
+They compose: `c_sk: ~?customer.sk` says "subset of customers, and some rows
+have no customer at all". Conflating them is the classic SQL trap; the planner
+keeps them apart end to end:
 
-An extension row for key `k` is NULL at every concept outside `k`'s FD closure.
-So if the statement WHERE proves non-null (`condition_proves_non_null`) a
-bound concept OUTSIDE that closure, no extension row for `k` survives — the
-binding is complete *for this statement*. The affected datasources are
-replaced (copy-on-write; shared build caches are never mutated) with the
-`Modifier.PARTIAL` mark dropped, and the query plans as a plain star anchored
-on the fact instead of the anchor-LEFT + coalesce extension scaffolding it
-otherwise builds and then filters.
+- `get_modifiers` uses null-safe equality only when BOTH sides' NULLs are
+  values (`nulls_are_values`); padding never pairs with a value NULL, and
+  padding pairs with padding only within the same extension family.
+- `get_join_type` grants row-preservation (FULL) only under a license: a `~`
+  partial on the connecting key, an authored `full join`/`union join`
+  declaration, or nullable-key preservation.
+- `ensure_content_preservation` propagates preservation through a join chain:
+  once padding is in the accumulated stream, later joins must stay
+  LEFT-preserving so padded rows (NULL join keys) survive — but that creates
+  no license for the new right relation. A dimension reached off the spine
+  (a transitive FK, `customer -> current_address`) joins LEFT unless its own
+  key is marked `~` somewhere; upgrading it to FULL leaked orphan dimension
+  rows. A join keyed ON the preserving join's own coalesced spine keys keeps
+  both-ways preservation (every family carries the spine).
+
+## The span shape (customer x product through a partial fact)
+
+`select customer.sk, product.sk, total` over a fact binding both keys `~`
+generates the union-of-branches shape — no pin required:
+
+| customer | product | total | provenance |
+| --- | --- | --- | --- |
+| c1 | p1 | 50 | fact row |
+| c2 | NULL | 90 | fact row, NULL product **value** (needs `?`) |
+| NULL | p2 | 80 | fact row, NULL customer **value** (needs `?`) |
+| c3 | NULL | NULL | customer extension (`~` license) |
+| NULL | p3 | NULL | product extension (`~` license) |
+
+Real pairs exactly once; one extension row per unmatched member per `~` side;
+extension families never cross-pair (no invented pairings, no all-NULL-key
+rows). The same holds at attribute grain (`state x brand`) and for spans
+sourced through a multi-`~` aggregate. Note the residual reader ambiguity is
+inherent to tabular output: `(NULL, p2, 80)` (a real order with no customer)
+and `(NULL, p3, NULL)` (a never-sold product) both render NULL in the
+customer column; the measure column distinguishes them.
+
+Value NULLs in a bound column MUST be declared `?`. Undeclared value NULLs
+are a modeling error the planner cannot detect: it is entitled to assume the
+column is non-null, so `is not null` pins may be dropped as tautological and
+NULL-keyed fact rows may be silently lost or kept depending on plan shape.
+
+## Pin-healing (`heal_pinned_partials`)
+
+An extension row for key `k` is NULL at every concept outside `k`'s FD
+closure. So if the statement WHERE proves non-null
+(`condition_proves_non_null`) a bound concept OUTSIDE that closure, no
+extension row for `k` survives — the binding is complete *for this
+statement*. The affected datasources are replaced (copy-on-write; shared
+build caches are never mutated) with the `Modifier.PARTIAL` mark dropped, and
+the query plans as a plain star anchored on the fact instead of the
+extension scaffolding it otherwise builds and then filters.
 
 Guards, each load-bearing:
 
@@ -47,41 +96,23 @@ Guards, each load-bearing:
   (attached via a cross-join gate) is non-null on extension rows too and
   proves nothing.
 - **Single-stage WHERE only.** `then where` stages see populations the
-  combined WHERE has not filtered yet, so staged statements skip both rules.
+  combined WHERE has not filtered yet, so staged statements skip healing.
 
-Note the pin on a key NEVER heals that key itself: `where user_id is not null`
-is satisfied by user_id's own extension rows. Keys heal each other —
+Note the pin on a key NEVER heals that key itself: `where user_id is not
+null` is satisfied by user_id's own extension rows. Keys heal each other —
 `where user_id is not null and product_id is not null` kills both extension
-families, which is why that is the canonical pin for a two-key span.
+families, which is why that is the canonical pin for a two-key span. On a
+`~?` binding the pin ALSO filters the value-NULL fact rows — healing narrows
+the plan, the rendered WHERE still applies.
 
-## 2. The unconstrained-span error (`validate_partial_bridges`)
+## History
 
-After healing, take the ROW-level referenced concepts (outputs plus WHERE row
-args; aggregates collapse their internals and contribute nothing) and map each
-to its home keys — the `required` set. A datasource relates its bound keys
-SAFELY when either:
-
-- at most ONE required key is a live (un-killed) structural `~` there. A
-  single extension family is well-defined: unmatched members appear once with
-  NULLs elsewhere (`select user_id, state, total_amount` keeps the user who
-  never ordered; `select order_id, product_id, total_pair_cost` keeps the
-  never-sold product). Partial keys the query never asks about license no
-  extension rows and do not count.
-- its row identity anchors the output: every grain component is complete-bound
-  and in `required` (`select store_id, product_id, order_id` through an orders
-  fact binding both FKs `~` — each row is a fact row or one dimension's
-  extension row).
-
-For every needed key pair, check connectivity twice: once through safe
-datasources' bindings, once through all bindings. A pair connected only
-through UNSAFE bridges — a multi-`~`-required datasource with no row anchor,
-the customer x product x partial-sales shape — raises
-`UnconstrainedPartialBridgeException`, which carries the offending keys, the
-bridging datasources, and a ready-to-paste `suggestion`
-(`where <k1> is not null and <k2> is not null`) that makes the same query
-generate as rule 1's star. Pairs with any safe path are left to normal
-discovery; pairs with no path at all fall through to the ordinary
-disconnection error.
+An `UnconstrainedPartialBridgeException` guard (`validate_partial_bridges`)
+used to reject multi-`~` spans whose row identity was absent from the output,
+because two assembly defects corrupted the generated shape (an unlicensed
+transitive-dimension FULL leaking orphan rows, and NULL-key row manufacture
+for `?`-bound dims). Both are fixed and the guard is deleted; the span
+generates the table above.
 
 ## Known residual
 

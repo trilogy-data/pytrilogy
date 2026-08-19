@@ -1,4 +1,10 @@
-"""Cheap model and data guards for the thelook partial-bridge eval."""
+"""Cheap model and data guards for the thelook partial-bridge eval.
+
+NOTE: the eval originally measured agent recovery from
+UnconstrainedPartialBridgeException. That guard is gone — unpinned spans now
+generate (fact pairs plus per-`~`-side extension rows) — so the error-recovery
+metric (error_recovery.py) is retired; these guards now pin the generating
+behavior instead."""
 
 from __future__ import annotations
 
@@ -8,7 +14,6 @@ import db_build
 import pytest
 
 from trilogy import Dialects, Executor
-from trilogy.core.exceptions import UnconstrainedPartialBridgeException
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 
@@ -52,12 +57,12 @@ def engine() -> Executor:
 
 
 @pytest.mark.parametrize("query", TRIGGERS)
-def test_naive_spanning_queries_raise(engine: Executor, query: str) -> None:
-    with pytest.raises(UnconstrainedPartialBridgeException) as error:
-        engine.generate_sql(IMPORTS + query)
-    assert "order_item.user.id is not null" in error.value.suggestion
-    assert "order_item.product.id is not null" in error.value.suggestion
-    assert any(name.endswith("order_items") for name in error.value.datasources)
+def test_naive_spanning_queries_generate(engine: Executor, query: str) -> None:
+    sql = engine.generate_sql(IMPORTS + query)[-1]
+    rows = engine.execute_raw_sql(sql).fetchall()
+    assert rows
+    # extension families never cross-pair into an all-NULL keyed row
+    assert not [r for r in rows if r[0] is None and r[1] is None]
 
 
 def test_suggested_pin_heals_spanning_query(engine: Executor) -> None:

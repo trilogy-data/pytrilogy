@@ -4,16 +4,14 @@ Semantics (see ``trilogy.core.processing.partial_bridging``):
 
 - A SINGLE live partial key extends: its unmatched dimension rows survive into
   the output exactly once, carrying their own attributes, with NULLs elsewhere.
-- A multi-`~` fact whose COMPLETE row identity is in the output still anchors
-  the result: each row is a fact row or one dimension's extension row (the
-  ``item_id``-selecting tests below, extension rows included).
-- A span whose only bridge is a multi-`~` fact with its row identity ABSENT
-  from the output (or the identity IS the partial keys) has no well-defined
-  population and raises ``UnconstrainedPartialBridgeException``, whose
-  ``suggestion`` is the exact not-null pin that makes it generatable.
-- With that pin, the WHERE kills every extension row a partial key could
-  license, the bindings heal to complete for the statement, and the query
-  plans as a plain star over the fact's own rows — asserted here as the
+- A multi-`~` fact anchors the result whether or not its row identity is in
+  the output: each row is a fact row (projected to the requested grain) or one
+  dimension's extension row. Extension families never cross-pair — a customer
+  with no orders and a product never sold yield two rows, not an invented
+  pairing.
+- A not-null pin on the partial keys kills every extension row a partial key
+  could license, the bindings heal to complete for the statement, and the
+  query plans as a plain star over the fact's own rows — asserted here as the
   ``_PIN`` variant of each spanning shape.
 
 The xfail(strict) tests pin the CORRECT output for shapes a pre-existing
@@ -26,10 +24,7 @@ asserts then.
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import (
-    UnconstrainedPartialBridgeException,
-    UnresolvableQueryException,
-)
+from trilogy.core.exceptions import UnresolvableQueryException
 
 # users: 1 never orders. products: 1 never sold. items redundantly bind
 # ~user_id (the thelook order_items shape).
@@ -225,14 +220,18 @@ def test_keys_only(simple):
     ]
 
 
-def test_keys_without_fact_anchor_require_pin(simple):
-    """The pair grain WITHOUT the fact's own row key is only relatable through
-    the multi-`~` items fact — undefined unpinned, a star pinned."""
-    query = "select user_id, product_id order by user_id asc, product_id asc;"
-    with pytest.raises(UnconstrainedPartialBridgeException) as err:
-        simple.generate_sql(query)
-    assert "product_id is not null" in err.value.suggestion
-    assert "user_id is not null" in err.value.suggestion
+def test_keys_without_fact_anchor(simple):
+    """The pair grain WITHOUT the fact's own row key: fact pairs projected to
+    the pair grain, plus one extension row per unmatched member of each `~`
+    dimension — never a cross-pairing of the two extension families."""
+    query = "select user_id, product_id order by user_id asc nulls last, product_id asc nulls last;"
+    assert _rows(simple, query) == [
+        (1, 10),
+        (1, 20),
+        (2, 10),
+        (3, None),
+        (None, 30),
+    ]
     assert _rows(simple, _PIN + query) == [
         (1, 10),
         (1, 20),
@@ -240,18 +239,18 @@ def test_keys_without_fact_anchor_require_pin(simple):
     ]
 
 
-def test_dims_without_fact_anchor_require_pin(simple):
+def test_dims_without_fact_anchor(simple):
     """The flagship shape: customer attributes x product attributes, related
-    only by the partial fact."""
-    with pytest.raises(UnconstrainedPartialBridgeException) as err:
-        simple.generate_sql("select state, brand order by state asc, brand asc;")
-    assert err.value.suggestion == (
-        "where product_id is not null and user_id is not null"
-    )
-    assert "items" in err.value.datasources
-    assert _rows(
-        simple, _PIN + "select state, brand order by state asc, brand asc;"
-    ) == [
+    only by the partial fact — pair rows plus each side's extension rows."""
+    query = "select state, brand order by state asc nulls last, brand asc nulls last;"
+    assert _rows(simple, query) == [
+        ("CA", "A"),
+        ("CA", "B"),
+        ("NY", "A"),
+        ("TX", None),
+        (None, "C"),
+    ]
+    assert _rows(simple, _PIN + query) == [
         ("CA", "A"),
         ("CA", "B"),
         ("NY", "A"),

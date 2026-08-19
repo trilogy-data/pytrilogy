@@ -1,5 +1,5 @@
-# The unpinned pair span must STILL error with the multi-~ aggregate declared:
-# a rollup whose keys are both partial is not a safe bridge.
+# The unpinned pair span through the multi-~ aggregate: same output as the
+# raw-fact span - a rollup whose keys are both partial is an equivalent bridge.
 import sales_agg;
 
 select

@@ -217,19 +217,44 @@ def reduce_join_types(join_types: set[JoinType]) -> JoinType:
     return JoinType.INNER
 
 
-def ensure_content_preservation(joins: list[JoinOrderOutput]) -> None:
+def ensure_content_preservation(
+    joins: list[JoinOrderOutput], authored_axis_keys: set[str] | None = None
+) -> None:
+    authored_axis_keys = authored_axis_keys or set()
     for idx, review_join in enumerate(joins):
         predecessors = joins[:idx]
         if review_join.type == JoinType.FULL:
             continue
         has_prior_left = False
         has_prior_right = False
+        review_keys: set[str] = set().union(set(), *review_join.keys.values())
         for pred in predecessors:
             on_pred_right = pred.right in review_join.lefts
             on_pred_left = any(x in review_join.lefts for x in pred.lefts)
+            # A prior FULL padded rows into the accumulated stream; this join
+            # must preserve the LEFT stream to keep them. Whether it must also
+            # preserve its RIGHT relation depends on the FULL. An AUTHORED
+            # axis FULL (query-scoped `full`/`union`/`subset` join) declares
+            # row intent for both sides' content, facts hanging off either
+            # side included, so the historic both-ways preservation stands
+            # (q25-shape alignment).
+            # A partial-driven FULL preserves its right relation only when
+            # this join is keyed ON the FULL's own spine: that key is
+            # coalesced across both families, so the relation spans the
+            # whole stream (q75's item over the sales/returns stitch). A
+            # join keyed OFF a partial FULL's spine (one side's non-key
+            # column, padded NULL for the other family) hangs off a single
+            # family, and row-preservation there is a domain license only
+            # get_join_type (a `~` partial / union declaration / nullable
+            # key) can grant — upgrading to FULL handed such unlicensed
+            # dimensions extension rows (the transitive-dim ORPHAN leak).
             if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
-                has_prior_right = True
+                pred_keys: set[str] = set().union(set(), *pred.keys.values())
+                if (review_keys and review_keys <= pred_keys) or (
+                    pred_keys & authored_axis_keys
+                ):
+                    has_prior_right = True
                 continue
             if pred.type == JoinType.LEFT_OUTER and on_pred_right:
                 has_prior_left = True
@@ -495,7 +520,12 @@ def resolve_join_order_v2(
                 )
             eligible_left.add(ds)
 
-    ensure_content_preservation(output)
+    authored_axis_keys = set(full_join_keys or set())
+    if anchor_key_nodes:
+        authored_axis_keys |= anchor_key_nodes
+    if authored_key_nodes:
+        authored_axis_keys |= authored_key_nodes
+    ensure_content_preservation(output, authored_axis_keys)
 
     return output
 

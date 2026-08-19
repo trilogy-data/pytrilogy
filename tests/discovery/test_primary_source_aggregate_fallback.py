@@ -131,20 +131,13 @@ def test_primary_source_aggregate_simple_count_with_dim():
     assert "group by" in generated.lower(), generated
 
 
-# origin x destination relate only through `~`-keyed facts, so the unpinned
-# span raises UnconstrainedPartialBridgeException; the not-null pin heals the
-# partials and keeps these tests on the aggregate-resolution machinery they
-# exist to cover.
-_PINNED_PAIR_QUERY = (
-    "WHERE origin_code is not null and destination_code is not null "
-    "SELECT origin_code, destination_code, flight_date, count;"
-)
+_PAIR_QUERY = "SELECT origin_code, destination_code, flight_date, count;"
 
 
 def test_primary_source_aggregate_no_precomputed():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(PRIMARY_ONLY_SETUP)
-    generated = exec.generate_sql(_PINNED_PAIR_QUERY)[-1]
+    generated = exec.generate_sql(_PAIR_QUERY)[-1]
     assert "flights" in generated, generated
     assert "group by" in generated.lower(), generated
 
@@ -155,7 +148,7 @@ def test_partial_precomputed_uses_aggregate():
     rescanning primary rows — that is the whole point of materializing it."""
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(PRIMARY_ONLY_SETUP + PARTIAL_AGGREGATE_SUFFIX)
-    generated = exec.generate_sql(_PINNED_PAIR_QUERY)[-1]
+    generated = exec.generate_sql(_PAIR_QUERY)[-1]
     assert "flight_count_by_origin_destination_date" in generated, generated
 
 
