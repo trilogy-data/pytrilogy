@@ -497,6 +497,11 @@ def gen_root(
             partial_concepts=list(node.partial_concepts),
             conditions=existence_conditions.conditional,
             existence_concepts=sources.existence_concepts,
+            # This wrapper only filters, so it inherits the row grain it reads.
+            # Defaulting (grain from output_concepts) would claim the narrowed
+            # projection's grain, and a rename stacked on top then reads the
+            # scan as already deduped and skips the output GROUP BY.
+            grain=node.resolve().grain,
         )
     return inject_condition_at_node(
         node,

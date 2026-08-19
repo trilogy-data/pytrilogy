@@ -1,6 +1,6 @@
-# Trilogy failure analysis — 20260814-152015
+# Trilogy failure analysis — 20260818-022329
 
-- Run `20260814-152015_sql_bare_openai_gpt-5.6-luna_effort-max` | `openai/gpt-5.6-luna` | sf=1
+- Run `20260818-022328_sql_bare_openai_gpt-5.6-luna_effort-max` | `openai/gpt-5.6-luna` | sf=1
 - `trilogy` calls: 0 | failed: 0
 
 ## Categories
