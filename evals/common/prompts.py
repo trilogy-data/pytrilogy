@@ -20,6 +20,9 @@ _SINGLE_QUERY_TEMPLATE = """\
 Trilogy project in this directory. `trilogy.toml` configures an already-loaded
 DuckDB database, and `{model_dir}/` is already populated with Trilogy model
 files — do NOT re-run `trilogy ingest` and do NOT edit files in `{model_dir}/`.
+Import models by dot path from the project root: the file
+`{model_dir}/orders.preql` is imported as `import {model_dir}.orders as o;`
+(a bare `import orders;` will NOT resolve).
 
 Answer the ONE business question below by writing a Trilogy query file to
 `{filename}` in the working directory (alongside `trilogy.toml`, NOT inside

@@ -514,7 +514,7 @@
   {
     "id": 97,
     "grade": "medium",
-    "prompt": "For sales whose sold date falls in the year 2000, take each unique (customer, item surrogate key) combination from store sales and each unique (billing customer, item surrogate key) combination from catalog sales. (Yes, we care about the unique item version, not just the item id). Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
+    "prompt": "For sales whose sold date falls in the year 2000, take each unique (customer, item surrogate key) combination from store sales and each unique (billing customer, item surrogate key) combination from catalog sales, where a customer is key is recorded. (Yes, we care about the unique item version, not just the item id). Report three counts: combinations present only in the store set, combinations present only in the catalog set, and combinations present in both. Output a single row with those three counts; limit 100 rows."
   },
   {
     "id": 98,

@@ -1,6 +1,13 @@
 # bug q05 — silent wrong money sums from `::float` union placeholders (float32 drift)
 
-**Re-verified OPEN 2026-08-10.** `DataType.FLOAT` still renders as `float` and both `float4`/`float8` map back to it (`trilogy/dialect/base.py:391,452-454`) — there is no 8-byte DOUBLE type, so the drift is unfixable at the model layer today.
+**Re-verified OPEN 2026-08-16 (`a65b13c9c`), but the severity claim below is now STALE and the bug is narrower.**
+
+`DataType.DOUBLE` exists and renders as `double` (`trilogy/dialect/base.py:408`); `0::double` parses and accumulates in float64, so the drift **is** fixable at the model layer today. Two things remain wrong:
+
+1. `::float` still renders `cast(x as float)` = DuckDB REAL = 4-byte, so a `0::float` placeholder still silently narrows a union column and drifts money sums. Nothing warns.
+2. `float8` reverse-maps to `DataType.FLOAT` (`trilogy/dialect/base.py:470`), so a physical DOUBLE column **ingests as 4-byte FLOAT** — the narrowing happens without the author ever typing `float`.
+
+(2) is the sharper half and the one worth fixing first; it is a one-line map change plus a corpus A/B. (1) is arguably correct typing with a missing hazard warning.
 
 Bucket: **A (silent wrong-rows, no error)**. Known-open issue
 (`float32_union_placeholder_drift_no_double_type`), re-confirmed as the *sole* cause of the q05 FAIL.

@@ -26,24 +26,20 @@ parameter NAME TYPE [default <literal>]; — a runtime value supplied via `--par
 
 ### Query-scoped join
 
-A typical fact already has its dimensions merged in — no join needed. When blending fact models or rowset outputs, a join DECLARES how the key domains relate (allowing a path, not defining a join):
+A typical fact already has its dimensions merged in, so no join is needed. Blending fact models or rowset outputs takes a scoped join, placed right after the select list, which DECLARES how the key domains relate: `subset join a = b` (a's values are contained in b's, a ⊆ b; b authoritative for the key) or `union join a = b` (neither contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept).
 
-- `subset join a = b` — a's values are contained in b's (a ⊆ b); b is authoritative for the key.
-- `union join a = b` — neither domain contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept.
+Two rules decide whether the numbers are right, so apply them before reaching for the example:
 
-A union key-group must be entirely union (`union join a = b = c` chains one group); subset joins mix freely. Keys may be expressions (`union join a.id + 53 = b.id`), aggregates, or windows; only `=` is supported. Joins never drop nulls (NULL keys match null-safely) and are ALWAYS effectively full — no join EVER implicitly drops a row; there is NO inner join. For an intersection, add an explicit `where <optional-side attr> is not null`.
+- Joins NEVER drop a row and NULL keys match null-safely; there is NO inner join. An intersection is an explicit `where <optional-side attr> is not null`.
+- JOIN ON THE FULL GRAIN: `explore` prints each fact's grain as @<k1, k2>; write one clause PER key. Matching only one key of a multi-key grain causes duplication.
 
-JOIN ON THE FULL GRAIN. `explore` prints each fact's grain as @<k1, k2>; a composite grain needs one join clause PER key (BOTH `union join a.order_number = b.order_number` AND `union join a.item.id = b.item.id`). Matching only one key of a multi-key grain causes duplication.
-
-Joins go right after the select list. Full example: trilogy agent-info syntax example scoped-join.
+Chaining, expression keys, union/subset mixing, multi-key and self-pair shapes: trilogy agent-info syntax example scoped-join.
 
 merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` declares EXACT domain equivalence. Standalone statements; prefer a scoped join unless the connection is universal.
 
 ### union / except / intersect (row set operations)
 
-union((armA), (armB), ...) -> (out1, out2, ...) row-stacks self-contained select arms positionally (SQL UNION ALL) into one named result, usable in a rowset (`with combined as union(...) -> (...)`). Each arm is an ordinary select and DEDUPLICATES to its own output grain before stacking — so aggregate INSIDE each arm (preferred), or carry each arm's grain key through as an extra output column; stacking raw measure rows and aggregating outside silently undersums. Example: trilogy agent-info syntax example union-stack-channels.
-
-except((armA), (armB), ...) -> (...) and intersect(...) share union's arm shape but are SQL SET operators: output rows are DISTINCT, whole rows compare null-safely, and except subtracts later arms from the FIRST (arm order matters). Prefer except over multi-column `not in` for "in A but never in B". Example: trilogy agent-info syntax example except-intersect-setops.
+`union(...)` row-stacks self-contained select arms positionally (SQL UNION ALL) into one named rowset (`with combined as union((armA), (armB), ...) -> (out1, out2, ...)`); `except(...)` / `intersect(...)` share that arm shape but are SQL SET operators (DISTINCT rows, null-safe whole-row compare, and except subtracts later arms from the FIRST, so arm order matters). Prefer except over a multi-column `not in` for "in A but never in B". Each arm dedups to its own output grain BEFORE stacking, so aggregate INSIDE each arm or the total silently undersums. Examples: trilogy agent-info syntax example union-stack-channels / except-intersect-setops.
 
 ## Query structure
 

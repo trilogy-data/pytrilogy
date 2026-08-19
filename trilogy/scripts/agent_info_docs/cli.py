@@ -4,12 +4,13 @@ Use this drilldown to create, inspect, edit, validate, and execute scripts. For
 language syntax use `agent-info query`; for models use `agent-info authoring`.
 
 - `trilogy init [path]` - scaffold trilogy.toml, root/, jobs/, and an example.
-- `trilogy run <file|dir> [dialect]` - execute scripts; supports `--param`, `--config`, and `--parallelism`.
+- `trilogy run <file|dir> [dialect]` - execute scripts; supports `--param`, `--config`, `--parallelism`, and `--timeout <seconds>`.
 - `trilogy explore <model.preql>` - inspect concepts/imports; narrow with `--regex`, `--purpose`, or `--show`.
 - `trilogy file list [path] --recursive` - list files and model descriptions.
 - `trilogy file read <path>` - read a file when exploration is insufficient.
 - `trilogy file write <path>` - write stdin or use `--content`, `--from-file`, or `--from-url`.
-- `trilogy file write <path> --run` (or `--run-and-delete`) - write, then execute like `trilogy run <path>` in ONE call; forwards `--param k=v`. `--run-and-delete` also removes the file afterwards (probe workflow: write+execute+cleanup in one call). Prefer these over separate write/run/delete calls.
+- `trilogy file write <path> --run` (or `--run-and-delete`) - write, then execute like `trilogy run <path>` in ONE call; forwards `--param k=v` and `--timeout <seconds>`. `--run-and-delete` also removes the file afterwards (probe workflow: write+execute+cleanup in one call). Prefer these over separate write/run/delete calls.
+- `--timeout <seconds>` cancels a statement in the warehouse once it overruns. A query that overruns a sane cap is almost always a shape mistake (an unintended fan-out), not a big scan, so the cancellation is the diagnosis: rewrite the query rather than raising the cap. Pick the cap from what a CORRECT query costs on this warehouse, not from patience.
 - `trilogy file move|delete|exists ...` - manage workspace paths.
 - `trilogy fmt <file|dir>` - format Trilogy scripts.
 - `trilogy unit <file|dir>` - validate with mocked datasources.

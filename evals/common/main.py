@@ -88,6 +88,17 @@ def run_artifact_slug(
     )
 
 
+def chart_artifact_slug(run_dir_name: str) -> str:
+    """Chart name for a run dir: the run slug minus its leading timestamp.
+
+    Charts are committed, so they are keyed by what distinguishes one run from
+    another (category + model, plus any A/B label the caller put in
+    ``--output-dir``) and NOT by when it ran. Re-running the same configuration
+    overwrites its chart, which is what makes the diff readable; keying on the
+    timestamp instead accumulates one tracked PNG per run forever."""
+    return re.sub(r"^\d{8}-\d{6}_", "", run_dir_name)
+
+
 def _force_utf8_stdio() -> None:
     """Survive redirection on Windows, where stdout defaults to cp1252 and
     chokes on non-ASCII in the feed and report."""
@@ -483,7 +494,7 @@ def _run_categories(
         ordered = {
             k: reports_by_key[k] for k in funnel_order_for(spec) if k in reports_by_key
         }
-        funnel_slug = f"{timestamp}_{namespace}"
+        funnel_slug = namespace
         png = analyze_run.render_funnel(
             ordered, spec.charts_dir / f"funnel_{funnel_slug}.png"
         )
@@ -559,8 +570,9 @@ def run(spec: BenchmarkSpec) -> int:
     # exception, or Ctrl-C. (A hard kill runs nothing, so `clean_results.py
     # --spill` still exists for that.)
     atexit.register(cleanup.purge_spill, run_dir)
-    dashboard_path = spec.charts_dir / f"dashboard_{run_dir.name}.png"
-    failures_path = spec.charts_dir / f"trilogy_failures_{run_dir.name}.md"
+    chart_slug = chart_artifact_slug(run_dir.name)
+    dashboard_path = spec.charts_dir / f"dashboard_{chart_slug}.png"
+    failures_path = spec.charts_dir / f"trilogy_failures_{chart_slug}.md"
     print(f"[1/5] Building {spec.name} DuckDB (sf={args.scale_factor:g}) ...")
     cached = db.build_database(spec, args.scale_factor)
     workspace_db = db.copy_database(cached, workspace / spec.db_filename)

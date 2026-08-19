@@ -31,7 +31,7 @@ from pathlib import Path
 
 from . import agent_runner, analyze_run, cleanup, db, prompts, scoring
 from .categories import Category, get_category
-from .main import PROVIDER_ENV, SCORE_TIMEOUT
+from .main import PROVIDER_ENV, SCORE_TIMEOUT, chart_artifact_slug
 from .report import agent_metric_fields, load_env, render_markdown
 from .spec import BenchmarkSpec
 
@@ -542,7 +542,8 @@ def replay_query(
                 analyze_run.render(
                     report,
                     events,
-                    spec.charts_dir / f"dashboard_{run_dir.name}.png",
+                    spec.charts_dir
+                    / f"dashboard_{chart_artifact_slug(run_dir.name)}.png",
                 )
         except Exception as exc:
             log(f"  dashboard render skipped: {type(exc).__name__}: {exc}")

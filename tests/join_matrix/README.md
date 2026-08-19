@@ -24,6 +24,7 @@ power-scaled values (fan-out changes sums), and an opt-in nullable axis
 | `test_narrowing_matrix.py` | declared-domain narrowing proofs on HONEST data: EQUAL (`merge`) FULL→INNER by default; UNION never narrows; flag-off opt-out |
 | `test_domain_validation.py` | opt-in lying-declaration checks (`trilogy/core/domain_validation.py`) |
 | `test_property_hop_alignment_matrix.py` | authored key on a dimension PROPERTY needing an FK hop per side, with a competing directly-bound shared key (q17/q25): member projected/unprojected × subset/union × join-vs-merge parity (the unmatched-side NULL-group projection bug it once pinned as a strict xfail is fixed; all cells green) |
+| `test_outer_padding_null_not_a_value.py` | q30: an outer-join padding NULL against a real NULL group (fan-out cell) vs both-sides value NULLs (control, must still pair exactly once) |
 | `test_global_aggregate_broadcast_matrix.py` | global (`by *`) aggregate broadcast beside a scoped join (q23): join form (none / subset / union) × aggregate (max / count) × source (anchor / non-anchor rowset output / plain concepts) × position (select / having); plus the loud-not-silent backstop for mis-grained aggregate collapse |
 
 ## Join semantics (phase 2 landed 2026-07-03, docs/subset_union_join_design.md)
@@ -51,6 +52,13 @@ those relations keep their preserving FULL.
   than drop. The former derived-LEFT-zip xfails dissolved with the flip (the
   scan-level nullability stamp for computed BASIC keys keeps the zip
   null-safe, so narrowing to INNER stays row-identical).
+- Null-safe binding needs NULLs that are VALUES on both sides. A NULL a side
+  carries only because an outer join extended it is absence, not a key, and
+  pairing it against a real NULL group cross-joins the two (q30: 311 padded
+  address rows x 20 unknown-customer groups). `nulls_are_values`
+  (`join_resolution.py`) splits the two and `get_modifiers` drops null-safety
+  when exactly one side is extended; both extended stays pairable, since that
+  padding shares provenance.
 
 ## Legacy / adjacent join tests (regression pins, keep)
 

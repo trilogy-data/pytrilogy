@@ -1,6 +1,6 @@
 # Bug: q54 generated INT32 arithmetic overflows at execution
 
-**Re-verified OPEN 2026-08-10, and broader than described.** Not specific to aggregates or `round`: integer multiplication never promotes to BIGINT. `const big <- 105249413::int; select big * 50 as prod;` alone overflows INT32.
+**Re-verified OPEN 2026-08-16 (`a65b13c9c`), and broader than described.** Not specific to aggregates or `round`: integer multiplication never promotes to BIGINT. `const big <- 105249413::int; select big * 50 as prod;` alone still overflows — it renders `cast(105249413 as int) * 50` and DuckDB raises `OutOfRangeException`. The aggregate spelling in the summary below no longer overflows on its own at sf=1 (the rounded segment stays small), so the const form is the sharp repro.
 
 ## Summary
 

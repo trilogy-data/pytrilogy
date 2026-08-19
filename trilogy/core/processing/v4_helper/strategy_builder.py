@@ -13,6 +13,7 @@ graph's lineage edges. Generators that haven't been ported to the v4 flat
 style fall back inside `v4_node_generators.dispatch.build_node`."""
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
@@ -167,79 +168,85 @@ def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
     return list(attrs[gid].condition_atoms)
 
 
-def _group_existence_concepts(
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-    gid: str,
+def _dedupe_arg_groups(
+    groups: list[tuple[BuildConcept, ...]],
+) -> list[tuple[BuildConcept, ...]]:
+    out: list[tuple[BuildConcept, ...]] = []
+    seen: set[tuple[str, ...]] = set()
+    for group in groups:
+        key = tuple(concept.address for concept in group)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(group)
+    return out
+
+
+def _flatten_arg_groups(
+    groups: list[tuple[BuildConcept, ...]],
 ) -> list[BuildConcept]:
-    """The SubselectComparison RHS concepts this group filters against —
-    sourced from both the WHERE atoms injected here AND the intrinsic where of
-    any FILTER concept the group computes (q08's `zips in substring(...)` lives
-    in `final_zips`'s lineage, not an injected atom)."""
     out: list[BuildConcept] = []
     seen: set[str] = set()
-
-    def _add(concepts: tuple[BuildConcept, ...]) -> None:
-        for concept in concepts:
+    for group in groups:
+        for concept in group:
             if concept.address not in seen:
                 seen.add(concept.address)
                 out.append(concept)
+    return out
 
+
+def _group_existence_arg_groups(
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    gid: str,
+) -> list[tuple[BuildConcept, ...]]:
+    """The SubselectComparison RHS arg groups this group filters against —
+    sourced from both the WHERE atoms injected here AND the intrinsic where of
+    any FILTER concept the group computes (q08's `zips in substring(...)` lives
+    in `final_zips`'s lineage, not an injected atom).
+
+    Each comparison's RHS stays ONE tuple. A composite membership renders
+    against a single subselect source, so the tuple -- not the address -- is
+    the unit of sourcing; flattening it here is what let a pair be fed from
+    two independent dimension groups (a cross product, not co-occurrence)."""
+    out: list[tuple[BuildConcept, ...]] = []
     for atom in _atoms_at(attrs, gid):
-        for arg_group in atom.existence_arguments:
-            _add(arg_group)
-    # Walk each primary member's lineage: a FILTER with a semijoin where
-    # (q08 `_virt_filter_zips`) is often inlined into the BASIC concept that
-    # wraps it (`final_zips = substring(filter, 1, 2)`) rather than built as
-    # its own node, so the existence arg lives a few lineage hops down.
+        out.extend(atom.existence_arguments)
+    out.extend(
+        _lineage_existence_arg_groups(
+            [environment.concepts.get(a) for a in attrs[gid].primary_members]
+        )
+    )
+    return _dedupe_arg_groups(out)
+
+
+def _lineage_existence_arg_groups(
+    concepts: Sequence[BuildConcept | None],
+) -> list[tuple[BuildConcept, ...]]:
+    """Existence arg groups reachable through the lineage of `concepts`.
+
+    A FILTER with a semijoin where (q08 `_virt_filter_zips`) is often inlined
+    into the BASIC concept that wraps it (`final_zips = substring(filter, 1,
+    2)`) rather than built as its own node, so the existence arg lives a few
+    lineage hops down."""
+    out: list[tuple[BuildConcept, ...]] = []
     visited: set[str] = set()
-    stack = [environment.concepts.get(a) for a in attrs[gid].primary_members]
+    stack = list(concepts)
     while stack:
         concept = stack.pop()
         if concept is None or concept.address in visited:
             continue
         visited.add(concept.address)
         if isinstance(concept.lineage, BuildFilterItem):
-            for arg_group in concept.lineage.where.existence_arguments or ():
-                _add(tuple(arg_group))
+            out.extend(concept.lineage.where.existence_arguments or ())
         # A BASIC concept whose lineage is (or wraps) a membership comparison
         # (`x in <set>`, e.g. a projected `--x in set as flag`) carries the set
         # as a direct existence arg; without this its subselect renders against a
         # dangling CTE (INVALID_REFERENCE_BUG).
         elif isinstance(concept.lineage, BuildConceptArgs):
-            for arg_group in concept.lineage.existence_arguments or ():
-                _add(tuple(arg_group))
+            out.extend(concept.lineage.existence_arguments or ())
         if concept.lineage is not None:
             stack.extend(concept.lineage.concept_arguments)
-    return out
-
-
-def _existence_for_group(
-    attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
-    environment: BuildEnvironment,
-    gid: str,
-) -> tuple[list[BuildConcept], list[StrategyNode]]:
-    """Gather the group's existence_arguments (right-side concepts of a
-    SubselectComparison) and the built groups that supply them. These become
-    the host node's `existence_concepts` plus extra parents — the SQL renderer
-    emits the right side as a subselect lookup against the parent CTE rather
-    than joining it into the row stream."""
-    existence_concepts: list[BuildConcept] = []
-    existence_parents: list[StrategyNode] = []
-    seen_parents: set[int] = set()
-    for concept in _group_existence_concepts(attrs, environment, gid):
-        existence_concepts.append(concept)
-        # Find the built group that supplies this concept.
-        for source_gid, source_node in built.items():
-            if source_gid == gid:
-                continue
-            if any(o.address == concept.address for o in source_node.output_concepts):
-                if id(source_node) not in seen_parents:
-                    seen_parents.add(id(source_node))
-                    existence_parents.append(source_node.copy())
-                break
-    return existence_concepts, existence_parents
+    return _dedupe_arg_groups(out)
 
 
 def _deep_copy_node(node: StrategyNode) -> StrategyNode:
@@ -251,7 +258,7 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
 
 
 class _CleanFeederCache:
-    """Builds a STANDALONE source for an existence (`IN <subselect>`) concept,
+    """Builds a STANDALONE source for an existence (`IN <subselect>`) arg group,
     independent of the already-built strategy tree.
 
     When the only built group producing an existence concept is a lineage
@@ -263,8 +270,12 @@ class _CleanFeederCache:
     verbose (q2.1: the deep copy fires per consumer and compounds into a 60k-char
     re-filter chain). The set Y in `X in Y` is by definition the UNFILTERED set, so
     re-source it from its own lineage (no outer conditions) once and share the
-    result. Cached per address; returns independent copies so each consumer owns
-    its parent pointer."""
+    result. Cached per arg group; returns independent copies so each consumer
+    owns its parent pointer.
+
+    A multi-component group is searched as ONE unit, so the feeder is the
+    tuple's co-occurrence island (the same thing `search_parent(existence_args)`
+    builds on the plain-`where` path) rather than a per-component source."""
 
     def __init__(
         self,
@@ -275,22 +286,29 @@ class _CleanFeederCache:
         self._environment = environment
         self._g = g
         self._history = history
-        self._cache: dict[str, StrategyNode | None] = {}
+        self._cache: dict[tuple[str, ...], StrategyNode | None] = {}
 
-    def get(self, concept: BuildConcept) -> StrategyNode | None:
-        if concept.address not in self._cache:
-            self._cache[concept.address] = self._build(concept)
-        node = self._cache[concept.address]
+    def get(self, group: tuple[BuildConcept, ...]) -> StrategyNode | None:
+        key = tuple(sorted({concept.address for concept in group}))
+        if key not in self._cache:
+            self._cache[key] = self._build(group)
+        node = self._cache[key]
         return node.copy() if node is not None else None
 
-    def _build(self, concept: BuildConcept) -> StrategyNode | None:
+    def _build(self, group: tuple[BuildConcept, ...]) -> StrategyNode | None:
         # Imported lazily: `concept_strategies_v4` imports this module's package.
         from trilogy.core.processing.concept_strategies_v4 import search_concepts
 
         v4_history = cast(V4History, self._history)
+        addresses = {concept.address for concept in group}
+        if len(group) == 1:
+            # A single-column set can be widened to its keys: the extra columns
+            # only shape the feeder's grain. A tuple must not be widened -- an
+            # extra column would change which rows the subselect projects.
+            addresses |= set(group[0].keys or set())
         search = [
             self._environment.concepts[address]
-            for address in sorted({concept.address, *(concept.keys or set())})
+            for address in sorted(addresses)
             if address in self._environment.concepts
         ]
         if not search:
@@ -306,67 +324,93 @@ class _CleanFeederCache:
             g=self._g,
             conditions=[],
         )
-        return info.strategy_node
+        node = info.strategy_node
+        if node is not None and len(group) > 1:
+            # Side-channel-only: slice to the subselect's columns so a shared
+            # extra output can't promote the feeder to a row-join candidate
+            # (mirrors `resolve_existence_sources`).
+            sliced = [o for o in node.output_concepts if o.address in addresses]
+            if sliced and len(sliced) < len(node.output_concepts):
+                node.set_output_concepts(sliced)
+        return node
+
+
+def _covering_built_node(
+    addresses: set[str],
+    built: dict[str, StrategyNode],
+    skip: StrategyNode | None,
+) -> StrategyNode | None:
+    """The first built group able to supply EVERY address of an arg group. A
+    composite membership renders as one subselect, so a node covering only part
+    of the tuple is not a candidate."""
+    for source_node in built.values():
+        if skip is not None and source_node is skip:
+            continue
+        if addresses <= {o.address for o in source_node.output_concepts}:
+            return source_node
+    return None
 
 
 def _existence_parents_for(
-    concepts: list[BuildConcept],
+    arg_groups: list[tuple[BuildConcept, ...]],
     built: dict[str, StrategyNode],
     skip: StrategyNode | None = None,
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[StrategyNode]:
     existence_parents: list[StrategyNode] = []
     seen_parents: set[int] = set()
-    for concept in concepts:
-        for source_node in built.values():
-            if skip is not None and source_node is skip:
+    for group in arg_groups:
+        addresses = {concept.address for concept in group}
+        source_node = _covering_built_node(addresses, built, skip)
+        if source_node is None:
+            # A tuple whose components only exist on separate built groups (each
+            # dimension enriched independently) has no single subselect source.
+            # Build the co-occurrence island from the whole tuple instead of
+            # wiring the per-component groups, which would test a dimension
+            # cross product rather than pairs present on the fact.
+            if len(group) > 1 and feeder_cache is not None:
+                feeder = feeder_cache.get(group)
+                if feeder is not None:
+                    existence_parents.append(feeder)
+            continue
+        # `copy()` shallow-shares parents, so a candidate whose subtree
+        # contains `skip` would wire `skip -> candidate -> ... -> skip`, a
+        # row-stream cycle that recurses forever in `resolve()`. The set in
+        # `X in <candidate>` is the UNFILTERED set, so re-source it
+        # standalone (no outer conditions) and share that acyclic feeder --
+        # far cheaper than deep-copying the whole conditioned subtree per
+        # consumer (q2.1: the deep copy compounds to 60k chars). Fall back
+        # to the deep copy only when no standalone feeder can be built, so
+        # the cycle is still broken (acyclic, just verbose).
+        is_cyclic = skip is not None and any(
+            n is skip for n in _strategy_nodes(source_node)
+        )
+        if is_cyclic and feeder_cache is not None:
+            feeder = feeder_cache.get(group)
+            if feeder is not None:
+                existence_parents.append(feeder)
                 continue
-            if any(o.address == concept.address for o in source_node.output_concepts):
-                # `copy()` shallow-shares parents, so a candidate whose subtree
-                # contains `skip` would wire `skip -> candidate -> ... -> skip`, a
-                # row-stream cycle that recurses forever in `resolve()`. The set in
-                # `X in <candidate>` is the UNFILTERED set, so re-source it
-                # standalone (no outer conditions) and share that acyclic feeder --
-                # far cheaper than deep-copying the whole conditioned subtree per
-                # consumer (q2.1: the deep copy compounds to 60k chars). Fall back
-                # to the deep copy only when no standalone feeder can be built, so
-                # the cycle is still broken (acyclic, just verbose).
-                is_cyclic = skip is not None and any(
-                    n is skip for n in _strategy_nodes(source_node)
-                )
-                if is_cyclic and feeder_cache is not None:
-                    feeder = feeder_cache.get(concept)
-                    if feeder is not None:
-                        existence_parents.append(feeder)
-                        break
-                if id(source_node) not in seen_parents:
-                    seen_parents.add(id(source_node))
-                    if is_cyclic:
-                        existence_parents.append(_deep_copy_node(source_node))
-                    else:
-                        existence_parents.append(source_node.copy())
-                break
+        if id(source_node) not in seen_parents:
+            seen_parents.add(id(source_node))
+            if is_cyclic:
+                existence_parents.append(_deep_copy_node(source_node))
+            else:
+                existence_parents.append(source_node.copy())
     return existence_parents
 
 
-def _condition_existence_concepts(condition: BoolExpr | None) -> list[BuildConcept]:
-    out: list[BuildConcept] = []
-    seen: set[str] = set()
+def _condition_existence_arg_groups(
+    condition: BoolExpr | None,
+) -> list[tuple[BuildConcept, ...]]:
     if condition is None:
-        return out
-    for arg_group in condition.existence_arguments:
-        for concept in arg_group:
-            if concept.address not in seen:
-                seen.add(concept.address)
-                out.append(concept)
-    return out
+        return []
+    return _dedupe_arg_groups(list(condition.existence_arguments))
 
 
-def _filter_lineage_existence_concepts(
+def _filter_lineage_existence_arg_groups(
     concepts: list[BuildConcept],
-) -> list[BuildConcept]:
-    out: list[BuildConcept] = []
-    seen: set[str] = set()
+) -> list[tuple[BuildConcept, ...]]:
+    out: list[tuple[BuildConcept, ...]] = []
     visited: set[str] = set()
     stack = list(concepts)
     while stack:
@@ -375,26 +419,32 @@ def _filter_lineage_existence_concepts(
             continue
         visited.add(concept.address)
         if isinstance(concept.lineage, BuildFilterItem):
-            for arg_group in concept.lineage.where.existence_arguments or ():
-                for arg in arg_group:
-                    if arg.address not in seen:
-                        seen.add(arg.address)
-                        out.append(arg)
+            out.extend(concept.lineage.where.existence_arguments or ())
         if concept.lineage is not None:
             stack.extend(concept.lineage.concept_arguments)
-    return out
+    return _dedupe_arg_groups(out)
 
 
-def _node_existence_concepts(node: StrategyNode) -> list[BuildConcept]:
-    concepts: list[BuildConcept] = []
-    seen: set[str] = set()
-    for concept in _condition_existence_concepts(
-        node.conditions
-    ) + _filter_lineage_existence_concepts(list(node.output_concepts)):
-        if concept.address not in seen:
-            seen.add(concept.address)
-            concepts.append(concept)
-    return concepts
+def _locally_derived_outputs(node: StrategyNode) -> list[BuildConcept]:
+    """Outputs this node computes itself rather than passing a parent's through."""
+    inherited = {
+        output.address for parent in node.parents for output in parent.output_concepts
+    }
+    return [c for c in node.output_concepts if c.address not in inherited]
+
+
+def _node_existence_arg_groups(node: StrategyNode) -> list[tuple[BuildConcept, ...]]:
+    # A membership the node computes itself (`x in <set> as flag` projected
+    # alongside an aggregate) needs the subselect feeder wired HERE: the group
+    # sweep attaches it to `built[gid]`, but a consumer took its copy of that
+    # node before the attach ran, so only the assembled tree can see which node
+    # actually renders the comparison. Pass-through outputs are excluded -- the
+    # feeder belongs to the deriving node, not everyone who forwards the column.
+    return _dedupe_arg_groups(
+        _condition_existence_arg_groups(node.conditions)
+        + _filter_lineage_existence_arg_groups(list(node.output_concepts))
+        + _lineage_existence_arg_groups(_locally_derived_outputs(node))
+    )
 
 
 def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
@@ -424,12 +474,16 @@ def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
 
 def _attach_existence_to_node(
     node: StrategyNode,
-    concepts: list[BuildConcept],
+    arg_groups: list[tuple[BuildConcept, ...]],
     built: dict[str, StrategyNode],
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> None:
-    if not concepts:
+    """Wire the SubselectComparison right sides as `existence_concepts` plus
+    extra parents -- the SQL renderer emits them as a subselect lookup against
+    the parent CTE rather than joining them into the row stream."""
+    if not arg_groups:
         return
+    concepts = _flatten_arg_groups(arg_groups)
     existing_concepts = {concept.address for concept in node.existence_concepts}
     node.existence_concepts = list(node.existence_concepts) + [
         concept for concept in concepts if concept.address not in existing_concepts
@@ -440,7 +494,7 @@ def _attach_existence_to_node(
     node.parents = list(node.parents) + [
         parent
         for parent in _existence_parents_for(
-            concepts, built, skip=node, feeder_cache=feeder_cache
+            arg_groups, built, skip=node, feeder_cache=feeder_cache
         )
         if any(
             output.address not in existing_parent_outputs
@@ -458,16 +512,16 @@ def _attach_existence_sources(
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> None:
     for gid, host in condition_hosts.items():
-        ex_concepts, ex_parents = _existence_for_group(attrs, built, environment, gid)
-        if not ex_concepts:
-            continue
-        _attach_existence_to_node(host, ex_concepts, built, feeder_cache)
-        if ex_parents:
-            host.rebuild_cache()
+        _attach_existence_to_node(
+            host,
+            _group_existence_arg_groups(attrs, environment, gid),
+            built,
+            feeder_cache,
+        )
     for root in built.values():
         for node in _strategy_nodes(root):
             _attach_existence_to_node(
-                node, _node_existence_concepts(node), built, feeder_cache
+                node, _node_existence_arg_groups(node), built, feeder_cache
             )
 
 
@@ -609,7 +663,7 @@ def _parent_nodes_for(
         ):
             continue
         # Existence-kind edges feed a subselect, not the row stream —
-        # `_existence_for_group` wires them as side-channel parents post-
+        # `_attach_existence_sources` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
         # mistakenly merge their row stream into this group's FROM.
         if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE:
@@ -2899,11 +2953,24 @@ def _relevant_root_preserve_keys(
     if not preserve_keys:
         return frozenset()
     output_addresses = {concept.address for concept in output_concepts}
+    statement_members = _statement_scoped_relation_members(environment)
     relevant: set[str] = set()
     for key in preserve_keys:
         if key in output_addresses:
             relevant.add(key)
             continue
+        # An AUTHORED statement-relation member is the declared merge axis: it
+        # already survived the merge-grain intersection, and the FD test below
+        # cannot vouch for it (a `unique` business key determines the outputs
+        # only through a uniqueness the FD tables don't encode). Dropping it
+        # re-loses the authored join key (`subset join cust.cid = id` with
+        # only `id`-determined properties projected). ROWSET handles stay out:
+        # a root scan must never claim a rowset boundary's own member.
+        if key in statement_members:
+            key_concept = environment.concepts.get(key)
+            if key_concept is not None and key_concept.derivation != Derivation.ROWSET:
+                relevant.add(key)
+                continue
         # A key the ROOT group itself carries as a member is a genuine BRIDGE
         # join key even when it doesn't FD-determine any output: the group put
         # this key beside the output because a shared finer member (the fact's
@@ -3212,12 +3279,13 @@ def _assemble_final_node(
         # and only saw the built groups, never this FINAL node, so without this
         # the IN-RHS concept renders against a dangling CTE (Missing source map
         # entry for `<set>`).
-        ex_concepts = _condition_existence_concepts(final_conditions.conditional)
+        ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
+        ex_concepts = _flatten_arg_groups(ex_groups)
         ex_parents = (
             _existence_parents_for(
-                ex_concepts, built, skip=node, feeder_cache=feeder_cache
+                ex_groups, built, skip=node, feeder_cache=feeder_cache
             )
-            if ex_concepts
+            if ex_groups
             else []
         )
         # A feeder that participates in a scoped relation must join back on
@@ -4100,7 +4168,7 @@ def build_strategy_node(
             return None
         for node in _strategy_nodes(final):
             _attach_existence_to_node(
-                node, _node_existence_concepts(node), built, feeder_cache
+                node, _node_existence_arg_groups(node), built, feeder_cache
             )
     return final
 

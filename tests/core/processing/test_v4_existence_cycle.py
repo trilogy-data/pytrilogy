@@ -1,7 +1,7 @@
 """Regression: existence-source attachment must not wire a row-stream cycle.
 
 `_existence_parents_for` attaches the built node that supplies an existence
-concept as an extra (subselect side-channel) parent. `StrategyNode.copy()`
+arg group as an extra (subselect side-channel) parent. `StrategyNode.copy()`
 shallow-shares `parents`, so if the supplying node's subtree already contains
 the host node, a naive copy creates `host -> candidate -> ... -> host`, which
 recurses forever in `resolve()` (the q10 / q2.1 RecursionError). The fix
@@ -41,7 +41,7 @@ def test_existence_parent_deep_copies_cyclic_candidate():
     )
     built = {"host": host, "candidate": candidate}
 
-    parents = _existence_parents_for([buyers], built, skip=host)
+    parents = _existence_parents_for([(buyers,)], built, skip=host)
 
     assert len(parents) == 1
     result = parents[0]
@@ -66,8 +66,47 @@ def test_existence_parent_shallow_copy_when_acyclic():
     )
     built = {"host": host, "candidate": candidate}
 
-    parents = _existence_parents_for([buyers], built, skip=host)
+    parents = _existence_parents_for([(buyers,)], built, skip=host)
 
     assert len(parents) == 1
     # acyclic candidate keeps its original parent objects (shallow copy)
     assert any(n is leaf for n in _strategy_nodes(parents[0]))
+
+
+def test_tuple_existence_takes_only_a_covering_node():
+    """A composite membership renders as ONE subselect, so a built node
+    supplying part of the tuple is not a candidate."""
+    env = _env()
+    order_id = env.concepts["order_id"]
+    buyers = env.concepts["buyers"]
+
+    partial = StrategyNode(
+        input_concepts=[], output_concepts=[order_id], environment=env
+    )
+    covering = StrategyNode(
+        input_concepts=[], output_concepts=[order_id, buyers], environment=env
+    )
+    built = {"partial": partial, "covering": covering}
+
+    parents = _existence_parents_for([(order_id, buyers)], built)
+
+    assert len(parents) == 1
+    assert {o.address for o in parents[0].output_concepts} >= {
+        order_id.address,
+        buyers.address,
+    }
+
+
+def test_tuple_existence_never_wires_a_component_pair():
+    """Components on separate built nodes: with no covering node and no feeder
+    cache nothing is wired. Wiring both would join two independent sources,
+    testing a cross product rather than co-occurring pairs."""
+    env = _env()
+    order_id = env.concepts["order_id"]
+    buyers = env.concepts["buyers"]
+
+    left = StrategyNode(input_concepts=[], output_concepts=[order_id], environment=env)
+    right = StrategyNode(input_concepts=[], output_concepts=[buyers], environment=env)
+    built = {"left": left, "right": right}
+
+    assert _existence_parents_for([(order_id, buyers)], built) == []

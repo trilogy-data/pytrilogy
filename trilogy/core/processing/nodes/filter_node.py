@@ -20,6 +20,8 @@ class FilterNode(StrategyNode):
 
     source_type = SourceType.FILTER
 
+    inherits_parent_grain = True
+
     def __init__(
         self,
         input_concepts: list[BuildConcept],

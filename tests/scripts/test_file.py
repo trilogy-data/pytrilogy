@@ -692,6 +692,49 @@ def test_write_run_forwards_params(runner, tmp_path: Path):
     assert "42" in result.output
 
 
+def test_write_run_forwards_timeout(runner, tmp_path: Path):
+    """``--timeout`` on write --run reaches the statement, so the probe idiom can
+    bound a runaway query without dropping back to a separate `run` call."""
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            (
+                "raw_sql('''select count(*) from range(100000000000) a "
+                "join range(100000) b on a.range = b.range''');"
+            ),
+            "--run",
+            "--timeout",
+            "1",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "Timeout" in result.output
+
+
+def test_write_timeout_requires_run_flag(runner, tmp_path: Path):
+    target = tmp_path / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--timeout",
+            "15",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "--timeout only applies with --run" in result.output
+    assert not target.exists()
+
+
 def test_write_param_requires_run_flag(runner, tmp_path: Path):
     target = tmp_path / "probe.preql"
     result = runner.invoke(

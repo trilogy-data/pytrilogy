@@ -960,8 +960,8 @@ auto filtered <- id ? id in other;
 
 class TestExistenceWiring:
     def test_semijoin_filter_resolves_with_existence_parent(self):
-        """`id ? id in other` resolves through `_existence_for_group`, wiring
-        the `other` source as a side-channel existence parent."""
+        """`id ? id in other` resolves through `_attach_existence_sources`,
+        wiring the `other` source as a side-channel existence parent."""
         env, benv = _build(EXISTENCE_MODEL)
         info = _search(env, benv, ["local.filtered"])
         assert info.strategy_node is not None

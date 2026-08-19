@@ -525,16 +525,77 @@ def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
     return bool(args & nullable_addrs)
 
 
+def _side_outputs(concept: BuildConcept, side: DataSource) -> bool:
+    equivalent = concept.equivalent_addresses
+    return any(equivalent & c.equivalent_addresses for c in side.output_concepts)
+
+
+def nulls_are_values(
+    concept: BuildConcept,
+    side: DataSource,
+    _seen: frozenset[tuple[str, int]] = frozenset(),
+) -> bool:
+    """Whether the NULLs this side carries for ``concept`` are VALUES (a `?`
+    column, a nullable derivation, a nullable input to a null-propagating
+    expression, a ROLLUP grouping key) rather than pure outer-join extension.
+
+    Outer-join extension means *absent*: there is no row on that side, so no
+    key. Pairing that against a real NULL group cross-joins the two (q30: 311
+    padded address rows x 20 unknown-customer groups = 6,220)."""
+    if concept.is_nullable:
+        return True
+    # Argument chains can be mutually recursive (q25); a repeat visit of the
+    # same concept on the same source contributes nothing new.
+    visit = (concept.address, id(side))
+    if visit in _seen:
+        return False
+    seen = _seen | {visit}
+    equivalent = concept.equivalent_addresses
+    if isinstance(side, BuildDatasource):
+        # Column-level `?` is the only value-NULL source on a physical table.
+        return any(
+            equivalent & nc.equivalent_addresses for nc in side.nullable_concepts
+        )
+    # A grouping-set NULL is padding too, but a twin-rollup partner pads the
+    # same key, so it stays pairable here; get_join_type handles the mismatch.
+    if equivalent & rollup_padded_addresses(side):
+        return True
+    carriers = [p for p in side.datasources if _side_outputs(concept, p)]
+    if not carriers:
+        # Nothing upstream to attribute the NULL to; stay conservative rather
+        # than call an unexplained nullability extension.
+        return True
+    if any(nulls_are_values(concept, p, seen) for p in carriers):
+        return True
+    if not propagates_argument_nulls(concept):
+        return False
+    args = {a.address for a in concept.concept_arguments}
+    if not args:
+        return False
+    return any(
+        (args & nc.equivalent_addresses) and nulls_are_values(nc, side, seen)
+        for nc in side.nullable_concepts
+    )
+
+
 def get_modifiers(
     left_concept: BuildConcept,
     right_concept: BuildConcept,
     left: DataSource | None,
     right: DataSource | None,
 ) -> list[Modifier]:
-    """Use null-safe equality only when both exposed join keys can be NULL."""
-    if side_nullable(left_concept, left) and side_nullable(right_concept, right):
-        return [Modifier.NULLABLE]
-    return []
+    """Use null-safe equality only when both exposed join keys can be NULL.
+
+    Asymmetric padding is the exception: when one side's NULLs are outer-join
+    extension (absence) and the other's are values, they name nothing in
+    common and null-safe equality cross-joins them. Both sides extended is the
+    ordinary case again: the padding shares provenance, so those rows pair."""
+    if not (side_nullable(left_concept, left) and side_nullable(right_concept, right)):
+        return []
+    assert left is not None and right is not None
+    if nulls_are_values(left_concept, left) != nulls_are_values(right_concept, right):
+        return []
+    return [Modifier.NULLABLE]
 
 
 def _collect_deep_partial_addresses(

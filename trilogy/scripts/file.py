@@ -336,6 +336,14 @@ _CONTENT_FROM_STDIN = "\x00__content_from_stdin__\x00"
     help="Environment parameters as key=value pairs, forwarded to the "
     "--run/--run-and-delete execution.",
 )
+@click.option(
+    "--timeout",
+    "timeout",
+    type=click.FloatRange(min=0, min_open=True),
+    default=None,
+    help="Seconds a single statement may run before it is cancelled, forwarded "
+    "to the --run/--run-and-delete execution (see `trilogy run --timeout`).",
+)
 @click.pass_context
 def write_cmd(
     ctx: click.Context,
@@ -351,6 +359,7 @@ def write_cmd(
     run_after: bool,
     run_and_delete: bool,
     param: tuple[str, ...],
+    timeout: float | None,
 ) -> None:
     """Write/overwrite the file at PATH.
 
@@ -379,6 +388,9 @@ def write_cmd(
         raise click.exceptions.Exit(2)
     if param and not (run_after or run_and_delete):
         print_error("--param only applies with --run or --run-and-delete.")
+        raise click.exceptions.Exit(2)
+    if timeout is not None and not (run_after or run_and_delete):
+        print_error("--timeout only applies with --run or --run-and-delete.")
         raise click.exceptions.Exit(2)
     if escapes and content is None:
         # `--escapes` interprets `\n`/`\t` in an INLINE `--content` value — its
@@ -443,7 +455,14 @@ def write_cmd(
             path, len(data), show_sql and not force and path.endswith(".preql")
         )
     if run_after or run_and_delete:
-        _run_written_file(ctx, backend, path, delete_after=run_and_delete, param=param)
+        _run_written_file(
+            ctx,
+            backend,
+            path,
+            delete_after=run_and_delete,
+            param=param,
+            timeout=timeout,
+        )
 
 
 def _report_write(path: str, byte_count: int, show_sql: bool) -> None:
@@ -474,6 +493,7 @@ def _run_written_file(
     path: str,
     delete_after: bool,
     param: tuple[str, ...] = (),
+    timeout: float | None = None,
 ) -> None:
     """Execute the just-written file through the ``run`` command's own path so
     output events and exit-code semantics match ``trilogy run <path>`` exactly.
@@ -487,7 +507,7 @@ def _run_written_file(
     run_command = root_cli.get_command(ctx, "run")
     assert run_command is not None
     try:
-        ctx.invoke(run_command, input=path, param=param)
+        ctx.invoke(run_command, input=path, param=param, timeout=timeout)
     finally:
         if delete_after:
             try:

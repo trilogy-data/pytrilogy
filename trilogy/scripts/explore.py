@@ -487,8 +487,7 @@ def _join_nullable_namespaces(env: Environment) -> set[str]:
     what stops an agent that reasons from a field's rendered value domain
     (``county enum<'Williamson County'>``) from concluding a filter matching
     the whole domain is a droppable tautology; dropping it also drops the
-    join's null-rejection (see
-    evals/tpcds_agent/bug_q16_enum_tautology_drops_joined_null_rejection.md).
+    join's null-rejection.
 
     The edge, not the leaf, carries the nullability: the dimension's own
     column is typically non-null, while the fact's binding of its key is

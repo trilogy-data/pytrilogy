@@ -129,6 +129,37 @@ def test_partial_rollup_over_union_joined_rowsets_executes(executor):
     ]
 
 
+NET_SELECTION = SELECTION.replace(
+    "    sum(coalesce(r.returns, 0)) as returns\n",
+    "    sum(coalesce(r.returns, 0)) as returns,\n"
+    "    sum(coalesce(s.sales, 0)) - sum(coalesce(r.returns, 0)) as net\n",
+)
+NET_CHANNEL_ROLLUP = (
+    NET_SELECTION + "by rollup (channel)\n"
+    "order by channel asc nulls last, entity asc nulls last;"
+)
+
+
+def test_rollup_with_basic_over_aggregates_executes(executor):
+    """A BASIC derived from the rollup's aggregates (`sum(...) - sum(...)`)
+    must ride the rollup CTE, not re-join the raw rowset feeder: the feeder's
+    pre-aggregation axis (`r.channel`/`r.entity`) no longer exists after the
+    ROLLUP, so demanding it resurrects the feeder as a keyless (ON 1=1)
+    parent — the q05 rollup-over-union-join shape."""
+    rows = [
+        tuple(row) for row in executor.execute_text(NET_CHANNEL_ROLLUP)[0].fetchall()
+    ]
+    leaves = [row for row in rows if row[0] is not None]
+    totals = [row for row in rows if row[0] is None]
+    assert leaves == [
+        ("catalog channel", "catalog_pagec1", 30.0, 3.0, 27.0),
+        ("store channel", "stores1", 30.0, 1.0, 29.0),
+        ("store channel", "stores2", 30.0, 1.0, 29.0),
+        ("web channel", "web_sitew9", 0.0, 5.0, -5.0),
+    ]
+    assert [(row[2], row[3], row[4]) for row in totals] == [(60.0, 9.0, 51.0)]
+
+
 def test_full_grain_rollup_returns_leaf_subtotal_and_total(executor):
     rows = [tuple(row) for row in executor.execute_text(LEAF_ROLLUP)[0].fetchall()]
     leaves = [row for row in rows if row[0] is not None and row[1] is not None]

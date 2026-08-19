@@ -60,8 +60,9 @@ table with no key-column or cardinality-relative gate: 122 enums (vs 28 in enric
 including `key call_center_sk enum<bigint>[1,2,3,4,5,6]` and sf-dependent
 single-value enums (`state enum['TN']`) that trigger false "this filter is a no-op"
 reasoning (q01 trace; the string "enum" appears 13,870 times in the ingest-leg logs).
-One past silent wrong answer already traced to this class
-(`bug_q16_enum_tautology_drops_joined_null_rejection.md`).
+One past silent wrong answer already traced to this class: q16, where a
+domain-covering `call_center.county` filter read as a no-op and removing it dropped
+the join's null-rejection (the parser-side check was deleted in response 2026-07-20).
 
 **(d) FK inference is NOT the problem.** Audit result: 104 edges emitted, 103 true,
 1 false, 1 missed. Recall/precision 99%. The remaining defects are cheap hygiene
@@ -88,7 +89,9 @@ shapes because it lacks the pre-solved models):
   per-query finalize; a killed run leaves `answer_<hash>.preql` stranded and no
   report. (This investigation recovered them by recomputing the blake2s opaque id.)
 - `explore` does not show a fact's own FK columns and `file read` is disabled, forcing
-  query-probe archaeology (q05, q50, q83; also `bug_q95_explore_json_...md`).
+  query-probe archaeology (q05, q50, q83). **Partly addressed as of 2026-08-16:** the
+  JSON payload now groups imported dims by ACCESS PATH under the fact and carries a
+  `join_note`, which closed the older q95 report; re-measure before re-planning this item.
 
 ## Plan
 

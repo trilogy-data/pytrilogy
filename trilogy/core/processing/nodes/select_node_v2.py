@@ -28,6 +28,8 @@ class SelectNode(StrategyNode):
 
     source_type = SourceType.SELECT
 
+    inherits_parent_grain = True
+
     def __init__(
         self,
         input_concepts: list[BuildConcept],

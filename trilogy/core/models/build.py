@@ -3607,6 +3607,12 @@ class Factory:
             self._build_over_items(list(grouping_set))
             for grouping_set in grouping_sets_source
         ]
+        if grouping != AggregateGroupingMode.STANDARD and not by and not grouping_sets:
+            # A rollup/cube over zero keys has exactly one grouping set - the
+            # grand total - which is what a standard grouping with no keys
+            # already renders. `by rollup ()` on a grainless select (only
+            # constants and aggregates projected) lands here.
+            grouping = AggregateGroupingMode.STANDARD
         if grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)
 
