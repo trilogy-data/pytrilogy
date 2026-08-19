@@ -65,9 +65,16 @@ def violations(monkeypatch) -> list[str]:
             return resolved
         if resolved.group_required:
             return resolved
+        # Mirror `_default_grain`: an existence feeder rejects rows through a
+        # subselect, it never supplies them, so its grain is not part of ours.
+        existence = {concept.address for concept in self.existence_concepts}
         parent_grain = BuildGrain()
         for parent in self.parents:
-            parent_grain += parent.resolve().grain
+            resolved_parent = parent.resolve()
+            supplied = {concept.address for concept in resolved_parent.output_concepts}
+            if existence and supplied <= existence:
+                continue
+            parent_grain += resolved_parent.grain
         if parent_grain.components and not parent_grain.issubset(resolved.grain):
             found.append(
                 f"{type(self).__name__} declares {resolved.grain} over {parent_grain}"
