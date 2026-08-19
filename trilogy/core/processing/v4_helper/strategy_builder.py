@@ -3539,6 +3539,22 @@ def _assemble_final_node(
                 preserve_keys,
                 frozenset(_members_of(attrs, gid)),
             )
+            # A ROOT that already carries a merge key among its own concepts
+            # joins its siblings on that key alone. Preserving the OTHER merge
+            # keys forces the re-source below to drag in whatever fact table
+            # carries them (a pure `users` dim scan came back as
+            # `order_items JOIN users` deduped to the full output grain), and
+            # the merge then stitches on every key null-safely — which, under
+            # `~` partials, pairs join-manufactured NULLs with each other.
+            # Foreign keys stay preserved only for the carrier-less case the
+            # widen exists for: no own key means no join path, and the merge
+            # would cross-join ON 1=1.
+            own_join_keys = preserve_keys & (
+                {concept.address for concept in group_concepts}
+                | {concept.address for concept in node.usable_outputs}
+            )
+            if own_join_keys:
+                preserve_keys = frozenset(own_join_keys)
         # A preserved join key must survive the wrap: grouping the contributor
         # to a grain that excludes the key it was just re-sourced to carry
         # dedups that key straight back out, and the merge cross-joins anyway.

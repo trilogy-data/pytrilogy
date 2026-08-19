@@ -442,6 +442,7 @@ class ImportHydrationService:
                 input_path=Path(request.target) if is_file_resolver else None,
                 concepts=request.concepts,
                 description=request.description,
+                leading_dots=request.leading_dots,
             ),
             projection=projection,
         )

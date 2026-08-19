@@ -1,0 +1,18 @@
+# Managed-reporting-table rebuild shape: the full partial-key grain of the
+# store channel (store_returns marks BOTH grain keys `~`), a dimension
+# attribute, and one aggregate from each side of the fact pair.
+#
+# Pins the FINAL-assembly own-key-join fix: a dimension contributor joins the
+# merge on its own key instead of being re-sourced carrying the full output
+# grain (which dragged a fact scan into the item lookup and stitched every
+# sibling FULL on all keys null-safely, manufacturing NULL-key rows).
+
+import store_sales as ss;
+
+select
+    ss.item.sk,
+    ss.ticket_number,
+    ss.item.brand_name,
+    sum(ss.net_paid) as total_paid,
+    sum(ss.return_amount) as total_returned,
+;
