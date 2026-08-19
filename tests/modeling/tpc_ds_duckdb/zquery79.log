@@ -1,5 +1,5 @@
 query_id = "79"
-gen_length = 2587
+gen_length = 2450
 preql_size = 1132
 comp_size = 1188
 generated_sql = """
@@ -7,7 +7,6 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ADDR_SK\" as \"store_sales_pos_address_sk\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_sk\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     SUBSTRING(\"store_sales_store_store\".\"S_CITY\",1,30) as \"city_short\",
@@ -25,7 +24,7 @@ GROUP BY
     1,
     2,
     3,
-    4,
+    \"store_sales_store_sales\".\"SS_ADDR_SK\",
     \"store_sales_store_store\".\"S_CITY\")
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
@@ -37,14 +36,6 @@ SELECT
 FROM
     \"cooperative\"
     LEFT OUTER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"cooperative\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    \"cooperative\".\"store_sales_pos_address_sk\"
 ORDER BY 
     \"store_sales_customer_customers\".\"C_LAST_NAME\" asc nulls first,
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" asc nulls first,

@@ -1196,11 +1196,17 @@ class QueryDatasource:
 
     @property
     def effective_grain(self) -> BuildGrain:
+        # A NULL-padded key is absence, not a row identity: an anti-join
+        # (`orders.id is null`) declares the preserved side's grain but still
+        # projects the rejected key, and counting that key here re-inflates the
+        # grain to the pre-join side and forces a regroup that dedups nothing.
+        nullable = {concept.address for concept in self.nullable_concepts}
         key_outputs = {
             concept.address
             for concept in self.output_concepts
             if concept.purpose == Purpose.KEY
             and concept.name != RECURSIVE_GATING_CONCEPT
+            and concept.address not in nullable
         }
         return self.grain + BuildGrain(components=key_outputs)
 
@@ -1422,12 +1428,22 @@ class QueryDatasource:
             limited = f"_limited_{self.limit}"
             if self.ordering:
                 limited += f"_{string_to_hash(str(self.ordering))}"
+        # An UNNEST in the FROM is identity for the mirror-image reason a limit
+        # is: the unnested source is a row MULTIPLE of the same shape without
+        # it, so the two must never collide and merge (``__add__`` rejects the
+        # mismatch rather than silently folding an unnest into a plain scan).
+        unnested = ""
+        if self.join_derived_concepts:
+            unnested = "_unnest_" + "_".join(
+                sorted(c.address.replace(".", "_") for c in self.join_derived_concepts)
+            )
         return (
             "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
             + limited
+            + unnested
         )
 
     def get_alias(

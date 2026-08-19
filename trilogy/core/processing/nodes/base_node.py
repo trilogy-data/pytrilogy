@@ -177,6 +177,10 @@ def get_all_parent_nullable(
 
 class StrategyNode:
     source_type = SourceType.ABSTRACT
+    # A node that only projects or filters emits its parents' rows. Subclasses
+    # that set this take their parents' grain when none was passed, rather than
+    # deriving one from their own outputs; see `_default_grain`.
+    inherits_parent_grain: bool = False
 
     def __init__(
         self,
@@ -539,14 +543,37 @@ class StrategyNode:
                     source_map[concept.address] = {ps}
                     break
 
+    def _default_grain(
+        self, parent_sources: list[QueryDatasource | BuildDatasource]
+    ) -> BuildGrain:
+        """The grain to declare when the planner passed none.
+
+        Deriving it from ``output_concepts`` states the grain the projection
+        *selects*, which is only the row grain if something deduped to it. For a
+        row-preserving node nothing did, so it reports its parents' rows: a
+        narrowing projection that claims the narrow grain reads as already
+        deduped, and consumers skip the GROUP BY that would make it true.
+        """
+        if self.inherits_parent_grain and parent_sources and not self.force_group:
+            # An existence feeder is read through a subselect: it rejects rows,
+            # it never supplies them, so its grain is not part of ours.
+            existence = {concept.address for concept in self.existence_concepts}
+            inherited = BuildGrain()
+            for source in parent_sources:
+                supplied = {concept.address for concept in source.output_concepts}
+                if existence and supplied <= existence:
+                    continue
+                inherited += source.grain
+            if inherited.components:
+                return inherited
+        return BuildGrain.from_concepts(self.output_concepts)
+
     def _resolve(self) -> QueryDatasource:
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
 
-        grain = (
-            self.grain if self.grain else BuildGrain.from_concepts(self.output_concepts)
-        )
+        grain = self.grain if self.grain else self._default_grain(parent_sources)
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,

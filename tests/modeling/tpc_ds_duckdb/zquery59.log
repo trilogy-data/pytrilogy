@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 6889
+gen_length = 6603
 preql_size = 2263
 comp_size = 2234
 generated_sql = """
@@ -96,10 +96,6 @@ SELECT
     \"abundant\".\"fri_sales\" / \"abundant\".\"_virt_window_lead_1809457397450112\" as \"fri_sales_ratio\",
     \"abundant\".\"mon_sales\" / \"abundant\".\"_virt_window_lead_8658219107244510\" as \"mon_sales_ratio\",
     \"abundant\".\"sat_sales\" / \"abundant\".\"_virt_window_lead_6629245994596889\" as \"sat_sales_ratio\",
-    \"abundant\".\"ss_sale_date_week_seq\" - (CASE
-	WHEN \"abundant\".\"year_flag\" = 2 THEN 52
-	ELSE 0
-	END) as \"normalized_week\",
     \"abundant\".\"ss_sale_date_week_seq\" as \"d_week_seq1\",
     \"abundant\".\"ss_store_sk\" as \"ss_store_sk\",
     \"abundant\".\"sun_sales\" / \"abundant\".\"_virt_window_lead_6256435185087398\" as \"sun_sales_ratio\",
@@ -129,20 +125,6 @@ FROM
 WHERE
     \"yummy\".\"year_flag\" = 1 and \"yummy\".\"sun_sales_ratio\" is not null
 
-GROUP BY
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    \"yummy\".\"normalized_week\",
-    \"yummy\".\"ss_store_sk\",
-    \"yummy\".\"year_flag\"
 ORDER BY 
     \"s_store_name1\" asc nulls first,
     \"s_store_id1\" asc nulls first,
