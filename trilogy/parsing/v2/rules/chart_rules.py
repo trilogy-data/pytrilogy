@@ -147,8 +147,10 @@ def chart_layer(
         bindings = hydrate(body_node)
         if not isinstance(bindings, list):
             raise fail(body_node, "Chart layer body failed to hydrate")
+        # An alias on a direct reference is a display label; only computed
+        # expressions must move into the select.
         for binding, binding_node in zip(bindings, binding_nodes):
-            if binding.alias is not None or not isinstance(binding.expr, ConceptRef):
+            if not isinstance(binding.expr, ConceptRef):
                 raise fail(
                     binding_node,
                     f"Chart role '{binding.role}' must be a direct concept"
@@ -176,7 +178,12 @@ def chart_layer(
             limit=hydrate(limit_node).count if limit_node is not None else None,
             meta=metadata_from_meta(node.meta),
         )
-    return ChartLayer(layer_type=layer_type, bindings=bindings, select=select)
+    return ChartLayer(
+        layer_type=layer_type,
+        bindings=bindings,
+        select=select,
+        explicit_select=explicit_select_node is not None,
+    )
 
 
 def chart_place(

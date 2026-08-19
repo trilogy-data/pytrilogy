@@ -3,6 +3,7 @@ from __future__ import annotations
 from trilogy.core.models.author import Comment
 from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.statement_plans import (
+    CallStatementPlan,
     ChartStatementPlan,
     CommentStatementPlan,
     ConceptStatementPlan,
@@ -196,6 +197,8 @@ class StatementPlanner:
                 return PublishStatementPlan(statement)
             case SyntaxNodeKind.COPY_STATEMENT:
                 return CopyStatementPlan(statement)
+            case SyntaxNodeKind.CALL_STATEMENT:
+                return CallStatementPlan(statement)
             case SyntaxNodeKind.CHART_STATEMENT:
                 return ChartStatementPlan(statement)
             case _:

@@ -38,6 +38,7 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     GroupMode,
+    JoinType,
     Modifier,
     Ordering,
     PersistMode,
@@ -110,12 +111,14 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.query_processor import (
+    process_call,
     process_chart,
     process_copy,
     process_persist,
     process_query,
 )
 from trilogy.core.statements.author import (
+    CallStatement,
     ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
@@ -137,6 +140,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartStatement,
     ProcessedCopyStatement,
@@ -188,8 +192,12 @@ def nullable_from_str(value: object) -> bool:
     return str(value).strip().upper() != "NO"
 
 
-def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
-
+def null_wrapper(
+    lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
+) -> str:
+    # ``jointype`` is the join this key belongs to. The base expansion is legal
+    # under every join type and ignores it; dialects that restrict what a FULL
+    # OUTER JOIN's ON clause may contain (BigQuery) key off it.
     if Modifier.NULLABLE in modifiers:
         return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
     return f"{lval} = {rval}"
@@ -3162,6 +3170,7 @@ class BaseDialect:
             | RawSQLStatement
             | MergeStatementV2
             | CopyStatement
+            | CallStatement
             | ValidateStatement
             | ValidateNaturalStatement
             | NaturalSelectStatement
@@ -3200,6 +3209,11 @@ class BaseDialect:
                             hook.process_select_info(statement.select)
                 copy = process_copy(environment, statement, hooks=hooks)
                 output.append(copy)
+            elif isinstance(statement, CallStatement):
+                if hooks and statement.select is not None:
+                    for hook in hooks:
+                        hook.process_select_info(statement.select)
+                output.append(process_call(environment, statement, hooks=hooks))
             elif isinstance(statement, SelectStatement):
                 if hooks:
                     for hook in hooks:
@@ -3645,6 +3659,15 @@ class BaseDialect:
             )
         elif isinstance(query, ProcessedChartCopyStatement):
             return self.compile_statement(query.chart)
+        elif isinstance(query, ProcessedCallStatement):
+            if query.query is not None:
+                return (
+                    "--Trilogy call statements run a script at execution time; "
+                    f"argument select:\n{self.compile_statement(query.query)}"
+                )
+            return (
+                "--Trilogy call statements do not have a SQL representation;\nselect 1;"
+            )
 
         output = None
         if isinstance(query, ProcessedQueryPersist):

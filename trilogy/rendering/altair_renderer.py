@@ -79,12 +79,18 @@ class AltairRenderer(BaseRenderer):
         return chart
 
     @staticmethod
-    def _statement_title(statement: ProcessedChartStatement) -> str | None:
+    def _field_title(layer: ProcessedChartLayer, field: str) -> str | None:
+        """Display title for a field: its binding's `as` alias when it has
+        one, else the field address itself, humanized either way."""
+        return prettify_label(layer.field_labels.get(field, field))
+
+    @classmethod
+    def _statement_title(cls, statement: ProcessedChartStatement) -> str | None:
         """A title from the first layer's value-axis field (y, else x)."""
         for layer in statement.layers:
             for fields in (layer.y_fields, layer.x_fields):
                 if fields:
-                    return prettify_label(fields[0])
+                    return cls._field_title(layer, fields[0])
         return None
 
     def to_spec(
@@ -259,7 +265,7 @@ class AltairRenderer(BaseRenderer):
             )
             encoding[channel] = cls(
                 field,
-                title=prettify_label(field),
+                title=self._field_title(layer, field),
                 axis=alt.Axis(**axis_kwargs) if axis_kwargs else alt.Undefined,
                 type=field_type,
                 sort=sort,
@@ -268,12 +274,12 @@ class AltairRenderer(BaseRenderer):
         if layer.color_field:
             encoding["color"] = alt.Color(
                 layer.color_field,
-                title=prettify_label(layer.color_field),
+                title=self._field_title(layer, layer.color_field),
                 scale=self._hex_color_scale(layer, data),
             )
         if layer.size_field:
             encoding["size"] = alt.Size(
-                layer.size_field, title=prettify_label(layer.size_field)
+                layer.size_field, title=self._field_title(layer, layer.size_field)
             )
         if layer.group_field:
             # grouped bars sit side by side within each category band; on
@@ -286,17 +292,19 @@ class AltairRenderer(BaseRenderer):
                     "yOffset" if layer.layer_type == ChartType.BARH else "xOffset"
                 )
                 encoding[offset_channel] = offset_cls(
-                    layer.group_field, title=prettify_label(layer.group_field)
+                    layer.group_field, title=self._field_title(layer, layer.group_field)
                 )
             else:
                 encoding["detail"] = alt.Detail(layer.group_field)
         if layer.x_trellis_field:
             encoding["column"] = alt.Column(
-                layer.x_trellis_field, title=prettify_label(layer.x_trellis_field)
+                layer.x_trellis_field,
+                title=self._field_title(layer, layer.x_trellis_field),
             )
         if layer.y_trellis_field:
             encoding["row"] = alt.Row(
-                layer.y_trellis_field, title=prettify_label(layer.y_trellis_field)
+                layer.y_trellis_field,
+                title=self._field_title(layer, layer.y_trellis_field),
             )
         if layer.geo_field:
             raise NotImplementedError(
@@ -444,7 +452,7 @@ class AltairRenderer(BaseRenderer):
         if not layer.x_fields:
             raise ValueError("A headline chart requires an x_axis binding.")
         field = layer.x_fields[0]
-        title = (prettify_label(field) or field).upper()
+        title = (self._field_title(layer, field) or field).upper()
         positioned = data.reset_index(drop=True).assign(_headline_pos=range(len(data)))
         count = max(len(positioned), 1)
         font_size = max(22, min(52, round(165 / count)))

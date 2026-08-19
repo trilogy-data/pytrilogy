@@ -1846,11 +1846,27 @@ class UnionCTE:
 
     @property
     def group_to_grain(self) -> bool:
+        """A union never dedupes itself — only its consumer can decide.
+
+        A UNION ALL whose projection drops its arms' grain keys does hold
+        duplicate rows against its own declared grain, so this is NOT the
+        "already a unique set" it looks like. But the duplicates are only noise
+        to a consumer joining the union as a key set; to a consumer aggregating
+        it they are the data. `select species, sum(dbh)` over two tree-grain
+        partitions projects (species, dbh) and must keep all three of three
+        identically-valued trees — deduping here silently under-counts the sum.
+
+        The union cannot tell those apart, so the obligation sits with whoever
+        reads it at a coarser grain: that consumer must group. See
+        `_grain_claim_needs_group` in v4_node_generators/basic.py, which is the
+        projection-shaped case of exactly that.
+        """
         return False
 
     @property
     def group_concepts(self) -> list[BuildConcept]:
-        # unions should always be on unique sets
+        # Nothing to group by: see group_to_grain — deduping is the consumer's
+        # obligation, never the union's.
         return []
 
     def __add__(self, other):

@@ -37,6 +37,7 @@ statement = _{
     | self_import_statement
     | import_statement
     | copy_statement
+    | call_statement
     | merge_statement
     | rawsql_statement
     | validate_statement
@@ -242,6 +243,8 @@ COPY_TYPE       = @{ ^"csv" | ^"json" | ^"parquet" | ^"png" | ^"svg" | ^"html" |
 copy_option     = { IDENTIFIER ~ "=" ~ literal }
 copy_options    = { "(" ~ copy_option ~ ("," ~ copy_option)* ~ ","? ~ ")" }
 copy_statement  = { ^"copy" ~ ^"into" ~ COPY_TYPE ~ (FILE_PATH | string_lit) ~ copy_options? ~ ^"from" ~ (chart_statement | select_statement) }
+
+call_statement  = { ^"call" ~ (FILE_PATH | string_lit) ~ (^"from" ~ select_statement)? }
 
 // `barh` must precede `bar` in PEG ordered choice so pest doesn't consume
 // `bar` as a complete match and leave `h` for the next rule.

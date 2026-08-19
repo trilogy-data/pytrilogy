@@ -1221,7 +1221,9 @@ def test_expected_probe_does_not_absorb_a_warehouse_failure(executor):
     """
     ds = _ds(executor)
     with patch.object(
-        executor, "execute_query", side_effect=RuntimeError("connection reset by peer")
+        executor,
+        "execute_ephemeral",
+        side_effect=RuntimeError("connection reset by peer"),
     ), pytest.raises(RuntimeError, match="connection reset"):
         probe_expected_partitions(ds, executor, set())
 
@@ -1231,7 +1233,7 @@ def test_expected_probe_restores_hidden_datasources_after_a_failure(executor):
     ds = _ds(executor)
     before = dict(executor.environment.datasources)
     with patch.object(
-        executor, "execute_query", side_effect=RuntimeError("x")
+        executor, "execute_ephemeral", side_effect=RuntimeError("x")
     ), pytest.raises(RuntimeError):
         probe_expected_partitions(ds, executor, set())
     assert executor.environment.datasources == before

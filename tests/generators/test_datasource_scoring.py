@@ -1,3 +1,7 @@
+import random
+import time
+from collections import defaultdict
+from itertools import product
 from unittest.mock import MagicMock
 
 from trilogy.core.enums import (
@@ -467,6 +471,146 @@ class TestBestEnumUnion:
         assert (
             result is None
         ), f"OR-condition source must not be used as a single-value slot; got {result}"
+
+
+def _make_enum_ds_with_cols(
+    name: str,
+    val: str,
+    key: BuildConcept,
+    others: list[BuildConcept],
+    address_type: AddressType,
+) -> BuildDatasource:
+    condition = BuildWhereClause(
+        conditional=BuildComparison(left=key, right=val, operator=ComparisonOperator.EQ)
+    )
+    return BuildDatasource(
+        name=name,
+        columns=[BuildColumnAssignment(alias=key.name, concept=key)]
+        + [BuildColumnAssignment(alias=c.name, concept=c) for c in others],
+        address=Address(location=f"/data/{name}", type=address_type),
+        non_partial_for=condition,
+    )
+
+
+def _reference_best_enum_union(
+    dses: list[BuildDatasource],
+    enum_type: EnumType,
+    merge_key: BuildConcept,
+) -> list[list[BuildDatasource]] | None:
+    """The pre-DP product enumeration, kept verbatim as the correctness oracle."""
+    by_value: dict[object, list[BuildDatasource]] = defaultdict(list)
+    for ds in dses:
+        if not ds.non_partial_for:
+            continue
+        val = _extract_enum_value_for_key(
+            ds.non_partial_for.conditional, merge_key.address
+        )
+        if val is None:
+            continue
+        by_value[val].append(ds)
+
+    if {str(v) for v in by_value} < set(enum_type.values):
+        return None
+
+    values = list(by_value.keys())
+    merge_key_addr = {merge_key.address}
+    best_per_overlap: dict[frozenset[str], tuple[list[BuildDatasource], int]] = {}
+
+    for combo in product(*[by_value[v] for v in values]):
+        combo_list = list(combo)
+        if len(combo_list) < 2:
+            continue
+        overlap = {col.concept.address for col in combo_list[0].columns}
+        for ds in combo_list[1:]:
+            overlap &= {col.concept.address for col in ds.columns}
+        signature = frozenset(overlap - merge_key_addr)
+        if not signature:
+            continue
+        score = sum(_datasource_score(ds) for ds in combo_list)
+        existing = best_per_overlap.get(signature)
+        if existing is None or score > existing[1]:
+            best_per_overlap[signature] = (combo_list, score)
+
+    if not best_per_overlap:
+        return None
+    sigs = list(best_per_overlap.keys())
+    maximal = [s for s in sigs if not any(s < other for other in sigs)]
+    return [best_per_overlap[s][0] for s in maximal]
+
+
+class TestBestEnumUnionEquivalence:
+    def test_signature_is_strict_intersection_of_member_sets(self):
+        """The winning signature can equal NO member's column set (only their ∩)."""
+        enum_type = EnumType(type=DataType.STRING, values=["A", "B"])
+        key = _make_concept("k", datatype=enum_type)
+        a, b, c = (_make_concept(x) for x in "abc")
+        ds_a = _make_enum_ds_with_cols("src_a", "A", key, [a, b], AddressType.TABLE)
+        ds_b = _make_enum_ds_with_cols("src_b", "B", key, [b, c], AddressType.TABLE)
+        result = _best_enum_union([ds_a, ds_b], enum_type, key)
+        assert result is not None
+        assert [[ds.name for ds in g] for g in result] == [["src_a", "src_b"]]
+
+    def test_matches_product_reference_on_randomized_families(self):
+        rng = random.Random(20260817)
+        pool = [_make_concept(f"c{i}") for i in range(6)]
+        types = [AddressType.TABLE, AddressType.PARQUET, AddressType.PYTHON_SCRIPT]
+        for trial in range(500):
+            n_values = rng.randint(2, 5)
+            values = [f"V{i}" for i in range(n_values)]
+            enum_values = values + (["V_missing"] if rng.random() < 0.15 else [])
+            enum_type = EnumType(type=DataType.STRING, values=enum_values)
+            key = _make_concept("part_key", datatype=enum_type)
+            dses = []
+            for v in values:
+                for j in range(rng.randint(1, 4)):
+                    others = [con for con in pool if rng.random() < 0.5]
+                    dses.append(
+                        _make_enum_ds_with_cols(
+                            f"{v}_{j}_{trial}", v, key, others, rng.choice(types)
+                        )
+                    )
+            expected = _reference_best_enum_union(dses, enum_type, key)
+            actual = _best_enum_union(dses, enum_type, key)
+            if expected is None:
+                assert actual is None, f"trial {trial}: expected None, got {actual}"
+            else:
+                assert actual is not None, f"trial {trial}: expected combos, got None"
+                assert [[id(ds) for ds in g] for g in actual] == [
+                    [id(ds) for ds in g] for g in expected
+                ], f"trial {trial}: combos or their order diverged from reference"
+
+    def test_twelve_value_family_is_fast(self):
+        """The repro shape: 12 enum values x 3 per-value schemas. Brute force is ~30s."""
+        values = [f"CITY{i:02d}" for i in range(12)]
+        enum_type = EnumType(type=DataType.STRING, values=values)
+        key = _make_concept("city", datatype=enum_type)
+        shared_a, shared_b = _make_concept("sa"), _make_concept("sb")
+        family_cols = {
+            "municipal": (_make_concept("muni_only"), AddressType.PYTHON_SCRIPT),
+            "community": (_make_concept("comm_only"), AddressType.PYTHON_SCRIPT),
+            "published": (_make_concept("pub_only"), AddressType.PARQUET),
+        }
+        dses = []
+        for v in values:
+            for family, (extra, address_type) in family_cols.items():
+                dses.append(
+                    _make_enum_ds_with_cols(
+                        f"{v}_{family}",
+                        v,
+                        key,
+                        [shared_a, shared_b, extra],
+                        address_type,
+                    )
+                )
+        start = time.perf_counter()
+        result = _best_enum_union(dses, enum_type, key)
+        elapsed = time.perf_counter() - start
+        assert result is not None
+        assert len(result) == 3
+        for combo in result:
+            assert len(combo) == 12
+            assert len({ds.name.rsplit("_", 1)[1] for ds in combo}) == 1
+        assert elapsed < 1.0, f"union selection took {elapsed:.3f}s"
 
 
 class TestExtractEnumValueForKey:

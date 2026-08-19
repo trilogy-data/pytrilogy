@@ -3,6 +3,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
+from typing import Any
 
 from trilogy import Executor
 from trilogy.constants import logger
@@ -26,6 +27,7 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
+from trilogy.execution.state.isolation import hidden_datasources
 
 
 @dataclass
@@ -367,15 +369,50 @@ def get_freshness_watermarks(
     )
 
 
-def get_concept_max_watermark_abstract(
-    concept_address: str,
+def _probe_root_max_values(
+    concept_addresses: list[str],
     executor: Executor,
     root_assets: set[str],
-) -> UpdateKey:
-    """Compute MAX watermark for a derived concept using only root datasources.
+) -> list[Any] | None:
+    """One root-only MAX probe statement; None when planning fails.
+
+    Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`)."""
+    non_roots = [
+        ds_id
+        for ds_id in list(executor.environment.datasources)
+        if ds_id not in root_assets
+    ]
+    # Positional aliases: an address contains dots, which no alias can carry.
+    selected = ", ".join(
+        f"MAX({address}) -> _wm_max_{i}" for i, address in enumerate(concept_addresses)
+    )
+    with hidden_datasources(executor.environment, non_roots):
+        try:
+            result = executor.execute_ephemeral(f"SELECT {selected};")
+            row = result.fetchone() if result else None
+        except UNRESOLVABLE_ERRORS as e:
+            logger.debug(
+                "[STATE_STORE] no root-derived expectation for %s: %s",
+                concept_addresses,
+                e,
+            )
+            return None
+    if row is None:
+        return [None] * len(concept_addresses)
+    return list(row)
+
+
+def get_concept_max_watermarks_abstract(
+    concept_addresses: list[str],
+    executor: Executor,
+    root_assets: set[str],
+) -> dict[str, UpdateKey]:
+    """Compute MAX watermarks for derived concepts using only root datasources.
 
     Temporarily hides non-root datasources so the query planner is forced to
-    resolve the concept exclusively from authoritative root sources.
+    resolve each concept exclusively from authoritative root sources. All
+    concepts are grain-() scalars, so they batch into a single planned
+    statement — one plan instead of one per concept.
 
     A concept the roots cannot answer yields a null value, not an exception —
     which is what the caller already codes against (it keeps the key only ``if
@@ -383,33 +420,38 @@ def get_concept_max_watermark_abstract(
     for the partition-level version of the same question. It is also the normal
     answer for a model declaring no ``root`` at all: everything is hidden, so
     raising took the whole snapshot down and such a project could not report
-    state.
-
-    Only planning failures are absorbed (:data:`UNRESOLVABLE_ERRORS`).
+    state. A batched statement fails planning as a unit, so on failure each
+    concept is re-probed alone to preserve that per-concept contract.
     """
-    hidden = {
-        ds_id: executor.environment.datasources.pop(ds_id)
-        for ds_id in list(executor.environment.datasources)
-        if ds_id not in root_assets
-    }
-    try:
-        result = executor.execute_query(f"SELECT MAX({concept_address}) as max_value;")
-        row = result.fetchone() if result else None
-        value = row[0] if row else None
-    except UNRESOLVABLE_ERRORS as e:
-        logger.debug(
-            "[STATE_STORE] no root-derived expectation for %s: %s",
-            concept_address,
-            e,
+    unique = list(dict.fromkeys(concept_addresses))
+    values: dict[str, Any] = {}
+    if unique:
+        batched = _probe_root_max_values(unique, executor, root_assets)
+        if batched is not None:
+            values = dict(zip(unique, batched))
+        else:
+            for address in unique:
+                single = _probe_root_max_values([address], executor, root_assets)
+                values[address] = None if single is None else single[0]
+    return {
+        address: UpdateKey(
+            concept_name=address,
+            type=UpdateKeyType.INCREMENTAL_KEY,
+            value=values[address],
         )
-        value = None
-    finally:
-        executor.environment.datasources.update(hidden)
-    return UpdateKey(
-        concept_name=concept_address,
-        type=UpdateKeyType.INCREMENTAL_KEY,
-        value=value,
-    )
+        for address in unique
+    }
+
+
+def get_concept_max_watermark_abstract(
+    concept_address: str,
+    executor: Executor,
+    root_assets: set[str],
+) -> UpdateKey:
+    """Single-concept form of :func:`get_concept_max_watermarks_abstract`."""
+    return get_concept_max_watermarks_abstract(
+        [concept_address], executor, root_assets
+    )[concept_address]
 
 
 def get_concept_max_watermarks(

@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2660
+gen_length = 2958
 preql_size = 7495
 comp_size = 19155
 generated_sql = """
@@ -7,13 +7,14 @@ generated_sql = """
 WITH 
 thoughtful as (
 SELECT
+    \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\" as \"customer_current_address_sk\",
     \"customer_current_address_customer_address\".\"CA_ZIP\" as \"customer_current_address_zip\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
     \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"),
-cooperative as (
+questionable as (
 SELECT
     \"thoughtful\".\"customer_current_address_zip\" as \"customer_current_address_zip\",
     count(CASE WHEN \"thoughtful\".\"customer_preferred_cust_flag\" = 'Y' THEN \"thoughtful\".\"customer_sk\" ELSE NULL END) as \"zip_p_count\"
@@ -21,12 +22,20 @@ FROM
     \"thoughtful\"
 GROUP BY
     1),
-questionable as (
+cooperative as (
 SELECT
-    SUBSTRING(CASE WHEN \"cooperative\".\"zip_p_count\" > 10 THEN \"thoughtful\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    \"thoughtful\".\"customer_current_address_zip\" as \"customer_current_address_zip\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"thoughtful\" on \"cooperative\".\"customer_current_address_zip\" is not distinct from \"thoughtful\".\"customer_current_address_zip\"),
+    \"thoughtful\"
+GROUP BY
+    1,
+    \"thoughtful\".\"customer_current_address_sk\"),
+abundant as (
+SELECT
+    SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"cooperative\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+FROM
+    \"questionable\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"customer_current_address_zip\" is not distinct from \"cooperative\".\"customer_current_address_zip\"),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
@@ -36,21 +45,21 @@ SELECT
     SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) as \"zips\"
 FROM
     \"quizzical\"),
-yummy as (
-SELECT
-    CASE WHEN exists (select 1 from questionable where questionable.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
-FROM
-    \"highfalutin\"),
 juicy as (
 SELECT
-    SUBSTRING(\"yummy\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
+    CASE WHEN exists (select 1 from abundant where abundant.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
 FROM
-    \"yummy\"),
+    \"highfalutin\"),
 vacuous as (
 SELECT
-    \"juicy\".\"final_zips\" as \"final_zips\"
+    SUBSTRING(\"juicy\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
 FROM
-    \"juicy\"
+    \"juicy\"),
+concerned as (
+SELECT
+    \"vacuous\".\"final_zips\" as \"final_zips\"
+FROM
+    \"vacuous\"
 GROUP BY
     1)
 SELECT
@@ -61,7 +70,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_sale_date_date\".\"D_QOY\" = 2 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from vacuous where vacuous.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
+    \"store_sales_sale_date_date\".\"D_QOY\" = 2 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from concerned where concerned.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
 
 GROUP BY
     1

@@ -8,6 +8,7 @@ from trilogy.core.models.author import Comment, CustomFunctionFactory
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
+    CallStatement,
     ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
@@ -32,7 +33,7 @@ from trilogy.core.statements.author import (
 from trilogy.parsing.exceptions import NameShadowError
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_service import ImportRequest
-from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.rowset_semantics import (
     apply_alias_updates,
     rowset_output_namespace,
@@ -695,6 +696,36 @@ class CopyStatementPlan(StatementPlanBase):
                 finalize_select_tree(self.output.select, hydrator)
 
     def commit(self, hydrator: NativeHydrator) -> CopyStatement | None:
+        return self.output
+
+
+@dataclass
+class CallStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: CallStatement | None = None
+
+    def hydrate(self, hydrator: NativeHydrator) -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: NativeHydrator) -> None:
+        if self.output is None or self.output.select is None:
+            return
+        select = self.output.select
+        finalize_select_tree(select, hydrator)
+        # Grain is only known post-finalize, so the single-row guard lives here
+        # rather than in the hydrator with the arg-name checks.
+        if select.grain.components and select.limit != 1:
+            raise HydrationError(
+                HydrationDiagnostic.from_syntax(
+                    "A call statement's select must return exactly one row, but "
+                    f"this select has grain "
+                    f"({', '.join(sorted(select.grain.components))}). "
+                    "Aggregate the outputs or add `limit 1`.",
+                    self.syntax,
+                )
+            )
+
+    def commit(self, hydrator: NativeHydrator) -> CallStatement | None:
         return self.output
 
 

@@ -192,6 +192,23 @@ def _datasource_matches_raw_id(
     return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 
+def _derives_from(node: CTE | UnionCTE, container_name: str) -> bool:
+    """``node`` IS ``container_name`` or reads from it, at any depth."""
+    seen: set[str] = set()
+    stack: list[CTE | UnionCTE] = [node]
+    while stack:
+        current = stack.pop()
+        if current.name == container_name:
+            return True
+        if current.name in seen:
+            continue
+        seen.add(current.name)
+        stack.extend(current.dependency_nodes())
+        if isinstance(current, UnionCTE):
+            stack.extend(current.internal_ctes)
+    return False
+
+
 def _dim_local_atoms(
     cte: CTE,
     dim_qds: BuildDatasource | QueryDatasource,
@@ -604,12 +621,25 @@ class UnionDimPushdown(OptimizationRule):
         return needed.issubset(out)
 
     def _resolve_push_context(
-        self, consumers: list[CTE], d: _DimDescriptor
+        self, consumers: list[CTE], d: _DimDescriptor, container: CTE | UnionCTE
     ) -> _PushContext | None:
         for c in consumers:
             found = _find_dim_cte_for_qds(c, d.join_qds_id)
-            if found is not None and self._dim_cte_exposes(found, d):
-                return _PushContext(dim_cte=found, source_consumer=c)
+            if found is None or not self._dim_cte_exposes(found, d):
+                continue
+            # A "dim" carved OUT of the container (a single-key projection of the
+            # union, which the planner peels when the union is the only source of
+            # that key) cannot be computed before it. Pushing it in would make the
+            # container's branches depend on a CTE that depends on the container —
+            # `reorder_ctes` then fails the whole query with "CTE dependency graph
+            # contains a cycle".
+            if _derives_from(found, container.name):
+                self.log(
+                    f"Skipping dim {d.dim_qds.identifier}: its CTE {found.name} "
+                    f"is derived from {container.name}"
+                )
+                continue
+            return _PushContext(dim_cte=found, source_consumer=c)
         return None
 
     def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
@@ -634,7 +664,7 @@ class UnionDimPushdown(OptimizationRule):
         if not d.strip_safe and not d.where_atoms:
             return False
 
-        context = self._resolve_push_context(consumers, d)
+        context = self._resolve_push_context(consumers, d, union)
         if context is None:
             return False
 
@@ -707,7 +737,7 @@ class UnionDimPushdown(OptimizationRule):
         """
         if not d.strip_safe or not d.where_atoms:
             return False
-        context = self._resolve_push_context(consumers, d)
+        context = self._resolve_push_context(consumers, d, target)
         if context is None:
             return False
         if not self._can_push_into_branch(target, d):

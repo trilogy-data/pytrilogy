@@ -1,5 +1,4 @@
 from collections import defaultdict
-from itertools import product
 
 from trilogy.core.enums import (
     AddressType,
@@ -76,9 +75,12 @@ def _best_enum_union(
 ) -> list[list[BuildDatasource]] | None:
     """Find the best minimal covering combinations for an enum-partitioned key.
 
-    Groups by covered enum value, enumerates one-source-per-value combos,
-    computes the combo's actual concept overlap (minus the merge key), and
-    keeps the highest-scoring combo per distinct overlap signature. Returning
+    Groups by covered enum value, then searches one-source-per-value combos via
+    a dynamic program over values whose state is the combo's concept overlap so
+    far (minus the merge key), keeping the highest-scoring combo per distinct
+    overlap signature. The score is separable (a per-source sum) and the
+    overlap is the only coupling between values, so this is exhaustive over
+    achievable signatures without enumerating the k^V combo product. Returning
     one combo per overlap lets parallel partitionings (e.g., sales vs.
     returns vs. dim, all keyed by the same channel enum) each contribute
     their own union datasource instead of collapsing into the single best.
@@ -100,36 +102,92 @@ def _best_enum_union(
         return None
 
     values = list(by_value.keys())
-    merge_key_addr = {merge_key.address}
+    # A union requires at least 2 distinct sources; a single source is not a union
+    if len(values) < 2:
+        return None
 
-    best_per_overlap: dict[frozenset[str], tuple[list[BuildDatasource], int]] = {}
+    cols: dict[int, frozenset[str]] = {}
+    scores: dict[int, int] = {}
+    for candidates in by_value.values():
+        for ds in candidates:
+            cols[id(ds)] = frozenset(col.concept.address for col in ds.columns)
+            scores[id(ds)] = _datasource_score(ds)
 
-    for combo in product(*[by_value[v] for v in values]):
-        combo_list = list(combo)
-
-        # A union requires at least 2 distinct sources; a single source is not a union
-        if len(combo_list) < 2:
+    # Members MAY disagree on intrinsic (~) partiality of a shared column
+    # (a "mixed-family" combo, e.g. web_sales + catalog/store_returns).
+    # Such a union is a legitimate per-channel provider of columns it binds
+    # complete (q05: a web return's return-site lives on web_sales), and
+    # union partial propagation keeps its ~-partial keys from ever outranking
+    # a pure family that binds them complete (q14) — so don't reject it here.
+    # An empty overlap beyond the merge key IS rejected, at the first step it
+    # appears: intersection only shrinks, so no continuation can revive it.
+    # Ties reproduce the old product enumeration exactly: per signature the
+    # winner is the first max-scoring combo in product order (`combo_key` =
+    # candidate index tuple, lexicographic = product order), and signatures
+    # order by their first-achieving combo (`min_key`, tracked over ALL combos
+    # reaching a signature, not just the best-scoring one).
+    merge_key_addr = merge_key.address
+    # signature -> (score, combo, combo_key, min_key)
+    states: dict[
+        frozenset[str],
+        tuple[int, list[BuildDatasource], tuple[int, ...], tuple[int, ...]],
+    ] = {}
+    for idx, ds in enumerate(by_value[values[0]]):
+        sig = cols[id(ds)] - {merge_key_addr}
+        if not sig:
             continue
+        existing = states.get(sig)
+        if existing is None:
+            states[sig] = (scores[id(ds)], [ds], (idx,), (idx,))
+        elif scores[id(ds)] > existing[0]:
+            states[sig] = (scores[id(ds)], [ds], (idx,), existing[3])
 
-        # Require at least one shared concept beyond the merge key
-        overlap = {col.concept.address for col in combo_list[0].columns}
-        for ds in combo_list[1:]:
-            overlap &= {col.concept.address for col in ds.columns}
-        signature = frozenset(overlap - merge_key_addr)
-        if not signature:
-            continue
-        # Members MAY disagree on intrinsic (~) partiality of a shared column
-        # (a "mixed-family" combo, e.g. web_sales + catalog/store_returns).
-        # Such a union is a legitimate per-channel provider of columns it binds
-        # complete (q05: a web return's return-site lives on web_sales), and
-        # union partial propagation keeps its ~-partial keys from ever outranking
-        # a pure family that binds them complete (q14) — so don't reject it here.
+    for v in values[1:]:
+        next_states: dict[
+            frozenset[str],
+            tuple[int, list[BuildDatasource], tuple[int, ...], tuple[int, ...]],
+        ] = {}
+        for sig, (score, combo, combo_key, min_key) in states.items():
+            for idx, ds in enumerate(by_value[v]):
+                new_sig = sig & cols[id(ds)]
+                if not new_sig:
+                    continue
+                new_score = score + scores[id(ds)]
+                new_key = combo_key + (idx,)
+                existing = next_states.get(new_sig)
+                if existing is None:
+                    next_states[new_sig] = (
+                        new_score,
+                        combo + [ds],
+                        new_key,
+                        min_key + (idx,),
+                    )
+                    continue
+                new_min_key = min(existing[3], min_key + (idx,))
+                if new_score > existing[0] or (
+                    new_score == existing[0] and new_key < existing[2]
+                ):
+                    next_states[new_sig] = (
+                        new_score,
+                        combo + [ds],
+                        new_key,
+                        new_min_key,
+                    )
+                else:
+                    next_states[new_sig] = (
+                        existing[0],
+                        existing[1],
+                        existing[2],
+                        new_min_key,
+                    )
+        states = next_states
+        if not states:
+            return None
 
-        score = sum(_datasource_score(ds) for ds in combo_list)
-        existing = best_per_overlap.get(signature)
-        if existing is None or score > existing[1]:
-            best_per_overlap[signature] = (combo_list, score)
-
+    best_per_overlap: dict[frozenset[str], tuple[list[BuildDatasource], int]] = {
+        sig: (state[1], state[0])
+        for sig, state in sorted(states.items(), key=lambda kv: kv[1][3])
+    }
     if not best_per_overlap:
         return None
     # Keep only maximal overlap signatures: drop a signature whose concept set

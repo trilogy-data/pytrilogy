@@ -2073,7 +2073,19 @@ def _satisfy_parent_projection_contract(
     if not any(_contains_shape_barrier(parent) for parent in parents):
         return parents
 
+    # Two different questions, two different sets. "What is available TO this
+    # parent" is its own parents' outputs (`parent_output_addresses`) — that is
+    # what `parent_needed` asks, and a leaf scan's empty answer is what keeps
+    # leaf scans out of this projection entirely (q66). "What does a SIBLING
+    # supply to the merge" is that sibling's own projection: a WINDOW sibling
+    # READS `event_time` and emits only `lag(event_time)`, so crediting it with
+    # its inputs made this projection strip `event_time` off the dimension
+    # parent — and the consumer computing `event_time - prior_event_time` then
+    # had no source for it and was dropped from the plan outright.
     outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
+    own_outputs_by_parent = [
+        {output.address for output in parent.usable_outputs} for parent in parents
+    ]
     projected: list[StrategyNode] = []
     for idx, parent in enumerate(parents):
         if _contains_shape_barrier(parent):
@@ -2081,7 +2093,7 @@ def _satisfy_parent_projection_contract(
             continue
         parent_needed = outputs_by_parent[idx] & needed
         other_outputs = set().union(
-            *(outputs for j, outputs in enumerate(outputs_by_parent) if j != idx)
+            *(outputs for j, outputs in enumerate(own_outputs_by_parent) if j != idx)
         )
         fd_candidates = {
             addr

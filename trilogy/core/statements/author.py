@@ -240,7 +240,14 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         ]
         return SelectLineage(
             selection=[
-                environment.concepts[x.concept.address].reference
+                # An ephemeral parse never commits its select aliases, so a
+                # locally-derived output may exist only on the statement.
+                (
+                    self.local_concepts[x.concept.address]
+                    if x.concept.address not in environment.concepts
+                    and x.concept.address in self.local_concepts
+                    else environment.concepts[x.concept.address]
+                ).reference
                 for x in self.selection
             ],
             order_by=self.order_by,
@@ -553,6 +560,18 @@ class CopyStatement:
 
 
 @dataclass
+class CallStatement:
+    target: str
+    select: SelectStatement | None = None
+    meta: Metadata | None = field(default_factory=Metadata)
+
+
+def call_arg_name(address: str) -> str:
+    """The ``--flag`` name a call select output supplies (validated at parse)."""
+    return address.rsplit(".", 1)[-1]
+
+
+@dataclass
 class MultiSelectStatement(HasUUID, SelectTypeMixin):
     selects: list[SelectStatement]
     align: AlignClause
@@ -841,6 +860,9 @@ class ChartLayer:
     layer_type: ChartType
     bindings: list[ChartLayerBinding] = field(default_factory=list)
     select: SelectStatement | None = None
+    # True when the author wrote `from select ...`; an implicit select is
+    # rebuilt from the bindings, so rendering must not echo it back.
+    explicit_select: bool = False
 
 
 @dataclass
@@ -865,6 +887,7 @@ STATEMENT_TYPES = (
     SelectStatement
     | RawSQLStatement
     | CopyStatement
+    | CallStatement
     | MultiSelectStatement
     | RowsetDerivationStatement
     | MergeStatementV2

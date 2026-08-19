@@ -195,3 +195,43 @@ def test_altair_single_series_area_has_no_order_channel():
     statement = _statement(ChartType.AREA, ["x"], ["y"])
     spec = AltairRenderer().render(statement, _data()).to_dict()
     assert "order" not in spec["encoding"]
+
+
+def test_altair_field_labels_override_titles():
+    layer = ProcessedChartLayer(
+        layer_type=ChartType.LINE,
+        x_fields=["rs_day"],
+        y_fields=["rs_amount_usd"],
+        color_field="rs_series",
+        field_labels={
+            "rs_day": "day",
+            "rs_amount_usd": "amount",
+            "rs_series": "series",
+        },
+    )
+    statement = ProcessedChartStatement(layers=[layer])
+    data = [[{"rs_day": 1, "rs_amount_usd": 10.0, "rs_series": "a"}]]
+    spec = AltairRenderer().render(statement, data).to_dict()
+    assert spec["encoding"]["x"]["title"] == "Day"
+    assert spec["encoding"]["y"]["title"] == "Amount"
+    assert spec["encoding"]["color"]["title"] == "Series"
+
+
+def test_binding_alias_is_display_label_without_projection():
+    from trilogy import Dialects
+
+    exec = Dialects.DUCK_DB.default_executor()
+    statements = exec.parse_text("""key x string;
+property x.y float;
+datasource d (col_x: x, col_y: y) grain (x)
+query '''select 'A' as col_x, 1.0 as col_y''';
+
+with rs as select x, y;
+
+chart layer line ( x_axis <- rs.x as category, y_axis <- rs.y as amount )
+from select rs.x, rs.y;""")
+    chart = statements[-1]
+    layer = chart.layers[0]
+    assert layer.x_fields == ["rs_x"]
+    assert layer.y_fields == ["rs_y"]
+    assert layer.field_labels == {"rs_x": "category", "rs_y": "amount"}

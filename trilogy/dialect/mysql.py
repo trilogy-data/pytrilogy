@@ -8,6 +8,7 @@ from trilogy.core.enums import (
     CreateMode,
     DatePart,
     FunctionType,
+    JoinType,
     Modifier,
     Ordering,
 )
@@ -73,7 +74,9 @@ def render_ordering(rendered: str, order: Ordering) -> str:
     return f"{rendered} {direction}"
 
 
-def null_safe_join_key(lval: str, rval: str, modifiers: list[Modifier]) -> str:
+def null_safe_join_key(
+    lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
+) -> str:
     # `<=>` is MySQL's null-safe equality. The base dialect's OR-expansion is
     # equivalent but never index-assisted, and every lowered FULL join emits one
     # of these per key.

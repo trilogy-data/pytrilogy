@@ -885,6 +885,25 @@ select ...` exports query data the same way. Prefer `copy into` for
 individual image assets; prefer `trilogy render report.md` when you want one
 combined artifact.
 
+## Running external scripts (`call`)
+
+`call` runs an external program as a pipeline step — e.g. emailing an artifact
+a preceding `copy into` wrote. `.py` targets run via `uv run --no-project`
+(PEP-723 inline dependencies work); anything else is executed directly, so a
+compiled binary is a valid target. The subprocess inherits the environment
+(`env_file` secrets included); a nonzero exit fails the statement.
+
+```trilogy
+copy into html 'daily.html' from chart layer bar ( x_axis <- region, y_axis <- revenue );
+call `./send_report.py` from select 'daily.html' -> file, 'Daily report' -> subject;
+```
+
+The optional `from select` supplies arguments: it must return exactly one row
+(enforced at parse time when the grain is knowably multi-row, and always at
+execution), and each visible output column becomes `--<name> <value>`. NULL
+values omit the flag so script-side defaults apply. A bare `call `./x.py`;`
+passes no arguments.
+
 ## Side-by-side layout
 
 By default each block spans the full content width. To place outputs in a row,

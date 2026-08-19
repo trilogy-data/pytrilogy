@@ -35,11 +35,13 @@ from trilogy.parsing.v2.statement_planner import (
     require_block_statement,
 )
 from trilogy.parsing.v2.statement_plans import (
+    CommentStatementPlan,
     ConceptStatementPlan,
     RowsetStatementPlan,
     StatementPlan,
     StatementPlanBase,
     UnsupportedSyntaxError,
+    _SelectLikeStatementPlan,
 )
 from trilogy.parsing.v2.symbols import (
     extract_concept_name_from_literal,
@@ -222,7 +224,7 @@ class NativeHydrator:
     def set_text(self, text: str) -> None:
         self.import_service.set_text(self.token_address, text)
 
-    def parse(self, document: SyntaxDocument) -> list[Any]:
+    def parse(self, document: SyntaxDocument, ephemeral: bool = False) -> list[Any]:
         self.set_text(document.text)
         self._cached_rule_context = RuleContext(
             environment=self.environment,
@@ -234,6 +236,8 @@ class NativeHydrator:
         )
         try:
             self.plans = self.plan(document.forms)
+            if ephemeral:
+                self._require_ephemeral_safe(self.plans)
             # LOAD_IMPORTS is the explicit early import materialization phase
             # and intentionally stays outside the rollback window: imports
             # mutate the environment via add_import and should persist across
@@ -257,9 +261,28 @@ class NativeHydrator:
         except BaseException:
             self.semantic_state.rollback()
             raise
+        if ephemeral:
+            # A throwaway statement: its concepts live only on the returned
+            # statement objects (planning overlays them via local_concepts),
+            # so the durable environment — and every content_version-stamped
+            # cache over it — is left untouched.
+            self.semantic_state.rollback()
+            return [item for item in output if item]
         self.semantic_state.commit(self.environment)
         self._resolve_pending_self_imports()
         return [item for item in output if item]
+
+    def _require_ephemeral_safe(self, plans: list[StatementPlan]) -> None:
+        """Ephemeral parses rely on rollback discarding every durable write,
+        which only holds for statements whose plan defers all environment
+        mutation to semantic_state.commit — selects and comments. Every other
+        plan kind writes the environment during bind/commit itself."""
+        for plan in plans:
+            if not isinstance(plan, (_SelectLikeStatementPlan, CommentStatementPlan)):
+                raise TypeError(
+                    "ephemeral parse supports only select statements, got "
+                    f"{type(plan).__name__}"
+                )
 
     def _resolve_pending_self_imports(self) -> None:
         """Materialize `self import as X` aliases after the current parse commits.

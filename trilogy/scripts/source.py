@@ -11,22 +11,19 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import click
 
 from trilogy.dialect.python_source import (
     PythonDatasourceError,
-    build_uv_command,
+    build_script_command,
     parse_script_error,
 )
 
 
 def source_command(script: str, args: list[str]) -> list[str]:
     """How to invoke ``script``: uv for python, otherwise run it directly."""
-    if Path(script).suffix == ".py":
-        return [*build_uv_command(script), *args]
-    return [script, *args]
+    return [*build_script_command(script), *args]
 
 
 def invoke(

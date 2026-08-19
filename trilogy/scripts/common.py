@@ -68,6 +68,8 @@ class ExecutionStats:
     agent_passed: int = 0
     agent_skipped: int = 0
     refresh_queries: list[RefreshQuery] = field(default_factory=list)
+    #: Counts describe what a refresh *would* do, not what happened.
+    dry_run: bool = False
 
     def __add__(self, other: "ExecutionStats") -> "ExecutionStats":
         return ExecutionStats(
@@ -78,7 +80,14 @@ class ExecutionStats:
             agent_passed=self.agent_passed + other.agent_passed,
             agent_skipped=self.agent_skipped + other.agent_skipped,
             refresh_queries=self.refresh_queries + other.refresh_queries,
+            dry_run=self.dry_run or other.dry_run,
         )
+
+
+def _format_stat(count: int, noun: str, verb: str, dry_run: bool) -> str:
+    label = noun if count == 1 else f"{noun}s"
+    action = f"would be {verb}" if dry_run else verb
+    return f"{count} {label} {action}"
 
 
 def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> str:
@@ -88,14 +97,17 @@ def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> 
 
     parts = []
     if "persist" in stat_types and stats.persist_count > 0:
-        label = "table" if stats.persist_count == 1 else "tables"
-        parts.append(f"{stats.persist_count} {label} persisted")
+        parts.append(
+            _format_stat(stats.persist_count, "table", "persisted", stats.dry_run)
+        )
     if "update" in stat_types and stats.update_count > 0:
-        label = "datasource" if stats.update_count == 1 else "datasources"
-        parts.append(f"{stats.update_count} {label} updated")
+        parts.append(
+            _format_stat(stats.update_count, "datasource", "updated", stats.dry_run)
+        )
     if "validate" in stat_types and stats.validate_count > 0:
-        label = "datasource" if stats.validate_count == 1 else "datasources"
-        parts.append(f"{stats.validate_count} {label} validated")
+        parts.append(
+            _format_stat(stats.validate_count, "datasource", "validated", stats.dry_run)
+        )
     if "validate" in stat_types and stats.agent_question_count > 0:
         label = "question" if stats.agent_question_count == 1 else "questions"
         parts.append(

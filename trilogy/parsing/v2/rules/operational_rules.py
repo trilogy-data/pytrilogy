@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from trilogy.core.enums import (
@@ -10,6 +11,7 @@ from trilogy.core.enums import (
     ValidationScope,
 )
 from trilogy.core.statements.author import (
+    CallStatement,
     ChartStatement,
     CopyStatement,
     CreateStatement,
@@ -19,6 +21,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ValidateNaturalStatement,
     ValidateStatement,
+    call_arg_name,
 )
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
@@ -370,6 +373,55 @@ def copy_statement(
     )
 
 
+# A call arg renders as `--<name> <value>`; names must be flag-safe.
+_CALL_ARG_NAME = re.compile(r"[a-zA-Z][a-zA-Z0-9_]*")
+
+
+def call_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> CallStatement:
+    target: str | None = None
+    select: SelectStatement | None = None
+    file_path_kinds = (SyntaxTokenKind.FILE_PATH, SyntaxTokenKind.F_FILE_PATH)
+    for token in node.child_tokens():
+        if token.kind in file_path_kinds and target is None:
+            target = str(hydrate(token))
+    for child in node.child_nodes():
+        if child.kind == SyntaxNodeKind.STRING_LITERAL and target is None:
+            target = str(hydrate(child))
+        elif child.kind == SyntaxNodeKind.SELECT_STATEMENT:
+            hydrated = hydrate(child)
+            if not isinstance(hydrated, SelectStatement):
+                raise fail(child, "Call statement select failed to hydrate")
+            select = hydrated
+    if target is None:
+        raise fail(node, "Malformed call statement: missing script target")
+    if select is not None:
+        seen: set[str] = set()
+        for ref in select.output_components:
+            if ref.address in select.hidden_components:
+                continue
+            name = call_arg_name(ref.address)
+            if not _CALL_ARG_NAME.fullmatch(name):
+                raise fail(
+                    node,
+                    f"Call statement output '{name}' is not a valid argument name; "
+                    "alias it to match [a-zA-Z][a-zA-Z0-9_]*.",
+                )
+            if name in seen:
+                raise fail(
+                    node,
+                    f"Call statement has two outputs that both map to --{name}; "
+                    "alias one to a distinct name.",
+                )
+            seen.add(name)
+    return CallStatement(
+        target=target, select=select, meta=metadata_from_meta(node.meta)
+    )
+
+
 OPERATIONAL_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.CREATE_MODIFIER_CLAUSE: create_modifier_clause,
     SyntaxNodeKind.CREATE_STATEMENT: create_statement,
@@ -382,4 +434,5 @@ OPERATIONAL_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.COPY_STATEMENT: copy_statement,
     SyntaxNodeKind.COPY_OPTION: copy_option,
     SyntaxNodeKind.COPY_OPTIONS: copy_options,
+    SyntaxNodeKind.CALL_STATEMENT: call_statement,
 }

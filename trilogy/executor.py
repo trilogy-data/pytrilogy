@@ -1,4 +1,7 @@
+import datetime
+import json
 import random
+import subprocess
 import threading
 import time
 import uuid
@@ -29,6 +32,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import collect_source_addresses
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
+    CallStatement,
     ChartStatement,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
@@ -51,9 +55,11 @@ from trilogy.core.statements.author import (
     TypeDeclaration,
     ValidateNaturalStatement,
     ValidateStatement,
+    call_arg_name,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartStatement,
     ProcessedCopyStatement,
@@ -117,6 +123,7 @@ GENERATABLE_STATEMENT_TYPES = (
     ShowStatement,
     RawSQLStatement,
     CopyStatement,
+    CallStatement,
     ValidateStatement,
     ValidateNaturalStatement,
     NaturalSelectStatement,
@@ -147,6 +154,21 @@ def label_definition_statement(statement: object) -> str:
         if isinstance(statement, cls):
             return label
     return "definition"
+
+
+def serialize_call_arg(value: Any) -> str | None:
+    """A call arg as an argv token; None omits the flag so script defaults apply."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, (list, tuple, dict)):
+        return json.dumps(value, default=str)
+    return str(value)
 
 
 _CHART_COPY_SIZE_KEYS = {"width", "height"}
@@ -874,6 +896,68 @@ class Executor:
             ["query"],
         )
 
+    @execute_query.register
+    def _(self, query: ProcessedCallStatement) -> ResultProtocol | None:
+        from trilogy.dialect.python_source import build_script_command
+
+        arg_pairs: list[tuple[str, Any]] = []
+        if query.query is not None:
+            sql = self.compile_for_execution(query.query)
+            result = self.execute_raw_sql(
+                sql, local_concepts=query.query.local_concepts
+            )
+            if result is None:
+                raise ValueError(
+                    f"call script '{query.target}': argument select returned no result set"
+                )
+            rows = result.fetchall()
+            if len(rows) != 1:
+                raise ValueError(
+                    f"call script '{query.target}': argument select must return "
+                    f"exactly one row, got {len(rows)}"
+                )
+            visible = [
+                c
+                for c in query.query.output_columns
+                if c.address not in query.query.hidden_columns
+            ]
+            row = rows[0]
+            if len(row) != len(visible):
+                raise ValueError(
+                    f"call script '{query.target}': argument select returned "
+                    f"{len(row)} columns for {len(visible)} visible outputs"
+                )
+            for ref, value in zip(visible, row):
+                arg_pairs.append((call_arg_name(ref.address), value))
+        command = build_script_command(self._resolve_copy_target(query.target))
+        for name, value in arg_pairs:
+            serialized = serialize_call_arg(value)
+            if serialized is None:
+                continue
+            command.extend([f"--{name}", serialized])
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            cwd=str(self.environment.working_path),
+            check=False,
+        )
+        if completed.stdout and completed.stdout.strip():
+            logger.info(
+                f"call script '{query.target}' stdout: {completed.stdout.strip()}"
+            )
+        if completed.returncode != 0:
+            detail = (completed.stderr or "").strip() or (
+                completed.stdout or ""
+            ).strip()
+            raise RuntimeError(
+                f"call script '{query.target}' failed "
+                f"(exit {completed.returncode}): {detail}"
+            )
+        return MockResult(
+            [{"target": query.target, "status": "success"}], ["target", "status"]
+        )
+
     def _run_chart_layers(self, query: ProcessedChartStatement) -> list[list[dict]]:
         layer_data: list[list[dict]] = []
         for layer in query.layers:
@@ -943,6 +1027,7 @@ class Executor:
     # Already-processed statements: compiling is all that's left.
     @generate_sql.register(ProcessedQuery)
     @generate_sql.register(ProcessedCopyStatement)
+    @generate_sql.register(ProcessedCallStatement)
     @generate_sql.register(ProcessedCreateStatement)
     @generate_sql.register(ProcessedPublishStatement)
     def _(
@@ -950,6 +1035,7 @@ class Executor:
         command: (
             ProcessedQuery
             | ProcessedCopyStatement
+            | ProcessedCallStatement
             | ProcessedCreateStatement
             | ProcessedPublishStatement
         ),
@@ -1342,6 +1428,7 @@ class Executor:
                 statement,
                 (
                     ProcessedCopyStatement,
+                    ProcessedCallStatement,
                     ProcessedQueryPersist,
                     ProcessedValidateStatement,
                     ProcessedRawSQLStatement,
@@ -1353,6 +1440,23 @@ class Executor:
             if result:
                 output.append(result)
         return output
+
+    def execute_ephemeral(self, command: str) -> ResultProtocol | None:
+        """Plan and run select statements whose parse artifacts stay
+        statement-local: nothing lands in the durable environment, so the
+        content_version-stamped planning caches survive. State probes use this
+        — they run one throwaway select per question against a long-lived
+        session environment."""
+        if not self.connected:
+            self.connect()
+        _, parsed = parse_text(command, self.environment, ephemeral=True)
+        result: ResultProtocol | None = None
+        for statement in parsed:
+            if not isinstance(statement, GENERATABLE_STATEMENT_TYPES):
+                continue
+            for processed in self._generate([statement]):
+                result = self.execute_query(processed)
+        return result
 
     def execute_file(
         self, file: str | Path, non_interactive: bool = False

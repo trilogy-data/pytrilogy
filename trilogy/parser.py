@@ -16,10 +16,12 @@ def parse_text(
     environment: Environment | None = None,
     root: Path | None = None,
     parse_config: Parsing | None = None,
+    ephemeral: bool = False,
 ) -> tuple[Environment, list]:
     return _parse_text(
         input,
         environment=environment,
         root=root,
         parse_config=parse_config,
+        ephemeral=ephemeral,
     )

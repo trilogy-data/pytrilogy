@@ -1865,9 +1865,9 @@ incremental by created_at.date
         executor = self._executor()
         boom = RuntimeError("connection reset by peer")
 
-        with patch.object(executor, "execute_query", side_effect=boom), pytest.raises(
-            RuntimeError, match="connection reset"
-        ):
+        with patch.object(
+            executor, "execute_ephemeral", side_effect=boom
+        ), pytest.raises(RuntimeError, match="connection reset"):
             get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 
     def test_hidden_datasources_are_restored_after_a_failure(self) -> None:
@@ -1878,7 +1878,7 @@ incremental by created_at.date
         before = dict(executor.environment.datasources)
 
         with patch.object(
-            executor, "execute_query", side_effect=RuntimeError("x")
+            executor, "execute_ephemeral", side_effect=RuntimeError("x")
         ), pytest.raises(RuntimeError):
             get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 

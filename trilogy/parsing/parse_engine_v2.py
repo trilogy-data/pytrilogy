@@ -96,8 +96,8 @@ class TopLevelStatementParser:
     def environment(self) -> Environment:
         return self.hydrator.environment
 
-    def parse(self, document: SyntaxDocument) -> list[Any]:
-        return self.hydrator.parse(document)
+    def parse(self, document: SyntaxDocument, ephemeral: bool = False) -> list[Any]:
+        return self.hydrator.parse(document, ephemeral=ephemeral)
 
 
 def parse_text(
@@ -105,6 +105,7 @@ def parse_text(
     environment: Environment | None = None,
     root: Path | None = None,
     parse_config: Parsing | None = None,
+    ephemeral: bool = False,
 ) -> tuple[Environment, list[Any]]:
     environment = environment or (
         Environment(working_path=root) if root else Environment()
@@ -118,7 +119,7 @@ def parse_text(
 
     try:
         document = parse_syntax(text)
-        output = parser.parse(document)
+        output = parser.parse(document, ephemeral=ephemeral)
         environment.concepts.fail_on_missing = True
         end = datetime.now()
         perf_logger.debug(
