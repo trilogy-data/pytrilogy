@@ -1,6 +1,6 @@
 # Bug: inline aggregate with `as <alias>` placed BEFORE `by <grain>` → cryptic parse error
 
-**Re-verified OPEN 2026-08-16 (`a65b13c9c`).** `max(...) as f by k` still falls through to the raw grammar error ("expected metadata, limit, order_by, where, having, ..."); no `detect_alias_before_by` exists.
+**Re-verified OPEN 2026-08-20 (`6bdb4d7b4`).** `max(...) as f by k` still falls through to the raw grammar error ("expected metadata, limit, order_by, where, having, ..."); no `detect_alias_before_by` exists.
 
 **Severity:** low (parse-time, loud) but **high-friction** — the agent can't tell its `as`/`by` are just in the wrong order. Surfaced on TPC-H (an inline grouped aggregate in a `select`).
 
