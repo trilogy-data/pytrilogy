@@ -97,11 +97,33 @@ def test_full_unchanged_without_guard():
     }
 
 
+def _block_pin_heal(executor):
+    """A sibling source carrying `region` inside a larger grain: it anchors the
+    `~region` binding, so `heal_pinned_partials` leaves the FULL join in place
+    for the optimizer passes under test (otherwise the WHERE proof heals the
+    partial pre-discovery and no join is ever emitted)."""
+    executor.execute_text("""
+        key rm_id int;
+        property <rm_id, region>.rm_note string;
+
+        datasource region_notes (
+            rm_id: rm_id,
+            region: ~region,
+            rm_note: rm_note,
+        )
+        grain (rm_id, region)
+        query '''
+        SELECT 1 AS rm_id, 'NA' AS region, 'x' AS rm_note
+        ''';
+    """)
+
+
 def test_full_to_inner_when_both_sides_proven():
     """A WHERE atom that touches concepts unique to each side proves both
     sides must contribute non-null data → INNER."""
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
+    _block_pin_heal(executor)
 
     # `region = 'NA'` proves the merged region (the join key) non-null;
     # `amount > 5` proves a left-only concept non-null. Together they rule
@@ -121,6 +143,7 @@ def test_full_to_one_sided_outer_when_only_one_side_proven():
     the FULL must go away."""
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
+    _block_pin_heal(executor)
 
     text = "WHERE amount > 5 SELECT region, sum(amount) as total;"
     sql = executor.generate_sql(executor.parse_text(text)[-1])[0]

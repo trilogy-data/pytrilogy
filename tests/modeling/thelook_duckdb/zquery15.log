@@ -1,0 +1,14 @@
+query_id = "15"
+gen_length = 279
+preql_size = 173
+comp_size = 112
+generated_sql = """
+SELECT
+    \"user_product_sales\".\"user_id\" as \"user_id\",
+    \"user_product_sales\".\"product_id\" as \"product_id\",
+    \"user_product_sales\".\"revenue\" as \"revenue\"
+FROM
+    \"user_product_sales\"
+ORDER BY 
+    \"user_product_sales\".\"user_id\" asc,
+    \"user_product_sales\".\"product_id\" asc"""

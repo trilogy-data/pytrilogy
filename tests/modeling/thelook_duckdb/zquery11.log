@@ -1,0 +1,13 @@
+query_id = "11"
+gen_length = 102
+preql_size = 55
+comp_size = 48
+generated_sql = """
+SELECT
+    \"users\".\"state\" as \"state\"
+FROM
+    \"users\"
+GROUP BY
+    1
+ORDER BY 
+    \"users\".\"state\" asc"""

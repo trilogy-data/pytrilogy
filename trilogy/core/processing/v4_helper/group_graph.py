@@ -2166,6 +2166,84 @@ def _widen_window_grain_to_grouping_parent(
             fact.native_grain = parent_grain
 
 
+def _widen_mixed_scalar_basic_to_final_spine(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+    attrs: dict[str, GroupAttrs],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment | None,
+    relation_edge_members: frozenset[str] = frozenset(),
+) -> None:
+    """A BASIC scalar mixing row values with a by-key aggregate
+    (`order_status <- case when amount = min(amount) by user_id ...`) is
+    pointwise over the merged row stream, not over its args' composite grain.
+    Left at that coarser grain beside a finer FINAL merge it becomes a
+    row-bearing contributor whose key set is disjoint from its siblings'
+    (stranded cover, keyless merge), and its joined value NULLs out on
+    extension rows where the CASE's ELSE must produce a value. Widen to the
+    FINAL merge grain so the group hosts the spine merge itself and computes
+    the scalar over the full, extension-bearing stream."""
+    if FINAL_NODE_ID not in facts:
+        return
+    candidates: list[str] = []
+    for gid, fact in facts.items():
+        if fact.derivation != Derivation.BASIC or not fact.grain:
+            continue
+        if not group_graph.has_edge(gid, FINAL_NODE_ID):
+            continue
+        lineage_preds = [
+            pred
+            for pred in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+        ]
+        pred_derivations = {facts[pred].derivation for pred in lineage_preds}
+        if Derivation.ROOT not in pred_derivations or not (
+            pred_derivations & GROUPING_DERIVATIONS
+        ):
+            continue
+        # A grouping parent that NULL-injects its keys (ROLLUP/CUBE) is not a
+        # by-key value stream: joining or re-graining its consumer at the row
+        # spine pairs subtotal rows on their NULLed keys (q36/q70/q86).
+        if any(
+            attrs[pred].nulls_grouping_keys
+            for pred in lineage_preds
+            if facts[pred].derivation in GROUPING_DERIVATIONS
+        ):
+            continue
+        candidates.append(gid)
+    if not candidates:
+        return
+    spine = _final_merge_grain(
+        group_graph, attrs, mandatory_list, environment, relation_edge_members
+    )
+    # Only a spine that is the result's own row identity qualifies: every
+    # spine key is a requested output, or is FD-determined by them (the by-key
+    # aggregate's key under an output fact grain). A merge grain carrying
+    # genuinely finer internal keys (q59: raw fact keys under a store/week
+    # output) means the scalar rides post-dedup — re-graining it onto that
+    # finer internal stream is a placement regression, not a fix.
+    if not spine:
+        return
+    mandatory_addresses = {c.address for c in mandatory_list}
+    extra_keys = spine - mandatory_addresses
+    if extra_keys and (
+        environment is None
+        or not all(
+            build_fd_determines(
+                environment, mandatory_addresses, addr, include_empty_grain=False
+            )
+            for addr in extra_keys
+        )
+    ):
+        return
+    for gid in candidates:
+        fact = facts[gid]
+        if fact.grain < spine:
+            fact.grain = spine
+            fact.native_grain = spine
+
+
 def _topological_dependency_order(
     group_graph: nx.DiGraph, group_edges: EdgeMap
 ) -> list[str] | None:
@@ -2279,6 +2357,15 @@ def _compute_concept_sets(
         group_graph, group_edges, facts, lineage_parents
     )
     _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts)
+    _widen_mixed_scalar_basic_to_final_spine(
+        group_graph,
+        group_edges,
+        facts,
+        attrs,
+        mandatory_list,
+        environment,
+        relation_edge_members,
+    )
     topo = _topological_dependency_order(group_graph, group_edges)
     if topo is None:
         return
@@ -2329,6 +2416,23 @@ def _compute_concept_sets(
                         environment, cap, member, include_empty_grain=False
                     ):
                         cap.add(member)
+            # A dim-peel ROOT binds its entity key even though only the peeled
+            # members are its primaries (the key rides as a secondary member,
+            # outside the primary+source-grain capability). When a non-grouping
+            # consumer's row grain names that key (the spine-widened mixed
+            # scalar), the scan must be able to supply it or the consumer's
+            # merge goes keyless. Grouping consumers are excluded — they source
+            # their grain keys through their own fact parents.
+            for addr in attrs[gid].secondary_members:
+                if addr in cap:
+                    continue
+                if any(
+                    succ != FINAL_NODE_ID
+                    and addr in facts[succ].grain
+                    and facts[succ].derivation not in GROUPING_DERIVATIONS
+                    for succ in group_graph.successors(gid)
+                ):
+                    cap.add(addr)
             io.capability[gid] = cap
             continue
         # A grouping group's grain component that is a STATEMENT-scoped join axis

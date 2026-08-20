@@ -10,7 +10,11 @@ from typing import Any
 from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX, WORKING_PATH_CONCEPT
+from trilogy.core.constants import (
+    INTERNAL_NAMESPACE,
+    SUBQUERY_NAMESPACE_PREFIX,
+    WORKING_PATH_CONCEPT,
+)
 from trilogy.core.enums import (
     ConceptSource,
     DatasourceState,
@@ -451,9 +455,15 @@ class Renderer:
         keys: list[Concept] = []
         properties = defaultdict(list)
         metrics = []
-        # first, keys
-        for concept in arg.concepts.values():
-            if "__preql_internal" in concept.address:
+        # first, keys. `all_items` rather than `values` because a `--hidden`
+        # declaration is still a declaration: datasources bind hidden columns,
+        # so dropping it from the render leaves those bindings dangling.
+        seen: set[str] = set()
+        for key, concept in arg.concepts.all_items():
+            if key != concept.address or concept.address in seen:
+                continue
+            seen.add(concept.address)
+            if INTERNAL_NAMESPACE in concept.address:
                 continue
             # Internal scaffolding (the working-path const and any other
             # ``_env_*`` concept) is not user-facing source — skip it so it
@@ -461,8 +471,22 @@ class Renderer:
             if concept.name == WORKING_PATH_CONCEPT or concept.name.startswith("_env_"):
                 continue
 
-            # don't render anything that came from an import
-            if concept.namespace in arg.imports:
+            # An import is represented by its import line, not by its contents;
+            # re-declaring an imported concept is a duplicate declaration on
+            # reparse. Namespace is not the test — a bare `import x;` merges
+            # into the default namespace, and a nested role
+            # (`billing_customer.current_address`) never appears in `imports`.
+            if concept.address in arg.imported.concepts:
+                continue
+            # Rowset members belong to their `rowset x <- select ...;` statement,
+            # which render_environment does not emit. Declaring one standalone
+            # reintroduces it as a plain concept that shadows what it selects.
+            if concept.namespace.split(".", 1)[0] in arg.concepts.rowset_namespaces:
+                continue
+            # Same for a multiselect align output: it exists only as part of the
+            # `... merge ... align ...` statement, and `merge(a, b)` is a
+            # readable summary of that alignment rather than parseable source.
+            if isinstance(concept.lineage, MultiSelectLineage):
                 continue
             if (
                 concept.metadata
@@ -476,38 +500,50 @@ class Renderer:
 
             elif not concept.lineage and concept.purpose == Purpose.PROPERTY:
                 if concept.keys:
-                    # avoid duplicate declarations
-                    # but we need better composite key support
-                    for key in sorted(concept.keys)[:1]:
-                        properties[key].append(concept)
+                    properties[frozenset(concept.keys)].append(concept)
                 else:
                     keys.append(concept)
             else:
                 metrics.append(concept)
 
+        # A property block references its keys, so it has to follow the last
+        # locally-declared key it names. Composite keys can span several — and
+        # can name none at all when every key came from an import, in which case
+        # the block is safe to emit before any local declaration.
+        key_order = {c.address: i for i, c in enumerate(keys)}
+        after_key: dict[int, list[tuple[frozenset[str], list[Concept]]]] = defaultdict(
+            list
+        )
+        for group_keys, group_props in properties.items():
+            anchor = max(
+                (key_order[k] for k in group_keys if k in key_order), default=-1
+            )
+            after_key[anchor].append((group_keys, group_props))
+
         rendered_concepts = [
             self.to_string(ConceptDeclarationStatement(concept=c)) for c in constants
         ]
-        for key_concept in keys:
-            rendered_concepts.append(
-                self.to_string(ConceptDeclarationStatement(concept=key_concept))
-            )
-            key_props = properties.get(key_concept.address, [])
-            grouped: dict[frozenset, list[Concept]] = defaultdict(list)
-            for prop in key_props:
-                grouped[frozenset(prop.keys or [])].append(prop)
-            for group_props in grouped.values():
-                if len(group_props) > 1:
+        for index in range(-1, len(keys)):
+            if index >= 0:
+                rendered_concepts.append(
+                    self.to_string(ConceptDeclarationStatement(concept=keys[index]))
+                )
+            for group_keys, group_props in after_key.get(index, []):
+                # `properties <k>.(...)` spells its keys as identifiers, so the
+                # grand-total wildcard key (`property <*>.x`) has no block form.
+                blockable = len(group_props) > 1 and not any(
+                    k.startswith(f"{INTERNAL_NAMESPACE}.") for k in group_keys
+                )
+                if blockable:
                     rendered_concepts.append(
                         self.to_string(
                             PropertiesDeclarationStatement(concepts=group_props)
                         )
                     )
                 else:
-                    rendered_concepts.append(
-                        self.to_string(
-                            ConceptDeclarationStatement(concept=group_props[0])
-                        )
+                    rendered_concepts.extend(
+                        self.to_string(ConceptDeclarationStatement(concept=c))
+                        for c in group_props
                     )
         rendered_concepts += [
             self.to_string(ConceptDeclarationStatement(concept=c)) for c in metrics
@@ -518,22 +554,63 @@ class Renderer:
             # todo: make this more generic
             self.to_string(datasource) + "\n"
             for datasource in arg.datasources.values()
-            if datasource.namespace == DEFAULT_NAMESPACE
+            if datasource.identifier not in arg.imported.datasources
         ]
         rendered_imports = []
         for imports in arg.imports.values():
             for import_statement in imports:
                 rendered_imports.append(self.to_string(import_statement))
-        components = []
-        if rendered_imports:
-            components.append(rendered_imports)
-        if rendered_concepts:
-            components.append(rendered_concepts)
-        if rendered_datasources:
-            components.append(rendered_datasources)
+        rendered_types = [
+            self.to_string(TypeDeclaration(type=custom_type))
+            for name, custom_type in arg.data_types.items()
+            if name not in arg.imported.data_types
+        ]
+        rendered_functions = [
+            self.to_string(
+                FunctionDeclaration(
+                    name=factory.name,
+                    args=factory.function_arguments,
+                    expr=factory.function,
+                )
+            )
+            for name, factory in arg.functions.items()
+            if name not in arg.imported.functions
+        ]
+        rendered_merges = [
+            self._render_merge_join(source, target, join_type)
+            for source, target, join_type in arg.merges
+            if (source, target, join_type) not in arg.imported.merges
+        ]
+        components = [
+            x
+            for x in (
+                rendered_imports,
+                rendered_types,
+                rendered_functions,
+                rendered_concepts,
+                rendered_merges,
+                rendered_datasources,
+            )
+            if x
+        ]
 
         final = "\n\n".join("\n".join(x) for x in components)
         return final
+
+    def _render_merge_join(self, source: str, target: str, join_type: JoinType) -> str:
+        """Re-spell one entry of ``Environment.merges`` as a merge statement.
+
+        ``merge_to_join`` flattens the wildcard forms and swaps the endpoints for
+        a partial merge, so the pair is un-swapped here rather than rendered in
+        storage order. One statement per pair: the ``a.* into b.*`` shorthand
+        cannot be recovered from the expanded list, and the pairs are what the
+        planner reads.
+        """
+        left = self.to_string(ConceptRef(address=source))
+        right = self.to_string(ConceptRef(address=target))
+        if join_type == JoinType.LEFT_OUTER:
+            return f"merge {right} into ~{left};"
+        return f"merge {left} into {right};"
 
     @to_string.register
     def _(self, arg: TypeDeclaration):
@@ -582,7 +659,7 @@ class Renderer:
         if arg.is_partial:
             modifiers.append("partial")
         entry = " ".join(modifiers + ["datasource"])
-        base = f"""{entry} {arg.name} (
+        base = f"""{entry} {arg.identifier} (
 {assignments}
 )
 {self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
@@ -1386,9 +1463,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Import"):
         path = self._render_import_path(arg.path, arg.alias)
+        prefix = "." * arg.leading_dots
         if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
-            return f"import {path};"
-        return f"import {path} as {arg.alias};"
+            return f"import {prefix}{path};"
+        return f"import {prefix}{path} as {arg.alias};"
 
     def _render_import_path(self, raw_path: Any, alias: str) -> str:
         # ``add_import`` records the alias as a Python-assembled import's path,

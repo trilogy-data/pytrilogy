@@ -1,0 +1,8 @@
+# Unpinned pair span: fact pairs plus one extension row per unmatched member per `~` side.
+import order_items;
+
+select
+    user.state,
+    product.brand,
+    revenue
+;

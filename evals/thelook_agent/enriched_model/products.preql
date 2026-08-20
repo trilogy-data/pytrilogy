@@ -1,0 +1,22 @@
+# Product catalog. Products remain in this domain when they have never sold;
+# order_items therefore binds product IDs partially.
+
+key id int; # product ID
+properties id (
+    brand string,
+    category string,
+    department string,
+    retail_price numeric,
+    cost numeric,
+);
+
+root datasource products (
+    id,
+    brand,
+    category,
+    department,
+    retail_price,
+    cost,
+)
+grain (id)
+address products;

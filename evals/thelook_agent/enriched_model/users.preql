@@ -1,0 +1,27 @@
+# Customer profiles. Every customer remains in this domain even when they have
+# never ordered; sale facts bind the customer key partially for that reason.
+
+key id int; # customer ID
+properties id (
+    state string, # US postal state
+    age int, # age in years
+    traffic_source string, # original acquisition channel
+);
+
+property id.age_band <- case
+    when age < 25 then '18-24'
+    when age < 35 then '25-34'
+    when age < 45 then '35-44'
+    when age < 55 then '45-54'
+    when age < 65 then '55-64'
+    else '65+'
+end; # standard reporting age band
+
+root datasource users (
+    id,
+    state,
+    age,
+    traffic_source,
+)
+grain (id)
+address users;

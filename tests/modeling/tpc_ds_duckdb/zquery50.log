@@ -1,5 +1,5 @@
 query_id = "50"
-gen_length = 5048
+gen_length = 5055
 preql_size = 1585
 comp_size = 1903
 generated_sql = """
@@ -7,7 +7,7 @@ generated_sql = """
 WITH 
 cheerful as (
 SELECT
-    \"store_sales_return_date_date\".\"D_DATE_SK\" as \"store_sales_return_date_sk\",
+    \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" as \"store_sales_return_date_sk\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_sk\",
     \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_sale_date_sk\",
     \"store_sales_store_sales\".\"SS_STORE_SK\" as \"store_sales_store_sk\",

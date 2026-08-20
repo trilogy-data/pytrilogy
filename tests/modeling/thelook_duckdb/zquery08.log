@@ -1,0 +1,19 @@
+query_id = "08"
+gen_length = 580
+preql_size = 145
+comp_size = 249
+generated_sql = """
+SELECT
+    \"order_items\".\"id\" as \"id\",
+    \"order_items\".\"order_id\" as \"order_id\",
+    \"user_users\".\"state\" as \"user_state\",
+    \"product_products\".\"brand\" as \"product_brand\",
+    \"order_items\".\"sale_price\" as \"sale_price\",
+    \"order_items\".\"sale_price\" - \"product_products\".\"cost\" as \"item_margin\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    FULL JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+ORDER BY 
+    \"order_items\".\"id\" asc
+LIMIT (25)"""

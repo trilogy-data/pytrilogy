@@ -1,0 +1,9 @@
+# The unpinned pair span through the multi-~ aggregate: same output as the
+# raw-fact span - a rollup whose keys are both partial is an equivalent bridge.
+import sales_agg;
+
+select
+    user.state,
+    product.brand,
+    revenue
+;

@@ -1,0 +1,8 @@
+# One side queried separately: no span, no pin needed.
+import users;
+
+select
+    state
+order by
+    state asc
+;

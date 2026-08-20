@@ -1,0 +1,31 @@
+# One row per recorded sale line. This is intentionally the only datasource
+# relating customer and product. Both dimension keys are partial: unmatched
+# customers and unmatched products each remain valid on their own side.
+
+import orders as order;
+import products as product;
+import users as user;
+
+key id int; # order-item ID, the complete row identity
+properties id (
+    sale_price numeric, # recorded sale value for this line
+    status string,
+);
+
+property id.item_margin <- sale_price - product.cost; # sale value less product cost
+
+auto revenue <- sum(sale_price); # total recorded sale value
+auto margin <- sum(item_margin); # total sale value less catalog cost
+auto sale_line_count <- count(id); # number of recorded order-item rows
+auto average_sale_price <- avg(sale_price);
+
+root datasource order_items (
+    id,
+    order_id: order.id,
+    user_id: ~user.id,
+    product_id: ~product.id,
+    sale_price,
+    status,
+)
+grain (id)
+address order_items;

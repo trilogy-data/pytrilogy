@@ -1,0 +1,15 @@
+# Pinned select at the pair rollup's exact grain: must scan only
+# user_product_sales.
+import sales_agg;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.id,
+    product.id,
+    revenue
+order by
+    user.id asc,
+    product.id asc
+;

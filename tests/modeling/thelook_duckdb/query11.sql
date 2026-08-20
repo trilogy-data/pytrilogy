@@ -1,0 +1,3 @@
+SELECT DISTINCT state
+FROM users
+ORDER BY state;

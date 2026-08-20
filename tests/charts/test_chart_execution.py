@@ -320,12 +320,14 @@ def test_copy_chart_writes_png(tmp_path):
     assert out.stat().st_size > 0
 
 
-def test_copy_chart_requires_altair(tmp_path, monkeypatch):
+@pytest.mark.parametrize("absent,named", [("alt", "altair"), ("pd", "pandas")])
+def test_copy_chart_requires_altair(tmp_path, monkeypatch, absent, named):
     import trilogy.rendering.altair_renderer as ar
 
+    monkeypatch.setattr(ar, absent, None)
     monkeypatch.setattr(ar, "ALTAIR_AVAILABLE", False)
     exec_ = _executor()
-    with pytest.raises(RuntimeError, match="requires altair"):
+    with pytest.raises(RuntimeError, match=f"missing: {named}\\."):
         list(exec_.execute_text(_SETUP + f"""
                 copy into png '{(tmp_path / "chart.png").as_posix()}' from chart
                   layer bar ( x_axis <- category, y_axis <- value );

@@ -1,0 +1,13 @@
+# Fact-anchored aggregate: revenue per order with a customer attribute. The
+# fact key in the output licenses extension rows: states with never-ordered
+# customers also appear once with NULL order id and NULL revenue.
+import order_items;
+
+select
+    order.id,
+    user.state,
+    revenue
+order by
+    order.id asc,
+    user.state asc
+;

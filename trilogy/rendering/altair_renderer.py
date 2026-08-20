@@ -22,22 +22,34 @@ from trilogy.rendering.theme import DEFAULT_THEME, Theme
 
 try:
     import altair as alt
-    import pandas as pd
-
-    ALTAIR_AVAILABLE = True
 except ImportError:
-    ALTAIR_AVAILABLE = False
     alt = None  # type: ignore[assignment]
+
+# altair >=5.4 renders via narwhals and no longer pulls pandas in, so pandas has to
+# be probed (and reported) separately or the message names the package that is present.
+try:
+    import pandas as pd
+except ImportError:
     pd = None  # type: ignore[assignment]
+
+CHART_DEPENDENCIES: tuple[str, ...] = ("altair", "pandas")
+ALTAIR_AVAILABLE = alt is not None and pd is not None
+
+
+def chart_dependency_message(action: str) -> str:
+    missing = [
+        name for name, module in zip(CHART_DEPENDENCIES, (alt, pd)) if module is None
+    ]
+    return (
+        f"{action} requires {' and '.join(CHART_DEPENDENCIES)}; "
+        f"missing: {', '.join(missing)}. Install with `pip install {' '.join(missing)}`."
+    )
 
 
 class AltairRenderer(BaseRenderer):
     def __init__(self, theme: Theme | None = None):
         if not ALTAIR_AVAILABLE:
-            raise ImportError(
-                "Altair is required for chart rendering. "
-                "Install `altair` via pip/uv to use."
-            )
+            raise ImportError(chart_dependency_message("Chart rendering"))
         # Text colors bake into headline marks at build time (Vega config can't
         # differentiate the two text layers), so the renderer needs the theme.
         self.theme = theme or DEFAULT_THEME

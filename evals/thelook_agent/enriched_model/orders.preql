@@ -1,0 +1,19 @@
+# One row per customer order. Customers who never ordered must still survive
+# customer-only and customer-metric queries, so user_id is a partial binding.
+
+import users as user;
+
+key id int; # order ID
+properties id (
+    status string,
+    created_at datetime,
+);
+
+root datasource orders (
+    order_id: id,
+    user_id: ~user.id,
+    status,
+    created_at,
+)
+grain (id)
+address orders;

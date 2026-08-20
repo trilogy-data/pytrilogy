@@ -71,6 +71,37 @@ class Import:
     # Surfaced under the namespace header in `trilogy explore` to disambiguate
     # otherwise-identical-looking imports (sale-time vs customer-current, etc.).
     description: str | None = None
+    # Count of leading "." tokens in the source (`..store_sales` -> 2). `path`
+    # holds only the dotted module name, so rendering the import back without
+    # this resolves it against the wrong directory.
+    leading_dots: int = 0
+
+
+@dataclass
+class ImportedSymbols:
+    """What ``import`` statements contributed, as opposed to what this file declared.
+
+    A bare ``import x;`` merges into the default namespace, so its symbols are
+    otherwise indistinguishable from the importer's own — ``namespace_source``
+    only separates *aliased* imports. Rendering an environment back to source
+    needs the distinction: an imported symbol is represented by its import line,
+    and re-declaring it alongside that line is a duplicate declaration.
+    """
+
+    concepts: set[str] = field(default_factory=set)
+    datasources: set[str] = field(default_factory=set)
+    functions: set[str] = field(default_factory=set)
+    data_types: set[str] = field(default_factory=set)
+    merges: set[tuple[str, str, JoinType]] = field(default_factory=set)
+
+    def duplicate(self) -> ImportedSymbols:
+        return ImportedSymbols(
+            concepts=set(self.concepts),
+            datasources=set(self.datasources),
+            functions=set(self.functions),
+            data_types=set(self.data_types),
+            merges=set(self.merges),
+        )
 
 
 @dataclass
@@ -767,6 +798,9 @@ class Environment:
     # from the same file. Kept separate from `imports` so renderer logic that
     # keys on `concept.namespace in imports` is unaffected.
     namespace_source: dict[str, Path] = field(default_factory=dict)
+    # Symbols merged in by `add_import` rather than declared locally. See
+    # ImportedSymbols; consumed by the environment renderer.
+    imported: ImportedSymbols = field(default_factory=ImportedSymbols)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = field(default_factory=os.getcwd)
     # Fallback roots for import resolution: an import that does not resolve
@@ -1029,6 +1063,7 @@ class Environment:
             data_types=dict(self.data_types),
             imports=defaultdict(list, self.imports),
             namespace_source=dict(self.namespace_source),
+            imported=self.imported.duplicate(),
             namespace=self.namespace,
             working_path=self.working_path,
             import_paths=list(self.import_paths),
@@ -1295,28 +1330,36 @@ class Environment:
         if projection is None:
             for _, datasource in list(source.datasources.items()):
                 self.add_datasource(datasource)
+                self.imported.datasources.add(datasource.identifier)
             for key, val in list(source.alias_origin_lookup.items()):
                 self.alias_origin_lookup[key] = val
             for pair in list(source.merges):
+                self.imported.merges.add(pair)
                 if pair not in self.merges:
                     self.merges.append(pair)
             for key, function in list(source.functions.items()):
                 self.functions[key] = function
+                self.imported.functions.add(key)
             for key, type in list(source.data_types.items()):
                 self.data_types[key] = type
+                self.imported.data_types.add(key)
             return self
 
         for datasource in projection.datasources:
             self.add_datasource(datasource)
+            self.imported.datasources.add(datasource.identifier)
         for key, val in projection.alias_origins:
             self.alias_origin_lookup[key] = val
         for pair in projection.merges:
+            self.imported.merges.add(pair)
             if pair not in self.merges:
                 self.merges.append(pair)
         for key, function in projection.functions:
             self.functions[key] = function
+            self.imported.functions.add(key)
         for key, type in projection.data_types:
             self.data_types[key] = type
+            self.imported.data_types.add(key)
         return self
 
     def _bulk_merge_projected_concepts(
@@ -1347,6 +1390,7 @@ class Environment:
         if self.concepts.has_overlays or not data.keys().isdisjoint(payload.keys()):
             return False
         data.update(payload)
+        self.imported.concepts.update(payload.keys())
         self.concepts.hidden |= projection.bulk_hidden
         # One bump for the batch: both counters are compared for change, never
         # for magnitude, and the batch is never empty here.
@@ -1369,6 +1413,8 @@ class Environment:
             and source_name not in concepts
         )
         new = self.add_concept(concept)
+        self.imported.concepts.add(target_key)
+        self.imported.concepts.add(new.address)
         if excluded or is_hidden:
             # excluded from public view (or hidden in the source): still stored,
             # but marked hidden here rather than routed through __setitem__.

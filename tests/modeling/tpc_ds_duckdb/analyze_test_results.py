@@ -2,7 +2,7 @@ from pathlib import Path
 
 from tests.modeling._benchmark_reporting import BenchmarkConfig
 from tests.modeling._benchmark_reporting import analyze as _analyze
-from tests.modeling.tpc_ds_duckdb.query_size import query_size
+from tests.modeling._query_size import query_size
 
 _ALT_PREQL_NAMES: dict[str, str] = {
     "2.1": "query02-one.preql",

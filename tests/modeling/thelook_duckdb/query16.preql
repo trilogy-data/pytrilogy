@@ -1,0 +1,15 @@
+# query01's pinned span with the aggregate tables declared: the extra
+# datasources must not degrade the plan (no FULL joins, same rows).
+import sales_agg;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.state,
+    product.brand,
+    revenue
+order by
+    user.state asc,
+    product.brand asc
+;

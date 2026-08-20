@@ -1,0 +1,13 @@
+# Pre-pinned distinct pair: only combinations where a sale line exists.
+import order_items;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.state,
+    product.brand,
+order by
+    user.state asc,
+    product.brand asc
+;

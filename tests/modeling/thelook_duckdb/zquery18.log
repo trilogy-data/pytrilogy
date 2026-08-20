@@ -1,0 +1,27 @@
+query_id = "18"
+gen_length = 546
+preql_size = 92
+comp_size = 175
+generated_sql = """
+
+WITH 
+highfalutin as (
+SELECT
+    \"user_product_sales\".\"user_id\" as \"user_id\",
+    sum(\"user_product_sales\".\"revenue\") as \"revenue\"
+FROM
+    \"user_product_sales\"
+GROUP BY
+    1)
+SELECT
+    coalesce(\"highfalutin\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    \"user_users\".\"state\" as \"user_state\",
+    sum(\"highfalutin\".\"revenue\") as \"revenue\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"highfalutin\" on \"user_users\".\"id\" = \"highfalutin\".\"user_id\"
+GROUP BY
+    1,
+    2
+ORDER BY 
+    coalesce(\"highfalutin\".\"user_id\",\"user_users\".\"id\") asc"""

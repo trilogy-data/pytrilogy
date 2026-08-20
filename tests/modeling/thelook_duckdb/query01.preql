@@ -1,0 +1,15 @@
+# Pair span (user x product) pinned to the recorded-sale population: plans a
+# pure INNER star off order_items with no anchor-LEFT/coalesce scaffolding.
+import order_items;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.state,
+    product.brand,
+    revenue
+order by
+    user.state asc,
+    product.brand asc
+;

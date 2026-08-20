@@ -1,45 +1,19 @@
-import os
-import platform
 from pathlib import Path
 
-import tomli_w
-import tomllib
 from pytest import raises
 
+from tests.modeling._benchmark_artifacts import record_timing, write_query_log
 from tests.modeling._benchmark_timing import benchmark_query
+from tests.modeling._query_size import query_size
 from tests.modeling._row_compare import rows_match
-from tests.modeling.tpc_h.query_size import query_size
 from trilogy import Dialects, Executor, parse
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
-
-machine = platform.machine()
-cpu_name = platform.processor()
-cpu_count = os.cpu_count()
-
-fingerprint = (
-    f"{machine}-{cpu_name}-{cpu_count}".lower().replace(" ", "_").replace(",", "")
-)
 
 working_path = Path(__file__).parent
 
 REPEAT_TIME_CUTOFF = 0.15
 REPEAT_COUNT = 3
-
-
-def _load_toml_mapping(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {}
-    raw = path.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {}
-    try:
-        loaded = tomllib.loads(raw)
-    except tomllib.TOMLDecodeError:
-        return {}
-    if isinstance(loaded, dict):
-        return loaded
-    return {}
 
 
 def _execute(engine: Executor, text: str) -> list:
@@ -99,43 +73,15 @@ def run_query(
             row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
-    with open(
-        working_path / f"zquery{query_label}.log",
-        "w",
-        encoding="utf-8",
-        newline="\n",
-    ) as f:
-        f.write(
-            tomli_w.dumps(
-                {
-                    "query_id": query_label,
-                    "gen_length": query_size(query, "sql"),
-                    "preql_size": preql_size,
-                    "comp_size": comp_size,
-                    "generated_sql": query,
-                },
-                multiline_strings=True,
-            )
-        )
-
-    timing = Path(working_path / f"zquery_timing_{fingerprint}.log")
-    current = _load_toml_mapping(timing)
-    current[f"query_{query_label}"] = {
-        "parse_time": parse_time,
-        "exec_time": exec_time,
-        "comp_time": comp_time,
-    }
-    final = {x: current[x] for x in sorted(current.keys())}
-    temp_timing = timing.with_suffix(f"{timing.suffix}.tmp")
-    temp_timing.write_text(
-        tomli_w.dumps(
-            final,
-            multiline_strings=True,
-        ),
-        encoding="utf-8",
-        newline="\n",
+    write_query_log(
+        working_path,
+        query_label,
+        query,
+        gen_length=query_size(query, "sql"),
+        preql_size=preql_size,
+        comp_size=comp_size,
     )
-    temp_timing.replace(timing)
+    record_timing(working_path, query_label, parse_time, exec_time, comp_time)
     return query
 
 

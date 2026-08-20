@@ -1,0 +1,14 @@
+# Pinned pair span on an average metric.
+import order_items;
+
+where
+    user.id is not null
+    and product.id is not null
+select
+    user.age,
+    product.category,
+    average_sale_price
+order by
+    user.age asc,
+    product.category asc
+;

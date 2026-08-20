@@ -3539,6 +3539,22 @@ def _assemble_final_node(
                 preserve_keys,
                 frozenset(_members_of(attrs, gid)),
             )
+            # A ROOT that already carries a merge key among its own concepts
+            # joins its siblings on that key alone. Preserving the OTHER merge
+            # keys forces the re-source below to drag in whatever fact table
+            # carries them (a pure `users` dim scan came back as
+            # `order_items JOIN users` deduped to the full output grain), and
+            # the merge then stitches on every key null-safely — which, under
+            # `~` partials, pairs join-manufactured NULLs with each other.
+            # Foreign keys stay preserved only for the carrier-less case the
+            # widen exists for: no own key means no join path, and the merge
+            # would cross-join ON 1=1.
+            own_join_keys = preserve_keys & (
+                {concept.address for concept in group_concepts}
+                | {concept.address for concept in node.usable_outputs}
+            )
+            if own_join_keys:
+                preserve_keys = frozenset(own_join_keys)
         # A preserved join key must survive the wrap: grouping the contributor
         # to a grain that excludes the key it was just re-sourced to carry
         # dedups that key straight back out, and the merge cross-joins anyway.
@@ -3655,7 +3671,29 @@ def _assemble_final_node(
     for p in parents:
         for o in p.output_concepts:
             available.add(o.address)
-    outputs = [c for c in mandatory_list if c.address in available]
+    # A mandatory concept a parent computes only under a pseudonym alias (`merge
+    # derived_measure into measure` — the parent outputs the derivation, the user
+    # wrote the merge target) is covered but not address-available. It must ride
+    # as an OUTPUT (resolve_concept_map's targets loop maps it to the parent via
+    # the pseudonym) but never as an INPUT — an inherited input is skipped by
+    # that loop and the column would dangle. The sole-contributor path solves
+    # the same gap with _bridge_pseudonyms; this is the merge-path equivalent.
+    pseudonym_only = {
+        c.address
+        for c in mandatory_list
+        if c.address not in available
+        and any(
+            _output_covers(o, c)
+            for p in parents
+            for o in p.output_concepts
+            if o.address not in p.hidden_concepts
+        )
+    }
+    outputs = [
+        c
+        for c in mandatory_list
+        if c.address in available or c.address in pseudonym_only
+    ]
     # Pull in any filter-only condition arg (e.g. the global aggregate) not
     # already supplied by a contributor, as a hidden cross-join input.
     arg_nodes, arg_concepts = _filter_arg_parents(
@@ -3694,7 +3732,9 @@ def _assemble_final_node(
     outputs = unique(outputs + axis_mates, "address")
     parents = parents + arg_nodes
     merge_inputs = unique(
-        outputs + arg_concepts + supplied_filter_args,
+        [c for c in outputs if c.address not in pseudonym_only]
+        + arg_concepts
+        + supplied_filter_args,
         "address",
     )
     hidden = {

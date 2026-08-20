@@ -1,0 +1,25 @@
+# Precomputed aggregates over the order_items fact (thelook "managed asset"
+# style). Kept in their own file so queries opt in: the base battery queries
+# import order_items directly and never see these tables.
+import order_items;
+
+# Complete rollup at order-date grain: every sale line has an order date, so
+# nothing here is partial.
+datasource daily_sales (
+    order_date: order.created_at.date,
+    revenue,
+    sale_line_count,
+)
+grain (order.created_at.date)
+address daily_sales;
+
+# Pair-grain rollup. Both keys are ~ for the same reason order_items marks
+# them: never-ordered users and never-sold products have no row here.
+datasource user_product_sales (
+    user_id: ~user.id,
+    product_id: ~product.id,
+    revenue,
+    sale_line_count,
+)
+grain (user.id, product.id)
+address user_product_sales;

@@ -1,0 +1,10 @@
+# Daily revenue must resolve from the precomputed daily_sales rollup: single
+# scan, no joins back to the base fact.
+import sales_agg;
+
+select
+    order.created_at.date,
+    revenue
+order by
+    order.created_at.date asc
+;

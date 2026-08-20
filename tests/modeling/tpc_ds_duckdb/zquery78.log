@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6408
+gen_length = 6768
 preql_size = 2560
 comp_size = 2512
 generated_sql = """
@@ -12,13 +12,14 @@ SELECT
     \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
     \"sales_catalog_sales_unified\".\"CS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_catalog_sales_unified\".\"CS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_catalog_sales_unified\".\"CS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null and \"sales_sale_date_date\".\"D_YEAR\" = 2000
 
 UNION ALL
 SELECT
@@ -27,13 +28,14 @@ SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\",
-    \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
     \"sales_store_sales_unified\".\"SS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_store_sales_unified\".\"SS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_store_sales_unified\".\"SS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
+    \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null and \"sales_sale_date_date\".\"D_YEAR\" = 2000
 
 UNION ALL
 SELECT
@@ -42,13 +44,14 @@ SELECT
     \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_ORDER_NUMBER\" as \"sales_order_id\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\",
-    \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" as \"sales_sale_date_sk\",
     \"sales_web_sales_unified\".\"WS_SALES_PRICE\" as \"sales_sales_price\",
-    \"sales_web_sales_unified\".\"WS_WHOLESALE_COST\" as \"sales_wholesale_cost\"
+    \"sales_web_sales_unified\".\"WS_WHOLESALE_COST\" as \"sales_wholesale_cost\",
+    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_sale_date_date\".\"D_YEAR\" = 2000
 ),
 cheerful as (
 SELECT
@@ -77,7 +80,7 @@ FROM
 yummy as (
 SELECT
     \"abundant\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    \"sales_sale_date_date\".\"D_YEAR\" as \"sales_sale_date_year\",
+    \"abundant\".\"sales_sale_date_year\" as \"sales_sale_date_year\",
     coalesce(\"abundant\".\"sales_item_sk\",\"cheerful\".\"sales_item_sk\") as \"sales_item_sk\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END) as \"cs_qty\",
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_sales_price\" ELSE NULL END) as \"cs_sp\",
@@ -90,10 +93,9 @@ SELECT
     sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_wholesale_cost\" ELSE NULL END) as \"ws_wc\"
 FROM
     \"abundant\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"abundant\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"cheerful\".\"sales_is_returned\" is null and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"abundant\".\"sales_billing_customer_sk\" is not null
+    \"cheerful\".\"sales_is_returned\" is null and \"abundant\".\"sales_billing_customer_sk\" is not null
 
 GROUP BY
     1,

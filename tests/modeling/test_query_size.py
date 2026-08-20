@@ -1,4 +1,4 @@
-from tests.modeling.tpc_ds_duckdb.query_size import query_size, strip_line_comments
+from tests.modeling._query_size import query_size, strip_line_comments
 
 
 def test_preql_strips_hash_line_comment():

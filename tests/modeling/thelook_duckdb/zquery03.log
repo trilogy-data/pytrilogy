@@ -1,0 +1,24 @@
+query_id = "03"
+gen_length = 635
+preql_size = 221
+comp_size = 267
+generated_sql = """
+SELECT
+    \"user_users\".\"state\" as \"user_state\",
+    \"product_products\".\"department\" as \"product_department\",
+    sum(\"order_items\".\"sale_price\" - \"product_products\".\"cost\") as \"margin\"
+FROM
+    \"users\" as \"user_users\"
+    INNER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    INNER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+WHERE
+    \"order_items\".\"user_id\" is not null and \"order_items\".\"product_id\" is not null
+
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"margin\" desc,
+    \"user_users\".\"state\" asc,
+    \"product_products\".\"department\" asc
+LIMIT (10)"""

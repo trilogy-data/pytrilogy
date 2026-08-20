@@ -131,12 +131,13 @@ def test_primary_source_aggregate_simple_count_with_dim():
     assert "group by" in generated.lower(), generated
 
 
+_PAIR_QUERY = "SELECT origin_code, destination_code, flight_date, count;"
+
+
 def test_primary_source_aggregate_no_precomputed():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(PRIMARY_ONLY_SETUP)
-    generated = exec.generate_sql(
-        "SELECT origin_code, destination_code, flight_date, count;"
-    )[-1]
+    generated = exec.generate_sql(_PAIR_QUERY)[-1]
     assert "flights" in generated, generated
     assert "group by" in generated.lower(), generated
 
@@ -147,9 +148,7 @@ def test_partial_precomputed_uses_aggregate():
     rescanning primary rows — that is the whole point of materializing it."""
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(PRIMARY_ONLY_SETUP + PARTIAL_AGGREGATE_SUFFIX)
-    generated = exec.generate_sql(
-        "SELECT origin_code, destination_code, flight_date, count;"
-    )[-1]
+    generated = exec.generate_sql(_PAIR_QUERY)[-1]
     assert "flight_count_by_origin_destination_date" in generated, generated
 
 

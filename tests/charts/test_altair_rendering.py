@@ -143,16 +143,14 @@ def test_altair_unimplemented_chart_type_raises():
         AltairRenderer().render(statement, _data())
 
 
-def test_altair_unavailable_raises():
+@pytest.mark.parametrize("absent,named", [("alt", "altair"), ("pd", "pandas")])
+def test_altair_unavailable_raises(monkeypatch, absent, named):
     import trilogy.rendering.altair_renderer as ar
 
-    original = ar.ALTAIR_AVAILABLE
-    try:
-        ar.ALTAIR_AVAILABLE = False
-        with pytest.raises(ImportError):
-            ar.AltairRenderer()
-    finally:
-        ar.ALTAIR_AVAILABLE = original
+    monkeypatch.setattr(ar, absent, None)
+    monkeypatch.setattr(ar, "ALTAIR_AVAILABLE", False)
+    with pytest.raises(ImportError, match=f"missing: {named}\\."):
+        ar.AltairRenderer()
 
 
 def test_altair_stack_order_ranks_coverage_then_total():
