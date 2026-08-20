@@ -1,12 +1,11 @@
 """Build the deterministic DuckDB database for the thelook bridge eval.
 
-The generators and invariants below are also what seeds the partial-bridge
-regression battery (`tests/modeling/thelook_duckdb/db_build.py` imports them).
-They live here rather than there because tests may import evals but not the
-reverse — `run_eval.py` puts only `evals/` on the path. Changing a generator
-or `SEED` reshapes both fixtures, so keep `assert_properties` passing: it is
+`assert_properties` is the contract this fixture shares with the partial-bridge
+regression battery (`tests/modeling/thelook_duckdb/db_build.py` imports it, but
+seeds itself from `trilogy unit` mock data rather than these generators). It is
 what guarantees the never-ordered users and never-sold products that the `~`
-semantics exist to describe.
+semantics exist to describe — keep it passing when changing a generator or
+`SEED`.
 """
 
 from __future__ import annotations

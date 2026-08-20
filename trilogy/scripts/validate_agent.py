@@ -231,27 +231,21 @@ def _materialize_mock_tables(flattened_env, db_path: Path) -> None:
 
     from trilogy.dialect.config import DuckDBConfig
     from trilogy.dialect.enums import Dialects
-    from trilogy.dialect.mock import MockManager
+    from trilogy.dialect.mock import MockManager, synthesis_order
 
     random.seed(0)
     manager = MockManager(flattened_env)
     executor = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig(path=str(db_path)))
     seen: set[str] = set()
     try:
-        for datasource in flattened_env.datasources.values():
+        for datasource in synthesis_order(
+            list(flattened_env.datasources.values()), manager.canon
+        ):
             name = _mock_name(datasource)
             if name in seen:  # same physical address under multiple namespaces
                 continue
             seen.add(name)
-            concrete = []
-            headers = []
-            for key, column in datasource.concrete_columns.items():
-                manager.mock_concept(column.concept)
-                concrete.append(column.concept)
-                headers.append(key)
-            table = manager.create_mock_table(
-                concrete, headers, set(datasource.grain.components)
-            )
+            table = manager.create_mock_table(datasource)
             executor.execute_raw_sql(
                 "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
             )

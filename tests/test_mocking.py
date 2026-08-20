@@ -419,6 +419,179 @@ def test_mock_validate_passes_with_enum_key_grain():
     assert rows[0][1] == 3
 
 
+def test_mock_partial_binding_leaves_extension_rows():
+    """A `~` binding must cover a strict prefix of its key's domain: without
+    unmatched members LEFT and INNER return the same rows and no unit-tier test
+    can see a join-type regression on the bridge."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key user_id int;
+        property user_id.name string;
+        key line_id int;
+        property line_id.amount float;
+
+        datasource users (
+            id: user_id,
+            name: name,
+        )
+        grain (user_id)
+        address users_tbl;
+
+        datasource lines (
+            id: line_id,
+            user_id: ~user_id,
+            amount: amount,
+        )
+        grain (line_id)
+        address lines_tbl;
+
+        mock datasources users, lines;
+    """)
+
+    never_ordered, matched = executor.execute_raw_sql(
+        "select (select count(*) from users_tbl u "
+        "  anti join lines_tbl l on l.user_id = u.id), "
+        "       (select count(distinct user_id) from lines_tbl)"
+    ).fetchall()[0]
+    assert never_ordered > 0
+    assert matched > 0
+
+
+def test_mock_complete_binding_covers_every_key():
+    """The same model without the `~` must cover the whole key domain, or the
+    partial prefix would be indistinguishable noise."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key user_id int;
+        key line_id int;
+
+        datasource users (id: user_id) grain (user_id) address users_tbl;
+        datasource lines (
+            id: line_id,
+            user_id: user_id,
+        )
+        grain (line_id)
+        address lines_tbl;
+
+        mock datasources users, lines;
+    """)
+
+    assert (
+        executor.execute_raw_sql(
+            "select count(*) from users_tbl u anti join lines_tbl l on l.user_id = u.id"
+        ).fetchall()[0][0]
+        == 0
+    )
+
+
+def test_mock_redundant_foreign_key_agrees_across_tables():
+    """A column functionally determined by a key the same table binds is looked
+    up, not cycled: a redundant FK that disagrees manufactures non-matches on
+    every join built from both keys. Row counts here deliberately diverge (the
+    order key's domain caps its table at three rows), which is exactly where
+    index-cycling desynchronizes."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key order_id enum<int>[1, 2, 3];
+        property order_id.user_id int;
+        key line_id int;
+        property line_id.amount float;
+
+        datasource orders (
+            order_id: order_id,
+            user_id: user_id,
+        )
+        grain (order_id)
+        address orders_tbl;
+
+        datasource lines (
+            id: line_id,
+            order_id: order_id,
+            user_id: user_id,
+            amount: amount,
+        )
+        grain (line_id)
+        address lines_tbl;
+
+        mock datasources orders, lines;
+    """)
+
+    orders, lines, mismatched = executor.execute_raw_sql(
+        "select (select count(*) from orders_tbl), "
+        "       (select count(*) from lines_tbl), "
+        "       (select count(*) from lines_tbl l join orders_tbl o "
+        "          using (order_id) where l.user_id != o.user_id)"
+    ).fetchall()[0]
+    assert orders == 3
+    assert lines == 100
+    assert mismatched == 0
+
+
+def test_mock_rollup_is_computed_from_the_fact_it_summarizes():
+    """A datasource binding derived concepts is a rollup, not a source: its
+    metrics must be computed off the mocked fact, or the same question answered
+    through the pre-aggregate and through the base table disagrees."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key id int;
+        property id.amount float;
+        property id.cat enum<string>['a', 'b', 'c'];
+        auto total <- sum(amount);
+        auto line_count <- count(id);
+
+        root datasource lines (
+            id: id,
+            amount: amount,
+            cat: cat,
+        )
+        grain (id)
+        address lines_tbl;
+
+        datasource cat_totals (
+            cat: cat,
+            total: total,
+            line_count: line_count,
+        )
+        grain (cat)
+        address cat_totals_tbl;
+
+        mock datasources lines, cat_totals;
+    """)
+
+    rows, rollup_total, rollup_count, fact_total, fact_count = executor.execute_raw_sql(
+        "select (select count(*) from cat_totals_tbl), "
+        "       (select sum(total) from cat_totals_tbl), "
+        "       (select sum(line_count) from cat_totals_tbl), "
+        "       (select sum(amount) from lines_tbl), "
+        "       (select count(*) from lines_tbl)"
+    ).fetchall()[0]
+    assert rows == 3
+    assert rollup_count == fact_count
+    assert rollup_total == pytest.approx(fact_total)
+
+
+def test_canonical_column_map_merges_namespaced_bindings():
+    """Two namespaces reaching the same physical column must share one pool —
+    otherwise the second table written to that address contradicts the first."""
+    from trilogy.dialect.mock import canonical_column_map
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key a_id int;
+        property a_id.a_label string;
+        key b_id int;
+        property b_id.b_label string;
+
+        datasource one (id: a_id, label: a_label) grain (a_id) address shared_tbl;
+        datasource two (id: b_id, label: b_label) grain (b_id) address shared_tbl;
+    """)
+
+    canonical = canonical_column_map(executor.environment)
+    assert canonical["local.a_id"] == canonical["local.b_id"]
+    assert canonical["local.a_label"] == canonical["local.b_label"]
+    assert canonical["local.a_id"] != canonical["local.a_label"]
+
+
 def test_cli_validate_quiet_collects_target_failures():
     """The quiet validation path collects per-target failures via the
     on_target_complete callback and surfaces them as a single
