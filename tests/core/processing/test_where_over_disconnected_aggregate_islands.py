@@ -99,9 +99,10 @@ def test_parentless_group_keeps_literal_producible_outputs():
     # `concept_satisfiable` reads their empty row lineage as a dead end.
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
     assert engine.execute_text("select sum(1) as c;")[0].fetchall() == [(1,)]
-    assert engine.execute_text("const c <- 10; select c as x where c > 50;")[
-        0
-    ].fetchall() == []
+    assert (
+        engine.execute_text("const c <- 10; select c as x where c > 50;")[0].fetchall()
+        == []
+    )
     assert engine.execute_text(
         "parameter p int default 10; select p as x where p < 50;"
     )[0].fetchall() == [(10,)]

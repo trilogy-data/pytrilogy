@@ -31,6 +31,7 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT, UNNEST_NAME
 from trilogy.core.enums import (
     AddressType,
     AggregateGroupingMode,
+    BooleanOperator,
     ComparisonOperator,
     CreateMode,
     DatePart,
@@ -339,6 +340,25 @@ BETWEEN_ITEMS = (BuildBetween,)
 # Membership is a property of the operator, not of the node class: any
 # comparison carrying one renders through the membership path.
 MEMBERSHIP_OPERATORS = (ComparisonOperator.IN, ComparisonOperator.NOT_IN)
+
+
+def _protect_conditional_child(
+    child: Any, parent_operator: BooleanOperator, rendered: str
+) -> str:
+    """Parenthesize an OR child under an AND parent.
+
+    Authored parentheses arrive as BuildParenthetical, but engine-built trees
+    (predicate pushdown AND-ing an atom onto an OR chain) have none, so SQL
+    precedence would silently reassociate the condition.
+    """
+    if (
+        isinstance(child, CONDITIONAL_ITEMS)
+        and child.operator is BooleanOperator.OR
+        and parent_operator is BooleanOperator.AND
+    ):
+        return f"({rendered})"
+    return rendered
+
 
 BASE_INVALID = "INVALID_REFERENCE_BUG"
 
@@ -2413,7 +2433,25 @@ class BaseDialect:
                 materialized_addresses=materialized_addresses,
             )
         elif isinstance(e, CONDITIONAL_ITEMS):
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
+            left_rendered = self.render_expr(
+                e.left,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
+            )
+            right_rendered = self.render_expr(
+                e.right,
+                cte=cte,
+                cte_map=cte_map,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
+            )
+            return (
+                f"{_protect_conditional_child(e.left, e.operator, left_rendered)}"
+                f" {e.operator.value} "
+                f"{_protect_conditional_child(e.right, e.operator, right_rendered)}"
+            )
         elif isinstance(e, BETWEEN_ITEMS):
             return (
                 f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "

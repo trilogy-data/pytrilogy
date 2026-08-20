@@ -1,13 +1,19 @@
-"""Eval categories — the four ways an agent can be asked the same business
+"""Eval categories — the ways an agent can be asked the same business
 question, ordered by how much scaffolding the agent is given:
 
-    sql_bare   — just a DuckDB database; the agent writes plain SQL and
-                 discovers the schema itself.
-    sql_schema — same, plus a generated ``schema.md`` table/column map.
-    ingest     — an auto-ingested Trilogy semantic model (``raw/*.preql``).
-    enriched   — a hand-curated Trilogy model.
+    sql_bare      — just a DuckDB database; the agent writes plain SQL and
+                    discovers the schema itself.
+    sql_schema    — same, plus a generated ``schema.md`` table/column map.
+    ingest        — an auto-ingested Trilogy semantic model (``raw/*.preql``).
+    enriched      — a hand-curated Trilogy model.
+    enriched_docs — enriched, plus the complete language reference inline in
+                    the task. The other Trilogy legs measure the agent
+                    discovering the language through ``agent-info``; this cell
+                    measures the query-authoring cost with that discovery
+                    already paid, so the funnel splits "learning the language"
+                    from "using it".
 
-The first two are no-Trilogy baselines (``--toolset sql``); the last two use the
+The first two are no-Trilogy baselines (``--toolset sql``); the rest use the
 Trilogy CLI. A category bundles everything that differs per leg: the agent
 toolset (``harness``), the scored candidate extension, the per-query task text,
 and the workspace ``setup`` step. The funnel report reads them in ``FUNNEL_ORDER``
@@ -49,6 +55,11 @@ class Category:
     """Per-category custom-reference override (``query<NN>.sql`` files) —
     parameter-shifted cells score against shifted references instead of the
     spec's canonical ones."""
+    task_preamble: Callable[[], str] | None = None
+    """Static text prepended to every task in this category (the complete
+    language reference, for the docs-preloaded cells). It leads the task and
+    is byte-identical across queries so provider prefix caching prices it as
+    cached from the second query of a leg onward."""
 
     def build_task(
         self, spec: BenchmarkSpec, entry: dict, include_docs: bool = False
@@ -58,9 +69,13 @@ class Category:
         if include_docs and spec.docs_preamble:
             entry = {**entry, "prompt": f"{spec.docs_preamble}\n\n{entry['prompt']}"}
         if self.harness == "sql":
-            return prompts.build_single_query_task_sql(spec, entry)
-        model_dir = MODEL_ROOT_DIR if self.key == "ingest" else "raw"
-        return prompts.build_single_query_task(spec, entry, model_dir=model_dir)
+            task = prompts.build_single_query_task_sql(spec, entry)
+        else:
+            model_dir = MODEL_ROOT_DIR if self.key == "ingest" else "raw"
+            task = prompts.build_single_query_task(spec, entry, model_dir=model_dir)
+        if self.task_preamble is not None:
+            task = f"{self.task_preamble()}\n\n{task}"
+        return task
 
 
 def _setup_ingest(
@@ -121,15 +136,41 @@ def _setup_sql_schema(
     }
 
 
+def _language_reference_preamble() -> str:
+    from trilogy.scripts.agent_info_docs.content import get_query_authoring_output
+
+    return (
+        "The complete Trilogy language reference is included below. It is the "
+        "same content `trilogy agent-info query` serves, so do not re-fetch "
+        "it (or the `agent-info` directory). `trilogy agent-info syntax "
+        "example <name>` drilldowns remain available for worked examples.\n\n"
+        + get_query_authoring_output()
+    )
+
+
 CATEGORIES: dict[str, Category] = {
     "sql_bare": Category("sql_bare", "db-only", "sql", ".sql", _setup_sql_bare),
     "sql_schema": Category("sql_schema", "db+schema", "sql", ".sql", _setup_sql_schema),
     "ingest": Category("ingest", "ingest", "trilogy", ".preql", _setup_ingest),
     "enriched": Category("enriched", "enriched", "trilogy", ".preql", _setup_enriched),
+    "enriched_docs": Category(
+        "enriched_docs",
+        "enriched+langdocs",
+        "trilogy",
+        ".preql",
+        _setup_enriched,
+        task_preamble=_language_reference_preamble,
+    ),
 }
 
 # Order of increasing scaffolding — the funnel reads this to show marginal lift.
-FUNNEL_ORDER: list[str] = ["sql_bare", "sql_schema", "ingest", "enriched"]
+FUNNEL_ORDER: list[str] = [
+    "sql_bare",
+    "sql_schema",
+    "ingest",
+    "enriched",
+    "enriched_docs",
+]
 
 
 def categories_for(spec: BenchmarkSpec | None = None) -> dict[str, Category]:
