@@ -1,7 +1,31 @@
 # Explore output: compact-by-default modes
 
-Status: PROPOSAL (2026-08-20). Evidence from TPC-DS agent eval run
-`20260820-031800` (99q x enriched/ingest/sql_schema, deepseek-v4-flash).
+Status: IMPLEMENTED (2026-08-20) through change 2 below, with one deviation
+from the original plan; change 3 (cross-file schema referencing) remains open.
+Evidence from TPC-DS agent eval run `20260820-031800` (99q x
+enriched/ingest/sql_schema, deepseek-v4-flash).
+
+What landed (json v3, `trilogy/scripts/explore.py`):
+
+- `namespaced` entries outline by default: roles/description/join/keys survive,
+  member declarations collapse to `members_elided`, a one-time `outline_note`
+  carries the drill-down instruction. Local namespaces always render full.
+- `--ns <alias>` (repeatable) expands one entry; `--expand-imports`,
+  `--expand-roles`, and `--regex` render full detail. `TRILOGY_EXPLORE_COMPACT=0`
+  pins v2 (the eval A/B kill-switch). The AI one-shot prompt embed pins v2.
+- Deviation from change 0: no per-group event split was needed. The outline
+  payload fits under the broad cap, so the existing single-event stream and
+  entry-level dedup work as-is once `_TRILOGY_EXPLORE_BROAD_CAP` rose to
+  12,288 (it doubles as the dedup record limit, and the fattest curated
+  fact's outline is ~9KB).
+- Agent guidance updated in `trilogy/scripts/agent.py` and
+  `agent_info_docs/cli.py` (outline-first, then `--ns`).
+
+Measured on the enriched store_sales model: first explore 15,948 -> 8,677
+chars (-46%); same-file repeat 15,948 -> 2,312 (-86%, dedup now fires);
+cross-file catalog_store_returns 10,415 -> 3,757 (-64%, outline entries
+dedup across files where the full schemas never could). The 99q A/B
+(validation step 4) has not run yet.
 
 ## Problem
 
