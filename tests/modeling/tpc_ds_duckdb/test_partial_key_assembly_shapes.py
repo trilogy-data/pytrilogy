@@ -7,11 +7,7 @@ assembly's sibling stitching.
 
 `test_adhoc_three` pins the fixed behavior — dimension contributors join the
 merge on their own key, so every base table is scanned once and the output is
-exactly one row per (item, ticket) pair in the data. The xfail(strict) tests
-pin the CORRECT output for shapes the assembler still corrupts (phantom rows
-for never-purchasing customers licensed by neither `~` nor the data, and a
-keyless-join guard crash); they flip to hard failures as the assembly work
-proceeds — promote them to plain asserts then.
+exactly one row per (item, ticket) pair in the data.
 """
 
 from pathlib import Path
@@ -19,7 +15,6 @@ from pathlib import Path
 import pytest
 
 from trilogy import Executor
-from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
@@ -244,15 +239,6 @@ select
     assert len(set(keys)) == len(keys)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=UnresolvableQueryException,
-    reason=(
-        "a by-key aggregate compared against a row value beside the partial "
-        "grain trips the keyless-join guard: the join axis is lost in the "
-        "aggregate-stitch path"
-    ),
-)
 def test_partial_grain_with_by_key_aggregate(engine_sf001: Executor):
     engine_sf001.environment = Environment(working_path=working_path)
     sql = engine_sf001.generate_sql("""import store_sales as ss;

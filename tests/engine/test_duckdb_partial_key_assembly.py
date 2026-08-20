@@ -13,18 +13,11 @@ Semantics (see ``trilogy.core.processing.partial_bridging``):
   could license, the bindings heal to complete for the statement, and the
   query plans as a plain star over the fact's own rows — asserted here as the
   ``_PIN`` variant of each spanning shape.
-
-The xfail(strict) tests pin the CORRECT output for shapes a pre-existing
-non-partial discovery defect still corrupts (a by-key aggregate compared
-against a row value beside additional keys — reproduces with no `~` in the
-model at all). They flip to XPASS when that fix lands; promote them to plain
-asserts then.
 """
 
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
 
 # users: 1 never orders. products: 1 never sold. items redundantly bind
 # ~user_id (the thelook order_items shape).
@@ -352,15 +345,6 @@ def test_forked_with_brand_only(forked):
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=UnresolvableQueryException,
-    reason=(
-        "pre-existing non-partial defect: a by-key aggregate compared against "
-        "a row value beside additional keys trips the keyless-join guard "
-        "(reproduces with no `~` in the model at all)"
-    ),
-)
 def test_forked_with_status(forked):
     assert (
         _rows(
@@ -379,15 +363,6 @@ def test_forked_with_status(forked):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=UnresolvableQueryException,
-    reason=(
-        "same keyless-join guard rejection as test_forked_with_status, under "
-        "the pin that heals the `~` keys — the defect is grain composition, "
-        "not partiality"
-    ),
-)
 def test_forked_with_status_pinned(forked):
     assert (
         _rows(
@@ -405,10 +380,6 @@ def test_forked_with_status_pinned(forked):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="full column set fans out with cross-paired keys and values",
-)
 def test_forked_full_column_set(forked):
     assert (
         _rows(

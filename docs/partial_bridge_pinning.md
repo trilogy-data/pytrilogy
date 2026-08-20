@@ -116,13 +116,14 @@ generates the table above.
 
 ## Known residual
 
-The by-key-aggregate shape (`min(amount) by user_id` compared against a row
-value, selected beside additional keys and metrics) still trips the
-keyless-join guard EVEN pinned — it reproduces with no `~` in the model at
-all, so it is a pre-existing discovery defect, not a partial-bridging one.
-Pinned as xfail(strict) with correct expected rows in
-`test_forked_with_status_pinned` / `test_forked_full_column_set`; the
-FINAL-merge cover strands each key on a different computed group with no
-shared join axis (a spine-contributor reassignment was prototyped and
-reverted — see git history — because eager key-carrying corrupted sibling
-aggregate joins).
+None. The by-key-aggregate shape (`min(amount) by user_id` compared against a
+row value, selected beside additional keys and metrics) — a pre-existing
+discovery defect that reproduced with no `~` in the model — is fixed by the
+mixed-scalar spine widening in `group_graph.py`
+(`_widen_mixed_scalar_basic_to_final_spine`): the scalar's group hosts the
+FINAL row-spine merge and computes over the extension-bearing stream, so
+extension rows take the CASE's ELSE value ('LATER'), not a join NULL. The
+former xfail pins (`test_forked_with_status`, `test_forked_with_status_pinned`,
+`test_forked_full_column_set`, `test_partial_grain_with_by_key_aggregate`) are
+promoted to plain row asserts. See
+`docs/handoff_partial_bridge_residuals.md` for the fix's gates.

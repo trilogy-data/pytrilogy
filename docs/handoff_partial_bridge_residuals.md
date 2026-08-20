@@ -71,10 +71,41 @@ coverage.
 
 ---
 
-## Case A — REMAINS: by-key aggregate beside extra keys strands the FINAL cover
+## Case A — FIXED 2026-08-19: by-key aggregate beside extra keys strands the FINAL cover
 
-Unchanged from the prior handoff; it is a NON-partial defect (reproduces with
-every `~` stripped) and was never behind the guard. Summary:
+Fixed as the group-graph placement change the probe predicted (see "the fix
+shape" below — it held). Two rules in `group_graph.py`:
+
+1. `_widen_mixed_scalar_basic_to_final_spine` (runs beside the WINDOW grain
+   widening in `_compute_concept_sets`): a BASIC scalar whose lineage mixes a
+   ROOT row stream with a by-key aggregate (`order_status <- case when amount
+   = min(amount) by user_id ...`) is pointwise over the merged row stream, not
+   over its args' composite grain. When it feeds FINAL and its grain is a
+   proper subset of the FINAL merge grain, widen `fact.grain`/`native_grain`
+   to that spine — the group then hosts the spine merge itself (parents: the
+   dim-peel root + the by-key aggregate), computes the CASE over the full
+   extension-bearing stream ('LATER', not join-NULL), and carries every key
+   the cover needs. Three gates, each earned by a regression:
+   - the spine must be the result's own row identity: every spine key is a
+     mandatory output or FD-determined by the mandatory set (q59's raw fact
+     keys under a store/week output otherwise re-grain the scalar onto raw
+     rows and narrow the authored union fan-out);
+   - a grouping parent that NULL-injects its keys (ROLLUP/CUBE,
+     `nulls_grouping_keys`) disqualifies the group — re-graining pairs
+     subtotal rows on their NULLed keys (q36/q70/q86 wrong rows);
+   - fires only for BASIC groups with BOTH a ROOT and a grouping LINEAGE
+     predecessor.
+2. ROOT capability extension: a dim-peel ROOT's secondary member (its own
+   entity key, held outside the primary+source-grain capability) becomes
+   capability when a NON-grouping successor's grain names it — without this
+   the widened basic can't pull `item_id` through and the merge stays
+   keyless. Grouping successors are excluded (they source grain keys through
+   their own fact parents), which keeps the eager-axis-demand failures of the
+   reverted attempts out.
+
+All four pinned tests flipped XPASS(strict) and are promoted to plain
+asserts. Full TPC-DS battery green (174/174), join_matrix green, nullability
+matrix green. Historic summary of the defect:
 
 `_cover_groups_for_mandatory` (`v4_helper/strategy_builder.py`) picks the
 most-downstream provider per concept. With `order_status <- case when amount =
@@ -123,12 +154,11 @@ Do not relax `_raise_if_keyless_row_bearing_join`; fix the cover.
   the spine merge. That is a group-graph placement question
   (`group_graph.py`), upstream of the cover.
 
-### Tests pinned (xfail strict, correct rows inside)
+### Tests (promoted to plain asserts on the fix)
 
 - `tests/engine/test_duckdb_partial_key_assembly.py::test_forked_with_status`
 - `...::test_forked_with_status_pinned`
 - `...::test_forked_full_column_set`
 - `tests/modeling/tpc_ds_duckdb/test_partial_key_assembly_shapes.py::test_partial_grain_with_by_key_aggregate`
 
-They flip to XPASS when this lands; promote them to plain asserts then. The
-`_FORKED` fixture is the whole repro — no TPC-DS needed, runs in ~1s.
+The `_FORKED` fixture is the whole repro — no TPC-DS needed, runs in ~1s.
