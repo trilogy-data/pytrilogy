@@ -245,12 +245,22 @@ def _import_workspace(tmp_path):
 def test_explore_json_imports_render_full_detail(runner, tmp_path):
     parent = _import_workspace(tmp_path)
     result = runner.invoke(
-        cli, ["--format", "json", "explore", str(parent), "--show", "all"]
+        cli,
+        [
+            "--format",
+            "json",
+            "explore",
+            str(parent),
+            "--show",
+            "all",
+            "--expand-imports",
+        ],
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
-    # Imported namespaces render in the same grouped-declaration form as the
-    # local section — full types, not a name-only leaf list.
+    # With --expand-imports, imported namespaces render in the same
+    # grouped-declaration form as the local section — full types, not a
+    # name-only leaf list (v3 outlines them by default).
     groups = concepts["namespaced"]["dem"]["concepts"]
     key_group = next(g for g in groups if "keys" in g)
     assert key_group["keys"] == ["dem.cd_id int;"]
@@ -271,7 +281,17 @@ def test_explore_json_hides_underscore_imports(runner, tmp_path):
     parent = tmp_path / "sales.preql"
     parent.write_text("import dem as dem;\nkey ticket int;\n", encoding="utf-8")
     result = runner.invoke(
-        cli, ["--format", "json", "explore", str(parent), "--show", "all"]
+        cli,
+        [
+            "--format",
+            "json",
+            "explore",
+            str(parent),
+            "--show",
+            "all",
+            "--ns",
+            "dem",
+        ],
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
@@ -297,7 +317,16 @@ def test_explore_json_imported_roles_carry_descriptions(runner, tmp_path):
         encoding="utf-8",
     )
     result = runner.invoke(
-        cli, ["--format", "json", "explore", str(parent), "--show", "concepts"]
+        cli,
+        [
+            "--format",
+            "json",
+            "explore",
+            str(parent),
+            "--show",
+            "concepts",
+            "--expand-imports",
+        ],
     )
     assert result.exit_code == 0, result.output
     concepts = events_of(parse_events(result.output), "concepts")[0]
@@ -357,9 +386,9 @@ def test_explore_json_include_builtins_hides_internal_namespace(runner, tmp_path
     assert "__preql_internal" not in (concepts.get("namespaced") or {})
 
 
-def test_explore_json_expand_imports_flag_is_noop(runner, tmp_path):
-    """JSON output always renders imports in full detail, so --expand-imports
-    (a rich-renderer concern) changes nothing about the payload."""
+def test_explore_json_expand_imports_expands_outline(runner, tmp_path):
+    """v3 outlines imported namespaces by default; --expand-imports restores
+    the full member declarations."""
     parent = _import_workspace(tmp_path)
     plain = runner.invoke(
         cli, ["--format", "json", "explore", str(parent), "--show", "concepts"]
@@ -378,7 +407,15 @@ def test_explore_json_expand_imports_flag_is_noop(runner, tmp_path):
     )
     assert plain.exit_code == 0, plain.output
     assert expanded.exit_code == 0, expanded.output
-    assert parse_events(plain.output) == parse_events(expanded.output)
+    plain_dem = events_of(parse_events(plain.output), "concepts")[0]["namespaced"][
+        "dem"
+    ]
+    expanded_dem = events_of(parse_events(expanded.output), "concepts")[0][
+        "namespaced"
+    ]["dem"]
+    assert "concepts" not in plain_dem
+    assert plain_dem["members_elided"] >= 1
+    assert "concepts" in expanded_dem
 
 
 def test_file_roundtrip_events(runner, tmp_path):

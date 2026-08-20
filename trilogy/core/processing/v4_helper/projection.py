@@ -108,14 +108,14 @@ def satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
 ) -> list[BuildConcept]:
-    # No parents is not a free pass: a group whose parents ALL failed to build
-    # (disconnected islands under a shared WHERE) reaches here with an empty
-    # list, and returning `outputs` unchanged lets an aggregate-over-nothing
-    # node build with no source for its row inputs: INVALID_REFERENCE_BUG at
-    # render. Only literal-producible outputs survive that, which is the
-    # correct verdict for a genuinely parentless group.
+    # A parentless group keeps its outputs here even when it cannot source them.
+    # That looks wrong, but it is load-bearing: the bogus node has to survive
+    # long enough for the post-assembly checks (`_has_unsourced_leaf`) and the
+    # disconnected-subgraph diagnostics to run on the assembled tree and report
+    # WHICH concepts split. Pruning it here instead leaves a partial plan that
+    # renders INVALID_REFERENCE_BUG for the condition args nothing produces.
     if not parents:
-        return [concept for concept in outputs if literal_producible(concept)]
+        return outputs
     available = {
         output.address for parent in parents for output in parent.output_concepts
     }

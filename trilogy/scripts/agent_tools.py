@@ -29,7 +29,11 @@ MARKER_TEMPLATE = "\n...[truncated {n} bytes]...\n"
 # has to skim rather than commit to a draft. With a regex (any regex), the
 # call is already deliberately narrowed; let it use the general budget so
 # targeted lookups don't get truncated mid-output. See ``_explore_output_cap``.
-_TRILOGY_EXPLORE_BROAD_CAP = 8192
+# The cap doubles as TRILOGY_EXPLORE_RECORD_LIMIT for session dedup, so it
+# must sit ABOVE the v3 outline payload of the largest curated fact (~9KB
+# for TPC-DS store_sales) — a payload the cap excludes is never recorded as
+# seen and can never dedup on later calls.
+_TRILOGY_EXPLORE_BROAD_CAP = 12288
 
 
 def truncate_middle(text: str, limit: int) -> str:

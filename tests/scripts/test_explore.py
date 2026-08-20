@@ -596,21 +596,96 @@ def test_explore_expand_roles_forces_full_at_v2(conformed_preql: Path):
     assert "ship_date" in payload["namespaced"]
 
 
-def test_explore_default_json_version_is_2(conformed_preql: Path):
+def test_explore_default_json_version_is_3(conformed_preql: Path):
     from trilogy.scripts.explore import _load_environment, render_version
 
-    assert render_version("json") == 2
+    assert render_version("json") == 3
+    payload = _concepts_payload(_load_environment(conformed_preql))
+    assert payload["version"] == 3
+
+
+def test_explore_v3_outlines_namespaced(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(conformed_preql))
+    assert payload["version"] == 3
+    entry = next(iter(payload["namespaced"].values()))
+    assert "concepts" not in entry
+    assert entry["members_elided"] == 1  # the year property
+    assert any(".id int" in decl for decl in entry["keys"])
+    assert "outline_note" in payload
+    # The local namespace is the query subject and never outlines.
+    local_groups = payload["namespaces"][""]
+    assert any("keys" in g for g in local_groups)
+
+
+def test_explore_v3_outline_keeps_roles_and_join(dual_binding_preql: Path):
+    from trilogy.scripts.explore import _load_environment
+
+    payload = _concepts_payload(_load_environment(dual_binding_preql))
+    combined = next(k for k in payload["namespaced"] if "," in k)
+    entry = payload["namespaced"][combined]
+    assert "roles" in entry
+    assert "concepts" not in entry
+    assert entry["members_elided"] >= 1
+
+
+def test_explore_v3_ns_filter_expands_matching_entry(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment, build_concepts_payload
+
+    env = _load_environment(conformed_preql)
+    items = [
+        (k, v)
+        for k, v in env.concepts.items()
+        if not k.startswith("__") and not k.startswith("local._env_")
+    ]
+    payload = build_concepts_payload(env, items, ns_filters=("sold_date",))
+    entry = next(iter(payload["namespaced"].values()))
+    assert "concepts" in entry
+    assert "members_elided" not in entry
+    # Nothing was outlined, so no note.
+    assert "outline_note" not in payload
+
+
+def test_explore_v3_expand_imports_renders_full(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment, build_concepts_payload
+
+    env = _load_environment(conformed_preql)
+    items = [
+        (k, v)
+        for k, v in env.concepts.items()
+        if not k.startswith("__") and not k.startswith("local._env_")
+    ]
+    payload = build_concepts_payload(env, items, expand_imports=True)
+    assert payload["version"] == 3
+    entry = next(iter(payload["namespaced"].values()))
+    assert "concepts" in entry
+
+
+def test_explore_v3_compact_kill_switch(conformed_preql: Path, monkeypatch):
+    from trilogy.scripts.explore import _load_environment
+
+    monkeypatch.setenv("TRILOGY_EXPLORE_COMPACT", "0")
     payload = _concepts_payload(_load_environment(conformed_preql))
     assert payload["version"] == 2
+    entry = next(iter(payload["namespaced"].values()))
+    assert "concepts" in entry
+
+
+def test_explore_cli_accepts_ns_flag(runner, conformed_preql: Path):
+    from trilogy.scripts.trilogy import cli
+
+    result = runner.invoke(cli, ["explore", str(conformed_preql), "--ns", "sold_date"])
+    assert result.exit_code == 0, result.output
 
 
 def test_render_version_override_restores(conformed_preql: Path):
     from trilogy.scripts.explore import render_version, render_version_override
 
-    assert render_version("json") == 2
+    assert render_version("json") == 3
     with render_version_override("json", 1):
         assert render_version("json") == 1
-    assert render_version("json") == 2
+    assert render_version("json") == 3
 
 
 @pytest.fixture

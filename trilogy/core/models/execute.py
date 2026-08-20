@@ -1359,6 +1359,12 @@ class QueryDatasource:
             rollup_concepts=unique(
                 self.rollup_concepts + other.rollup_concepts, "address"
             ),
+            # Join-analysis null-extension (outer-join padding) is stamped here at
+            # resolve time and cannot be re-derived from the concepts, so a merged
+            # copy that dropped it would silently render null-rejecting join keys.
+            nullable_concepts=unique(
+                self.nullable_concepts + other.nullable_concepts, "address"
+            ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,

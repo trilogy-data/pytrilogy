@@ -24,10 +24,20 @@ to show the marginal lift each layer adds):
 | `sql_schema` | same, **plus** a generated `schema.md` table/column map | plain SQL | `queryNN.sql` |
 | `ingest`     | an auto-ingested Trilogy model (`trilogy ingest --all` → `raw/*.preql`) | trilogy | `queryNN.preql` |
 | `enriched`   | the hand-curated Trilogy model (`tests/modeling/tpc_ds_duckdb`) | trilogy | `queryNN.preql` |
+| `enriched_docs` | enriched, **plus** the complete language reference inline in the task | trilogy | `queryNN.preql` |
 
 `sql_bare`/`sql_schema` are the **no-Trilogy baselines** (added so the funnel shows
 what Trilogy buys over raw SQL). `ingest`/`enriched` are the Trilogy legs. When
 diagnosing, remember the SQL legs write `queryNN.sql`, not `.preql`.
+
+`enriched_docs` splits "learning the language" from "using it": `enriched` keeps
+measuring whether an agent can bootstrap through `agent-info`, while
+`enriched_docs` hands it the same reference up front (byte-identical prefix
+across queries, so providers price it as cached from query 2 on) and measures
+the authoring cost alone. Its delta vs `enriched` is the per-query price of
+in-conversation language discovery; its `agent_info_directory_calls` metric
+should sit near zero, and a drift upward means the inline reference has gone
+stale relative to what agents need.
 
 ### Running the eval cases
 
