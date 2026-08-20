@@ -39,16 +39,25 @@ _CATEGORIES = ("all", "concepts", "datasources", "imports", "groups")
 #   json v1: every namespace rendered in full (role-played conformed
 #            dimensions repeat their schema once per role).
 #   json v2: conformed dimensions collapse into one combined-key entry
-#            (``"date, return_date, …": [schema]``) — the default. Imported
+#            (``"date, return_date, …": [schema]``). Imported
 #            namespaces render in the same full grouped-declaration form
 #            under ``namespaced`` (each entry pairs its schema with a
 #            per-binding ``roles`` map carrying import-line descriptions
 #            and structural provenance — see ``_role_provenance``); they
 #            are never collapsed to the old name-only leaf list.
+#   json v3: ``namespaced`` entries additionally OUTLINE by default — keys,
+#            roles, and join flag survive; member declarations collapse to a
+#            ``members_elided`` count — because the member schemas are
+#            60-plus percent of a fact payload and mostly retransmit
+#            dimensions the reader has already seen. ``--ns <alias>`` expands
+#            one entry, ``--expand-imports``/``--regex``/``--expand-roles``
+#            render full detail (the v2 shape plus the version field).
+#            ``TRILOGY_EXPLORE_COMPACT=0`` pins the default back to v2 (eval
+#            A/B kill-switch). Local namespaces always render in full.
 #   rich v1: the only rich shape so far (no conformed dedup yet).
 RENDER_TYPE_JSON = "json"
 RENDER_TYPE_RICH = "rich"
-_LATEST_RENDER_VERSION: dict[str, int] = {RENDER_TYPE_JSON: 2, RENDER_TYPE_RICH: 1}
+_LATEST_RENDER_VERSION: dict[str, int] = {RENDER_TYPE_JSON: 3, RENDER_TYPE_RICH: 1}
 _RENDER_VERSION: dict[str, int] = dict(_LATEST_RENDER_VERSION)
 
 
@@ -823,6 +832,46 @@ def _imported_payload(
     return out
 
 
+def _ns_filter_match(key: str, filters: tuple[str, ...]) -> bool:
+    """Whether a ``namespaced`` entry key (comma-joined role members, e.g.
+    ``customer, return_customer``) matches any ``--ns`` filter: the full key
+    or any single member, case-insensitively."""
+    lowered = {f.strip().lower() for f in filters}
+    if key.lower() in lowered:
+        return True
+    return any(m.strip().lower() in lowered for m in key.split(_ROLE_DELIM))
+
+
+def _outline_entry(entry: dict) -> dict:
+    """Collapse a full ``namespaced`` entry to its outline: everything except
+    the member schema survives (roles, description, join flag), plus the key
+    declarations — the joinable identity an agent must not guess — and a count
+    of elided member declarations."""
+    out = {k: v for k, v in entry.items() if k != "concepts"}
+    keys: list[str] = []
+    elided = 0
+    for group in entry.get("concepts", []):
+        for label, decls in group.items():
+            if not isinstance(decls, list):
+                continue
+            if label == "keys":
+                keys = decls
+            else:
+                elided += len(decls)
+    if keys:
+        out["keys"] = keys
+    out["members_elided"] = elided
+    return out
+
+
+_OUTLINE_NOTE = (
+    "namespaced entries are outlined: keys/roles/join only, with "
+    "members_elided counting hidden declarations. Expand one with "
+    "`explore <file> --ns <name>` (or --expand-imports for all); every "
+    "expanded field is queryable by the address shown."
+)
+
+
 def build_concepts_payload(
     env: Environment,
     concept_items: list[tuple[str, Concept]],
@@ -830,6 +879,8 @@ def build_concepts_payload(
     expand_roles: bool = False,
     version: int | None = None,
     include_hidden: bool = False,
+    expand_imports: bool = False,
+    ns_filters: tuple[str, ...] = (),
 ) -> dict:
     """Build the JSON-serializable concept dump: local namespaces rendered in
     full Trilogy declaration syntax under ``namespaces``; imported namespaces
@@ -840,11 +891,17 @@ def build_concepts_payload(
     agent prompt.
 
     ``version`` selects the payload shape (defaults to the active JSON render
-    version): v2 collapses role-played conformed dimensions into one
-    combined-key entry; v1 renders every role in full. ``expand_roles`` forces
-    the full per-role dump regardless of version."""
+    version): v3 outlines ``namespaced`` entries unless ``expand_imports``,
+    ``expand_roles``, or a matching ``ns_filters`` entry asks for members; v2
+    collapses role-played conformed dimensions into one combined-key entry;
+    v1 renders every role in full. ``expand_roles`` forces the full per-role
+    dump regardless of version."""
     if version is None:
         version = render_version(RENDER_TYPE_JSON)
+        # Eval A/B kill-switch: pin the pre-outline shape without a second
+        # checkout. Explicit ``version`` arguments are never overridden.
+        if os.environ.get("TRILOGY_EXPLORE_COMPACT") == "0":
+            version = min(version, 2)
     # Private-concept chokepoint for every payload consumer (CLI JSON, AI
     # prompt, tests). --include-hidden is the sole opt-out; the CLI having
     # already filtered is a harmless no-op here.
@@ -873,6 +930,16 @@ def build_concepts_payload(
         version,
         join_nullable,
     )
+    outlined = False
+    if imported and version >= 3 and not (expand_imports or expand_roles):
+        collapsed: dict[str, dict] = {}
+        for key, entry in imported.items():
+            if ns_filters and _ns_filter_match(key, ns_filters):
+                collapsed[key] = entry
+            else:
+                collapsed[key] = _outline_entry(entry)
+                outlined = True
+        imported = collapsed
     # One-time legend for the ``?``/``join=nullable`` markers so the
     # per-namespace flags stay one token each.
     join_note = (
@@ -886,6 +953,7 @@ def build_concepts_payload(
         "count": len(concept_items),
         "namespaces": namespaces or None,
         "namespaced": imported or None,
+        "outline_note": _OUTLINE_NOTE if outlined else None,
         "join_note": join_note,
     }
     return {k: v for k, v in payload.items() if v is not None}
@@ -900,6 +968,8 @@ def _emit_explore_json(
     include_hidden: bool,
     explored: str = "",
     reshow: bool = False,
+    expand_imports: bool = False,
+    ns_filters: tuple[str, ...] = (),
 ) -> None:
     """Emit the explore results as a stream of pretty-printed JSON events,
     honoring ``--show``. Concepts are grouped by namespace and rendered in
@@ -917,6 +987,8 @@ def _emit_explore_json(
             import_descriptions,
             expand_roles,
             include_hidden=include_hidden,
+            expand_imports=expand_imports,
+            ns_filters=ns_filters,
         )
         session = explore_seen.active_session()
         if session:
@@ -1007,11 +1079,23 @@ def _emit_explore_json(
     is_flag=True,
     default=False,
     help=(
-        "Rich output only: render imported concepts in full detail instead of "
-        "collapsing them to a name-only listing. Passing --regex also bypasses "
-        "the collapse — when you're filtering you want matching imports in "
-        "full. JSON output always renders imports in full (with role-played "
-        "conformed dimensions deduped), so this flag is a no-op there."
+        "Render imported concepts in full detail. Rich output collapses them "
+        "to a name-only listing by default; JSON (v3) outlines them to "
+        "keys/roles plus a members_elided count. Passing --regex also "
+        "bypasses the collapse — when you're filtering you want matching "
+        "imports in full."
+    ),
+)
+@click.option(
+    "--ns",
+    "ns_filters",
+    type=str,
+    multiple=True,
+    default=(),
+    help=(
+        "JSON output: expand the named namespaced entry to full member "
+        "declarations while the rest stay outlined. Takes an alias from the "
+        "outline (`--ns customer`) or a full combined key. Repeatable."
     ),
 )
 @click.option(
@@ -1045,6 +1129,7 @@ def explore(
     include_hidden: bool,
     include_builtins: bool,
     expand_imports: bool,
+    ns_filters: tuple[str, ...],
     expand_roles: bool,
     reshow: bool,
 ) -> None:
@@ -1113,6 +1198,8 @@ def explore(
             include_hidden,
             explored=str(path),
             reshow=reshow,
+            expand_imports=expand,
+            ns_filters=ns_filters,
         )
         return
 

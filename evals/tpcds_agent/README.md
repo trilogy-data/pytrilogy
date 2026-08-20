@@ -30,6 +30,53 @@ still inside them; both are recovered below.
 | 8 | `feature_array_contains_function.md` | Agent-compat sugar - `array_contains(arr, elem)` is the DuckDB/Spark spelling agents reach for; today it dies at the open paren. Ships with a wiring checklist. The bundled "unknown function name" diagnostic is the higher-leverage half. |
 | 9 | `rowset_as_connector_support.md` | Sugar only - accept `rowset name as select …`. The dead-end error is already fixed (Syntax [105]), so severity is low. |
 
+## 2026-08-20 probe wave (run 20260820-031800, filed same day - not yet folded into the rank above)
+
+Seven probes over the run's >500k sinks; every report carries a minimal repro and
+file:line root cause. Suggested severity relative to the table: b/c slot at P1
+alongside ranks 1-2; d/e are P2; f is P2 tooling; g is question/harness work. Item `a`
+(q47) is closed, see below.
+
+| | file | why |
+|---|---|---|
+| b | `bug_silent_ingest_sinks_q49_q59_q72_q77.md` | **q72 is the run's graded FAIL**: rowset boundary strips non-key nullability so rejoins use plain `=` and 404 NULL groups drop; plus union-join aggregate emits wrong grain. q59/q77: `_coalescing_presence_probe` phantom/vacuous family. q49: no bug - explore retransmission cost (see `docs/explore_compact_output_design.md`). |
+| c | `bug_keyless_join_guard_ingest_cluster.md` | **One root cause behind all 37+3 guard firings** (q05/q25/q54/q64/q67/q80/q84): aliasing every output gives ROOTs rename-only lineage reach, defeating the co-source bucket test, so a dim attr splits into a keyless bucket. 3-line repro; alias-free spelling plans fine (why the corpus never fires). Pre-guard these shipped as silent `on 1=1` cartesians, and the no-fact-key variant STILL does. |
+| d | `bug_q44_empty_unexpected_error.md` | `InlineDatasource` folds a dim scan the broadcast join still needs (demand map misattributes the `all_rows` constant) - bare `AssertionError`; and the CLI renders `str()` of it: an EMPTY error message the agent retried blind against six times. |
+| e | `bug_q14_values_list_virt_filter_binder.md` | Filtered aggregate over a KEY drops the filter mask below the dedup GroupNode (widen fallback reads the wrong output set and skips silently); union escape hatch then turns the clean missing-source error into invalid SQL with phantom `_virt_filter_*` columns. |
+| f | `bug_q17_join_condition_syntax_loop.md` | **CLOSED 2026-08-20**, see below. |
+| g | `bug_q29_cross_leg_sink.md` | Not a framework bug: question omits the sale-to-return match keys (rewording proposed inside). Harness finding: the >500k detector should read cache-adjusted tokens - reasoning-replay inflated q29/q17 raw counts ~10x over fresh cost. |
+
+## Closed after the 08-20 sweep
+
+- `bug_q17_join_condition_syntax_loop.md` - FIXED 2026-08-20. The end-of-input 202 probe now
+  runs ahead of the 225 branch in both parser backends, so an otherwise-valid post-select
+  join missing only its `;` reports "Missing closing semicolon?" rather than "Expected a
+  join condition" (`detect_join_missing_key`'s only guard - a `select` between the join and
+  the failure - can never fire in that position). The ingest leg's second spelling got its
+  own detector: Syntax [230] + `detect_join_comma_group` for a comma between join groups,
+  caret on the comma, the join-group sibling of `detect_align_missing_and` (221). The
+  query-guide nudge landed too (`trilogy/ai/syntax_examples.py`: an example that ends
+  directly after a join clause, plus `;`-terminator and comma-vs-`and` notes). Regression
+  guard: `tests/complex/test_join_missing_key_error.py`. The report's harness note (>500k
+  detector should read fresh tokens) is unaffected and still carried by
+  `bug_q29_cross_leg_sink.md`. The report file was never committed, so it is kept one more
+  commit carrying its FIXED stamp; delete it after that so the closure leaves a deletion
+  record.
+
+- `bug_q47_window_rowset_churn.md` - both P1 silent codegen bugs FIXED 2026-08-20.
+  (1) An OR-rooted `BuildConditional` child under an AND parent now renders parenthesized
+  (`_protect_conditional_child`, `trilogy/dialect/base.py`), so a pushed-down HAVING atom
+  binds to the whole OR chain instead of its last arm.
+  (2) `QueryDatasource.__add__` now carries `nullable_concepts` through a merge
+  (`trilogy/core/models/execute.py`), so outer-join padding nullability survives and the
+  windowed and window-free plans no longer disagree on LEFT OUTER vs INNER.
+  Regressions: `tests/rendering/test_engine_or_chain_precedence.py`,
+  `tests/core/processing/test_query_datasource_add_nullability.py`; both verified failing
+  with the respective fix reverted. Its two non-bug polish items were split into
+  `handoff_q47_diagnostic_polish.md`. The report file itself was never committed, so it is
+  kept one more commit carrying its FIXED stamp; delete it after that so the closure leaves
+  a deletion record.
+
 ## Known-open elsewhere
 
 `evals/tpch_agent/bug_inline_aggregate_alias_before_by_cryptic_error.md` - ranks between

@@ -92,6 +92,7 @@ from .models import (
 )
 from .projection import (
     concept_satisfiable,
+    literal_producible,
     parent_output_addresses,
     row_lineage_arguments,
     satisfiable_outputs,
@@ -4255,8 +4256,12 @@ def _has_unsourced_leaf(final: StrategyNode) -> bool:
     for node in _strategy_nodes(final):
         if node.parents or getattr(node, "datasource", None) is not None:
             continue
-        if any(
-            concept.derivation == Derivation.ROOT for concept in node.output_concepts
-        ):
+        # A leaf with neither parents nor a datasource can only render what
+        # literals alone produce. A ROOT output is the obvious violation, but so
+        # is an aggregate over one (`sum(amt)` beside a WHERE that pruned the
+        # scan away): its measure has no source either, and reading only the
+        # derivation missed it because the aggregate is not itself ROOT.
+        # Unnest-of-literal / constant leaves stay legal.
+        if any(not literal_producible(concept) for concept in node.output_concepts):
             return True
     return False
