@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildConceptArgs, BuildFilterItem
-from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
@@ -16,6 +16,16 @@ def parent_output_addresses(node: StrategyNode) -> set[str]:
         for output in parent.output_concepts
         if output.address not in parent.hidden_concepts
     }
+
+
+def renderable_addresses(node: StrategyNode) -> set[str]:
+    """Addresses `node` can project: its parents' visible outputs plus, for a leaf
+    scan, every column its datasource binds (a leaf has no parent nodes, so
+    `parent_output_addresses` alone reports nothing)."""
+    available = parent_output_addresses(node)
+    if isinstance(node, SelectNode) and node.datasource is not None:
+        available |= {c.address for c in node.datasource.output_concepts}
+    return available
 
 
 def lineage_existence_only(concept: BuildConcept) -> set[str]:
@@ -145,6 +155,31 @@ def widen_projection(
     `rebuild=False` defers the resolve to the caller — only safe while nothing
     resolves the node (or a descendant of it) before that rebuild lands."""
     changed = False
+    # A union's columns are the STACK of its arms' columns; widening the union
+    # alone claims a column no arm produces, and the renderer's union escape
+    # hatch emits it as a bare reference rather than raising (a phantom
+    # `"cheerful"."_virt_filter_*"` shipped to the db). Every arm has to compute
+    # it from its own scan, so this is all-or-nothing: one arm that cannot
+    # render it means the union cannot carry it at all.
+    if isinstance(node, UnionNode) and node.parents:
+        arm_candidates = list(input_candidates)
+        arm_outputs = list(output_concepts)
+        arm_available = [renderable_addresses(arm) for arm in node.parents]
+        for arm, available in zip(node.parents, arm_available):
+            arm_addrs = {concept.address for concept in arm.output_concepts}
+            if not all(
+                concept.address in arm_addrs or concept_satisfiable(concept, available)
+                for concept in arm_outputs
+            ):
+                return False
+        for arm, available in zip(node.parents, arm_available):
+            changed |= widen_projection(
+                arm,
+                arm_outputs,
+                input_candidates=arm_candidates,
+                available_addresses=available,
+                rebuild=rebuild,
+            )
     in_addrs = {concept.address for concept in node.input_concepts}
     out_addrs = {concept.address for concept in node.output_concepts}
     for concept in input_candidates:

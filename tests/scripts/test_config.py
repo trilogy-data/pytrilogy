@@ -1740,3 +1740,13 @@ def test_run_with_dialect_override_in_bigquery_project(tmp_path):
     (path / "constant.preql").write_text("select 1 as x;\n")
     result = CliRunner().invoke(cli, ["run", str(path / "constant.preql"), "duck_db"])
     assert result.exit_code == 0, result.output
+
+
+def test_handle_execution_exception_names_message_less_exception(capsys):
+    """A bare `assert` reaches the caller with an empty `str(e)`, which would end
+    the line at the colon and hand an agent zero signal to act on."""
+    with raises(Exit):
+        handle_execution_exception(AssertionError(), source="probe.preql")
+    combined = "".join(capsys.readouterr())
+    assert "Unexpected error in probe.preql:" in combined, combined
+    assert "AssertionError" in combined, combined

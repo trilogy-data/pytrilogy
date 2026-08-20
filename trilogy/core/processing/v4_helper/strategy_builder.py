@@ -36,7 +36,6 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
-    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
@@ -94,6 +93,7 @@ from .projection import (
     concept_satisfiable,
     literal_producible,
     parent_output_addresses,
+    renderable_addresses,
     row_lineage_arguments,
     satisfiable_outputs,
     widen_projection,
@@ -1494,16 +1494,6 @@ def _parents_already_at_input_grain(
     return True
 
 
-def _widening_inputs(node: StrategyNode) -> set[str]:
-    """Addresses `node` can project: its parents' visible outputs plus, for a leaf
-    scan, every column its datasource binds (a leaf has no parent nodes, so
-    `parent_output_addresses` alone reports nothing)."""
-    available = parent_output_addresses(node)
-    if isinstance(node, SelectNode) and isinstance(node.datasource, BuildDatasource):
-        available |= {c.address for c in node.datasource.output_concepts}
-    return available
-
-
 # A declared join key is normally one hop from the scan that binds it; the cap
 # stops a pathological chain from walking the whole plan per key.
 _JOIN_KEY_CHAIN_LIMIT = 4
@@ -1525,7 +1515,7 @@ def _widen_scan_chain(
         return True
     if not isinstance(node, (SelectNode, MergeNode)):
         return False
-    available = _widening_inputs(node)
+    available = renderable_addresses(node)
     if not concept_satisfiable(concept, available):
         if depth >= _JOIN_KEY_CHAIN_LIMIT:
             return False
@@ -1542,7 +1532,7 @@ def _widen_scan_chain(
             for below in node.parents
         ):
             return False
-        available = _widening_inputs(node)
+        available = renderable_addresses(node)
     widen_projection(
         node,
         [concept],
@@ -1702,17 +1692,13 @@ def _widen_merge_join_keys(
             continue
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
             continue
-        available = parent_output_addresses(parent)
-        # A leaf datasource SelectNode has no parent nodes, so
-        # `parent_output_addresses` is empty -- but it can still emit any column
-        # its datasource binds. Include those so a partial merge key (a fact's
-        # `?d1` column that canonicalizes to the declared join key) is carried as
-        # the join key instead of the merge cross-joining the sibling that owns
-        # the key's complete domain (a date-spine LEFT_OUTER merge: facts.d1->s1
-        # vs the spine's complete s1 -> `FULL JOIN ... on 1=1` cartesian).
-        ds = getattr(parent, "datasource", None)
-        if isinstance(ds, BuildDatasource):
-            available |= {c.address for c in ds.output_concepts}
+        # A leaf datasource scan can still emit any column its datasource binds,
+        # so a partial merge key (a fact's `?d1` column that canonicalizes to the
+        # declared join key) is carried as the join key instead of the merge
+        # cross-joining the sibling that owns the key's complete domain (a
+        # date-spine LEFT_OUTER merge: facts.d1->s1 vs the spine's complete s1 ->
+        # `FULL JOIN ... on 1=1` cartesian).
+        available = renderable_addresses(parent)
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
@@ -4149,7 +4135,7 @@ def build_strategy_node(
                     candidate = _concept_at(environment, addr)
                     if candidate is not None:
                         for parent in parents:
-                            available = parent_output_addresses(parent)
+                            available = renderable_addresses(parent)
                             if not concept_satisfiable(candidate, available):
                                 continue
                             widen_projection(
