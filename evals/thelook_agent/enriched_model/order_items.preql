@@ -9,7 +9,7 @@ import users as user;
 key id int; # order-item ID, the complete row identity
 properties id (
     sale_price numeric, # recorded sale value for this line
-    status string,
+    status enum<string>['Complete', 'Shipped'],
 );
 
 property id.item_margin <- sale_price - product.cost; # sale value less product cost

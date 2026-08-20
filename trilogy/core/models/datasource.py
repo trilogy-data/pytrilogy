@@ -268,6 +268,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     )
     where: WhereClause | None = None
     non_partial_for: WhereClause | None = None
+    # True when non_partial_for was *derived* from the defining SELECT's
+    # WHERE/HAVING (persist-with-WHERE) rather than authored as a
+    # `complete where`. The condition is already embedded in that SELECT, so a
+    # persist must not inject it again — and its HAVING atoms would be illegal
+    # as a pre-aggregation WHERE. See process_persist.
+    non_partial_for_embedded: bool = False
     status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
     incremental_by: list[ConceptRef] = Field(default_factory=list)
     partition_by: list[ConceptRef] = Field(default_factory=list)
@@ -422,6 +428,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 if self.non_partial_for
                 else None
             ),
+            non_partial_for_embedded=self.non_partial_for_embedded,
             status=self.status,
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],

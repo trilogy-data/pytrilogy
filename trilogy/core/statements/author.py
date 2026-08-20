@@ -540,6 +540,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             columns=columns,
             namespace=namespace,
             non_partial_for=WhereClause(conditional=condition) if condition else None,
+            non_partial_for_embedded=bool(condition),
         )
         return new_datasource
 

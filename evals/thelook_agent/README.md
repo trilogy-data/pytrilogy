@@ -13,12 +13,18 @@ gap instead of the user-facing recovery message.
 
 ## Fixtures shared with the regression battery
 
-`tests/modeling/thelook_duckdb` is the same model over the same data, run as a
-row-level regression battery. `db_build.py` here owns the generators, the
-counts and `SEED`; the battery imports them (tests may import evals, not the
-reverse). `enriched_model/*.preql` is deliberately a separate copy of the
-battery's model files rather than a shared directory — the agent under test
-must not be able to read the battery's reference queries sitting beside them.
+`tests/modeling/thelook_duckdb` is the same model, run as a row-level
+regression battery. Neither fixture has a hand-written row generator any more:
+both seed themselves from `trilogy unit` mock data driven by the model
+(`docs/mock_data.md`), and both assert `assert_properties` — the four
+invariants (never-ordered customers, never-sold products, an agreeing
+redundant FK, no NULL fact keys) that the `~` semantics exist to describe.
+`db_build.py` here owns that contract and the eval's scale factor.
+
+`enriched_model/*.preql` is deliberately a separate copy of the battery's model
+files rather than a shared directory — the agent under test must not be able to
+read the battery's reference queries sitting beside them. Keep the two copies
+in step; they differ only in the files that live beside them.
 
 Run the enriched leg with:
 

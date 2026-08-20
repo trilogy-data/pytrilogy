@@ -523,8 +523,112 @@ def test_mock_redundant_foreign_key_agrees_across_tables():
         "          using (order_id) where l.user_id != o.user_id)"
     ).fetchall()[0]
     assert orders == 3
-    assert lines == 100
+    assert lines > orders
     assert mismatched == 0
+
+
+_PARTIAL_CHAIN = """
+    key user_id int;
+    key order_id int;
+    key line_id int;
+    property line_id.amount float;
+
+    datasource users (id: user_id) grain (user_id) address users_tbl;
+
+    datasource orders (
+        id: order_id,
+        user_id: {user_binding},
+    )
+    grain (order_id)
+    address orders_tbl;
+
+    datasource lines (
+        id: line_id,
+        order_id: order_id,
+        user_id: ~user_id,
+        amount: amount,
+    )
+    grain (line_id)
+    address lines_tbl;
+
+    mock datasources users, orders, lines;
+"""
+
+
+def test_mock_partial_foreign_key_inherits_a_partial_source():
+    """A `~` column fixed by a key the same table binds must be looked up, not
+    cycled — even though the source binds that key `~` too. Judging the source's
+    coverage against the column's own partial prefix instead of the concept's
+    full domain skips the lookup, and the redundant key then disagrees on
+    almost every row while still looking partial."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_PARTIAL_CHAIN.format(user_binding="~user_id"))
+
+    mismatched, never_ordered, covered, users = executor.execute_raw_sql(
+        "select (select count(*) from lines_tbl l join orders_tbl o "
+        "          on l.order_id = o.id where l.user_id != o.user_id), "
+        "       (select count(*) from users_tbl u "
+        "          anti join orders_tbl o on o.user_id = u.id), "
+        "       (select count(distinct user_id) from lines_tbl), "
+        "       (select count(*) from users_tbl)"
+    ).fetchall()[0]
+    assert mismatched == 0
+    assert never_ordered > 0
+    assert 0 < covered < users
+
+
+def test_mock_partial_key_is_not_widened_by_a_complete_source():
+    """The mirror: when the determinant reaches every member of the domain,
+    inheriting it would hand the whole domain back and erase the `~`. The
+    partial binding wins — a `~` column that covers everything is the failure
+    the modifier exists to describe."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_PARTIAL_CHAIN.format(user_binding="user_id"))
+
+    covered, users = executor.execute_raw_sql(
+        "select (select count(distinct user_id) from lines_tbl), "
+        "       (select count(*) from users_tbl)"
+    ).fetchall()[0]
+    assert 0 < covered < users
+
+
+def test_mock_fact_fans_out_over_its_dimension():
+    """A fact must carry several rows per dimension member, and not the same
+    number for each: a 1:1 mock makes a row-multiplying join look identical to
+    a well-behaved one, and a uniform ratio hides skew entirely. Every member
+    still appears, because a complete binding that misses values is a model
+    error, not mock noise."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key user_id int;
+        key line_id int;
+        property line_id.amount float;
+
+        datasource users (id: user_id) grain (user_id) address users_tbl;
+        datasource lines (
+            id: line_id,
+            user_id: user_id,
+            amount: amount,
+        )
+        grain (line_id)
+        address lines_tbl;
+
+        mock datasources users, lines;
+    """)
+
+    users, lines, covered, low, high = executor.execute_raw_sql(
+        "select (select count(*) from users_tbl), "
+        "       (select count(*) from lines_tbl), "
+        "       (select count(distinct user_id) from lines_tbl), "
+        "       (select min(c) from (select count(*) c from lines_tbl "
+        "          group by user_id)), "
+        "       (select max(c) from (select count(*) c from lines_tbl "
+        "          group by user_id))"
+    ).fetchall()[0]
+    assert lines > users
+    assert covered == users
+    assert low >= 1
+    assert high > low
 
 
 def test_mock_rollup_is_computed_from_the_fact_it_summarizes():
@@ -568,6 +672,127 @@ def test_mock_rollup_is_computed_from_the_fact_it_summarizes():
     assert rows == 3
     assert rollup_count == fact_count
     assert rollup_total == pytest.approx(fact_total)
+
+
+_DECLARED_MODEL = """
+    key id int;
+    key user_id int;
+    property id.note string;
+    property id.score int[0..50];
+    property id.status string;
+
+    datasource users (id: user_id) grain (user_id) address users_tbl;
+    datasource events (
+        id: id,
+        user_id: ~?user_id,
+        note: ~?note,
+        score: score,
+        status: status,
+    )
+    grain (id)
+    address events_tbl
+    where status = 'ok';
+
+    mock datasources users, events;
+"""
+
+
+def _declared_model_row(executor):
+    return dict(
+        zip(
+            (
+                "rows",
+                "null_fk",
+                "null_note",
+                "null_score",
+                "null_id",
+                "statuses",
+                "status",
+                "low",
+                "high",
+                "covered",
+                "users",
+            ),
+            executor.execute_raw_sql(
+                "select count(*), "
+                "sum(case when user_id is null then 1 else 0 end), "
+                "sum(case when note is null then 1 else 0 end), "
+                "sum(case when score is null then 1 else 0 end), "
+                "sum(case when id is null then 1 else 0 end), "
+                "count(distinct status), min(status), "
+                "min(score), max(score), count(distinct user_id), "
+                "(select count(*) from users_tbl) from events_tbl"
+            ).fetchall()[0],
+        )
+    )
+
+
+def test_mock_nullable_column_is_sometimes_empty():
+    """A column that declares it can be empty and never is makes three-valued
+    logic unobservable — and leaves a value NULL indistinguishable from an
+    outer-join padding NULL. Grain components stay populated (a NULL there is a
+    grain violation), and nulling never costs a distinct value, which
+    validate_multi_datasource_concept would read as missing data."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DECLARED_MODEL)
+
+    row = _declared_model_row(executor)
+    assert row["null_fk"] > 0
+    assert row["null_note"] > 0
+    assert row["null_score"] == 0
+    assert row["null_id"] == 0
+    assert 0 < row["covered"] < row["users"]
+
+
+def test_mock_honours_a_datasource_where_clause():
+    """A datasource declared `where status = 'ok'` describes a table holding
+    only those rows; mocking it with every status validates the model against
+    data its own declaration says cannot exist."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DECLARED_MODEL)
+
+    row = _declared_model_row(executor)
+    assert row["statuses"] == 1
+    assert row["status"] == "ok"
+
+
+def test_mock_declared_range_includes_its_endpoints():
+    """Off-by-one and inclusive/exclusive bugs live on a range's edges, and a
+    pool that only samples the interior never lands on one."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DECLARED_MODEL)
+
+    row = _declared_model_row(executor)
+    assert row["low"] == 0
+    assert row["high"] == 50
+
+
+def test_mock_shared_address_keeps_every_bound_column():
+    """Each datasource writes its whole table, so two bindings of one address
+    with different column sets would leave the loser's columns missing from the
+    table every query against them reads."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key a_id int;
+        property a_id.label string;
+        property a_id.extra string;
+
+        datasource one (id: a_id, label: label) grain (a_id) address shared_tbl;
+        datasource two (
+            id: a_id,
+            label: label,
+            extra: extra,
+        )
+        grain (a_id)
+        address shared_tbl;
+
+        mock datasources two, one;
+    """)
+
+    columns = {
+        row[0] for row in executor.execute_raw_sql("describe shared_tbl").fetchall()
+    }
+    assert columns == {"id", "label", "extra"}
 
 
 def test_canonical_column_map_merges_namespaced_bindings():

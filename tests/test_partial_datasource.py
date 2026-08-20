@@ -312,6 +312,60 @@ query '''select 101 as customer_id, 'east' as region, 10.0 as revenue''';
     assert ds.column_level_partial_addresses == {"local.customer_id"}
 
 
+PERSIST_COMPLETE_WHERE = """
+key city string;
+key entity_id string;
+property entity_id.x float;
+
+root datasource src_all (
+    entity_id: entity_id,
+    city: city,
+    x: x,
+)
+grain (entity_id)
+address raw_entities;
+
+{target}
+grain (entity_id)
+complete where city = 'CITY_A'
+address out_b;
+"""
+
+TILDE_TARGET = """datasource out_b (
+    entity_id,
+    city,
+    ~x,
+)"""
+
+PARTIAL_TARGET = """partial datasource out_b (
+    entity_id,
+    city,
+    x,
+)"""
+
+
+@pytest.mark.parametrize("target", [TILDE_TARGET, PARTIAL_TARGET])
+def test_persist_applies_complete_where(target):
+    """A persist target's `complete where` bounds the rows it writes.
+
+    The parser accepts the clause on either a `partial datasource` or a
+    datasource with a `~` column, so both must gate the write. `src_all` makes
+    no completeness claim, so nothing upstream makes the predicate redundant
+    and it has to appear in the generated SQL.
+    """
+    from trilogy import Dialects
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(PERSIST_COMPLETE_WHERE.format(target=target))
+
+    sql = executor.update_datasource(
+        executor.environment.datasources["out_b"], dry_run=True
+    )
+
+    assert sql is not None
+    assert "'CITY_A'" in sql, f"complete where dropped from persist:\n{sql}"
+
+
 def test_column_level_partial_concepts_property():
     """The ``column_level_partial_concepts`` property resolves intrinsic-partial
     addresses to the concept objects on both Datasource and BuildDatasource.

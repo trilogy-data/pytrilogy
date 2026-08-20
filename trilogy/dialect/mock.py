@@ -7,8 +7,21 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from trilogy.constants import logger
-from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.models.author import Concept, ConceptRef, Function
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Modifier,
+    Purpose,
+)
+from trilogy.core.models.author import (
+    Comparison,
+    Concept,
+    ConceptRef,
+    Conditional,
+    Function,
+    SubselectComparison,
+)
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
     ArrayType,
@@ -20,7 +33,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     ValidatedType,
 )
-from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
 from trilogy.dialect.results import MockResult
@@ -36,6 +49,14 @@ MAP_MOCK_SIZE = 3
 # extension rows (never-ordered customers, never-sold products) exist.
 PARTIAL_COVERAGE = 0.8
 MOCK_SEED = 8675309
+# Rows multiply by this per level of entity nesting: a table referencing
+# another entity's key is a fact about it and must carry several rows per
+# member, or nothing in the mock ever multiplies rows on a join.
+FANOUT_FACTOR = 3
+MAX_FANOUT_DEPTH = 3
+# Share of a NULLABLE column's rows left empty. A column that declares it can
+# be empty and never is makes three-valued logic unobservable.
+NULL_FRACTION = 0.1
 # element types assumed for parameterless `array`/`map` declarations
 BARE_ARRAY_DEFAULT = ArrayType(type=DataType.INTEGER)
 BARE_MAP_DEFAULT = MapType(key_type=DataType.STRING, value_type=DataType.INTEGER)
@@ -192,6 +213,20 @@ BASE_GENERATORS: dict[DataType, Callable[[int, bool], list[Any]]] = {
 }
 
 
+def with_bounds(pool: list[Any], bounds: list[Any]) -> list[Any]:
+    """Seat every declared endpoint in the pool.
+
+    A range's edges are where inclusive/exclusive and off-by-one bugs live, and
+    a pool that samples the interior never lands on one. Endpoints replace
+    leading entries rather than extending the pool, so the caller's size (and
+    with it the table's row count) is unchanged.
+    """
+    missing = [b for b in dict.fromkeys(bounds) if b not in pool]
+    if not missing or len(pool) < len(missing):
+        return pool
+    return missing + pool[len(missing) :]
+
+
 def mock_validated(
     full_type: ValidatedType, scale_factor: int, is_key: bool
 ) -> list[Any]:
@@ -203,26 +238,32 @@ def mock_validated(
     ranges = full_type.ranges
     if base in (DataType.INTEGER, DataType.BIGINT):
         pool: list[int] = []
+        edges: list[Any] = []
         for r in ranges:
             lo = int(r.min) if r.min is not None else int(r.max) - 999_999  # type: ignore[arg-type]
             hi = int(r.max) if r.max is not None else int(r.min) + 999_999  # type: ignore[arg-type]
             pool.extend(range(lo, min(hi, lo + scale_factor - 1) + 1))
+            edges += [lo, hi]
         if is_key:
             # A key must not repeat: a domain smaller than scale_factor caps
             # the row count (the mock table sizes to its grain).
-            return pool[:scale_factor]
-        return [random.choice(pool) for _ in range(scale_factor)]
+            return with_bounds(pool[:scale_factor], edges)
+        return with_bounds([random.choice(pool) for _ in range(scale_factor)], edges)
     if base in (DataType.FLOAT, DataType.DOUBLE, DataType.NUMBER, DataType.NUMERIC):
         bounds: list[tuple[float, float]] = []
         for r in ranges:
             flo = float(r.min) if r.min is not None else float(r.max) - 999_999.0  # type: ignore[arg-type]
             fhi = float(r.max) if r.max is not None else float(r.min) + 999_999.0  # type: ignore[arg-type]
             bounds.append((flo, fhi))
+        edges = [edge for pair in bounds for edge in pair]
         if is_key:
             flo, fhi = bounds[0]
             step = (fhi - flo) / max(scale_factor, 1)
-            return [flo + step * i for i in range(scale_factor)]
-        return [random.uniform(*random.choice(bounds)) for _ in range(scale_factor)]
+            return with_bounds([flo + step * i for i in range(scale_factor)], edges)
+        return with_bounds(
+            [random.uniform(*random.choice(bounds)) for _ in range(scale_factor)],
+            edges,
+        )
     if base in (DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP):
         default_span = (
             timedelta(days=999) if base == DataType.DATE else timedelta(seconds=999_999)
@@ -237,17 +278,25 @@ def mock_validated(
             units = delta.days if base == DataType.DATE else int(delta.total_seconds())
             spans.append((tlo, units))
         unit = "days" if base == DataType.DATE else "seconds"
+        edges = [
+            edge
+            for tlo, units in spans
+            for edge in (tlo, tlo + timedelta(**{unit: units}))
+        ]
         if is_key:
             tlo, units = spans[0]
-            return [
-                tlo + timedelta(**{unit: i})
-                for i in range(min(scale_factor, units + 1))
-            ]
+            return with_bounds(
+                [
+                    tlo + timedelta(**{unit: i})
+                    for i in range(min(scale_factor, units + 1))
+                ],
+                edges,
+            )
         out: list[Any] = []
         for _ in range(scale_factor):
             tlo, units = random.choice(spans)
             out.append(tlo + timedelta(**{unit: random.randint(0, units)}))
-        return out
+        return with_bounds(out, edges)
     raise NotImplementedError(f"Mocking not implemented for validated type {full_type}")
 
 
@@ -444,6 +493,188 @@ def covers_pool(values: Iterable[Any], pool: list[Any]) -> bool:
         return False
 
 
+def datasource_depths(
+    datasources: Iterable[Datasource], canon: Callable[[str], str]
+) -> dict[str, int]:
+    """How many levels of entity each datasource sits above the leaves.
+
+    A datasource that binds another's single-component grain key outside its own
+    grain is a fact about that entity — an order references a customer, a sale
+    line references an order. The depth is what sizes the table: without it
+    every table is the same height, every foreign key appears exactly once, and
+    a join that multiplies rows is indistinguishable from one that doesn't.
+    """
+    datasources = list(datasources)
+    columns = {
+        ds.identifier: {canon(c.concept.address) for c in ds.concrete_columns.values()}
+        for ds in datasources
+    }
+    grains = {
+        ds.identifier: {canon(a) for a in ds.grain.components} for ds in datasources
+    }
+    owners: dict[str, str] = {}
+    for ds in datasources:
+        grain = grains[ds.identifier]
+        if len(grain) == 1:
+            owners.setdefault(next(iter(grain)), ds.identifier)
+    references = {
+        ds.identifier: {
+            owner
+            for key, owner in owners.items()
+            if owner != ds.identifier
+            and key in columns[ds.identifier]
+            and key not in grains[ds.identifier]
+        }
+        for ds in datasources
+    }
+    depths = {identifier: 0 for identifier in references}
+    # bounded rather than recursive: a reference cycle is a contradictory model,
+    # not a reason to hang
+    for _ in range(len(references)):
+        settled = True
+        for identifier, refs in references.items():
+            candidate = max((depths[r] + 1 for r in refs), default=0)
+            if candidate > depths[identifier]:
+                depths[identifier] = candidate
+                settled = False
+        if settled:
+            break
+    return depths
+
+
+LITERAL_TYPES = (str, int, float, bool, Decimal, date, datetime)
+
+
+def _conjuncts(node: Any) -> Iterable[Any]:
+    if isinstance(node, Conditional) and node.operator == BooleanOperator.AND:
+        yield from _conjuncts(node.left)
+        yield from _conjuncts(node.right)
+    else:
+        yield node
+
+
+def _declared_domain(conjunct: Any) -> tuple[str, list[Any]] | None:
+    left = getattr(conjunct, "left", None)
+    right = getattr(conjunct, "right", None)
+    if not isinstance(left, ConceptRef):
+        return None
+    if isinstance(conjunct, SubselectComparison):
+        if conjunct.operator != ComparisonOperator.IN or not isinstance(
+            right, (list, tuple)
+        ):
+            return None
+        values = [v for v in right if isinstance(v, LITERAL_TYPES)]
+        return (left.address, values) if len(values) == len(right) else None
+    if (
+        isinstance(conjunct, Comparison)
+        and conjunct.operator == ComparisonOperator.EQ
+        and isinstance(right, LITERAL_TYPES)
+    ):
+        return left.address, [right]
+    return None
+
+
+def declared_value_domains(
+    environment: Environment,
+) -> dict[str, dict[str, list[Any]]]:
+    """The values a datasource's own ``where`` clause admits, per column.
+
+    A datasource declared ``where status = 'Complete'`` describes a table that
+    holds only complete rows. Mocking it with every status validates the model
+    against data its own declaration says cannot exist — and any planner that
+    prunes, rewrites, or claims completeness on the strength of that filter is
+    then checked against a contradiction. Only conjunctions of ``=`` and ``in``
+    against literals are honoured; anything else is reported rather than
+    silently ignored.
+    """
+    out: dict[str, dict[str, list[Any]]] = {}
+    for ds in environment.datasources.values():
+        if ds.where is None:
+            continue
+        domains: dict[str, list[Any]] = {}
+        for conjunct in _conjuncts(ds.where.conditional):
+            found = _declared_domain(conjunct)
+            if found is None:
+                logger.warning(
+                    "Mock: cannot honour part of the `where` on datasource %s "
+                    "(%s); its rows may contradict the declared filter.",
+                    ds.identifier,
+                    conjunct,
+                )
+                continue
+            address, values = found
+            existing = domains.get(address)
+            domains[address] = (
+                [v for v in values if v in existing] if existing else values
+            )
+        if domains:
+            out.setdefault(ds.safe_address, {}).update(domains)
+    return out
+
+
+def punch_nulls(values: list[Any], seed: int) -> list[Any]:
+    """Empty a deterministic share of a NULLABLE column's rows, without losing
+    any distinct value.
+
+    Nothing in mock data is NULL today, so a unit run cannot see three-valued
+    logic in a filter, `COUNT(col)` diverging from `COUNT(*)`, or — the case
+    that matters most here — a value NULL behaving differently from an
+    outer-join padding NULL. Every value keeps at least one populated row so
+    the distinct-value counts `validate_multi_datasource_concept` compares are
+    unchanged; a column that loses a value to nulling would read as a
+    datasource missing data it declares.
+    """
+    try:
+        remaining: dict[Any, int] = {}
+        for value in values:
+            remaining[value] = remaining.get(value, 0) + 1
+    except TypeError:  # unhashable values can't be coverage-checked
+        return values
+    rng = random.Random(seed)
+    order = list(range(len(values)))
+    rng.shuffle(order)
+    out = list(values)
+    budget = int(len(values) * NULL_FRACTION)
+    for index in order:
+        if budget <= 0:
+            break
+        value = out[index]
+        if remaining[value] <= 1:
+            continue
+        remaining[value] -= 1
+        out[index] = None
+        budget -= 1
+    return out
+
+
+def address_column_map(
+    environment: Environment,
+) -> dict[str, dict[str, ColumnAssignment]]:
+    """Every column each physical address carries, across all the datasources
+    that bind it.
+
+    Each datasource writes its whole table, so where several bind one address
+    the last write wins — and if their column sets differ, the winner drops
+    columns the others need. The table is one table: it gets the union. A
+    column stays partial only if every binding of it is partial, since one
+    complete binding means the physical column covers its domain.
+    """
+    out: dict[str, dict[str, ColumnAssignment]] = {}
+    for ds in environment.datasources.values():
+        columns = out.setdefault(ds.safe_address, {})
+        for alias, column in ds.concrete_columns.items():
+            existing = columns.get(alias)
+            if existing is None:
+                columns[alias] = column
+            elif existing.is_complete or column.is_complete:
+                columns[alias] = ColumnAssignment(
+                    alias=existing.alias,
+                    concept=existing.concept,
+                    modifiers=[m for m in existing.modifiers if m != Modifier.PARTIAL],
+                )
+    return out
+
+
 def cycle_offset(address: str, size: int) -> int:
     """Where a key's cycle starts, keyed on the concept so the sequence is
     identical in every table that binds it.
@@ -466,6 +697,8 @@ class MockManager:
         self.concept_mocks: dict[str, Any] = {}
         self.scale_factor = scale_factor
         self.canonical = canonical_column_map(environment)
+        self.address_columns = address_column_map(environment)
+        self.value_domains = declared_value_domains(environment)
         # Concepts that must be unique-per-row to satisfy any datasource grain.
         # Without this, an aggregate datasource grained on a non-KEY concept
         # (e.g. a date) gets duplicate rows and fails grain validation.
@@ -483,6 +716,23 @@ class MockManager:
         # determinant address -> dependent address -> {key value: value}, from
         # every single-key datasource already mocked.
         self.dependencies: dict[str, dict[str, dict[Any, Any]]] = {}
+        depths = datasource_depths(environment.datasources.values(), self.canon)
+        self.row_targets = {
+            identifier: scale_factor * FANOUT_FACTOR ** min(depth, MAX_FANOUT_DEPTH)
+            for identifier, depth in depths.items()
+        }
+        # A concept's pool sizes to the SHALLOWEST table binding it — its owning
+        # entity. Sizing it to the deepest would give a denormalized property
+        # more distinct values in the fact than in the dimension, which
+        # validate_multi_datasource_concept reads as a missing-values bug.
+        self.concept_scale: dict[str, int] = {}
+        for ds in environment.datasources.values():
+            target = self.row_targets[ds.identifier]
+            for column in ds.concrete_columns.values():
+                address = self.canon(column.concept.address)
+                self.concept_scale[address] = min(
+                    self.concept_scale.get(address, target), target
+                )
 
     def canon(self, address: str) -> str:
         return self.canonical.get(address, address)
@@ -493,6 +743,7 @@ class MockManager:
             return False
         is_key = address in self.key_addresses
         cast_target = self.cast_targets.get(address)
+        size = self.concept_scale.get(address, self.scale_factor)
         try:
             if (
                 cast_target is not None
@@ -500,15 +751,13 @@ class MockManager:
             ):
                 self.concept_mocks[address] = [
                     str(v)
-                    for v in mock_datatype(
-                        cast_target, cast_target, self.scale_factor, is_key
-                    )
+                    for v in mock_datatype(cast_target, cast_target, size, is_key)
                 ]
             else:
                 self.concept_mocks[address] = mock_datatype(
                     concept.datatype,
                     concept.output_datatype,
-                    self.scale_factor,
+                    size,
                     is_key,
                 )
         except NotImplementedError as e:
@@ -522,8 +771,6 @@ class MockManager:
         header: str,
         headers: list[str],
         canon_by_header: dict[str, str],
-        pool: list[Any],
-        is_partial: bool,
     ) -> tuple[str, dict[Any, Any]] | None:
         """The column in this table whose value fixes ``header``'s, if one of
         the already-mocked datasources established that dependency."""
@@ -532,13 +779,8 @@ class MockManager:
             if other == header:
                 continue
             mapping = self.dependencies.get(canon_by_header[other], {}).get(address)
-            if mapping is None:
-                continue
-            # Looking a partial column up through a complete source would hand
-            # back the whole domain and erase the `~`.
-            if is_partial and covers_pool(mapping.values(), pool):
-                continue
-            return other, mapping
+            if mapping is not None:
+                return other, mapping
         return None
 
     def cycled(self, address: str, pool: list[Any], rows: int) -> list[Any]:
@@ -547,58 +789,87 @@ class MockManager:
         )
         return [pool[(i + offset) % len(pool)] for i in range(rows)]
 
+    def multiplied(
+        self, address: str, pool: list[Any], rows: int, salt: str
+    ) -> list[Any]:
+        """A foreign key's values across a fact: every member at least once,
+        the surplus spread at random.
+
+        Every member has to appear or a complete binding looks like it is
+        missing values, but giving them all the *same* number of rows is its own
+        fiction — no customer has the mean order count, and a uniform ratio
+        hides both skew handling and the difference between an aggregate that
+        double-counts and one that doesn't. Drawing the surplus independently
+        per column also decorrelates two foreign keys of equal cardinality,
+        which cycling in lockstep pins to a diagonal.
+        """
+        if rows <= len(pool):
+            return self.cycled(address, pool, rows)
+        rng = random.Random(crc32(f"{salt}|{address}|{rows}".encode()))
+        counts = [1] * len(pool)
+        for _ in range(rows - len(pool)):
+            counts[rng.randrange(len(pool))] += 1
+        values = [value for value, count in zip(pool, counts) for _ in range(count)]
+        rng.shuffle(values)
+        return values
+
     def column_values(
         self,
         concepts: list[Concept | ConceptRef],
         headers: list[str],
         grain: set[str],
         partial_headers: set[str],
+        rows: int,
+        salt: str,
+        header_domains: dict[str, list[Any]] | None = None,
     ) -> dict[str, list[Any]]:
+        header_domains = header_domains or {}
         pools = [
-            (
-                partial_pool(self.concept_mocks[self.canon(c.address)])
-                if h in partial_headers
-                else self.concept_mocks[self.canon(c.address)]
+            (partial_pool(pool) if h in partial_headers else pool)
+            for h, pool in (
+                (h, header_domains.get(h) or self.concept_mocks[self.canon(c.address)])
+                for h, c in zip(headers, concepts)
             )
-            for h, c in zip(headers, concepts)
         ]
         canon_by_header = {h: self.canon(c.address) for h, c in zip(headers, concepts)}
         grain_lens = [
             len(pool) for h, pool in zip(headers, pools) if canon_by_header[h] in grain
         ]
-        # Every independent column cycles its own pool, so row i of a grain
-        # column is pool[(i + offset) % len]: the grain tuple stays unique
-        # through the lcm of its components' domain sizes (equal rows require
-        # i ≡ j mod every length, whatever the offsets). A composite grain over
-        # small domains therefore fills the combination space rather than
-        # capping at its smallest column, while each concept's distinct-value
-        # set stays the same in every table — which
-        # validate_multi_datasource_concept compares.
-        n = min(
-            self.scale_factor,
-            math.lcm(*grain_lens) if grain_lens else self.scale_factor,
-        )
+        # A grain column cycles its own pool, so row i is pool[(i + offset) %
+        # len]: the grain tuple stays unique through the lcm of its components'
+        # domain sizes (equal rows require i ≡ j mod every length, whatever the
+        # offsets). A composite grain over small domains therefore fills the
+        # combination space rather than capping at its smallest column, while
+        # each concept's distinct-value set stays the same in every table —
+        # which validate_multi_datasource_concept compares.
+        n = min(rows, math.lcm(*grain_lens) if grain_lens else rows)
         pool_by_header = dict(zip(headers, pools))
         determined: dict[str, tuple[str, dict[Any, Any]]] = {}
         for header in headers:
             if canon_by_header[header] in grain:
                 continue
-            found = self._determinant(
-                header,
-                headers,
-                canon_by_header,
-                pool_by_header[header],
-                header in partial_headers,
-            )
+            found = self._determinant(header, headers, canon_by_header)
             if found:
                 determined[header] = found
-        data: dict[str, list[Any]] = {}
-        for header in headers:
-            if header in determined:
-                continue
-            data[header] = self.cycled(
-                canon_by_header[header], pool_by_header[header], n
+        # a key bound outside this table's own grain is a foreign key: it is
+        # allowed — required — to repeat
+        foreign = {
+            h
+            for h in headers
+            if canon_by_header[h] not in grain
+            and canon_by_header[h] in self.key_addresses
+        }
+        fills = {
+            h: (
+                self.multiplied(canon_by_header[h], pool_by_header[h], n, salt)
+                if h in foreign
+                else self.cycled(canon_by_header[h], pool_by_header[h], n)
             )
+            for h in headers
+        }
+        data: dict[str, list[Any]] = {
+            h: fills[h] for h in headers if h not in determined
+        }
         pending = list(determined)
         while pending:
             resolved = [h for h in pending if determined[h][0] in data]
@@ -607,16 +878,30 @@ class MockManager:
             for header in resolved:
                 source, mapping = determined[header]
                 keys = data[source]
-                data[header] = (
+                projected = (
                     [mapping[k] for k in keys]
                     if all(k in mapping for k in keys)
-                    else self.cycled(canon_by_header[header], pool_by_header[header], n)
+                    else None
                 )
+                # Honour the `~` over the dependency when the two disagree: if
+                # inheriting would reach every member of the domain, the model
+                # is over-constrained (a complete determinant fixing a partial
+                # dependent), and a partial binding that covers everything is
+                # the failure this generator exists to prevent. Judged on what
+                # the determinant actually holds here, not on the source's
+                # whole mapping — a partial determinant projects to a subset.
+                if projected is None or (
+                    header in partial_headers
+                    and covers_pool(
+                        projected, self.concept_mocks[canon_by_header[header]]
+                    )
+                ):
+                    data[header] = fills[header]
+                else:
+                    data[header] = projected
                 pending.remove(header)
         for header in pending:
-            data[header] = self.cycled(
-                canon_by_header[header], pool_by_header[header], n
-            )
+            data[header] = fills[header]
         return {header: data[header] for header in headers}
 
     def register_dependencies(
@@ -650,16 +935,44 @@ class MockManager:
         concepts: list[Concept | ConceptRef] = []
         headers: list[str] = []
         partial_headers: set[str] = set()
-        for alias, column in datasource.concrete_columns.items():
+        nullable_headers: set[str] = set()
+        domains = self.value_domains.get(datasource.safe_address, {})
+        header_domains: dict[str, list[Any]] = {}
+        bindings = self.address_columns.get(
+            datasource.safe_address, datasource.concrete_columns
+        )
+        for alias, column in bindings.items():
             self.mock_concept(column.concept)
             concepts.append(column.concept)
             headers.append(alias)
             if Modifier.PARTIAL in column.modifiers:
                 partial_headers.add(alias)
+            if Modifier.NULLABLE in column.modifiers:
+                nullable_headers.add(alias)
+            if column.concept.address in domains:
+                header_domains[alias] = domains[column.concept.address]
         grain = {self.canon(a) for a in datasource.grain.components}
         canon_by_header = {h: self.canon(c.address) for h, c in zip(headers, concepts)}
-        data = self.column_values(concepts, headers, grain, partial_headers)
+        data = self.column_values(
+            concepts,
+            headers,
+            grain,
+            partial_headers,
+            self.row_targets.get(datasource.identifier, self.scale_factor),
+            datasource.safe_address,
+            header_domains,
+        )
         self.register_dependencies(grain, headers, canon_by_header, data)
+        for header in nullable_headers:
+            # after the dependency pass: a NULL determinant has nothing to look
+            # its dependents up by. Grain components stay populated — a NULL
+            # there is a grain violation, not a nullable value.
+            if canon_by_header[header] in grain:
+                continue
+            data[header] = punch_nulls(
+                data[header],
+                crc32(f"{datasource.safe_address}|{header}".encode()),
+            )
         columns: dict[str, Any] = {}
         for header, concept in zip(headers, concepts):
             explicit = arrow_column_type(concept.datatype)
@@ -766,23 +1079,48 @@ def handle_processed_mock_statement(
     query: ProcessedMockStatement, environment: Environment, executor
 ) -> MockResult:
     """Handle processed mock statements."""
+    mock_environment(environment, executor, targets=list(query.targets))
+    return MockResult(
+        [{"target": target, "status": "mocked"} for target in query.targets],
+        ["target", "status"],
+    )
+
+
+def mock_environment(
+    environment: Environment,
+    executor,
+    targets: list[str] | None = None,
+    scale_factor: int = DEFAULT_SCALE_FACTOR,
+    address_for: Callable[[Datasource], str] | None = None,
+) -> None:
+    """Write a mock table for every named datasource (all of them by default).
+
+    ``scale_factor`` sizes the shallowest entity; facts above it grow by
+    ``FANOUT_FACTOR`` per level. ``address_for`` names the stand-in table, for
+    callers that need something other than the datasource's own address.
+    """
     # A fixture that changes shape between runs is not a fixture: a filter that
     # matched two rows yesterday can match none today. Restored afterwards so
     # mocking a datasource mid-script doesn't reseed the caller's RNG.
     rng_state = random.getstate()
     random.seed(MOCK_SEED)
     try:
-        return _mock_targets(query, environment, executor)
+        _mock_targets(environment, executor, targets, scale_factor, address_for)
     finally:
         random.setstate(rng_state)
 
 
 def _mock_targets(
-    query: ProcessedMockStatement, environment: Environment, executor
-) -> MockResult:
-    mock_manager = MockManager(environment)
+    environment: Environment,
+    executor,
+    target_names: list[str] | None,
+    scale_factor: int,
+    address_for: Callable[[Datasource], str] | None = None,
+) -> None:
+    address_for = address_for or (lambda ds: safe_name(ds.safe_address))
+    mock_manager = MockManager(environment, scale_factor=scale_factor)
     targets: list[Datasource] = []
-    for target in query.targets:
+    for target in target_names or list(environment.datasources.keys()):
         datasource = environment.datasources.get(target)
         if not datasource:
             raise ValueError(f"Datasource {target} not found in environment")
@@ -792,7 +1130,7 @@ def _mock_targets(
     for datasource in synthesis_order(
         [ds for ds in targets if ds not in rollups], mock_manager.canon
     ):
-        mock_datasource(datasource, mock_manager, executor)
+        mock_datasource(datasource, mock_manager, executor, address_for(datasource))
         available.add(datasource.identifier)
     pending = list(rollups)
     while pending:
@@ -808,17 +1146,17 @@ def _mock_targets(
                     "synthesizing its columns independently.",
                     datasource.identifier,
                 )
-                mock_datasource(datasource, mock_manager, executor)
+                mock_datasource(
+                    datasource, mock_manager, executor, address_for(datasource)
+                )
                 available.add(datasource.identifier)
             break
         for datasource in ready:
-            derive_datasource(datasource, environment, executor, available)
+            derive_datasource(
+                datasource, environment, executor, available, address_for(datasource)
+            )
             available.add(datasource.identifier)
             pending.remove(datasource)
-    return MockResult(
-        [{"target": target, "status": "mocked"} for target in query.targets],
-        ["target", "status"],
-    )
 
 
 def rollup_is_derivable(
@@ -842,6 +1180,7 @@ def derive_datasource(
     environment: Environment,
     executor,
     available: set[str],
+    address: str,
 ) -> None:
     """Compute a rollup's rows from the tables already mocked, the same move a
     hand-written fixture makes with a CTAS: the aggregate is then consistent
@@ -868,7 +1207,6 @@ def derive_datasource(
         sql = executor.generate_sql(text)[-1]
     finally:
         executor.environment = original
-    address = safe_name(datasource.safe_address)
     columns = ", ".join(f'"{header}"' for header in headers)
     executor.execute_write_sql(
         f"CREATE OR REPLACE TABLE {address} ({columns}) AS "
@@ -877,14 +1215,15 @@ def derive_datasource(
     datasource.address = Address(location=address)
 
 
-def mock_datasource(datasource: Datasource, manager: MockManager, executor):
+def mock_datasource(
+    datasource: Datasource, manager: MockManager, executor, address: str
+):
     table = manager.create_mock_table(datasource)
 
     # duckdb load the pyarrow table
     executor.execute_raw_sql(
         "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
     )
-    address = safe_name(datasource.safe_address)
     executor.execute_write_sql(
         f"""CREATE OR REPLACE TABLE {address} AS SELECT * FROM mock_tbl"""
     )

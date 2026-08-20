@@ -3,9 +3,19 @@
 
 key id int; # product ID
 properties id (
-    brand string,
-    category string,
-    department string,
+    brand enum<string>[
+        'Brand 01', 'Brand 02', 'Brand 03', 'Brand 04', 'Brand 05',
+        'Brand 06', 'Brand 07', 'Brand 08', 'Brand 09', 'Brand 10',
+        'Brand 11', 'Brand 12', 'Brand 13', 'Brand 14', 'Brand 15',
+        'Brand 16', 'Brand 17', 'Brand 18', 'Brand 19', 'Brand 20',
+        'Brand 21', 'Brand 22', 'Brand 23', 'Brand 24', 'Brand 25'
+    ],
+    category enum<string>[
+        'Accessories', 'Active', 'Denim', 'Dresses',
+        'Fashion Hoodies & Sweatshirts', 'Intimates', 'Outerwear & Coats',
+        'Pants', 'Shorts', 'Tops & Tees'
+    ],
+    department enum<string>['Men', 'Women'],
     retail_price numeric,
     cost numeric,
 );
