@@ -1,6 +1,6 @@
 # Roadmap: accept `as` as a connector for `rowset` definitions (`rowset name as select …`)
 
-**Re-verified 2026-08-16 (`a65b13c9c`) — only the enhancement remains.** The cryptic dead-end error is fixed: `rowset base as select …` now raises `Syntax [105]` naming `<-` as the connector. The grammar still rejects `as` (`trilogy/parsing/trilogy.lark:47`, `trilogy/scripts/dependency/src/trilogy.pest:286-289`). Agent-efficiency severity is now low.
+**Re-verified 2026-08-20 (`6bdb4d7b4`) — only the enhancement remains.** The cryptic dead-end error is fixed: `rowset base as select …` now raises `Syntax [105]` naming `<-` as the connector. The grammar still rejects `as` (`trilogy/parsing/trilogy.lark:47`, `trilogy/scripts/dependency/src/trilogy.pest:286-289`). Agent-efficiency severity is now low.
 
 **Status:** OPEN — proposed grammar enhancement (support it), not just a better error.
 **Surfaced by:** TPC-DS q05 enriched eval — the agent wrote `rowset base as select …` and got a

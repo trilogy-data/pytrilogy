@@ -1,6 +1,6 @@
 # bug q05 — silent wrong money sums from `::float` union placeholders (float32 drift)
 
-**Re-verified OPEN 2026-08-16 (`a65b13c9c`), but the severity claim below is now STALE and the bug is narrower.**
+**Re-verified OPEN 2026-08-20 (`6bdb4d7b4`), but the severity claim below is now STALE and the bug is narrower.**
 
 `DataType.DOUBLE` exists and renders as `double` (`trilogy/dialect/base.py:408`); `0::double` parses and accumulates in float64, so the drift **is** fixable at the model layer today. Two things remain wrong:
 

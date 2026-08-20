@@ -162,6 +162,31 @@ def _render_aggregate(node: Any) -> str:
     return rendered
 
 
+def scalar_where_aggregate_advice(alias: str, node: Any) -> str:
+    """Advice for a WHERE aggregate a grainless select also projects.
+
+    A WHERE aggregate gates on the WHERE-unfiltered universe while the
+    projection is filtered, so the two are different numbers. A grouped select
+    keys them apart by its grain; a grainless one has no such key, and `alias`
+    would have to name both. Both readings are reachable today, so name both
+    instead of routing everything to HAVING: HAVING gates the filtered value,
+    an explicitly pinned grain gates the unfiltered one.
+    """
+    sig = _aggregate_full_signature(node)
+    rendered = _render_aggregate(node)
+    if rendered and sig is not None and not sig[2]:
+        unfiltered = f"write it as `{rendered} by * > ...` in WHERE"
+    else:
+        unfiltered = "give the WHERE aggregate an explicit `by <grain>`"
+    return (
+        f"a select with no grouping key has no grain to keep the two apart, so "
+        f"`{alias}` would name both the WHERE-filtered value you are selecting "
+        f"and the unfiltered value you are gating on. Pick one: to gate on the "
+        f"selected (filtered) value, use `having {alias} > ...`; to gate on the "
+        f"whole-table value, {unfiltered}."
+    )
+
+
 def _collect_condition_aggregates(node: Any) -> list[Any]:
     """Walk a WHERE/HAVING conditional tree and return outer aggregate nodes.
 

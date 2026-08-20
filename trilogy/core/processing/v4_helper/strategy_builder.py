@@ -2935,9 +2935,16 @@ def _filter_arg_parents(
             reverse=True,
         )
         gid = candidates[0]
-        concepts.append(
-            next(o for o in built[gid].output_concepts if o.address == addr)
-        )
+        supplier = built[gid]
+        concept = next(o for o in supplier.output_concepts if o.address == addr)
+        # The group is being pulled in PRECISELY to supply this column, so a
+        # projection that hides it defeats the purpose: the FINAL merge reads
+        # parents' `usable_outputs`, so a hidden-only supplier trips the node
+        # input invariant instead of rendering (a correlated inline subquery
+        # whose rowset hides its own correlation key).
+        if addr in supplier.hidden_concepts:
+            supplier.unhide_output_concepts([concept])
+        concepts.append(concept)
         if gid not in seen:
             seen.add(gid)
             nodes.append(built[gid])

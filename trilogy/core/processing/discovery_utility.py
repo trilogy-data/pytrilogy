@@ -797,6 +797,76 @@ def filter_disconnect_context(output_concepts: list[BuildConcept]) -> str:
     return ""
 
 
+def _reachable_components(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    comp_of: dict[str, int],
+) -> set[int]:
+    """Component ids the concept's own row sources land in, walking its whole
+    lineage. A single-row aggregate has no component of its own; its sources do."""
+    found: set[int] = set()
+    for address in {concept.address} | get_upstream_concepts(concept):
+        resolved = environment.concepts.get(address)
+        if resolved is None or _crossjoinable(resolved):
+            continue
+        for node in _anchor_nodes(resolved):
+            if node in comp_of:
+                found.add(comp_of[node])
+    return found
+
+
+def raise_if_where_population_split(
+    outputs: list[BuildConcept],
+    conditions: "BuildWhereClause | None",
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+    line_number: int | None = None,
+) -> None:
+    """Post-failure refiner: a top-level WHERE defines ONE row population, so every
+    output must read from a source the filter can reach.
+
+    ``raise_if_disconnected_for`` skips single-row outputs as freely crossjoinable.
+    That is right with no WHERE (two scalar aggregates over unrelated models are a
+    well-defined cross join) and wrong with one, because an output whose source no
+    join relates to the filter would ride through silently unfiltered. Anchor those
+    skipped outputs by their upstream row sources instead and name the split. Only
+    called once discovery has already failed, so it can only sharpen the message."""
+    if conditions is None:
+        return
+    filter_args = [c for c in conditions.row_arguments if not _crossjoinable(c)]
+    if not filter_args:
+        return
+    comp_of, _ = _component_map(environment, g)
+    filter_components: set[int] = set()
+    for arg in filter_args:
+        filter_components |= _reachable_components(arg, environment, comp_of)
+    if not filter_components:
+        return
+    stranded = [
+        c
+        for c in outputs
+        if (components := _reachable_components(c, environment, comp_of))
+        and not components & filter_components
+    ]
+    if not stranded:
+        return
+    filter_addrs = sorted(_strip_default_namespace(c.address) for c in filter_args)
+    stranded_addrs = sorted(_strip_default_namespace(c.address) for c in stranded)
+    location = f" (statement at line {line_number})" if line_number else ""
+    raise DisconnectedConceptsException(
+        f"WHERE input(s) {filter_addrs} cannot restrict output(s) "
+        f"{stranded_addrs}{location}: no join or merge relates the filter's source "
+        "to the source of those outputs, so the WHERE has no single row population "
+        "to define -- the outputs would cross-join in unfiltered. Add a join/merge "
+        "relating them, or scope the filter to the source it belongs to with an "
+        "inline filtered aggregate (e.g. `sum(x ? <condition>)`).",
+        subgraphs=[
+            [c.address for c in stranded],
+            [c.address for c in filter_args],
+        ],
+    )
+
+
 def raise_if_filter_disconnected(
     output_concepts: list[BuildConcept],
     environment: BuildEnvironment,

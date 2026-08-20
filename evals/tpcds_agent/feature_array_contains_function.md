@@ -1,6 +1,8 @@
 # Feature: add an `array_contains(arr, elem)` function
 
-Status: PROPOSED. Motivated by run `20260817-013108` (deepseek-v4-flash),
+Status: PROPOSED. **Re-verified OPEN 2026-08-20 (`6bdb4d7b4`)** - no
+`array_contains`/`list_contains` anywhere in `trilogy/`; the call still dies at
+the open paren. Motivated by run `20260817-013108` (deepseek-v4-flash),
 enriched q08: the agent wrote
 `where array_contains(split(zips, ','), pref_zip.zip)` (standard DuckDB/Spark
 spelling) and got a raw pest caret error, because no such function exists:
@@ -19,7 +21,7 @@ The parser treats the unknown name as a concept identifier and dies at the
 open paren, which reads as nonsense to an agent (see the related
 error-message note at the bottom).
 
-## Current state (verified 2026-08-16)
+## Current state (verified 2026-08-20)
 
 - No `array_contains` / `list_contains` anywhere in the repo.
 - Existing array functions in `trilogy/core/enums.py` (FunctionType, lines
@@ -27,12 +29,12 @@ error-message note at the bottom).
   `ARRAY_TO_STRING`, `ARRAY_FILTER`, `GENERATE_ARRAY`; plus `ARRAY_AGG`.
 - `CONTAINS` exists but is string containment; `REGEXP_CONTAINS` likewise.
 - The membership idiom `x in <array-expr>` already covers the semantic need
-  in WHERE (plans via the existence/unnest machinery), but it currently has a
-  planning bug when projected next to an aggregate - see
-  `bug_q08_split_membership_projection_with_aggregate.md`. A plain scalar
-  `array_contains` renders as a simple boolean expression and would sidestep
-  that machinery entirely, so it is both an agent-compat feature AND a
-  workaround for that bug's shape.
+  in WHERE, and plans via the existence/unnest machinery. The companion
+  planning bug this feature once doubled as a workaround for (a projected
+  `x in split(param, ',')` alongside an aggregate, sentineling the split's
+  virt concept) no longer reproduces as of 2026-08-20, so the case for
+  `array_contains` is now purely agent compatibility: it is the spelling
+  DuckDB and Spark users reach for first.
 
 ## Proposed semantics
 

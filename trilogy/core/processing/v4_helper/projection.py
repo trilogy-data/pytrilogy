@@ -85,12 +85,37 @@ def concept_satisfiable(
     return result
 
 
+def literal_producible(concept: BuildConcept, _seen: set[str] | None = None) -> bool:
+    """Renderable with no row parent at all: a constant, or a value whose whole
+    lineage bottoms out in literals (`sum(1)`, a parameter, `unnest([1,2])`).
+
+    Distinct from `concept_satisfiable`, which reads "no row arguments" as
+    unsatisfiable because with parents present a lineage that reaches nothing
+    is a dead end. Without parents that same shape is the ONLY thing that can
+    still render, so it needs its own rule rather than a shared one."""
+    if concept.derivation == Derivation.CONSTANT:
+        return True
+    if concept.lineage is None or concept.derivation == Derivation.ROOT:
+        return False
+    seen = _seen if _seen is not None else set()
+    if concept.address in seen:
+        return True
+    seen.add(concept.address)
+    return all(literal_producible(arg, seen) for arg in row_lineage_arguments(concept))
+
+
 def satisfiable_outputs(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
 ) -> list[BuildConcept]:
+    # No parents is not a free pass: a group whose parents ALL failed to build
+    # (disconnected islands under a shared WHERE) reaches here with an empty
+    # list, and returning `outputs` unchanged lets an aggregate-over-nothing
+    # node build with no source for its row inputs: INVALID_REFERENCE_BUG at
+    # render. Only literal-producible outputs survive that, which is the
+    # correct verdict for a genuinely parentless group.
     if not parents:
-        return outputs
+        return [concept for concept in outputs if literal_producible(concept)]
     available = {
         output.address for parent in parents for output in parent.output_concepts
     }

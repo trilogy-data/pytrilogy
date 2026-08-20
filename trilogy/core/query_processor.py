@@ -73,6 +73,7 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
+    raise_if_where_population_split,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     describe_incomplete_partitions,
@@ -719,6 +720,20 @@ def _plan_query_node(
             build_environment,
             graph,
             extra_required=list(conditions.row_arguments) if conditions else None,
+        )
+        # Single-row outputs are skipped as crossjoinable by the checks above, so
+        # a WHERE that can reach only one of several scalar-aggregate islands
+        # slips past both. Name that split rather than dumping the output list.
+        raise_if_where_population_split(
+            list(build_statement.output_components),
+            conditions,
+            build_environment,
+            graph,
+            line_number=(
+                build_statement.meta.line_number
+                if isinstance(build_statement, BuildSelectLineage)
+                else None
+            ),
         )
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
