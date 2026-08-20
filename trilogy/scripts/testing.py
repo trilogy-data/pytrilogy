@@ -184,6 +184,7 @@ def _execute_script_for_test(
     quiet: bool,
     test_types: frozenset[str],
     agent_report: bool,
+    scale_factor: int | None = None,
 ) -> ExecutionStats:
     """Shared unit/integration body: parse, validate the environment for the
     selected scope, then run any embedded agent questions. ``mock`` selects the
@@ -199,7 +200,9 @@ def _execute_script_for_test(
     pristine_env = exec.environment.duplicate() if mock and agent_enabled else None
     scope = _environment_scope(test_types)
     if scope is not None:
-        validate_environment(exec, mock=mock, quiet=quiet, scope=scope)
+        validate_environment(
+            exec, mock=mock, quiet=quiet, scope=scope, scale_factor=scale_factor
+        )
         stats.validate_count = len(exec.environment.datasources)
     if agent_enabled:
         _run_agent_questions(
@@ -240,6 +243,7 @@ def execute_script_for_unit(
     quiet: bool = False,
     test_types: frozenset[str] = DEFAULT_TEST_TYPES,
     agent_report: bool = True,
+    scale_factor: int | None = None,
 ) -> ExecutionStats:
     """Execute a script for the 'unit' command (parse + mock validate)."""
     return _execute_script_for_test(
@@ -249,6 +253,7 @@ def execute_script_for_unit(
         quiet=quiet,
         test_types=test_types,
         agent_report=agent_report,
+        scale_factor=scale_factor,
     )
 
 
@@ -599,6 +604,12 @@ def integration(
     default=None,
     help="Build into this deployment environment (overrides the activated one)",
 )
+@option(
+    "--scale",
+    type=int,
+    default=None,
+    help="Rows to mock for the shallowest entity (facts above it still fan out)",
+)
 @report_options
 @pass_context
 def unit(
@@ -612,6 +623,7 @@ def unit(
     include_types: tuple[str, ...],
     agent_report: bool,
     environment: str | None,
+    scale: int | None,
     report_file: str | None,
     run_id: str | None,
 ):
@@ -647,6 +659,7 @@ def unit(
                         execute_script_for_unit,
                         test_types=resolve_test_types(skip_types, include_types),
                         agent_report=agent_report,
+                        scale_factor=scale,
                     ),
                     execution_mode=ExecutionMode.UNIT,
                 )

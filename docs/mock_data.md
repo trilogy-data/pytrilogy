@@ -13,24 +13,36 @@ invisible.
 ## The row-count contract
 
 One value pool per concept (`MockManager.mock_concept`); key pools are dense,
-non-repeating sequences. `create_mock_table` fills each grain column by cycling
-its pool — row `i` gets `pool[(i + offset) % len(pool)]` — and sizes the table
-to `min(row_target, lcm(grain pool sizes))`. The grain tuple stays unique
-through that lcm (equal rows require `i ≡ j` modulo every component's length),
-so a composite grain over small domains fills the combination space instead of
-capping at its smallest column, and every table sees the same distinct-value
-set per concept — which `validate_multi_datasource_concept` compares.
+non-repeating sequences. `create_mock_table` sizes the table to
+`min(row_target, product of the grain pool sizes)` and fills its grain columns
+from `grain_indices`, so every table sees the same distinct-value set per
+concept — which `validate_multi_datasource_concept` compares.
 
-`offset` is `cycle_offset`: a per-concept rotation. Without it two dense keys
-cycling from zero pair one-to-one, `user_id` equals `product_id` on every row,
-and a join through the wrong key is indistinguishable from the right one.
+`grain_indices` is what makes a composite grain more than a diagonal. The widest
+component cycles its pool; each later one *also* advances on every lap of the
+ones before it, by a step chosen coprime to its pool size. Writing `i = q*d + r`
+with `d` the product of the earlier sizes, component `j` takes index
+`(r + q*(d + step)) mod L`, which is injective in `q` for each `r` — so the
+tuple is unique across the whole cross product rather than repeating at the lcm
+of the sizes, while `d >= L` keeps each component's first `L` rows a full walk
+of its pool. Cycling independently instead gave a bridge grained on two
+100-member keys 100 of its 10,000 pairs, one per member: nothing in the mock
+was ever many-to-many.
+
+Each pool is also rotated by `cycle_offset`, a per-concept constant. Without it
+two dense keys cycling from zero pair one-to-one, `user_id` equals `product_id`
+on every row, and a join through the wrong key is indistinguishable from the
+right one.
 
 ## Facts fan out over their dimensions
 
 `datasource_depths` puts each datasource at a level: a table binding another's
-single-component grain key outside its own grain is a fact about that entity.
+whole grain, without being grained on it, is a fact about that entity.
 `row_target = scale_factor * FANOUT_FACTOR ** depth`, so thelook mocks 100
-customers, 300 orders and 900 sale lines rather than 100 of each.
+customers, 300 orders and 900 sale lines rather than 100 of each. Composite
+grains count both ways — a junction grained on `(user, group)` references both
+entities and sits above them, and anything binding that pair sits above the
+junction.
 
 Height alone isn't enough — `MockManager.multiplied` decides *how* a foreign key
 repeats. Every member appears at least once (a complete binding that misses
@@ -102,15 +114,32 @@ synthesis with a warning.
   Nulling runs *after* the dependency pass: a NULL determinant has nothing for
   its dependents to look up by.
 - **A datasource's own `where`** restricts the pools of the columns it
-  constrains (`declared_value_domains`). Mocking `where status = 'Complete'`
-  with every status validates the model against rows its own declaration says
-  cannot exist. Conjunctions of `=` and `in` against literals are honoured;
-  anything else is logged rather than silently dropped.
+  constrains (`literal_domains(..., "where")`). Mocking `where status =
+  'Complete'` with every status validates the model against rows its own
+  declaration says cannot exist. Conjunctions of `=` and `in` against literals
+  are honoured; anything else is logged rather than silently dropped.
+- **`complete where`** (`non_partial_for`) is the opposite move —
+  `MockManager.complete_slice` has to *make* the claim true. The slice is where
+  the source is missing nothing, and the planner may treat it as complete for a
+  query implying the predicate, so the mock biases the filter column toward the
+  admitted values until the slice is at least as tall as the key domain, then
+  deals the full domain of every `~` key across it. Rows outside keep the
+  partial prefix. A key fixed by the grain or by another table's dependency
+  can't be widened; that is logged.
 - **`partial datasource`** needs nothing special — the parser stamps `PARTIAL`
   onto every column, so the `~` rules above already apply.
 - **Declared ranges** seat their endpoints in the pool (`with_bounds`).
   Inclusive/exclusive and off-by-one bugs live on a range's edges, and a pool
   that samples the interior never lands on one.
+- **Declared regexes** are sampled, not skipped (`mock_pattern`). A pattern is a
+  domain: `validate_datasource` runs the same regex back over the mocked column.
+  The forms a type declaration uses are covered; lookaround and backreferences
+  still raise rather than emit values that fail the model's own validator.
+- **Traits** with a closed or bounded domain get real values from
+  `TRAIT_GENERATORS` (`::country_code`, `::city`, `::latitude`, …), keyed by
+  trait name and guarded by the base type they produce, since trait names are
+  global. `register_trait_mock` extends it. Unregistered string traits fall back
+  to the unique-value-per-row default described below.
 
 ## Namespaced bindings of one column share one pool
 
@@ -142,11 +171,13 @@ that changes shape between runs is not a fixture.
 
 ## Where it is used
 
-- `mock datasources ...;` -> `handle_processed_mock_statement`.
+- `mock datasources a, b with (scale_factor=500);` ->
+  `handle_processed_mock_statement`. `scale_factor` sizes the shallowest entity;
+  facts above it still fan out per level.
 - `mock_environment(environment, executor, targets=..., scale_factor=...)` is
-  the same thing callable from Python, for fixtures that want a scale the
-  statement can't express.
-- `trilogy unit` -> `trilogy/scripts/testing.py::execute_script_for_unit` ->
+  the same thing callable from Python.
+- `trilogy unit [--scale N]` ->
+  `trilogy/scripts/testing.py::execute_script_for_unit` ->
   `validate_environment(mock=True)`.
 - The agent tier's mock image -> `validate_agent.py::_materialize_mock_tables`,
   which runs the same generator through `mock_environment` with an

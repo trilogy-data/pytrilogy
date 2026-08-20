@@ -2,9 +2,10 @@ import math
 import random
 from binascii import crc32
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
@@ -36,6 +37,7 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
+from trilogy.dialect.mock_pattern import mock_pattern
 from trilogy.dialect.results import MockResult
 
 if TYPE_CHECKING:
@@ -83,6 +85,24 @@ def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
     if is_key:
         return [f"#{i:06x}" for i in range(1, scale_factor + 1)]
     return [f"#{random.randint(0, 0xFFFFFF):06x}" for _ in range(scale_factor)]
+
+
+def mock_zip_code(scale_factor: int, is_key: bool = False) -> list[str]:
+    if is_key:
+        return [f"{i:05d}" for i in range(1, scale_factor + 1)]
+    return [f"{random.randint(1, 99999):05d}" for _ in range(scale_factor)]
+
+
+def mock_ipv6(scale_factor: int, is_key: bool = False) -> list[str]:
+    def address(seed: int) -> str:
+        return ":".join(f"{(seed >> (16 * g)) & 0xFFFF:04x}" for g in range(8))
+
+    if is_key:
+        return [address(i) for i in range(1, scale_factor + 1)]
+    return [
+        address(random.getrandbits(128) | 0x2000_0000_0000_0000_0000_0000_0000_0000)
+        for _ in range(scale_factor)
+    ]
 
 
 def mock_strings(scale_factor: int, is_key: bool) -> list[Any]:
@@ -134,10 +154,11 @@ def mock_dates(scale_factor: int, is_key: bool) -> list[Any]:
 
 def mock_datetimes(scale_factor: int, is_key: bool) -> list[Any]:
     if is_key:
+        # arithmetic on the naive value, not a timestamp round-trip: the latter
+        # reads it as local time and hands the fixture back through the host's
+        # timezone database, which shifts values across a DST transition
         base_dt = datetime(2023, 1, 1, 0, 0, 0)
-        return [
-            datetime.fromtimestamp(base_dt.timestamp() + i) for i in range(scale_factor)
-        ]
+        return [base_dt + timedelta(seconds=i) for i in range(scale_factor)]
     return [
         datetime(2023, 1, 1)
         + timedelta(days=random.randint(0, 364), seconds=random.randint(0, 86_399))
@@ -213,6 +234,144 @@ BASE_GENERATORS: dict[DataType, Callable[[int, bool], list[Any]]] = {
 }
 
 
+@dataclass(frozen=True)
+class TraitMock:
+    """A generator for a named trait, and the base type it produces.
+
+    The base type is the guard rather than decoration: trait names are global,
+    so a model declaring its own ``type city int`` must keep the integer
+    generator instead of being handed the stdlib's city names.
+    """
+
+    datatype: DataType
+    generate: Callable[[int, bool], list[Any]]
+
+
+def categorical(values: list[Any]) -> Callable[[int, bool], list[Any]]:
+    """Draw from a fixed domain, the way a declared enum does.
+
+    A trait like ``::country_code`` names a small closed set. Left to the
+    default string generator it becomes a unique value per row, and every
+    group-by over it returns one row per fact — the model's coarsest dimension
+    silently behaves like a key.
+    """
+
+    def generate(scale_factor: int, is_key: bool) -> list[Any]:
+        if is_key:
+            return values[:scale_factor]
+        return [random.choice(values) for _ in range(scale_factor)]
+
+    return generate
+
+
+def bounded_floats(low: float, high: float) -> Callable[[int, bool], list[Any]]:
+    def generate(scale_factor: int, is_key: bool) -> list[Any]:
+        if is_key:
+            step = (high - low) / max(scale_factor, 1)
+            return [low + step * i for i in range(scale_factor)]
+        return [random.uniform(low, high) for _ in range(scale_factor)]
+
+    return generate
+
+
+US_STATES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+    "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
+    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska",
+    "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina",
+    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon",
+    "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
+    "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
+}  # fmt: skip
+COUNTRIES = {
+    "US": "United States", "CA": "Canada", "MX": "Mexico", "BR": "Brazil",
+    "GB": "United Kingdom", "FR": "France", "DE": "Germany", "ES": "Spain",
+    "IT": "Italy", "NL": "Netherlands", "SE": "Sweden", "PL": "Poland",
+    "NG": "Nigeria", "ZA": "South Africa", "EG": "Egypt", "KE": "Kenya",
+    "CN": "China", "JP": "Japan", "KR": "South Korea", "IN": "India",
+    "ID": "Indonesia", "AU": "Australia", "NZ": "New Zealand", "AE": "United Arab Emirates",
+}  # fmt: skip
+MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]  # fmt: skip
+DAY_NAMES = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+]  # fmt: skip
+CITIES = [
+    "Atlanta", "Boston", "Chicago", "Dallas", "Denver", "Detroit", "Houston",
+    "Las Vegas", "Los Angeles", "Miami", "Minneapolis", "Nashville",
+    "New York", "Philadelphia", "Phoenix", "Portland", "San Diego",
+    "San Francisco", "Seattle", "St. Louis",
+]  # fmt: skip
+TIMEZONES = [
+    "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/New_York", "America/Sao_Paulo", "Asia/Shanghai", "Asia/Tokyo",
+    "Australia/Sydney", "Europe/Berlin", "Europe/London", "UTC",
+]  # fmt: skip
+REGIONS = [
+    "Africa", "Asia", "Europe", "Latin America", "Middle East",
+    "North America", "Oceania",
+]  # fmt: skip
+# Every trait the stdlib declares whose values come from a closed or bounded
+# domain. Left unregistered each of these mocks as a distinct random string,
+# which is the "unique value per row" shape the categorical advice exists to
+# avoid. Extend with `register_trait_mock` for a model's own traits.
+TRAIT_GENERATORS: dict[str, TraitMock] = {
+    "email_address": TraitMock(DataType.STRING, mock_email),
+    "hex": TraitMock(DataType.STRING, mock_hex_code),
+    "us_zip_code": TraitMock(DataType.STRING, mock_zip_code),
+    "ipv6_address": TraitMock(DataType.STRING, mock_ipv6),
+    "us_state_short": TraitMock(DataType.STRING, categorical(list(US_STATES))),
+    "us_state": TraitMock(DataType.STRING, categorical(list(US_STATES.values()))),
+    "country_code": TraitMock(DataType.STRING, categorical(list(COUNTRIES))),
+    "country": TraitMock(DataType.STRING, categorical(list(COUNTRIES.values()))),
+    "city": TraitMock(DataType.STRING, categorical(CITIES)),
+    "timezone": TraitMock(DataType.STRING, categorical(TIMEZONES)),
+    "region": TraitMock(DataType.STRING, categorical(REGIONS)),
+    "month_name": TraitMock(DataType.STRING, categorical(MONTH_NAMES)),
+    "day_of_week_name": TraitMock(DataType.STRING, categorical(DAY_NAMES)),
+    "letter_grade": TraitMock(DataType.STRING, categorical(["A", "B", "C", "D", "F"])),
+    "domain": TraitMock(
+        DataType.STRING,
+        categorical(["example.com", "example.org", "mock.dev", "sample.net"]),
+    ),
+    "suffix": TraitMock(
+        DataType.STRING,
+        categorical([".csv", ".jpg", ".json", ".parquet", ".png", ".txt"]),
+    ),
+    "ip_net_mask": TraitMock(
+        DataType.STRING,
+        categorical(["255.0.0.0", "255.255.0.0", "255.255.255.0", "255.255.255.128"]),
+    ),
+    "year": TraitMock(DataType.INTEGER, categorical(list(range(2015, 2025)))),
+    "latitude": TraitMock(DataType.FLOAT, bounded_floats(-90.0, 90.0)),
+    "longitude": TraitMock(DataType.FLOAT, bounded_floats(-180.0, 180.0)),
+    "percent": TraitMock(DataType.FLOAT, bounded_floats(0.0, 100.0)),
+}
+
+
+def register_trait_mock(
+    name: str, datatype: DataType, generate: Callable[[int, bool], list[Any]]
+) -> None:
+    TRAIT_GENERATORS[name] = TraitMock(datatype, generate)
+
+
+def trait_mock(full_type: TraitDataType) -> TraitMock | None:
+    for trait in full_type.traits:
+        found = TRAIT_GENERATORS.get(trait)
+        if found is not None and full_type.type == found.datatype:
+            return found
+    return None
+
+
 def with_bounds(pool: list[Any], bounds: list[Any]) -> list[Any]:
     """Seat every declared endpoint in the pool.
 
@@ -231,9 +390,7 @@ def mock_validated(
     full_type: ValidatedType, scale_factor: int, is_key: bool
 ) -> list[Any]:
     if full_type.pattern is not None:
-        raise NotImplementedError(
-            f"Mocking is not implemented for regex-validated type {full_type}"
-        )
+        return mock_pattern(full_type.pattern, scale_factor, is_key)
     base = full_type.data_type
     ranges = full_type.ranges
     if base in (DataType.INTEGER, DataType.BIGINT):
@@ -317,19 +474,11 @@ def mock_datatype(
         return [random.choice(values) for _ in range(scale_factor)]
     if isinstance(full_type, TraitDataType):
         # An enum under a trait keeps its finite domain — the trait generator
-        # would step outside it (e.g. enum<string>[...]::email_address). A
-        # regex-validated string under a trait is the opposite case: the
-        # generator is the only way to satisfy the pattern.
-        if (
-            not isinstance(full_type.type, EnumType)
-            and full_type.type == DataType.STRING
-        ):
-            # TODO: get stdlib inventory some other way?
-            if full_type.traits == ["email_address"]:
-                # email mock function
-                return mock_email(scale_factor, is_key)
-            elif full_type.traits == ["hex"]:
-                return mock_hex_code(scale_factor, is_key)
+        # would step outside it (e.g. enum<string>[...]::email_address).
+        if not isinstance(full_type.type, EnumType):
+            found = trait_mock(full_type)
+            if found is not None:
+                return found.generate(scale_factor, is_key)
         return mock_datatype(full_type.type, full_type.type, scale_factor, is_key)
 
     concrete: Any = (
@@ -498,11 +647,18 @@ def datasource_depths(
 ) -> dict[str, int]:
     """How many levels of entity each datasource sits above the leaves.
 
-    A datasource that binds another's single-component grain key outside its own
-    grain is a fact about that entity — an order references a customer, a sale
+    A datasource that binds another's whole grain, without being grained on it
+    itself, is a fact about that entity — an order references a customer, a sale
     line references an order. The depth is what sizes the table: without it
     every table is the same height, every foreign key appears exactly once, and
     a join that multiplies rows is indistinguishable from one that doesn't.
+
+    Composite grains count both ways. A junction grained on ``(user, group)``
+    references *both* entities, so it sits above them and carries several rows
+    per member instead of pairing them off; and anything binding that pair is in
+    turn a fact about the junction. Anchoring only on single-component grains
+    left every many-to-many relationship 1:1 — the blind spot fan-out exists to
+    close for the 1:N case.
     """
     datasources = list(datasources)
     columns = {
@@ -512,18 +668,18 @@ def datasource_depths(
     grains = {
         ds.identifier: {canon(a) for a in ds.grain.components} for ds in datasources
     }
-    owners: dict[str, str] = {}
+    owners: dict[frozenset[str], str] = {}
     for ds in datasources:
         grain = grains[ds.identifier]
-        if len(grain) == 1:
-            owners.setdefault(next(iter(grain)), ds.identifier)
+        if grain:
+            owners.setdefault(frozenset(grain), ds.identifier)
     references = {
         ds.identifier: {
             owner
-            for key, owner in owners.items()
+            for keys, owner in owners.items()
             if owner != ds.identifier
-            and key in columns[ds.identifier]
-            and key not in grains[ds.identifier]
+            and keys <= columns[ds.identifier]
+            and keys != grains[ds.identifier]
         }
         for ds in datasources
     }
@@ -574,30 +730,34 @@ def _declared_domain(conjunct: Any) -> tuple[str, list[Any]] | None:
     return None
 
 
-def declared_value_domains(
-    environment: Environment,
+def literal_domains(
+    environment: Environment, clause: Literal["where", "complete where"]
 ) -> dict[str, dict[str, list[Any]]]:
-    """The values a datasource's own ``where`` clause admits, per column.
+    """The values a datasource's own ``clause`` admits, per column and address.
 
-    A datasource declared ``where status = 'Complete'`` describes a table that
-    holds only complete rows. Mocking it with every status validates the model
-    against data its own declaration says cannot exist — and any planner that
-    prunes, rewrites, or claims completeness on the strength of that filter is
-    then checked against a contradiction. Only conjunctions of ``=`` and ``in``
-    against literals are honoured; anything else is reported rather than
-    silently ignored.
+    ``where`` and ``complete where`` are read the same way and used opposite
+    ways. A datasource declared ``where status = 'Complete'`` describes a table
+    that holds only complete rows: mocking it with every status validates the
+    model against data its own declaration says cannot exist. ``complete where``
+    instead names the slice the datasource is *not* partial in, which the mock
+    has to make true (see ``MockManager.complete_slice``).
+
+    Only conjunctions of ``=`` and ``in`` against literals are honoured;
+    anything else is reported rather than silently ignored.
     """
     out: dict[str, dict[str, list[Any]]] = {}
     for ds in environment.datasources.values():
-        if ds.where is None:
+        where = ds.where if clause == "where" else ds.non_partial_for
+        if where is None:
             continue
         domains: dict[str, list[Any]] = {}
-        for conjunct in _conjuncts(ds.where.conditional):
+        for conjunct in _conjuncts(where.conditional):
             found = _declared_domain(conjunct)
             if found is None:
                 logger.warning(
-                    "Mock: cannot honour part of the `where` on datasource %s "
+                    "Mock: cannot honour part of the `%s` on datasource %s "
                     "(%s); its rows may contradict the declared filter.",
+                    clause,
                     ds.identifier,
                     conjunct,
                 )
@@ -612,7 +772,9 @@ def declared_value_domains(
     return out
 
 
-def punch_nulls(values: list[Any], seed: int) -> list[Any]:
+def punch_nulls(
+    values: list[Any], seed: int, protected: set[int] | None = None
+) -> list[Any]:
     """Empty a deterministic share of a NULLABLE column's rows, without losing
     any distinct value.
 
@@ -622,7 +784,9 @@ def punch_nulls(values: list[Any], seed: int) -> list[Any]:
     outer-join padding NULL. Every value keeps at least one populated row so
     the distinct-value counts `validate_multi_datasource_concept` compares are
     unchanged; a column that loses a value to nulling would read as a
-    datasource missing data it declares.
+    datasource missing data it declares. ``protected`` rows are exempt for the
+    same reason at a finer grain: they are what makes a `complete where` slice
+    complete.
     """
     try:
         remaining: dict[Any, int] = {}
@@ -631,7 +795,7 @@ def punch_nulls(values: list[Any], seed: int) -> list[Any]:
     except TypeError:  # unhashable values can't be coverage-checked
         return values
     rng = random.Random(seed)
-    order = list(range(len(values)))
+    order = [i for i in range(len(values)) if not protected or i not in protected]
     rng.shuffle(order)
     out = list(values)
     budget = int(len(values) * NULL_FRACTION)
@@ -675,6 +839,46 @@ def address_column_map(
     return out
 
 
+def carry_multiplier(divisor: int, size: int) -> int:
+    """The lap-shift that keeps a grain component's advance a bijection.
+
+    Some ``divisor + c`` in any ``size`` consecutive integers is coprime to
+    ``size`` (residue 1 is), so this always terminates.
+    """
+    step = 1
+    while math.gcd(divisor + step, size) != 1:
+        step += 1
+    return step
+
+
+def grain_indices(lens: list[int], rows: int) -> list[list[int]]:
+    """Index sequences for a composite grain: unique tuples that still cover
+    every component's whole pool.
+
+    Cycling each component independently repeats the tuple after the lcm of the
+    pool sizes, so a bridge grained on two 100-member keys gets 100 of its
+    10,000 pairs — a diagonal, on which every member pairs with exactly one
+    other and nothing in the mock is ever many-to-many. Each component after the
+    first therefore also advances on every lap of the components before it.
+    Writing ``i = q * d + r`` with ``d`` the product of the earlier pool sizes,
+    component j's index is ``(r + q * (d + step)) mod L``; ``gcd(d + step, L) =
+    1`` makes that injective in q for each r, so by induction on j the tuple is
+    unique across the whole cross product. Components are laid widest-first,
+    which keeps ``d >= L`` for every later one, so its first L rows already walk
+    its entire pool.
+    """
+    out: list[list[int]] = []
+    divisor = 1
+    for position, size in enumerate(lens):
+        if position == 0:
+            out.append([i % size for i in range(rows)])
+        else:
+            step = carry_multiplier(divisor, size)
+            out.append([(i + step * (i // divisor)) % size for i in range(rows)])
+        divisor *= size
+    return out
+
+
 def cycle_offset(address: str, size: int) -> int:
     """Where a key's cycle starts, keyed on the concept so the sequence is
     identical in every table that binds it.
@@ -698,7 +902,8 @@ class MockManager:
         self.scale_factor = scale_factor
         self.canonical = canonical_column_map(environment)
         self.address_columns = address_column_map(environment)
-        self.value_domains = declared_value_domains(environment)
+        self.value_domains = literal_domains(environment, "where")
+        self.complete_domains = literal_domains(environment, "complete where")
         # Concepts that must be unique-per-row to satisfy any datasource grain.
         # Without this, an aggregate datasource grained on a non-KEY concept
         # (e.g. a date) gets duplicate rows and fails grain validation.
@@ -716,6 +921,10 @@ class MockManager:
         # determinant address -> dependent address -> {key value: value}, from
         # every single-key datasource already mocked.
         self.dependencies: dict[str, dict[str, dict[Any, Any]]] = {}
+        # rows of the table being built that sit in its `complete where` slice;
+        # nulling one would take a key back out of a slice that claims to hold
+        # the whole domain
+        self.complete_rows: set[int] = set()
         depths = datasource_depths(environment.datasources.values(), self.canon)
         self.row_targets = {
             identifier: scale_factor * FANOUT_FACTOR ** min(depth, MAX_FANOUT_DEPTH)
@@ -813,6 +1022,91 @@ class MockManager:
         rng.shuffle(values)
         return values
 
+    def complete_slice(
+        self,
+        fills: dict[str, list[Any]],
+        admitted: dict[str, list[Any]],
+        canon_by_header: dict[str, str],
+        full_by_header: dict[str, list[Any]],
+        grain: set[str],
+        partial_headers: set[str],
+        determined: set[str],
+        rows: int,
+        salt: str,
+    ) -> set[int]:
+        """Lay the whole key domain across the slice a ``complete where`` names.
+
+        ``complete where region = 'NA'`` says the datasource is missing nothing
+        inside that slice; the ``~`` on its keys describes the rest of the table
+        only. The planner may treat such a source as complete for a query whose
+        predicate implies it, so mock data whose slice is as partial as
+        everything else cannot tell that choice from an unsound one.
+
+        This is a coordinated two-column assignment rather than a pool
+        restriction, which is what makes it more than a filter: the slice has to
+        be at least as tall as the key domain to hold it, far taller than the
+        few rows a filter column would land on by chance, so the filter column
+        is *biased* toward the admitted values and the keys are then dealt
+        across it.
+        """
+        widenable = [
+            h
+            for h in fills
+            if h in partial_headers
+            and h not in determined
+            and h not in admitted
+            and canon_by_header[h] not in grain
+            and canon_by_header[h] in self.key_addresses
+        ]
+        needed = max((len(full_by_header[h]) for h in widenable), default=1)
+        # a filter column fixed by the grain or by another table's dependency
+        # can't be biased; the slice is then wherever it already landed
+        free = [
+            h
+            for h in admitted
+            if h not in determined and canon_by_header[h] not in grain
+        ]
+        indices = [
+            i
+            for i in range(rows)
+            if all(fills[h][i] in admitted[h] for h in admitted if h not in free)
+        ]
+        if free:
+            indices = indices[: min(needed, max(rows - 1, 1))]
+            inside = set(indices)
+            for header in free:
+                values = admitted[header]
+                outside = [v for v in full_by_header[header] if v not in values]
+                if not outside:
+                    logger.warning(
+                        "Mock: every value of %s on %s satisfies its `complete "
+                        "where`, so the datasource mocks as complete throughout.",
+                        header,
+                        salt,
+                    )
+                    outside = values
+                fills[header] = [
+                    (
+                        values[i % len(values)]
+                        if i in inside
+                        else outside[i % len(outside)]
+                    )
+                    for i in range(rows)
+                ]
+        if len(indices) < needed:
+            logger.warning(
+                "Mock: the `complete where` slice on %s holds %s of the %s rows "
+                "its key domain needs; it will mock as partial inside the slice.",
+                salt,
+                len(indices),
+                needed,
+            )
+        for header in widenable:
+            pool = full_by_header[header]
+            for position, index in enumerate(indices):
+                fills[header][index] = pool[position % len(pool)]
+        return set(indices)
+
     def column_values(
         self,
         concepts: list[Concept | ConceptRef],
@@ -822,28 +1116,49 @@ class MockManager:
         rows: int,
         salt: str,
         header_domains: dict[str, list[Any]] | None = None,
+        complete_headers: dict[str, list[Any]] | None = None,
     ) -> dict[str, list[Any]]:
         header_domains = header_domains or {}
-        pools = [
-            (partial_pool(pool) if h in partial_headers else pool)
+        complete_headers = complete_headers or {}
+        # the values a `complete where` names have to be *in* the column before
+        # any row can sit in the slice it describes
+        full_by_header = {
+            h: (
+                with_bounds(pool, complete_headers[h])
+                if h in complete_headers
+                else pool
+            )
             for h, pool in (
                 (h, header_domains.get(h) or self.concept_mocks[self.canon(c.address)])
                 for h, c in zip(headers, concepts)
             )
+        }
+        pools = [
+            (
+                partial_pool(full_by_header[h])
+                if h in partial_headers
+                else full_by_header[h]
+            )
+            for h in headers
         ]
         canon_by_header = {h: self.canon(c.address) for h, c in zip(headers, concepts)}
-        grain_lens = [
-            len(pool) for h, pool in zip(headers, pools) if canon_by_header[h] in grain
-        ]
-        # A grain column cycles its own pool, so row i is pool[(i + offset) %
-        # len]: the grain tuple stays unique through the lcm of its components'
-        # domain sizes (equal rows require i ≡ j mod every length, whatever the
-        # offsets). A composite grain over small domains therefore fills the
-        # combination space rather than capping at its smallest column, while
-        # each concept's distinct-value set stays the same in every table —
-        # which validate_multi_datasource_concept compares.
-        n = min(rows, math.lcm(*grain_lens) if grain_lens else rows)
         pool_by_header = dict(zip(headers, pools))
+        # The grain tuple is unique across the whole cross product of its
+        # components' domains (see grain_indices), so the table sizes to its
+        # row target rather than to its smallest column, while each concept's
+        # distinct-value set stays the same in every table — which
+        # validate_multi_datasource_concept compares.
+        grain_headers = sorted(
+            (h for h in headers if canon_by_header[h] in grain),
+            key=lambda h: (-len(pool_by_header[h]), h),
+        )
+        grain_lens = [len(pool_by_header[h]) for h in grain_headers]
+        n = min(rows, math.prod(grain_lens)) if grain_lens else rows
+        grain_fills: dict[str, list[Any]] = {}
+        for header, indices in zip(grain_headers, grain_indices(grain_lens, n)):
+            pool = pool_by_header[header]
+            offset = cycle_offset(canon_by_header[header], len(pool))
+            grain_fills[header] = [pool[(i + offset) % len(pool)] for i in indices]
         determined: dict[str, tuple[str, dict[Any, Any]]] = {}
         for header in headers:
             if canon_by_header[header] in grain:
@@ -861,12 +1176,31 @@ class MockManager:
         }
         fills = {
             h: (
-                self.multiplied(canon_by_header[h], pool_by_header[h], n, salt)
-                if h in foreign
-                else self.cycled(canon_by_header[h], pool_by_header[h], n)
+                grain_fills[h]
+                if h in grain_fills
+                else (
+                    self.multiplied(canon_by_header[h], pool_by_header[h], n, salt)
+                    if h in foreign
+                    else self.cycled(canon_by_header[h], pool_by_header[h], n)
+                )
             )
             for h in headers
         }
+        self.complete_rows = (
+            self.complete_slice(
+                fills,
+                complete_headers,
+                canon_by_header,
+                full_by_header,
+                grain,
+                partial_headers,
+                set(determined),
+                n,
+                salt,
+            )
+            if complete_headers
+            else set()
+        )
         data: dict[str, list[Any]] = {
             h: fills[h] for h in headers if h not in determined
         }
@@ -937,7 +1271,9 @@ class MockManager:
         partial_headers: set[str] = set()
         nullable_headers: set[str] = set()
         domains = self.value_domains.get(datasource.safe_address, {})
+        complete = self.complete_domains.get(datasource.safe_address, {})
         header_domains: dict[str, list[Any]] = {}
+        complete_headers: dict[str, list[Any]] = {}
         bindings = self.address_columns.get(
             datasource.safe_address, datasource.concrete_columns
         )
@@ -951,6 +1287,8 @@ class MockManager:
                 nullable_headers.add(alias)
             if column.concept.address in domains:
                 header_domains[alias] = domains[column.concept.address]
+            if column.concept.address in complete:
+                complete_headers[alias] = complete[column.concept.address]
         grain = {self.canon(a) for a in datasource.grain.components}
         canon_by_header = {h: self.canon(c.address) for h, c in zip(headers, concepts)}
         data = self.column_values(
@@ -961,6 +1299,7 @@ class MockManager:
             self.row_targets.get(datasource.identifier, self.scale_factor),
             datasource.safe_address,
             header_domains,
+            complete_headers,
         )
         self.register_dependencies(grain, headers, canon_by_header, data)
         for header in nullable_headers:
@@ -972,6 +1311,7 @@ class MockManager:
             data[header] = punch_nulls(
                 data[header],
                 crc32(f"{datasource.safe_address}|{header}".encode()),
+                self.complete_rows,
             )
         columns: dict[str, Any] = {}
         for header, concept in zip(headers, concepts):
@@ -1079,7 +1419,12 @@ def handle_processed_mock_statement(
     query: ProcessedMockStatement, environment: Environment, executor
 ) -> MockResult:
     """Handle processed mock statements."""
-    mock_environment(environment, executor, targets=list(query.targets))
+    mock_environment(
+        environment,
+        executor,
+        targets=list(query.targets),
+        scale_factor=query.scale_factor or DEFAULT_SCALE_FACTOR,
+    )
     return MockResult(
         [{"target": target, "status": "mocked"} for target in query.targets],
         ["target", "status"],

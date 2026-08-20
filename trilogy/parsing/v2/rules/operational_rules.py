@@ -289,7 +289,18 @@ def mock_statement(
             scope = _parse_validate_scope(child)
         elif child.kind == SyntaxTokenKind.IDENTIFIER:
             targets.append(child.value)
-    return MockStatement(scope=scope, targets=targets)
+    statement = MockStatement(scope=scope, targets=targets)
+    config_node = node.optional_node(SyntaxNodeKind.VALIDATE_QUERY_CONFIG)
+    if config_node is None:
+        return statement
+    config = hydrate(config_node)
+    if not isinstance(config, dict):
+        raise fail(config_node, "Mock config failed to hydrate")
+    for key, value in config.items():
+        if key != "scale_factor":
+            raise fail(config_node, f"Unknown mock option '{key}'. Known: scale_factor")
+        statement.scale_factor = _coerce_int(config_node, key, value, minimum=1)
+    return statement
 
 
 def copy_option(

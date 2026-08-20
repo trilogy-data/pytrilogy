@@ -1,3 +1,6 @@
+import math
+import re
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -14,9 +17,10 @@ from trilogy.core.models.core import (
     StructComponent,
     StructType,
     TraitDataType,
+    ValidatedType,
 )
 from trilogy.core.validation.environment import validate_environment
-from trilogy.dialect.mock import ARRAY_MOCK_SIZE, mock_datatype
+from trilogy.dialect.mock import ARRAY_MOCK_SIZE, grain_indices, mock_datatype
 from trilogy.scripts.common import validate_environment as cli_validate_environment
 
 
@@ -162,6 +166,76 @@ def test_mock_datatype_unsupported_remains_loud():
         mock_datatype(DataType.GEOGRAPHY, DataType.GEOGRAPHY, 5)
 
 
+def test_mock_datatype_regex_validated_matches_its_pattern():
+    """A declared pattern is a domain, not decoration: validation runs the same
+    regex over the mocked column, so a value that ignores it fails exactly as
+    bad real data would."""
+    validated = ValidatedType(type=DataType.STRING, pattern=r"[A-Z]{2}-\d{4}")
+    rows = mock_datatype(validated, DataType.STRING, scale_factor=25)
+    assert len(rows) == 25
+    assert all(re.fullmatch(r"[A-Z]{2}-\d{4}", r) for r in rows)
+
+
+def test_mock_datatype_regex_key_capped_by_a_small_language():
+    """A key must not repeat: a pattern admitting fewer strings than
+    scale_factor caps the row count, as a small enum domain does."""
+    validated = ValidatedType(type=DataType.STRING, pattern=r"[ab]{2}")
+    rows = mock_datatype(validated, DataType.STRING, scale_factor=50, is_key=True)
+    assert sorted(rows) == ["aa", "ab", "ba", "bb"]
+
+
+def test_mock_datatype_regex_unsupported_remains_loud():
+    """Silently ignoring a construct would emit values that fail the model's own
+    validator; the gap has to stay visible."""
+    validated = ValidatedType(type=DataType.STRING, pattern=r"(?=secret)\w+")
+    with pytest.raises(NotImplementedError):
+        mock_datatype(validated, DataType.STRING, scale_factor=5)
+
+
+def test_mock_datatype_trait_categorical_stays_small():
+    """A trait naming a closed domain must not mock as a unique value per row —
+    every group-by over it would return one row per fact."""
+    traited = TraitDataType(type=DataType.STRING, traits=["country_code"])
+    rows = mock_datatype(traited, DataType.STRING, scale_factor=200)
+    assert len(rows) == 200
+    assert len(set(rows)) < 40
+
+
+def test_mock_datatype_trait_generator_checks_the_base_type():
+    """Trait names are global: a model's own `type city int` keeps the integer
+    generator rather than being handed the stdlib's city names."""
+    traited = TraitDataType(type=DataType.INTEGER, traits=["city"])
+    rows = mock_datatype(traited, DataType.INTEGER, scale_factor=10)
+    assert all(isinstance(r, int) for r in rows)
+
+
+def test_mock_datatype_datetime_key_does_not_round_trip_local_time():
+    """Building keys off `datetime.fromtimestamp` reads a naive value as local
+    time and hands it back through the host's timezone database, so the fixture
+    shifts across a DST transition."""
+    rows = mock_datatype(DataType.DATETIME, DataType.DATETIME, 5, is_key=True)
+    assert rows == [datetime(2023, 1, 1) + timedelta(seconds=i) for i in range(5)]
+
+
+def test_grain_indices_are_unique_and_cover_each_pool():
+    """The composite-grain contract: the tuple never repeats (grain validation)
+    and every component still reaches its whole pool (the distinct-value counts
+    validate_multi_datasource_concept compares)."""
+    for lens in [[100, 2], [7, 5, 3], [4, 4], [12, 10, 10], [6, 6, 6], [50, 3, 2]]:
+        ordered = sorted(lens, reverse=True)
+        rows = math.prod(ordered)
+        columns = grain_indices(ordered, rows)
+        assert len(set(zip(*columns))) == rows
+        assert all(
+            set(column) == set(range(size)) for column, size in zip(columns, ordered)
+        )
+        # a prefix as short as the widest pool already covers every component
+        prefix = list(zip(*(column[: ordered[0]] for column in columns)))
+        assert len(set(prefix)) == ordered[0]
+        for column, size in zip(columns, ordered):
+            assert set(column[: ordered[0]]) == set(range(size))
+
+
 def test_mock_validate_passes_with_precision_numeric_column():
     """q89 regression: unit-mode validation must survive a model whose
     datasource has a numeric(p,s) column, referenced by nothing."""
@@ -180,6 +254,37 @@ def test_mock_validate_passes_with_precision_numeric_column():
         )
         grain (id)
         address store_sales_tbl;
+    """)
+
+    cli_validate_environment(executor, mock=True, quiet=True)
+
+
+def test_mock_validate_passes_with_pattern_typed_columns():
+    """The whole unit tier was unavailable to any model using the stdlib's
+    pattern-carrying types. Validation runs each declared pattern back over the
+    mocked column, so passing here is the sampler agreeing with the validator."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        import std.net;
+        import std.color;
+
+        key id int;
+        property id.site string::url;
+        property id.mail string::email_address;
+        property id.tint string::hex;
+        property id.address string::ipv4_address;
+        property id.code string['[A-Z]{3}-\\d{2}'];
+
+        datasource pages (
+            id: id,
+            site: site,
+            mail: mail,
+            tint: tint,
+            address: address,
+            code: code,
+        )
+        grain (id)
+        address pages_tbl;
     """)
 
     cli_validate_environment(executor, mock=True, quiet=True)
@@ -765,6 +870,172 @@ def test_mock_declared_range_includes_its_endpoints():
     row = _declared_model_row(executor)
     assert row["low"] == 0
     assert row["high"] == 50
+
+
+_JUNCTION_MODEL = """
+    key user_id int;
+    key group_id int;
+    property <user_id, group_id>.joined_at date;
+    key event_id int;
+
+    datasource users (id: user_id) grain (user_id) address users_tbl;
+    datasource groups (id: group_id) grain (group_id) address groups_tbl;
+
+    datasource memberships (
+        user_id: user_id,
+        group_id: group_id,
+        joined_at: joined_at,
+    )
+    grain (user_id, group_id)
+    address memberships_tbl;
+
+    datasource events (
+        id: event_id,
+        user_id: user_id,
+        group_id: group_id,
+    )
+    grain (event_id)
+    address events_tbl;
+
+    mock datasources users, groups, memberships, events;
+"""
+
+
+def test_mock_junction_table_is_many_to_many():
+    """A bridge grained on a pair of keys is a fact about both entities. Anchored
+    only on single-component grains it sat at depth 0 and paired the two domains
+    off one-to-one, so every many-to-many relationship in the model mocked as
+    1:1 — the blind spot fan-out exists to close for the 1:N case."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_JUNCTION_MODEL)
+
+    rows, pairs, users_seen, groups_seen, per_user, members = executor.execute_raw_sql(
+        "select (select count(*) from memberships_tbl), "
+        "       (select count(*) from (select distinct user_id, group_id "
+        "          from memberships_tbl)), "
+        "       (select count(distinct user_id) from memberships_tbl), "
+        "       (select count(distinct group_id) from memberships_tbl), "
+        "       (select min(c) from (select count(*) c from memberships_tbl "
+        "          group by user_id)), "
+        "       (select count(*) from users_tbl)"
+    ).fetchall()[0]
+    assert rows == pairs
+    assert users_seen == groups_seen == members
+    assert rows > members
+    assert per_user > 1
+
+
+def test_mock_fact_over_a_junction_fans_out_again():
+    """The pair is an entity, so a table binding both keys sits a level above it
+    and multiplies rows over the bridge rather than matching it."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_JUNCTION_MODEL)
+
+    events, memberships = executor.execute_raw_sql(
+        "select (select count(*) from events_tbl), "
+        "       (select count(*) from memberships_tbl)"
+    ).fetchall()[0]
+    assert events > memberships
+
+
+_COMPLETE_WHERE_MODEL = """
+    key user_id int;
+    key order_id int;
+    property order_id.region string;
+    property order_id.amount float;
+
+    datasource users (id: user_id) grain (user_id) address users_tbl;
+
+    partial datasource orders (
+        id: order_id,
+        user_id: user_id,
+        region: region,
+        amount: amount,
+    )
+    grain (order_id)
+    complete where region = 'NA'
+    address orders_tbl;
+
+    mock datasources users, orders;
+"""
+
+
+def _complete_where_row(executor):
+    return dict(
+        zip(
+            ("inside", "keys_inside", "keys_outside", "users"),
+            executor.execute_raw_sql(
+                "select (select count(*) from orders_tbl where region = 'NA'), "
+                "       (select count(distinct user_id) from orders_tbl "
+                "          where region = 'NA'), "
+                "       (select count(distinct user_id) from orders_tbl "
+                "          where region != 'NA'), "
+                "       (select count(*) from users_tbl)"
+            ).fetchall()[0],
+        )
+    )
+
+
+def test_mock_complete_where_slice_carries_the_whole_key_domain():
+    """`complete where region = 'NA'` says the source is missing nothing inside
+    that slice, and the planner may treat it as complete for a query implying
+    the predicate. A slice as partial as the rest of the table cannot tell that
+    choice from an unsound one — so the filter column is biased toward the
+    admitted values until the slice is tall enough to hold the key domain."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPLETE_WHERE_MODEL)
+
+    row = _complete_where_row(executor)
+    assert row["inside"] >= row["users"]
+    assert row["keys_inside"] == row["users"]
+
+
+def test_mock_complete_where_leaves_the_rest_of_the_table_partial():
+    """The mirror: `complete where` narrows the claim to its slice. If the whole
+    table covered the key domain the `~` would be unobservable, which is the
+    failure the modifier exists to describe."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPLETE_WHERE_MODEL)
+
+    row = _complete_where_row(executor)
+    assert 0 < row["keys_outside"] < row["users"]
+
+
+def test_mock_statement_scale_factor_sizes_the_tables():
+    """Without a spelling on the statement the unit tier is pinned to one row
+    count, so nothing cardinality-dependent in the planner is reachable from
+    it."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""
+        key user_id int;
+        key line_id int;
+
+        datasource users (id: user_id) grain (user_id) address users_tbl;
+        datasource lines (
+            id: line_id,
+            user_id: user_id,
+        )
+        grain (line_id)
+        address lines_tbl;
+
+        mock datasources users, lines with (scale_factor=20);
+    """)
+
+    users, lines = executor.execute_raw_sql(
+        "select (select count(*) from users_tbl), (select count(*) from lines_tbl)"
+    ).fetchall()[0]
+    assert users == 20
+    assert lines > users
+
+
+def test_mock_statement_rejects_an_unknown_option():
+    executor = Dialects.DUCK_DB.default_executor()
+    with pytest.raises(Exception, match="scale_factor"):
+        executor.execute_text("""
+            key user_id int;
+            datasource users (id: user_id) grain (user_id) address users_tbl;
+            mock datasources users with (rows=20);
+        """)
 
 
 def test_mock_shared_address_keeps_every_bound_column():

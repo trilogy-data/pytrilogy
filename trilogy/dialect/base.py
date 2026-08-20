@@ -3401,6 +3401,7 @@ class BaseDialect:
                     ProcessedMockStatement(
                         scope=statement.scope,
                         targets=statement.targets,
+                        scale_factor=statement.scale_factor,
                     )
                 )
             elif isinstance(statement, CreateStatement):
