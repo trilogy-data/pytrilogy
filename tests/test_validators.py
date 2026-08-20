@@ -315,6 +315,170 @@ def test_property_validation_allows_duplicate_values():
     validate_environment(executor.environment, exec=executor)
 
 
+_CONTAINMENT_PREAMBLE = """
+    key city string;
+    key entity_id string;
+    property entity_id.x float;
+"""
+
+
+def test_complete_where_containment_rejects_foreign_rows():
+    """A `complete where` is trusted by the planner and cannot be enforced at
+    generation time, so validation is what establishes it. A source returning
+    another partition's rows must fail."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONTAINMENT_PREAMBLE + """
+        partial datasource shared_feed (
+            entity_id: entity_id,
+            city: city,
+            x: x,
+        )
+        grain (entity_id)
+        complete where city = 'CITY_A'
+        query '''
+        SELECT 'a1' AS entity_id, 'CITY_A' AS city, 1.0 AS x UNION ALL
+        SELECT 's1', 'CITY_B', 2.0
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceModelValidationError)
+        and "fall outside its `complete where" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_complete_where_containment_flags_null_keyed_rows():
+    """A NULL-keyed row is outside the claimed slice too — the check must not
+    let it escape through NULL comparison semantics."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONTAINMENT_PREAMBLE + """
+        partial datasource shared_feed (
+            entity_id: entity_id,
+            city: city,
+            x: x,
+        )
+        grain (entity_id)
+        complete where city = 'CITY_A'
+        query '''
+        SELECT 'a1' AS entity_id, 'CITY_A' AS city, 1.0 AS x UNION ALL
+        SELECT 'n1', cast(null as varchar), 2.0
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceModelValidationError)
+        and "fall outside its `complete where" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_complete_where_containment_accepts_honest_source():
+    """The same claim passes once the source actually filters to it."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONTAINMENT_PREAMBLE + """
+        partial datasource shared_feed (
+            entity_id: entity_id,
+            city: city,
+            x: x,
+        )
+        grain (entity_id)
+        complete where city = 'CITY_A'
+        query '''
+        SELECT 'a1' AS entity_id, 'CITY_A' AS city, 1.0 AS x UNION ALL
+        SELECT 'a2', 'CITY_A', 2.0
+        ''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_complete_where_containment_skipped_when_column_absent():
+    """The claim may name a column the source has no way to filter on — the
+    same reason generation can't inject it. Skip rather than fail."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONTAINMENT_PREAMBLE + """
+        partial datasource no_city (
+            entity_id: entity_id,
+            x: x,
+        )
+        grain (entity_id)
+        complete where city = 'CITY_A'
+        query '''
+        SELECT 'a1' AS entity_id, 1.0 AS x UNION ALL
+        SELECT 's1', 2.0
+        ''';
+
+        datasource cities (
+            city: city,
+        )
+        grain (city)
+        query '''SELECT 'CITY_A' AS city''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
+
+
+_RANGE_PREAMBLE = """
+    key entity_id string;
+    property entity_id.d date;
+"""
+
+_RANGE_CLAIM = """
+    grain (entity_id)
+    complete where d between cast('2026-01-01' as date) and cast('2026-01-31' as date)
+"""
+
+
+def test_complete_where_containment_handles_between_claim():
+    """A date-range partition is a realistic claim shape; the out-of-range row
+    must be caught rather than the claim silently skipped."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _RANGE_PREAMBLE
+        + "partial datasource january (entity_id: entity_id, d: d)"
+        + _RANGE_CLAIM
+        + """
+        query '''
+        SELECT 'a1' AS entity_id, cast('2026-01-15' as date) AS d UNION ALL
+        SELECT 'b1', cast('2026-02-15' as date)
+        ''';
+        """
+    )
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceModelValidationError)
+        and "fall outside its `complete where" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_complete_where_containment_accepts_in_range_between_claim():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _RANGE_PREAMBLE
+        + "partial datasource january (entity_id: entity_id, d: d)"
+        + _RANGE_CLAIM
+        + """
+        query '''
+        SELECT 'a1' AS entity_id, cast('2026-01-15' as date) AS d UNION ALL
+        SELECT 'a2', cast('2026-01-31' as date)
+        ''';
+        """
+    )
+
+    validate_environment(executor.environment, exec=executor)
+
+
 _MULTI_DATASOURCE_PREAMBLE = """
     key aircraft_id int;
     property aircraft_id.tail_num string;

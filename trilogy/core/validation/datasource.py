@@ -29,8 +29,10 @@ from trilogy.core.exceptions import (
     render_datatype,
 )
 from trilogy.core.models.build import (
+    BuildBetween,
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
@@ -314,6 +316,120 @@ def validate_declared_domains(
     return results
 
 
+def containment_violation_condition(
+    conditional: BuildComparison | BuildConditional | BuildParenthetical | BuildBetween,
+) -> BuildComparison:
+    """Rows that do not provably satisfy ``conditional``.
+
+    ``(cond is not distinct from True) = False`` rather than a negation: there
+    is no generic NOT, and a plain ``cond = False`` would evaluate to NULL for
+    a NULL-keyed row and let it escape. A row whose key is NULL is outside the
+    claimed slice just as much as one keyed to another partition.
+    """
+    return BuildComparison(
+        left=BuildFunction(
+            operator=FunctionType.IS_NOT_DISTINCT,
+            # the claim is one operand: `is not distinct from` binds tighter
+            # than the `and` joining its atoms.
+            arguments=[BuildParenthetical(content=conditional), True],
+            output_data_type=DataType.BOOL,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+        operator=ComparisonOperator.EQ,
+        right=False,
+    )
+
+
+def validate_complete_where_containment(
+    datasource: BuildDatasource,
+    env: Environment,
+    build_env: BuildEnvironment,
+    exec: Executor | None,
+) -> list[ValidationTest]:
+    """A `complete where` is a containment claim the planner trusts and cannot
+    enforce — it may name a column the source has no way to filter on, so query
+    generation can only take it at its word and elide predicates it implies.
+    Nothing else ever checks it, so a source that returns rows outside its own
+    claim leaks them into every consumer with no error. This is the check that
+    establishes the claim is true.
+
+    Skipped, not failed, when the claim isn't evaluable against the datasource
+    alone (a column it doesn't expose, or an existence subselect) — that is
+    precisely the case generation can't inject either.
+    """
+    non_partial_for = datasource.non_partial_for
+    if non_partial_for is None:
+        return []
+    conditional = non_partial_for.conditional
+    if not isinstance(conditional, BuildConceptArgs):
+        return []
+    if any(arg for group in conditional.existence_arguments for arg in group):
+        return []
+    output_addresses = {concept.address for concept in datasource.concepts}
+    claim_concepts = unique(list(conditional.row_arguments), "address")
+    if not claim_concepts:
+        return []
+    if not all(c.address in output_addresses for c in claim_concepts):
+        return []
+
+    keys = [
+        build_env.concepts[address]
+        for address in sorted(datasource.grain.components)
+        if address in build_env.concepts
+    ]
+    selected = unique(claim_concepts + keys, "address")
+    query = easy_query(
+        concepts=selected,
+        datasource=datasource,
+        env=env,
+        condition=containment_violation_condition(conditional),
+        grain=BuildGrain(components={c.address for c in selected}),
+        limit=SAMPLE_LIMIT,
+    )
+    if exec is None:
+        return [
+            ValidationTest(
+                raw_query=query,
+                check_type=ExpectationType.ROWCOUNT,
+                expected="0",
+                result=None,
+                ran=False,
+            )
+        ]
+    sql = exec.generate_sql(query)[-1]
+    result = exec.execute_raw_sql(sql)
+    columns = list(result.keys())
+    rows = result.fetchmany(SAMPLE_LIMIT)
+    error = None
+    if rows:
+        counted = (
+            f"{len(rows)} row(s)"
+            if len(rows) < SAMPLE_LIMIT
+            else f"at least {SAMPLE_LIMIT} rows"
+        )
+        samples = "\n".join(f"  {row_to_dict(r, columns)}" for r in rows)
+        error = DatasourceModelValidationError(
+            f"Datasource {datasource.name} ({datasource.safe_location}) failed "
+            f"validation. {counted} fall outside its `complete where "
+            f"{conditional}` claim. The planner trusts that claim and drops "
+            "predicates it implies, so these rows leak into consumers "
+            "unfiltered. Either filter the source (a `where` clause on the "
+            "datasource, or the query/script behind it) or narrow the "
+            f"claim.\n{samples}"
+        )
+    return [
+        ValidationTest(
+            raw_query=query,
+            generated_query=sql,
+            check_type=ExpectationType.ROWCOUNT,
+            expected="0",
+            result=error,
+            ran=True,
+        )
+    ]
+
+
 def type_check(
     input: Any,
     expected_type: CONCRETE_TYPES,
@@ -569,6 +685,12 @@ def validate_datasource(
         exec,
     )
     results += validate_declared_domains(
+        validation_datasource,
+        env,
+        build_env,
+        exec,
+    )
+    results += validate_complete_where_containment(
         validation_datasource,
         env,
         build_env,
