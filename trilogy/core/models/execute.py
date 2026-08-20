@@ -1705,7 +1705,11 @@ class DatasourceCTE(CTE):
                 and _datasource_column_for_concept(self.datasource, output) is None
             ):
                 return output.lineage
-        assert alias is not None  # concept is an output of this datasource
+        assert alias is not None, (
+            f"Inlined datasource {self.datasource.name} cannot render "
+            f"{concept.address}: it is not one of its columns "
+            f"({[c.alias for c in self.datasource.columns]})"
+        )
         return alias
 
 
