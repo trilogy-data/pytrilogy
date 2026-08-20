@@ -1,5 +1,8 @@
 # Bug: WHERE over disconnected aggregate islands falls through to render sentinels instead of the clean resolution error
 
+**Re-verified OPEN 2026-08-20 (`6bdb4d7b4`)** - the minimal repro below reproduces
+verbatim, both sums sentineled.
+
 Status: OPEN. Found in run `20260817-013108_ingest_deepseek_deepseek-v4-flash`,
 q05 (`probe_store.preql`). Minimal repro in hand. A related internal-error leak
 from the enriched leg (q06) is appended as a secondary finding.
@@ -96,6 +99,21 @@ date+store filter on each, all four measures sentineled.
   "WHERE input(s) cannot be related" resolution error - both observed working
   in the same run on other queries. The WHERE-plus-multi-island-aggregate path
   bypasses both checks and falls through to render.
+
+## Sibling shape inherited from the closed q17 handoff
+
+`handoff_composite_membership_invalid_reference_q17.md` was deleted on 2026-08-19
+once its primary bug was fixed (tuple membership inside an inline-filtered
+aggregate now plans off the same fact-anchored island as the plain-`where` path;
+regression `tests/modeling/tpc_ds_duckdb/test_q17_composite_membership.py`). Its
+open follow-up belongs to THIS defect class and is recorded here so it is not
+lost: a **foreign-fact ROW predicate inside a filtered aggregate** was observed
+rendering `INVALID_REFERENCE_BUG` sentinels rather than the clean
+disconnected-subgraph error. It was not re-reproduced on 2026-08-20 - a
+synthetic two-fact model with a shared customer key plans it cleanly, so the
+shape needs the tpc_ds topology where the foreign fact is genuinely
+unconnectable. Reconstruct it against `tests/modeling/tpc_ds_duckdb` before
+treating it as separate from the repro above; the two most likely share one fix.
 
 ## Secondary finding: internal error leak (enriched q06)
 

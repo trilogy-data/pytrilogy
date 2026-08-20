@@ -67,6 +67,7 @@ from trilogy.core.having_normalization import (
     _strip_local_namespace,
     _substitute_condition_tree,
     _substitute_having_aggregates,
+    scalar_where_aggregate_advice,
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -446,9 +447,9 @@ def _validate_where_aggregate_matches_select(
         rendered = _render_aggregate(node)
         raise InvalidSyntaxException(
             f"WHERE clause aggregate `{rendered}` is also computed in the "
-            f"SELECT (as `{alias}`); aggregate filters must use the HAVING "
-            f"clause - e.g. `having {alias} > ...`"
-            + (f"; Line: {line_no}" if line_no else "")
+            f"SELECT (as `{alias}`); "
+            + scalar_where_aggregate_advice(alias, node)
+            + (f" Line: {line_no}" if line_no else "")
         )
 
 
@@ -1480,7 +1481,10 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                 raise SyntaxError(
                     f"Cannot reference an aggregate derived in the select "
                     f"({concept.address}) in the same statement where clause; "
-                    f"move to the HAVING clause instead; Line: {line_no}"
+                    + scalar_where_aggregate_advice(
+                        _strip_local_namespace(concept.address), lineage
+                    )
+                    + f" Line: {line_no}"
                 )
         _validate_where_aggregate_matches_select(select, line_no)
     _validate_staged_where(select, context, line_no)
