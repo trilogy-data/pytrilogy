@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
@@ -1032,6 +1033,22 @@ def _raise_if_keyless_row_bearing_join(
         tree.add(j.right)
 
 
+def _padding_sources(
+    side: DataSource, keys: set[str], canon: Callable[[str], str]
+) -> set[str]:
+    """Identifiers of the sources at or above `side` whose own rows carry the
+    key as join-analysis padding. A leaf datasource never pads: a NULL in its
+    column is a value, which the caller has already exempted."""
+    found: set[str] = set()
+    if not isinstance(side, QueryDatasource):
+        return found
+    if keys & {canon(c.address) for c in side.nullable_concepts}:
+        found.add(side.identifier)
+    for parent in side.datasources:
+        found |= _padding_sources(parent, keys, canon)
+    return found
+
+
 def _gate_nullable_by_host(
     modifiers: list[Modifier],
     left: str,
@@ -1040,21 +1057,33 @@ def _gate_nullable_by_host(
     host_nodes: set[str] | None,
     value_nullables: dict[str, list[str]],
     authored_keys: set[str] | None = None,
+    shared_padding: bool = False,
 ) -> list[Modifier]:
     """Null-safe equality pairs padding of shared provenance. A host/feeder
     pair (exactly one side hosts the node's extension-licensed domains) pads
     for different reasons — grain-bearing extension rows vs join manufacture —
     and pairing them cross-products the families (get_join_type preserves the
     host instead). VALUE nulls are exempt: a `?` NULL names the same group on
-    both sides no matter who hosts."""
+    both sides no matter who hosts.
+
+    `shared_padding` is the direct test the first sentence describes: when one
+    source upstream of BOTH sides is what padded the key, the two NULL columns
+    are that one source's rows arriving twice, so they pair. Hosting is only a
+    proxy for provenance and reads asymmetric on a shared-scan merge (an
+    aggregate over the padded scan against the scan itself), where stripping
+    lets the guard-upgrade rule flip the scan's outer join to INNER and delete
+    the padded rows."""
     if (
-        Modifier.NULLABLE in modifiers
-        and host_nodes is not None
-        and ((left in host_nodes) != (right in host_nodes))
-        and not (authored_keys and keys & authored_keys)
-        and not _has_any(keys, left, value_nullables)
-        and not _has_any(keys, right, value_nullables)
+        Modifier.NULLABLE not in modifiers
+        or shared_padding
+        or (authored_keys and keys & authored_keys)
+        or _has_any(keys, left, value_nullables)
+        or _has_any(keys, right, value_nullables)
     ):
+        return modifiers
+    # Unshared padding on both sides is two independent extension families;
+    # hosting says the same thing when the node has a host basis to read.
+    if host_nodes is None or (left in host_nodes) != (right in host_nodes):
         return [m for m in modifiers if m is not Modifier.NULLABLE]
     return modifiers
 
@@ -1245,6 +1274,12 @@ def get_node_joins(
                             host_nodes,
                             value_nullables,
                             authored_veto_keys,
+                            bool(
+                                _padding_sources(ds_node_map[k], {concept}, canon_node)
+                                & _padding_sources(
+                                    ds_node_map[j.right], {concept}, canon_node
+                                )
+                            ),
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []
