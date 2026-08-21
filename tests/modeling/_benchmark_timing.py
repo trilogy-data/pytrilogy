@@ -17,6 +17,17 @@ class BenchmarkResult(Generic[ResultT]):
     reference_result: ResultT
 
 
+def repeat_count_for_env(default: int) -> int:
+    """Zero on CI, `default` elsewhere.
+
+    The repeats only sharpen the numbers the charts are drawn from, and every
+    benchmark conftest runs `analyze()` off CI only -- so on CI they are extra
+    generations and executions per query, thrown away. Decided here rather than
+    inside `benchmark_query`, which must honour the count it is handed.
+    """
+    return 0 if environ.get("CI") else default
+
+
 def time_call(function: Callable[[], ResultT]) -> tuple[float, ResultT]:
     start = perf_counter()
     value = function()
@@ -33,12 +44,6 @@ def benchmark_query(
     parse_time, query = time_call(generate)
     candidate_time, candidate_result = time_call(lambda: execute_candidate(query))
     reference_time, reference_result = time_call(execute_reference)
-
-    # The repeats only sharpen the numbers the charts are drawn from, and every
-    # benchmark conftest runs `analyze()` off CI only. On CI they are up to
-    # `repeat_count` extra generations and executions per query, thrown away.
-    if environ.get("CI"):
-        repeat_count = 0
 
     if min(parse_time, candidate_time, reference_time) < repeat_time_cutoff:
         for _ in range(repeat_count):

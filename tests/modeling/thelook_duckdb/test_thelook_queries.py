@@ -11,7 +11,7 @@ cross-pairing.
 from pathlib import Path
 
 from tests.modeling._benchmark_artifacts import record_timing, write_query_log
-from tests.modeling._benchmark_timing import benchmark_query
+from tests.modeling._benchmark_timing import benchmark_query, repeat_count_for_env
 from tests.modeling._query_size import query_size
 from tests.modeling._row_compare import rows_match
 from trilogy import Executor
@@ -108,7 +108,7 @@ def _assert_span_matches_truth(engine: Executor, name: str) -> None:
 
 
 REPEAT_TIME_CUTOFF = 0.15
-REPEAT_COUNT = 3
+REPEAT_COUNT = repeat_count_for_env(3)
 
 
 def run_query(engine: Executor, idx: int, label: str | None = None) -> str:

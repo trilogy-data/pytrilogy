@@ -116,7 +116,11 @@ jobs:
         # on rather than failing the build on a fixture's dependencies.
         shell: bash
         run: |
-          grep -rl '^# /// script' tests --include='*.py' | while read -r script; do
+          # First line only: a `# /// script` block also appears inside test
+          # files that carry a script as a string literal, and those are not
+          # scripts themselves.
+          find tests -name '*.py' | sort | while read -r script; do
+            head -1 "$script" | grep -q '^#!/usr/bin/env -S uv run' || continue
             echo "== $script"
             uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
           done
