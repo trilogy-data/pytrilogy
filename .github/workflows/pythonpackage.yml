@@ -98,20 +98,24 @@ jobs:
         # Built here it is a named step and the rust cache above covers it.
         run: cargo build --release --example landmarks --manifest-path crates/trilogy-io/Cargo.toml
       - name: Warm the uv script environments
-        # DuckDB script datasources shell out to `uv run` once per query scan.
-        # The first run of each distinct PEP 723 header resolves an environment
-        # - for pushdown_source that means building this checkout's pytrilogy
-        # (maturin, so a rust compile), and for the >=3.13 scripts it means
-        # fetching an interpreter the job does not otherwise have. Paying that
-        # here keeps it out of whichever test happens to touch a script first:
-        # tests/engine/scripts/test_source_pushdown.py alone was 806s on the
-        # 3.11 cells (85s on 3.13) and is what pushed them past the timeout.
-        # bash on both platforms: fib.py writes raw Arrow IPC to stdout and
-        # powershell has no /dev/null to send it to.
+        # DuckDB script datasources shell out to `uv run` once per query scan,
+        # and uv builds one environment per distinct PEP 723 header. For
+        # pushdown_source that means building this checkout's pytrilogy
+        # (maturin, so a rust compile); for anything pinned to >=3.13 it means
+        # fetching an interpreter a 3.11 job does not otherwise have. Left to
+        # the tests, that lands on whoever touches a script first and is a
+        # 3.11-only tax: test_source_pushdown.py was 806s on 3.11 against 85s
+        # on 3.13, and geography/test_landmark_updates.py 248s against 7.0s.
+        # `sync` prepares each environment without running the script, so the
+        # ones that would fetch remote data on execution stay untouched.
+        # Discovered rather than listed so a new script cannot silently
+        # reintroduce the cost. bash on both platforms for the loop.
         shell: bash
         run: |
-          uv run --no-project --quiet tests/engine/scripts/pushdown_source.py --limit 1 --format json
-          uv run --no-project --quiet tests/engine/scripts/fib.py > /dev/null
+          grep -rl '^# /// script' tests --include='*.py' | while read -r script; do
+            echo "== $script"
+            uv sync --script "$script"
+          done
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
