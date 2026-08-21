@@ -537,16 +537,24 @@ def _cosource_component_groups(
     reaches: list[set[str]] = []
     for node, _ in main_items:
         seen: set[str] = set()
+        visited = {node}
         stack = [node]
         while stack:
             cur = stack.pop()
             for nxt in concept_graph.successors(cur):
-                if nxt in seen:
+                if nxt in visited:
                     continue
                 if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
                     continue
-                seen.add(nxt)
+                visited.add(nxt)
                 stack.append(nxt)
+                # A pure output alias is a 1:1 relabel of its own source, not
+                # a shared consumer that forces a join. Counting it as reach
+                # is what makes `select x as t` take the split path where
+                # `select x` bails to the safe single bucket; walk through it
+                # to whatever really consumes it instead.
+                if not concept_attrs[nxt].is_rename:
+                    seen.add(nxt)
         reaches.append(seen)
 
     # Bail out to one bucket if any root has zero reach — see partition_roots.
