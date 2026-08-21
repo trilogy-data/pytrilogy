@@ -1,0 +1,22 @@
+# The 2026-08 field-report shape: the full key set, a `~`-dim-content metric,
+# and a group-by rollup metric from sibling contributors. The families must
+# neither cross-pair through a null-safe stitch nor drop a side.
+import order_items;
+
+auto order_line_revenue <- group(revenue) by order.id;
+auto total_order_revenue <- sum(order_line_revenue);
+
+select
+    order.id,
+    id,
+    user.id,
+    product.id,
+    revenue,
+    margin,
+    total_order_revenue,
+order by
+    order.id asc nulls first,
+    id asc nulls first,
+    user.id asc nulls first,
+    product.id asc nulls first
+;

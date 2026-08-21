@@ -94,7 +94,17 @@ union all select 108, 'Math'
 ''';
 """
 
-PYTHON_DATASOURCE = """#!/usr/bin/env python
+#: The dependency block is load-bearing, not decoration. `uv run --no-project`
+#: gives a script with no PEP 723 metadata a bare interpreter, so this imported
+#: whatever pyarrow happened to be ambient -- which worked only while uv had no
+#: managed interpreter to prefer over the system one, and broke the moment
+#: anything installed one. The example this test validates declares its
+#: dependencies; the fixture has to as well.
+PYTHON_DATASOURCE = """#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pyarrow"]
+# ///
 import sys
 
 import pyarrow as pa

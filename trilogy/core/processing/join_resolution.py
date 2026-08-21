@@ -152,6 +152,11 @@ def get_join_type(
     all_connecting_keys: set[str],
     full_join_keys: set[str] | None = None,
     rollup_padded: dict[str, list[str]] | None = None,
+    host_nodes: set[str] | None = None,
+    value_nullables: dict[str, list[str]] | None = None,
+    demanded_domains: set[str] | None = None,
+    node_grains: dict[str, set[str]] | None = None,
+    authored_keys: set[str] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -177,6 +182,58 @@ def get_join_type(
     # when the superset side provably carries the key's full domain and the
     # subset side's NULLs have a null-safe partner.
     if left_is_partial or right_is_partial:
+        # An AUTHORED relation key (`subset join` anchors, scoped coalescing
+        # members) declares row intent of its own; its machinery types the
+        # join and host inference must not override it (the rowset-enrichment
+        # `subset join` preserves the anchor side, which hosting would flip).
+        authored = bool(authored_keys and all_connecting_keys & authored_keys)
+        # Preservation exists to keep extension rows, and those ride the HOST
+        # — the side covering every `~`-licensed key the node emits (or the
+        # node's grain when none are in play). When exactly one side hosts,
+        # the other is a feeder whose unmatched rows carry no reachable
+        # content; preserving it manufactures padded join keys the FINAL
+        # merge then null-pairs across extension families. Symmetric or
+        # absent hosting stays row-preserving, and so does a feeder carrying
+        # VALUE nulls (`~?`) on the key: its NULL-keyed rows are real fact
+        # rows equality would drop. Padding NULLs on the feeder are exactly
+        # what the direction exists to shed, so only value nulls veto.
+        if host_nodes is not None and not authored:
+            left_is_host = left in host_nodes
+            right_is_host = right in host_nodes
+            if left_is_host != right_is_host:
+                feeder = right if left_is_host else left
+                if value_nullables is None or not _has_any(
+                    all_connecting_keys, feeder, value_nullables
+                ):
+                    return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+        # A `~` key the node never emits (not a visible output, no grain
+        # component keyed by it) licenses no extension rows here. When the
+        # pair is recognizably fact-to-dimension — one side's grain is the
+        # connecting keys themselves — the dimension is a pure lookup: its
+        # unmatched rows are grainless junk, so anchor the fact side. A
+        # demanded key, ambiguous topology, or a value-null fact key stays
+        # row-preserving.
+        if demanded_domains is not None and node_grains is not None and not authored:
+            partial_keys = {
+                key
+                for key in all_connecting_keys
+                if key in partials.get(left, []) or key in partials.get(right, [])
+            }
+            if partial_keys and not partial_keys & demanded_domains:
+                left_grain = node_grains.get(left) or set()
+                right_grain = node_grains.get(right) or set()
+                left_is_dim = bool(left_grain) and left_grain <= all_connecting_keys
+                right_is_dim = bool(right_grain) and right_grain <= all_connecting_keys
+                if left_is_dim != right_is_dim:
+                    fact = left if right_is_dim else right
+                    if value_nullables is None or not _has_any(
+                        all_connecting_keys, fact, value_nullables
+                    ):
+                        return (
+                            JoinType.LEFT_OUTER
+                            if right_is_dim
+                            else JoinType.RIGHT_OUTER
+                        )
         return JoinType.FULL
     # A grouping-set NULL is padding, not a value: the subtotal/grand-total row
     # a ROLLUP/CUBE/GROUPING SETS emits has no counterpart on a side that does
@@ -195,6 +252,20 @@ def get_join_type(
     # equality (get_modifiers) pairs the NULL groups, and a nullable side
     # with no null-safe partner keeps the join preserving toward it.
     if left_is_nullable and right_is_nullable:
+        # Null-pairing is only sound when the padded rows name the same thing.
+        # When exactly one side carries the node's full grain (the host), its
+        # padding is the grain-bearing extension family; the other side's
+        # padding lacks grain columns entirely, so pairing the two invents
+        # rows (extension-family cross products). Preserve the host and let
+        # plain equality drop the feeder's padding. Authored relation keys
+        # keep their own machinery's typing.
+        if host_nodes is not None and not (
+            authored_keys and all_connecting_keys & authored_keys
+        ):
+            left_is_host = left in host_nodes
+            right_is_host = right in host_nodes
+            if left_is_host != right_is_host:
+                return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
         return JoinType.INNER
     if left_is_nullable:
         return JoinType.LEFT_OUTER
@@ -323,6 +394,11 @@ def resolve_join_order_v2(
     anchor_key_nodes: set[str] | None = None,
     authored_key_nodes: set[str] | None = None,
     rollup_padded: dict[str, list[str]] | None = None,
+    host_nodes: set[str] | None = None,
+    value_nullables: dict[str, list[str]] | None = None,
+    demanded_domains: set[str] | None = None,
+    node_grains: dict[str, set[str]] | None = None,
+    authored_veto_keys: set[str] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -468,6 +544,11 @@ def resolve_join_order_v2(
                     all_connecting_keys,
                     full_join_keys,
                     rollup_padded,
+                    host_nodes,
+                    value_nullables,
+                    demanded_domains,
+                    node_grains,
+                    authored_veto_keys,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -951,9 +1032,38 @@ def _raise_if_keyless_row_bearing_join(
         tree.add(j.right)
 
 
+def _gate_nullable_by_host(
+    modifiers: list[Modifier],
+    left: str,
+    right: str,
+    keys: set[str],
+    host_nodes: set[str] | None,
+    value_nullables: dict[str, list[str]],
+    authored_keys: set[str] | None = None,
+) -> list[Modifier]:
+    """Null-safe equality pairs padding of shared provenance. A host/feeder
+    pair (exactly one side hosts the node's extension-licensed domains) pads
+    for different reasons — grain-bearing extension rows vs join manufacture —
+    and pairing them cross-products the families (get_join_type preserves the
+    host instead). VALUE nulls are exempt: a `?` NULL names the same group on
+    both sides no matter who hosts."""
+    if (
+        Modifier.NULLABLE in modifiers
+        and host_nodes is not None
+        and ((left in host_nodes) != (right in host_nodes))
+        and not (authored_keys and keys & authored_keys)
+        and not _has_any(keys, left, value_nullables)
+        and not _has_any(keys, right, value_nullables)
+    ):
+        return [m for m in modifiers if m is not Modifier.NULLABLE]
+    return modifiers
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
+    host_grain: set[str] | None = None,
+    demanded_domains: set[str] | None = None,
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
@@ -966,6 +1076,7 @@ def get_node_joins(
     partials: dict[str, list[str]] = {}
     nullables: dict[str, list[str]] = {}
     grain_size: dict[str, int] = {}
+    value_nullables: dict[str, list[str]] = {}
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
     rollup_padded: dict[str, list[str]] = {}
@@ -997,6 +1108,7 @@ def get_node_joins(
         p_list: list[str] = []
         n_list: list[str] = []
         r_list: list[str] = []
+        v_list: list[str] = []
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
@@ -1008,11 +1120,14 @@ def get_node_joins(
                 p_list.append(node)
             if node in nullable_nodes and node not in n_list:
                 n_list.append(node)
+                if node not in v_list and nulls_are_values(concept, datasource):
+                    v_list.append(node)
             if node in padded_nodes and node not in r_list:
                 r_list.append(node)
         partials[ds_node] = p_list
         nullables[ds_node] = n_list
         rollup_padded[ds_node] = r_list
+        value_nullables[ds_node] = v_list
 
     # Canonical keys of query-scoped FULL joins (EQUAL/∦ declared edges),
     # mapped into graph concept nodes.
@@ -1040,6 +1155,45 @@ def get_node_joins(
         canon_node(pair.canonical.address)
         for pair in authored_join_pair_candidates(environment)
     }
+    host_nodes: set[str] | None = None
+    if host_grain:
+        host_canon = {canon_node(a) for a in host_grain}
+        # Hosting a domain requires binding it COMPLETELY: a side carrying a
+        # `~` key only partially (the fact's FK column) exposes the address
+        # but not the domain, so it can never out-host the preserved span.
+        # Own-level marks, not the deep collection: a span that completed a
+        # key against its dimension clears its own mark while the raw fact
+        # scan below it keeps one.
+        host_nodes = {
+            ds_node
+            for ds_node, datasource in ds_node_map.items()
+            if host_canon
+            <= (
+                {canon_node(c.address) for c in datasource.output_concepts}
+                - {canon_node(c.address) for c in datasource.partial_concepts}
+            )
+        }
+    # Keys whose join typing is owned by an authored relation (query-scoped
+    # subset/coalescing joins, declared anchors): host/dim direction inference
+    # stands down on these.
+    authored_veto_keys = (
+        {canon_node(a) for a in environment.scoped_partial_derived}
+        | {
+            canon_node(a)
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for a in (canonical, *members)
+        }
+        | anchor_key_nodes
+        | authored_key_nodes
+    )
+    demanded_nodes: set[str] | None = None
+    node_grains: dict[str, set[str]] | None = None
+    if demanded_domains is not None:
+        demanded_nodes = {canon_node(a) for a in demanded_domains}
+        node_grains = {
+            ds_node: {canon_node(a) for a in datasource.grain.components}
+            for ds_node, datasource in ds_node_map.items()
+        }
     joins = resolve_join_order_v2(
         graph,
         partials=partials,
@@ -1049,6 +1203,11 @@ def get_node_joins(
         anchor_key_nodes=anchor_key_nodes,
         authored_key_nodes=authored_key_nodes,
         rollup_padded=rollup_padded,
+        host_nodes=host_nodes,
+        value_nullables=value_nullables,
+        demanded_domains=demanded_nodes,
+        node_grains=node_grains,
+        authored_veto_keys=authored_veto_keys,
     )
     _raise_if_keyless_row_bearing_join(
         joins,
@@ -1073,11 +1232,19 @@ def get_node_joins(
                         left=ds_concept_map[(k, concept)],
                         right=ds_concept_map[(j.right, concept)],
                         existing_datasource=ds_node_map[k],
-                        modifiers=get_modifiers(
-                            ds_concept_map[(k, concept)],
-                            ds_concept_map[(j.right, concept)],
-                            ds_node_map[k],
-                            ds_node_map[j.right],
+                        modifiers=_gate_nullable_by_host(
+                            get_modifiers(
+                                ds_concept_map[(k, concept)],
+                                ds_concept_map[(j.right, concept)],
+                                ds_node_map[k],
+                                ds_node_map[j.right],
+                            ),
+                            k,
+                            j.right,
+                            {concept},
+                            host_nodes,
+                            value_nullables,
+                            authored_veto_keys,
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

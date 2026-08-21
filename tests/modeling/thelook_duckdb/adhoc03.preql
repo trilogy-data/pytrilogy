@@ -1,0 +1,13 @@
+# Span plus a metric needing `~`-dim content (margin reads product.cost): the
+# preserved span must stay in one contributor or product extensions drop.
+import order_items;
+
+select
+    order.id,
+    id,
+    user.id,
+    product.id,
+    revenue,
+    margin,
+    sale_line_count,
+;

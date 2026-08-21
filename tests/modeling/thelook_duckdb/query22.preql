@@ -1,0 +1,14 @@
+# Two datasources bind ~user.id (orders and order_items). Merging content
+# from both partial bindings must not manufacture a preserved join between
+# them; the user extension family still arrives exactly once.
+import order_items;
+
+select
+    order.status,
+    user.id,
+    revenue,
+    margin,
+order by
+    order.status asc nulls first,
+    user.id asc nulls first
+;

@@ -108,3 +108,11 @@ include = [
   { path = ".scripts/sync_version.py", format = "sdist" },
   { path = ".scripts/__init__.py", format = "sdist" },
 ]
+# The cargo build directory sits *inside* the python package named above, and
+# maturin's default output is `<manifest-dir>/target/wheels/` -- so a build with
+# no explicit `--out` packs its own wheel back into itself until the archive
+# passes the 4GiB zip32 ceiling and the zip writer gives up ("Large file option
+# has not been set"). The release flow always passes `--out dist` and never saw
+# it; a PEP 517 source build -- `pip install pytrilogy` where no wheel matches
+# the interpreter -- hit it every time.
+exclude = ["trilogy/scripts/dependency/target/**/*"]

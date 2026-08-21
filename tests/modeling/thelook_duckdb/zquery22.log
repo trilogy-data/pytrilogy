@@ -1,0 +1,21 @@
+query_id = "22"
+gen_length = 740
+preql_size = 155
+comp_size = 424
+generated_sql = """
+SELECT
+    \"order_orders\".\"status\" as \"order_status\",
+    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\",
+    sum(\"order_items\".\"sale_price\" - \"product_products\".\"cost\") as \"margin\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    LEFT OUTER JOIN \"orders\" as \"order_orders\" on \"order_items\".\"order_id\" = \"order_orders\".\"order_id\"
+    LEFT OUTER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"order_orders\".\"status\" asc nulls first,
+    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") asc nulls first"""

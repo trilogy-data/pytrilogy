@@ -2287,11 +2287,25 @@ def _cover_groups_for_mandatory(
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
+    extension_licensed: frozenset[str] = frozenset(),
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, pick the most-downstream built group that
     actually exposes it (more built ancestors = further downstream). Returns
     `{gid: [concepts that group provides]}` preserving discovery order so
-    the MergeNode renders with a stable join layout."""
+    the MergeNode renders with a stable join layout.
+
+    An `extension_licensed` output (a key some datasource binds `~`) owes its
+    extension rows, and those ride whichever contributor carries the WHOLE
+    preserved span. When the downstream winner exposes this key but not every
+    licensed output (it joined through one `~` family while another rides a
+    sibling), taking the key from it splits the span across contributors —
+    each family pads the stitch key in a different branch and the FINAL merge
+    either drops a family or null-pairs them. Route the key to its owning
+    bucket (primary membership, the dim span) instead. A winner that covers
+    the full span keeps it: no split exists to prevent."""
+    licensed_mandatory = {
+        c.address for c in mandatory_list if c.address in extension_licensed
+    }
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     for concept in mandatory_list:
         addr = concept.address
@@ -2319,7 +2333,16 @@ def _cover_groups_for_mandatory(
             ),
             reverse=True,
         )
-        per_group[candidates[0]].append(concept)
+        winner = candidates[0]
+        if addr in extension_licensed and licensed_mandatory - {
+            o.address for o in built[winner].output_concepts
+        }:
+            primary = [
+                gid for gid in candidates if addr in set(attrs[gid].primary_members)
+            ]
+            if primary:
+                winner = primary[0]
+        per_group[winner].append(concept)
     return per_group
 
 
@@ -3330,7 +3353,14 @@ def _assemble_final_node(
             combine_existing=False,
         )
 
-    per_group = _cover_groups_for_mandatory(group_graph, attrs, built, mandatory_list)
+    extension_licensed = frozenset(
+        address
+        for datasource in environment.datasources.values()
+        for address in datasource.column_level_partial_addresses
+    )
+    per_group = _cover_groups_for_mandatory(
+        group_graph, attrs, built, mandatory_list, extension_licensed
+    )
     if not per_group:
         return _apply_final_conditions(
             _group_to_grain_if_required(
@@ -3771,6 +3801,7 @@ def _assemble_final_node(
         # row (contract stage 2 set deduplicate_to_grain=False); the merge must
         # not collapse the authored fan-out back to distinct key pairs.
         whole_grain=not final_contract.deduplicate_to_grain,
+        host_stitch=True,
     )
     _clear_groupmate_completed_partials(merged, environment)
     # A hidden axis mate rides sides kept at their own finer row grain, and the

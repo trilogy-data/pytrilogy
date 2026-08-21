@@ -4,10 +4,12 @@ The libraries are conveniences; the command line is the contract. These run the
 same flags against `tests/io/conformance/landmarks.py` and the `landmarks`
 example in `crates/trilogy-io` and require identical answers.
 
-Skipped when cargo is unavailable, and the rust binary is built once per session.
+Skipped when cargo is unavailable; the rust binary is built once per session, or
+taken as already built when TRILOGY_IO_PREBUILT says CI built it in its own step.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -38,8 +40,24 @@ CASES = [
 ]
 
 
+def _binary_path() -> Path:
+    suffix = ".exe" if sys.platform == "win32" else ""
+    return CRATE / "target" / "release" / "examples" / f"landmarks{suffix}"
+
+
 @pytest.fixture(scope="session")
 def rust_binary() -> str:
+    """The example binary, built here only when CI has not already built it.
+
+    A cold build is the whole of arrow + parquet in release mode. Doing that
+    from a fixture put ~300s inside this one file and attributed none of it, so
+    CI builds it in its own step and sets TRILOGY_IO_PREBUILT; then a missing
+    binary is a broken workflow and must fail rather than quietly skip.
+    """
+    binary = _binary_path()
+    if os.environ.get("TRILOGY_IO_PREBUILT"):
+        assert binary.exists(), f"TRILOGY_IO_PREBUILT is set but {binary} is missing"
+        return str(binary)
     if shutil.which("cargo") is None:
         pytest.skip("cargo not available")
     build = subprocess.run(
@@ -52,8 +70,7 @@ def rust_binary() -> str:
         pytest.skip(
             f"cargo build failed: {build.stderr.decode(errors='replace')[-2000:]}"
         )
-    suffix = ".exe" if sys.platform == "win32" else ""
-    return str(CRATE / "target" / "release" / "examples" / f"landmarks{suffix}")
+    return str(binary)
 
 
 def run_python(args: list[str]) -> subprocess.CompletedProcess:

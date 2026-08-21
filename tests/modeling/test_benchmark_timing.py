@@ -1,4 +1,4 @@
-from tests.modeling._benchmark_timing import benchmark_query
+from tests.modeling._benchmark_timing import benchmark_query, repeat_count_for_env
 
 
 def test_benchmark_query_repeats_each_short_stage() -> None:
@@ -28,3 +28,11 @@ def test_benchmark_query_repeats_each_short_stage() -> None:
     assert calls == {"generate": 4, "candidate": 4, "reference": 4}
     assert result.query == "select 1"
     assert result.candidate_result == result.reference_result == [1]
+
+
+def test_repeat_count_is_zero_on_ci(monkeypatch) -> None:
+    """CI throws the timings away, so the repeat runs are pure cost there."""
+    monkeypatch.setenv("CI", "true")
+    assert repeat_count_for_env(3) == 0
+    monkeypatch.delenv("CI")
+    assert repeat_count_for_env(3) == 3

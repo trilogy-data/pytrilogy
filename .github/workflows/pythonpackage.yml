@@ -25,18 +25,46 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
+    env:
+      # Tells tests/io/test_conformance.py that the "Build the conformance
+      # binary" step below already produced the rust example, so its fixture
+      # references the binary instead of shelling out to cargo. Unset locally,
+      # where the fixture builds on demand.
+      TRILOGY_IO_PREBUILT: '1'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
         with:
           toolchain: stable
+          # This action runs Swatinem/rust-cache for us, but that defaults to
+          # the repo root and there is no manifest there - `cargo metadata`
+          # failed, no lockfile was hashed, and every run restored an empty
+          # 773-byte cache while rebuilding both crates from scratch. Name the
+          # two real workspaces; leaving either out rebuilds it every time, and
+          # trilogy-io is a full arrow + parquet release build.
+          cache-workspaces: |
+            trilogy/scripts/dependency
+            crates/trilogy-io
       - name: Install uv for script tests
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+        with:
+          enable-cache: true
+          # The script datasources are PEP 723 files with no lockfile between
+          # them, and keying on the scripts themselves would miss the cache on
+          # every test edit. uv validates its own entries, so a coarse, stable
+          # key is what we want here.
+          cache-dependency-glob: |
+            requirements.txt
+            pyproject.toml
       - id: 'auth'
         name: 'Authenticate to Google Cloud'
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -62,6 +90,40 @@ jobs:
       - name: Build Rust extension
         run: |
           python -m pip install -e .
+      - name: Build the conformance binary
+        # tests/io/test_conformance.py runs this example against its python twin.
+        # It used to be built from the test's own session fixture, where a cold
+        # arrow + parquet release build showed up as ~300s inside one test file
+        # (5 minutes of the pytest step, invisible in the timing breakdown).
+        # Built here it is a named step and the rust cache above covers it.
+        run: cargo build --release --example landmarks --manifest-path crates/trilogy-io/Cargo.toml
+      - name: Warm the uv script environments
+        # DuckDB script datasources shell out to `uv run` once per query scan,
+        # and uv builds one environment per distinct PEP 723 header. For
+        # pushdown_source that means building this checkout's pytrilogy
+        # (maturin, so a rust compile); for anything pinned to >=3.13 it means
+        # fetching an interpreter a 3.11 job does not otherwise have. Left to
+        # the tests, that lands on whoever touches a script first and is a
+        # 3.11-only tax: test_source_pushdown.py was 806s on 3.11 against 85s
+        # on 3.13, and geography/test_landmark_updates.py 248s against 7.0s.
+        # `sync` prepares each environment without running the script, so the
+        # ones that would fetch remote data on execution stay untouched.
+        # Discovered rather than listed so a new script cannot silently
+        # reintroduce the cost. bash on both platforms for the loop.
+        # Warming is an optimization, never a gate: a script whose environment
+        # cannot resolve here is not necessarily one any test runs, and the
+        # test that does need it will fail on its own terms. Report and carry
+        # on rather than failing the build on a fixture's dependencies.
+        shell: bash
+        run: |
+          # First line only: a `# /// script` block also appears inside test
+          # files that carry a script as a string literal, and those are not
+          # scripts themselves.
+          find tests -name '*.py' | sort | while read -r script; do
+            head -1 "$script" | grep -q '^#!/usr/bin/env -S uv run' || continue
+            echo "== $script"
+            uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
+          done
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names

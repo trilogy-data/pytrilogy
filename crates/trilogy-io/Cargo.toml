@@ -2,7 +2,7 @@
 name = "trilogy-io"
 # Synced from the python __init__ by the same release flow as trilogy-parser;
 # a published crate version always corresponds to a real pytrilogy release.
-version = "0.3.335"
+version = "0.3.336"
 edition = "2021"
 description = "Write a program that is a Trilogy data source: Arrow out, contract flags in."
 license = "MIT"

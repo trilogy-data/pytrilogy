@@ -1,0 +1,20 @@
+query_id = "20"
+gen_length = 579
+preql_size = 163
+comp_size = 574
+generated_sql = """
+SELECT
+    \"user_users\".\"state\" as \"user_state\",
+    \"product_products\".\"brand\" as \"product_brand\",
+    sum(\"order_items\".\"sale_price\") as \"revenue\",
+    sum(\"order_items\".\"sale_price\" - \"product_products\".\"cost\") as \"margin\"
+FROM
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    FULL JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+GROUP BY
+    1,
+    2
+ORDER BY 
+    \"user_users\".\"state\" asc nulls first,
+    \"product_products\".\"brand\" asc nulls first"""

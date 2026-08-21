@@ -1,0 +1,17 @@
+# Two metric families over the span: the dim-content metric and a group-by
+# rollup force sibling contributors; their stitch must never null-pair the
+# extension families (the cross-product shape from the 2026-08 field report).
+import order_items;
+
+auto order_line_revenue <- group(revenue) by order.id;
+auto total_order_revenue <- sum(order_line_revenue);
+
+select
+    order.id,
+    id,
+    user.id,
+    product.id,
+    revenue,
+    margin,
+    total_order_revenue,
+;

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from tests.modeling._benchmark_artifacts import record_timing, write_query_log
-from tests.modeling._benchmark_timing import benchmark_query
+from tests.modeling._benchmark_timing import benchmark_query, repeat_count_for_env
 from tests.modeling._query_size import query_size
 from tests.modeling._row_compare import rows_match
 from trilogy import Executor
@@ -16,7 +16,7 @@ working_path = Path(__file__).parent
 # interleaved so cache warmth stays symmetric) and keep the minimum -- noise
 # only ever adds time, so the min is the most faithful estimate of true cost.
 REPEAT_TIME_CUTOFF = 0.15
-REPEAT_COUNT = 3
+REPEAT_COUNT = repeat_count_for_env(3)
 
 
 def _substitute(text: str, subs: list[tuple[str, str]], source: str) -> str:

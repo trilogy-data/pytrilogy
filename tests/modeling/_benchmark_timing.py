@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from os import environ
 from time import perf_counter
 from typing import Generic, TypeVar
 
@@ -14,6 +15,17 @@ class BenchmarkResult(Generic[ResultT]):
     candidate_result: ResultT
     reference_time: float
     reference_result: ResultT
+
+
+def repeat_count_for_env(default: int) -> int:
+    """Zero on CI, `default` elsewhere.
+
+    The repeats only sharpen the numbers the charts are drawn from, and every
+    benchmark conftest runs `analyze()` off CI only -- so on CI they are extra
+    generations and executions per query, thrown away. Decided here rather than
+    inside `benchmark_query`, which must honour the count it is handed.
+    """
+    return 0 if environ.get("CI") else default
 
 
 def time_call(function: Callable[[], ResultT]) -> tuple[float, ResultT]:
