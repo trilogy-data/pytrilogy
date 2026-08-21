@@ -1,0 +1,13 @@
+# Pair-key grain with the dim-content metric: aggregation over the span with
+# margin must keep both extension families at the key grain.
+import order_items;
+
+select
+    user.id,
+    product.id,
+    revenue,
+    margin,
+order by
+    user.id asc nulls first,
+    product.id asc nulls first
+;

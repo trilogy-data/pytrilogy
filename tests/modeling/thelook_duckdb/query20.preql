@@ -1,0 +1,13 @@
+# Attribute span plus the dim-content metric: margin reads product.cost, so a
+# metric contributor touches the products table the span must keep preserved.
+import order_items;
+
+select
+    user.state,
+    product.brand,
+    revenue,
+    margin,
+order by
+    user.state asc nulls first,
+    product.brand asc nulls first
+;

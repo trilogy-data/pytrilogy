@@ -234,6 +234,7 @@ class MergeNode(StrategyNode):
         existence_concepts: list[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
+        host_stitch: bool = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -262,6 +263,11 @@ class MergeNode(StrategyNode):
         # the single-parent/duplicate collapse shortcuts must not fire — same
         # addresses across sides are different domains, not redundancy.
         self.preserve_parents = preserve_parents
+        # An assembly stitch between sibling contributors: extension-family
+        # ownership (per_group span routing) applies, so join inference gets a
+        # host basis and preserves only the span owner. Mid-plan merges keep
+        # plain domain-preserving semantics.
+        self.host_stitch = host_stitch
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -351,7 +357,47 @@ class MergeNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {grain!s}"
                 )
-                joins = get_node_joins(dataset_list, environment=environment)
+                # The host side is the one licensed to carry extension rows:
+                # when this node emits `~`-licensed keys, the side covering
+                # ALL of them owns every extension family, and a feeder
+                # exposing only the stitch key is not a host even though it
+                # covers the merge grain (its padding is join manufacture).
+                # With no licensed keys in play, grain coverage decides.
+                host_grain: set[str] | None = None
+                if self.host_stitch:
+                    licensed = {
+                        address
+                        for datasource in environment.datasources.values()
+                        for address in datasource.column_level_partial_addresses
+                    }
+                    licensed_outputs = {
+                        c.address for c in self.output_concepts if c.address in licensed
+                    }
+                    host_grain = licensed_outputs or set(grain.components)
+                # Domains this node emits: visible outputs and the grain,
+                # each expanded to its declared keys (a visible dim attribute
+                # demands its key's domain even when a later wrapper does the
+                # grouping). A `~` key outside this set licenses no extension
+                # rows here (get_join_type's fact-to-dim anchoring).
+                hidden = self.hidden_concepts or set()
+                demanded_domains: set[str] = set()
+                for concept in self.output_concepts:
+                    if concept.address in hidden:
+                        continue
+                    demanded_domains.add(concept.address)
+                    if concept.keys:
+                        demanded_domains |= set(concept.keys)
+                for component in grain.components:
+                    demanded_domains.add(component)
+                    component_concept = environment.concepts.get(component)
+                    if component_concept is not None and component_concept.keys:
+                        demanded_domains |= set(component_concept.keys)
+                joins = get_node_joins(
+                    dataset_list,
+                    environment=environment,
+                    host_grain=host_grain,
+                    demanded_domains=demanded_domains,
+                )
         elif final_joins:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(final_joins)}"
