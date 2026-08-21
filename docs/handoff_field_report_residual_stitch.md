@@ -1,127 +1,78 @@
 # Handoff: output-invisible null-safe stitches survive in the field-report plan
 
-## OPEN 2026-08-21 — regression from origin/main, currently masked by a rescoped test assert
+## RESOLVED 2026-08-21: whole-statement tripwire restored
 
 `tests/engine/test_duckdb_partial_fk_field_report.py::test_field_report_select`
-originally asserted `"is not distinct from" not in sql` over the WHOLE
-rendered statement (the PR #652 contract: no null-safe join stitches). On
-origin/main that holds. On this branch one stitch survives, and the test's
-syntax assert was rescoped to the final output assembly as a stopgap. Rows
-are correct either way (the full 940-row comparison passes); the residue is
-a contract/perf regression, not a wrong-rows bug. The acceptance criterion
-for this handoff is restoring the original whole-statement assert.
+again asserts `"is not distinct from" not in sql` over the WHOLE rendered
+statement. The surviving `cheerful` stitch (and the `highfalutin` subtree
+feeding it) no longer renders at all: the metric branch is consumed through a
+plain-equality LEFT join on `item_id` from the full-extent anchor, so its
+padded contributor is output-invisible and the optimizer removes the join.
 
-## Repro
+## Why the fix is consumer-side (optimizer), not plan-side
 
-```powershell
-.venv/Scripts/python.exe -m pytest tests/engine/test_duckdb_partial_fk_field_report.py -q
-```
+The gate decision stands as shipped: `_gate_nullable_by_host` keeps
+family-anchored no-basis pairs, because the forked reunions
+(`tests/engine/test_duckdb_partial_key_assembly.py`) render the byte-same
+merge shape and their padded rows DO feed the output (consumed via a
+null-safe INNER on `item_id`). The two cases separate only at the
+consumption edge two CTEs downstream, which is post-multi-node state. A
+plan-time drop of the axis contributor was prototyped and breaks the forked
+twin; the necessity of the contributor is decided by the final assembly's
+consumption mode, elected after the branch builds.
 
-passes today (rescoped assert). To see the residue, render the test's QUERY
-against its MODEL and grep the SQL. Current tree renders, inside `uneven`:
+## The fix (three steps, all in the optimizer layer)
 
-```
-INNER JOIN "cooperative" on "abundant"."item_id" = "cooperative"."item_id"
-FULL JOIN "cheerful" on "abundant"."order_id" is not distinct from "cheerful"."order_id"
-                    AND "abundant"."product_id" is not distinct from "cheerful"."product_id"
-```
+1. `_inner_pair_rejections` (`trilogy/core/optimizations/join_upgrade.py`)
+   now harvests directional joins: a rendered plain equality forces non-null
+   only on a side whose unmatched rows the join discards: both sides of an
+   INNER, the RIGHT of a LEFT_OUTER, the LEFT of a RIGHT_OUTER. Null-safe
+   pairs still prove nothing. `_external_forced_map` propagates unchanged;
+   the final assembly's `concerned LEFT yummy ON item_id` lands forced
+   `item_id` on the metric branch.
+2. The existing `_downgrade` narrowing then turns the stitch's FULL into
+   LEFT_OUTER (`left_only` holds the forced key), and narrows the fact
+   merges upstream (`orders FULL items` becomes RIGHT OUTER, and the
+   `UpgradeOuterFromKeySetEquivalence` declared-subset match upgrades
+   `items LEFT products` to INNER once the FULL is out of its way).
+3. `PruneInvisibleOuterJoins`
+   (`trilogy/core/optimizations/prune_invisible_join.py`, flag
+   `prune_invisible_outer_joins`): a LEFT_OUTER join whose right side has no
+   rendered reference in the consumer (no visible output column, condition,
+   ORDER BY, existence, semi-join feeder, or other-join endpoint) and whose
+   right grain sits within the join's right key addresses is a row-identical
+   no-op (left rows are preserved either way and multiplicity is at most
+   one), so the join is removed and the driver's irrelevant-CTE filter
+   sweeps the orphaned producer. Null-safety on the removed pairs dies with
+   the join. Modifier STRIPPING was a dead end: the consumer proofs reach
+   `item_id` only, never the stitch keys `order_id`/`product_id`, so no
+   sound non-null proof exists for `SimplifyNullSafeJoins` to consume.
 
-The pre-regression baseline (verifiable by shadowing
-`trilogy/core/processing/join_resolution.py` and
-`trilogy/core/optimizations/value_set_join_upgrade.py` from commit
-`d6fbefd5f` over the current tree via PYTHONPATH, cwd outside the repo)
-renders the SAME plan shape with plain equality everywhere, and one further
-difference: `cooperative`'s internal `orders FULL items` narrows to
-`RIGHT OUTER`. Stripping the modifiers unlocks that narrowing; the surviving
-stitch blocks it. So fixing this also recovers join narrowing.
+## Validation (2026-08-21)
 
-## Why the stitch is there, and why it cannot be removed at the gate
+- Pinned suites green in one process: field report (restored assert),
+  partial_key_assembly, multi_fact_nullable_fk_extent,
+  join_padding_provenance, join_matrix, generators/test_utility (226).
+- Fuzzer 228/228 including the `padding_provenance` family.
+- Corpus A/B (three legs, one process, no-op control clean): 1 of 154
+  queries changes. thelook q19 upgrades `products LEFT order_items` to INNER
+  (directional proof) and drops a dead unique-key LEFT join to an order
+  group; row-validated. All three modeling suites pass.
+- Trap found on the way: source_map tokens for an INLINED datasource are its
+  render alias, not the CTE name. Matching on name alone made the reference
+  check vacuous and the rule fired on 37 corpus queries, several with the
+  right side still referenced (binder errors caught by the modeling run,
+  never by generation). `_right_source_keys` now includes
+  `cte.source_key_for(right)` and skips on token collisions.
 
-`_gate_nullable_by_host` (join_resolution.py) decides whether a null-safe
-pair survives. At merges with no host basis, three cases exist:
+## Follow-up direction (not this fix)
 
-- shared padding (one source's rows arriving twice) must pair (fuzzer
-  `padding_provenance/shared_scan_merge`);
-- a FAMILY-ANCHORED join — one that also pairs on a licensed `~` key —
-  reunites one extension member's halves manufactured in two branches, and
-  must pair or rows split/duplicate
-  (`tests/engine/test_duckdb_partial_key_assembly.py::test_forked_with_status`
-  and `test_forked_full_column_set` pin the rows);
-- a bare null-safe pair (neither) pairs "missing" with "missing" across
-  unrelated trees and strips (this killed the plan's second, worse stitch:
-  `INNER ... item_id is not distinct from`, which on richer data would have
-  cross-paired unrelated extension families).
-
-The surviving `cheerful` stitch is family-anchored (`product_id` is a
-licensed `~` key): the pairing is the product-30 member's two halves — a
-1:1, mechanism-sound reunion. The gate CANNOT distinguish it from the forked
-reunions because they are the same shape at plan time. The difference is
-CONSUMER-side: in the forked plans the merge output feeds the final result,
-so the reunion is load-bearing; in the field-report plan the final assembly
-re-anchors all extension rows from the dimension span (`concerned`) and
-consumes the metric branch (`yummy`) as the right side of a plain-equality
-LEFT join on `item_id` — so every padded (NULL-item) row in that subtree is
-OUTPUT-INVISIBLE. Also note `uneven` projects zero columns from `cheerful`.
-
-## The fix: consumer-side invisibility proofs (optimizer layer)
-
-Invariant to implement: a producer consumed exclusively as the RIGHT side of
-plain-equality LEFT joins cannot surface rows whose join key is NULL — those
-rows never match and LEFT keeps only the left side. That is a forced-non-null
-proof on the producer's join-key column, the same soundness argument
-`_inner_pair_rejections` already makes for INNER joins ("a NULL key never
-matches plain `=`, so the producer row contributes nothing").
-
-Where: `trilogy/core/optimizations/join_upgrade.py`.
-
-- `_inner_pair_rejections` currently harvests only `JoinType.INNER`. Extend:
-  for `LEFT_OUTER`, the RIGHT cte's pair address is forced (never the left's);
-  for `RIGHT_OUTER`, the left's. Null-safe pairs still prove nothing.
-- `_external_forced_map` then propagates the proof producer-ward through
-  single-source projections and group keys exactly as it does today (the
-  q64 `cnt_99` machinery). `yummy.item_id` renders single-source from
-  `uneven`, `uneven.item_id` from `cooperative`, so the proof reaches the
-  stitched merges.
-- Gap: nothing today STRIPS a NULLABLE modifier. `UpgradeJoinOnGuards`
-  changes join TYPES only; the `is not distinct from` text renders from
-  `Modifier.NULLABLE` on the pair. Add modifier stripping when the proof
-  covers the pair's key on the relevant side(s): a null-safe pair whose key
-  is proven non-null on one side can never match a NULL on the other, so the
-  null-safety is dead and plain `=` is row-identical. With the modifier gone
-  the ordinary narrowing (FULL -> directional -> INNER) should reproduce the
-  baseline (`cooperative` RIGHT OUTER included).
-- Careful with the existing caveats in that file: `_blocked_partials`
-  (partial keys reachable from a complete copy off the operand), COALESCE
-  multi-source renders (mask one-sided NULLs — `_renders_exclusively_from`),
-  row-limited CTEs, window/existence consumers. All already have guards;
-  reuse them.
-
-## Constraints — all of these must stay green
-
-- `tests/engine/test_duckdb_partial_fk_field_report.py` with the ORIGINAL
-  whole-statement assert restored (that restoration is the acceptance test).
-- `tests/engine/test_duckdb_partial_key_assembly.py` — the forked reunions
-  are row-pinned; their merges feed the output, so the invisibility proof
-  must NOT fire there (their consumers read the merge directly, not through
-  a plain-equality LEFT on the padded key).
-- `tests/core/processing/test_join_padding_provenance.py` — the gate's
-  no-basis matrix (anchored pairs / shared pairs / bare strips).
-- `tests/engine/test_multi_fact_nullable_fk_extent.py` — the `?` extent
-  contract, incl. the q98 SQL-shape test and the three-fact chain.
-- `tests/join_matrix`, `tests/generators/test_utility.py`.
-- Fuzzer: `.venv/Scripts/python.exe -m local_scripts.fuzzer` (228 cases; the
-  `padding_provenance` family especially).
-- Corpus A/B: render all `tests/modeling/{tpc_ds_duckdb,tpc_h,thelook_duckdb}/query*.preql`
-  twice in ONE process (rule change on vs off) and byte-diff per query;
-  row-validate any query whose SQL changes via its modeling test. Gate
-  against the CURRENT tree, not stale goldens. A LEFT-side invisibility rule
-  will likely fire broadly (it is a general narrowing) — expect and review a
-  real footprint, don't assume zero.
-- Never run two pytest processes concurrently (shared modeling DuckDB).
-
-## Context docs
-
-- docs/handoff_multi_fact_nullable_fk_extent.md — the `?` extent contract
-  and the family-anchor gate decision this residue fell out of.
-- docs/subset_union_join_design.md — row-preservation-by-default; narrowing
-  only on proof. The invisibility proof is exactly such a proof.
+Graph-time extent ownership: elect the licensed span's owner on the flow
+graph before branches build and propagate it downward, so extent is
+manufactured exactly once and the reunion machinery (family-anchored
+null-safe stitches) becomes unnecessary rather than gated. Constraint
+discovered while scoping: ownership is per delivered output, not per key:
+`test_forked_with_status` pins `order_status = 'LATER'` on extension rows, a
+fact-grain CASE that evaluates only in the row-bearing branch, so extent
+must flow through branches computing such attributes. See the discussion in
+docs/handoff_multi_fact_nullable_fk_extent.md.

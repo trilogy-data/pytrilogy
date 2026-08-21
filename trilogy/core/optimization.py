@@ -17,6 +17,7 @@ from trilogy.core.optimizations import (
     OrderInnerJoinsFirst,
     PredicatePushdown,
     PredicatePushdownRemove,
+    PruneInvisibleOuterJoins,
     PushFilteredAggregateInput,
     PushFilteredCountIntoJoin,
     PushSemiJoinIntoAggregate,
@@ -881,6 +882,26 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="hide_unused_concepts",
                 rule_factory=HideUnusedConcepts,
+            )
+        )
+    if opts.prune_invisible_outer_joins:
+        plan.append(
+            OptimizationRulePlan(
+                name="prune_invisible_outer_joins",
+                rule_factory=PruneInvisibleOuterJoins,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                    ("hide_unused_concepts", opts.hide_unused_concepts),
+                ),
+                reason=(
+                    "join types and output pruning are final, so a LEFT join "
+                    "whose right side renders nowhere and is unique on its keys "
+                    "is a provable no-op"
+                ),
             )
         )
     if opts.push_semi_join_into_aggregate:
