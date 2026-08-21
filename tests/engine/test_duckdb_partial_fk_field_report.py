@@ -135,7 +135,9 @@ def test_field_report_select(tmp_path):
     engine.parse_text(MODEL)
     sql = engine.generate_sql(QUERY)[-1]
     assert "is not distinct from" not in sql, sql
-    got = sorted((tuple(r) for r in engine.execute_raw_sql(sql).fetchall()), key=_sort_key)
+    got = sorted(
+        (tuple(r) for r in engine.execute_raw_sql(sql).fetchall()), key=_sort_key
+    )
     want = sorted(
         (tuple(r) for r in engine.execute_raw_sql(TRUTH).fetchall()), key=_sort_key
     )
