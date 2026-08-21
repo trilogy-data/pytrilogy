@@ -56,7 +56,7 @@ auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_s
 
 auto line_item <- concat(ticket_number::string, '-', item.sk::string); # Unique line-item id. Count line items with count(line_item), NOT count(ticket_number) (dedups multi-item tickets).
 auto line_item_count<- sum(row_counter); # = count(line_item); kept for queries that reference it.
-auto is_returned <- _returned_ticket is not null; # True when a return row exists for this line, else False.
+auto is_returned <- _returned_ticket is not null; # True when this sale line was later returned. The line is still a normal sale row; do not exclude it from sales totals unless returns are explicitly out of scope.
 
 datasource store_sales (
     raw('''1'''): row_counter,
