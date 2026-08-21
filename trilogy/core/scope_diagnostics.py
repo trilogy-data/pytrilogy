@@ -151,6 +151,12 @@ class DerivedValueScope:
     # enclosing select's grain. Drives the "inherited select grain" warning;
     # internal — never serialized into `to_dict`.
     grain_inherited: bool = False
+    # Window only: salt-stripped addresses the statement's WHERE and HAVING
+    # constrain and the ones this window orders by. Drive the bookend
+    # suppression below; internal — never serialized into `to_dict`.
+    where_concepts: frozenset[str] = frozenset()
+    having_concepts: frozenset[str] = frozenset()
+    order_by_concepts: frozenset[str] = frozenset()
 
     def to_dict(self) -> dict:
         """JSON form. `input_row_filters`/`output_row_filters` are schema-stable
@@ -332,6 +338,17 @@ def _conjunct_concepts(conjunct: object) -> list[BuildConcept]:
     return []
 
 
+def _filter_addresses(conjuncts: list) -> frozenset[str]:
+    """Salt-stripped addresses a set of conditions constrains. Dual-scope
+    normalization gives a WHERE-side twin its own salted address, so stripping
+    is what lets a WHERE and a HAVING atom on the same concept compare equal."""
+    return frozenset(
+        c.address.replace(_WSCOPE_SUFFIX, "")
+        for conjunct in conjuncts
+        for c in _conjunct_concepts(conjunct)
+    )
+
+
 def _references_cross_row(conjunct: object) -> bool:
     """True when the condition compares a value computed across the statement's
     own rows (aggregate/window/group-to, possibly expression-wrapped). Rowset
@@ -367,6 +384,10 @@ class _Ctx:
     normalized_input_row_filters: tuple[str, ...] | None = None
     # Scoped-join declarations governing this computation's population.
     scoped_joins: tuple[str, ...] = ()
+    # Salt-stripped addresses the above filters constrain, for warnings that
+    # need to compare a WHERE atom against a HAVING atom concept-wise.
+    input_row_filter_concepts: frozenset[str] = frozenset()
+    output_row_filter_concepts: frozenset[str] = frozenset()
 
 
 class _Extractor:
@@ -419,22 +440,21 @@ class _Extractor:
         row_filters: list[str] = []
         normalized_row_filters: list[str] = []
         admission_filters: list[str] = []
+        row_filter_conjuncts: list = []
         for authored_c, build_c in zip(authored_conjuncts, where_conjuncts):
             if _references_cross_row(build_c):
                 admission_filters.append(render_scope_expr(authored_c))
             else:
                 row_filters.append(render_scope_expr(authored_c))
                 normalized_row_filters.append(render_scope_expr(build_c))
+                row_filter_conjuncts.append(build_c)
         normalized_input = (
             tuple(normalized_row_filters)
             if normalized_row_filters != row_filters
             else None
         )
-        having_strs = (
-            [render_scope_expr(c) for c in _conjuncts(having.conditional)]
-            if having
-            else []
-        )
+        having_conjuncts = _conjuncts(having.conditional) if having else []
+        having_strs = [render_scope_expr(c) for c in having_conjuncts]
         output_addresses = {c.address for c in statement.output_components}
         # WHERE-gate pass first: cross-row values referenced by the WHERE gate
         # rows using the population their own scope defines (dual-scope
@@ -461,6 +481,8 @@ class _Extractor:
             admitted_by=tuple(admission_filters),
             normalized_input_row_filters=normalized_input,
             scoped_joins=scoped_join_strs,
+            input_row_filter_concepts=_filter_addresses(row_filter_conjuncts),
+            output_row_filter_concepts=_filter_addresses(having_conjuncts),
         )
         for concept in statement.output_components:
             self.visit(concept, select_ctx)
@@ -626,6 +648,11 @@ class _Extractor:
                 ],
                 output_row_filters=_dedup(list(ctx.output_row_filters)),
                 input_values=_dedup(input_values),
+                where_concepts=ctx.input_row_filter_concepts,
+                having_concepts=ctx.output_row_filter_concepts,
+                order_by_concepts=_filter_addresses(
+                    [item.expr for item in window.order_by]
+                ),
             ),
         )
         for arg in content_concepts + list(window.over):
@@ -1032,6 +1059,24 @@ def render_derived_value_scopes(scopes: list[DerivedValueScope]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _window_filter_is_deliberate(scope: DerivedValueScope) -> bool:
+    """The bookend shape: widen the window's navigation axis in the WHERE so
+    `lag`/`lead` have neighbours, then narrow back to the reporting range in the
+    HAVING. Either signal — the WHERE axis re-constrained post-window, or a
+    WHERE that only touches concepts the window orders by — means the author
+    already split the work between the two clauses, so telling them to use a
+    HAVING is noise."""
+    if not scope.where_concepts:
+        # filters came from filtered arguments or a consumed rowset, not from a
+        # statement WHERE — nothing here proves intent either way
+        return False
+    if scope.where_concepts & scope.having_concepts:
+        return True
+    return bool(scope.order_by_concepts) and scope.where_concepts.issubset(
+        scope.order_by_concepts
+    )
+
+
 def derived_value_warnings(scopes: list[DerivedValueScope]) -> list[dict]:
     """Actionable warnings distilled from the factual scope records: computation
     shapes that usually mean a filter or grain was misapplied. Observational
@@ -1041,7 +1086,8 @@ def derived_value_warnings(scopes: list[DerivedValueScope]) -> list[dict]:
 
     - a window value in the SELECT with a WHERE clause filtering its inputs —
       WHERE removes rows BEFORE the window computes, so filtering the window
-      result needs a HAVING;
+      result needs a HAVING (suppressed for the deliberate bookend shape, see
+      `_window_filter_is_deliberate`);
     - an aggregate in the WHERE that pinned no grain and so inherited the
       SELECT grain instead of computing a single global value."""
     out: list[dict] = []
@@ -1050,6 +1096,7 @@ def derived_value_warnings(scopes: list[DerivedValueScope]) -> list[dict]:
             scope.kind == "window"
             and scope.role == "selected_output"
             and scope.input_row_filters
+            and not _window_filter_is_deliberate(scope)
         ):
             out.append(
                 {

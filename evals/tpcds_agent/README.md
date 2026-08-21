@@ -9,8 +9,12 @@ re-verify against HEAD before acting on one, and delete it when it stops reprodu
 its headline bug is fixed, split that work into its own file before deleting - otherwise the
 remainder disappears with no deletion record anyone will think to look for.
 
-Last sweep: **2026-08-20**, every report re-run against `6bdb4d7b4`. Nothing closed as
-fixed: eight of the nine ranked below were re-run and reproduce exactly as written, and
+Last sweep: **2026-08-21**, an audit of the 08-20 probe wave against `84bc9ffeb`: every
+wave row's repro was re-run or its regression gate executed, six reports closed and
+deleted, and the survivor rewritten down to its two open items (details in
+`INDEX_probe_wave_2026_08_20.md` and under "Closed after the 08-20 sweep" below). The
+stack rank below is unchanged and was last re-run 2026-08-20 against `6bdb4d7b4`, where
+nothing closed as fixed: eight of the nine ranked below were re-run and reproduce exactly as written, and
 rank 5 is a static gap whose absence was confirmed in the source and is pinned by an
 existing test. One report was deleted as **declined** rather than fixed (see below). Two
 files the 08-16 sweep had ranked were deleted in `facdd161c` (2026-08-19) with open items
@@ -32,19 +36,16 @@ still inside them; both are recovered below.
 
 ## 2026-08-20 probe wave (run 20260820-031800, filed same day - not yet folded into the rank above)
 
-Seven probes over the run's >500k sinks; every report carries a minimal repro and
-file:line root cause. Suggested severity relative to the table: b/c slot at P1
-alongside ranks 1-2; d/e are P2; f is P2 tooling; g is question/harness work. Item `a`
-(q47) is closed, see below.
+Seven probes over the run's >500k sinks. **Audited 2026-08-21 against `84bc9ffeb`:
+six of the seven are closed and their reports deleted** (a, c, d, e, f, plus the
+q66 report filed off the 153007 triage); the per-row record and the fix summaries
+live in `INDEX_probe_wave_2026_08_20.md`. What is left is one report of open
+engine work and one question/harness item.
 
 | | file | why |
 |---|---|---|
-| b | `bug_silent_ingest_sinks_q49_q59_q72_q77.md` | **q72 is the run's graded FAIL**: rowset boundary strips non-key nullability so rejoins use plain `=` and 404 NULL groups drop; plus union-join aggregate emits wrong grain. q59/q77: `_coalescing_presence_probe` phantom/vacuous family. q49: no bug - explore retransmission cost (see `docs/explore_compact_output_design.md`). |
-| c | `bug_keyless_join_guard_ingest_cluster.md` | **One root cause behind all 37+3 guard firings** (q05/q25/q54/q64/q67/q80/q84): aliasing every output gives ROOTs rename-only lineage reach, defeating the co-source bucket test, so a dim attr splits into a keyless bucket. 3-line repro; alias-free spelling plans fine (why the corpus never fires). Pre-guard these shipped as silent `on 1=1` cartesians, and the no-fact-key variant STILL does. |
-| d | `bug_q44_empty_unexpected_error.md` | `InlineDatasource` folds a dim scan the broadcast join still needs (demand map misattributes the `all_rows` constant) - bare `AssertionError`; and the CLI renders `str()` of it: an EMPTY error message the agent retried blind against six times. |
-| e | `bug_q14_values_list_virt_filter_binder.md` | Filtered aggregate over a KEY drops the filter mask below the dedup GroupNode (widen fallback reads the wrong output set and skips silently); union escape hatch then turns the clean missing-source error into invalid SQL with phantom `_virt_filter_*` columns. |
-| f | `bug_q17_join_condition_syntax_loop.md` | **CLOSED 2026-08-20**, see below. |
-| g | `bug_q29_cross_leg_sink.md` | Not a framework bug: question omits the sale-to-return match keys (rewording proposed inside). Harness finding: the >500k detector should read cache-adjusted tokens - reasoning-replay inflated q29/q17 raw counts ~10x over fresh cost. |
+| b | `bug_presence_probe_no_ops_and_q72_axis_residual.md` | **P1 silent, two items.** A null test on a coalescing join-key member renders POST-merge on the fused column and no-ops on one side, so an authored intersection silently keeps one-sided rows (q59/q77; placement bug, not eligibility). Plus the q72 residual: `_aggregate_axis_members` keeps a relation member in the branch grain when the counted row identity holds one, so the authored grain never re-aggregates. Both repro on committed models. |
+| g | `bug_q29_cross_leg_sink.md` | Not a framework bug: the question omitted the sale-to-return match keys. Rewording APPLIED 2026-08-21: match keys and billed-to catalog customer stated, and the question asks the natural version rather than the spec query's fan-out summation. The fan-out came out of `tests/modeling/tpc_ds_duckdb/query29.{sql,preql}` at the same time, so question, corpus query and eval reference agree; no result changes at sf=1. q29 is not prompt-comparable across that date. Still open: the >500k detector should read cache-adjusted tokens - reasoning-replay inflated q29/q17 raw counts ~10x over fresh cost, and `evals/common/analyze_run.py` still ranks on raw prompt+completion. |
 
 ## Closed after the 08-20 sweep
 
@@ -59,9 +60,7 @@ alongside ranks 1-2; d/e are P2; f is P2 tooling; g is question/harness work. It
   directly after a join clause, plus `;`-terminator and comma-vs-`and` notes). Regression
   guard: `tests/complex/test_join_missing_key_error.py`. The report's harness note (>500k
   detector should read fresh tokens) is unaffected and still carried by
-  `bug_q29_cross_leg_sink.md`. The report file was never committed, so it is kept one more
-  commit carrying its FIXED stamp; delete it after that so the closure leaves a deletion
-  record.
+  `bug_q29_cross_leg_sink.md`. Report deleted 2026-08-21.
 
 - `bug_q47_window_rowset_churn.md` - both P1 silent codegen bugs FIXED 2026-08-20.
   (1) An OR-rooted `BuildConditional` child under an AND parent now renders parenthesized
@@ -73,9 +72,70 @@ alongside ranks 1-2; d/e are P2; f is P2 tooling; g is question/harness work. It
   Regressions: `tests/rendering/test_engine_or_chain_precedence.py`,
   `tests/core/processing/test_query_datasource_add_nullability.py`; both verified failing
   with the respective fix reverted. Its two non-bug polish items were split into
-  `handoff_q47_diagnostic_polish.md`. The report file itself was never committed, so it is
-  kept one more commit carrying its FIXED stamp; delete it after that so the closure leaves
-  a deletion record.
+  `handoff_q47_diagnostic_polish.md`, now also closed (below). Report deleted 2026-08-21.
+
+- `handoff_q47_diagnostic_polish.md` - both diagnostic-polish items FIXED 2026-08-21.
+  (1) `EnvironmentConceptDict._find_similar_concepts` now offers a rowset output's leaf
+  shorthand (`monthly_totals.name`) directly behind its full path
+  (`monthly_totals.ss.store.name`), so the suggestion list carries the spelling the docs
+  teach. `_rowset_leaf_shorthand` withholds it whenever a sibling output under the same
+  rowset also matches the leaf, judged against the full candidate set - including the
+  internal names filtered out of the suggestion pool - so a suggested shorthand always
+  resolves. Existing suggestion ranking is unchanged.
+  (2) `window_filter_needs_having` no longer fires on the bookend shape (widen the window's
+  navigation axis in the WHERE so `lag`/`lead` have neighbours, narrow back in the HAVING).
+  Window scopes now carry salt-stripped WHERE/HAVING/ORDER BY concept sets, and
+  `_window_filter_is_deliberate` suppresses when a HAVING atom re-constrains a concept the
+  WHERE constrains, or when the WHERE touches only concepts the window orders by. Corpus
+  footprint measured across every tpc-ds/tpc-h `query*.preql`: exactly q47 (both firings)
+  and q57, the catalog-sales twin of the same template; q02/q36/q49/q51/q59/q67/q70/q86
+  still warn. Regressions: `tests/test_undefined_concept.py` (4 cases),
+  `tests/test_scope_diagnostics.py` (3 cases). Spec updated in
+  `docs/SPEC_query_derived_value_scopes.md`. Report deleted 2026-08-21.
+
+- `bug_keyless_join_guard_ingest_cluster.md` - FIXED 2026-08-20, all 37+3 guard firings and
+  the silent `on 1=1` no-fact-key variant, from two sites. Forward reach in
+  `group_rules._cosource_component_groups` now walks THROUGH a rename without counting it,
+  so `select x as t` buckets like `select x` and the zero-reach bailout engages; and the
+  BASIC axis-upstream wiring in `concept_graph.py` dropped its rename carve-out, so a bare
+  `dim.attr as a` keeps the scoped-join axis. Gate:
+  `tests/engine/test_duckdb_aliased_dim_attr_join_axis.py` (5 cases). The filed one-FK-hop
+  connectivity defect needed no code; do NOT re-add a per-root FK reach field (it caches a
+  pure function of the environment onto every leaf). Latent and deliberately unfixed: the
+  shared-datasource rule gates on `purpose != PROPERTY`, so it never fires for a
+  `UNIQUE_PROPERTY`; no failing case demonstrates it today. Report deleted 2026-08-21.
+
+- `bug_q44_empty_unexpected_error.md` - FIXED 2026-08-20, both halves.
+  `InlineDatasource._join_key_demand` refuses to fold a parent whose join keys (the
+  `all_rows` broadcast marker, resolved through `CTEConceptPair` rather than `source_map`)
+  are not columns of the raw datasource, and the render assert in
+  `trilogy/core/models/execute.py` carries a message. CLI half:
+  `handle_execution_exception` falls back to the exception class name when `str(e)` is
+  empty, so no message-less exception reaches an agent as silence. Gate:
+  `tests/optimization/test_inline_broadcast_join_key.py`. Report deleted 2026-08-21.
+
+- `bug_q14_values_list_virt_filter_binder.md` - FIXED 2026-08-20. `count(key ? cond)`
+  dedups its input to the key's grain, so the filter mask is now computed BELOW that dedup
+  (`v4_helper/projection.py`, `strategy_builder.py`); neither the phantom `_virt_filter_*`
+  union render (BinderException) nor the "Missing source reference" generation error
+  occurs. Gate: `tests/engine/test_filtered_key_aggregate_dedup.py` (5 cells including the
+  union-datasource arm). Report deleted 2026-08-21.
+
+- `bug_q66_union_output_drops_nullable.md` - FIXED 2026-08-20. `union_item_to_concept` ORs
+  the signature flag with the arms' own nullability (`_expr_is_nullable`), so a `union(...)`
+  TVF output key inherits arm nullability, the sibling filtered-aggregate rejoin renders
+  `is not distinct from` and the NULL group survives. Gate:
+  `tests/engine/test_duckdb_union_tvf_nullable_output.py`; corpus render byte-identical.
+  Report deleted 2026-08-21.
+
+## Filed 2026-08-21
+
+- `handoff_q29_aggregate_in_where_plan_size.md` - q29's rewrite (fan-out removed from
+  question, corpus query and reference alike) left a plan-size question: a pinned aggregate
+  that is both the WHERE-level intersection test and a projected measure renders the catalog
+  side in both scopes, 14,113 chars against 10,614 for a two-level spelling of the same
+  answer. Correctness is gated; this is deferred optimization with the measured
+  alternatives and two incorrect-but-smaller spellings recorded.
 
 ## Known-open elsewhere
 
