@@ -1192,6 +1192,7 @@ def _gate_nullable_by_host(
     authored_keys: set[str] | None = None,
     shared_padding: bool = False,
     hosting_is_licensed: bool = True,
+    family_anchored: bool = True,
 ) -> list[Modifier]:
     """Null-safe equality pairs padding of shared provenance. A host/feeder
     pair (exactly one side hosts the node's extension-licensed domains) pads
@@ -1208,12 +1209,22 @@ def _gate_nullable_by_host(
     where no extension family can exist: sharing a padded ancestor does NOT
     make two `~` families one, and pairing those invents rows. So the exemption
     is limited to a grain-derived host basis, where merge_node found no
-    licensed key to host and there are no families to keep apart."""
+    licensed key to host and there are no families to keep apart.
+
+    A merge with NO host basis can still pair legitimately in two shapes:
+    shared padding (one source's rows arriving twice), or a reunion of one
+    extension member's halves manufactured in two branches — recognizable
+    because the JOIN also anchors on a licensed `~` family key, making the
+    pairing member-to-member (`family_anchored`). A bare null-safe pair with
+    neither pairs "missing" with "missing" across unrelated trees — the
+    field-report cross-family hazard — and strips."""
     if (
         Modifier.NULLABLE in modifiers
-        and host_nodes is not None
         and not (shared_padding and not hosting_is_licensed)
-        and ((left in host_nodes) != (right in host_nodes))
+        and (
+            (host_nodes is not None and (left in host_nodes) != (right in host_nodes))
+            or (host_nodes is None and not shared_padding and not family_anchored)
+        )
         and not (authored_keys and keys & authored_keys)
         and not _has_any(keys, left, value_nullables)
         and not _has_any(keys, right, value_nullables)
@@ -1433,6 +1444,13 @@ def get_node_joins(
                                 )
                             ),
                             hosting_is_licensed,
+                            # A licensed `~` key among the join's own keys
+                            # anchors pairing member-to-member.
+                            any(
+                                key_node in licensed_nodes
+                                for key_set in j.keys.values()
+                                for key_node in key_set
+                            ),
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

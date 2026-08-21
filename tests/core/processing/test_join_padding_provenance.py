@@ -58,6 +58,7 @@ def _gate(
     authored: set[str] | None = None,
     modifiers: list[Modifier] | None = None,
     licensed: bool = False,
+    anchored: bool = True,
 ) -> list[Modifier]:
     return _gate_nullable_by_host(
         list(NULLABLE if modifiers is None else modifiers),
@@ -69,6 +70,7 @@ def _gate(
         authored,
         shared,
         licensed,
+        anchored,
     )
 
 
@@ -110,9 +112,21 @@ def test_unshared_padding_strips_under_asymmetric_hosting():
     assert _gate(shared=False, host_nodes={"left"}) == []
 
 
-def test_no_host_basis_leaves_the_pair_alone():
-    """With no host basis there is nothing to read the asymmetry from."""
-    assert _gate(shared=False, host_nodes=None) == NULLABLE
+def test_no_host_basis_family_anchored_reunion_pairs():
+    """A join carrying a licensed `~` key pairs member-to-member: the
+    reunion of one extension member's halves across two branches."""
+    assert _gate(shared=False, host_nodes=None, anchored=True) == NULLABLE
+
+
+def test_no_host_basis_shared_padding_pairs():
+    """Shared padding at a no-basis merge is one source's rows twice."""
+    assert _gate(shared=True, host_nodes=None, anchored=False) == NULLABLE
+
+
+def test_no_host_basis_bare_null_safe_strips():
+    """Neither shared nor anchored pairs "missing" with "missing" across
+    unrelated trees (the field-report cross-family hazard)."""
+    assert _gate(shared=False, host_nodes=None, anchored=False) == []
 
 
 def test_symmetric_hosting_keeps_null_safe():

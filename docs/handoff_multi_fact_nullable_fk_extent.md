@@ -66,6 +66,33 @@ whose FK is NULL) survives as its own padded row.
    (`_padding_sources`). An EQUAL declaration (`merge a into b`) overrides
    the veto — narrowing trusts the declaration by documented contract.
 
+## Adjacent decision: the field-report stitch tripwire (2026-08-21)
+
+`test_field_report_select` used to forbid `is not distinct from` anywhere in
+the rendered SQL. That collided with the no-host-basis gate behavior the
+forked partial-key-assembly row tests require: when the planner manufactures
+the same `~` extension member in two aggregate branches, the mid-plan reunion
+of its halves must pair null-safely on the padded keys or the member's row
+splits/duplicates. Source-identity provenance cannot separate the two shapes
+(re-manufactured families have disjoint sources); FAMILY identity can, and is
+visible in the join itself:
+
+- a reunion join also anchors on a licensed `~` family key, so the pairing is
+  member-to-member (`family_anchored` in `_gate_nullable_by_host`);
+- a bare null-safe pair with neither a family anchor nor shared provenance
+  pairs "missing" with "missing" across unrelated trees and now STRIPS at
+  plan time (this killed the field report's unjustified
+  `INNER ... item_id is not distinct from` stitch).
+
+One anchored stitch remains mid-plan in the field report (the product-family
+reunion in the `cheerful` join). It is inert in that query: the final
+assembly re-anchors extension rows from the dimension span and consumes the
+metric branch through a plain-equality LEFT join, so every padded row in
+that subtree is output-invisible (rows 940/940 either way). The syntax
+tripwire is therefore scoped to the FINAL output assembly for now. The
+follow-up that eliminates the residue and restores the whole-statement
+tripwire is specced in docs/handoff_field_report_residual_stitch.md.
+
 ## Corpus footprint
 
 12 grain-aligned-FULL firings and 1 veto firing across the tpc-ds/tpc-h/
