@@ -95,7 +95,21 @@ trilogy/core/optimizations/null_safe_join.py). The union TVF path has no
 equivalent, so the nullability must come from the concept itself, and it
 doesn't.
 
-## Suggested fix direction
+## FIXED 2026-08-20
+
+`union_item_to_concept` (`trilogy/parsing/common.py`) now ORs the explicit
+signature flag with the arms' own nullability, reusing the existing
+`_expr_is_nullable` walk, so `combined.wh_name` is stamped NULLABLE and
+`get_modifiers` renders `is not distinct from` on the rejoin. The explicit
+`?` signature keeps working and is now redundant rather than load-bearing.
+
+Gate: `tests/engine/test_duckdb_union_tvf_nullable_output.py` - the report's
+four trigger-boundary shapes crossed with declared/inferred nullability. Two of
+the four shapes (`two_measures`, `filtered_and_unfiltered`) drop the NULL group
+without the fix, matching the table above. Whole-corpus render (132 tpc-ds +
+tpc-h queries) is byte-identical.
+
+## Suggested fix direction (as filed)
 
 Infer nullability at concept construction (discovery-side, not a late guard):
 in `union_item_to_concept`, OR the explicit signature flag with the arm
