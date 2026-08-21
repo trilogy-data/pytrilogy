@@ -833,7 +833,11 @@ chart
 ```
 
 - **Chart types**: `bar`, `barh` (horizontal), `line`, `point`, `area`,
-  `headline` (big KPI number; binds `x_axis` only).
+  `headline` (big KPI number; binds `x_axis` only), `donut` (the numeric
+  binding sizes the slices, the other one - or `color` - names them),
+  `heatmap` (both axes categorical, `color` carries the measure), `boxplot`
+  (distribution of the value axis per category; the select must carry the row
+  grain or dedup collapses it). `treemap` parses but has no renderer.
 - **Roles**: `x_axis`, `y_axis`, `color`, `size` (point size), `group`
   (side-by-side bars, or per-series split on line/point/area), `x_trellis` /
   `y_trellis` (small-multiple columns/rows), `annotation` (text label per

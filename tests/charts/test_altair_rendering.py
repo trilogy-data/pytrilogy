@@ -138,8 +138,8 @@ def test_altair_empty_layers_returns_none():
 
 
 def test_altair_unimplemented_chart_type_raises():
-    statement = _statement(ChartType.HEATMAP, ["x"], ["y"])
-    with pytest.raises(NotImplementedError):
+    statement = _statement(ChartType.TREEMAP, ["x"], ["y"])
+    with pytest.raises(NotImplementedError, match="Supported types:"):
         AltairRenderer().render(statement, _data())
 
 
