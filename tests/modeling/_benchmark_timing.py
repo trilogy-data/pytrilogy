@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from os import environ
 from time import perf_counter
 from typing import Generic, TypeVar
 
@@ -32,6 +33,12 @@ def benchmark_query(
     parse_time, query = time_call(generate)
     candidate_time, candidate_result = time_call(lambda: execute_candidate(query))
     reference_time, reference_result = time_call(execute_reference)
+
+    # The repeats only sharpen the numbers the charts are drawn from, and every
+    # benchmark conftest runs `analyze()` off CI only. On CI they are up to
+    # `repeat_count` extra generations and executions per query, thrown away.
+    if environ.get("CI"):
+        repeat_count = 0
 
     if min(parse_time, candidate_time, reference_time) < repeat_time_cutoff:
         for _ in range(repeat_count):
