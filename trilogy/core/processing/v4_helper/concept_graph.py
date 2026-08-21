@@ -1329,19 +1329,21 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     upstreams = list(fetcher(concept, environment))
-    # A non-rename BASIC whose grain is the coalesced axis of a rowset-crossing
-    # preserving relation reads the COMPLETED axis row: a null-sensitive scalar
+    # A BASIC whose grain is the coalesced axis of a rowset-crossing preserving
+    # relation reads the COMPLETED axis row: a null-sensitive scalar
     # (`coalesce(web.qty, 0) + ...`) computed on only the sides it reads gets
     # NULL-padded by the merge above instead of evaluating on the padded row
     # (multi_partial_anchor: store-only customers came back NULL, not 0). Wire
     # the axis member itself as an upstream so the axis-owning boundary parents
-    # this group and the completion merge sits below the computation. Renames
-    # are null-transparent — they commute with the padding and keep the
-    # existing axis-advertising machinery (q44) untouched.
+    # this group and the completion merge sits below the computation.
+    #
+    # A pure rename needs the same upstream for a different reason: it projects
+    # to its alias alone, so the axis its source binds never reaches the FINAL
+    # merge and that join goes keyless (`select rs.k, dim.attr as a subset join
+    # rs.k = dim.key`).
     if (
         not is_materialized_root
         and concept.derivation == Derivation.BASIC
-        and not is_rename
         and environment.scoped_join_key_groups
     ):
         upstream_addrs = {u.address for u in upstreams}

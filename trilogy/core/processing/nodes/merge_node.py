@@ -90,6 +90,37 @@ def _renders_nonstandard_grouping(parent: StrategyNode) -> bool:
     )
 
 
+def _splits_aggregate_groups(
+    parent: StrategyNode, member: str, environment: BuildEnvironment
+) -> bool:
+    """Whether surfacing `member` on `parent` would add a GROUP BY key.
+
+    An aggregating parent's rows ARE its groups, so a key its grain does not
+    determine splits every one of them: the aggregate values come out at the
+    finer grain and the final projection, which groups by its outputs, emits
+    one row per split instead of re-aggregating. The key still reaches join
+    inference from the other side of the relation."""
+    # Local import: v4_helper reaches back into this package.
+    from trilogy.core.processing.v4_helper.functional_dependency import (
+        build_fd_determines,
+    )
+
+    if not any(c.is_aggregate for c in parent.output_concepts):
+        return False
+    # The non-aggregate outputs ARE the GROUP BY, whether or not the node
+    # carries a resolved grain.
+    axis = {c.address for c in parent.output_concepts if not c.is_aggregate}
+    # A mate of a grain component in the same authored key group names the
+    # SAME axis, so surfacing it renames a key rather than adding one.
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if group & axis:
+            axis |= group
+    return member not in axis and not build_fd_determines(
+        environment, axis, member, include_empty_grain=False
+    )
+
+
 def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
     if isinstance(source, QueryDatasource):
         return bool(source.condition) or any(
@@ -450,7 +481,9 @@ class MergeNode(StrategyNode):
                     if not _feeds_only_existence(parent, grandparent)
                     for c in grandparent.output_concepts
                 )
-                if available:
+                if available and not _splits_aggregate_groups(
+                    parent, member, self.environment
+                ):
                     concept = self.environment.concepts.get(member)
                     if concept is not None:
                         parent.add_output_concept(concept, rebuild=False)
