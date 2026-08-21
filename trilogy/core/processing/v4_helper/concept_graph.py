@@ -17,7 +17,7 @@ from collections import defaultdict
 from collections.abc import Callable
 
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_CONCEPT, GRAIN_SEPARATOR
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -458,6 +458,63 @@ def _aggregate_authored_grain(
     return frozenset(redirected)
 
 
+def is_grain_identity(node: object) -> bool:
+    """The desugared form of `grain(a, b, ...)`: a hash over the members joined
+    by `GRAIN_SEPARATOR` (`grain_hash`). The separator is a control character no
+    author can write, so the shape identifies the desugar unambiguously — a
+    hand-written `hash(x, md5)` never matches."""
+    if not isinstance(node, BuildFunction) or node.operator != FunctionType.HASH:
+        return False
+    joined = node.arguments[0] if node.arguments else None
+    return (
+        isinstance(joined, BuildFunction)
+        and joined.operator == FunctionType.CONCAT_WS
+        and bool(joined.arguments)
+        and joined.arguments[0] == GRAIN_SEPARATOR
+    )
+
+
+def _row_identity_components(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> frozenset[str]:
+    """Concepts an aggregate counts a `grain(...)` tuple over.
+
+    `count(grain(a, b))` counts DISTINCT (a, b) combinations: the tuple members
+    are the aggregate's own dedup key, consumed by the count, not an axis its
+    value varies along. So a relation member reaching the axis widening only
+    through one is a false axis — grouping the branch by it slices the count per
+    member value, and the outer select can only dedup, never re-aggregate
+    (TPC-DS q72: per-item slivers instead of per-week totals)."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return frozenset()
+    out: set[str] = set()
+    stack: list[object] = list(concept.lineage.function.arguments)
+    seen: set[int] = set()
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if is_grain_identity(node):
+            assert isinstance(node, BuildFunction)
+            out.update(
+                arg.address
+                for arg in node.concept_arguments
+                if isinstance(arg, BuildConcept)
+            )
+            continue
+        if isinstance(node, BuildConcept):
+            # `count(grain(...) ? cond)` reaches the tuple through the filter's
+            # content, and the desugar itself is hoisted to a virtual concept.
+            resolved = environment.concepts.get(node.address, node) or node
+            stack.append(resolved.lineage)
+        elif isinstance(node, BuildFilterItem):
+            stack.append(node.content)
+        elif isinstance(node, BuildFunction):
+            stack.extend(node.arguments)
+    return frozenset(out)
+
+
 def _aggregate_axis_members(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -483,7 +540,10 @@ def _aggregate_axis_members(
     meaningful 0/1 (q17). The anchor-side key is the axis, so grouping by
     the very key being counted is degenerate: `count(cust_id)` beside
     `region` becomes 1 per customer instead of the customers per region
-    (q35 `store AND (web OR catalog)`)."""
+    (q35 `store AND (web OR catalog)`).
+
+    Nor a member the aggregate names inside a counted `grain(...)` tuple —
+    that is row identity, not an axis (`_row_identity_components`)."""
     candidates = set(aggregate_input_grain)
     if isinstance(concept.lineage, BuildAggregateWrapper):
         candidates |= {
@@ -501,11 +561,13 @@ def _aggregate_axis_members(
         if isinstance(arg, BuildConcept)
         and not isinstance(arg.lineage, BuildRowsetItem)
     }
+    row_identity = _row_identity_components(concept, environment)
     return frozenset(
         addr
         for addr in candidates & _statement_scoped_relation_members(environment)
         if _relation_crosses_rowset_boundary(addr, environment)
         and addr not in own_anchor_args
+        and addr not in row_identity
     )
 
 

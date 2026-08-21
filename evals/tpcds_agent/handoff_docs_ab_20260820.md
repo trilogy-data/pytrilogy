@@ -111,9 +111,9 @@ noted):
 | q41 | Careless question read + skipped the naive-vs-staged compare probe the enriched twin ran (which returned the exact 23 wrong rows docs shipped) | no |
 | q67 | Dropped the rank<=100 HAVING; dismissed the `window_filter_needs_having` validator that named the fix and a rnk max of 51,491 | no |
 | q79 | Unrequested `is_returned = false` filter, seeded by the model doc comment on is_returned (reword it: "this sale line was later returned") | no |
-| q81 | FRAMEWORK: keyless-guard cluster rejected the agent's CORRECT first write 3x; workaround's defensive null filter flipped one row. First graded wrong answer from the cluster; report + INDEX escalated | indirect: the guide's "alias every new expression" style is the cluster's trigger, so the docs cell is over-exposed until the cluster is fixed |
+| q81 | FRAMEWORK: keyless-guard cluster rejected the agent's CORRECT first write 3x; workaround's defensive null filter flipped one row. First graded wrong answer from the cluster; the cluster was FIXED 2026-08-20, so the docs-cell over-exposure below no longer applies | indirect: the guide's "alias every new expression" style is the cluster's trigger, so the docs cell is over-exposed until the cluster is fixed |
 | q98 | Same NULL-class ambiguity as q20 (2 of 2521 rows); enriched won on reference recall | no |
-| q66 | FRAMEWORK, both legs, NEW BUG: union() TVF output drops arm nullability -> NULL warehouse group silently dropped. `bug_q66_union_output_drops_nullable.md` | no (fails every leg) |
+| q66 | FRAMEWORK, both legs, NEW BUG: union() TVF output drops arm nullability -> NULL warehouse group silently dropped. `bug_q66_union_output_drops_nullable.md` (FIXED 2026-08-20, report deleted; see `INDEX_probe_wave_2026_08_20.md`) | no (fails every leg) |
 
 Score: 2 framework (q81, q66), 2 one shared question ambiguity (q20/q98),
 3 individual comprehension/verification lapses, 1 model-doc trap. The

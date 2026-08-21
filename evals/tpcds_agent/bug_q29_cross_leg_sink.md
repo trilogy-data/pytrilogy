@@ -97,7 +97,64 @@ Repro: attempt-1 body against the run workspace. Two related nits at the same ra
 Neither explains the sink; both are cheap agent-efficiency wins on a path agents hit often
 (rowset abbreviation is a natural LLM slip).
 
-## Question-wording defect (the actual cross-leg driver)
+## Question-wording defect (the actual cross-leg driver) - APPLIED 2026-08-21
+
+Shipped in `query_prompts.json` (id 29):
+
+> Some customers bought an item in a store during September 1999, returned that same
+> purchase between September and December 1999 (the same customer returning the same item
+> from the same sales ticket), and also ordered that same item from the catalog in 1999,
+> 2000, or 2001, billed to them. For those purchases, report the store and catalog demand
+> they represent: one row per item and store, identified by the item business code and
+> description and the store business code and name rather than surrogate keys, with the
+> total quantity sold in the store, the total quantity returned, and the total quantity
+> ordered from the catalog. Order by item code, item description, store code, then store
+> name; limit 100 rows.
+
+Two things the filed proposal did not pin down:
+
+- **Which catalog customer.** The spec query matches `cs_bill_customer_sk`; the model
+  carries `billing_customer` and `ship_customer`, so "the returning customer bought that
+  same item" is a coin flip between them. The shipped text says "billed to them".
+- **The spec query's summation grain is a fan-out.** It sums `ss_quantity` and
+  `sr_return_quantity` over store_sale x return x catalog_order pairs, so a purchase
+  matched by three catalog orders counts three times. No natural wording asks for that.
+
+The fan-out is now gone from every artifact rather than being worded around.
+`tests/modeling/tpc_ds_duckdb/query29.sql` and `query29.preql` both sum the catalog side
+per (billing customer, item) BEFORE it meets the store side, which is the whole fix: a
+customer's second catalog order for an item then adds to that total instead of re-counting
+their store quantities. Both stay flat otherwise - one pass, group by the four reported
+columns - and `test_twenty_nine` compares them directly (`sql_override=True`) instead of
+against `PRAGMA tpcds(29)`, joining q17/q32/q41/q44 as a deliberate spec divergence. The
+eval scores against that same `.sql` through the existing `references_dir`, so question,
+corpus query and reference all state one semantics.
+
+Verification: preql and sql agree on the spec window (1 row) and with both date windows
+widened to all of 1999 (7 rows). They also agree with the old pair-summed spelling, because
+at sf=1 neither multiplicity exists: no `(billing customer, item)` pair has more than one
+catalog line (max 1 over 265 matched pairs), and no (reported group, customer, item) has
+more than one qualifying ticket (0 of 39,300). So nothing about this changes a result at
+this scale - it changes what the files mean, and it would change results at a scale factor
+where a customer orders the same item twice.
+
+Cost: the `.preql` source got shorter (1,545 -> 1,256 chars, still under its 1,350-char SQL
+twin) but its generated SQL grew 4,334 -> 14,113. The per-purchase catalog test is an
+aggregate in the WHERE, so the plan renders both the population and the filtered scope of
+the catalog side; `test_twenty_nine`'s size guard moved 12,000 -> 15,000 with that noted. A
+two-level spelling (rowset at (group, customer, item), then roll up) plans at 10,614 and is
+equally correct, but it is machinery the data never needs.
+
+q29 has no `prompt_shifted` entry and is outside the paramshift categories' 20-question
+range, so there is no shifted twin to keep in step. Runs before 2026-08-21 are not
+prompt-comparable on q29.
+
+Worth knowing before reading much into q29 results: at sf=1 the reference is ONE row, so
+the query grades almost nothing. The three legs' matching answers in this run are a weak
+signal.
+
+The original diagnosis and the superseded proposal follow.
+
 
 `evals/tpcds_agent/query_prompts.json` id 29 (grade "medium"):
 

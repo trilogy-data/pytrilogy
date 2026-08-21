@@ -3914,6 +3914,30 @@ class Factory:
     def _(self, base: Comparison) -> BuildComparison | bool:
         return self._build_comparison(base)
 
+    def _presence_probe_member(self, address: str, eligible: set[str]) -> str | None:
+        """The join-key member a null-test operand names, or None.
+
+        The operand is not always the member's own address: a SELECT that
+        renames it (`this_year.sk as sk`) rewrites the clause onto the alias,
+        which is a BASIC of its own and never a group member (TPC-DS q77).
+        ALIAS is value identity, so the null test means the same thing on
+        either spelling — walk the chain back to the member."""
+        seen: set[str] = set()
+        while address not in eligible:
+            if address in seen:
+                return None
+            seen.add(address)
+            concept = self.environment.concepts.get(address)
+            lineage = concept.lineage if concept is not None else None
+            if (
+                not isinstance(lineage, Function)
+                or lineage.operator != FunctionType.ALIAS
+                or len(lineage.concept_arguments) != 1
+            ):
+                return None
+            address = lineage.concept_arguments[0].address
+        return address
+
     def _coalescing_presence_probe(self, ref: ConceptRef) -> Concept | None:
         """Per-side probe for a null test on a coalescing join key member.
 
@@ -3935,12 +3959,12 @@ class Factory:
         trusted (the declaration says every subset value matches it), so it is
         not eligible — a null test on it is a genuine no-op; a lying subset
         declaration is an author error (docs/subset_union_join_design.md)."""
-        address = ref.address
         eligible = (
             self.domain_graph.coalescing_relation_members()
             | self.domain_graph.subset_sources()
         )
-        if address not in eligible:
+        address = self._presence_probe_member(ref.address, eligible)
+        if address is None:
             return None
         member = self.environment.concepts.get(address)
         if member is None or member.derivation not in (
@@ -3960,7 +3984,7 @@ class Factory:
             operator=FunctionType.COALESCE,
             output_datatype=member.datatype,
             output_purpose=Purpose.PROPERTY,
-            arguments=[ref],
+            arguments=[member.reference],
         )
         new = arbitrary_to_concept(probe_fn, environment=self.environment, name=name)
         built = self._build_concept(new)

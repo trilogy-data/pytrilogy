@@ -735,7 +735,10 @@ limit 100;
 #  - Joins NEVER drop rows: for an intersection (rows present in BOTH sides),
 #    add explicit conditions - `where <side_a attr> is not null and <side_b
 #    attr> is not null`. A one-sided `is not null` keeps the other side's
-#    exclusive rows.
+#    exclusive rows. Either spelling reads as "did this side match?": the
+#    side's own JOIN KEY (`where a.k is not null`, tested per side even though
+#    the projected key is the coalesced group axis) or any of its measures /
+#    attributes (`where a.cnt is not null`). Same in `having`.
 #  - `left`/`full`/`inner`/`right`/`cross join` are NOT valid query-scoped joins
 #    (they error) - only `subset`/`union`. Map an old `left join a = b` to
 #    `subset join b = a` (swap operands) and `full join a = b` to

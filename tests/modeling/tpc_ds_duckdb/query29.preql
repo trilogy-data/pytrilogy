@@ -1,42 +1,34 @@
 import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-# query has weird distinct
-# forcedupe through a rowset
-rowset correlated <- where
+# Catalog demand for an item from the customer it was billed to, over the three
+# qualifying years. Summing the catalog side per (billing customer, item) before
+# it meets the store side is what keeps a customer's second catalog order from
+# re-counting that customer's store quantities.
+auto catalog_customer_item_quantity <- sum(
+    catalog_sales.quantity ? catalog_sales.sale_date.year in (1999, 2000, 2001)
+) by catalog_sales.billing_customer.sk, catalog_sales.item.sk;
+
+where
     store_sales.sale_date.month_of_year = 9
     and store_sales.sale_date.year = 1999
+    and store_sales.is_returned
     and store_sales.return_date.month_of_year between 9 and 12
     and store_sales.return_date.year = 1999
-    and catalog_sales.sale_date.year in (1999, 2000, 2001)
-    and catalog_sales.quantity > 0
-    and store_sales.is_returned
     and store_sales.customer.sk = store_sales.return_customer.sk
+    # only purchases the customer also ordered from the catalog qualify, so this
+    # belongs on the purchase rather than on the reported group
+    and catalog_customer_item_quantity > 0
 select
-    store_sales.ticket_number,
-    store_sales.item.sk,
-    catalog_sales.order_number,
-    store_sales.item.id,
-    store_sales.item.desc,
-    store_sales.store.id,
-    store_sales.store.name,
-    store_sales.quantity,
-    store_sales.return_quantity,
-    catalog_sales.quantity,
-;
-
-subset join catalog_sales.billing_customer.sk = store_sales.return_customer.sk
+    store_sales.item.id as store_sales_item_name,
+    store_sales.item.desc as store_sales_item_desc,
+    store_sales.store.id as store_sales_store_text_id,
+    store_sales.store.name as store_name,
+    sum(store_sales.quantity) as store_sales_quantity,
+    sum(store_sales.return_quantity) as store_returns_quantity,
+    sum(catalog_customer_item_quantity) as catalog_sales_quantity,
+subset join catalog_sales.billing_customer.sk = store_sales.customer.sk
 subset join catalog_sales.item.sk = store_sales.item.sk
-select
-    correlated.store_sales.item.id as store_sales_item_name,
-    correlated.store_sales.item.desc as store_sales_item_desc,
-    correlated.store_sales.store.id as store_sales_store_text_id,
-    correlated.store_sales.store.name as store_name,
-    sum(correlated.store_sales.quantity) as store_sales_quantity,
-    sum(correlated.store_sales.return_quantity) as store_returns_quantity,
-    sum(correlated.catalog_sales.quantity) as catalog_sales_quantity,
-having
-    catalog_sales_quantity > 0
 
 order by
     store_sales_item_name asc,
