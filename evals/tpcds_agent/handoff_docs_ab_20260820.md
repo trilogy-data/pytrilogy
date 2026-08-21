@@ -70,6 +70,34 @@ q17 no longer syntax-loops (fix verified in the docs leg: passed at 112k adj)
 but TIMED OUT on the enriched leg; check whether that is the q64-style perf
 cliff or a new obstacle before filing anything.
 
+## Deep dive: the preload theory holds; leg medians were the misleading view
+
+Paired per-query comparison (same run, same tree) instead of leg medians:
+
+- **Sign test: 68/99 queries are cheaper (cache-adj) under docs preload.**
+  Paired deltas: raw med -4.1k, adj med -4.7k (-11%), turns med -1.0.
+- **The saving is almost exactly the predicted mechanism and nothing more**:
+  the enriched leg pays full-rate arrival for the guide+index each query
+  (~5.4k tokens) plus two discovery turns; the docs leg pays ~10% cache rate
+  on the preamble (~0.5k) - predicted delta ~-4.9k, observed -4.7k. The docs
+  leg fetched the query guide ZERO times (instruction respected; index 9
+  times, syntax examples 117 vs enriched's 155+47+99+99 drilldowns).
+- **Why the leg medians hid it**: the two legs' sink tails differ (q84 blew
+  up on docs, q05/q64 on enriched), and the preamble inflates RAW on every
+  turn while pricing at 10% - raw-median comparisons across legs are the
+  wrong lens. An apparent "savings grow with trajectory length" pattern is
+  regression-to-the-mean (bucketing by the other leg's length inverts it).
+- **Why it is only -11% and not the floor model's 3x**: the floor scenario
+  assumed 2-4 call trajectories where language discovery is half the cost.
+  At today's 7-8+ calls, discovery is ~12% of spend; preloading removes most
+  of that 12% and cannot touch the rest (explore, authoring loops, sinks).
+  The lever that unlocks the rest is turn count, i.e. the bug backlog.
+- **Failure shapes are mixed, not uniformly overconfident**: q41 failed in 4
+  turns/1 explore (vs enriched pass at 7), q67 in 5 (vs 12), q20 in 6 (vs 7)
+  - the wrote-fast-and-wrong shape; but q79 (13) and q81 (18) failed long,
+  and all 8 fails DID fetch syntax examples ('query-structure' in 6 of 8).
+  Content-level triage still required before blaming the preamble.
+
 ## Suggested evening order
 
 1. Triage the docs-leg fails (finding 2). If systematic, the fix is likely a
