@@ -1,3 +1,5 @@
+import ipaddress
+import logging
 import math
 import re
 from datetime import datetime, timedelta
@@ -20,7 +22,13 @@ from trilogy.core.models.core import (
     ValidatedType,
 )
 from trilogy.core.validation.environment import validate_environment
-from trilogy.dialect.mock import ARRAY_MOCK_SIZE, grain_indices, mock_datatype
+from trilogy.dialect.mock import (
+    ARRAY_MOCK_SIZE,
+    TRAIT_GENERATORS,
+    grain_indices,
+    mock_datatype,
+    register_trait_mock,
+)
 from trilogy.scripts.common import validate_environment as cli_validate_environment
 
 
@@ -1195,3 +1203,93 @@ def test_cli_validate_quiet_success():
     """)
 
     cli_validate_environment(executor, mock=False, quiet=True)
+
+
+def test_mock_datatype_zip_and_ipv6_traits_are_well_formed():
+    """A trait whose values have a shape is only useful if the mock respects
+    it: validation and any downstream parsing read these as real values."""
+    zip_type = TraitDataType(type=DataType.STRING, traits=["us_zip_code"])
+    assert all(
+        re.fullmatch(r"\d{5}", v)
+        for v in mock_datatype(zip_type, DataType.STRING, scale_factor=20)
+    )
+    keys = mock_datatype(zip_type, DataType.STRING, scale_factor=20, is_key=True)
+    assert len(set(keys)) == 20
+
+    v6_type = TraitDataType(type=DataType.STRING, traits=["ipv6_address"])
+    for value in mock_datatype(v6_type, DataType.STRING, scale_factor=10):
+        ipaddress.IPv6Address(value)
+    v6_keys = mock_datatype(v6_type, DataType.STRING, scale_factor=10, is_key=True)
+    assert len(set(v6_keys)) == 10
+
+
+def test_mock_datatype_bounded_trait_key_stays_in_range():
+    """A bounded trait's key path walks the declared span rather than sampling
+    it, so the values stay unique without leaving the domain."""
+    traited = TraitDataType(type=DataType.FLOAT, traits=["latitude"])
+    values = mock_datatype(traited, DataType.FLOAT, scale_factor=10, is_key=True)
+    assert len(set(values)) == 10
+    assert all(-90.0 <= v <= 90.0 for v in values)
+
+
+def test_register_trait_mock_extends_the_table_for_a_models_own_trait():
+    """Trait generators are the extension point for traits the stdlib does not
+    declare; without it a model's own trait falls back to random strings."""
+    register_trait_mock("mock_test_only_trait", DataType.STRING, lambda n, k: ["x"] * n)
+    try:
+        traited = TraitDataType(type=DataType.STRING, traits=["mock_test_only_trait"])
+        assert mock_datatype(traited, DataType.STRING, scale_factor=4) == ["x"] * 4
+    finally:
+        TRAIT_GENERATORS.pop("mock_test_only_trait")
+
+
+_CONJUNCT_MODEL = """
+    key id int;
+    property id.status string;
+    property id.region string;
+
+    datasource events (
+        id: id,
+        status: status,
+        region: region,
+    )
+    grain (id)
+    address events_tbl
+    where status = 'ok' and region in ('NA', 'EU');
+
+    mock datasources events;
+"""
+
+
+def test_mock_honours_every_conjunct_of_a_where_clause():
+    """`=` and `in` are both read, and an `and` is walked to its leaves: a row
+    outside any conjunct is a row the datasource declares cannot exist."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CONJUNCT_MODEL)
+    rows = executor.execute_raw_sql(
+        "select distinct status, region from events_tbl"
+    ).fetchall()
+    assert sorted(tuple(r) for r in rows) == [("ok", "EU"), ("ok", "NA")]
+
+
+_UNHONOURABLE_MODEL = """
+    key id int;
+    property id.score int;
+
+    datasource events (id: id, score: score)
+    grain (id)
+    address events_tbl
+    where score > 5;
+
+    mock datasources events;
+"""
+
+
+def test_mock_reports_a_where_clause_it_cannot_honour(caplog):
+    """Only `=` and `in` against literals can be turned into a pool. Silently
+    ignoring the rest would validate the model against rows its own
+    declaration excludes, so the gap is reported."""
+    executor = Dialects.DUCK_DB.default_executor()
+    with caplog.at_level(logging.WARNING, logger="trilogy"):
+        executor.execute_text(_UNHONOURABLE_MODEL)
+    assert "cannot honour part of the `where` on datasource events" in caplog.text
