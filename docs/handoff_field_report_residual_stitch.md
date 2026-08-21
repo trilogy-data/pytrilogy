@@ -67,12 +67,14 @@ consumption mode, elected after the branch builds.
 
 ## Follow-up direction (not this fix)
 
-Graph-time extent ownership: elect the licensed span's owner on the flow
-graph before branches build and propagate it downward, so extent is
-manufactured exactly once and the reunion machinery (family-anchored
-null-safe stitches) becomes unnecessary rather than gated. Constraint
-discovered while scoping: ownership is per delivered output, not per key:
-`test_forked_with_status` pins `order_status = 'LATER'` on extension rows, a
-fact-grain CASE that evaluates only in the row-bearing branch, so extent
-must flow through branches computing such attributes. See the discussion in
-docs/handoff_multi_fact_nullable_fk_extent.md.
+The user's verdict, agreed: a plan containing a join whose rows the plan
+itself discards is a LOGICAL PLAN DEFECT; this optimizer fix is a safety
+net, not the end state. The relocation is specced for a fresh agent in
+docs/handoff_graph_time_extent_ownership.md: elect the licensed span's
+owner on the flow graph before branches build and propagate it downward,
+so extent is manufactured exactly once and the reunion machinery
+(family-anchored null-safe stitches) becomes unnecessary rather than
+gated. Key constraint discovered while scoping: ownership is per delivered
+output, not per key (`test_forked_with_status` pins
+`order_status = 'LATER'` on extension rows, a fact-grain CASE that
+evaluates only in the row-bearing branch).
