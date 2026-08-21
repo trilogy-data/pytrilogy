@@ -161,6 +161,124 @@ limit 100;
 """,
     ),
     SyntaxExample(
+        name="chart",
+        title="Chart statement - layers, roles, settings and reference lines",
+        summary=(
+            "drawing a result rather than tabulating it: `chart layer <type> "
+            "( <role> <- <expr> as <name>, ... )` is a STATEMENT that wraps its "
+            "own query - the bindings ARE the select; layers, roles, scales, "
+            "reference lines and `from <select>`"
+        ),
+        body="""# `chart` is a top-level statement, like `select` - it wraps a query AND says
+# how to draw it. It renders wherever results render: a trilogy code block in a
+# `trilogy render` report, a studio cell, terminal output, and
+# `copy into png|svg|html|pdf '<path>' from chart ...` for a standalone image.
+import enrollments as enroll;
+
+# --- 1. Minimal form --------------------------------------------------------
+# `layer <type> ( <role> <- <expr> [as <name>], ... )`. The bindings ARE the
+# select: grouping is automatic by the non-aggregated ones, exactly as in a
+# query. NEVER write a separate `select` for a chart.
+chart layer bar ( x_axis <- enroll.department, y_axis <- sum(enroll.credits) as credits );
+
+# A COMPUTED binding must be aliased: `y_axis <- sum(enroll.credits) as credits`.
+# A bare concept reference needs no alias (`x_axis <- enroll.department`) but may
+# take one as a display label. `y_axis <- sum(...)` with no `as` is a parse error.
+#
+# GRAIN: every binding is a select column, so binding a FINER concept to any
+# role (color, group, annotation, ...) refines the grain and splits the marks -
+# exactly as adding that column to a select would. Aggregate annotations at the
+# mark's own grain (`count(enroll.id) as ...`) instead of binding a detail field.
+
+# --- 2. Every part of the statement -----------------------------------------
+# Components may appear in any order after `chart`; at least one `layer` is
+# required, and multiple `layer`s compose into one overlaid chart.
+chart
+  set show_title                            # title from the value-axis label
+  set hide_legend
+  set scale_y: log                          # scale_x | scale_y : linear | log | sqrt
+  layer bar (
+    x_axis <- enroll.department,
+    y_axis <- sum(enroll.credits) as credits,
+    color <- enroll.completed,              # one legend series per value
+    annotation <- count(enroll.id) as enrollments   # text label on each mark
+  )
+  order by credits desc                     # category order follows ORDER BY
+  limit 10                                  # (ascending when there is no ORDER BY)
+  place hline at 5 as target;               # reference rule; `place vline at ...`
+                                            # too. `at` takes a literal; `as <label>`
+                                            # is optional
+
+# --- 3. `from <select>` - when the bindings cannot express the query ---------
+# Bindings alone have no `where` / `having` / hidden columns. Add `from` plus a
+# COMPLETE select, which carries its own clauses in the usual order:
+chart layer line (
+    x_axis <- enroll.year,
+    y_axis <- completions,
+    color <- enroll.department
+  )
+  from
+  where enroll.year >= 2016
+  select
+    enroll.year,
+    enroll.department,
+    count(enroll.id ? enroll.completed = true) as completions
+  order by enroll.year asc;
+# With `from select`, EVERY binding must be a bare reference to one of the
+# select's outputs - put transformations inside the select - and layer-level
+# `order by` / `limit` are rejected: they belong to the select.
+
+# --- 4. Types ---------------------------------------------------------------
+#   bar       vertical bars: x_axis = category, y_axis = measure
+#   barh      horizontal bars: x_axis = MEASURE, y_axis = category (roles swap)
+#   line      x_axis = the ordered axis (date/year), y_axis = measure
+#   point     scatter; `size <- <measure>` scales the marks
+#   area      line, filled
+#   headline  big KPI number - needs only `x_axis <- <measure> as <name>`
+#   donut     the numeric binding sizes the slices; the other positional one -
+#             or `color` - names them. No annotations.
+#   heatmap   x_axis and y_axis are BOTH categories, `color` is the measure
+#   boxplot   x_axis = category, y_axis = the distribution being summarized
+# `treemap` parses but no renderer implements it; the error names what does.
+chart layer barh ( x_axis <- sum(enroll.credits) as credits, y_axis <- enroll.department );
+chart layer headline ( x_axis <- count(enroll.student_id) as students );
+chart layer donut ( x_axis <- enroll.department, y_axis <- sum(enroll.credits) as credits );
+chart layer heatmap (
+    x_axis <- enroll.year,
+    y_axis <- enroll.department,
+    color <- sum(enroll.credits) as credits
+);
+# A boxplot summarizes RAW rows, so its select has to carry the fact's row grain
+# - hidden with `--` - or output dedup collapses the distribution to the set of
+# distinct values.
+chart layer boxplot ( x_axis <- enroll.department, y_axis <- enroll.credits )
+  from select --enroll.id, enroll.department, enroll.credits;
+
+# --- 5. Roles ---------------------------------------------------------------
+#   x_axis, y_axis          position
+#   color                   one series per value, WITH a legend
+#   size                    mark size (point)
+#   group                   side-by-side bars, or a per-series split on
+#                           line/point/area - no legend
+#   x_trellis / y_trellis   small multiples (columns / rows)
+#   annotation              per-mark text label
+#   geo                     reserved - parses, then raises
+# Each role may be bound at most once per layer; an unknown role name is a parse
+# error. Trellis roles cannot combine with multiple layers, placements, or
+# annotations (Vega-Lite forbids facets inside layered charts).
+chart layer bar (
+    x_axis <- enroll.year,
+    y_axis <- sum(enroll.credits) as credits,
+    group <- enroll.department              # side-by-side bars, no legend
+);
+
+# EXPLICIT SERIES COLORS: select a `string::hex` column (the trait comes from
+# `import std.color;`) alongside a `color` binding and each color value takes the
+# hex code found on its rows (missing -> gray); bind the hex column itself to
+# `color` to use the codes directly.
+""",
+    ),
+    SyntaxExample(
         name="filtered-aggregate",
         title="Filtered aggregate - aggregate only the rows matching a condition",
         summary=(

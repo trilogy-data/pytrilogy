@@ -78,8 +78,10 @@ class TerminalRenderer(BaseRenderer):
         for idx, (layer, data) in enumerate(layers):
             build = builders.get(layer.layer_type)
             if build is None:
+                supported = ", ".join(sorted(t.value for t in builders))
                 return (
-                    f"Chart type '{layer.layer_type.value}' not supported in terminal"
+                    f"Chart type '{layer.layer_type.value}' is not supported in the"
+                    f" terminal renderer. Supported types: {supported}."
                 )
             if use_subplots:
                 plt.subplot(idx + 1, 1)

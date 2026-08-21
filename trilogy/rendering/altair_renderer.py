@@ -148,11 +148,16 @@ class AltairRenderer(BaseRenderer):
             ChartType.POINT: self._point,
             ChartType.AREA: self._area,
             ChartType.HEADLINE: self._headline,
+            ChartType.DONUT: self._donut,
+            ChartType.HEATMAP: self._heatmap,
+            ChartType.BOXPLOT: self._boxplot,
         }
         build = builders.get(layer.layer_type)
         if build is None:
+            supported = ", ".join(sorted(t.value for t in builders))
             raise NotImplementedError(
-                f"Chart type '{layer.layer_type.value}' not yet implemented"
+                f"Chart type '{layer.layer_type.value}' is not implemented in the"
+                f" Altair renderer. Supported types: {supported}."
             )
         return build(df, layer, scales)
 
@@ -228,7 +233,7 @@ class AltairRenderer(BaseRenderer):
         self,
         layer: ProcessedChartLayer,
         data: Any = None,
-        category_axis: str | None = None,
+        category_axes: tuple[str, ...] = (),
         scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
     ) -> dict[str, Any]:
         # Bar order follows the query's ORDER BY when it has one; without one,
@@ -254,7 +259,7 @@ class AltairRenderer(BaseRenderer):
                 # date parts want bare integer ticks.
                 axis_kwargs["format"] = "d"
                 axis_kwargs["tickMinStep"] = 1
-            if channel == category_axis:
+            if channel in category_axes:
                 sort = None if ordered else "ascending"
                 # A bar's category axis is discrete: encode as ordinal so bars
                 # band to the step at any density. A continuous scale gives
@@ -287,7 +292,7 @@ class AltairRenderer(BaseRenderer):
             encoding["color"] = alt.Color(
                 layer.color_field,
                 title=self._field_title(layer, layer.color_field),
-                scale=self._hex_color_scale(layer, data),
+                scale=self._hex_color_scale(layer, data, layer.color_field),
             )
         if layer.size_field:
             encoding["size"] = alt.Size(
@@ -326,12 +331,14 @@ class AltairRenderer(BaseRenderer):
 
     _HEX_FALLBACK = "#999999"
 
-    def _hex_color_scale(self, layer: ProcessedChartLayer, data: Any) -> Any:
+    def _hex_color_scale(
+        self, layer: ProcessedChartLayer, data: Any, field: str | None
+    ) -> Any:
         """Explicit category→color mapping when the query outputs a `::hex`
         column alongside the color field: each color-field member maps to the
         hex code found on its rows, so authors control series colors from data.
         """
-        if layer.query is None or data is None or layer.color_field not in data:
+        if layer.query is None or data is None or field is None or field not in data:
             return alt.Undefined
         hex_field = next(
             (
@@ -344,10 +351,10 @@ class AltairRenderer(BaseRenderer):
         if hex_field is None:
             return alt.Undefined
         lookup: dict[Any, str] = {}
-        for category, hex_value in zip(data[layer.color_field], data[hex_field]):
+        for category, hex_value in zip(data[field], data[hex_field]):
             if pd.notna(hex_value):
                 lookup.setdefault(category, str(hex_value))
-        domain = sorted(data[layer.color_field].dropna().unique().tolist(), key=str)
+        domain = sorted(data[field].dropna().unique().tolist(), key=str)
         return alt.Scale(
             domain=domain,
             range=[lookup.get(category, self._HEX_FALLBACK) for category in domain],
@@ -389,9 +396,9 @@ class AltairRenderer(BaseRenderer):
     ) -> Any:
         # barh maps here too: axes are literal, so binding a quantitative field
         # to x_axis yields horizontal bars without any axis swap.
-        category_axis = "y" if layer.layer_type == ChartType.BARH else "x"
+        category_axes = ("y",) if layer.layer_type == ChartType.BARH else ("x",)
         encoding = self._encode(
-            layer, data=data, category_axis=category_axis, scales=scales
+            layer, data=data, category_axes=category_axes, scales=scales
         )
         chart = alt.Chart(data).mark_bar().encode(**encoding)
         return self._with_annotation(chart, data, layer, encoding)
@@ -449,6 +456,97 @@ class AltairRenderer(BaseRenderer):
         encoding = self._encode(layer, data=data, scales=scales)
         chart = alt.Chart(data).mark_area().encode(order=order, **encoding)
         return self._with_annotation(chart, data, layer, encoding)
+
+    @staticmethod
+    def _reject_annotation(layer: ProcessedChartLayer) -> None:
+        if layer.annotation_field:
+            raise ValueError(
+                "The 'annotation' role is not supported on"
+                f" {layer.layer_type.value} layers; the mark has no per-row"
+                " position to hang a label on."
+            )
+
+    def _donut_fields(self, layer: ProcessedChartLayer) -> tuple[str, str]:
+        """(angle, slice) fields. The numeric binding sizes the slices; the
+        other positional binding - or `color` - names them, so both the
+        bar-shaped and the color-shaped spelling of a donut work."""
+        positional = [
+            fields[0] for fields in (layer.y_fields, layer.x_fields) if fields
+        ]
+        angle = next(
+            (f for f in positional if self._field_type(layer, f) == "quantitative"),
+            None,
+        )
+        if angle is None:
+            raise ValueError(
+                "A donut chart needs a numeric x_axis or y_axis binding to size"
+                " the slices."
+            )
+        slices = layer.color_field or next((f for f in positional if f != angle), None)
+        if slices is None:
+            raise ValueError(
+                "A donut chart needs a second binding - the other axis, or"
+                " `color` - to name the slices."
+            )
+        return angle, slices
+
+    def _donut(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        """Arc chart. `set scale_x|scale_y` does not apply - an angle has no
+        axis to rescale."""
+        self._reject_annotation(layer)
+        angle, slices = self._donut_fields(layer)
+        return (
+            alt.Chart(data)
+            .mark_arc(innerRadius=50, outerRadius=120, strokeWidth=2)
+            .encode(
+                theta=alt.Theta(
+                    angle, type="quantitative", title=self._field_title(layer, angle)
+                ),
+                color=alt.Color(
+                    slices,
+                    type="nominal",
+                    title=self._field_title(layer, slices),
+                    scale=self._hex_color_scale(layer, data, slices),
+                ),
+                order=alt.Order(angle, sort="descending"),
+            )
+        )
+
+    def _heatmap(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        """Rect grid: BOTH axes are discrete and `color` carries the measure."""
+        if not layer.color_field:
+            raise ValueError(
+                "A heatmap needs a `color` binding for the measure that fills"
+                " each cell."
+            )
+        encoding = self._encode(
+            layer, data=data, category_axes=("x", "y"), scales=scales
+        )
+        chart = alt.Chart(data).mark_rect().encode(**encoding)
+        return self._with_annotation(chart, data, layer, encoding)
+
+    def _boxplot(
+        self,
+        data: Any,
+        layer: ProcessedChartLayer,
+        scales: tuple[ScaleType | None, ScaleType | None] = (None, None),
+    ) -> Any:
+        """Distribution of the value axis per category. The layer's select has
+        to carry the fact's row grain (hidden with `--`) or output dedup
+        collapses the very duplicates the box summarizes."""
+        self._reject_annotation(layer)
+        encoding = self._encode(layer, data=data, category_axes=("x",), scales=scales)
+        return alt.Chart(data).mark_boxplot().encode(**encoding)
 
     def _headline(
         self,

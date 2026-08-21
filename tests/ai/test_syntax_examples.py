@@ -148,6 +148,20 @@ def test_syntax_example_compiles_and_runs(name, executor, model_dir):
         executor.execute_raw_sql(sql)
 
 
+def test_chart_example_renders_every_chart(executor, model_dir):
+    """The chart example is only useful if its statements actually DRAW - SQL
+    generation alone would not catch an unrenderable role/type combination."""
+    pytest.importorskip("altair")
+    from trilogy.dialect.results import ChartResult
+
+    executor.environment = Environment(working_path=model_dir)
+    body = SYNTAX_EXAMPLES["chart"].body
+    charts = [r for r in executor.execute_text(body) if isinstance(r, ChartResult)]
+    assert len(charts) == 9
+    for result in charts:
+        assert result.chart.to_dict()["$schema"]
+
+
 def test_example_index_lists_every_example():
     from trilogy.ai.syntax_examples import example_index
 
