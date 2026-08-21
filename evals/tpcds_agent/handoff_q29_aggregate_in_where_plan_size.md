@@ -32,7 +32,13 @@ catalog branch renders twice.
 | flat, `having catalog_sales_quantity > 0` | 9,690 | 1,240 | NO - group-level test, keeps purchases with no catalog order |
 | flat, `catalog_sales.order_number is not null` | 9,904 | 1,247 | NO - 100 rows; null test reads through the coalescing join key |
 
-`test_twenty_nine`'s size guard was moved 12,000 -> 15,000 to take the shipped spelling.
+`query29.preql` now ships the rowset spelling (catalog aggregate as a standalone rowset,
+then a per-(reported group, customer, item) rowset, then roll up). It plans at 7,433 chars
+and runs 0.10s against the reference's 0.05s at sf=1, versus 14,113 chars and 0.97s for the
+flat aggregate-in-WHERE form. `test_twenty_nine`'s size guard is 9,000.
+
+The engine question below is unchanged: the respelling sidesteps the dual-scope split rather
+than answering whether it is needed.
 
 ## What to look at
 

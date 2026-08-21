@@ -347,10 +347,7 @@ def test_twenty_nine(engine):
     # (At this scale the two agree anyway: no (billing customer, item) pair has
     # more than one catalog line.)
     query = run_query(engine, 29, sql_override=True, min_rows=1)
-    # Bigger plan than the pair-summed spelling it replaced (4.3k): the
-    # per-purchase catalog test is an aggregate in the WHERE, so the query
-    # renders both the population and the filtered scope of the catalog side.
-    assert len(query) < 15000, query
+    assert len(query) < 9000, query
 
 
 def test_thirty(engine):
