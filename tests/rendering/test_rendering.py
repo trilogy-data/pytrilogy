@@ -1460,6 +1460,30 @@ def test_render_validate_scoped():
     assert rendered == "validate concepts x;", rendered
 
 
+def test_render_mock_statement():
+    env = Environment()
+    _, parsed = env.parse(
+        "key x int;\ndatasource t (x: x) grain (x) address t1;\nmock datasources t;"
+    )
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered == "mock datasources t;", rendered
+
+
+def test_render_mock_statement_scale_factor_round_trips():
+    """A scale a render drops is a fixture that changes size on `fmt`."""
+    env = Environment()
+    text = (
+        "key x int;\n"
+        "datasource t (x: x) grain (x) address t1;\n"
+        "mock datasources t with (scale_factor=25);"
+    )
+    _, parsed = env.parse(text)
+    rendered = Renderer().to_string(parsed[-1])
+    assert rendered == "mock datasources t with (scale_factor=25);", rendered
+    _, reparsed = Environment().parse(text.rsplit("\n", 1)[0] + "\n" + rendered)
+    assert reparsed[-1].scale_factor == 25
+
+
 def test_properties_block_trailing_description():
     """A `# ...` on the line that closes a `properties (...)` block attaches
     as the description of the first concept in the block."""

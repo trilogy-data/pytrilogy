@@ -223,41 +223,24 @@ def _mock_name(datasource) -> str:
 
 
 def _materialize_mock_tables(flattened_env, db_path: Path) -> None:
-    """Materialize deterministic, fully-populated mock rows for every datasource
-    into ``db_path`` as a table named by :func:`_mock_name`. A single
-    MockManager over the flattened environment gives shared concepts (join keys)
-    the same values across datasources, so cross-datasource joins still match."""
-    import random
+    """Materialize deterministic mock rows for every datasource into ``db_path``
+    as a table named by :func:`_mock_name`.
 
+    Runs the same generator the unit tier uses, over the flattened environment
+    so shared concepts (join keys) take the same values everywhere and
+    cross-datasource joins still match. Going through ``mock_environment``
+    rather than table-by-table is what gets rollups *computed* from the facts
+    they summarize — synthesizing them independently makes the same question
+    answered through a pre-aggregate and through the base table disagree, and
+    the agent gets blamed for the fixture.
+    """
     from trilogy.dialect.config import DuckDBConfig
     from trilogy.dialect.enums import Dialects
-    from trilogy.dialect.mock import MockManager
+    from trilogy.dialect.mock import mock_environment
 
-    random.seed(0)
-    manager = MockManager(flattened_env)
     executor = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig(path=str(db_path)))
-    seen: set[str] = set()
     try:
-        for datasource in flattened_env.datasources.values():
-            name = _mock_name(datasource)
-            if name in seen:  # same physical address under multiple namespaces
-                continue
-            seen.add(name)
-            concrete = []
-            headers = []
-            for key, column in datasource.concrete_columns.items():
-                manager.mock_concept(column.concept)
-                concrete.append(column.concept)
-                headers.append(key)
-            table = manager.create_mock_table(
-                concrete, headers, set(datasource.grain.components)
-            )
-            executor.execute_raw_sql(
-                "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
-            )
-            executor.execute_write_sql(
-                f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM mock_tbl'
-            )
+        mock_environment(flattened_env, executor, address_for=_mock_name)
     finally:
         executor.close()
 

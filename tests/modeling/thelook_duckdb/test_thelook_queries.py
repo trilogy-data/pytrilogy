@@ -45,6 +45,10 @@ def _assert_span_matches_truth(engine: Executor, name: str) -> None:
         (tuple(r) for r in engine.execute_raw_sql(_SPAN_TRUTH).fetchall()),
         key=_span_sort_key,
     )
+    # without extension rows on both sides the span is just the pinned INNER
+    # star and this comparison proves nothing
+    assert any(row[0] is None for row in truth)
+    assert any(row[1] is None for row in truth)
     engine.environment = Environment(working_path=working_path)
     text = (working_path / f"{name}.preql").read_text()
     sql = engine.generate_sql(text)[-1]
@@ -82,8 +86,7 @@ def run_query(engine: Executor, idx: int, label: str | None = None) -> str:
     comp_results = benchmark.candidate_result
     base_results = benchmark.reference_result
 
-    if len(base_results) > 0:
-        assert len(comp_results) > 0, "No results returned"
+    assert len(base_results) > 0, f"query{idx:02d} reference returned no rows"
 
     assert len(base_results) == len(
         comp_results

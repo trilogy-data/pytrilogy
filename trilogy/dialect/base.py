@@ -579,7 +579,10 @@ FUNCTION_MAP = {
     FunctionType.SIMPLE_CASE: lambda x, types: render_simple_case(x),
     FunctionType.SPLIT: lambda x, types: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} is null",
-    FunctionType.IS_NOT_DISTINCT: lambda x, types: f"{x[0]} is not distinct from {x[1]}",
+    # parenthesized to match MySQL's `<=>` form: bare, an enclosing comparison
+    # binds tighter than `is not distinct from` and silently reassociates
+    # (`x is not distinct from True = False` parses the `True = False`).
+    FunctionType.IS_NOT_DISTINCT: lambda x, types: f"({x[0]} is not distinct from {x[1]})",
     FunctionType.BOOL: lambda x, types: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
     FunctionType.PARENTHETICAL: lambda x, types: f"({x[0]})",
     # Complex
@@ -3398,6 +3401,7 @@ class BaseDialect:
                     ProcessedMockStatement(
                         scope=statement.scope,
                         targets=statement.targets,
+                        scale_factor=statement.scale_factor,
                     )
                 )
             elif isinstance(statement, CreateStatement):

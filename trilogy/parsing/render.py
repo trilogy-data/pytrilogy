@@ -95,6 +95,7 @@ from trilogy.core.statements.author import (
     ImportStatement,
     KeyMergeStatement,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     NaturalSelectStatement,
     PersistStatement,
@@ -1086,6 +1087,12 @@ class Renderer:
             return "validate all;"
         targets = ",".join(arg.targets) if arg.targets else "*"
         return f"validate {arg.scope.value} {targets};"
+
+    @to_string.register
+    def _(self, arg: MockStatement):
+        targets = f" {', '.join(arg.targets)}" if arg.targets else ""
+        config = f" with (scale_factor={arg.scale_factor})" if arg.scale_factor else ""
+        return f"mock {arg.scope.value}{targets}{config};"
 
     @to_string.register
     def _(self, arg: NaturalSelectStatement):

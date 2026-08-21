@@ -2567,6 +2567,7 @@ BuildExpr = (
     | BuildComparison
     | BuildConditional
     | BuildParenthetical
+    | BuildBetween
     | BuildFunction
     | BuildAggregateWrapper
     | bool

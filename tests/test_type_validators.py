@@ -419,8 +419,17 @@ def test_mock_validated():
     assert all(vdate.check_value(v) for v in vals)
 
     vstr = ValidatedType(type=DataType.STRING, pattern="[A-Z]+")
+    vals = mock_datatype(vstr, DataType.STRING, 10, is_key=True)
+    assert len(set(vals)) == 10
+    assert all(vstr.check_value(v) for v in vals)
+    vals = mock_datatype(vstr, DataType.STRING, 10, is_key=False)
+    assert all(vstr.check_value(v) for v in vals)
+
+    # a construct the sampler does not cover still raises rather than emitting
+    # a value that ignores the pattern
+    vlook = ValidatedType(type=DataType.STRING, pattern="(?=[A-Z])[A-Z]+")
     with pytest.raises(NotImplementedError):
-        mock_datatype(vstr, DataType.STRING, 10)
+        mock_datatype(vlook, DataType.STRING, 10)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)

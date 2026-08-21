@@ -1,11 +1,14 @@
 # Customer profiles. Every customer remains in this domain even when they have
 # never ordered; sale facts bind the customer key partially for that reason.
 
+# The categorical domains are declared rather than left open: a `string` mocks
+# as a unique value per row, which turns every group-by into a no-op and every
+# literal filter into an empty result.
 key id int; # customer ID
 properties id (
-    state string, # US postal state
-    age int, # age in years
-    traffic_source string, # original acquisition channel
+    state enum<string>['CA', 'NY', 'TX', 'FL', 'WA', 'IL', 'MA', 'CO', 'GA', 'NC'], # US postal state
+    age int[18..78], # age in years
+    traffic_source enum<string>['Search', 'Organic', 'Email', 'Facebook', 'Display'], # original acquisition channel
 );
 
 property id.age_band <- case

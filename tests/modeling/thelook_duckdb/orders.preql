@@ -5,7 +5,7 @@ import users as user;
 
 key id int; # order ID
 properties id (
-    status string,
+    status enum<string>['Complete', 'Shipped', 'Processing'],
     created_at datetime,
 );
 

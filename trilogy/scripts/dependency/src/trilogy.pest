@@ -228,7 +228,9 @@ natural_select_statement = { ^"select" ~ ^"natural" ~ string_lit }
 validate_query_option    = { IDENTIFIER ~ "=" ~ (literal | IDENTIFIER) }
 validate_query_config    = { ^"with" ~ "(" ~ validate_query_option ~ ("," ~ validate_query_option)* ~ ","? ~ ")" }
 
-mock_statement = { ^"mock" ~ VALIDATE_SCOPE ~ (IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)? }
+// !WITH_KW_LA: `with` opens the config, so it must not be eaten as a target name
+mock_statement = { ^"mock" ~ VALIDATE_SCOPE ~ (!WITH_KW_LA ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)? ~ validate_query_config? }
+WITH_KW_LA = @{ ^"with" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
 
 PUBLISH_ACTION    = @{ ^"publish" | ^"unpublish" }
 publish_statement = { PUBLISH_ACTION ~ VALIDATE_SCOPE ~ IDENTIFIER }

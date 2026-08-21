@@ -1226,10 +1226,13 @@ def process_persist(
     # the planner treats sources with matching non_partial_for as non-partial and
     # selects them directly rather than resorting to a covering union.
     select_stmt = statement.select
-    # Only inject non_partial_for for explicitly declared partial datasources.
-    # Datasources created from a persist-with-WHERE already embed the condition
-    # in the SELECT, so injecting again would duplicate it.
-    if ds.is_partial and ds.non_partial_for:
+    # Inject an *authored* `complete where`, whether the partiality it needs
+    # came from the `partial datasource` keyword or from a `~` column — the
+    # parser accepts both, so both must gate the write. Datasources created
+    # from a persist-with-WHERE already embed the condition in the SELECT, so
+    # injecting again would duplicate it (and push its HAVING atoms into a
+    # pre-aggregation WHERE).
+    if ds.non_partial_for and not ds.non_partial_for_embedded:
         # AND into stage 1: the partition condition gates every row the persist
         # writes, so it belongs ahead of any `then where` staging, and every
         # later stage's input population narrows with it.

@@ -126,6 +126,7 @@ class ProcessedValidateNaturalStatement:
 class ProcessedMockStatement:
     scope: ValidationScope
     targets: list[str]
+    scale_factor: int | None = None
 
 
 @dataclass

@@ -814,6 +814,7 @@ def validate_environment(
     mock: bool = False,
     quiet: bool = False,
     scope: ValidationScope = ValidationScope.ALL,
+    scale_factor: int | None = None,
 ) -> None:
     """Validate the executor's environment (datasources + concepts) with consistent error handling.
 
@@ -822,6 +823,7 @@ def validate_environment(
         mock: If True, mock datasources before validation (for unit tests)
         quiet: If True, suppress informational messages (for parallel execution)
         scope: What to validate; narrowed by the unit/integration test-type flags
+        scale_factor: Rows for the shallowest mocked entity, if not the default
 
     Raises:
         Exit: If validation fails
@@ -845,7 +847,10 @@ def validate_environment(
         return
 
     if mock:
-        executor.execute_text("mock datasources {};".format(", ".join(datasources)))
+        config = f" with (scale_factor={scale_factor})" if scale_factor else ""
+        executor.execute_text(
+            "mock datasources {}{};".format(", ".join(datasources), config)
+        )
 
     failures: list[ValidationFailure] = []
 

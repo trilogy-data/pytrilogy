@@ -540,6 +540,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             columns=columns,
             namespace=namespace,
             non_partial_for=WhereClause(conditional=condition) if condition else None,
+            non_partial_for_embedded=bool(condition),
         )
         return new_datasource
 
@@ -771,6 +772,10 @@ class ValidateNaturalStatement:
 class MockStatement:
     scope: ValidationScope
     targets: list[str]
+    # rows for the shallowest entity; facts above it still fan out per level.
+    # Nothing cardinality-dependent in the planner is reachable from the unit
+    # tier without a spelling for this.
+    scale_factor: int | None = None
 
 
 @dataclass
