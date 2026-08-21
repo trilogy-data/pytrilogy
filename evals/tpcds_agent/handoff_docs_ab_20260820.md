@@ -98,6 +98,36 @@ Paired per-query comparison (same run, same tree) instead of leg medians:
   and all 8 fails DID fetch syntax examples ('query-structure' in 6 of 8).
   Content-level triage still required before blaming the preamble.
 
+## RESOLVED (evening triage, all 8 docs-leg fails root-caused)
+
+Verdict: **no systemic preamble problem; do not revert or rework the docs
+cell.** Per-query, with executable proof (single-edit flips to pass unless
+noted):
+
+| q | verdict | preamble-caused? |
+|---|---|---|
+| q20 | Coinflip: NULL-class denominator pooling the question never specifies; both legs deliberated it, enriched won on TPC-DS recall | no |
+| q35 | Drafting slip (21 cols vs its own correct 18-col plan), self-check rubber-stamped | no |
+| q41 | Careless question read + skipped the naive-vs-staged compare probe the enriched twin ran (which returned the exact 23 wrong rows docs shipped) | no |
+| q67 | Dropped the rank<=100 HAVING; dismissed the `window_filter_needs_having` validator that named the fix and a rnk max of 51,491 | no |
+| q79 | Unrequested `is_returned = false` filter, seeded by the model doc comment on is_returned (reword it: "this sale line was later returned") | no |
+| q81 | FRAMEWORK: keyless-guard cluster rejected the agent's CORRECT first write 3x; workaround's defensive null filter flipped one row. First graded wrong answer from the cluster; report + INDEX escalated | indirect: the guide's "alias every new expression" style is the cluster's trigger, so the docs cell is over-exposed until the cluster is fixed |
+| q98 | Same NULL-class ambiguity as q20 (2 of 2521 rows); enriched won on reference recall | no |
+| q66 | FRAMEWORK, both legs, NEW BUG: union() TVF output drops arm nullability -> NULL warehouse group silently dropped. `bug_q66_union_output_drops_nullable.md` | no (fails every leg) |
+
+Score: 2 framework (q81, q66), 2 one shared question ambiguity (q20/q98),
+3 individual comprehension/verification lapses, 1 model-doc trap. The
+population stats support noise for the lapses: the docs leg probes MORE
+overall (3.0 vs 2.4 probe-writes/q) and its fail set is not
+uniformly fast-and-wrong.
+
+Cheap hardening before the rerun: (a) fix the keyless cluster (now carries a
+graded wrong answer and the docs cell is over-exposed to it); (b) fix or
+accept q66's union nullability bug; (c) append to q20/q98: "items with no
+recorded class form a single shared class across all categories"; (d) reword
+the `is_returned` model doc comment. Then rerun the A/B; expect the docs leg
+to recover 3-4 of the 8.
+
 ## Suggested evening order
 
 1. Triage the docs-leg fails (finding 2). If systematic, the fix is likely a
