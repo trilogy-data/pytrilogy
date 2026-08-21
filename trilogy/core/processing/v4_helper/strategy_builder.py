@@ -2755,6 +2755,30 @@ def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> N
                 _add_needed_concept(needed, row_input)
 
 
+def _parent_supplied_args(
+    concept: BuildConcept, primary_addrs: set[str]
+) -> list[BuildConcept]:
+    """Lineage args of `concept` that a PARENT has to supply.
+
+    An arg that is itself a primary member is computed at this group (a `case`
+    over `grouping(...)` reads the grouping virtual the same node emits), so the
+    parent owns its inputs, not the arg itself. Walk through those; stop at
+    everything else."""
+    stack = list(concept.lineage.concept_arguments) if concept.lineage else []
+    seen: set[str] = set()
+    supplied: list[BuildConcept] = []
+    while stack:
+        arg = stack.pop()
+        if arg.address in seen:
+            continue
+        seen.add(arg.address)
+        if arg.address in primary_addrs and arg.lineage is not None:
+            stack.extend(arg.lineage.concept_arguments)
+            continue
+        supplied.append(arg)
+    return supplied
+
+
 def _aggregate_reused_from_twin(
     address: str,
     gid: str,
@@ -4139,7 +4163,7 @@ def build_strategy_node(
                 normalize_addrs.add(c.address)
                 if c.address not in primary_addrs or c.lineage is None:
                     continue
-                for arg in c.lineage.concept_arguments:
+                for arg in _parent_supplied_args(c, primary_addrs):
                     normalize_addrs.add(arg.address)
                     aggregate_arg_addrs.add(arg.address)
             normalize_parent_output_by_addr: dict[str, BuildConcept] = {}

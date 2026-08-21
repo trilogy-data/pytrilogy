@@ -90,7 +90,7 @@ def _suite_payload(suite: Suite) -> dict:
     order = [key for key in funnel_order_for(spec) if key in known]
     ordered = order + [key for key in known if key not in order]
     # A spec's funnel_order is a DISPLAY order - TPC-DS lists 25 warehouse
-    # variants in it. The form's default selection is the shared four legs.
+    # variants in it. The form's default selection is the shared funnel legs.
     base = [key for key in FUNNEL_ORDER if key in known]
     try:
         query_ids = [p["id"] for p in prompts.active_prompts(spec)]

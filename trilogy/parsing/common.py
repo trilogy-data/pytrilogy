@@ -1677,8 +1677,9 @@ def union_item_to_concept(
     Mirrors :func:`align_item_to_concept` (the arm/positional binding shape is
     shared) but the concept's lineage is a ``UnionSelectLineage`` and its
     derivation is ``TVF_UNION`` so it lowers to a column-stack UNION rather than
-    a FULL-JOIN merge. ``purpose``/``datatype``/``nullable`` override the
-    inferred values when the output signature is explicit.
+    a FULL-JOIN merge. ``purpose``/``datatype`` override the inferred values
+    when the output signature is explicit; ``nullable`` only ever forces
+    nullability ON, since a stacked column carries NULL wherever any arm does.
     """
     align = parent
     raw_datatypes = [c.datatype for c in align.concepts]
@@ -1726,7 +1727,17 @@ def union_item_to_concept(
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.TVF_UNION,
         keys=None,
-        modifiers=[Modifier.NULLABLE] if nullable else [],
+        # A stacked column is nullable wherever ANY arm's is: the arms are
+        # rows of one column, not sides of a join. Read as non-nullable,
+        # sibling aggregates over it rejoin on their shared group keys with
+        # plain `=` and silently drop the NULL group, which GROUP BY treats as
+        # a value.
+        modifiers=(
+            [Modifier.NULLABLE]
+            if nullable
+            or any(_expr_is_nullable(c, environment) for c in align.concepts)
+            else []
+        ),
     )
     return new
 
