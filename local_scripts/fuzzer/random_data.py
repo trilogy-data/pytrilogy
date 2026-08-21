@@ -65,6 +65,14 @@ def random_seed(seed: int, rows: int) -> SeedData:
     ]
     sales = fact_rows_for_groups(rng, fact_rows, sales_groups, group_ids)
     returns = fact_rows_for_groups(rng, fact_rows + 1, return_groups, group_ids)
+    # A NULL gid is a fact row with no group at all: the dim join pads its
+    # group columns, which is the padding the merge keys have to pair on.
+    visits = tuple(
+        (index + 1, gid, nonzero_int(rng, -500, 500), (index % 2) + 1)
+        for index, gid in enumerate(
+            [None, None, *group_ids, group_ids[0], None, group_ids[1]]
+        )
+    )
 
     return SeedData(
         name=f"random_{seed:06d}",
@@ -100,6 +108,7 @@ def random_seed(seed: int, rows: int) -> SeedData:
         ),
         sales=TableData("sales", ("id", "gid", "amount"), sales),
         returns=TableData("returns", ("id", "gid", "amount"), returns),
+        visits=TableData("visits", ("id", "gid", "amount", "slot"), visits),
     )
 
 

@@ -6,14 +6,14 @@ Signed deltas are `PreQL - Reference SQL` for size and `Trilogy execution - Refe
 
 ## Suggested Queries
 
-Queries: 18
+Queries: 22
 
-PreQL is shorter than the reference SQL for 13/18 queries. Total PreQL length is 2,672 chars vs 3,479 reference SQL chars.
+PreQL is shorter than the reference SQL for 17/22 queries. Total PreQL length is 3,501 chars vs 5,760 reference SQL chars.
 
 | Length metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| PreQL - Reference SQL chars | -99 | -46 | +7 |
-| PreQL vs Reference SQL | -46.6% | -16.9% | +14.0% |
+| PreQL - Reference SQL chars | -364 | -61 | +7 |
+| PreQL vs Reference SQL | -62.3% | -29.9% | +12.6% |
 
 Top 5 queries where PreQL is longest vs reference SQL
 
@@ -25,20 +25,20 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 10 | 175 | 170 | +5 |
 | 02 | 198 | 194 | +4 |
 
-Trilogy execution is faster than the reference SQL for 4/18 queries. Total Trilogy execution time is 0.127s vs 0.114s reference SQL time.
+Trilogy execution is faster than the reference SQL for 10/22 queries. Total Trilogy execution time is 0.196s vs 0.205s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.000s | +0.000s | +0.002s |
-| Trilogy vs Reference SQL | -5.4% | +7.8% | +81.5% |
-| Trilogy / Reference SQL | 0.95x | 1.08x | 1.81x |
+| Trilogy - Reference SQL seconds | -0.006s | +0.000s | +0.001s |
+| Trilogy vs Reference SQL | -46.0% | +2.2% | +36.1% |
+| Trilogy / Reference SQL | 0.54x | 1.02x | 1.36x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 
 | Query | Trilogy s | Reference SQL s | Trilogy - Reference SQL |
 | --- | ---: | ---: | ---: |
-| 02 | 0.009s | 0.003s | +0.006s |
-| 10 | 0.007s | 0.003s | +0.004s |
-| 08 | 0.002s | 0.002s | +0.001s |
-| 05 | 0.003s | 0.003s | +0.001s |
-| 13 | 0.003s | 0.002s | +0.001s |
+| 02 | 0.019s | 0.009s | +0.010s |
+| 10 | 0.018s | 0.008s | +0.010s |
+| 13 | 0.005s | 0.004s | +0.001s |
+| 11 | 0.003s | 0.002s | +0.001s |
+| 21 | 0.018s | 0.018s | +0.000s |
