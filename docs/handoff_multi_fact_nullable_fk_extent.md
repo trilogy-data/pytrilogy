@@ -1,91 +1,79 @@
 # Handoff: a nullable fact FK silently changes the dimension extent of a two-fact select
 
-## OPEN 2026-08-21 — found by the fuzzer's `padding_provenance` family, NOT caused by it
+## RESOLVED 2026-08-21 — contract settled and implemented
 
 Selecting one dimension property beside an aggregate from each of two facts
-returns a different set of dimension members depending on whether one fact's
-FK is declared nullable, and the result is asymmetric between the two facts.
+used to return a different, asymmetric set of dimension members depending on
+whether one fact's FK was declared nullable. The contract is now written down
+and enforced by `tests/engine/test_multi_fact_nullable_fk_extent.py` and the
+fuzzer case `padding_provenance/padded_and_unpadded_sides`.
 
-Pinned by `tests/engine/test_multi_fact_nullable_fk_extent.py` (`xfail`,
-strict). Delete the marker when this is fixed; the strict marker is what makes
-a fix announce itself.
+## The settled contract
 
-## Repro
+A non-partial FK binding is an EQUAL-domain claim (the fact covers the key's
+full domain, docs/subset_union_join_design.md). A `?` on the FK weakens that
+claim to "some subset, plus a NULL group" — NULL is a value the join equality
+drops, so the fact's coverage of the dimension is no longer total.
 
-Four groups. `visits` covers alpha/beta/gamma, `events` covers alpha/beta/delta,
-so each fact has exactly one exclusive member.
+For `select gname, sum(vamt) as v, sum(eamt) as e` over two facts:
 
-```
-key gid int;
-property gid.gname string;
-datasource groups (gid: gid, name: gname) grain (gid) query '''...''';
-
-key vid int;
-property vid.vamt int;
-datasource visits (id: vid, gid: gid, amount: vamt) grain (vid) query '''...''';
-
-key eid int;
-property eid.eamt int;
-datasource events (id: eid, gid: gid, amount: eamt) grain (eid) query '''...''';
-
-select gname, sum(vamt) as v, sum(eamt) as e order by gname asc;
-```
-
-| `visits` FK | result |
+| FK declarations | extent |
 | --- | --- |
-| `gid` (required) | `alpha, beta` — both exclusive members dropped |
-| `?gid` (nullable) | `alpha, beta, gamma` — the VISITS-exclusive member survives |
+| both required | INNER — members both facts cover (each fact claims the full domain; data violating a claim loses the violating rows) |
+| any `?` | the UNION of both facts' members, each side's exclusive members padded with NULL in the other aggregate — symmetric in the two facts |
 
-`delta` (the events-exclusive member) is dropped either way. Swapping the two
-aggregates in the select list changes nothing, so this is not select order: it
-is the nullable FK on one side.
+Padding NULLs are join manufacture, not values, so a padded member never
+null-pairs with anything on the other side; a genuine NULL-key group (rows
+whose FK is NULL) survives as its own padded row.
 
-Single-fact controls establish that neither fact alone reaches the full
-dimension: `select gname, sum(vamt)` returns alpha/beta/gamma and
-`select gname, sum(eamt)` returns alpha/beta/delta. Extent through a fact is
-that fact's members, which is what makes the two-fact case a question about how
-the two extents combine rather than about `groups` itself.
+## The fix (two changes)
 
-## Mechanism
+1. `get_join_type` (`trilogy/core/processing/join_resolution.py`): when
+   exactly one side of a non-partial join is nullable, the join used to
+   preserve the nullable side directionally — silently dropping the other
+   side's exclusive members. At a *grain-aligned merge* (both sides' grains
+   sit within the connecting keys, i.e. both are complete group-sets at the
+   merge grain) the join is now FULL, preserving both sides padded. The same
+   applies to the both-nullable branch after its host-asymmetry guard. A
+   fact-to-lookup join (grains not aligned) keeps the directional behavior.
 
-The nullable FK flips the join between the two fact aggregates:
+   Three boundaries keep the FULL from over-firing (`extent_null_addresses`
+   plus the solid-key test in `_is_nullable_grain_aligned_merge`):
 
-```
-visits fk=gid    INNER JOIN "highfalutin"      INNER JOIN "quizzical"  INNER JOIN "wakeful"
-visits fk=?gid   LEFT OUTER JOIN "highfalutin" INNER JOIN "quizzical"  LEFT OUTER JOIN "wakeful"
-```
+   - only `?`-rooted nullability counts — a `?` leaf binding, or padding
+     from an outer join whose ON keys carry value NULLs. The
+     `find_nullable_concepts` widening that marks a whole side merely
+     JOINED on a nullable condition is bookkeeping, not extent (an INNER
+     join introduces no NULLs), and amplifying it flipped q98's solid item
+     rejoin to LEFT;
+   - padding from partial-driven (`~`) preserving joins never counts —
+     extension families ride the host machinery, and claiming their padding
+     re-preserved rows that machinery already keeps exactly once
+     (duplicated extension rows in tests/engine/test_duckdb_partial_key_assembly.py);
+   - when the connecting keys free of extent nullability still cover one
+     side's grain, that side's intact EQUAL claim makes the pairing total
+     and the ordinary typing stands (a value-nullable attribute riding a
+     solid key weakens nothing).
 
-`?gid` makes the `visits`->`groups` join outer, which marks the group columns
-padding-nullable on the visits side. That nullability reaches the merge between
-the two aggregates and preserves the visits side, so visits-exclusive members
-ride through while events-exclusive members do not.
+2. `UpgradeOuterFromKeySetEquivalence`
+   (`trilogy/core/optimizations/value_set_join_upgrade.py`): a null-safe pair
+   used to be treated as unconditionally safe to upgrade to INNER once both
+   sides passed `_complete_distinct`. Null-safety pairs the NULL groups but
+   says nothing about the non-null values: a join-padded side carries the
+   IMAGE of the key — a subset of the value space. The upgrade is now vetoed
+   when a side's key nullability is join padding (`nulls_are_values` is
+   False) and the two sides' padding does not share provenance
+   (`_padding_sources`). An EQUAL declaration (`merge a into b`) overrides
+   the veto — narrowing trusts the declaration by documented contract.
 
-## Why it is a defect either way
+## Corpus footprint
 
-The required-FK case is a self-consistent INNER: both exclusive members drop.
-The nullable-FK case preserves one side only. Whichever extent is intended,
-the current pair is not it:
-
-- if the contract is INNER, `?gid` wrongly resurrects `gamma`;
-- if the contract is the union of both facts' members, both cases wrongly drop
-  members, and `delta` is missing even from the nullable run.
-
-The reachable harm is that a declaration which should be metadata about NULLs
-in a column silently changes which rows a report returns.
-
-## Scope
-
-- Reproduces byte-identically on `origin/main` (3c0b43bd3), on this branch, and
-  on the branch before it was rebased. It predates the padding-provenance work
-  in `join_resolution.py` and is untouched by it.
-- Found while building the `padding_provenance` fuzz family: the drafted case
-  `padded_and_unpadded_sides` combined `sum(visit_amount)` with
-  `sum(event_amount)` and its oracle assumed the union of members. That case was
-  replaced with a single-fact one rather than encode an unverified expectation.
-  Re-add it to `local_scripts/fuzzer/generate.py` once the contract is settled.
-
-## Open question for the owner
-
-What is the intended extent of a dimension property selected beside aggregates
-from two facts? That decision is the fix; the asymmetry above is downstream of
-not having one written down.
+12 grain-aligned-FULL firings and 1 veto firing across the tpc-ds/tpc-h/
+thelook corpora; 4 tpc-ds queries render different SQL (q04, q51, q59, q64),
+all row-validated against their references. q51's merge of the two
+cumulative-window branches now renders the reference query's own
+`FULL OUTER JOIN` shape. The plan-shape boundary is pinned by
+`test_value_nullable_attribute_does_not_degrade_solid_key_joins` (q98 must
+render outer-join-free — row results cannot see that regression). The full
+`padding_provenance` fuzz family passes, including the re-added
+`padded_and_unpadded_sides` case with a union-of-members oracle.
