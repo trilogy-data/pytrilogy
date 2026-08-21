@@ -123,10 +123,13 @@ uniformly fast-and-wrong.
 
 Cheap hardening before the rerun: (a) fix the keyless cluster (now carries a
 graded wrong answer and the docs cell is over-exposed to it); (b) fix or
-accept q66's union nullability bug; (c) append to q20/q98: "items with no
-recorded class form a single shared class across all categories"; (d) reword
-the `is_returned` model doc comment. Then rerun the A/B; expect the docs leg
-to recover 3-4 of the 8.
+accept q66's union nullability bug; (c) DONE `f035ed3b2`: q20/q98 now specify
+name-identified classes with a single shared no-recorded-class group, q79 now
+states later-returned lines stay in scope, and the `is_returned` model doc
+comment no longer invites excluding them; (d) then rerun the A/B and expect
+the docs leg to recover 3-4 of the 8. Comparability caveat: q20/q79/q98
+results from runs before `f035ed3b2` are not prompt-comparable to runs after
+it - judge those three queries within a run, not across the boundary.
 
 ## Suggested evening order
 
