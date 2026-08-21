@@ -596,6 +596,10 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         keys = list(self.keys())
         if extra_keys:
             keys += [k for k in extra_keys if k not in keys]
+        # Ambiguity of a rowset leaf shorthand is judged against every candidate,
+        # including the hidden ones filtered out of the suggestion pool below —
+        # a shorthand two outputs can claim resolves to neither.
+        resolvable = {strip_local(k) for k in keys}
         # Never suggest the very address being looked up (a staged placeholder for
         # it may be present in the candidate set).
         keys = [k for k in keys if k != concept_name]
@@ -678,12 +682,35 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         )
 
         # Prefer partial-path, then same-namespace near-miss, then exact-leaf
-        # matches, then general fuzzy — de-duplicated, capped.
+        # matches, then general fuzzy — de-duplicated, capped. A rowset output's
+        # leaf shorthand rides immediately behind its own full path, so ranking
+        # is unchanged and the shorter spelling is never the missing one.
         out: list[str] = []
         for m in path_matches + same_ns_fuzzy + leaf_matches + fuzzy:
-            if m not in out:
-                out.append(m)
+            if m in out:
+                continue
+            out.append(m)
+            shorthand = self._rowset_leaf_shorthand(m, resolvable)
+            if shorthand is not None and shorthand not in out:
+                out.append(shorthand)
         return out[:6]
+
+    def _rowset_leaf_shorthand(self, address: str, keys: set[str]) -> str | None:
+        """`rs.a.b.col` -> `rs.col`, the spelling `_try_resolve_namespace_suffix`
+        accepts and the docs teach. None when the address is not a deep rowset
+        output, or when a sibling output shares the leaf so the shorthand would
+        resolve ambiguously (or not to this address at all)."""
+        segs = address.split(".")
+        if len(segs) < 3 or segs[0] not in self.rowset_namespaces:
+            return None
+        shorthand = [segs[0], segs[-1]]
+        prefix = segs[0] + "."
+        matches = {
+            k
+            for k in keys
+            if k.startswith(prefix) and _is_subsequence(shorthand, k.split("."))
+        }
+        return ".".join(shorthand) if matches == {address} else None
 
 
 _concept_ta: _TypeAdapter | None = None

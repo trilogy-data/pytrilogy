@@ -171,7 +171,7 @@
   {
     "id": 29,
     "grade": "medium",
-    "prompt": "For store sales in September 1999, where returned by the same customer sk between September and December 1999, then with customer sk matched to catalog sales billing_sk and item_sk where the catalog sale year is 1999, 2000, or 2001, report per (item code, item description, store code, store name) - non sk Ids for item/store - the total store-sale ticket quantity, the total store-return return quantity, and the total catalog-sale ticket quantity. Order by item code, item description, store code, then store name; limit 100 rows."
+    "prompt": "Some customers bought an item in a store during September 1999, returned that same purchase between September and December 1999 (the same customer returning the same item from the same sales ticket), and also ordered that same item from the catalog in 1999, 2000, or 2001, billed to them. For those purchases, report the store and catalog demand they represent: one row per item and store, identified by the item business code and description and the store business code and name rather than surrogate keys, with the total quantity sold in the store, the total quantity returned, and the total quantity ordered from the catalog. Order by item code, item description, store code, then store name; limit 100 rows."
   },
   {
     "id": 30,

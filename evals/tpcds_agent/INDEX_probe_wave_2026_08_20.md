@@ -8,34 +8,41 @@ fixed and deleted, strike its row here rather than deleting it, so the wave
 stays auditable end to end. Severity context and the pre-existing backlog live
 in `README.md`.
 
+Audited 2026-08-21 against `84bc9ffeb`: every row's repro was re-run or its
+regression gate executed. Six of the eight bug rows are fixed, and their six
+reports were deleted the same day (the rows below are the record; the bodies
+are in `git log --diff-filter=D`). The two q47 diagnostic-polish items were
+fixed and deleted 2026-08-21 as well. What remains open is the q72
+`_aggregate_axis_members` residual plus the q59/q77 presence-probe family and
+the q29 question/harness work. The
+surviving report was rewritten down to those two open items and renamed
+`bug_presence_probe_no_ops_and_q72_axis_residual.md`; both of its repros now run
+on committed models rather than a copy of the run workspace.
+
 ## Engine bugs (silent wrong results)
 
 | status | report | one-line |
 |---|---|---|
-| FIXED 2026-08-20 | `bug_q47_window_rowset_churn.md` | Two P1 codegen bugs: engine-combined conditions rendered unparenthesized (`A or B and C` reassociates), and `QueryDatasource.__add__` dropped `nullable_concepts` (LEFT OUTER silently became INNER). Regression tests in tree; non-bug polish split to `handoff_q47_diagnostic_polish.md`. |
-| partly fixed 2026-08-20 | `bug_silent_ingest_sinks_q49_q59_q72_q77.md` | q72 (the run's graded FAIL) Bug A FIXED: the rowset boundary now stamps nullability on every handle, so the branch rejoin pairs NULL groups null-safely. Bug B defect 1 (flat WHERE skipped the unfiltered count branch) FIXED, defect 2 (branches never collapse to the authored grain) fixed for every shape whose counted row identity holds no relation member; the q72 formulation still repeats `week_seq` through `_aggregate_axis_members`. q59/q77 presence-probe family and the q49 tooling cost UNTOUCHED. |
-| open | `bug_keyless_join_guard_ingest_cluster.md` | One root cause behind all 37+3 keyless-join guard firings: aliased outputs give ROOTs rename-only lineage reach, the co-source bucket test misses one-FK-hop relatedness, dim attr splits into a keyless bucket. The no-fact-key variant still ships a silent `on 1=1` cartesian. ESCALATED 2026-08-20: run 153007 enriched_docs q81 (915k raw) is the cluster's first graded WRONG ANSWER - the guard rejected a correct aliased query 3x and the forced workaround flipped a row (details in the report's update section). |
-| FIXED 2026-08-20 | `bug_q66_union_output_drops_nullable.md` | `union_item_to_concept` now ORs the signature flag with the arms' own nullability (`_expr_is_nullable`), so the rejoin renders `is not distinct from` and the NULL group survives; gated by `tests/engine/test_duckdb_union_tvf_nullable_output.py`, corpus byte-identical. Filed from the 153007 triage (both legs failed q66 identically): `union(...)` TVF output concepts never inherit arm nullability (`parsing/common.py:1638/1701`), so sibling filtered-aggregate rejoins render plain `=` on a NULL group key and silently drop the row. Minimal repro = two measures + nullable union key; explicit `?` in the union signature restores the row. |
+| open (residual) | `bug_presence_probe_no_ops_and_q72_axis_residual.md` | Was `bug_silent_ingest_sinks_q49_q59_q72_q77.md`; rewritten 2026-08-21 to the two open items. q72 Bug A (rowset boundary stripped non-key nullability, 404 NULL groups dropped) and four of Bug B's five sites FIXED 2026-08-20; the residual is `concept_graph._aggregate_axis_members` keeping a relation member in the branch grain when the COUNTED ROW IDENTITY holds one, so `week_seq` still repeats. q59/q77 presence-probe family still open: a null test on a coalescing join-key member renders POST-merge on the fused column and no-ops on one side. q49 closed, never an engine bug (explore v3 landed). |
+
 
 ## Planner/renderer bugs (loud, but wrong or blank errors)
 
 | status | report | one-line |
 |---|---|---|
-| open | `bug_q44_empty_unexpected_error.md` | `InlineDatasource` folds a dim scan the broadcast join needs; bare `AssertionError` surfaces as a COMPLETELY EMPTY "Unexpected error" message (CLI renders `str()` of it), so the agent retried blind six times. |
-| open | `bug_q14_values_list_virt_filter_binder.md` | Filtered aggregate over a KEY silently drops its filter mask below the dedup GroupNode; the union escape hatch then emits invalid SQL with phantom `_virt_filter_*` columns instead of the clean missing-source error. |
-| open | `bug_q17_join_condition_syntax_loop.md` | `detect_join_missing_key` fires Syntax [225] "Expected a join condition" on post-select joins that are only missing the trailing `;`; the correct 202 message never surfaces. Drove 3M raw tokens across two legs. |
+
 
 ## Diagnostics polish (split out by the fix pass)
 
 | status | report | one-line |
 |---|---|---|
-| open | `handoff_q47_diagnostic_polish.md` | Leaf-shorthand spelling missing from did-you-mean suggestions, plus the q29-found ranking defect (a statement's other undefined refs pollute the suggestion pool) and one-at-a-time scoped-join key errors. |
+| ~~open~~ FIXED 2026-08-21 | ~~`handoff_q47_diagnostic_polish.md`~~ | Both items landed; report deleted, fix summary in `README.md`. (1) `_find_similar_concepts` now offers a rowset output's leaf shorthand (`rs.col`) behind its full path, withheld when a sibling output makes it ambiguous. (2) `window_filter_needs_having` is suppressed on the bookend shape; corpus footprint is exactly q47 and q57. The q29-found suggestion-ranking defect and the one-at-a-time scoped-join key errors this row used to claim were never in that file; the ranking defect lives in `bug_q29_cross_leg_sink.md` and stays open. |
 
 ## Not framework bugs (do not re-chase)
 
 | status | report | one-line |
 |---|---|---|
-| open (question fix) | `bug_q29_cross_leg_sink.md` | Sank in all three legs because the QUESTION omits the sale-to-return match keys; proposed rewording inside. Harness lesson: raw token counts were ~10x inflated by reasoning-replay cache hits; the >500k detector should read cache-adjusted (fresh) tokens. |
+
 
 ## Same-session related work
 

@@ -4,7 +4,11 @@ from datetime import date, datetime
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import (
+    ALL_ROWS_CONCEPT,
+    GRAIN_NULL_SENTINEL,
+    GRAIN_SEPARATOR,
+)
 from trilogy.core.enums import (
     NUMBERING_WINDOW_TYPES,
     AggregateGroupingMode,
@@ -182,13 +186,6 @@ def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
             operator=ComparisonOperator.IS_NOT,
         )
     return root
-
-
-# ASCII unit/record separators: control characters, so they cannot collide with a
-# cast value. The NULL sentinel must differ from the empty string, or ('', NULL)
-# and (NULL, '') would hash alike.
-GRAIN_SEPARATOR = "\x1f"
-GRAIN_NULL_SENTINEL = "\x1e"
 
 
 def fgrain(

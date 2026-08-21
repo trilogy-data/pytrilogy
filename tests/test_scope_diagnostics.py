@@ -587,6 +587,41 @@ select
 """)
 
 
+def test_no_window_warning_for_bookend_where_narrowed_in_having():
+    assert "window_filter_needs_having" not in _warning_kinds("""
+select
+    state,
+    year,
+    sum(amount) as total_amount,
+    lag 1 total_amount over state order by year asc as prev_amount
+where year between 2000 and 2002
+having year = 2001;
+""")
+
+
+def test_no_window_warning_when_where_only_touches_ordering_concepts():
+    assert "window_filter_needs_having" not in _warning_kinds("""
+select
+    state,
+    year,
+    sum(amount) as total_amount,
+    lag 1 total_amount over state order by year asc as prev_amount
+where year between 2000 and 2002;
+""")
+
+
+def test_warns_when_having_constrains_a_different_concept():
+    assert "window_filter_needs_having" in _warning_kinds("""
+select
+    state,
+    year,
+    sum(amount) as total_amount,
+    rank total_amount over state order by total_amount desc as amount_rank
+where state = 'CA'
+having year = 2001;
+""")
+
+
 def test_warns_where_aggregate_inherited_select_grain():
     warnings = derived_value_warnings(_scopes("""
 select
