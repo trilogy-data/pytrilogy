@@ -273,13 +273,13 @@ def _fold_distinct_rewritable_buckets(
     return distinct_by_key
 
 
-def _aggregate_lineage_layers(
+def _lineage_layers(
     members: list[NodeItem],
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
 ) -> list[list[NodeItem]]:
-    """Split same-key aggregate members into build layers so no bucket holds
-    both an aggregate and a lineage CONSUMER of it.
+    """Split same-key members into build layers so no bucket holds both a
+    member and a lineage CONSUMER of it.
 
     Two aggregates at one output grain normally co-source when their arguments
     need the same row grain. But `count(line ? owc > 1) by order_id` where
@@ -356,7 +356,7 @@ def _partition_standard_aggregates(
     buckets: list[GroupBucket] = []
     for key, members in entries.items():
         label, depth_label, grain, input_grain, populations = key
-        layers = _aggregate_lineage_layers(members, concept_graph, concept_edges)
+        layers = _lineage_layers(members, concept_graph, concept_edges)
         for layer_index, layer in enumerate(layers):
             bucket = _bucket_for(
                 depth_label, layer[0][1].derivation, grain, label=label
@@ -989,6 +989,51 @@ def _partition_by_signature_and_grain(
     return buckets
 
 
+def partition_windows(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
+) -> list[GroupBucket]:
+    """Same-grain windows co-source, except when one reads another's output.
+    SQL forbids a window function inside another window's OVER clause
+    (`sum(x) over (order by rank() over (...))` is a parser error), so a window
+    whose partition/order lineage includes a sibling window needs its own CTE
+    over the producer's. Layering is the aggregate rule's producer/consumer
+    split applied to the default depth+grain partition."""
+    buckets: list[GroupBucket] = []
+    by_key: dict[
+        tuple[str, DepthLabel, frozenset[str], AggregateGroupingMode | None],
+        list[NodeItem],
+    ] = defaultdict(list)
+    for node, data in items:
+        by_key[
+            (data.label, data.depth_label, data.grain_components, data.grouping_mode)
+        ].append((node, data))
+    for (label, depth_label, grain, grouping_mode), members in by_key.items():
+        for index, layer in enumerate(
+            _lineage_layers(members, concept_graph, concept_edges)
+        ):
+            if not layer:
+                continue
+            bucket = _bucket_for(
+                depth_label, layer[0][1].derivation, grain, label=label
+            )
+            # Layer 0 keeps the historical (undiscriminated) group id so the
+            # single-layer case -- every query without window-over-window -- is
+            # byte-identical to the default rule.
+            _apply_grouping_mode(
+                bucket, grouping_mode, *(() if index == 0 else (f"wlayer:{index}",))
+            )
+            for node, data in layer:
+                _add_member(bucket, node, data)
+            buckets.append(bucket)
+    return buckets
+
+
 def partition_basics_by_signature(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -1203,6 +1248,7 @@ GROUPING_RULES: dict[Derivation, PartitionFn] = {
     Derivation.ROWSET: partition_rowsets,
     Derivation.AGGREGATE: partition_aggregates,
     Derivation.CONSTANT: partition_constants,
+    Derivation.WINDOW: partition_windows,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain
