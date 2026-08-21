@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 16707
+gen_length = 16783
 preql_size = 4382
 comp_size = 3783
 generated_sql = """
@@ -299,8 +299,8 @@ SELECT
     \"waggish\".\"agg_00_cnt_00\" as \"agg_00_cnt_00\"
 FROM
     \"kaput\"
-    INNER JOIN \"cool\" on \"kaput\".\"agg_99_b_addr_99\" = \"cool\".\"ss_pos_address_sk\" AND \"kaput\".\"agg_99_c_addr_99\" = \"cool\".\"ss_customer_current_address_sk\" AND \"kaput\".\"agg_99_item_sk_99\" = \"cool\".\"ss_item_sk\" AND \"kaput\".\"agg_99_store_sk_99\" = \"cool\".\"ss_store_sk\"
-    INNER JOIN \"waggish\" on \"cool\".\"ss_item_sk\" = \"waggish\".\"agg_00_item_sk_00\" AND \"cool\".\"ss_store_sk\" = \"waggish\".\"agg_00_store_sk_00\" AND \"kaput\".\"agg_99_item_sk_99\" = \"waggish\".\"agg_00_item_sk_00\" AND \"kaput\".\"agg_99_store_sk_99\" = \"waggish\".\"agg_00_store_sk_00\"
+    INNER JOIN \"cool\" on \"kaput\".\"agg_99_b_addr_99\" is not distinct from \"cool\".\"ss_pos_address_sk\" AND \"kaput\".\"agg_99_c_addr_99\" = \"cool\".\"ss_customer_current_address_sk\" AND \"kaput\".\"agg_99_item_sk_99\" = \"cool\".\"ss_item_sk\" AND \"kaput\".\"agg_99_store_sk_99\" is not distinct from \"cool\".\"ss_store_sk\"
+    INNER JOIN \"waggish\" on \"cool\".\"ss_item_sk\" = \"waggish\".\"agg_00_item_sk_00\" AND \"cool\".\"ss_store_sk\" is not distinct from \"waggish\".\"agg_00_store_sk_00\" AND \"kaput\".\"agg_99_item_sk_99\" = \"waggish\".\"agg_00_item_sk_00\" AND \"kaput\".\"agg_99_store_sk_99\" is not distinct from \"waggish\".\"agg_00_store_sk_00\"
 WHERE
     \"waggish\".\"agg_00_cnt_00\" <= \"kaput\".\"agg_99_cnt_99\"
 

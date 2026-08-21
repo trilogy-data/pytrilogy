@@ -15,7 +15,10 @@ fix) > q72 Bug B (P1, internally inconsistent aggregates) > q59/q77 presence-pro
 
 ## q72 (1.0M tokens, FAIL "result set differs from reference") - TWO engine bugs
 
-### Bug A: NULL-valued group rows silently dropped when split aggregate branches rejoin
+### STATUS 2026-08-20: Bug A FIXED. Bug B fixed except one residual (details at the
+### end of the q72 section).
+
+### Bug A (FIXED): NULL-valued group rows silently dropped when split aggregate branches rejoin
 
 **This is the entire scoring failure.** The agent's final answer
 (`results/.../workspace/query72.preql`, staged rowsets `sales`/`inv_rows`/`matched`, then
@@ -72,8 +75,9 @@ group-by keys, whose NULL values are group labels by construction; that join mus
 null-safe regardless of nullability stamps (or the rowset boundary must keep intrinsic
 nullability on any handle that can become a downstream group key).
 
-### Bug B: aggregate directly over a query-scoped union join - flat WHERE skips the
-### unfiltered count branch, and output never collapses to the authored grain
+### Bug B (defect 1 FIXED, defect 2 PARTLY FIXED): aggregate directly over a
+### query-scoped union join - flat WHERE skips the unfiltered count branch, and
+### output never collapses to the authored grain
 
 This is what burned the tokens (21 writes). The agent's probe6/probe11 wrote the
 NATURAL formulation - the same two rowsets, then one select with the three counts and
@@ -128,6 +132,49 @@ limit 10;
 
 **Verdict: silent framework bugs, both.** The final divergence is engine (Bug A), not
 model or question. The 1.0M spend is engine (Bug B forcing discovery + workaround).
+
+### What landed for q72, and what is left
+
+Fixed (each gated by a row-asserting test; whole-corpus render is byte-identical
+except q64, which gains four null-safe predicates from Bug A):
+
+- `trilogy/core/processing/v4_node_generators/rowset.py` - the rowset boundary
+  stamps nullability on EVERY handle, not just key-like ones. Bug A.
+  Test: `tests/engine/test_duckdb_rowset_null_group_rejoin.py`.
+- `condition_placement._uncovered_grouping_placements` - an UPSTREAM_MOST row
+  atom is copied onto every select-phase aggregate the elected host does not
+  feed. Bug B defect 1: `count(grain(a, b) ? p)` routes through the grain
+  projection while the plain `count(grain(a, b))` wires the grain args
+  directly, so a host elected on that projection left the plain count
+  unfiltered.
+- `condition_placement._group_in_active_relation` - an AGGREGATE whose relation
+  mate is hosted only by its own lineage ancestors already contains the
+  completion merge, so it keeps local hosting instead of deferring the atom to
+  FINAL (where it filtered aggregated rows, not input rows).
+- `merge_node._splits_aggregate_groups` - `_inject_scoped_join_key_exposure` no
+  longer surfaces a relation member onto an aggregating parent when the member
+  would become a new GROUP BY key.
+- `strategy_builder._scoped_join_mates` / `_add_relation_axis_contributors` -
+  contributor selection counts a scoped-join mate as covering the concept, and
+  an axis provider already merged below a chosen contributor is skipped (it
+  re-entered the FINAL merge re-admitting the rows the WHERE dropped).
+
+Tests: `tests/engine/test_duckdb_union_join_aggregate_population.py` (four
+cells: both counts / total only, filtered / unfiltered).
+
+RESIDUAL, still open. `concept_graph._aggregate_axis_members` widens an
+aggregate's grouping grain by every statement-scoped relation member its INPUT
+GRAIN rides. When the counted row identity itself contains a relation member -
+`count(grain(sales.order_number, sales.item_sk, ...))` under `union join
+sales.item_sk = inv_rows.item_sk` - the branch groups by that member and the
+outer select dedups rather than re-aggregating, so `week_seq` still repeats.
+The minimal repro in this file (which counts a grain tuple holding no relation
+member) is fixed; the q72 formulation above is not. Narrowing the candidate set
+to the aggregate's DIRECT function arguments collapses the grain correctly but
+breaks the q17 composite-union-join family (7 cells in
+`tests/engine/test_duckdb_rowset.py`), which depends on the widening. Splitting
+"member is the measure" from "member is part of the counted row identity" is
+the piece of work that closes this.
 
 ---
 

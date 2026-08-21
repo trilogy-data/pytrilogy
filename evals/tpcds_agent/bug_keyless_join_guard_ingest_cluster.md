@@ -194,3 +194,87 @@ Firing bodies, the bisect variants, and the scoring-engine repro live in the
 `q81_probe4.preql`, `q81_variant_A/B.preql`, `run_diff.py`). All reproduce on
 working tree fb75a7182 via `make_scoring_engine` against a copy of the run
 workspace.
+
+## FIXED 2026-08-20
+
+Two defects, one in the co-source demand and one in the concept graph's
+axis-upstream wiring, gated by
+`tests/engine/test_duckdb_aliased_dim_attr_join_axis.py` (5 cases; each fails
+on the unpatched tree, each asserts oracle rows and the absence of `on 1=1`).
+
+1. **The zero-reach bailout counted pure output aliases as reach**
+   (`group_rules._cosource_component_groups`). Forward reach now walks THROUGH
+   an `is_rename` node without counting it, so `select x as t` buckets exactly
+   like `select x`. This was defect 1 as filed, and it is the trigger the whole
+   cluster keys on.
+
+2. **The rename carve-out in the BASIC axis-upstream wiring**
+   (`concept_graph.py`, the `Derivation.BASIC and environment.
+   scoped_join_key_groups` branch). This is the rowset/`subset join` shape the
+   report folds into defect 1; it is a separate site. That branch already wires
+   a scoped-join axis in as an upstream of a BASIC group, but excluded renames
+   ("Renames are null-transparent"). So `upper(item.id) as label` over the
+   shape keeps the axis and plans, while the bare rename `item.id as label`
+   forms a group projecting to its alias alone, the axis never reaches the
+   FINAL merge, and the join goes keyless. Deleting `and not is_rename` is the
+   whole fix. Confirmed alias-specific by experiment: `upper`, `concat`, `case`
+   and a two-attr expression over the identical query all planned before it.
+
+   A first attempt instead added a demand-side exposure rule in
+   `group_graph._compute_concept_sets`. It worked but was a second mechanism
+   for a property the codebase already had one for, and needed two gates to
+   avoid regressing q17's two-pass aggregate and two subset-probe join-matrix
+   cells. Dropping the carve-out needs no gate and is 50 lines smaller.
+
+The filed defect 2 (co-source connectivity cannot see one FK hop) is real as
+described but needs no code. It was fixed first, with a
+`key_datasource_bindings` field stamping each root's one-hop FK reach and an
+extra co-source edge keyed on it. Once defect 1 landed, all of it proved
+redundant: with renames out of the reach set, every shape in the cluster leaves
+at least one zero-reach root, so the existing one-bucket bailout engages and the
+connectivity test is never consulted. The field, its stamping loop and the edge
+rule were reverted and every repro below still passes. Do not re-add a one-hop
+FK reach field: it caches a pure function of the environment onto every leaf and
+cannot express the closure the diagnosis actually asks for.
+
+One latent issue found and deliberately NOT fixed here, since nothing in this
+cluster needs it: the existing shared-datasource rule gates on
+`purpose != Purpose.PROPERTY`, so it never fires for a `UNIQUE_PROPERTY`
+(`customer.id` is one). No failing case demonstrates it today.
+
+Verified on the tpc-ds test models, each shape erroring before and planning
+after:
+
+| shape, all outputs aliased | before | after |
+|---|---|---|
+| fact key + dim attr | guard | plans |
+| dim attr, no fact key | silent `FULL JOIN ON 1=1` | plans, correct rows |
+| 2-hop dim attr, 2-hop dim key | guard | plans |
+| fact key + two dim namespaces | guard | plans |
+| rowset + `subset join` + aliased dim attr | guard | plans |
+| 3-arm union-join rowsets + `subset join` dim | guard | plans |
+| pinned agg projecting surplus dim attrs (q81) | guard | plans |
+
+The no-fact-key variant the report flagged as still shipping silent wrong rows
+is fixed too: it returned 6 cartesian rows on the unit model, now 3.
+
+Corpus gate: `tests/modeling` 414 passed, plus 2 Windows PermissionErrors
+renaming the committed timing logs (a file-lock race against the other session
+on this tree; both pass on rerun). Targeted sweep over join_matrix, engine,
+discovery, the scoped-join and rowset matrices and the fuzzer regressions:
+1443 passed, 1 failed. The whole repo outside modeling: 7923 passed. Every
+failure and error in those runs reproduces with these changes toggled off
+(pre-existing working-tree WIP, plus the credentialed
+`tests/cli/test_cloud_live.py` set).
+
+q81 IS reproducible as a unit test; an early claim here that it was not came
+from reconstructing the wrong shape. The shape that matters is a pinned
+aggregate that PROJECTS MORE dim attrs than it GROUPS BY (q81 selects
+`c_salutation`, `c_first_name`, `ca_city`, `ca_zip` and more, grouping only by
+customer and state). Project only the `by` keys and every root reaches the
+aggregate through LINEAGE, so reaches overlap and the roots union into one
+bucket, no split, no bug. The surplus attrs are the zero-reach roots: bare they
+trip the bailout, aliased they each reach their own rename and the split
+proceeds. The `pinned_aggregate_extra_dim_attrs` case reproduces the report's
+trigger table exactly (all aliased fires; stripping either dim group's aliases
+plans).

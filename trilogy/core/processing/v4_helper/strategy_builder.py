@@ -2269,17 +2269,42 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     node.rebuild_cache()
 
 
+def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset[str]:
+    """The other members of the COALESCING key group `address` belongs to.
+
+    Only a coalescing relation (`union`/`full`) fuses its members onto one axis
+    that the merge emits under every member's own alias, which is what lets a
+    mate answer for the address. A subset or global-merge member keeps its own
+    column name, so reading it under the other member's address dangles."""
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    if address not in coalescing:
+        return frozenset()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if address in group:
+            return frozenset(group - {address}) & coalescing
+    return frozenset()
+
+
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
     extension_licensed: frozenset[str] = frozenset(),
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, pick the most-downstream built group that
     actually exposes it (more built ancestors = further downstream). Returns
     `{gid: [concepts that group provides]}` preserving discovery order so
     the MergeNode renders with a stable join layout.
+
+    A group carrying the concept's authored scoped-join MATE counts as exposing
+    it: the merge coalesces the two members onto one axis, and the mate is
+    surfaced under the concept's own address once the merge resolves. Without
+    that, an aggregate over the completed join loses the axis to the raw
+    boundary below it, which then re-enters the merge with the rows the
+    aggregate's population already excluded.
 
     An `extension_licensed` output (a key some datasource binds `~`) owes its
     extension rows, and those ride whichever contributor carries the WHOLE
@@ -2296,10 +2321,13 @@ def _cover_groups_for_mandatory(
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     for concept in mandatory_list:
         addr = concept.address
+        mates = _scoped_join_mates(environment, addr)
         candidates = [
             gid
             for gid, node in built.items()
-            if any(o.address == addr for o in node.output_concepts)
+            if any(
+                o.address == addr or o.address in mates for o in node.output_concepts
+            )
         ]
         # Only fall back to pseudonym coverage (struct fields produced under
         # their derivable origin address) when nothing provides the concept
@@ -2334,6 +2362,7 @@ def _cover_groups_for_mandatory(
 
 
 def _add_relation_axis_contributors(
+    group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
     final_contract: FinalAssemblyContract,
@@ -2364,11 +2393,20 @@ def _add_relation_axis_contributors(
         if not hosted:
             continue
         for addr in sorted(relation - hosted):
+            # A provider upstream of a chosen contributor already had its
+            # side merged there, so it pairs nothing new: re-entering the
+            # FINAL merge it would only re-admit the rows that contributor's
+            # own join and population already dropped.
+            merged_below = set().union(
+                *(nx.ancestors(group_graph, gid) for gid in chosen)
+            )
             provider = next(
                 (
                     gid
                     for gid in sorted(built)
-                    if gid not in chosen and addr in outputs_of[gid]
+                    if gid not in chosen
+                    and gid not in merged_below
+                    and addr in outputs_of[gid]
                 ),
                 None,
             )
@@ -3353,7 +3391,7 @@ def _assemble_final_node(
         for address in datasource.column_level_partial_addresses
     )
     per_group = _cover_groups_for_mandatory(
-        group_graph, attrs, built, mandatory_list, extension_licensed
+        group_graph, attrs, built, mandatory_list, environment, extension_licensed
     )
     if not per_group:
         return _apply_final_conditions(
@@ -3364,7 +3402,9 @@ def _assemble_final_node(
                 environment,
             )
         )
-    _add_relation_axis_contributors(built, per_group, final_contract, environment)
+    _add_relation_axis_contributors(
+        group_graph, built, per_group, final_contract, environment
+    )
     _add_partial_completion_contributors(built, per_group, environment)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
