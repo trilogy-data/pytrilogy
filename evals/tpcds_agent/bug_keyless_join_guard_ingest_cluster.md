@@ -154,3 +154,43 @@ guard for a different (WHERE + cross-model aggregate) shape; the closed
 `bug_keyless_join_axis_lost_guard_fires.md` shapes (q04 pivot, q05
 rollup-union) are distinct and stay fixed, verified by their regression tests'
 shapes not overlapping these repros.
+
+## Update 2026-08-20 (run 20260820-153007): first graded WRONG ANSWER from this cluster
+
+`enriched_docs` q81 (915k raw / 182k cache-adjusted, 18 turns) is the same
+root cause and escalates the severity: previously the cluster only burned
+tokens; here it converted a would-have-passed query into a graded FAIL.
+
+- The agent's FIRST write was the clean nested-aggregate formulation
+  (pinned `sum(...) by customer, state`, `avg(...) by state`, threshold in
+  WHERE) with every output aliased per the inlined docs' "alias every new
+  expression with `as`" instruction. The guard fired (3 answer attempts +
+  2 of 7 isolation probes = 5 firings). A de-aliased but otherwise
+  byte-identical twin plans AND returns rows exactly equal to the TPC-DS
+  reference on the current tree, so the rejected query was correct.
+- Forced into a rowset workaround, the agent introduced
+  `cs.return_customer.sk is not null` into the state-average rowset's WHERE.
+  That predicate is pushed into the aggregate population, drops the
+  NULL-customer groups the reference includes in the per-state average,
+  lowers one state's 1.2x threshold, and admits exactly one extra customer
+  (limit-100 window then sheds the last reference row). Graded
+  "result set differs from reference" while the sibling `enriched` leg
+  passed the identical question in 6 turns with the same formulation, bare
+  refs, zero firings.
+- New trigger data point, consistent with defect 1 (the `all(reaches)`
+  bailout): with a pinned-aggregate select over two dim namespaces
+  (`return_customer` attrs + `return_customer.current_address` attrs), the
+  guard fires only when BOTH attr groups are aliased. Stripping either
+  group's aliases leaves zero-reach bare roots, the one-bucket bailout
+  engages, and the query plans.
+- Amplifier: the `enriched_docs` category inlines the language reference,
+  which instructs "alias every new expression with `as`" (and "Alias every
+  reused expression" for rowsets). Agents in that category systematically
+  produce the alias-everything style this bug is keyed on, so the docs leg
+  is disproportionately exposed.
+
+Firing bodies, the bisect variants, and the scoring-engine repro live in the
+2026-08-20 triage scratchpad under `triage_q79_q81/` (`q81_attempt1.preql`,
+`q81_probe4.preql`, `q81_variant_A/B.preql`, `run_diff.py`). All reproduce on
+working tree fb75a7182 via `make_scoring_engine` against a copy of the run
+workspace.
