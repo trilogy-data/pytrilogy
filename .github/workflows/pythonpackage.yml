@@ -110,11 +110,15 @@ jobs:
         # ones that would fetch remote data on execution stay untouched.
         # Discovered rather than listed so a new script cannot silently
         # reintroduce the cost. bash on both platforms for the loop.
+        # Warming is an optimization, never a gate: a script whose environment
+        # cannot resolve here is not necessarily one any test runs, and the
+        # test that does need it will fail on its own terms. Report and carry
+        # on rather than failing the build on a fixture's dependencies.
         shell: bash
         run: |
           grep -rl '^# /// script' tests --include='*.py' | while read -r script; do
             echo "== $script"
-            uv sync --script "$script"
+            uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
           done
       - name: Lint with mypy
         run: |
