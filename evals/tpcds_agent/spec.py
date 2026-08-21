@@ -193,6 +193,7 @@ SPEC = BenchmarkSpec(
         *(f"sql_bare_confusable_x{level}" for level in (1, 2, 3)),
         "ingest",
         "enriched",
+        "enriched_docs",
         "enriched_aggregates",
         "enriched_noise",
         "enriched_confusable",
