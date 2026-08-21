@@ -3232,12 +3232,6 @@ def _padding_provenance_cases(seed: SeedData) -> list[FuzzCase]:
     """`visits.gid` is a NULLABLE fk, so the dim join pads `group_name` for the
     group-less rows and every case here re-joins on that padded column.
 
-    A drafted case combining this fact with `events` is NOT here: it turned up
-    a pre-existing extent defect (docs/handoff_multi_fact_nullable_fk_extent.md)
-    rather than anything about provenance, and is pinned as an xfail in
-    tests/engine/test_multi_fact_nullable_fk_extent.py until the contract is
-    settled.
-
     Whether the two sides may pair on a NULL depends on where the padding came
     from. Both sides reading the SAME padded scan pair (the NULLs are one
     scan's rows arriving twice); sides padded by DIFFERENT joins must not (the
@@ -3383,6 +3377,49 @@ order by 1 asc nulls first
             ("nullable", "join", "aggregate", "padding"),
             value_null_body,
             value_null_oracle,
+        )
+    )
+
+    padded_unpadded_body = """
+select
+    group_name,
+    sum(visit_amount) as visit_total,
+    sum(event_amount) as event_total
+order by group_name asc nulls first;
+"""
+    padded_unpadded_oracle = """
+, visit_side as (
+    select g.name as group_name, sum(v.amount) as visit_total
+    from visits v
+    left join groups g on v.gid = g.gid
+    group by 1
+),
+event_side as (
+    select g.name as group_name, sum(e.amount) as event_total
+    from events e
+    join groups g on e.gid = g.gid
+    group by 1
+)
+select
+    coalesce(v.group_name, e.group_name) as group_name,
+    v.visit_total,
+    e.event_total
+from visit_side v
+full outer join event_side e on v.group_name = e.group_name
+order by 1 asc nulls first
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "padded_and_unpadded_sides",
+            "A padded fact aggregate merged with an unpadded one at the dim "
+            "grain: the `?` fk weakens the visits domain claim, so the merge "
+            "preserves BOTH member sets padded, and the padded group never "
+            "pairs with a value on the unpadded side.",
+            ("nullable", "join", "aggregate", "padding"),
+            padded_unpadded_body,
+            padded_unpadded_oracle,
         )
     )
     return cases

@@ -52,6 +52,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
 )
+from trilogy.core.processing.join_resolution import _padding_sources, nulls_are_values
 
 _OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
@@ -334,6 +335,41 @@ def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     for nc in side_cte.nullable_concepts:
         nullable_addrs |= _key_addresses(nc)
     return bool(nullable_addrs & keys)
+
+
+def _identity(address: str) -> str:
+    return address
+
+
+def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
+    """A side whose key can be NULL via outer-join padding carries the join
+    IMAGE of the key — the values its own preserved rows happened to match,
+    a subset of the value space — so the two sides' key sets only provably
+    coincide when the padding shares provenance (one upstream source padded
+    both images). Value NULLs (a `?` column, a ROLLUP grouping key) don't
+    subset the non-null values and stay with the null-safe machinery."""
+    padded = False
+    for concept, side in ((pair.left, pair.cte), (pair.right, right_cte)):
+        if (
+            isinstance(side, CTE)
+            and _key_nullable(concept, side)
+            and not nulls_are_values(concept, side.source)
+        ):
+            padded = True
+    if not padded:
+        return False
+    keys = _key_addresses(pair.left) | _key_addresses(pair.right)
+    left_pad = (
+        _padding_sources(pair.cte.source, keys, _identity)
+        if isinstance(pair.cte, CTE)
+        else set()
+    )
+    right_pad = (
+        _padding_sources(right_cte.source, keys, _identity)
+        if isinstance(right_cte, CTE)
+        else set()
+    )
+    return not (left_pad & right_pad)
 
 
 def _pair_key_sets_equivalent(
@@ -1035,6 +1071,16 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # right response is to null-safe the pair — NULL is a valid member
         # and the NULL groups pair — rather than refuse the upgrade.
         for pair in join.joinkey_pairs:
+            # Null-safety pairs the NULL groups but says nothing about the
+            # non-null values: a join-padded side carries a key IMAGE that
+            # subsets the value space, so unless the padding shares
+            # provenance across the sides the equivalence claim is unsound.
+            # An EQUAL declaration overrides — it names one value space, and
+            # narrowing trusts the declaration over the padded image.
+            if not self._pair_equal_declared(pair) and _unshared_join_padding(
+                pair, right_cte
+            ):
+                return False
             if pair.is_nullable:
                 continue
             if _key_nullable(pair.left, pair.cte) or _key_nullable(

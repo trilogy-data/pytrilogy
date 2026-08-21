@@ -57,6 +57,7 @@ def _gate(
     value_nullables: dict[str, list[str]] | None = None,
     authored: set[str] | None = None,
     modifiers: list[Modifier] | None = None,
+    licensed: bool = False,
 ) -> list[Modifier]:
     return _gate_nullable_by_host(
         list(NULLABLE if modifiers is None else modifiers),
@@ -67,6 +68,7 @@ def _gate(
         value_nullables or {},
         authored,
         shared,
+        licensed,
     )
 
 
@@ -96,16 +98,21 @@ def test_padding_sources_scoped_to_the_requested_key():
 
 def test_shared_padding_keeps_null_safe_under_asymmetric_hosting():
     """The q47 shape: hosting reads asymmetric, provenance says one scan."""
-    assert _gate(shared=True, host_nodes={"left"}) == NULLABLE
+    assert _gate(shared=True, host_nodes={"left"}, licensed=False) == NULLABLE
+
+
+def test_shared_padding_still_strips_when_hosting_is_licensed():
+    """Sharing a padded ancestor does not make two `~` families one."""
+    assert _gate(shared=True, host_nodes={"left"}, licensed=True) == []
 
 
 def test_unshared_padding_strips_under_asymmetric_hosting():
     assert _gate(shared=False, host_nodes={"left"}) == []
 
 
-def test_unshared_padding_strips_with_no_host_basis():
-    """Mid-plan merges carry no host basis; independent trees still cannot pair."""
-    assert _gate(shared=False, host_nodes=None) == []
+def test_no_host_basis_leaves_the_pair_alone():
+    """With no host basis there is nothing to read the asymmetry from."""
+    assert _gate(shared=False, host_nodes=None) == NULLABLE
 
 
 def test_symmetric_hosting_keeps_null_safe():
@@ -114,16 +121,27 @@ def test_symmetric_hosting_keeps_null_safe():
 
 
 def test_value_nulls_are_exempt_on_either_side():
-    assert _gate(shared=False, value_nullables={"left": [KEY]}) == NULLABLE
-    assert _gate(shared=False, value_nullables={"right": [KEY]}) == NULLABLE
+    """Asymmetric hosting, so these pairs strip unless the exemption holds."""
+    assert (
+        _gate(shared=False, host_nodes={"left"}, value_nullables={"left": [KEY]})
+        == NULLABLE
+    )
+    assert (
+        _gate(shared=False, host_nodes={"left"}, value_nullables={"right": [KEY]})
+        == NULLABLE
+    )
 
 
 def test_authored_key_is_exempt():
-    assert _gate(shared=False, authored={KEY}) == NULLABLE
+    assert _gate(shared=False, host_nodes={"left"}, authored={KEY}) == NULLABLE
 
 
 def test_gate_leaves_other_modifiers_alone():
-    assert _gate(shared=False, modifiers=[Modifier.PARTIAL]) == [Modifier.PARTIAL]
-    assert _gate(shared=False, modifiers=[Modifier.NULLABLE, Modifier.PARTIAL]) == [
+    assert _gate(shared=False, host_nodes={"left"}, modifiers=[Modifier.PARTIAL]) == [
         Modifier.PARTIAL
     ]
+    assert _gate(
+        shared=False,
+        host_nodes={"left"},
+        modifiers=[Modifier.NULLABLE, Modifier.PARTIAL],
+    ) == [Modifier.PARTIAL]
