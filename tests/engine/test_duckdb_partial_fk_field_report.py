@@ -4,14 +4,15 @@ on the fact FKs, and the full-key select over three cross-table aggregates
 `~user_id`). Locks the union-of-branches contract end to end on mocked data:
 every fact row exactly once, one extension row per unmatched member per `~`
 side, extension families never cross-paired, and no null-safe join stitches
-in the FINAL output assembly.
+anywhere in the rendered statement.
 
-Mid-plan merges MAY stitch null-safely: when the planner manufactures the
-same extension member in two aggregate branches, the reunion of its halves
-pairs on the padded keys (test_duckdb_partial_key_assembly pins those rows).
-The cross-family cartesian this file guards against manifests in the final
-assembly and in the row comparison, which runs over data with live unmatched
-members on both `~` sides."""
+A reunion merge whose padded rows feed the output MAY stitch null-safely
+(test_duckdb_partial_key_assembly pins those rows). Here the final assembly
+re-anchors extent from the dimension span and reads the metric branch
+through a plain-equality LEFT join, so any padded contributor in that
+subtree is output-invisible and must be pruned, stitch and all
+(PruneInvisibleOuterJoins). The row comparison runs over data with live
+unmatched members on both `~` sides."""
 
 from tests.modeling._row_compare import rows_match
 from trilogy import Dialects, Executor
@@ -141,8 +142,7 @@ def test_field_report_select(tmp_path):
     engine.environment = Environment(working_path=str(tmp_path))
     engine.parse_text(MODEL)
     sql = engine.generate_sql(QUERY)[-1]
-    final_assembly = sql.rsplit("SELECT", 1)[-1]
-    assert "is not distinct from" not in final_assembly, sql
+    assert "is not distinct from" not in sql, sql
     got = sorted(
         (tuple(r) for r in engine.execute_raw_sql(sql).fetchall()), key=_sort_key
     )

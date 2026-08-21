@@ -84,14 +84,15 @@ visible in the join itself:
   plan time (this killed the field report's unjustified
   `INNER ... item_id is not distinct from` stitch).
 
-One anchored stitch remains mid-plan in the field report (the product-family
-reunion in the `cheerful` join). It is inert in that query: the final
-assembly re-anchors extension rows from the dimension span and consumes the
-metric branch through a plain-equality LEFT join, so every padded row in
-that subtree is output-invisible (rows 940/940 either way). The syntax
-tripwire is therefore scoped to the FINAL output assembly for now. The
-follow-up that eliminates the residue and restores the whole-statement
-tripwire is specced in docs/handoff_field_report_residual_stitch.md.
+One anchored stitch initially remained mid-plan in the field report (the
+product-family reunion in the `cheerful` join). It is inert in that query:
+the final assembly re-anchors extension rows from the dimension span and
+consumes the metric branch through a plain-equality LEFT join, so every
+padded row in that subtree is output-invisible. The optimizer now proves
+that invisibility (directional pair-rejection harvest in
+`UpgradeJoinOnGuards`) and removes the dead join outright
+(`PruneInvisibleOuterJoins`), restoring the whole-statement tripwire; see
+docs/handoff_field_report_residual_stitch.md for the resolution.
 
 ## Corpus footprint
 
