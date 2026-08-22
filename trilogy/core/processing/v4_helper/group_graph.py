@@ -133,6 +133,7 @@ def _d1_calc_subgraph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment | None = None,
 ) -> tuple[dict[int | None, set[str]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
 
@@ -159,13 +160,21 @@ def _d1_calc_subgraph(
 
     A root therefore feeds root_d1 only when it feeds a d1 node that genuinely
     needs an independent scan, i.e. one that is EITHER:
-      - a row-shape barrier (the pristine-scan case above); or
+      - a row-shape barrier, or a semijoin-set definition (the pristine-scan
+        cases above); or
       - a condition that constrains a NON-grouping d0 output (a ROOT/BASIC the
         SELECT scans directly). That output is co-sourced into the same root
         bucket, so folding the condition into it would 2-cycle (root → condition
         lineage → root). Keeping the split breaks that cycle. When the constraint
         target is instead an aggregate, it lives in its own group and the
         condition folds into the co-sourced root cleanly.
+
+    The second reason is cycle avoidance ONLY, so it yields to the split's own
+    precondition: the private scan has to be joinable back to the rows it
+    filters. `_split_strands_condition_scan` withholds the split when the
+    condition's roots share no join axis with the SELECT's -- co-sourcing is
+    then the only plan with a key, and `_materialize_group_graph` drops the
+    now-redundant constraint back-edge so the fold does not cycle.
 
     - d1_calc_roots: blank-phase roots feeding such a d1 node.
     - d1_subgraph_nodes: every condition-phase node. Edge routing uses
@@ -176,40 +185,37 @@ def _d1_calc_subgraph(
     if not d1_subgraph:
         return {}, set()
 
-    def _needs_independent_scan(n: str) -> bool:
+    def _needs_pristine_scan(n: str) -> bool:
+        """The calc reads a row POPULATION, so its scan must not see the
+        SELECT-side WHERE atoms."""
         if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             return True
+        # An existence source (a semijoin RHS, `x in <set>`) is a separate
+        # discovery: its defining lineage must source from a private root, not
+        # the SELECT's common root. Otherwise the fact columns that exist only
+        # to define the set (q10's `channel`/`date.year` feeding the buyer-set
+        # filters) sit in the shared root and drag the SELECT's dimension
+        # projection onto the fact instead of its own dim tables.
+        return any(
+            edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
+            for succ in concept_graph.successors(n)
+        )
+
+    def _constrains_scanned_output(n: str) -> bool:
+        """The calc filters a d0 output the SELECT scans directly -- the
+        cycle-avoidance reason for a split (see the docstring)."""
         for succ in concept_graph.successors(n):
-            kind = edge_kind(concept_edges, n, succ)
-            # An existence source (a semijoin RHS, `x in <set>`) is a separate
-            # discovery: its defining lineage must source from a private root, not
-            # the SELECT's common root. Otherwise the fact columns that exist only
-            # to define the set (q10's `channel`/`date.year` feeding the buyer-set
-            # filters) sit in the shared root and drag the SELECT's dimension
-            # projection onto the fact instead of its own dim tables.
-            if kind == EdgeKind.EXISTENCE:
-                return True
-            if kind != EdgeKind.CONSTRAINT:
+            if edge_kind(concept_edges, n, succ) != EdgeKind.CONSTRAINT:
                 continue
             if concept_attrs[succ].derivation not in GROUPING_DERIVATIONS:
                 return True
         return False
 
-    # Walk lineage upward from each d1 node that needs an independent scan; the
-    # blank-phase ROOT ancestors are the roots whose condition scan must stay
-    # separate from the SELECT-side scan. One walk per stage qualifier: a root
-    # feeding two stages' computations belongs to both feeders (the scan is
-    # duplicated per population, which is the point of the split).
-    needing = [n for n in d1_subgraph if _needs_independent_scan(n)]
-    roots_by_stage: dict[int | None, set[str]] = {}
-    for stage in {condition_stage_of_label(concept_attrs[n].label) for n in needing}:
-        d1_calc_roots: set[str] = set()
+    def _lineage_roots(seeds: list[str]) -> set[str]:
+        """Blank-phase ROOT ancestors of `seeds`, walking lineage edges."""
+        roots: set[str] = set()
         visited: set[str] = set()
-        stack: list[str] = [
-            n
-            for n in needing
-            if condition_stage_of_label(concept_attrs[n].label) == stage
-        ]
+        stack = list(seeds)
         while stack:
             cur = stack.pop()
             for pred, _ in concept_graph.in_edges(cur):
@@ -220,11 +226,169 @@ def _d1_calc_subgraph(
                 visited.add(pred)
                 pa = concept_attrs[pred]
                 if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
-                    d1_calc_roots.add(pred)
+                    roots.add(pred)
                 else:
                     stack.append(pred)
-        roots_by_stage[stage] = d1_calc_roots
+        return roots
+
+    # Walk lineage upward from each d1 node that needs an independent scan; the
+    # blank-phase ROOT ancestors are the roots whose condition scan must stay
+    # separate from the SELECT-side scan. One walk per stage qualifier: a root
+    # feeding two stages' computations belongs to both feeders (the scan is
+    # duplicated per population, which is the point of the split).
+    pristine = [n for n in d1_subgraph if _needs_pristine_scan(n)]
+    cycle_only = [
+        n for n in d1_subgraph if n not in pristine and _constrains_scanned_output(n)
+    ]
+    stage_of = {
+        n: condition_stage_of_label(concept_attrs[n].label) for n in d1_subgraph
+    }
+    roots_by_stage: dict[int | None, set[str]] = {}
+    for stage in {stage_of[n] for n in (*pristine, *cycle_only)}:
+        hard = _lineage_roots([n for n in pristine if stage_of[n] == stage])
+        soft = _lineage_roots([n for n in cycle_only if stage_of[n] == stage]) - hard
+        if soft and _split_strands_condition_scan(
+            concept_graph, concept_edges, concept_attrs, soft, d1_subgraph, environment
+        ):
+            soft = set()
+        roots_by_stage[stage] = hard | soft
     return roots_by_stage, d1_subgraph
+
+
+def _root_join_axis(attrs: ConceptAttrs) -> set[str]:
+    """Addresses a standalone scan of this root could join a sibling scan on:
+    its own key identity, the keys/grain it hangs off, and any merged pseudonym
+    it answers for."""
+    axis = set(attrs.grain_components) | set(attrs.keys) | set(attrs.pseudonyms)
+    if attrs.purpose == Purpose.KEY:
+        axis.add(attrs.address)
+    return axis
+
+
+def _condition_exclusive_root(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    d1_subgraph: set[str],
+    root: str,
+) -> bool:
+    """Whether every concept this root computes lives in the condition phase.
+
+    Such a root is on the SELECT's row stream only by co-sourcing: nothing the
+    SELECT projects reads it. A root that also feeds a blank-phase concept is
+    the same physical scan the SELECT already has, so its keys ARE available on
+    both sides of the merge. Lineage edges only -- the condition node's
+    CONSTRAINT edge points back at the blank-phase concept it filters, which is
+    the relationship being asked about, not evidence against it."""
+    stack = [root]
+    seen = {root}
+    reached = False
+    while stack:
+        current = stack.pop()
+        for succ in concept_graph.successors(current):
+            if edge_kind(concept_edges, current, succ) != EdgeKind.LINEAGE:
+                continue
+            if succ in seen:
+                continue
+            seen.add(succ)
+            reached = True
+            if succ not in d1_subgraph:
+                return False
+            stack.append(succ)
+    return reached
+
+
+def _bound_column_components(environment: BuildEnvironment) -> list[set[str]]:
+    """Address components of the PHYSICAL join graph: two datasources land in
+    one component when some address (or pseudonym) is a bound column of both.
+
+    Only bound columns count. A concept a datasource could produce by deriving
+    it (`unnest(native_ecoregions)`) is exactly what does NOT link two scans on
+    its own -- realizing that link is bridge planning, and bridge planning only
+    happens inside one ROOT request."""
+    ds_addresses: list[set[str]] = []
+    for datasource in environment.datasources.values():
+        addresses: set[str] = set()
+        for concept in datasource.output_concepts:
+            addresses.add(concept.address)
+            addresses.update(concept.pseudonyms)
+        if addresses:
+            ds_addresses.append(addresses)
+    components: list[set[str]] = []
+    for addresses in ds_addresses:
+        merged = addresses
+        rest: list[set[str]] = []
+        for component in components:
+            if component & merged:
+                merged = merged | component
+            else:
+                rest.append(component)
+        rest.append(merged)
+        components = rest
+    return components
+
+
+def _split_strands_condition_scan(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    split_roots: set[str],
+    d1_subgraph: set[str],
+    environment: BuildEnvironment | None,
+) -> bool:
+    """Whether scanning `split_roots` privately would leave that scan no join
+    key back to the rows it filters.
+
+    A root_d1 scan is only useful if the FINAL merge can pair it with the
+    SELECT side. When the condition's roots reach the SELECT's roots only
+    through a BRIDGE -- `auto x <- unnest(list); merge x into dim_key`, where a
+    tree reaches an ecoregion only via the enrichment table keyed by species --
+    a scan of the condition side alone shares no key with them and the merge
+    degrades to `ON 1=1` (silent fan-out, or the keyless-join planner-bug
+    error). Co-sourcing is then the only plan with a key: one ROOT request
+    holding both sides is what lets the bridge planner discover the connector.
+
+    The SELECT side is every blank-phase root the SELECT actually reads: a
+    condition-exclusive root is not one of them (it reaches the merge only
+    through the private scan being decided on), but a root the condition SHARES
+    with the SELECT is, and its keys settle the question on their own.
+
+    Both sides must be row-bearing for the question to mean anything -- a
+    grainless condition root (a constant, a global aggregate) joins by cross
+    product by construction and keeps its split.
+
+    Disjoint axes are necessary but NOT sufficient: two dimensions of a star
+    schema share no key either, and their private scans still meet over the
+    fact table (gcat's `where date_part(launch_date, year) = 2010 select
+    vehicle.stage.engine.fuel`). What makes the bridge case different is that
+    NO chain of bound datasource columns relates the two sides at all, so the
+    physical-column components decide it.
+    """
+    if environment is None:
+        return False
+    condition_axis: set[str] = set()
+    condition_addresses: set[str] = set()
+    for node in split_roots:
+        attrs = concept_attrs[node]
+        condition_axis |= _root_join_axis(attrs)
+        condition_addresses |= {attrs.address, *attrs.pseudonyms}
+    select_axis: set[str] = set()
+    select_addresses: set[str] = set()
+    for node in concept_graph.nodes:
+        attrs = concept_attrs[node]
+        if attrs.derivation != Derivation.ROOT or attrs.depth_label == DepthLabel.D1:
+            continue
+        if _condition_exclusive_root(concept_graph, concept_edges, d1_subgraph, node):
+            continue
+        select_axis |= _root_join_axis(attrs)
+        select_addresses |= {attrs.address, *attrs.pseudonyms}
+    if not condition_axis or not select_axis:
+        return False
+    if not condition_axis.isdisjoint(select_axis):
+        return False
+    return not any(
+        component & condition_addresses and component & select_addresses
+        for component in _bound_column_components(environment)
+    )
 
 
 def _add_d1_root_buckets(
@@ -1112,6 +1276,19 @@ def _materialize_group_graph(
     # even_orders descends from that same unnest). Drop those redundant edges.
     lineage_sub = lineage_subgraph(group_graph, group_edges)
     for gu, gv in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
+        if gv in lineage_sub and gu in lineage_sub and nx.has_path(lineage_sub, gv, gu):
+            remove_edge(group_graph, group_edges, gu, gv)
+
+    # Same reasoning for a CONSTRAINT edge: it orders the condition group at or
+    # ABOVE the group it constrains. When that group is a lineage ANCESTOR of
+    # the condition group -- the condition is computed FROM its rows, which is
+    # what a scalar BASIC over the shared root becomes once `_d1_calc_subgraph`
+    # declines to split the condition's roots out -- everything at or above the
+    # condition group is already above it, so the edge adds no ordering, only a
+    # cycle. The atom lands at the merge instead, which for a row-level scalar
+    # selects exactly the same conjunction.
+    lineage_sub = lineage_subgraph(group_graph, group_edges)
+    for gu, gv in list(edges_of_kind(group_edges, EdgeKind.CONSTRAINT)):
         if gv in lineage_sub and gu in lineage_sub and nx.has_path(lineage_sub, gv, gu):
             remove_edge(group_graph, group_edges, gu, gv)
 
@@ -2797,7 +2974,7 @@ def build_group_graph(
             _finer_filter_grains(conditions),
         )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
-        concept_graph, concept_edges, concept_attrs
+        concept_graph, concept_edges, concept_attrs, environment
     )
     d1_root_gids = _add_d1_root_buckets(concept_attrs, buckets, d1_calc_roots_by_stage)
     all_d1_calc_roots: set[str] = set().union(*d1_calc_roots_by_stage.values())

@@ -1436,6 +1436,25 @@ def _numbering_window_to_concept(
     )
 
 
+def _frame_determines_operand(
+    operand: Concept, frame_refs: list, environment: Environment
+) -> bool:
+    """Whether a navigation window's frame grain already functionally determines
+    its operand. True when the operand is itself a frame key, or when the frame
+    covers every component of the operand's grain — in both cases the window
+    emits one row per frame key and must not inherit the operand's finer
+    storage grain."""
+    if not frame_refs:
+        return False
+    components = set(Grain.from_concepts(frame_refs, environment).components)
+    if not components:
+        return False
+    if operand.address in components:
+        return True
+    operand_grain = set(operand.grain.components) if operand.grain else set()
+    return bool(operand_grain) and operand_grain <= components
+
+
 def _navigation_window_to_concept(
     parent: NavigationWindowItem,
     name: str,
@@ -1488,11 +1507,20 @@ def _navigation_window_to_concept(
         operand_grain: list = list(bcontent.grain.components)
     else:
         operand_grain = [bcontent.output]
-    grain_components: list = list(over_refs) + operand_grain
+    order_refs: list = []
     if parent.order_by:
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
-            grain_components += relevant
+            order_refs += relevant
+    frame_refs: list = list(over_refs) + order_refs
+    # When the frame (partition + order) already pins a grain that determines
+    # the operand, that frame IS the row stream — descending to the operand's
+    # storage grain would fan the window out. `lag(species) over (order by
+    # <species-grain rank>)` is one row per species, not one per tree.
+    if _frame_determines_operand(bcontent, frame_refs, environment):
+        grain_components: list = list(frame_refs)
+    else:
+        grain_components = list(over_refs) + operand_grain + order_refs
     final_grain = Grain.from_concepts(grain_components, environment)
 
     modifiers = get_lineage_modifiers(parent, environment)
