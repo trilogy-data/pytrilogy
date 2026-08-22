@@ -105,3 +105,10 @@ plans that still split a span across owners, not the mechanism that makes the
 common case correct. `PruneInvisibleOuterJoins` has nothing to do on the field
 report any more: `tests/optimization/test_prune_invisible_join.py` pins that the
 plan is byte-identical with the rule off.
+
+The rule is not retirable, though, and the reason is worth knowing before
+anyone tries: it still changes two statements outside the tpc corpus (gcat's
+aggregate query, thelook `adhoc04`), and in both the dead join is keyed on
+something that is not a `~` span at all. Those are invisible CONTRIBUTORS, a
+separate defect class, specced in `docs/handoff_invisible_contributor_joins.md`
+along with the span-suppression approach that does not fix them.
