@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
+from trilogy.constants import CONFIG
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
@@ -675,11 +676,13 @@ limit 1500;
 def test_aggregate_optimization(gcat_env: Executor):
     """Every column comes off the summary table, so the plan is a single scan.
 
-    It used to also LEFT JOIN `launch_info` to complete the `~launch_tag`
-    domain, and this test pinned that join. Nothing reads a column from it and
-    it preserves the aggregate's rows either way, so the join was row-identical
-    padding; extent ownership no longer builds it (docs/extent_ownership.md).
-    Row-equality across that change was verified against the pre-removal plan.
+    This datasource binds `org.state_code`/`org.hex` but not their grain key
+    `org.code`, which used to make the key a search terminal and pull in
+    `launch_info` + `organizations` purely to bind it -- a bridge chain nothing
+    read. `_concepts_with_grain_keys` now treats a grain key as an affordance
+    when one datasource covers the whole request, so the join is never built.
+    The `JOIN` assertion holds with `prune_invisible_outer_joins` DISABLED; if
+    it only holds with the optimizer on, the planner fix has regressed.
     """
     queries = gcat_env.parse_text("""
     import fuel_dashboard;
@@ -714,7 +717,12 @@ ORDER BY
 LIMIT 10
 ;
 """)
-    query = gcat_env.generate_sql(queries[-1])[0]
+    original = CONFIG.optimizations.prune_invisible_outer_joins
+    CONFIG.optimizations.prune_invisible_outer_joins = False
+    try:
+        query = gcat_env.generate_sql(queries[-1])[0]
+    finally:
+        CONFIG.optimizations.prune_invisible_outer_joins = original
 
     assert '"fuel_dashboard_agg" as "fuel_aggregates"' in query, query
     assert "JOIN" not in query, query
