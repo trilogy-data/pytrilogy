@@ -85,14 +85,14 @@ visible in the join itself:
   `INNER ... item_id is not distinct from` stitch).
 
 One anchored stitch initially remained mid-plan in the field report (the
-product-family reunion in the `cheerful` join). It is inert in that query:
+product-family reunion in the `cheerful` join). It was inert in that query:
 the final assembly re-anchors extension rows from the dimension span and
 consumes the metric branch through a plain-equality LEFT join, so every
-padded row in that subtree is output-invisible. The optimizer now proves
-that invisibility (directional pair-rejection harvest in
-`UpgradeJoinOnGuards`) and removes the dead join outright
-(`PruneInvisibleOuterJoins`), restoring the whole-statement tripwire; see
-docs/handoff_field_report_residual_stitch.md for the resolution.
+padded row in that subtree was output-invisible. The optimizer first proved
+that invisibility and deleted the dead join
+(docs/handoff_field_report_residual_stitch.md); the plan no longer builds it
+at all, because both spans are elected to the dimension bucket before any
+node is built (docs/extent_ownership.md).
 
 ## Corpus footprint
 

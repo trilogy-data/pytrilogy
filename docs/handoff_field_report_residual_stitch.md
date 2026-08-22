@@ -65,16 +65,13 @@ consumption mode, elected after the branch builds.
   never by generation). `_right_source_keys` now includes
   `cte.source_key_for(right)` and skips on token collisions.
 
-## Follow-up direction (not this fix)
+## Superseded 2026-08-21 by graph-time extent ownership
 
-The user's verdict, agreed: a plan containing a join whose rows the plan
-itself discards is a LOGICAL PLAN DEFECT; this optimizer fix is a safety
-net, not the end state. The relocation is specced for a fresh agent in
-docs/handoff_graph_time_extent_ownership.md: elect the licensed span's
-owner on the flow graph before branches build and propagate it downward,
-so extent is manufactured exactly once and the reunion machinery
-(family-anchored null-safe stitches) becomes unnecessary rather than
-gated. Key constraint discovered while scoping: ownership is per delivered
-output, not per key (`test_forked_with_status` pins
-`order_status = 'LATER'` on extension rows, a fact-grain CASE that
-evaluates only in the row-bearing branch).
+A plan containing a join whose rows the plan itself discards is a LOGICAL
+PLAN DEFECT, and this optimizer fix was the safety net rather than the end
+state. The relocation shipped: span ownership is now elected on the group
+graph before any branch builds (docs/extent_ownership.md), so the field
+report's dead subtree is never manufactured and the prune rule fires nowhere
+in the corpus. The steps below still describe the rule as it stands, and it
+remains enabled for plans that split a span across owners, but nothing in
+the corpus depends on it.

@@ -6,13 +6,11 @@ every fact row exactly once, one extension row per unmatched member per `~`
 side, extension families never cross-paired, and no null-safe join stitches
 anywhere in the rendered statement.
 
-A reunion merge whose padded rows feed the output MAY stitch null-safely
-(test_duckdb_partial_key_assembly pins those rows). Here the final assembly
-re-anchors extent from the dimension span and reads the metric branch
-through a plain-equality LEFT join, so any padded contributor in that
-subtree is output-invisible and must be pruned, stitch and all
-(PruneInvisibleOuterJoins). The row comparison runs over data with live
-unmatched members on both `~` sides."""
+Both `~` spans are elected to the dimension bucket before any node is built
+(docs/extent_ownership.md), so the metric branch is extent-free: it joins on
+solid keys, manufactures no second copy of either extension family, and there
+is no stitch for a later pass to unpick. The row comparison runs over data with
+live unmatched members on both `~` sides."""
 
 from tests.modeling._row_compare import rows_match
 from trilogy import Dialects, Executor
