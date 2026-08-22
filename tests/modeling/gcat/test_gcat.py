@@ -673,7 +673,14 @@ limit 1500;
 
 
 def test_aggregate_optimization(gcat_env: Executor):
+    """Every column comes off the summary table, so the plan is a single scan.
 
+    It used to also LEFT JOIN `launch_info` to complete the `~launch_tag`
+    domain, and this test pinned that join. Nothing reads a column from it and
+    it preserves the aggregate's rows either way, so the join was row-identical
+    padding; extent ownership no longer builds it (docs/extent_ownership.md).
+    Row-equality across that change was verified against the pre-removal plan.
+    """
     queries = gcat_env.parse_text("""
     import fuel_dashboard;
     datasource fuel_aggregates (
@@ -707,16 +714,10 @@ ORDER BY
 LIMIT 10
 ;
 """)
-    query = gcat_env.generate_sql(queries[-1])
+    query = gcat_env.generate_sql(queries[-1])[0]
 
-    assert (
-        'LEFT OUTER JOIN "launch_info" as "launch_info" on "fuel_aggregates"."launch_tag" = "launch_info"."Launch_Tag"'
-        in query[0]
-    ), query[0]
-
-    # results = gcat_env.execute_query(queries[-1])
-    # q2 = results.fetchall()[0]["fuel_launches"]
-    # assert q1 == q2, (q1, q2)
+    assert '"fuel_dashboard_agg" as "fuel_aggregates"' in query, query
+    assert "JOIN" not in query, query
 
 
 def test_no_duplicates(gcat_env: Executor):

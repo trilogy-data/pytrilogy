@@ -55,6 +55,32 @@ class GroupInputContract:
     may_project_dimension: bool = False
 
 
+@dataclass(frozen=True)
+class ExtentOwnership:
+    """Which group manufactures the extension rows of each ``~``-licensed span.
+
+    Elected on the group graph before any node is built (see
+    ``extent_ownership.elect_extent_owners``) and carried on the FINAL sink's
+    attrs, because extent routing is a statement-level decision: exactly one
+    group per span carries that dimension's unmatched members, its ancestors
+    may pad on the way there, and every other group joins on solid keys.
+    """
+
+    spans: frozenset[str] = frozenset()
+    owner_by_span: dict[str, str] = field(default_factory=dict)
+    # gid -> spans that group may extend (it owns them, or an owner is downstream)
+    permitted: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def permitted_for(self, gid: str) -> frozenset[str]:
+        return self.permitted.get(gid, frozenset())
+
+    def suppressed_for(self, gid: str) -> frozenset[str]:
+        return self.spans - self.permitted_for(gid)
+
+    def owner_of(self, address: str) -> str | None:
+        return self.owner_by_span.get(address)
+
+
 @dataclass
 class FinalAssemblyContract:
     """Logical contract for assembling the FINAL sink.
@@ -121,8 +147,9 @@ class GroupAttrs:
     hidden_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
     # Populated only for FINAL: the logical output/grain contract Stage 3
-    # physically satisfies or prunes.
+    # physically satisfies or prunes, and the statement's extent routing.
     final_contract: FinalAssemblyContract | None = None
+    extent_ownership: ExtentOwnership | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
 
@@ -248,6 +275,7 @@ def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
         aggregate_input_grain=a.aggregate_input_grain,
         aggregate_distinct_addrs=a.aggregate_distinct_addrs,
         final_contract=a.final_contract,
+        extent_ownership=a.extent_ownership,
         input_contracts=a.input_contracts,
     )
 
