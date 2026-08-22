@@ -84,6 +84,7 @@ from .edges import EdgeMap, dependency_subgraph, edge_kind
 from .functional_dependency import build_fd_determines
 from .history import V4History
 from .models import (
+    ExtentOwnership,
     FinalAssemblyContract,
     FinalContributorContract,
     GroupAttrs,
@@ -2292,7 +2293,7 @@ def _cover_groups_for_mandatory(
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
-    extension_licensed: frozenset[str] = frozenset(),
+    ownership: ExtentOwnership,
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, pick the most-downstream built group that
     actually exposes it (more built ancestors = further downstream). Returns
@@ -2306,18 +2307,11 @@ def _cover_groups_for_mandatory(
     boundary below it, which then re-enters the merge with the rows the
     aggregate's population already excluded.
 
-    An `extension_licensed` output (a key some datasource binds `~`) owes its
-    extension rows, and those ride whichever contributor carries the WHOLE
-    preserved span. When the downstream winner exposes this key but not every
-    licensed output (it joined through one `~` family while another rides a
-    sibling), taking the key from it splits the span across contributors —
-    each family pads the stitch key in a different branch and the FINAL merge
-    either drops a family or null-pairs them. Route the key to its owning
-    bucket (primary membership, the dim span) instead. A winner that covers
-    the full span keeps it: no split exists to prevent."""
-    licensed_mandatory = {
-        c.address for c in mandatory_list if c.address in extension_licensed
-    }
+    A ``~``-licensed key comes from its elected owner and nowhere else: that
+    group is the one built with permission to manufacture the key's extension
+    rows, so any other candidate exposes only the members the fact bound. The
+    election is read here rather than re-derived, because the two answers
+    diverging is what leaves a contributor dangling at render time."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     for concept in mandatory_list:
         addr = concept.address
@@ -2349,14 +2343,9 @@ def _cover_groups_for_mandatory(
             reverse=True,
         )
         winner = candidates[0]
-        if addr in extension_licensed and licensed_mandatory - {
-            o.address for o in built[winner].output_concepts
-        }:
-            primary = [
-                gid for gid in candidates if addr in set(attrs[gid].primary_members)
-            ]
-            if primary:
-                winner = primary[0]
+        owner = ownership.owner_of(addr)
+        if owner is not None and owner in candidates:
+            winner = owner
         per_group[winner].append(concept)
     return per_group
 
@@ -3409,13 +3398,13 @@ def _assemble_final_node(
             combine_existing=False,
         )
 
-    extension_licensed = frozenset(
-        address
-        for datasource in environment.datasources.values()
-        for address in datasource.column_level_partial_addresses
-    )
     per_group = _cover_groups_for_mandatory(
-        group_graph, attrs, built, mandatory_list, environment, extension_licensed
+        group_graph,
+        attrs,
+        built,
+        mandatory_list,
+        environment,
+        attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership(),
     )
     if not per_group:
         return _apply_final_conditions(
@@ -3933,10 +3922,14 @@ def build_strategy_node(
     None if nothing built."""
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
             continue
+        # Scope the group's extent routing over its whole build, including the
+        # consumer-side re-sources `_parent_nodes_for` plans below.
+        environment.extent_free_spans = ownership.suppressed_for(gid)
         a = attrs[gid]
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
@@ -4269,6 +4262,9 @@ def build_strategy_node(
         )
         built[gid] = node
 
+    # The FINAL assembly is where the owner and the extent-free branches meet;
+    # it must see every span again to host the owner's rows.
+    environment.extent_free_spans = frozenset()
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)

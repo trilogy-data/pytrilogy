@@ -378,17 +378,24 @@ def _build_from_graph(
         return_merged_graph=True,
         staged_conditions=staged_conditions,
     )
-    strategy_node = build_strategy_node(
-        group_graph,
-        group_edges,
-        group_attrs,
-        mandatory_list,
-        environment,
-        g,
-        history,
-        complete_partials=complete_partials,
-        staged_conditions=staged_conditions,
-    )
+    # `build_strategy_node` scopes each group's extent routing on the shared
+    # environment; a rowset body planned mid-build recurses through here, so
+    # restore whatever the outer plan had rather than leaving it cleared.
+    outer_extent_free = environment.extent_free_spans
+    try:
+        strategy_node = build_strategy_node(
+            group_graph,
+            group_edges,
+            group_attrs,
+            mandatory_list,
+            environment,
+            g,
+            history,
+            complete_partials=complete_partials,
+            staged_conditions=staged_conditions,
+        )
+    finally:
+        environment.extent_free_spans = outer_extent_free
     return BuildInfo(
         concept_graph=concept_graph,
         merged_group_graph=merged_group_graph,

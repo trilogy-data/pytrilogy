@@ -65,6 +65,7 @@ from .edges import (
     lineage_subgraph,
     remove_edge,
 )
+from .extent_ownership import elect_extent_owners
 from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
@@ -3116,6 +3117,10 @@ def build_group_graph(
             environment,
             relation_edge_members=relation_edge_members,
         )
+        if environment is not None:
+            attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
+                group_graph, attrs, environment
+            )
     if return_merged_graph:
         return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
     return group_graph, group_edges, attrs

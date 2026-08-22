@@ -29,7 +29,9 @@ from trilogy.core.processing.grain_utility import (
 from trilogy.core.processing.join_resolution import (
     _collect_deep_partial_addresses,
     compute_outer_null_status,
+    deep_extent_free_spans,
     get_node_joins,
+    partial_binding_sources,
     prune_outer_join_pairs,
     side_nullable,
 )
@@ -138,6 +140,30 @@ def _collect_applied_conditions(source: QueryDatasource | BuildDatasource) -> li
         for parent in source.datasources:
             out.extend(_collect_applied_conditions(parent))
     return out
+
+
+def _is_filter_population(
+    identifier: str,
+    by_id: dict[str, QueryDatasource | BuildDatasource],
+    filtered_ids: set[str],
+    join_addresses: set[str],
+) -> bool:
+    """Whether this side's row set IS the request WHERE's population.
+
+    It has to have applied the WHERE, and it must not owe its narrowness to
+    anything else. An extent-free branch covers only the span members its facts
+    bound (docs/extent_ownership.md), so a row missing there is a member nobody
+    referenced, not a row the WHERE rejected, and the other side stays
+    preserved."""
+    if identifier not in filtered_ids:
+        return False
+    source = by_id.get(identifier)
+    if source is None:
+        return True
+    suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
+        source
+    )
+    return not (join_addresses & suppressed)
 
 
 def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
@@ -266,6 +292,7 @@ class MergeNode(StrategyNode):
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
         host_stitch: bool = False,
+        extent_free_spans: frozenset[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -299,6 +326,18 @@ class MergeNode(StrategyNode):
         # host basis and preserves only the span owner. Mid-plan merges keep
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
+        # `~` spans this merge must NOT extend: the statement elected another
+        # group to carry those extension members (see
+        # v4_helper/extent_ownership.py), so padding them here manufactures a
+        # second copy the FINAL assembly can only reunite or discard. Pairing
+        # on the key stays sound: the members are simply the ones the fact
+        # actually binds. Captured from the environment at construction so a
+        # merge assembled deep inside a generator inherits its group's routing.
+        self.extent_free_spans = (
+            environment.extent_free_spans
+            if extent_free_spans is None
+            else extent_free_spans
+        )
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -402,7 +441,10 @@ class MergeNode(StrategyNode):
                         for address in datasource.column_level_partial_addresses
                     }
                     licensed_outputs = {
-                        c.address for c in self.output_concepts if c.address in licensed
+                        c.address
+                        for c in self.output_concepts
+                        if c.address in licensed
+                        and c.address not in self.extent_free_spans
                     }
                     host_grain = licensed_outputs or set(grain.components)
                 # Domains this node emits: visible outputs and the grain,
@@ -423,11 +465,13 @@ class MergeNode(StrategyNode):
                     component_concept = environment.concepts.get(component)
                     if component_concept is not None and component_concept.keys:
                         demanded_domains |= set(component_concept.keys)
+                demanded_domains -= self.extent_free_spans
                 joins = get_node_joins(
                     dataset_list,
                     environment=environment,
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
+                    extent_free_spans=self.extent_free_spans,
                 )
         elif final_joins:
             logger.info(
@@ -525,6 +569,7 @@ class MergeNode(StrategyNode):
         coalescing = self.environment.domain_graph.outer_relation_keys() | set(
             self.environment.domain_graph.coalescing_relation_members()
         )
+        by_id = {source.identifier: source for source in final_datasets}
         for join in joins:
             if not isinstance(join, BaseJoin):
                 continue
@@ -540,8 +585,13 @@ class MergeNode(StrategyNode):
                 left_ids.add(join.left_datasource.identifier)
             for pair in join.concept_pairs or []:
                 left_ids.add(pair.existing_datasource.identifier)
-            right_filtered = join.right_datasource.identifier in filtered_ids
-            left_filtered = bool(left_ids & filtered_ids)
+            right_filtered = _is_filter_population(
+                join.right_datasource.identifier, by_id, filtered_ids, join_addresses
+            )
+            left_filtered = any(
+                _is_filter_population(identifier, by_id, filtered_ids, join_addresses)
+                for identifier in left_ids
+            )
             if join.join_type == JoinType.FULL:
                 if right_filtered and left_filtered:
                     join.join_type = JoinType.INNER
@@ -964,14 +1014,43 @@ class MergeNode(StrategyNode):
                 if x.address in nullable_concepts
                 or any(x.address == n.address for n in self.nullable_concepts)
             ],
-            partial_concepts=self.partial_concepts,
+            partial_concepts=unique(
+                self.partial_concepts
+                + self._extent_free_partials(final_datasets, final_output_concepts),
+                "address",
+            ),
             rollup_concepts=rollup_concepts,
             force_group=force_group,
             condition=self.conditions,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
+            extent_free_spans=self.extent_free_spans,
         )
         return qds
+
+    def _extent_free_partials(
+        self,
+        sources: list[QueryDatasource | BuildDatasource],
+        outputs: list[BuildConcept],
+    ) -> list[BuildConcept]:
+        """Span keys this merge now covers only PARTIALLY.
+
+        Declining to extend a span (docs/extent_ownership.md) means the key
+        column here holds just the members the facts below actually bound: the
+        dimension's unmatched ones belong to the elected owner. Saying so is
+        what makes the assembly above preserve the owner's rows instead of
+        INNER-joining them away against a branch that no longer pads itself to
+        the full domain."""
+        if not self.extent_free_spans:
+            return []
+        return [
+            concept
+            for concept in outputs
+            if concept.address in self.extent_free_spans
+            and any(
+                partial_binding_sources(source, concept.address) for source in sources
+            )
+        ]
 
     def copy(self) -> "MergeNode":
         return type(self)(
@@ -996,6 +1075,8 @@ class MergeNode(StrategyNode):
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,
             preserve_parents=self.preserve_parents,
+            host_stitch=self.host_stitch,
+            extent_free_spans=self.extent_free_spans,
         )
 
 
