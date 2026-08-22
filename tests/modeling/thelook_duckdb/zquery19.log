@@ -1,6 +1,6 @@
 query_id = "19"
-gen_length = 2147
-preql_size = 360
+gen_length = 1849
+preql_size = 280
 comp_size = 758
 generated_sql = """
 
@@ -15,51 +15,42 @@ FROM
     \"users\" as \"user_users\"
     LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
     FULL JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"),
-thoughtful as (
+wakeful as (
 SELECT
     \"order_items\".\"id\" as \"id\",
-    \"order_items\".\"order_id\" as \"order_id\",
-    \"order_items\".\"sale_price\" as \"sale_price\",
-    \"product_products\".\"cost\" as \"product_cost\"
+    \"order_items\".\"sale_price\" - \"product_products\".\"cost\" as \"item_margin\",
+    \"order_items\".\"sale_price\" as \"sale_price\"
 FROM
     \"products\" as \"product_products\"
     INNER JOIN \"order_items\" as \"order_items\" on \"product_products\".\"id\" = \"order_items\".\"product_id\"),
-highfalutin as (
+thoughtful as (
 SELECT
-    \"order_items\".\"order_id\" as \"order_id\",
-    sum(\"order_items\".\"sale_price\") as \"order_line_revenue\"
+    \"wakeful\".\"id\" as \"id\",
+    \"wakeful\".\"item_margin\" as \"margin\",
+    \"wakeful\".\"sale_price\" as \"revenue\"
 FROM
-    \"order_items\"
-GROUP BY
-    1),
+    \"wakeful\"),
 cooperative as (
 SELECT
-    \"highfalutin\".\"order_line_revenue\" as \"order_line_revenue\",
-    \"thoughtful\".\"id\" as \"id\",
-    \"thoughtful\".\"sale_price\" - \"thoughtful\".\"product_cost\" as \"item_margin\",
-    \"thoughtful\".\"sale_price\" as \"sale_price\"
+    \"order_items\".\"order_id\" as \"order_id\",
+    sum(\"thoughtful\".\"revenue\") as \"total_order_revenue\"
 FROM
     \"thoughtful\"
-    LEFT OUTER JOIN \"highfalutin\" on \"thoughtful\".\"order_id\" = \"highfalutin\".\"order_id\"),
-questionable as (
-SELECT
-    \"cooperative\".\"id\" as \"id\",
-    \"cooperative\".\"item_margin\" as \"margin\",
-    \"cooperative\".\"order_line_revenue\" as \"total_order_revenue\",
-    \"cooperative\".\"sale_price\" as \"revenue\"
-FROM
-    \"cooperative\")
+    INNER JOIN \"order_items\" as \"order_items\" on \"thoughtful\".\"id\" = \"order_items\".\"id\"
+GROUP BY
+    1)
 SELECT
     \"uneven\".\"order_id\" as \"order_id\",
     \"uneven\".\"id\" as \"id\",
     \"uneven\".\"user_id\" as \"user_id\",
     \"uneven\".\"product_id\" as \"product_id\",
-    \"questionable\".\"revenue\" as \"revenue\",
-    \"questionable\".\"margin\" as \"margin\",
-    \"questionable\".\"total_order_revenue\" as \"total_order_revenue\"
+    \"thoughtful\".\"revenue\" as \"revenue\",
+    \"thoughtful\".\"margin\" as \"margin\",
+    \"cooperative\".\"total_order_revenue\" as \"total_order_revenue\"
 FROM
     \"uneven\"
-    LEFT OUTER JOIN \"questionable\" on \"uneven\".\"id\" = \"questionable\".\"id\"
+    LEFT OUTER JOIN \"thoughtful\" on \"uneven\".\"id\" = \"thoughtful\".\"id\"
+    LEFT OUTER JOIN \"cooperative\" on \"uneven\".\"order_id\" = \"cooperative\".\"order_id\"
 ORDER BY 
     \"uneven\".\"order_id\" asc nulls first,
     \"uneven\".\"id\" asc nulls first,
