@@ -165,11 +165,43 @@ def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
     )
 
 
+def _single_source_covers(requested: set[str], environment: BuildEnvironment) -> bool:
+    """Some datasource binds every requested address by itself, COMPLETELY.
+
+    Completeness is the whole condition: a `partial`/`complete where` source
+    covering the request is one arm of an answer, not the answer, and the grain
+    keys are what carry the other arms in (`channel_dim_text_id` over a WEB and
+    a CATALOG partial). A partial binding of a single column is the same story
+    at column scope.
+    """
+    for datasource in environment.datasources.values():
+        if not isinstance(datasource, BuildDatasource):
+            continue
+        if datasource.non_partial_for is not None:
+            continue
+        if requested & {c.address for c in datasource.partial_concepts}:
+            continue
+        if requested <= {c.address for c in datasource.output_concepts}:
+            return True
+    return False
+
+
 def _concepts_with_grain_keys(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     expanded: list[BuildConcept] = []
+    requested_addresses = {concept.address for concept in concepts}
+    # A grain key is expanded so the request can REACH a concept living on
+    # another source -- the key is the join spine. When one datasource already
+    # binds every requested address the cover joins nothing, so no spine is
+    # needed and demanding the key only forces in a bridge chain whose columns
+    # nothing reads (gcat: a summary binding `org.state_code`/`org.hex` but
+    # not `org.code` picked up `launch_info` + `organizations`). Whenever a join
+    # IS in play the key stays a terminal: dropping it there does not degrade to
+    # a connector, it re-picks the source and pairs on properties instead
+    # (tpc_ds aggregates q03).
+    keys_are_affordances = _single_source_covers(requested_addresses, environment)
     # A requested aggregate pins the population at its own grain: its axis
     # members join BY THEMSELVES, so their authored host-row keys are not
     # requirements of the request. Expanding them would demand the finer key
@@ -192,11 +224,12 @@ def _concepts_with_grain_keys(
             continue
         if concept.address in aggregate_axes:
             continue
-        expanded.extend(
-            environment.concepts[address]
-            for address in concept.grain.components
-            if address in environment.concepts
-        )
+        for address in concept.grain.components:
+            if address not in environment.concepts:
+                continue
+            if keys_are_affordances and address not in requested_addresses:
+                continue
+            expanded.append(environment.concepts[address])
     return unique(expanded, "address")
 
 
