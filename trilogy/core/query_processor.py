@@ -73,7 +73,9 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
+    raise_if_where_population_split,
 )
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     describe_incomplete_partitions,
 )
@@ -667,6 +669,27 @@ def _raise_if_disconnected(
         )
 
 
+def _having_presence_probes(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+    build_environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Presence probes the HAVING clause tests that the SELECT does not already
+    project."""
+    if not build_statement.having_clause:
+        return []
+    projected = {c.address for c in build_statement.output_components}
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    for arg in build_statement.having_clause.concept_arguments:
+        if not is_presence_probe(arg.address):
+            continue
+        if arg.address in projected or arg.address in seen:
+            continue
+        seen.add(arg.address)
+        out.append(build_environment.concepts.get(arg.address, arg) or arg)
+    return out
+
+
 def _plan_query_node(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -695,8 +718,16 @@ def _plan_query_node(
         base_environment=history.base_environment,
         build_caches=history.build_caches,
     )
+    # A presence probe in the HAVING must be MATERIALIZED below the merge, on
+    # its own member's side. The HAVING wrap sits above the merge, where the
+    # member reads as the group's mandatory coalesce, so re-deriving the probe
+    # inline there is self-defeating (it can never be NULL). Demanding it as a
+    # hidden output pins it to the member's own boundary and carries it through
+    # the join un-fused. The WHERE path gets this free -- its condition args
+    # already enter the concept graph.
+    having_probes = _having_presence_probes(build_statement, build_environment)
     info = search_concepts_v4(
-        mandatory_list=list(build_statement.output_components),
+        mandatory_list=list(build_statement.output_components) + having_probes,
         history=v4_history,
         environment=build_environment,
         depth=0,
@@ -719,6 +750,20 @@ def _plan_query_node(
             build_environment,
             graph,
             extra_required=list(conditions.row_arguments) if conditions else None,
+        )
+        # Single-row outputs are skipped as crossjoinable by the checks above, so
+        # a WHERE that can reach only one of several scalar-aggregate islands
+        # slips past both. Name that split rather than dumping the output list.
+        raise_if_where_population_split(
+            list(build_statement.output_components),
+            conditions,
+            build_environment,
+            graph,
+            line_number=(
+                build_statement.meta.line_number
+                if isinstance(build_statement, BuildSelectLineage)
+                else None
+            ),
         )
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"

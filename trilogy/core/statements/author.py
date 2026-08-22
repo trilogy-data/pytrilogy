@@ -389,6 +389,10 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         )
 
     def validate_syntax(self, environment: Environment):
+        # Local import: having_normalization imports models.author, which this
+        # module is already in the import path of.
+        from trilogy.core.having_normalization import scalar_where_aggregate_advice
+
         if self.where_clause:
             replacements: list[tuple[str, ConceptRef]] = []
             for x in self.where_clause.concept_arguments:
@@ -426,7 +430,12 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
                 ) and concept.address in self.locally_derived:
                     raise SyntaxError(
-                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        f"Cannot reference an aggregate derived in the select "
+                        f"({concept.address}) in the same statement where clause; "
+                        + scalar_where_aggregate_advice(
+                            concept.address.split(".")[-1], concept_lineage
+                        )
+                        + f" Line: {self.meta.line_number}"
                     )
 
                 if (
@@ -436,7 +445,12 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                     in FunctionClass.AGGREGATE_FUNCTIONS.value
                 ) and concept.address in self.locally_derived:
                     raise SyntaxError(
-                        f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        f"Cannot reference an aggregate derived in the select "
+                        f"({concept.address}) in the same statement where clause; "
+                        + scalar_where_aggregate_advice(
+                            concept.address.split(".")[-1], concept_lineage
+                        )
+                        + f" Line: {self.meta.line_number}"
                     )
         output_addresses = {x.address for x in self.output_components}
         alias_sources = self.alias_source_addresses

@@ -1116,6 +1116,12 @@ class QueryDatasource:
     # parent QDS being lifted up). Left as None for joins/merges/unions where
     # no single source is "the base".
     base_datasource: BuildDatasource | QueryDatasource | None = None
+    # `~` spans this scan was built NOT to extend (see
+    # v4_helper/extent_ownership.py). Identity, like `limit`: the same sources
+    # joined preserving a dimension's unmatched members and joined discarding
+    # them are different relations, and merging the two under one CTE name
+    # concatenates their join lists.
+    extent_free_spans: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:
@@ -1359,6 +1365,12 @@ class QueryDatasource:
             rollup_concepts=unique(
                 self.rollup_concepts + other.rollup_concepts, "address"
             ),
+            # Join-analysis null-extension (outer-join padding) is stamped here at
+            # resolve time and cannot be re-derived from the concepts, so a merged
+            # copy that dropped it would silently render null-rejecting join keys.
+            nullable_concepts=unique(
+                self.nullable_concepts + other.nullable_concepts, "address"
+            ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,
@@ -1437,6 +1449,18 @@ class QueryDatasource:
             unnested = "_unnest_" + "_".join(
                 sorted(c.address.replace(".", "_") for c in self.join_derived_concepts)
             )
+        # Extent routing is identity for the same reason a limit is, but only
+        # where it can bite: a span nothing here binds `~` joins the same way
+        # either way, so folding it in would rename CTEs for no reason.
+        extent_free = ""
+        if self.extent_free_spans:
+            live_spans = self.extent_free_spans & {
+                c.address for d in self.datasources for c in d.partial_concepts
+            }
+            if live_spans:
+                extent_free = "_extent_free_" + "_".join(
+                    sorted(a.replace(".", "_") for a in live_spans)
+                )
         return (
             "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
@@ -1444,6 +1468,7 @@ class QueryDatasource:
             + (f"_filtered_by_{filters}" if filters else "")
             + limited
             + unnested
+            + extent_free
         )
 
     def get_alias(
@@ -1699,7 +1724,11 @@ class DatasourceCTE(CTE):
                 and _datasource_column_for_concept(self.datasource, output) is None
             ):
                 return output.lineage
-        assert alias is not None  # concept is an output of this datasource
+        assert alias is not None, (
+            f"Inlined datasource {self.datasource.name} cannot render "
+            f"{concept.address}: it is not one of its columns "
+            f"({[c.alias for c in self.datasource.columns]})"
+        )
         return alias
 
 

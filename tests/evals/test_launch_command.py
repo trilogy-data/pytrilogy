@@ -121,12 +121,18 @@ def test_parse_ids_dedupes_and_sorts():
         _parse_ids("9-2")
 
 
-def test_options_default_to_the_shared_four_not_the_display_order(suites):
+def test_options_default_to_the_shared_funnel_not_the_display_order(suites):
     payload = launch_options(suites)
     tpcds = next(s for s in payload["suites"] if s["key"] == "tpcds")
     # funnel_order on TPC-DS lists every warehouse variant; the form must not
     # preselect 25 legs.
-    assert tpcds["base"] == ["sql_bare", "sql_schema", "ingest", "enriched"]
+    assert tpcds["base"] == [
+        "sql_bare",
+        "sql_schema",
+        "ingest",
+        "enriched",
+        "enriched_docs",
+    ]
     assert len(tpcds["categories"]) > len(tpcds["base"])
     assert len(tpcds["query_ids"]) == 99
     assert tpcds["runnable"]

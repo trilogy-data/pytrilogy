@@ -36,7 +36,6 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
-    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
@@ -85,6 +84,7 @@ from .edges import EdgeMap, dependency_subgraph, edge_kind
 from .functional_dependency import build_fd_determines
 from .history import V4History
 from .models import (
+    ExtentOwnership,
     FinalAssemblyContract,
     FinalContributorContract,
     GroupAttrs,
@@ -92,7 +92,9 @@ from .models import (
 )
 from .projection import (
     concept_satisfiable,
+    literal_producible,
     parent_output_addresses,
+    renderable_addresses,
     row_lineage_arguments,
     satisfiable_outputs,
     widen_projection,
@@ -1493,16 +1495,6 @@ def _parents_already_at_input_grain(
     return True
 
 
-def _widening_inputs(node: StrategyNode) -> set[str]:
-    """Addresses `node` can project: its parents' visible outputs plus, for a leaf
-    scan, every column its datasource binds (a leaf has no parent nodes, so
-    `parent_output_addresses` alone reports nothing)."""
-    available = parent_output_addresses(node)
-    if isinstance(node, SelectNode) and isinstance(node.datasource, BuildDatasource):
-        available |= {c.address for c in node.datasource.output_concepts}
-    return available
-
-
 # A declared join key is normally one hop from the scan that binds it; the cap
 # stops a pathological chain from walking the whole plan per key.
 _JOIN_KEY_CHAIN_LIMIT = 4
@@ -1524,7 +1516,7 @@ def _widen_scan_chain(
         return True
     if not isinstance(node, (SelectNode, MergeNode)):
         return False
-    available = _widening_inputs(node)
+    available = renderable_addresses(node)
     if not concept_satisfiable(concept, available):
         if depth >= _JOIN_KEY_CHAIN_LIMIT:
             return False
@@ -1541,7 +1533,7 @@ def _widen_scan_chain(
             for below in node.parents
         ):
             return False
-        available = _widening_inputs(node)
+        available = renderable_addresses(node)
     widen_projection(
         node,
         [concept],
@@ -1701,17 +1693,13 @@ def _widen_merge_join_keys(
             continue
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
             continue
-        available = parent_output_addresses(parent)
-        # A leaf datasource SelectNode has no parent nodes, so
-        # `parent_output_addresses` is empty -- but it can still emit any column
-        # its datasource binds. Include those so a partial merge key (a fact's
-        # `?d1` column that canonicalizes to the declared join key) is carried as
-        # the join key instead of the merge cross-joining the sibling that owns
-        # the key's complete domain (a date-spine LEFT_OUTER merge: facts.d1->s1
-        # vs the spine's complete s1 -> `FULL JOIN ... on 1=1` cartesian).
-        ds = getattr(parent, "datasource", None)
-        if isinstance(ds, BuildDatasource):
-            available |= {c.address for c in ds.output_concepts}
+        # A leaf datasource scan can still emit any column its datasource binds,
+        # so a partial merge key (a fact's `?d1` column that canonicalizes to the
+        # declared join key) is carried as the join key instead of the merge
+        # cross-joining the sibling that owns the key's complete domain (a
+        # date-spine LEFT_OUTER merge: facts.d1->s1 vs the spine's complete s1 ->
+        # `FULL JOIN ... on 1=1` cartesian).
+        available = renderable_addresses(parent)
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
@@ -2282,37 +2270,58 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     node.rebuild_cache()
 
 
+def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset[str]:
+    """The other members of the COALESCING key group `address` belongs to.
+
+    Only a coalescing relation (`union`/`full`) fuses its members onto one axis
+    that the merge emits under every member's own alias, which is what lets a
+    mate answer for the address. A subset or global-merge member keeps its own
+    column name, so reading it under the other member's address dangles."""
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    if address not in coalescing:
+        return frozenset()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if address in group:
+            return frozenset(group - {address}) & coalescing
+    return frozenset()
+
+
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
-    extension_licensed: frozenset[str] = frozenset(),
+    environment: BuildEnvironment,
+    ownership: ExtentOwnership,
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, pick the most-downstream built group that
     actually exposes it (more built ancestors = further downstream). Returns
     `{gid: [concepts that group provides]}` preserving discovery order so
     the MergeNode renders with a stable join layout.
 
-    An `extension_licensed` output (a key some datasource binds `~`) owes its
-    extension rows, and those ride whichever contributor carries the WHOLE
-    preserved span. When the downstream winner exposes this key but not every
-    licensed output (it joined through one `~` family while another rides a
-    sibling), taking the key from it splits the span across contributors —
-    each family pads the stitch key in a different branch and the FINAL merge
-    either drops a family or null-pairs them. Route the key to its owning
-    bucket (primary membership, the dim span) instead. A winner that covers
-    the full span keeps it: no split exists to prevent."""
-    licensed_mandatory = {
-        c.address for c in mandatory_list if c.address in extension_licensed
-    }
+    A group carrying the concept's authored scoped-join MATE counts as exposing
+    it: the merge coalesces the two members onto one axis, and the mate is
+    surfaced under the concept's own address once the merge resolves. Without
+    that, an aggregate over the completed join loses the axis to the raw
+    boundary below it, which then re-enters the merge with the rows the
+    aggregate's population already excluded.
+
+    A ``~``-licensed key comes from its elected owner and nowhere else: that
+    group is the one built with permission to manufacture the key's extension
+    rows, so any other candidate exposes only the members the fact bound. The
+    election is read here rather than re-derived, because the two answers
+    diverging is what leaves a contributor dangling at render time."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     for concept in mandatory_list:
         addr = concept.address
+        mates = _scoped_join_mates(environment, addr)
         candidates = [
             gid
             for gid, node in built.items()
-            if any(o.address == addr for o in node.output_concepts)
+            if any(
+                o.address == addr or o.address in mates for o in node.output_concepts
+            )
         ]
         # Only fall back to pseudonym coverage (struct fields produced under
         # their derivable origin address) when nothing provides the concept
@@ -2334,19 +2343,15 @@ def _cover_groups_for_mandatory(
             reverse=True,
         )
         winner = candidates[0]
-        if addr in extension_licensed and licensed_mandatory - {
-            o.address for o in built[winner].output_concepts
-        }:
-            primary = [
-                gid for gid in candidates if addr in set(attrs[gid].primary_members)
-            ]
-            if primary:
-                winner = primary[0]
+        owner = ownership.owner_of(addr)
+        if owner is not None and owner in candidates:
+            winner = owner
         per_group[winner].append(concept)
     return per_group
 
 
 def _add_relation_axis_contributors(
+    group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
     final_contract: FinalAssemblyContract,
@@ -2377,11 +2382,20 @@ def _add_relation_axis_contributors(
         if not hosted:
             continue
         for addr in sorted(relation - hosted):
+            # A provider upstream of a chosen contributor already had its
+            # side merged there, so it pairs nothing new: re-entering the
+            # FINAL merge it would only re-admit the rows that contributor's
+            # own join and population already dropped.
+            merged_below = set().union(
+                *(nx.ancestors(group_graph, gid) for gid in chosen)
+            )
             provider = next(
                 (
                     gid
                     for gid in sorted(built)
-                    if gid not in chosen and addr in outputs_of[gid]
+                    if gid not in chosen
+                    and gid not in merged_below
+                    and addr in outputs_of[gid]
                 ),
                 None,
             )
@@ -2730,6 +2744,30 @@ def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> N
                 _add_needed_concept(needed, row_input)
 
 
+def _parent_supplied_args(
+    concept: BuildConcept, primary_addrs: set[str]
+) -> list[BuildConcept]:
+    """Lineage args of `concept` that a PARENT has to supply.
+
+    An arg that is itself a primary member is computed at this group (a `case`
+    over `grouping(...)` reads the grouping virtual the same node emits), so the
+    parent owns its inputs, not the arg itself. Walk through those; stop at
+    everything else."""
+    stack = list(concept.lineage.concept_arguments) if concept.lineage else []
+    seen: set[str] = set()
+    supplied: list[BuildConcept] = []
+    while stack:
+        arg = stack.pop()
+        if arg.address in seen:
+            continue
+        seen.add(arg.address)
+        if arg.address in primary_addrs and arg.lineage is not None:
+            stack.extend(arg.lineage.concept_arguments)
+            continue
+        supplied.append(arg)
+    return supplied
+
+
 def _aggregate_reused_from_twin(
     address: str,
     gid: str,
@@ -2935,9 +2973,16 @@ def _filter_arg_parents(
             reverse=True,
         )
         gid = candidates[0]
-        concepts.append(
-            next(o for o in built[gid].output_concepts if o.address == addr)
-        )
+        supplier = built[gid]
+        concept = next(o for o in supplier.output_concepts if o.address == addr)
+        # The group is being pulled in PRECISELY to supply this column, so a
+        # projection that hides it defeats the purpose: the FINAL merge reads
+        # parents' `usable_outputs`, so a hidden-only supplier trips the node
+        # input invariant instead of rendering (a correlated inline subquery
+        # whose rowset hides its own correlation key).
+        if addr in supplier.hidden_concepts:
+            supplier.unhide_output_concepts([concept])
+        concepts.append(concept)
         if gid not in seen:
             seen.add(gid)
             nodes.append(built[gid])
@@ -3353,13 +3398,13 @@ def _assemble_final_node(
             combine_existing=False,
         )
 
-    extension_licensed = frozenset(
-        address
-        for datasource in environment.datasources.values()
-        for address in datasource.column_level_partial_addresses
-    )
     per_group = _cover_groups_for_mandatory(
-        group_graph, attrs, built, mandatory_list, extension_licensed
+        group_graph,
+        attrs,
+        built,
+        mandatory_list,
+        environment,
+        attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership(),
     )
     if not per_group:
         return _apply_final_conditions(
@@ -3370,7 +3415,9 @@ def _assemble_final_node(
                 environment,
             )
         )
-    _add_relation_axis_contributors(built, per_group, final_contract, environment)
+    _add_relation_axis_contributors(
+        group_graph, built, per_group, final_contract, environment
+    )
     _add_partial_completion_contributors(built, per_group, environment)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
@@ -3875,10 +3922,14 @@ def build_strategy_node(
     None if nothing built."""
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
             continue
+        # Scope the group's extent routing over its whole build, including the
+        # consumer-side re-sources `_parent_nodes_for` plans below.
+        environment.extent_free_spans = ownership.suppressed_for(gid)
         a = attrs[gid]
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
@@ -4105,7 +4156,7 @@ def build_strategy_node(
                 normalize_addrs.add(c.address)
                 if c.address not in primary_addrs or c.lineage is None:
                     continue
-                for arg in c.lineage.concept_arguments:
+                for arg in _parent_supplied_args(c, primary_addrs):
                     normalize_addrs.add(arg.address)
                     aggregate_arg_addrs.add(arg.address)
             normalize_parent_output_by_addr: dict[str, BuildConcept] = {}
@@ -4141,7 +4192,7 @@ def build_strategy_node(
                     candidate = _concept_at(environment, addr)
                     if candidate is not None:
                         for parent in parents:
-                            available = parent_output_addresses(parent)
+                            available = renderable_addresses(parent)
                             if not concept_satisfiable(candidate, available):
                                 continue
                             widen_projection(
@@ -4211,6 +4262,9 @@ def build_strategy_node(
         )
         built[gid] = node
 
+    # The FINAL assembly is where the owner and the extent-free branches meet;
+    # it must see every span again to host the owner's rows.
+    environment.extent_free_spans = frozenset()
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)
@@ -4248,8 +4302,12 @@ def _has_unsourced_leaf(final: StrategyNode) -> bool:
     for node in _strategy_nodes(final):
         if node.parents or getattr(node, "datasource", None) is not None:
             continue
-        if any(
-            concept.derivation == Derivation.ROOT for concept in node.output_concepts
-        ):
+        # A leaf with neither parents nor a datasource can only render what
+        # literals alone produce. A ROOT output is the obvious violation, but so
+        # is an aggregate over one (`sum(amt)` beside a WHERE that pruned the
+        # scan away): its measure has no source either, and reading only the
+        # derivation missed it because the aggregate is not itself ROOT.
+        # Unnest-of-literal / constant leaves stay legal.
+        if any(not literal_producible(concept) for concept in node.output_concepts):
             return True
     return False

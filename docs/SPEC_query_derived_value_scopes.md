@@ -121,6 +121,12 @@ pinned no grain and so inherited the select grain
 (`where_aggregate_inherited_grain`). The field is omitted when there is nothing
 to warn about.
 
+`window_filter_needs_having` stays silent on the bookend shape: a `where` that
+widens the window's navigation axis so `lag`/`lead` have neighbours, then a
+`having` that narrows back. Either a `having` atom constraining a concept the
+`where` also constrains, or a `where` touching only concepts the window orders
+by, is taken as the author having already split the work between the clauses.
+
 ## Reported values
 
 Report every unique aggregate or window computation that:

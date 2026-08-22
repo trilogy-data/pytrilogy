@@ -7,6 +7,7 @@ this turns into a pessimization — an unrestricted feeder, and an aggregate tha
 already filters — since both measured as regressions on the TPC-H corpus.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
 
 TPCH = Path(__file__).parent.parent / "modeling" / "tpc_h"
+TPCDS = Path(__file__).parent.parent / "modeling" / "tpc_ds_duckdb"
 
 MODEL = """
 key order_id int;
@@ -87,10 +89,14 @@ def _semi_join_hosts(text: str) -> list[CTE]:
 
 
 def _tpch_sql(query: str) -> str:
+    return _model_sql(TPCH, query)
+
+
+def _model_sql(root: Path, query: str) -> str:
     executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=TPCH)
+        environment=Environment(working_path=root)
     )
-    return executor.generate_sql((TPCH / f"{query}.preql").read_text())[-1]
+    return executor.generate_sql((root / f"{query}.preql").read_text())[-1]
 
 
 def execute(text: str, enabled: bool = True) -> list:
@@ -153,3 +159,33 @@ def test_feeder_is_declared_before_the_cte_that_probes_it():
     probe = sql.index("in (select")
     feeder = sql[probe : sql.index(")", probe)].rsplit("from ", 1)[1].strip().strip('"')
     assert sql.index(f"{feeder} as (") < sql.rindex("as (", 0, probe)
+
+
+def _tpcds_ctes(query: str) -> list:
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=TPCDS)
+    )
+    return executor.parse_text((TPCDS / f"{query}.preql").read_text())[-1].ctes
+
+
+def _cte_body(sql: str, name: str) -> str:
+    """The rendered text of one CTE, up to the start of the next."""
+    start = sql.index("\n" + name + " as (")
+    following = re.search(r"\n\w+ as \(", sql[start + 1 :])
+    return sql[start : start + 1 + following.start()] if following else sql[start:]
+
+
+def test_probe_reaches_the_scan_below_a_projected_join_target():
+    """TPC-DS q64's consumer joins a projection over a full-join enrichment, so
+    the aggregate scanning store_sales sits two nodes below the join target and
+    every key it exposes is nullable. Both used to skip the mirror, leaving the
+    enrichment to group the whole fact table for a two row answer."""
+    hosts = [
+        cte
+        for cte in _tpcds_ctes("query64")
+        if isinstance(cte, CTE) and cte.semi_join_filters
+    ]
+    assert len(hosts) == 1, [cte.name for cte in hosts]
+    body = _cte_body(_model_sql(TPCDS, "query64"), hosts[0].name)
+    assert '"memory"."store_sales"' in body, body
+    assert "in (select" in body, body

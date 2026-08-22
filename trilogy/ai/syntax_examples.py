@@ -649,6 +649,14 @@ subset join enroll.student_id = students.id
 order by enrollments desc nulls first
 limit 100;
 
+# The select plus its join clause(s) is ONE statement, so it must end with `;`
+# even when no `order by`/`limit` follows the join - a quick probe that stops
+# right after the join clause still needs the terminator:
+select
+    students.major,
+    count(enroll.id) as enrollments,
+subset join enroll.student_id = students.id;
+
 # ---------------------------------------------------------------------------
 # (2) MULTI-KEY blend - JOIN ON THE FULL GRAIN. When facts share a COMPOSITE
 # grain, write ONE join clause per key. `trilogy explore` shows each fact's grain
@@ -718,12 +726,19 @@ limit 100;
 #    `union join a.k1 = b.k1 and a.k2 = b.k2` == two stacked `union join` clauses.
 #    `and` joins distinct KEY-EQUALITY groups (not filters); `= c` chains keys into
 #    ONE group - both compose: `union join a.k = b.k = base.k and a.k2 = b.k2`.
+#    A COMMA never separates join groups (it is a select-list separator only):
+#    `union join a.k1 = b.k1, a.k2 = b.k2` is an error - use `and`.
+#  - Terminate the statement with `;` after the LAST clause, whatever that clause
+#    is (join, `having`, `order by`, `limit`).
 #  - A join key may be ANY expression (a computed/offset key, an aggregate, a
 #    window), not only a bare field - see (4). Only `=` equality is supported.
 #  - Joins NEVER drop rows: for an intersection (rows present in BOTH sides),
 #    add explicit conditions - `where <side_a attr> is not null and <side_b
 #    attr> is not null`. A one-sided `is not null` keeps the other side's
-#    exclusive rows.
+#    exclusive rows. Either spelling reads as "did this side match?": the
+#    side's own JOIN KEY (`where a.k is not null`, tested per side even though
+#    the projected key is the coalesced group axis) or any of its measures /
+#    attributes (`where a.cnt is not null`). Same in `having`.
 #  - `left`/`full`/`inner`/`right`/`cross join` are NOT valid query-scoped joins
 #    (they error) - only `subset`/`union`. Map an old `left join a = b` to
 #    `subset join b = a` (swap operands) and `full join a = b` to

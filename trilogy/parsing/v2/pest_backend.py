@@ -15,6 +15,7 @@ from trilogy.parsing.v2.errors import (
     detect_derivation_as_connector,
     detect_group_by,
     detect_import_file_path,
+    detect_join_comma_group,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
@@ -355,6 +356,21 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     ):
         return create_syntax_error(226, misplaced[0], text)
 
+    # 230: two join groups separated by a comma instead of `and`. The comma
+    # cannot continue the clause, so the failure lands on it.
+    join_comma_pos = detect_join_comma_group(text, pos)
+    if join_comma_pos is not None:
+        return create_syntax_error(230, join_comma_pos, text)
+
+    # 202 (hoisted above 225): a statement whose only defect is the missing
+    # terminator. `detect_join_missing_key`'s sole false-positive guard is a
+    # `select` BETWEEN the join and the failure, which can never fire for a
+    # join written AFTER the select list, so without this an unterminated
+    # post-select join is misreported as a malformed key. EOF-gated and
+    # append-probe-confirmed, so it cannot mask a mid-stream failure.
+    if text[pos:].strip() == "" and _pest_parses(text + ";"):
+        return create_syntax_error(202, pos, text)
+
     # 225: a query-scoped join with a missing/malformed key expression
     # (`union join ...`, `subset join a.id =`) — pest reports `expected
     # sum_operator` since a join key is an expression.
@@ -377,12 +393,6 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     sig_pos = detect_missing_signature_semicolon(text, pos)
     if sig_pos is not None and _pest_parses(text[:sig_pos] + ";"):
         return create_syntax_error(222, sig_pos, text)
-
-    # 202: trailing-terminator missing. Check only when the error position
-    # is at or past the last non-whitespace character — otherwise we'd mask
-    # real mid-stream failures by prematurely terminating the statement.
-    if text[pos:].strip() == "" and _pest_parses(text + ";"):
-        return create_syntax_error(202, pos, text)
 
     # 201: missing `as` before an alias identifier. Truncate the tail and
     # commit a probe alias so we only verify that *this* position could accept

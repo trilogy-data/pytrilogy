@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 6603
+gen_length = 6964
 preql_size = 2263
 comp_size = 2234
 generated_sql = """
@@ -78,16 +78,16 @@ SELECT
     \"questionable\".\"thu_sales\" as \"thu_sales\",
     \"questionable\".\"tue_sales\" as \"tue_sales\",
     \"questionable\".\"wed_sales\" as \"wed_sales\",
-    \"thoughtful\".\"ss_sale_date_week_seq\" as \"ss_sale_date_week_seq\",
-    \"thoughtful\".\"ss_store_sk\" as \"ss_store_sk\",
     \"thoughtful\".\"year_flag\" as \"year_flag\",
-    lead(\"questionable\".\"fri_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
-    lead(\"questionable\".\"mon_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
-    lead(\"questionable\".\"sat_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
-    lead(\"questionable\".\"sun_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
-    lead(\"questionable\".\"thu_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
-    lead(\"questionable\".\"tue_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
-    lead(\"questionable\".\"wed_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
+    coalesce(\"questionable\".\"ss_sale_date_week_seq\",\"thoughtful\".\"ss_sale_date_week_seq\") as \"ss_sale_date_week_seq\",
+    coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\") as \"ss_store_sk\",
+    lead(\"questionable\".\"fri_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
+    lead(\"questionable\".\"mon_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
+    lead(\"questionable\".\"sat_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
+    lead(\"questionable\".\"sun_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
+    lead(\"questionable\".\"thu_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
+    lead(\"questionable\".\"tue_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
+    lead(\"questionable\".\"wed_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
 FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"questionable\" on \"thoughtful\".\"ss_sale_date_week_seq\" = \"questionable\".\"ss_sale_date_week_seq\" AND \"thoughtful\".\"ss_store_sk\" = \"questionable\".\"ss_store_sk\"),

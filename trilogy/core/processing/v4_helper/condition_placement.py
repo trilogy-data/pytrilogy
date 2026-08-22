@@ -55,6 +55,9 @@ class PlacementReason(Enum):
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
     FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
+    # A row atom copied onto a select-phase aggregate that the elected host
+    # does not feed, so both siblings aggregate the same filtered population.
+    UNCOVERED_GROUPING_HOST = "uncovered_grouping_host"
     # An earlier `then where` stage's row atom delivered as an input filter on
     # a later stage's cross-row computation (its d1 feeder scan or host).
     STAGE_PRECONDITION = "stage_precondition"
@@ -651,6 +654,66 @@ def _conjunction_recompute_placements(
     return extra
 
 
+def _uncovered_grouping_placements(
+    clause_placements: list[ConditionPlacement],
+    buckets: dict[str, GroupBucket],
+    group_members: dict[str, set[str]],
+    lineage_ancestors_graph: nx.DiGraph,
+    main_lineage: set[str],
+    scoped_join_member_addresses: frozenset[str],
+) -> list[ConditionPlacement]:
+    """Copy a row atom onto every select-phase aggregate its host does not feed.
+
+    An UPSTREAM_MOST host restricts only the rows that flow THROUGH it, but a
+    flat WHERE restricts the population of every select-scope aggregate. The two
+    can diverge: `count(grain(a, b) ? p)` routes through the grain projection
+    while its plain `count(grain(a, b))` sibling wires the grain args directly,
+    so a host elected on that projection leaves the plain count aggregating
+    unfiltered rows. Aggregates already downstream of a host inherit the filter;
+    ones reading the atom's inputs as their own output are HAVING and stay out.
+    """
+    extra: list[ConditionPlacement] = []
+    for placement in clause_placements:
+        if placement.reason is not PlacementReason.UPSTREAM_MOST:
+            continue
+        atom = placement.atom
+        if any(atom.existence_arguments):
+            continue
+        row_inputs = {c.address for c in atom.row_arguments}
+        if not row_inputs:
+            continue
+        if any(
+            is_presence_probe(addr) or addr in scoped_join_member_addresses
+            for addr in row_inputs
+        ):
+            continue
+        for gid in sorted(buckets):
+            bucket = buckets[gid]
+            if (
+                gid in placement.group_ids
+                or gid not in main_lineage
+                or bucket.derivation not in _EMITS_GROUP_BY
+                or bucket.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                or row_inputs & set(bucket.primary_members)
+            ):
+                continue
+            ancestors = nx.ancestors(lineage_ancestors_graph, gid)
+            if any(host in ancestors for host in placement.group_ids):
+                continue
+            if not row_inputs <= _reachable_input(
+                gid, lineage_ancestors_graph, buckets, group_members
+            ):
+                continue
+            extra.append(
+                ConditionPlacement(
+                    atom=atom,
+                    group_ids=(gid,),
+                    reason=PlacementReason.UNCOVERED_GROUPING_HOST,
+                )
+            )
+    return extra
+
+
 def _staged_precondition_placements(
     staged_conditions: list[BuildWhereClause],
     group_graph: nx.DiGraph,
@@ -953,8 +1016,19 @@ def plan_condition_placements(
                     if mate_concept is not None and mate_concept.keys:
                         mates |= set(mate_concept.keys)
             mates -= keys
+        # An AGGREGATE whose mate is hosted only by its own lineage ancestors
+        # already contains the completion merge, so its atoms are pre-merge row
+        # predicates: deferring one past the aggregate would filter aggregated
+        # rows instead of the input rows they gate. Row-shaped groups keep the
+        # wider criterion: their deferral is what makes a presence probe read
+        # the coalesced axis rather than one side of it.
+        below = (
+            nx.ancestors(lineage_ancestors_graph, gid)
+            if b.derivation in _EMITS_GROUP_BY
+            else set()
+        )
         return any(
-            other_gid != gid and (mates & other_relatable)
+            other_gid != gid and other_gid not in below and (mates & other_relatable)
             for other_gid, other_relatable in group_relatable.items()
         )
 
@@ -1312,6 +1386,16 @@ def plan_condition_placements(
                         reason=PlacementReason.FINAL_PRESERVED_BRANCH,
                     )
                 )
+        placements.extend(
+            _uncovered_grouping_placements(
+                placements[clause_start:],
+                buckets,
+                group_members,
+                lineage_ancestors_graph,
+                main_lineage,
+                scoped_join_member_addresses,
+            )
+        )
         placements.extend(
             _conjunction_recompute_placements(
                 placements[clause_start:],

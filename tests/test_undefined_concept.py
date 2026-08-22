@@ -374,3 +374,54 @@ def test_cte_output_shorthand_resolves_staged_path():
         "select y1999.product_name, y1999.item_id;\n"
     )
     assert env.concepts["y1999.item_id"].address == "y1999.agg.item_id"
+
+
+def test_find_similar_offers_rowset_leaf_shorthand():
+    d = _dict_with("monthly_totals.ss.store.name", "monthly_totals.total_sales")
+    d.rowset_namespaces.add("monthly_totals")
+    sugg = d._find_similar_concepts("monthly_totals.store_name")
+    assert "monthly_totals.ss.store.name" in sugg
+    assert "monthly_totals.name" in sugg
+    assert (
+        sugg.index("monthly_totals.name")
+        == sugg.index("monthly_totals.ss.store.name") + 1
+    )
+
+
+def test_find_similar_withholds_ambiguous_rowset_leaf_shorthand():
+    d = _dict_with("rs.ss.store.id", "rs.ss.item.id")
+    d.rowset_namespaces.add("rs")
+    sugg = d._find_similar_concepts("rs.iid")
+    assert "rs.ss.item.id" in sugg
+    assert "rs.id" not in sugg
+
+
+def test_find_similar_no_shorthand_outside_rowset_namespaces():
+    d = _dict_with("ss.store.name", "ss.item.brand_name")
+    sugg = d._find_similar_concepts("ss.store_name")
+    assert "ss.store.name" in sugg
+    assert "ss.name" not in sugg
+
+
+_SHORTHAND_MODEL = (
+    "key id int;\n"
+    "property id.color string;\n"
+    "datasource items (id:id, color:color) grain (id) address items;"
+)
+_SHORTHAND_ROWSETS = (
+    "with agg as select id as item_id, color;\n"
+    "with y1999 as select agg.item_id, agg.color;\n"
+)
+
+
+def test_rowset_leaf_shorthand_suggestion_actually_resolves():
+    env = Environment()
+    env.parse(_SHORTHAND_MODEL)
+    with pytest.raises(UndefinedConceptException) as exc:
+        env.parse(_SHORTHAND_ROWSETS + "select y1999.item_colour;\n")
+    assert "y1999.color" in exc.value.suggestions
+
+    fresh = Environment()
+    fresh.parse(_SHORTHAND_MODEL)
+    fresh.parse(_SHORTHAND_ROWSETS + "select y1999.color;\n")
+    assert fresh.concepts["y1999.color"].address == "y1999.agg.color"

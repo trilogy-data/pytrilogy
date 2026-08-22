@@ -16,6 +16,7 @@ from trilogy.parsing.v2.errors import (
     detect_derivation_as_connector,
     detect_group_by,
     detect_import_file_path,
+    detect_join_comma_group,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
     detect_named_function_missing_at,
@@ -217,6 +218,31 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     ):
         raise create_syntax_error(226, misplaced[0], text)
 
+    # 230: two join groups separated by a comma instead of `and`. The comma
+    # cannot continue the clause, so the failure lands on it.
+    join_comma_pos = detect_join_comma_group(text, pos)
+    if join_comma_pos is not None:
+        raise create_syntax_error(230, join_comma_pos, text)
+
+    # 202 (hoisted above 225): a statement whose only defect is the missing
+    # terminator. `detect_join_missing_key`'s sole false-positive guard is a
+    # `select` BETWEEN the join and the failure, which can never fire for a
+    # join written AFTER the select list, so without this an unterminated
+    # post-select join is misreported as a malformed key. Gated on `$END` and
+    # confirmed by feeding the terminator, so it cannot mask a mid-stream
+    # failure.
+    if last_token and e.token.type == "$END":
+        try:
+            e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
+            state = e.interactive_parser.lexer_thread.state
+            if state and state.last_token:
+                new_pos = state.last_token.end_pos or pos
+            else:
+                new_pos = pos
+            raise create_syntax_error(202, new_pos, text)
+        except _UnexpectedToken:
+            pass
+
     # 225: a query-scoped join with a missing/malformed key expression.
     join_key_pos = detect_join_missing_key(text, pos)
     if join_key_pos is not None:
@@ -234,18 +260,6 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     sig_pos = detect_missing_signature_semicolon(text, pos)
     if sig_pos is not None and _lark_parses(text[:sig_pos] + ";"):
         raise create_syntax_error(222, sig_pos, text)
-
-    if last_token and e.token.type == "$END":
-        try:
-            e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
-            state = e.interactive_parser.lexer_thread.state
-            if state and state.last_token:
-                new_pos = state.last_token.end_pos or pos
-            else:
-                new_pos = pos
-            raise create_syntax_error(202, new_pos, text)
-        except _UnexpectedToken:
-            pass
 
     try:
         e.interactive_parser.feed_token(Token("AS", "AS"))

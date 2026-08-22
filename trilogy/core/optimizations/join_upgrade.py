@@ -722,14 +722,21 @@ def _renders_exclusively_from(
 
 
 def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
-    """Producer output addresses a rendered INNER equality in the consumer
-    forces non-null: a NULL key never matches plain ``=``, so the producer row
-    contributes nothing to the consumer. Null-safe pairs match NULLs and prove
+    """Producer output addresses a rendered equality in the consumer forces
+    non-null: a NULL key never matches plain ``=``, so the producer row
+    contributes nothing to the consumer. Only a side whose unmatched rows the
+    join DISCARDS is provable: both sides of an INNER, the right of a
+    LEFT_OUTER, the left of a RIGHT_OUTER; a preserved side's rows survive
+    unmatched, key NULL or not. Null-safe pairs match NULLs and prove
     nothing; a multi-left-source group renders COALESCE on the left, which
     still rejects a NULL right key but no individual left key."""
     out: set[str] = set()
     for join in consumer.joins or []:
-        if not isinstance(join, Join) or join.jointype != JoinType.INNER:
+        if not isinstance(join, Join):
+            continue
+        harvest_right = join.jointype in (JoinType.INNER, JoinType.LEFT_OUTER)
+        harvest_left = join.jointype in (JoinType.INNER, JoinType.RIGHT_OUTER)
+        if not harvest_right and not harvest_left:
             continue
         groups: dict[tuple[str, str], list[CTEConceptPair]] = {}
         for pair in join.joinkey_pairs or []:
@@ -738,10 +745,14 @@ def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
             if any(_pair_can_match_nulls(p, join.modifiers) for p in pairs):
                 continue
             first = pairs[0]
-            if _cte_source_keys(join.right_cte) & producer_keys:
+            if harvest_right and _cte_source_keys(join.right_cte) & producer_keys:
                 out.add(first.right.address)
             left_ctes = {p.cte.name for p in pairs}
-            if len(left_ctes) == 1 and _cte_source_keys(first.cte) & producer_keys:
+            if (
+                harvest_left
+                and len(left_ctes) == 1
+                and _cte_source_keys(first.cte) & producer_keys
+            ):
                 out.add(first.left.address)
     return out
 

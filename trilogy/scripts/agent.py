@@ -162,7 +162,10 @@ Available tools:
       fact file (e.g. `sales.preql`) ALSO lists all dimensions it
       imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
       You do NOT need to explore each dimension separately. Prefer this over
-      reading the raw model file. Use `--regex` (repeatable, Python regex) to filter.
+      reading the raw model file. Imported dimensions arrive OUTLINED (keys,
+      roles, and a members_elided count); expand only the ones the question
+      touches with `--ns <alias>` (repeatable), or filter with `--regex`
+      (repeatable, Python regex) — matches render in full.
       Trilogy auto-resolves joins from the model's declared relationships.
       Join discovery is not needed;
     write `select store_sales.date_dim.year, ...;` and Trilogy

@@ -1,7 +1,7 @@
 # Handoff: lint for `filtered-aggregate = 0` (empty group is NULL, never 0) (q16)
 
-**Status: doc fix LANDED; optional lint/hint remains — re-verified 2026-08-16
-(`a65b13c9c`): `where <filtered sum> = 0` returns zero rows and emits no
+**Status: doc fix LANDED; optional lint/hint remains — re-verified 2026-08-20
+(`6bdb4d7b4`): `where <filtered sum> = 0` returns zero rows and emits no
 warning. From
 `results/20260810-211903_enriched_aggregates/agent_log.q16.jsonl` — this
 single misconception drove most of a 2.1M-token, 38-turn debugging loop.**

@@ -168,8 +168,12 @@ def concepts_to_fields_prompt(environment: Environment) -> str:
         for imp in imps
         if imp.description
     }
+    # Pinned to the full-detail v2 shape: this payload is embedded once in a
+    # single prompt, so the v3 outline's drill-down affordance has nothing to
+    # drill into and would just hide the member schemas.
     return json.dumps(
-        build_concepts_payload(environment, items, import_descriptions), indent=2
+        build_concepts_payload(environment, items, import_descriptions, version=2),
+        indent=2,
     )
 
 

@@ -404,12 +404,10 @@ def resolve_rowset(
     # new address wrapping its body content — map through the BuildRowsetItem
     # content (and pseudonyms) so a `?` column's nullability survives the
     # boundary (else a NULL rowset join key stops matching null-safely).
-    # Restricted to KEY-like handles (the boundary's grain and
-    # scoped-relation members): those are the handles that
-    # become join keys and need the null-safe pairing. A nullable non-key
-    # property handle stays unstamped — v4's FINAL re-pairing join would
-    # otherwise render it `is not distinct from` alongside the keys that
-    # already pair the rows (a hash-join-defeating no-op).
+    # Every handle, not just the boundary's key-like ones: a non-key property
+    # becomes a join key the moment split aggregate branches over the same
+    # boundary rejoin on their GROUP BY keys, where a NULL is a group label
+    # and a plain `=` drops the whole group.
     base_nullable: set[str] = set()
     for c in inner_node.nullable_concepts:
         base_nullable.add(c.address)
@@ -436,16 +434,10 @@ def resolve_rowset(
         ]
         if full_handles:
             boundary_grain = BuildGrain.from_concepts(full_handles)
-    key_like = set(boundary_grain.components) | {
-        addr
-        for canonical, members in environment.scoped_join_key_groups.items()
-        for addr in (canonical, *members)
-    }
     nullable_handles = [
         h
         for h in handles
-        if (h.address in key_like or (set(h.pseudonyms) & key_like))
-        and (
+        if (
             h.address in base_nullable
             or (set(h.pseudonyms) & base_nullable)
             or (
