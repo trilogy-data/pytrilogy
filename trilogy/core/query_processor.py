@@ -237,12 +237,6 @@ def generate_source_map(
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
         for _ in unnest:
             source_map[qdk] = []
-        if (
-            qdk not in source_map
-            and len(qdv) == 1
-            and isinstance(next(iter(qdv)), UnnestJoin)
-        ):
-            source_map[qdk] = []
         basic = [x for x in qdv if isinstance(x, BuildDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
@@ -356,19 +350,18 @@ def resolve_cte_base_name_and_alias_v2(
         return base.address, base.safe_identifier
 
     joins: list[Join] = [join for join in raw_joins if isinstance(join, Join)]
-    if joins and len(joins) > 0:
+    if joins:
         candidates = [x.left_cte.name for x in joins if x.left_cte]
         for join in joins:
             if join.joinkey_pairs:
                 candidates += [x.cte.name for x in join.joinkey_pairs if x.cte]
         disallowed = [x.right_cte.name for x in joins]
-        try:
-            cte = next(y for y in candidates if y not in disallowed)
-            return cte, cte
-        except IndexError:
+        cte = next((y for y in candidates if y not in disallowed), None)
+        if cte is None:
             raise SyntaxError(
                 f"Invalid join configuration {candidates} {disallowed} for {name}",
             )
+        return cte, cte
     counts: dict[str, int] = defaultdict(lambda: 0)
     output_addresses = [x.address for x in source.output_concepts]
     input_address = [x.address for x in source.input_concepts]
@@ -379,8 +372,6 @@ def resolve_cte_base_name_and_alias_v2(
 
             if k in input_address:
                 counts[vx] = counts[vx] + 1
-
-            counts[vx] = counts[vx]
     if counts:
         return max(counts, key=counts.get), max(counts, key=counts.get)  # type: ignore
     return None, None
@@ -511,8 +502,6 @@ def datasource_to_cte(
         limit=query_datasource.limit,
         **extra_kwargs,
     )
-    if cte.grain != query_datasource.grain:
-        raise ValueError("Grain was corrupted in CTE generation")
     if CONFIG.validate_missing:
         mapped_canonical = {
             c.canonical_address
@@ -702,7 +691,8 @@ def _plan_query_node(
     the statement's HAVING, ORDER BY and hidden components.
 
     The planner returns a fully-grouped FINAL node that may have promoted grain
-    keys to hidden — so hidden_concepts are merged, not overwritten."""
+    keys to hidden, so the statement's hidden components are merged into the
+    node's own hidden set rather than replacing it."""
     # Pre-check connectivity: a WHERE on an unrelated model would otherwise be
     # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
@@ -737,11 +727,6 @@ def _plan_query_node(
     )
     ds = info.strategy_node
     if ds is None:
-        # When the requested concepts span unconnected models, surface the typed
-        # subgraph error rather than an opaque "could not resolve" dump. Caught
-        # by the up-front pre-check for top-level selects; this also covers
-        # nested dead-ends.
-        _raise_if_disconnected(build_statement, build_environment, graph, conditions)
         # FILTER outputs hide their condition concepts; re-check reachability with
         # them surfaced so a filter whose condition can't be related to the value it
         # filters reports the standard disconnected-subgraphs error.
@@ -1138,83 +1123,6 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     return output
 
 
-def _expose_downstream_referenced_columns(
-    ctes: list[CTE | UnionCTE], root_cte: CTE | UnionCTE
-) -> None:
-    """A CTE renders ``output_columns - hidden_concepts``. When a consumer
-    actually renders a column (a non-hidden output) that resolves to a producer
-    column the producer hid — with no visible pseudonym-equivalent on that
-    producer to render instead — the producer never projects it and the SQL
-    references a missing column (a hard BinderException). This bites a grouped
-    metric carried only into a filter CTE's GROUP BY, then re-projected
-    downstream past a property join (q23). Un-hide exactly those producer
-    columns, propagating to a fixpoint (un-hiding a column makes its own
-    upstream references live too).
-
-    Restricted to *rendered* references (non-hidden consumer outputs): a column
-    that merely rides through hidden-everywhere ``source_map`` metadata is never
-    emitted, so un-hiding it would wrongly force it into a grouped SELECT."""
-    producers: dict[str, CTE | UnionCTE] = {
-        c.name: c for c in ctes if not isinstance(c, DatasourceCTE)
-    }
-
-    def _has_visible_equiv(producer: CTE | UnionCTE, address: str) -> bool:
-        target = next(
-            (o for o in producer.output_columns if o.address == address), None
-        )
-        if target is None:
-            return True  # not its own column — resolves via pseudonym/inline
-        klass = set(target.pseudonyms) | {address}
-        return any(
-            o.address in klass and o.address not in producer.hidden_concepts
-            for o in producer.output_columns
-        )
-
-    changed = True
-    while changed:
-        changed = False
-        for consumer in (*ctes, root_cte):
-            for col in consumer.output_columns:
-                if col.address in consumer.hidden_concepts:
-                    continue
-                raw = consumer.source_map.get(col.address, [])
-                tokens = [raw] if isinstance(raw, str) else list(raw)
-                for token in tokens:
-                    producer = producers.get(token)
-                    if (
-                        producer is None
-                        or col.address not in producer.hidden_concepts
-                        or _has_visible_equiv(producer, col.address)
-                    ):
-                        continue
-                    producer.hidden_concepts = set(producer.hidden_concepts) - {
-                        col.address
-                    }
-                    changed = True
-
-
-def _collect_unreachable_union_arms(
-    ctes: list[CTE | UnionCTE],
-) -> list[CTE | UnionCTE]:
-    """A union's arms live in ``internal_ctes``, not ``parent_ctes``, so
-    ``flatten_ctes`` only reaches an arm when something else references it (a
-    join, a shared base). An arm reachable ONLY through its union — e.g. a rename
-    projection sitting above a grouped arm — is otherwise never emitted, leaving
-    the union pointing at an undefined CTE. Add exactly those, by name (a
-    distinct same-named instance is already covered)."""
-    reachable = {c.name for c in ctes}
-    extra: list[CTE | UnionCTE] = []
-    for cte in ctes:
-        if not isinstance(cte, UnionCTE):
-            continue
-        for arm in cte.internal_ctes:
-            for node in flatten_ctes(arm):
-                if node.name not in reachable:
-                    reachable.add(node.name)
-                    extra.append(node)
-    return extra
-
-
 def process_auto(
     environment: Environment,
     statement: PersistStatement | SelectStatement,
@@ -1502,7 +1410,6 @@ def process_query(
     for hook in hooks:
         hook.process_root_cte(root_cte)
     flattened = flatten_ctes(root_cte)
-    flattened = _collect_unreachable_union_arms(flattened) + flattened
     raw_ctes: list[CTE | UnionCTE] = list(reversed(flattened))
     seen = {}
     # we can have duplicate CTEs at this point
@@ -1518,7 +1425,6 @@ def process_query(
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
 
     root_cte.limit = statement.limit
-    root_cte.hidden_concepts = statement.hidden_components
 
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
@@ -1567,7 +1473,6 @@ def process_query(
         domain_graph=domain_graph,
         supports_full_join=supports_full_join,
     )
-    _expose_downstream_referenced_columns(final_ctes, root_cte)
     # Observational only — a diagnostics failure must never block the query.
     derived_value_scopes: list[DerivedValueScope] = []
     if build_lineage_sink:

@@ -36,13 +36,11 @@ class SelectNode(StrategyNode):
         output_concepts: list[BuildConcept],
         environment: BuildEnvironment,
         datasource: BuildDatasource | None = None,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: list[BuildConcept] | None = None,
         rollup_concepts: list[BuildConcept] | None = None,
         nullable_concepts: list[BuildConcept] | None = None,
-        accept_partial: bool = False,
         grain: BuildGrain | None = None,
         force_group: bool | None = False,
         conditions: BoolExpr | None = None,
@@ -60,7 +58,6 @@ class SelectNode(StrategyNode):
             input_concepts=input_concepts,
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
@@ -74,7 +71,6 @@ class SelectNode(StrategyNode):
             ordering=ordering,
             existence_concepts=existence_concepts,
         )
-        self.accept_partial = accept_partial
         self.datasource = datasource
 
     def validate_inputs(self):
@@ -245,18 +241,16 @@ class SelectNode(StrategyNode):
         return resolution
 
     def copy(self) -> "SelectNode":
-        node = SelectNode(
+        node = type(self)(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
             datasource=self.datasource,
             depth=self.depth,
             parents=self.parents,
-            whole_grain=self.whole_grain,
             partial_concepts=list(self.partial_concepts),
             rollup_concepts=list(self.rollup_concepts),
             nullable_concepts=list(self.nullable_concepts),
-            accept_partial=self.accept_partial,
             grain=self.grain,
             force_group=self.force_group,
             conditions=self.conditions,
@@ -278,30 +272,6 @@ class RowsetNode(SelectNode):
     pure 1:1 projection of an already-final body, so forcing a GROUP BY would dedup
     rows (e.g. collapse a union-stack's duplicates) or omit raw projections.
     """
-
-    def copy(self) -> "RowsetNode":
-        node = RowsetNode(
-            input_concepts=list(self.input_concepts),
-            output_concepts=list(self.output_concepts),
-            environment=self.environment,
-            datasource=self.datasource,
-            depth=self.depth,
-            parents=self.parents,
-            whole_grain=self.whole_grain,
-            partial_concepts=list(self.partial_concepts),
-            rollup_concepts=list(self.rollup_concepts),
-            nullable_concepts=list(self.nullable_concepts),
-            accept_partial=self.accept_partial,
-            grain=self.grain,
-            force_group=self.force_group,
-            conditions=self.conditions,
-            preexisting_conditions=self.preexisting_conditions,
-            hidden_concepts=self.hidden_concepts,
-            ordering=self.ordering,
-            existence_concepts=list(self.existence_concepts),
-        )
-        node.limit = self.limit
-        return node
 
 
 class ConstantNode(SelectNode):

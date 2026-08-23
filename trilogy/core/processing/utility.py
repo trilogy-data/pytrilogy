@@ -305,7 +305,4 @@ def sort_select_output_processed(
     return cte
 
 
-def sort_select_output(
-    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
-) -> CTE | UnionCTE:
-    return sort_select_output_processed(cte, query)
+sort_select_output = sort_select_output_processed

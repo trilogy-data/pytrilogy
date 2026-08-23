@@ -1,22 +1,13 @@
-"""``_gate_nullable_by_host`` decides whether two padded join keys may pair.
+"""``_padding_sources`` names the sources whose own rows carry a join key as
+join-analysis padding; the optimizer's value-set upgrade reads it to tell
+shared padding (one source's rows arriving twice) from unrelated NULLs."""
 
-Null-safe equality is right exactly when both sides' NULLs are the SAME rows.
-That is a question about provenance, and hosting only proxies it: an aggregate
-over a padded scan joined back to that scan reads host/feeder asymmetric while
-sharing every padded row, and stripping there lets the guard-upgrade rule flip
-the scan's outer join to INNER and delete the padding.
-"""
-
-from trilogy.core.enums import Modifier, Purpose, SourceType
+from trilogy.core.enums import Purpose, SourceType
 from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.join_resolution import (
-    _gate_nullable_by_host,
-    _padding_sources,
-)
+from trilogy.core.processing.join_resolution import _padding_sources
 
-NULLABLE = [Modifier.NULLABLE]
 KEY = "local.padded"
 
 
@@ -51,29 +42,6 @@ def _qds(
     )
 
 
-def _gate(
-    shared: bool,
-    host_nodes: set[str] | None = None,
-    value_nullables: dict[str, list[str]] | None = None,
-    authored: set[str] | None = None,
-    modifiers: list[Modifier] | None = None,
-    licensed: bool = False,
-    anchored: bool = True,
-) -> list[Modifier]:
-    return _gate_nullable_by_host(
-        list(NULLABLE if modifiers is None else modifiers),
-        "left",
-        "right",
-        {KEY},
-        host_nodes,
-        value_nullables or {},
-        authored,
-        shared,
-        licensed,
-        anchored,
-    )
-
-
 def _identity(address: str) -> str:
     return address
 
@@ -96,66 +64,3 @@ def test_padding_sources_walks_parents():
 def test_padding_sources_scoped_to_the_requested_key():
     padded = _qds([KEY, "local.other"], ["local.other"])
     assert _padding_sources(padded, {KEY}, _identity) == set()
-
-
-def test_shared_padding_keeps_null_safe_under_asymmetric_hosting():
-    """The q47 shape: hosting reads asymmetric, provenance says one scan."""
-    assert _gate(shared=True, host_nodes={"left"}, licensed=False) == NULLABLE
-
-
-def test_shared_padding_still_strips_when_hosting_is_licensed():
-    """Sharing a padded ancestor does not make two `~` families one."""
-    assert _gate(shared=True, host_nodes={"left"}, licensed=True) == []
-
-
-def test_unshared_padding_strips_under_asymmetric_hosting():
-    assert _gate(shared=False, host_nodes={"left"}) == []
-
-
-def test_no_host_basis_family_anchored_reunion_pairs():
-    """A join carrying a licensed `~` key pairs member-to-member: the
-    reunion of one extension member's halves across two branches."""
-    assert _gate(shared=False, host_nodes=None, anchored=True) == NULLABLE
-
-
-def test_no_host_basis_shared_padding_pairs():
-    """Shared padding at a no-basis merge is one source's rows twice."""
-    assert _gate(shared=True, host_nodes=None, anchored=False) == NULLABLE
-
-
-def test_no_host_basis_bare_null_safe_strips():
-    """Neither shared nor anchored pairs "missing" with "missing" across
-    unrelated trees (the field-report cross-family hazard)."""
-    assert _gate(shared=False, host_nodes=None, anchored=False) == []
-
-
-def test_symmetric_hosting_keeps_null_safe():
-    assert _gate(shared=False, host_nodes={"left", "right"}) == NULLABLE
-    assert _gate(shared=False, host_nodes=set()) == NULLABLE
-
-
-def test_value_nulls_are_exempt_on_either_side():
-    """Asymmetric hosting, so these pairs strip unless the exemption holds."""
-    assert (
-        _gate(shared=False, host_nodes={"left"}, value_nullables={"left": [KEY]})
-        == NULLABLE
-    )
-    assert (
-        _gate(shared=False, host_nodes={"left"}, value_nullables={"right": [KEY]})
-        == NULLABLE
-    )
-
-
-def test_authored_key_is_exempt():
-    assert _gate(shared=False, host_nodes={"left"}, authored={KEY}) == NULLABLE
-
-
-def test_gate_leaves_other_modifiers_alone():
-    assert _gate(shared=False, host_nodes={"left"}, modifiers=[Modifier.PARTIAL]) == [
-        Modifier.PARTIAL
-    ]
-    assert _gate(
-        shared=False,
-        host_nodes={"left"},
-        modifiers=[Modifier.NULLABLE, Modifier.PARTIAL],
-    ) == [Modifier.PARTIAL]

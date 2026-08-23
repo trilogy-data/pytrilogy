@@ -39,14 +39,12 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import decompose_condition
-from trilogy.core.processing.node_generators.common import (
-    _walk_aggregate_grain_inputs,
-)
 from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
 )
+from trilogy.utility import unique
 
 from .constants import (
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -75,6 +73,92 @@ PHASE_CONDITION_SUFFIX = "@condition"
 # therefore plans under a stage-qualified condition label, splitting its whole
 # lineage subtree — and its root_d1 feeder — from the other stages'.
 _STAGE_QUALIFIER_PREFIX = ":s"
+
+
+def _union_key_siblings(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Sibling `union(...)` concepts that stack a key for every arm of this
+    union — e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
+    Such a sibling is the stacked row identity of this union's output."""
+    if not isinstance(concept.lineage, BuildFunction):
+        return []
+    arms = concept.lineage.concept_arguments
+    out: list[BuildConcept] = []
+    for other in environment.concepts.values():
+        if other.address == concept.address or other.derivation != Derivation.UNION:
+            continue
+        if not isinstance(other.lineage, BuildFunction):
+            continue
+        other_args = {x.address for x in other.lineage.concept_arguments}
+        if all(
+            a.address in other_args or (a.keys and set(a.keys) & other_args)
+            for a in arms
+        ):
+            out.append(other)
+    return unique(out, "address")
+
+
+def _walk_aggregate_grain_inputs(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    seen: set[str] | None = None,
+) -> list[BuildConcept]:
+    """Collect row-identity concepts an aggregate needs from its arg's
+    upstream — without crossing a row-identity boundary.
+
+    Each concept defines its own row identity if it is:
+      - a rowset (row identity = its declared grain)
+      - a property with keys (row identity = its keys)
+
+    Walks through grain-preserving wrappers to find the row identity, then
+    stops:
+      - FilterItem: walk only ``content`` (the value being filtered defines
+        row identity; ``where`` predicates do not)
+      - Function (BASIC): walk all concept args (a row-level expression
+        inherits row identity from its inputs)
+      - AGGREGATE / ROWSET: do not descend (the inner aggregate has already
+        collapsed its upstream rows to its own ``by`` grain; a rowset
+        defines a fresh row identity we've already captured)"""
+    seen = seen if seen is not None else set()
+    if concept.address in seen:
+        return []
+    seen.add(concept.address)
+
+    if concept.derivation == Derivation.AGGREGATE:
+        return []
+    if concept.derivation == Derivation.ROWSET:
+        return [
+            environment.concepts[c]
+            for c in concept.grain.components
+            if c in environment.concepts
+        ]
+    if concept.derivation == Derivation.UNION:
+        # A union output's per-arm keys can't be stacked into one column, so
+        # its usable row identity is a sibling union over those keys (which a
+        # UnionNode CAN output). Without one, fall through to the per-arm key
+        # demand — unsatisfiable, but loud, never a silent dedup.
+        siblings = _union_key_siblings(concept, environment)
+        if siblings:
+            return siblings
+    if concept.purpose == Purpose.PROPERTY and concept.keys:
+        return [
+            environment.concepts[c] for c in concept.keys if c in environment.concepts
+        ]
+    if concept.lineage is None:
+        return []
+    if isinstance(concept.lineage, BuildFilterItem):
+        # A filter's row identity is its content's; the where clause is a
+        # predicate, not part of the result's row identity.
+        content = concept.lineage.content
+        if isinstance(content, BuildConcept):
+            return _walk_aggregate_grain_inputs(content, environment, seen)
+        return []
+    collected: list[BuildConcept] = []
+    for arg in concept.lineage.concept_arguments:
+        if isinstance(arg, BuildConcept):
+            collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
+    return collected
 
 
 def _split_condition_label(label: str) -> tuple[str, int | None] | None:

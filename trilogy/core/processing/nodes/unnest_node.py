@@ -17,7 +17,6 @@ class UnnestNode(StrategyNode):
         input_concepts: list[BuildConcept],
         output_concepts: list[BuildConcept],
         environment,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         depth: int = 0,
     ):
@@ -25,7 +24,6 @@ class UnnestNode(StrategyNode):
             input_concepts=input_concepts,
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
         )
@@ -54,7 +52,6 @@ class UnnestNode(StrategyNode):
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,
         )

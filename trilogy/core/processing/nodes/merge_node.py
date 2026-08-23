@@ -59,8 +59,7 @@ def _abstract_output_grain(parent: StrategyNode, environment: BuildEnvironment) 
 def _feeds_only_existence(parent: StrategyNode, grandparent: StrategyNode) -> bool:
     """Whether `grandparent` is reachable from `parent` only through an
     existence subselect (a membership feeder) — a side channel, never a row
-    join, so nothing it carries counts as row availability on `parent`.
-    Mirrors ``StrategyNode._repoint_feeder_only_rows``'s feeder test: every
+    join, so nothing it carries counts as row availability on `parent`: every
     concept it supplies that `parent` demands is an existence concept (q29's
     coalescing key member carried only by the membership rowset)."""
     if not parent.existence_concepts:
@@ -276,7 +275,6 @@ class MergeNode(StrategyNode):
         whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         node_joins: list[NodeJoin] | None = None,
-        join_concepts: list | None = None,
         force_join_type: JoinType | None = None,
         partial_concepts: list[BuildConcept] | None = None,
         rollup_concepts: list[BuildConcept] | None = None,
@@ -287,7 +285,6 @@ class MergeNode(StrategyNode):
         conditions: BoolExpr | None = None,
         preexisting_conditions: BoolExpr | None = None,
         hidden_concepts: set[str] | None = None,
-        virtual_output_concepts: list[BuildConcept] | None = None,
         existence_concepts: list[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
@@ -298,7 +295,6 @@ class MergeNode(StrategyNode):
             input_concepts=input_concepts,
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
@@ -309,11 +305,12 @@ class MergeNode(StrategyNode):
             conditions=conditions,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
-            virtual_output_concepts=virtual_output_concepts,
             existence_concepts=existence_concepts,
             ordering=ordering,
         )
-        self.join_concepts = join_concepts
+        # Emit the joined relation row by row rather than collapsing to the
+        # declared grain (a bare axis-member projection keeps its fan-out).
+        self.whole_grain = whole_grain
         self.force_join_type = force_join_type
         self.node_joins: list[NodeJoin] | None = node_joins
         # A deliberately-assembled multi-side merge (coalescing axis, presence
@@ -530,7 +527,7 @@ class MergeNode(StrategyNode):
                 ):
                     concept = self.environment.concepts.get(member)
                     if concept is not None:
-                        parent.add_output_concept(concept, rebuild=False)
+                        parent.add_output_concepts([concept], rebuild=False)
                         changed = True
             if changed:
                 parent.rebuild_cache()
@@ -906,31 +903,6 @@ class MergeNode(StrategyNode):
         node_existence_source_map = resolve_existence_map(
             final_datasets, self.existence_concepts
         )
-        # A membership-RHS concept (`... in (rowset.a, rowset.b)`) carried as an
-        # OUTPUT column but supplied ONLY by an existence feeder is not row data
-        # — the feeder is reachable solely through its subselect, never a join,
-        # so emitting it in the SELECT dangles the FROM (``Referenced table ...
-        # not found``). Drop it from the row outputs and row source_map. Gated
-        # on: (a) it is an actual output column (a concept that only feeds a
-        # subselect is not in ``output`` and must keep its source_map entry —
-        # some nodes render the subselect FROM the row map), and (b) the
-        # subselect can still resolve it via ``existence_source_map`` after
-        # removal. A genuinely-joined parent supplying it (e.g. a coalesced grain
-        # key) leaves it non-all-feeder — feeders sort last above — so it stays.
-        existence_only_rows = {
-            addr
-            for addr in existence_addr_set
-            if addr in merge_output_addresses
-            and addr in node_existence_source_map
-            and source_map.get(addr)
-            and all(s in existence_final for s in source_map[addr])
-        }
-        if existence_only_rows:
-            for addr in existence_only_rows:
-                source_map.pop(addr, None)
-            final_output_concepts = [
-                c for c in final_output_concepts if c.address not in existence_only_rows
-            ]
         # Scoped OUTER joins can bind different physical key addresses for one
         # merged key. A chain of joins (e.g. `a.k=b.k`, `c.k=b.k`) makes those
         # addresses one equivalence class; the merged key on any output row is
@@ -1068,9 +1040,7 @@ class MergeNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             nullable_concepts=list(self.nullable_concepts),
             hidden_concepts=set(self.hidden_concepts),
-            virtual_output_concepts=list(self.virtual_output_concepts),
             node_joins=list(self.node_joins) if self.node_joins else None,
-            join_concepts=list(self.join_concepts) if self.join_concepts else None,
             force_join_type=self.force_join_type,
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,

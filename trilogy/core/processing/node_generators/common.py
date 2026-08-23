@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Sequence
 from itertools import combinations
 from typing import (
     NamedTuple,
@@ -8,227 +8,16 @@ from typing import (
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildConcept,
-    BuildDatasource,
-    BuildFilterItem,
-    BuildFunction,
     BuildGrain,
-    BuildUnionDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.utility import unique
 
-AGGREGATE_TYPES = (BuildAggregateWrapper,)
-FUNCTION_TYPES = (BuildFunction,)
-PROPERTY_PURPOSES = (Purpose.PROPERTY, Purpose.UNIQUE_PROPERTY)
-
-
-def _union_key_siblings(
-    concept: BuildConcept, environment: BuildEnvironment
-) -> list[BuildConcept]:
-    """Sibling `union(...)` concepts that stack a key for every arm of this
-    union — e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
-    Such a sibling is the stacked row identity of this union's output."""
-    if not isinstance(concept.lineage, BuildFunction):
-        return []
-    arms = concept.lineage.concept_arguments
-    out: list[BuildConcept] = []
-    for other in environment.concepts.values():
-        if other.address == concept.address or other.derivation != Derivation.UNION:
-            continue
-        if not isinstance(other.lineage, BuildFunction):
-            continue
-        other_args = {x.address for x in other.lineage.concept_arguments}
-        if all(
-            a.address in other_args or (a.keys and set(a.keys) & other_args)
-            for a in arms
-        ):
-            out.append(other)
-    return unique(out, "address")
-
-
-def _walk_aggregate_grain_inputs(
-    concept: BuildConcept,
-    environment: BuildEnvironment,
-    seen: set[str] | None = None,
-) -> list[BuildConcept]:
-    """Collect row-identity concepts an aggregate needs from its arg's
-    upstream — without crossing a row-identity boundary.
-
-    Each concept defines its own row identity if it is:
-      - a rowset (row identity = its declared grain)
-      - a property with keys (row identity = its keys)
-
-    Walks through grain-preserving wrappers to find the row identity, then
-    stops:
-      - FilterItem: walk only ``content`` (the value being filtered defines
-        row identity; ``where`` predicates do not)
-      - Function (BASIC): walk all concept args (a row-level expression
-        inherits row identity from its inputs)
-      - AGGREGATE / ROWSET: do not descend (the inner aggregate has already
-        collapsed its upstream rows to its own ``by`` grain; a rowset
-        defines a fresh row identity we've already captured)"""
-    seen = seen if seen is not None else set()
-    if concept.address in seen:
-        return []
-    seen.add(concept.address)
-
-    if concept.derivation == Derivation.AGGREGATE:
-        return []
-    if concept.derivation == Derivation.ROWSET:
-        return [
-            environment.concepts[c]
-            for c in concept.grain.components
-            if c in environment.concepts
-        ]
-    if concept.derivation == Derivation.UNION:
-        # A union output's per-arm keys can't be stacked into one column, so
-        # its usable row identity is a sibling union over those keys (which a
-        # UnionNode CAN output). Without one, fall through to the per-arm key
-        # demand — unsatisfiable, but loud, never a silent dedup.
-        siblings = _union_key_siblings(concept, environment)
-        if siblings:
-            return siblings
-    if concept.purpose == Purpose.PROPERTY and concept.keys:
-        return [
-            environment.concepts[c] for c in concept.keys if c in environment.concepts
-        ]
-    if concept.lineage is None:
-        return []
-    if isinstance(concept.lineage, BuildFilterItem):
-        # A filter's row identity is its content's; the where clause is a
-        # predicate, not part of the result's row identity.
-        content = concept.lineage.content
-        if isinstance(content, BuildConcept):
-            return _walk_aggregate_grain_inputs(content, environment, seen)
-        return []
-    collected: list[BuildConcept] = []
-    for arg in concept.lineage.concept_arguments:
-        if isinstance(arg, BuildConcept):
-            collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
-    return collected
-
-
 LOGGER_PREFIX = "[COMMON]"
-
-
-def prune_and_merge(
-    G: ReferenceGraph,
-    keep_node_lambda: Callable[[str], bool],
-) -> ReferenceGraph:
-    """Prune nodes of one type and create direct connections between remaining nodes."""
-    nodes_to_keep = [n for n in G.nodes if keep_node_lambda(n)]
-    new_graph = G.subgraph(nodes_to_keep).copy()
-    nodes_to_remove = [n for n in G.nodes() if n not in nodes_to_keep]
-
-    for node_pair in combinations(nodes_to_keep, 2):
-        n1, n2 = node_pair
-        try:
-            path = nx.shortest_path(G, n1, n2)
-            if len(path) > 2 or any(node in nodes_to_remove for node in path[1:-1]):
-                new_graph.add_edge(n1, n2)
-        except nx.NetworkXNoPath:
-            continue
-
-    return new_graph
-
-
-LOGGER_PREFIX = "[COMMON]"
-
-
-# -----------------------------
-# Small, testable helpers
-# -----------------------------
-
-
-def is_ds_node(n: str) -> bool:
-    return n.startswith("ds~")
-
-
-def build_ds_column_index(
-    datasource_lookup: dict[str, BuildDatasource | BuildUnionDatasource],
-) -> dict[str, dict[str, BuildConcept]]:
-    """
-    ds -> { concept_address -> BuildConcept }
-    """
-    base = {
-        ds: {col.concept.address: col.concept for col in node.columns}
-        for ds, node in datasource_lookup.items()
-    }
-    return base
-
-
-def iter_unique_ds_pairs(
-    g: nx.Graph | nx.DiGraph,
-) -> Iterable[tuple[str, str]]:
-    """
-    Yield each unordered datasource pair once.
-    """
-    seen = set()
-    for ds in g.nodes:
-        for nbr in g.neighbors(ds):
-            pair = cast(tuple[str, str], tuple(sorted((ds, nbr))))
-            if pair in seen:
-                continue
-            seen.add(pair)
-            yield pair
-
-
-def get_concept_node_cached(cache: dict[str, str], concept: BuildConcept):
-    """
-    Memoized concept -> graph node resolution.
-    """
-    addr = concept.address
-    if addr not in cache:
-        cache[addr] = concept_to_node(concept.with_default_grain())
-    return cache[addr]
-
-
-def existing_join_addresses(
-    final: ReferenceGraph,
-    concepts: Iterable[BuildConcept],
-    get_node,
-) -> set[str]:
-    """
-    Return addresses already present in the final graph.
-    """
-    existing = set()
-    for c in concepts:
-        if get_node(c) in final.nodes:
-            existing.add(c.address)
-    return existing
-
-
-def injectable_concepts(
-    common: dict[str, BuildConcept],
-    reduced: set[str],
-    existing: set[str],
-    synonyms: dict[str, str],
-    add_joins: bool,
-) -> Iterable[BuildConcept]:
-    """
-    Yield concepts eligible for reinjection.
-    """
-    for addr, concept in common.items():
-        if addr in synonyms:
-            continue
-        if addr not in reduced:
-            continue
-        # Aggregate metrics (e.g. `count`) can show up on multiple persisted
-        # datasources at different grains — but they are computed values, not
-        # join keys. Joining datasources on a shared aggregate is meaningless
-        # and would emit a virtual `_virt_agg_*` node into the graph.
-        if concept.is_aggregate:
-            continue
-        if addr in existing and not add_joins:
-            continue
-        if any(p in existing for p in concept.pseudonyms):
-            continue
-        yield concept
 
 
 class AuthoredJoinPair(NamedTuple):
@@ -439,72 +228,70 @@ def inject_authored_join_key_terminals(
     return unique(all_concepts + additions, "address")
 
 
-# -----------------------------
-# Main function
-# -----------------------------
-
-
 def reinject_common_join_keys_v2(
     base_graph: ReferenceGraph,
     final: ReferenceGraph,
     synonyms: dict[str, str],
     add_joins: bool = False,
 ) -> bool:
-    """
-    Reinjection of inferred join keys between datasource nodes.
-    """
+    """Reinject inferred join keys: two datasources that share a non-aggregate
+    column (and are connected through `final`) both get an edge to that
+    column's concept node."""
     datasource_lookup = {**base_graph.datasources, **final.datasources}
-
-    ds_graph = prune_and_merge(final, is_ds_node)
+    ds_nodes = [n for n in final.nodes if n.startswith("ds~")]
+    # Datasource-only view of `final`: pairs connected through any pruned
+    # (non-datasource) path become direct neighbours.
+    ds_graph = final.subgraph(ds_nodes).copy()
+    for n1, n2 in combinations(ds_nodes, 2):
+        try:
+            if len(nx.shortest_path(final, n1, n2)) > 2:
+                ds_graph.add_edge(n1, n2)
+        except nx.NetworkXNoPath:
+            continue
     if not ds_graph.nodes:
         return False
 
-    # Precompute once
-    ds_columns = build_ds_column_index(datasource_lookup)
-    concept_node_cache: dict[str, str] = {}
-
+    ds_columns = {
+        ds: {col.concept.address: col.concept for col in node.columns}
+        for ds, node in datasource_lookup.items()
+    }
+    node_cache: dict[str, str] = {}
     injected = False
-
-    for ds1, ds2 in iter_unique_ds_pairs(ds_graph):
+    pairs = dict.fromkeys(
+        cast(tuple[str, str], tuple(sorted((ds, nbr))))
+        for ds in ds_graph.nodes
+        for nbr in ds_graph.neighbors(ds)
+    )
+    for ds1, ds2 in pairs:
         if ds1 not in ds_columns or ds2 not in ds_columns:
             continue
-
         cols1 = ds_columns[ds1]
-        cols2 = ds_columns[ds2]
-
-        common_addrs = cols1.keys() & cols2.keys()
-        if not common_addrs:
+        common = {addr: cols1[addr] for addr in cols1.keys() & ds_columns[ds2].keys()}
+        if not common:
             continue
-
-        common_concepts = {addr: cols1[addr] for addr in common_addrs}
-
-        reduced = set(BuildGrain.from_concepts(common_concepts.values()).components)
-
-        get_node = lambda c: get_concept_node_cached(concept_node_cache, c)
-
-        existing = existing_join_addresses(
-            final,
-            common_concepts.values(),
-            get_node,
-        )
-
-        for concept in injectable_concepts(
-            common_concepts,
-            reduced,
-            existing,
-            synonyms,
-            add_joins,
-        ):
-            cnode = get_node(concept)
+        reduced = set(BuildGrain.from_concepts(common.values()).components)
+        for addr, concept in common.items():
+            if addr not in node_cache:
+                node_cache[addr] = concept_to_node(concept.with_default_grain())
+        existing = {addr for addr in common if node_cache[addr] in final.nodes}
+        for addr, concept in common.items():
+            # Aggregate metrics (e.g. `count`) can show up on multiple persisted
+            # datasources at different grains, but they are computed values,
+            # not join keys: joining on one is meaningless and would emit a
+            # virtual `_virt_agg_*` node into the graph.
+            if addr in synonyms or addr not in reduced or concept.is_aggregate:
+                continue
+            if addr in existing and not add_joins:
+                continue
+            if any(p in existing for p in concept.pseudonyms):
+                continue
+            cnode = node_cache[addr]
             final.add_edge(ds1, cnode)
             final.add_edge(ds2, cnode)
-
             logger.debug(
                 f"{LOGGER_PREFIX} reinjecting common join key {cnode} "
                 f"between {ds1} and {ds2}, existing {existing}"
             )
-
-            existing.add(concept.address)
+            existing.add(addr)
             injected = True
-
     return injected

@@ -4,7 +4,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildOrderBy,
 )
-from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
@@ -16,7 +15,6 @@ class SubselectNode(StrategyNode):
         input_concepts: list[BuildConcept],
         output_concepts: list[BuildConcept],
         environment,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         depth: int = 0,
         ordering: BuildOrderBy | None = None,
@@ -26,23 +24,17 @@ class SubselectNode(StrategyNode):
             input_concepts=input_concepts,
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
             ordering=ordering,
             preexisting_conditions=preexisting_conditions,
         )
 
-    def _resolve(self) -> QueryDatasource:
-        base = super()._resolve()
-        return base
-
     def copy(self) -> "SubselectNode":
         return SubselectNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,
             ordering=self.ordering,

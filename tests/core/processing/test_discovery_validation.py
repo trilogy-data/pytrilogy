@@ -86,14 +86,12 @@ class _StackNode:
         preexisting_conditions=None,
         hidden_concepts=None,
         partial_concepts=None,
-        virtual_output_concepts=None,
         label="node",
     ):
         self.output_concepts = list(output_concepts)
         self.preexisting_conditions = preexisting_conditions
         self.hidden_concepts = set(hidden_concepts or set())
         self.partial_concepts = list(partial_concepts or [])
-        self.virtual_output_concepts = list(virtual_output_concepts or [])
         self._label = label
 
     def resolve(self):

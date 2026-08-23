@@ -428,7 +428,6 @@ address items_table;
     node, _ = create_datasource_node(
         datasource=ds,
         all_concepts=[build_env.concepts["sale_id"], build_env.concepts["item_id"]],
-        accept_partial=True,
         environment=build_env,
         depth=0,
         conditions=full_conditions,

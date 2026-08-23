@@ -27,7 +27,6 @@ class FilterNode(StrategyNode):
         input_concepts: list[BuildConcept],
         output_concepts: list[BuildConcept],
         environment,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         depth: int = 0,
         conditions: BoolExpr | None = None,
@@ -40,7 +39,6 @@ class FilterNode(StrategyNode):
         super().__init__(
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
             input_concepts=input_concepts,
@@ -57,7 +55,6 @@ class FilterNode(StrategyNode):
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,
             conditions=self.conditions,

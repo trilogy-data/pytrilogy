@@ -292,11 +292,6 @@ def validate_stack(
                 group_mates,
                 node_deep_addresses,
             )
-        for concept in node.virtual_output_concepts:
-            if concept.address in non_partial_addresses:
-                continue
-            found_addresses.add(concept.address)
-            virtual_addresses.add(concept.address)
     conditions_met = _conditions_met(
         stack,
         found_addresses,

@@ -1315,57 +1315,6 @@ def _padding_sources(
     return found
 
 
-def _gate_nullable_by_host(
-    modifiers: list[Modifier],
-    left: str,
-    right: str,
-    keys: set[str],
-    host_nodes: set[str] | None,
-    value_nullables: dict[str, list[str]],
-    authored_keys: set[str] | None = None,
-    shared_padding: bool = False,
-    hosting_is_licensed: bool = True,
-    family_anchored: bool = True,
-) -> list[Modifier]:
-    """Null-safe equality pairs padding of shared provenance. A host/feeder
-    pair (exactly one side hosts the node's extension-licensed domains) pads
-    for different reasons — grain-bearing extension rows vs join manufacture —
-    and pairing them cross-products the families (get_join_type preserves the
-    host instead). VALUE nulls are exempt: a `?` NULL names the same group on
-    both sides no matter who hosts.
-
-    Hosting is a proxy for provenance, and it misreads one shape: an aggregate
-    over a padded scan joined back to that scan hosts asymmetrically while
-    sharing every padded row, and stripping there lets the guard-upgrade rule
-    flip the scan's outer join to INNER and delete the padding. `shared_padding`
-    (one source upstream of BOTH sides did the padding) identifies it, but only
-    where no extension family can exist: sharing a padded ancestor does NOT
-    make two `~` families one, and pairing those invents rows. So the exemption
-    is limited to a grain-derived host basis, where merge_node found no
-    licensed key to host and there are no families to keep apart.
-
-    A merge with NO host basis can still pair legitimately in two shapes:
-    shared padding (one source's rows arriving twice), or a reunion of one
-    extension member's halves manufactured in two branches — recognizable
-    because the JOIN also anchors on a licensed `~` family key, making the
-    pairing member-to-member (`family_anchored`). A bare null-safe pair with
-    neither pairs "missing" with "missing" across unrelated trees — the
-    field-report cross-family hazard — and strips."""
-    if (
-        Modifier.NULLABLE in modifiers
-        and not (shared_padding and not hosting_is_licensed)
-        and (
-            (host_nodes is not None and (left in host_nodes) != (right in host_nodes))
-            or (host_nodes is None and not shared_padding and not family_anchored)
-        )
-        and not (authored_keys and keys & authored_keys)
-        and not _has_any(keys, left, value_nullables)
-        and not _has_any(keys, right, value_nullables)
-    ):
-        return [m for m in modifiers if m is not Modifier.NULLABLE]
-    return modifiers
-
-
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -1477,12 +1426,6 @@ def get_node_joins(
         canon_node(pair.canonical.address)
         for pair in authored_join_pair_candidates(environment)
     }
-    licensed_nodes = {
-        canon_node(address)
-        for datasource in environment.datasources.values()
-        for address in datasource.column_level_partial_addresses
-        if address not in extent_free_spans
-    }
     extent_free_key_nodes = {canon_node(address) for address in extent_free_spans}
     span_binding_sources = {
         ds_node: {
@@ -1491,12 +1434,6 @@ def get_node_joins(
         }
         for ds_node, datasource in ds_node_map.items()
     }
-    # merge_node hosts on the node's licensed outputs when it has any and falls
-    # back to the grain otherwise; only the first basis implies extension
-    # families.
-    hosting_is_licensed = bool(
-        host_grain and {canon_node(a) for a in host_grain} & licensed_nodes
-    )
     host_nodes: set[str] | None = None
     if host_grain:
         host_canon = {canon_node(a) for a in host_grain}
@@ -1577,33 +1514,11 @@ def get_node_joins(
                         left=ds_concept_map[(k, concept)],
                         right=ds_concept_map[(j.right, concept)],
                         existing_datasource=ds_node_map[k],
-                        modifiers=_gate_nullable_by_host(
-                            get_modifiers(
-                                ds_concept_map[(k, concept)],
-                                ds_concept_map[(j.right, concept)],
-                                ds_node_map[k],
-                                ds_node_map[j.right],
-                            ),
-                            k,
-                            j.right,
-                            {concept},
-                            host_nodes,
-                            value_nullables,
-                            authored_veto_keys,
-                            bool(
-                                _padding_sources(ds_node_map[k], {concept}, canon_node)
-                                & _padding_sources(
-                                    ds_node_map[j.right], {concept}, canon_node
-                                )
-                            ),
-                            hosting_is_licensed,
-                            # A licensed `~` key among the join's own keys
-                            # anchors pairing member-to-member.
-                            any(
-                                key_node in licensed_nodes
-                                for key_set in j.keys.values()
-                                for key_node in key_set
-                            ),
+                        modifiers=get_modifiers(
+                            ds_concept_map[(k, concept)],
+                            ds_concept_map[(j.right, concept)],
+                            ds_node_map[k],
+                            ds_node_map[j.right],
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

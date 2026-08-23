@@ -11,12 +11,6 @@ from trilogy.core.models.build import (
 )
 
 
-def _concept_lookup(
-    address: str, concepts_by_address: Mapping[str, BuildConcept]
-) -> BuildConcept | None:
-    return concepts_by_address.get(address)
-
-
 def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
@@ -171,19 +165,6 @@ def filter_finer_row_args(
     return finer
 
 
-def filter_is_group_level(
-    conditions: BuildWhereClause | None,
-    target_grain: BuildGrain,
-    concepts_by_address: Mapping[str, BuildConcept],
-) -> bool:
-    """True when every row-arg filter concept is constant within a target-grain
-    group, so the filter selects whole groups and can be applied post-rollup
-    (via a join on a coarser/exact aggregate). The complement — filters on a
-    column finer than the target grain — is returned by `filter_finer_row_args`
-    and handled by the pre-aggregation rollup path instead."""
-    return not filter_finer_row_args(conditions, target_grain, concepts_by_address)
-
-
 def get_additive_rollup_concepts(
     datasource: BuildDatasource,
     requested_concepts: list[BuildConcept],
@@ -230,7 +211,7 @@ def get_additive_rollup_concepts(
 
     dropped = datasource_grain - target_grain
     dropped_concepts = [
-        _concept_lookup(address, concepts_by_address) for address in dropped.components
+        concepts_by_address.get(address) for address in dropped.components
     ]
     if any(concept is None for concept in dropped_concepts):
         return []

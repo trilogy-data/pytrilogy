@@ -186,7 +186,6 @@ def create_select_node_candidate(
         bcandidate, force_group = create_datasource_node(
             datasource,
             all_concepts,
-            accept_partial,
             environment,
             depth,
             conditions=conditions,
@@ -207,7 +206,6 @@ def create_select_node_candidate(
         bcandidate, force_group, group_source_count = create_union_datasource_candidate(
             datasource,
             all_concepts,
-            accept_partial,
             environment,
             depth,
             conditions=conditions,
@@ -253,7 +251,6 @@ def create_select_node(
 def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
-    accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
@@ -441,7 +438,6 @@ def create_datasource_node(
                 {c.address, c.canonical_address, *c.pseudonyms}
             )
         ],
-        accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,
         conditions=routed_conditions,
@@ -455,7 +451,6 @@ def create_datasource_node(
 def create_union_datasource_candidate(
     datasource: BuildUnionDatasource,
     all_concepts: list[BuildConcept],
-    accept_partial: bool,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
@@ -499,7 +494,6 @@ def create_union_datasource_candidate(
         subnode, fg = create_datasource_node(
             child,
             all_concepts,
-            accept_partial,
             environment,
             depth + 1,
             injected_conditions=injected_cond,
@@ -532,22 +526,3 @@ def create_union_datasource_candidate(
         force_group,
         group_source_count,
     )
-
-
-def create_union_datasource(
-    datasource: BuildUnionDatasource,
-    all_concepts: list[BuildConcept],
-    accept_partial: bool,
-    environment: BuildEnvironment,
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-) -> tuple["UnionNode", bool]:
-    node, force_group, _ = create_union_datasource_candidate(
-        datasource,
-        all_concepts,
-        accept_partial,
-        environment,
-        depth,
-        conditions,
-    )
-    return node, force_group

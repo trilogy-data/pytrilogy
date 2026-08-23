@@ -21,7 +21,7 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
     preexisting_conditions,
 )
 from trilogy.core.processing.node_generators.select_merge_node import (
-    _condition_can_apply_after_parent_merge,
+    _condition_can_apply_after_node_merge,
     _condition_remaining_after_parents,
     _condition_source_concepts,
     _conditions_can_be_sourced_by_components,
@@ -314,7 +314,7 @@ address products;
         )
     )
 
-    assert _conditions_can_be_sourced_by_components([], condition, build_env)
+    assert _conditions_can_be_sourced_by_components(condition, build_env)
 
 
 def test_progressive_remaining_condition_after_grouped_parent():
@@ -362,12 +362,10 @@ auto order_count <- count(customer_id);
     remaining = _condition_remaining_after_parents([grouped, region, category], full)
 
     assert remaining == flat_cond
-    assert not _condition_can_apply_after_parent_merge(
+    assert not _condition_can_apply_after_node_merge(
         [grouped, region, category], full.conditional
     )
-    assert _condition_can_apply_after_parent_merge(
-        [grouped, region, category], remaining
-    )
+    assert _condition_can_apply_after_node_merge([grouped, region, category], remaining)
 
 
 def test_merge_condition_routing_does_not_force_inner_for_filtered_parents():
