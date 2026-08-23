@@ -35,18 +35,18 @@ consumption mode, elected after the branch builds.
    merges upstream (`orders FULL items` becomes RIGHT OUTER, and the
    `UpgradeOuterFromKeySetEquivalence` declared-subset match upgrades
    `items LEFT products` to INNER once the FULL is out of its way).
-3. `PruneInvisibleOuterJoins`
-   (`trilogy/core/optimizations/prune_invisible_join.py`, flag
-   `prune_invisible_outer_joins`): a LEFT_OUTER join whose right side has no
-   rendered reference in the consumer (no visible output column, condition,
-   ORDER BY, existence, semi-join feeder, or other-join endpoint) and whose
-   right grain sits within the join's right key addresses is a row-identical
-   no-op (left rows are preserved either way and multiplicity is at most
-   one), so the join is removed and the driver's irrelevant-CTE filter
-   sweeps the orphaned producer. Null-safety on the removed pairs dies with
-   the join. Modifier STRIPPING was a dead end: the consumer proofs reach
-   `item_id` only, never the stitch keys `order_id`/`product_id`, so no
-   sound non-null proof exists for `SimplifyNullSafeJoins` to consume.
+3. `PruneInvisibleOuterJoins` deleted the residual join. A LEFT_OUTER join
+   whose right side had no rendered reference in the consumer (no visible
+   output column, condition, ORDER BY, existence, semi-join feeder, or
+   other-join endpoint) and whose right grain sat within the join's right key
+   addresses is a row-identical no-op (left rows are preserved either way and
+   multiplicity is at most one), so the rule removed the join and the driver's
+   irrelevant-CTE filter swept the orphaned producer. The rule itself was
+   deleted 2026-08-22 once the planner stopped building such joins; see
+   `docs/handoff_contributor_reachability.md`. Modifier STRIPPING was a dead
+   end: the consumer proofs reach `item_id` only, never the stitch keys
+   `order_id`/`product_id`, so no sound non-null proof exists for
+   `SimplifyNullSafeJoins` to consume.
 
 ## Validation (2026-08-21)
 

@@ -13,7 +13,8 @@ to anchor on and either reunited the rest null-safely or read them through a
 plain equality that threw them away. A plan containing a join whose rows the
 same plan discards is a logical-plan defect, and the only layer that could see
 it was the CTE optimizer, which is why the first fix lived there
-(`PruneInvisibleOuterJoins`, `docs/handoff_field_report_residual_stitch.md`).
+(`PruneInvisibleOuterJoins`, `docs/handoff_field_report_residual_stitch.md`;
+since deleted, the planner no longer builds these joins).
 
 Extent routing is now a decision, taken once, before any node is built.
 
@@ -100,15 +101,14 @@ statement fails to bind at render time.
 ## What this leaves behind
 
 The reunion machinery (`_gate_nullable_by_host`'s `family_anchored` keep, the
-padding-provenance matrix, `PruneInvisibleOuterJoins`) is now a safety net for
-plans that still split a span across owners, not the mechanism that makes the
-common case correct. `PruneInvisibleOuterJoins` has nothing to do on the field
-report any more: `tests/optimization/test_prune_invisible_join.py` pins that the
-plan is byte-identical with the rule off.
+padding-provenance matrix) is now a safety net for plans that still split a
+span across owners, not the mechanism that makes the common case correct.
 
-The rule is not retirable, though, and the reason is worth knowing before
-anyone tries: it still changes two statements outside the tpc corpus (gcat's
-aggregate query, thelook `adhoc04`), and in both the dead join is keyed on
-something that is not a `~` span at all. Those are invisible CONTRIBUTORS, a
-separate defect class, specced in `docs/handoff_invisible_contributor_joins.md`
-along with the span-suppression approach that does not fix them.
+`PruneInvisibleOuterJoins` is gone. It survived this landing because it still
+changed two statements outside the tpc corpus (gcat's aggregate query, thelook
+`adhoc04`), and in both the dead join was keyed on something that is not a `~`
+span at all: invisible CONTRIBUTORS, a separate defect class. Both are now
+fixed at the planner (`docs/handoff_invisible_contributor_joins.md`,
+`docs/handoff_contributor_reachability.md`), and
+`tests/optimization/test_no_invisible_contributor_joins.py` asserts the field
+report's plan joins nothing it does not read.

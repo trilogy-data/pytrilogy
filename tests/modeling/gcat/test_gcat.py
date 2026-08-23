@@ -2,7 +2,6 @@ import re
 from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
-from trilogy.constants import CONFIG
 from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
@@ -681,8 +680,8 @@ def test_aggregate_optimization(gcat_env: Executor):
     `launch_info` + `organizations` purely to bind it -- a bridge chain nothing
     read. `_concepts_with_grain_keys` now treats a grain key as an affordance
     when one datasource covers the whole request, so the join is never built.
-    The `JOIN` assertion holds with `prune_invisible_outer_joins` DISABLED; if
-    it only holds with the optimizer on, the planner fix has regressed.
+    No optimizer rule deletes an unread join any more, so this reads the
+    planner's own output.
     """
     queries = gcat_env.parse_text("""
     import fuel_dashboard;
@@ -717,12 +716,7 @@ ORDER BY
 LIMIT 10
 ;
 """)
-    original = CONFIG.optimizations.prune_invisible_outer_joins
-    CONFIG.optimizations.prune_invisible_outer_joins = False
-    try:
-        query = gcat_env.generate_sql(queries[-1])[0]
-    finally:
-        CONFIG.optimizations.prune_invisible_outer_joins = original
+    query = gcat_env.generate_sql(queries[-1])[0]
 
     assert '"fuel_dashboard_agg" as "fuel_aggregates"' in query, query
     assert "JOIN" not in query, query

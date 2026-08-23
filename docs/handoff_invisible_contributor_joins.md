@@ -1,25 +1,23 @@
 # Handoff: joins to contributors that render no column
 
-## Status 2026-08-22: gcat FIXED at the planner, thelook still open
+## Status 2026-08-22: CLOSED. Both causes fixed at the planner and
+## `PruneInvisibleOuterJoins` is retired.
 
 `PruneInvisibleOuterJoins` was expected to decay to dead code once extent
 ownership landed (docs/extent_ownership.md). It did not, and neither surviving
 case was an extent problem. The two turned out to have **separate root causes**,
-not one; the gcat one is now fixed in the planner and the rule no longer fires
-on it.
+not one. Both are now fixed in the planner and the rule has been deleted; see
+docs/handoff_contributor_reachability.md for the thelook half.
 
 ## Reproduce
 
-`prune_ablation.py` (recreate it; ~110 lines) renders every `query*.preql` and
-`adhoc*.preql` under tpc_ds_duckdb, tpc_h, tpc_ds, thelook_duckdb, hackernews
-and ncaa, **plus `tpc_ds_duckdb/aggregates/query*.preql`**, plus gcat's inline
-aggregate query and the field report, once with
-`CONFIG.optimizations.prune_invisible_outer_joins = True` and once with False,
-in ONE process, and diffs the two result sets. Current result:
-
-    statements rendered: 195
-    statements that DIFFER: 1
-      tests/modeling/thelook_duckdb/adhoc04.preql 2195 -> 2278
+The prune rule is gone, so its ablation no longer exists. The corpus sweep it
+used is still the gate for any planner change here (recreate it; ~80 lines):
+render every `query*.preql` and `adhoc*.preql` under tpc_ds_duckdb, tpc_h,
+tpc_ds, thelook_duckdb, hackernews, ncaa, gcat, the_look and faa, **plus
+`tpc_ds_duckdb/aggregates/query*.preql`**, twice in ONE process with the
+candidate change toggled, and diff the two result sets per statement. 203
+statements; a no-op control leg must report 0.
 
 The `aggregates/` cases are NOT optional. They import from the parent directory
 (`import aggregates.opt_three`, env working_path = `tpc_ds_duckdb`) so a
@@ -91,8 +89,7 @@ part of the design. Any change that widens which nodes carry a non-empty
 
 ## The bar for retiring the rule
 
-The ablation above reports 0 changed statements, the tpc corpus render stays
-132/132 byte-identical, the fuzzer stays 228/228, and
-`test_gcat.py::test_aggregate_optimization` passes with the prune rule DISABLED
-(it now renders with the flag off, so it already guards this). Only the thelook
-case stands between here and that bar.
+Met 2026-08-22: the ablation reports 0 changed statements over 203, the tpc
+corpus render stays byte-identical, the fuzzer stays 228/228, and
+`test_gcat.py::test_aggregate_optimization` asserts on the planner's own
+output. The rule, its flag, and its test are deleted.

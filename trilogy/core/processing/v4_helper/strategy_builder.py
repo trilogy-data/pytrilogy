@@ -1795,6 +1795,178 @@ def _widen_merge_join_keys(
                 parent.rebuild_cache()
 
 
+def _descends_from_any(node: StrategyNode, targets: set[int]) -> bool:
+    stack = [node]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if id(current) in targets:
+            return True
+        stack.extend(current.parents)
+    return False
+
+
+def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
+    """Row-reducing filters applied anywhere under `node`: the conditions, and
+    whether it also restricts in a way nothing can be compared against (a
+    semijoin subselect or a row limit)."""
+    conditions: list[BoolExpr] = []
+    opaque = False
+    stack = [node]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if current.conditions is not None:
+            conditions.append(current.conditions)
+        if current.existence_concepts or current.limit is not None:
+            opaque = True
+        stack.extend(current.parents)
+    return conditions, opaque
+
+
+def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> bool:
+    """Every row restriction `node` applies, a sibling applies too, so
+    dropping it from the merge removes no rows."""
+    conditions, opaque = _subtree_restrictions(node)
+    if opaque:
+        return False
+    if not conditions:
+        return True
+    sibling_conditions: list[BoolExpr] = []
+    for sibling in siblings:
+        sibling_conditions.extend(_subtree_restrictions(sibling)[0])
+    return all(
+        any(condition_implies(other, condition) for other in sibling_conditions)
+        for condition in conditions
+    )
+
+
+def _resolved_grain(node: StrategyNode) -> frozenset[str] | None:
+    try:
+        return frozenset(node.resolve().grain.components)
+    except Exception:  # unresolvable this early: refuse to judge the node
+        return None
+
+
+def _merge_component_count(visible: list[set[str]], live: list[int]) -> int:
+    """How many join-connected groups the live contributors form; a shared
+    output address is the axis the merge would join them on."""
+    component = {idx: idx for idx in live}
+    for position, left in enumerate(live):
+        for right in live[position + 1 :]:
+            if not visible[left] & visible[right]:
+                continue
+            merged = {component[left], component[right]}
+            target = min(merged)
+            component = {
+                idx: target if group in merged else group
+                for idx, group in component.items()
+            }
+    return len(set(component.values()))
+
+
+def _fold_covered_contributors(
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    needed: set[str],
+    cover_nodes: set[int],
+    extent_owners: set[int],
+) -> list[StrategyNode]:
+    """Drop a merge contributor a sibling can now render in full.
+
+    Election reads `output_concepts`, a projection boundary; join-key
+    materialization then widens a sibling PAST that boundary, down to the scan
+    that binds the key. A contributor elected as the only exposer of a key can
+    therefore end up rendering no column at all: the merge joins it to read
+    nothing. This is the first moment that is knowable, and it is still the
+    planner, so the join is never built rather than built and deleted.
+
+    Rendering nothing is only the first condition; the rest are what make the
+    drop row-identical rather than merely tidy:
+
+    - The contributor was elected to cover a mandatory concept. An axis-only
+      contributor (`_add_relation_axis_contributors`,
+      `_add_partial_completion_contributors`) is deliberately column-invisible
+      (the axis IS its contribution), and so is an elected extent owner, whose
+      contribution is the span's extension rows. Neither is ever folded.
+    - Dropping it leaves the survivors no less connected: it may be the only
+      parent bridging two siblings that share no axis with each other.
+    - A surviving sibling renders every needed address it carries, no less
+      completely: a sibling holding the address PARTIAL cannot stand in for a
+      complete binding.
+    - What it shares with the survivors is exactly its own grain, so the join
+      neither fanned them out nor constrained them.
+    - It restricts no rows the survivors don't already restrict.
+    """
+    if len(parents) <= 1:
+        return parents
+    relation_members = {
+        addr
+        for canonical, members in environment.scoped_join_key_groups.items()
+        for addr in (canonical, *members)
+    }
+    visible = [
+        {o.address for o in p.output_concepts if o.address not in p.hidden_concepts}
+        for p in parents
+    ]
+    partials = [{c.address for c in p.partial_concepts} for p in parents]
+    dropped: set[int] = set()
+    for idx, parent in enumerate(parents):
+        if visible[idx] & relation_members:
+            continue
+        if not _descends_from_any(parent, cover_nodes):
+            continue
+        if _descends_from_any(parent, extent_owners):
+            continue
+        live = [j for j in range(len(parents)) if j not in dropped]
+        others = [j for j in live if j != idx]
+        contribution = visible[idx] & needed
+        # Nothing at all in `needed` means this is an axis contributor whose
+        # value is the join itself, not a column; only a cover contributor
+        # whose columns moved elsewhere is foldable here.
+        if not others or not contribution:
+            continue
+        # Its columns living elsewhere doesn't make it inert: it may be the
+        # only contributor sharing an axis with two siblings that share none
+        # with each other, and dropping the bridge cross-joins them ON 1=1.
+        if _merge_component_count(visible, others) > _merge_component_count(
+            visible, live
+        ):
+            continue
+        if not all(
+            any(
+                address in visible[j]
+                and (address in partials[idx] or address not in partials[j])
+                for j in others
+            )
+            for address in contribution
+        ):
+            continue
+        # Exactly its own key is shared with the survivors: fewer and the join
+        # fans out, more and the join CONSTRAINS: the contributor is pairing
+        # columns (item->order) that the survivors would otherwise pair freely,
+        # so dropping it is not a no-op even though every column still renders.
+        shared = visible[idx] & set().union(*(visible[j] for j in others))
+        grain = _resolved_grain(parent)
+        if grain is None or grain != shared:
+            continue
+        if not _restrictions_survive(parent, [parents[j] for j in others]):
+            continue
+        logger.info(
+            f"[v4] folding invisible FINAL contributor {type(parent).__name__} "
+            f"outputs={sorted(visible[idx])}; siblings render all of "
+            f"{sorted(contribution)}"
+        )
+        dropped.add(idx)
+    return [p for idx, p in enumerate(parents) if idx not in dropped]
+
+
 def _raise_if_rowset_islanded(
     parents: list[StrategyNode],
     mandatory_list: list[BuildConcept],
@@ -3398,13 +3570,14 @@ def _assemble_final_node(
             combine_existing=False,
         )
 
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     per_group = _cover_groups_for_mandatory(
         group_graph,
         attrs,
         built,
         mandatory_list,
         environment,
-        attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership(),
+        ownership,
     )
     if not per_group:
         return _apply_final_conditions(
@@ -3742,6 +3915,13 @@ def _assemble_final_node(
     )
     parents = _fold_passthrough_parents(parents)
     _widen_merge_join_keys(parents, environment, final_merge_grain)
+    parents = _fold_covered_contributors(
+        parents,
+        environment,
+        final_needed | filter_only_addrs,
+        {id(built[gid]) for gid, concepts in per_group.items() if concepts},
+        {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
+    )
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()
