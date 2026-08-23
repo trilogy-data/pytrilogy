@@ -11,7 +11,6 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
-    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
@@ -52,81 +51,6 @@ from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
-
-
-def _abstract_output_grain(parent: StrategyNode, environment: BuildEnvironment) -> bool:
-    """A parent whose outputs sit at abstract grain is a single-row (`by *`)
-    aggregate: it has no join key and must be broadcast via a keyless FULL
-    join. Injecting a scoped-join key would re-grain it to that key, and the
-    renderer's grain-match collapse would then silently strip the aggregate
-    function (q23)."""
-    return BuildGrain.from_concepts(parent.output_concepts, environment).abstract
-
-
-def _feeds_only_existence(parent: StrategyNode, grandparent: StrategyNode) -> bool:
-    """Whether `grandparent` is reachable from `parent` only through an
-    existence subselect (a membership feeder) — a side channel, never a row
-    join, so nothing it carries counts as row availability on `parent`: every
-    concept it supplies that `parent` demands is an existence concept (q29's
-    coalescing key member carried only by the membership rowset)."""
-    if not parent.existence_concepts:
-        return False
-    existence = {c.address for c in parent.existence_concepts}
-    outputs = {c.address for c in grandparent.output_concepts}
-    if not outputs & existence:
-        return False
-    demand = {c.address for c in parent.input_concepts} | {
-        c.address for c in parent.output_concepts
-    }
-    return all(addr in existence for addr in outputs & demand)
-
-
-def _renders_nonstandard_grouping(parent: StrategyNode) -> bool:
-    """A parent that renders `GROUP BY ROLLUP/CUBE/GROUPING SETS` takes its
-    GROUP BY from the aggregate wrapper's `by` list verbatim, so any column
-    surfaced on it that isn't one of those keys becomes a bare, ungrouped
-    projection — a binder error (q05). The key still reaches join inference
-    from the other side; this side keeps only its grouping keys."""
-    upstream = {
-        c.address for grandparent in parent.parents for c in grandparent.output_concepts
-    }
-    return any(
-        (wrapper := get_grouped_aggregate_wrapper(c)) is not None
-        and wrapper.grouping.nulls_grouping_keys
-        and c.address not in upstream
-        for c in parent.output_concepts
-    )
-
-
-def _splits_aggregate_groups(
-    parent: StrategyNode, member: str, environment: BuildEnvironment
-) -> bool:
-    """Whether surfacing `member` on `parent` would add a GROUP BY key.
-
-    An aggregating parent's rows ARE its groups, so a key its grain does not
-    determine splits every one of them: the aggregate values come out at the
-    finer grain and the final projection, which groups by its outputs, emits
-    one row per split instead of re-aggregating. The key still reaches join
-    inference from the other side of the relation."""
-    # Local import: v4_helper reaches back into this package.
-    from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
-    )
-
-    if not any(c.is_aggregate for c in parent.output_concepts):
-        return False
-    # The non-aggregate outputs ARE the GROUP BY, whether or not the node
-    # carries a resolved grain.
-    axis = {c.address for c in parent.output_concepts if not c.is_aggregate}
-    # A mate of a grain component in the same authored key group names the
-    # SAME axis, so surfacing it renames a key rather than adding one.
-    for canonical, members in environment.scoped_join_key_groups.items():
-        group = {canonical, *members}
-        if group & axis:
-            axis |= group
-    return member not in axis and not build_fd_determines(
-        environment, axis, member, include_empty_grain=False
-    )
 
 
 def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
@@ -458,52 +382,6 @@ class MergeNode(StrategyNode):
                     j.join_type = self.force_join_type
         return joins
 
-    def _inject_scoped_join_key_exposure(self) -> None:
-        """Make every merged side expose its OWN member of each authored
-        coalescing join-key group (`union join a.k = b.k and a.d = b.d - 1`).
-
-        Join inference pairs the sides' visible outputs, so a side that
-        carries a member somewhere below but doesn't surface it (e.g. a basic
-        wrapper computing the derived member off a rowset drops the rowset's
-        plain co-key) silently loses that key from the join — cross-producting
-        the rows on whatever keys remain (q59). Only members available on the
-        side itself or its immediate parents are surfaced; a side unrelated to
-        a group is untouched."""
-        group_mates = self.environment.distinct_scoped_join_group_mates()
-        if not group_mates or self.node_joins is not None:
-            return
-        for parent in self.parents:
-            if _abstract_output_grain(parent, self.environment):
-                continue
-            if _renders_nonstandard_grouping(parent):
-                continue
-            outputs = {c.address for c in parent.output_concepts}
-            changed = False
-            for member in group_mates:
-                if member in outputs:
-                    if member in parent.hidden_concepts:
-                        parent.unhide_output_concepts(
-                            [c for c in parent.output_concepts if c.address == member],
-                            rebuild=False,
-                        )
-                        changed = True
-                    continue
-                available = any(
-                    c.address == member and c.address not in grandparent.hidden_concepts
-                    for grandparent in parent.parents
-                    if not _feeds_only_existence(parent, grandparent)
-                    for c in grandparent.output_concepts
-                )
-                if available and not _splits_aggregate_groups(
-                    parent, member, self.environment
-                ):
-                    concept = self.environment.concepts.get(member)
-                    if concept is not None:
-                        parent.add_output_concepts([concept], rebuild=False)
-                        changed = True
-            if changed:
-                parent.rebuild_cache()
-
     def _join_proofs(
         self, final_datasets: list[QueryDatasource | BuildDatasource]
     ) -> JoinProofs:
@@ -583,7 +461,6 @@ class MergeNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
-        self._inject_scoped_join_key_exposure()
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]

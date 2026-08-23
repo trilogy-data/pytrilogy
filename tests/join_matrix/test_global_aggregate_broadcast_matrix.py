@@ -211,17 +211,17 @@ def test_union_join_max_plain_concepts(tmp_path: Path):
 
 def test_misgrained_broadcast_is_loud_not_silent(tmp_path: Path, monkeypatch):
     """Backstop for the render layer: if planner misbehavior re-grains a
-    single-row aggregate again (here: the injection guards disabled), SQL
+    single-row aggregate again (here: the exposure guards disabled), SQL
     generation must fail loudly rather than emit the identity collapse."""
-    from trilogy.core.processing.nodes import merge_node
+    from trilogy.core.processing.v4_node_generators import aggregate
 
     monkeypatch.setattr(
-        merge_node, "_abstract_output_grain", lambda parent, environment: False
+        aggregate, "_abstract_output_grain", lambda outputs, environment: False
     )
     monkeypatch.setattr(
-        merge_node,
+        aggregate,
         "_splits_aggregate_groups",
-        lambda parent, member, environment: False,
+        lambda outputs, member, environment: False,
     )
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=tmp_path)
