@@ -111,7 +111,7 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
     references_any_concept,
 )
-from trilogy.core.processing.utility import sort_select_output
+from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.query_processor import (
     process_call,
     process_chart,
@@ -3065,7 +3065,9 @@ class BaseDialect:
     ) -> list[CompiledCTE]:
         return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
             # last CTE needs to respect the user output order
-            self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
+            self.render_cte(
+                sort_select_output_processed(query.ctes[-1], query), auto_sort=False
+            )
         ]
 
     def create_show_output(

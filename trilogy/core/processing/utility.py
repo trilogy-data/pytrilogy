@@ -303,6 +303,3 @@ def sort_select_output_processed(
     }
     cte.output_columns = new_output
     return cte
-
-
-sort_select_output = sort_select_output_processed

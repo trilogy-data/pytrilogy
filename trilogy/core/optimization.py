@@ -32,7 +32,7 @@ from trilogy.core.optimizations.collapse_single_parent import (
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
 from trilogy.core.optimizations.utils import SENSITIVE_DERIVATIONS
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
-from trilogy.core.processing.utility import sort_select_output
+from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
 
@@ -811,12 +811,12 @@ def optimize_ctes(
         pass_up_metadata(root_cte, direct_parent)
         root_cte = direct_parent
 
-        sort_select_output(root_cte, select)
+        sort_select_output_processed(root_cte, select)
 
     # Materialize the statement's output contract before demand-driven rules run.
     # Rendering applies the same projection, but doing it only at render time makes
     # carried, non-selected root columns appear live to their parent CTEs.
-    sort_select_output(root_cte, select)
+    sort_select_output_processed(root_cte, select)
 
     cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
     cte_lookup[root_cte.name] = root_cte

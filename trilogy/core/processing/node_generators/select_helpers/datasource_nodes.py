@@ -148,7 +148,6 @@ def finalize_select_node(
 def create_select_node_candidate(
     ds_name: str,
     subgraph: list[str],
-    accept_partial: bool,
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
@@ -229,7 +228,6 @@ def create_select_node_candidate(
 def create_select_node(
     ds_name: str,
     subgraph: list[str],
-    accept_partial: bool,
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
@@ -239,7 +237,6 @@ def create_select_node(
     candidate = create_select_node_candidate(
         ds_name,
         subgraph,
-        accept_partial,
         g,
         environment,
         depth,

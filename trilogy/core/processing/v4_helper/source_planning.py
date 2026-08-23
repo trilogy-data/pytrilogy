@@ -666,7 +666,6 @@ def _datasource_nodes_for_bridge(
         candidate = create_select_node_candidate(
             ds_node,
             concept_nodes,
-            accept_partial=accept_partial,
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
@@ -1330,7 +1329,6 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
     return create_select_node(
         f"ds~{ds.name}",
         scan_nodes,
-        accept_partial=False,
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,
@@ -1348,7 +1346,6 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
     scan = create_select_node(
         f"ds~{ds.name}",
         scan_nodes,
-        accept_partial=True,
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,
