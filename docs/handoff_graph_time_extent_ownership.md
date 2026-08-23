@@ -46,7 +46,8 @@ narrows the branch" direction:
   keys are join axes nobody projects, so ownership changes no join there.
 - `PruneInvisibleOuterJoins` firings across the corpus + the field report:
   **1 → 0**. Its only firing was the field report's dead subtree, which is now
-  never manufactured.
+  never manufactured. (The rule itself was deleted 2026-08-22 once the two
+  remaining non-`~` cases were fixed at the planner.)
 - Family-anchored null-safe keeps: **61 → 52** (field report 6 → 0, q29
   18 → 15, q64 unchanged at 28). The machinery is still load-bearing for plans
   that genuinely split a span across owners; it is no longer what makes the

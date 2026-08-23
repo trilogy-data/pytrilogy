@@ -1,151 +1,111 @@
-# Design: one reachability answer for election and materialization
+# One reachability answer for election and materialization
 
-## OPEN 2026-08-22. Supersedes the thelook half of
-## docs/handoff_invisible_contributor_joins.md
+## RESOLVED 2026-08-22. Closes the thelook half of
+## docs/handoff_invisible_contributor_joins.md, and retires
+## `PruneInvisibleOuterJoins` with its flag.
 
 ## Summary
 
-The redundant contributor is NOT an election error. Election is correct on the
+The redundant contributor was NOT an election error. Election is correct on the
 inputs it has; the contributor nodes are then reconstructed, and the replacement
 gains the concept as a join key, which is what strands the contributor. The fix
-belongs immediately after join-key materialization. Sections below record the
-four hypotheses that were measured and rejected getting there — check them before
-re-deriving one.
+is `_fold_covered_contributors` in `v4_helper/strategy_builder.py`, called
+immediately after `_widen_merge_join_keys` at the FINAL merge and before the
+`MergeNode` exists. The join is never built.
 
-## The framing that motivated this (partly wrong, kept for the trace)
+## Why not earlier
 
-Two stages ask the same question and get different answers:
+Two stages ask a similar question and get different answers:
 
-- **Election** (`_cover_groups_for_mandatory`, `v4_helper/strategy_builder.py`)
-  asks *which built group EXPOSES this concept* — it reads `output_concepts`.
-  That is a **projection-boundary** question.
+- **Election** (`_cover_groups_for_mandatory`) asks *which built group EXPOSES
+  this concept*: it reads `output_concepts`. A projection-boundary question.
 - **Materialization** (`_widen_merge_join_keys` -> `_widen_passthrough_group` ->
-  `_widen_scan_chain`, same file) asks *which parent can be WIDENED to carry
-  this concept* — and descends **past** that boundary into the subtree, up to
-  `_JOIN_KEY_CHAIN_LIMIT`. That is a **subtree-reachability** question.
+  `_widen_scan_chain`) asks *which parent can be WIDENED to carry this concept*
+  and descends **past** that boundary into the subtree. A subtree-reachability
+  question.
 
-Nothing reconciles them. Election therefore recruits a contributor for a concept
-that a already-chosen contributor's subtree could have supplied, and the extra
-contributor joins in to render nothing. `PruneInvisibleOuterJoins` then deletes
-the join, which is why the rule cannot be retired.
-
-This is the second cause behind the invisible-contributor joins. The first (a
-property's grain key promoted to a hard search terminal) is fixed; see
-`_concepts_with_grain_keys` and the sibling handoff.
-
-## The live case, fully traced
-
-`tests/modeling/thelook_duckdb/adhoc04.preql`. Election picks three:
+Reconciling them at election time does not work, and four measurements say why.
+`tests/modeling/thelook_duckdb/adhoc04.preql` is the live case; election picks:
 
     grp:group_to:d0:order.id      -> ['order.id']                      <- highfalutin
     grp:aggregate:d0:local.id     -> ['id','revenue','margin','total_order_revenue']
     grp:root:root:*:dim:local.id  -> ['user.id','product.id']
 
-`highfalutin` wins `order.id` on the most-downstream sort. It contributes
-nothing else, and the FINAL merge joins it on `order_id` while rendering no
-column from it.
-
-### Three things that are NOT true (each cost a probe; do not re-assume)
-
 1. **"`juicy` gains `order.id` late, so election just needs to wait."** False.
-   The elected node `grp:root:root:*:dim:local.id` is a MergeNode whose
+   The elected `grp:root:root:*:dim:local.id` is a MergeNode whose
    `renderable_addresses` is exactly `{product.id, user.id}` at election time
    **and still at merge time**. It never becomes able to render `order.id`.
+2. **"The rendered `juicy` CTE is the elected node."** False. The node that
+   gains `order.id` is UNREGISTERED: a wrapper built around the elected node
+   after election, by `_wrap_for_grain`/`_fresh_final_root_projection`. That
+   wrapper is what renders as `juicy`, and its different parent chain is what
+   lets `_widen_scan_chain` reach `order_id` in the `order_items` scan.
+3. **"Election needs a reachability predicate."** Measured and rejected: asked
+   directly at election time, every widening path off the elected node refuses,
+   because `order_id` lives under a `force_group` arm neither widener crosses.
+   A pure mirror of `_widen_scan_chain` was checked against the real function on
+   every (node, concept, depth) triple across the corpus (12/12 agreement), so
+   purity is achievable; it simply answers False here, correctly.
+4. **"Detect it while SOURCING the root."** Measured 2026-08-22 and rejected,
+   though this is the near miss worth knowing. `_relevant_root_preserve_keys`
+   IS handed `{local.id, order.id}` and drops `order.id` (not in the root's
+   outputs, no FD to them, not a bucket member, no authored relation). Forcing
+   `order.id` back into `_fresh_final_root_projection` costs nothing (the root
+   scan already reads `order_items` and the `juicy` CTE renders byte-identical
+   ) but it does NOT remove the invisible join: with the fold disabled the plan
+   still joins `highfalutin`. Election already committed it, so a fold is
+   needed regardless; sourcing the key earlier only moves when the sibling gains
+   it. Widening also has a property re-sourcing lacks: it adds the key to an
+   already-built node, so it cannot drag a new table in the way the sibling
+   `own_join_keys` narrowing exists to prevent.
 
-2. **"The rendered `juicy` CTE is the elected node."** False. The FINAL merge
-   receives FOUR parents where election chose three. The node that gains
-   `order.id` is UNREGISTERED — a dedup GroupNode wrapper constructed around the
-   elected MergeNode after election. That wrapper is what renders as `juicy`,
-   and it reaches `order_id` by descending into the `order_items` scan, past the
-   elected node's narrowed projection.
+A peer-fold BEFORE materialization was also prototyped: **0 changed across the
+corpus**; it cannot see the capability yet.
 
-3. **"Move join-key materialization earlier."** Cannot work as stated: the node
-   that carries the key does not exist at election time, and the elected node
-   cannot be widened to the key by any path (see the measurement below).
+## The rule
 
-4. **"Election needs a reachability predicate."** Measured and rejected — the
-   contributor it would point at cannot carry the concept either.
+`_fold_covered_contributors` drops a merge parent when all of:
 
-A peer-fold pass (drop a contributor whose whole coverage a peer can carry once
-widened) was prototyped and measured: **0 changed across 195 statements**.
-Reverted, not committed.
+- it descends from a group elected to cover a mandatory concept (an axis-only
+  contributor from `_add_relation_axis_contributors` /
+  `_add_partial_completion_contributors`, or an elected extent owner, is
+  deliberately column-invisible and is never folded);
+- every needed address it carries is rendered by a surviving sibling, no less
+  completely (a sibling holding it PARTIAL cannot stand in for a complete one);
+- dropping it does not split the survivors into more join components: it may
+  be the only parent bridging two siblings that share no axis with each other;
+- the addresses it shares with the survivors are **exactly its own grain**.
+  Fewer and the join fans out; more and the join CONSTRAINS, because the contributor
+  is pairing columns (`item_id`->`order_id`) the survivors would otherwise pair
+  freely, and dropping it changes rows even though every column still renders.
+  This one is not optional: without it
+  `tests/engine/test_duckdb_partial_key_assembly.py` returns fanned-out rows,
+  and its weaker form (grain merely a subset of the shared addresses) trips the
+  keyless-join guard on the same file;
+- it restricts no rows the survivors don't already restrict (`conditions`
+  compared with `condition_implies`; an existence subselect or a row limit is
+  not comparable, so it refuses).
 
-## The election is NOT wrong. Measured, 2026-08-22.
+## Evidence
 
-The obvious fix — give election a reachability predicate so it sees that the
-already-chosen `juicy` could carry `order.id` — does not apply, because **juicy
-cannot carry it**. Asked directly at election time, every path refuses:
+- Fold firings across the 203-statement corpus (tpc_ds_duckdb incl.
+  `aggregates/`, tpc_h, tpc_ds, thelook_duckdb, hackernews, ncaa, gcat,
+  the_look, faa): **exactly 1**, adhoc04's `highfalutin`.
+- Corpus render with the fold on vs off, one process: **0 differing**, with a
+  no-op control leg proving the harness reports 0.
+- The prune ablation (same corpus, rule on vs off) went **1 -> 0**; the same
+  harness reported 1 before the fold, which is what makes the 0 meaningful.
+- Fuzzer 228/228. Full suite green.
 
-    BEFORE outputs=['product.id', 'user.id']
-      _widen_scan_chain(GroupNode force_group=True)  -> False
-      _widen_scan_chain(SelectNode products)         -> False
-      _widen_scan_chain(SelectNode users)            -> False
-    AFTER _widen_passthrough_group  outputs=['product.id', 'user.id']   (unchanged)
-
-`order_id` lives under the force_group GroupNode arm, and neither widener will
-cross it. So a third contributor for `order.id` is genuinely REQUIRED on the
-inputs election has. Set cover does not help either: `user.id` is exposed only by
-`juicy`, the three measures only by `uneven`, and neither exposes `order.id`.
-
-A pure mirror of `_widen_scan_chain` was also checked against the real function
-on every (node, concept, depth) triple it is called with across the corpus:
-**12/12 agreement, no drift**. Purity is achievable and the mirror is sound —
-it simply answers False here, correctly.
-
-## Where the redundancy actually comes from
-
-Between election and the merge, the contributor nodes are **reconstructed**. The
-FINAL merge receives four parents where election chose three, and the extra one
-is a dedup wrapper around the elected MergeNode. That wrapper has a different
-parent chain, and `_widen_merge_join_keys` successfully widens it with the merge's
-join keys — `keys=['local.id','order.id']`, gaining `order.id`.
-
-That is the whole mechanism, and the rendered SQL confirms it: the FINAL
-projection reads `"juicy"."order_id"` and `"juicy"."id"`, i.e. BOTH from the
-wrapper, not from the contributors elected to supply them. `uneven` survives
-because it still owns revenue/margin/total; `highfalutin` was elected for
-`order.id` alone, so once the wrapper carries `order.id` it renders nothing.
-
-**The redundancy is created by node reconstruction after election, not by a bad
-election.** No predicate available at election time can prevent it, because the
-node that gains the capability does not exist yet and does not inherit the
-elected node's parents.
-
-## The change
-
-Fold contributors AFTER join-key materialization, before the merge node is
-constructed: once `_widen_merge_join_keys` has widened the parents, a parent
-whose entire elected coverage is now present on another parent is redundant and
-should be dropped there. That is the first moment the information exists, and it
-is still the planner — the join is never built, rather than built and deleted.
-
-Do NOT attempt it earlier. Two earlier placements were prototyped and measured:
-
-- A peer-fold before materialization, keyed on projection boundaries:
-  **0 changed across 195 statements** (it cannot see the capability yet).
-- Giving election a reachability predicate: inapplicable, per the section above.
-
-Note this makes the planner fold and `PruneInvisibleOuterJoins` structurally the
-same test at two different times. That is expected — the point is to move it to
-the moment the plan can still avoid building the join.
-
-## Bar for the change
-
-- `prune_ablation.py` (195 statements, see the sibling handoff — it MUST include
-  `tpc_ds_duckdb/aggregates/`) reports **0** statements whose render depends on
-  `prune_invisible_outer_joins`, with a no-op control leg proving the harness.
-- tpc corpus render 132/132 byte-identical; fuzzer 228/228.
-- Full suite green. Note it is a weak backstop here: it passed 8533 with a
-  3.8x plan regression in place, caught only by a committed size artifact.
-
-At that point `PruneInvisibleOuterJoins` is provably dead and retires with its
-flag — which is the actual goal, since the rule is expensive code that can
-introduce bugs that should not need to exist.
+`PruneInvisibleOuterJoins`, its flag, and its test are gone.
+`tests/optimization/test_no_invisible_contributor_joins.py` replaces them with
+a structural assertion: every CTE the final statement joins must appear in its
+projection, over the field report and the thelook adhocs.
 
 ## Reproducing the traces
 
 Monkeypatch, do not edit: wrap `_cover_groups_for_mandatory` to snapshot
 `built` (id -> gid), then wrap `_widen_merge_join_keys` to diff each parent's
 outputs before/after and report the gid. Parents absent from the snapshot are
-post-election wrappers — that asymmetry is the whole story and is invisible if
+post-election wrappers, and that asymmetry is the whole story and is invisible if
 you only log addresses.
