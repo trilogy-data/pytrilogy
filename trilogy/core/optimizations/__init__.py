@@ -6,7 +6,6 @@ from .hide_unused_concept import HideUnusedConcepts
 from .inline_datasource import InlineDatasource
 from .join_hoist import JoinHoist
 from .join_upgrade import UpgradeJoinOnGuards
-from .keyless_full_join import NarrowKeylessFullJoins
 from .merge_irrelevant_group_by import MergeIrrelevantGroupBy
 from .null_safe_join import SimplifyNullSafeJoins
 from .order_inner_joins import OrderInnerJoinsFirst
@@ -23,7 +22,6 @@ __all__ = [
     "JoinHoist",
     "MergeIrrelevantGroupBy",
     "MergedCTEMap",
-    "NarrowKeylessFullJoins",
     "OptimizationRule",
     "OrderInnerJoinsFirst",
     "PredicatePushdown",

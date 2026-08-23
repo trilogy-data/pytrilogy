@@ -11,7 +11,6 @@ from trilogy.core.optimizations import (
     InlineDatasource,
     JoinHoist,
     MergeIrrelevantGroupBy,
-    NarrowKeylessFullJoins,
     OptimizationRule,
     OrderInnerJoinsFirst,
     PredicatePushdown,
@@ -516,24 +515,6 @@ def build_optimization_rule_plan(
                 reason=(
                     "needs upstream filters in their final position so the "
                     "accumulated-filter signatures on each side are stable"
-                ),
-            )
-        )
-    if opts.narrow_keyless_full_joins:
-        plan.append(
-            OptimizationRulePlan(
-                name="narrow_keyless_full_joins",
-                rule_factory=NarrowKeylessFullJoins,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
-                reason=(
-                    "runs once the key-based narrowing passes have settled, so "
-                    "only genuinely keyless FULL joins are left to inspect"
                 ),
             )
         )

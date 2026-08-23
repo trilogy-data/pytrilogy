@@ -22,7 +22,6 @@ FLAGS = {
     "push_semi_join_into_aggregate",
     "upgrade_condition_joins",
     "upgrade_outer_key_set_equivalence",
-    "narrow_keyless_full_joins",
     "simplify_null_safe_joins",
     "strip_redundant_not_null",
     "union_dim_pushdown",

@@ -20,54 +20,14 @@ from trilogy.core.optimizations.utils import (
     render_cte_used_map,
     repoint_consumers,
 )
-from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.grain_utility import (
     join_preserves_left_rows,
     stacks_duplicate_rows,
-    unique_at_declared_grain,
 )
 
 # Child must have no aggregates or other unsafe derivations - it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
 CHILD_INELIGIBLE_DERIVATIONS = SENSITIVE_DERIVATIONS | {Derivation.AGGREGATE}
-
-
-def _clear_identity_group(cte: CTE) -> bool:
-    right_ids = {
-        join.right_datasource.identifier
-        for join in cte.source.joins
-        if isinstance(join, BaseJoin)
-    }
-    roots = [
-        source
-        for source in cte.source.datasources
-        if source.identifier not in right_ids
-    ]
-    if (
-        not cte.group_to_grain
-        or cte.source.grain != cte.grain
-        or len(roots) != 1
-        or not unique_at_declared_grain(roots[0])
-        or not set(roots[0].grain.components) <= set(cte.grain.components)
-        or any(
-            not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
-            for join in cte.source.joins
-        )
-        or cte.rollup_concepts
-        or any(
-            concept.derivation in CHILD_INELIGIBLE_DERIVATIONS
-            and not cte.source_map.get(concept.address)
-            for concept in cte.output_columns
-        )
-    ):
-        return False
-    materialized = {address for address, sources in cte.source_map.items() if sources}
-    if cte.condition is not None and not is_scalar_condition(
-        cte.condition, materialized=materialized
-    ):
-        return False
-    cte.group_to_grain = False
-    return True
 
 
 def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
@@ -186,12 +146,6 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             return False, None
         if cte.name in self.completed:
             return False, None
-        if _clear_identity_group(cte):
-            self.log(
-                f"Removed identity GROUP BY from {cte.name}: source already has "
-                f"grain {cte.grain}"
-            )
-            return True, None
         if cte.joins:
             return False, None
         if cte.condition:

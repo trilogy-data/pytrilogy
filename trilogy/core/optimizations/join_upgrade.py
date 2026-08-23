@@ -58,8 +58,6 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 
-_gather_proofs = gather_non_null_proofs
-
 
 # Joins whose surviving rows can be a strict subset under a null-rejecting
 # WHERE. INNER joins already drop both unmatched sides, so they're never

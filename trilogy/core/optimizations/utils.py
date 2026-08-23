@@ -126,6 +126,11 @@ def rename_reference(column: BuildConcept) -> BuildConcept | None:
         args = lineage.concept_arguments
         if len(args) == 1:
             return args[0]
+    if isinstance(lineage, BuildFunction) and lineage.operator == FunctionType.GROUP:
+        # `sum(x) by k` re-labels the aggregate a parent already grouped to k.
+        args = lineage.concept_arguments
+        if args and args[0].derivation == Derivation.AGGREGATE:
+            return args[0]
     return None
 
 
@@ -176,12 +181,15 @@ def rebind_rename_to_consumed(
         )
     if (
         isinstance(lineage, BuildFunction)
-        and lineage.operator == FunctionType.ALIAS
-        and len(lineage.arguments) == 1
+        and lineage.operator in (FunctionType.ALIAS, FunctionType.GROUP)
+        and lineage.arguments
         and lineage.arguments[0] is not consumed
     ):
         return dataclasses.replace(
-            column, lineage=dataclasses.replace(lineage, arguments=[consumed])
+            column,
+            lineage=dataclasses.replace(
+                lineage, arguments=[consumed, *lineage.arguments[1:]]
+            ),
         )
     return column
 

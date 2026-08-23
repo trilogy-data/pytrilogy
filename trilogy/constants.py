@@ -68,7 +68,6 @@ class Optimizations:
     # the violating rows is the ruled semantics. Query-scoped `full join` /
     # `union join` keys never narrow regardless.
     narrow_equal_domain_joins: bool = True
-    narrow_keyless_full_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     join_hoist: bool = True

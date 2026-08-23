@@ -378,7 +378,7 @@ def test_proves_non_null_helpers():
     assert concepts_implied_non_null(coalesce) == set()
     assert concepts_implied_non_null(multiply) == {y.address}
 
-    # _gather_proofs walks AND-decomposed atoms
+    # gather_non_null_proofs walks AND-decomposed atoms
     cond = BuildConditional(
         left=BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ),
         right=BuildComparison(

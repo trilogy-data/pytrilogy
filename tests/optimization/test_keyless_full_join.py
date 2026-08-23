@@ -1,5 +1,4 @@
 from trilogy import Dialects
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 
 MODEL = """
@@ -41,16 +40,8 @@ def test_planner_narrows_before_the_optimizer():
     narrowed_sql = executor.generate_sql(query)[-1]
     narrowed = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
 
-    original = CONFIG.optimizations.narrow_keyless_full_joins
-    CONFIG.optimizations.narrow_keyless_full_joins = False
-    try:
-        rule_off_sql = executor.generate_sql(query)[-1]
-    finally:
-        CONFIG.optimizations.narrow_keyless_full_joins = original
-
-    assert rule_off_sql == narrowed_sql
-    assert "FULL JOIN" not in rule_off_sql, rule_off_sql
-    full_sql = rule_off_sql.replace("INNER JOIN", "FULL JOIN")
+    assert "FULL JOIN" not in narrowed_sql, narrowed_sql
+    full_sql = narrowed_sql.replace("INNER JOIN", "FULL JOIN")
     unnarrowed = [tuple(r) for r in executor.execute_raw_sql(full_sql).fetchall()]
     assert narrowed == unnarrowed
 
@@ -73,13 +64,6 @@ def test_having_on_aggregate_keeps_row_semantics():
     assert [tuple(r) for r in executor.execute_text(passing)[0].fetchall()] == [
         (30.0, 15)
     ]
-
-    original = CONFIG.optimizations.narrow_keyless_full_joins
-    CONFIG.optimizations.narrow_keyless_full_joins = False
-    try:
-        assert executor.generate_sql(failing)[-1] == sql
-    finally:
-        CONFIG.optimizations.narrow_keyless_full_joins = original
 
 
 def test_keyed_full_join_is_untouched():

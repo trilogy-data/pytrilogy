@@ -14,6 +14,7 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
 from trilogy.core.processing.discovery_utility import check_if_group_required
+from trilogy.core.processing.grain_utility import is_identity_group
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
@@ -74,7 +75,17 @@ class GroupNode(StrategyNode):
         comp_grain = grains.upstream
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if not grains.required and self.force_group is not True:
+        if not grains.required and (
+            self.force_group is not True
+            or is_identity_group(
+                parent_sources,
+                [],
+                target_grain,
+                self.conditions,
+                self.output_concepts,
+                self.rollup_concepts,
+            )
+        ):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:

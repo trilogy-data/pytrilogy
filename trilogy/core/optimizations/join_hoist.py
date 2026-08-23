@@ -55,7 +55,6 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
-from trilogy.core.optimizations.join_upgrade import _gather_proofs
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
@@ -64,7 +63,10 @@ from trilogy.core.optimizations.utils import (
     render_cte_used_map,
     strip_condition_atom,
 )
-from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import (
+    gather_non_null_proofs,
+    is_scalar_condition,
+)
 
 HOISTABLE_JOIN_TYPES = {JoinType.INNER, JoinType.LEFT_OUTER}
 
@@ -313,7 +315,7 @@ class JoinHoist(OptimizationRule):
         if join.jointype != JoinType.LEFT_OUTER:
             return None
         right_addresses = {c.address for c in join.right_cte.output_columns}
-        forced = {addr for cand in bundled for addr in _gather_proofs(cand)}
+        forced = {addr for cand in bundled for addr in gather_non_null_proofs(cand)}
         if forced & right_addresses:
             return JoinType.INNER
         return None

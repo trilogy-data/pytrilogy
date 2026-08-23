@@ -4,7 +4,6 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE, QueryDatasource
 from trilogy.core.optimizations.merge_irrelevant_group_by import (
     MergeIrrelevantGroupBy,
-    _clear_identity_group,
     is_grouped_cte,
 )
 
@@ -63,102 +62,6 @@ def testis_grouped_cte(test_environment: Environment):
         source_map={},
     )
     assert is_grouped_cte(non_group) is False
-
-
-def test_clear_identity_group_over_unique_datasource(test_environment: Environment):
-    env = test_environment.materialize_for_select()
-    datasource = next(iter(env.datasources.values()))
-    columns = [column.concept for column in datasource.columns]
-    cte = CTE(
-        name="identity",
-        source=QueryDatasource(
-            input_concepts=columns,
-            output_concepts=columns,
-            datasources=[datasource],
-            grain=datasource.grain,
-            joins=[],
-            source_map={column.address: {datasource} for column in columns},
-        ),
-        output_columns=columns,
-        grain=datasource.grain,
-        source_map={column.address: [datasource.name] for column in columns},
-        group_to_grain=True,
-    )
-
-    assert _clear_identity_group(cte) is True
-    assert cte.group_to_grain is False
-
-
-def test_keep_group_when_source_is_not_unique_at_target_grain(
-    test_environment: Environment,
-):
-    env = test_environment.materialize_for_select()
-    datasource = next(iter(env.datasources.values()))
-    columns = [column.concept for column in datasource.columns]
-    cte = CTE(
-        name="deduplicating",
-        source=QueryDatasource(
-            input_concepts=columns,
-            output_concepts=columns,
-            datasources=[datasource],
-            grain=BuildGrain(),
-            joins=[],
-            source_map={column.address: {datasource} for column in columns},
-        ),
-        output_columns=columns,
-        grain=BuildGrain(),
-        source_map={column.address: [datasource.name] for column in columns},
-        group_to_grain=True,
-    )
-
-    assert _clear_identity_group(cte) is False
-    assert cte.group_to_grain is True
-
-
-def test_keep_group_when_source_projects_over_finer_grain(
-    test_environment: Environment,
-):
-    env = test_environment.materialize_for_select()
-    datasource = next(iter(env.datasources.values()))
-    columns = [column.concept for column in datasource.columns]
-    coarse = BuildGrain(components={columns[0].address})
-    fine = BuildGrain(components={column.address for column in columns})
-    scan = QueryDatasource(
-        input_concepts=columns,
-        output_concepts=columns,
-        datasources=[datasource],
-        grain=fine,
-        joins=[],
-        source_map={column.address: {datasource} for column in columns},
-        source_type=SourceType.GROUP,
-    )
-    projection = QueryDatasource(
-        input_concepts=columns,
-        output_concepts=columns,
-        datasources=[scan],
-        grain=coarse,
-        joins=[],
-        source_map={column.address: {scan} for column in columns},
-        source_type=SourceType.SELECT,
-    )
-    cte = CTE(
-        name="projecting",
-        source=QueryDatasource(
-            input_concepts=columns,
-            output_concepts=columns,
-            datasources=[projection],
-            grain=coarse,
-            joins=[],
-            source_map={column.address: {projection} for column in columns},
-        ),
-        output_columns=columns,
-        grain=coarse,
-        source_map={column.address: [projection.name] for column in columns},
-        group_to_grain=True,
-    )
-
-    assert _clear_identity_group(cte) is False
-    assert cte.group_to_grain is True
 
 
 def test_basic_merge(test_environment: Environment):
