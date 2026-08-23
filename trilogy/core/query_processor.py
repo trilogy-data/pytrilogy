@@ -1,6 +1,7 @@
 from collections import OrderedDict, defaultdict
 from dataclasses import replace
 from math import ceil
+from typing import Any
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
@@ -9,6 +10,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
     Derivation,
+    FunctionClass,
     FunctionType,
     JoinType,
     SourceType,
@@ -34,12 +36,16 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
+    BuildOrderBy,
+    BuildOrderItem,
     BuildParamaterizedConceptReference,
+    BuildParenthetical,
     BuildRowsetItem,
     BuildSelectLineage,
     BuildWhereClause,
@@ -47,7 +53,7 @@ from trilogy.core.models.build import (
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
@@ -617,6 +623,125 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
+def _demand_order_by_leaves(ds: StrategyNode, order_by: BuildOrderBy) -> None:
+    """A plain ORDER BY arg that is only an alias-source of a projected derived
+    output (`order by channel` with `lower(channel) as chan` projected) must be
+    in the final node's source map, and the contract-projected FINAL slices such
+    columns off. Carry them from the parents as inputs only: an output would
+    enter the final GROUP BY and change the dedup grain."""
+    if not ds.parents:
+        return
+    known = {c.address for c in ds.output_concepts} | {
+        c.address for c in ds.input_concepts
+    }
+    parent_outputs = {
+        c.address for parent in ds.parents for c in parent.output_concepts
+    }
+    carry = unique(
+        [
+            c
+            for item in order_by.items
+            for c in item.concept_arguments
+            if c.address not in known and c.address in parent_outputs
+        ],
+        "address",
+    )
+    if not carry:
+        return
+    # The parent must expose the column PLAINLY: `resolve_concept_map` skips a
+    # parent output the parent itself hides, so a FINAL-hidden carry key never
+    # reaches the final node's source map.
+    carry_addrs = {c.address for c in carry}
+    for parent in ds.parents:
+        parent_hidden = set(parent.hidden_concepts or set())
+        unhide = carry_addrs & parent_hidden
+        if unhide and {c.address for c in parent.output_concepts} & unhide:
+            parent.hidden_concepts = parent_hidden - unhide
+            parent.rebuild_cache()
+    ds.input_concepts.extend(carry)
+
+
+def _scalar_order_leaves(
+    expr: Any, outputs: set[str], source_map: dict[str, Any]
+) -> list[BuildConcept] | None:
+    """Leaf concepts of a purely scalar ORDER BY expression as the final node
+    renders it. A concept the node outputs is a group key or aggregate and ends
+    the walk; one it neither outputs nor sources re-renders from its lineage.
+    None when the expression holds an aggregate, window or other compound node,
+    which already evaluates in group scope."""
+    leaves: list[BuildConcept] = []
+    stack: list[Any] = [expr]
+    seen: set[str] = set()
+    while stack:
+        node = stack.pop()
+        if isinstance(node, BuildConcept):
+            if (
+                node.address not in outputs
+                and node.lineage is not None
+                and not source_map.get(node.address)
+                and node.address not in seen
+            ):
+                seen.add(node.address)
+                stack.append(node.lineage)
+                continue
+            leaves.append(node)
+        elif isinstance(node, BuildParenthetical):
+            stack.append(node.content)
+        elif isinstance(node, BuildFunction):
+            if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                return None
+            stack.extend(node.arguments)
+        elif isinstance(node, BuildConceptArgs):
+            return None
+    return leaves
+
+
+def _group_safe_ordering(
+    final: QueryDatasource, order_by: BuildOrderBy
+) -> BuildOrderBy:
+    """A grouped final node may only order by its group keys and aggregates. A
+    scalar order expression over a leaf the node reads but does not output
+    (`order by channel` with only `lower(channel) as chan` projected) is
+    wrapped in min(): a no-op for a leaf the group determines, otherwise each
+    group orders by its minimum member. The renderer collapses min(x) to x when
+    the node ends up ungrouped.
+
+    An ungrouped wrap over one grouped parent (the HAVING select) orders in
+    that parent's scope: its outputs are group-safe, and any other leaf is
+    only reachable once the wrap folds into the group, so it is wrapped the
+    same way."""
+    outputs = {c.address for c in final.output_concepts}
+    safe = set(outputs)
+    if not final.group_required:
+        parent = final.datasources[0] if len(final.datasources) == 1 else None
+        if not isinstance(parent, QueryDatasource) or not parent.group_required:
+            return order_by
+        safe |= {c.address for c in parent.output_concepts}
+    items: list[BuildOrderItem] = []
+    for item in order_by.items:
+        leaves = _scalar_order_leaves(item.expr, outputs, final.source_map)
+        if (
+            leaves is None
+            or all(c.address in safe for c in leaves)
+            or not isinstance(
+                item.expr, (BuildConcept, BuildFunction, BuildParenthetical)
+            )
+        ):
+            items.append(item)
+            continue
+        items.append(
+            BuildOrderItem(
+                expr=BuildFunction(
+                    operator=FunctionType.MIN,
+                    arguments=[item.expr],
+                    output_data_type=arg_to_datatype(item.expr),
+                ),
+                order=item.order,
+            )
+        )
+    return BuildOrderBy(items=items)
+
+
 def _raise_if_disconnected(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -798,44 +923,13 @@ def _plan_query_node(
             v4_history,
             conditions=build_statement.where_clause,
         )
-    # A plain ORDER BY arg that is only an alias-source of a projected derived
-    # output (`order by channel` with `lower(channel) as chan` projected) must
-    # be resolvable from the final node's source map: the renderer references
-    # it against the final CTE's source and aggregate-wraps it (`MIN(channel)`)
-    # when the final is grouped — and the contract-projected FINAL slices such
-    # columns off. Carry them as inputs only — never outputs, which would put it in
-    # the final GROUP BY and change the dedup grain.
-    if build_statement.order_by and ds.parents:
-        output_addrs = {c.address for c in ds.output_concepts}
-        input_addrs = {c.address for c in ds.input_concepts}
-        parent_outputs = {
-            c.address for parent in ds.parents for c in parent.output_concepts
-        }
-        order_by_carry = [
-            c
-            for item in build_statement.order_by.items
-            for c in item.concept_arguments
-            if c.address not in output_addrs
-            and c.address not in input_addrs
-            and c.address in parent_outputs
-        ]
-        if order_by_carry:
-            # The parent must expose the column PLAINLY: `resolve_concept_map`
-            # skips a parent output the parent itself hides, so a FINAL-hidden
-            # carry key never reaches the final node's source map.
-            for parent in ds.parents:
-                parent_hidden = set(parent.hidden_concepts or set())
-                unhide = {
-                    c.address for c in order_by_carry if c.address in parent_hidden
-                }
-                if unhide and {c.address for c in parent.output_concepts} & unhide:
-                    parent.hidden_concepts = parent_hidden - unhide
-                    parent.rebuild_cache()
-            ds.input_concepts.extend(unique(order_by_carry, "address"))
+    if build_statement.order_by:
+        _demand_order_by_leaves(ds, build_statement.order_by)
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
     )
-    ds.ordering = build_statement.order_by
+    if build_statement.order_by:
+        ds.ordering = _group_safe_ordering(ds.rebuild_cache(), build_statement.order_by)
     ds.rebuild_cache()
     requested = {
         c.address

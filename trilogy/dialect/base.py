@@ -60,7 +60,6 @@ from trilogy.core.models.build import (
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
-    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildExpr,
@@ -1129,74 +1128,15 @@ class BaseDialect:
                 f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER}",
                 order_item.order,
             )
-        rendered = self.render_expr(order_item.expr, cte=cte)
-        if self._order_expr_needs_group_wrap(order_item.expr, cte, rendered):
-            rendered = f"MIN({rendered})"
+        try:
+            rendered = self.render_expr(order_item.expr, cte=cte, raise_invalid=True)
+        except ValueError as exc:
+            raise ValueError(
+                f"ORDER BY expression {order_item.expr} cannot be resolved from the "
+                f"final query {cte.name}: the planner neither projected nor "
+                f"carried every column it reads ({exc})"
+            ) from exc
         return self.render_ordering(rendered, order_item.order)
-
-    @staticmethod
-    def _scalar_order_leaves(
-        expr: Any, cte: CTE | UnionCTE
-    ) -> list[BuildConcept] | None:
-        """Leaf concepts of a purely scalar (concepts, scalar functions,
-        literals) expression as it will actually render against ``cte``;
-        ``None`` if that rendering contains an aggregate, window, or any other
-        compound node that must not be re-wrapped in an aggregate. A concept
-        with no sourced column re-renders from its lineage (see
-        ``_render_concept_sql``), so its lineage is judged in its place — a
-        hidden ``grouping(x) as g`` ordered by alias renders ``grouping(x)``,
-        which is already group-scope-evaluated and must never become
-        ``MIN(grouping(x))``."""
-        leaves: list[BuildConcept] = []
-        stack: list[Any] = [expr]
-        seen: set[str] = set()
-        while stack:
-            node = stack.pop()
-            if isinstance(node, BuildConcept):
-                if (
-                    node.lineage is not None
-                    and not cte.source_map.get(node.address, [])
-                    and node.address not in seen
-                ):
-                    seen.add(node.address)
-                    stack.append(node.lineage)
-                    continue
-                leaves.append(node)
-            elif isinstance(node, BuildParenthetical):
-                stack.append(node.content)
-            elif isinstance(node, BuildFunction):
-                if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                    return None
-                stack.extend(node.arguments)
-            elif isinstance(node, BuildConceptArgs):
-                return None
-        return leaves
-
-    def _order_expr_needs_group_wrap(
-        self, expr: Any, cte: CTE | UnionCTE, rendered: str
-    ) -> bool:
-        """A grouping ``group_to_grain`` node's ORDER BY may re-render an
-        expression over raw source columns absent from its GROUP BY (e.g.
-        ``order by <source col>`` when only a derivation of it is projected) —
-        invalid SQL. Wrapping the rendered expression in MIN() makes it
-        group-safe: for inputs functionally determined by the group it is a
-        no-op, otherwise it orders each group by its minimum member value."""
-        if not isinstance(cte, CTE) or not cte.group_to_grain:
-            return False
-        if self._all_grouped_outputs_are_passthrough(
-            cte
-        ) and not self._has_local_aggregate(cte):
-            return False
-        group_addresses = {c.address for c in cte.group_concepts}
-        leaves = self._scalar_order_leaves(expr, cte)
-        if leaves is None or all(c.address in group_addresses for c in leaves):
-            return False
-        # a re-rendered expression textually identical to a grouped one is
-        # already group-safe (e.g. ORDER BY lower(x) with GROUP BY lower(x))
-        group_rendered = {
-            self.render_concept_sql(c, cte, alias=False) for c in cte.group_concepts
-        }
-        return rendered not in group_rendered
 
     def _canonical_render_siblings(
         self, c: BuildConcept, cte: CTE | UnionCTE
