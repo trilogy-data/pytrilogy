@@ -13,6 +13,7 @@ from trilogy.core.enums import (
     JoinType,
     Modifier,
     Purpose,
+    SourceType,
 )
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -24,14 +25,19 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
-from trilogy.core.models.execute import BaseJoin, UnnestJoin
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.grain_utility import (
+    JoinProofs,
     _concept_covers_grain,
     _join_left_keys_covered_by_grain,
     _join_right_preserves_cardinality,
     _left_join_addresses,
     anti_join_preserved_grain,
-    downgrade_join_for_condition,
+    is_identity_group,
+    narrow_join_types,
+    stacks_duplicate_rows,
+    unique_at_declared_grain,
 )
 
 
@@ -250,6 +256,61 @@ def test_left_join_addresses_no_pairs_no_left_datasource():
     assert addresses == {a.address}
 
 
-def test_downgrade_join_for_condition_unnest_join_no_op():
-    """Calling downgrade with an UnnestJoin must short-circuit cleanly."""
-    assert downgrade_join_for_condition(_unnest_join(), None, []) is None
+def test_narrow_join_types_unnest_join_no_op():
+    """Narrowing an UnnestJoin must short-circuit cleanly."""
+    join = _unnest_join()
+    narrow_join_types([join], JoinProofs(proofs={"x"}, filtered_ids={"y"}), [])
+    assert isinstance(join, UnnestJoin)
+
+
+def _scan(columns, datasource, grain, source_type=SourceType.SELECT):
+    return QueryDatasource(
+        input_concepts=columns,
+        output_concepts=columns,
+        datasources=[datasource],
+        grain=grain,
+        joins=[],
+        source_map={column.address: {datasource} for column in columns},
+        source_type=source_type,
+    )
+
+
+def test_identity_group_over_unique_datasource(test_environment: Environment):
+    env = test_environment.materialize_for_select()
+    datasource = next(iter(env.datasources.values()))
+    columns = [column.concept for column in datasource.columns]
+    assert is_identity_group([datasource], [], datasource.grain, None, columns, [])
+    assert is_identity_group([datasource], [], BuildGrain(), None, columns, []) is False
+
+
+def test_identity_group_rejects_projection_over_finer_grain(
+    test_environment: Environment,
+):
+    env = test_environment.materialize_for_select()
+    datasource = next(iter(env.datasources.values()))
+    columns = [column.concept for column in datasource.columns]
+    coarse = BuildGrain(components={columns[0].address})
+    fine = BuildGrain(components={column.address for column in columns})
+    scan = _scan(columns, datasource, fine, SourceType.GROUP)
+    projection = _scan(columns, scan, coarse)
+    assert unique_at_declared_grain(scan) is True
+    assert unique_at_declared_grain(projection) is False
+    assert is_identity_group([projection], [], coarse, None, columns, []) is False
+
+
+def test_identity_group_rejects_union_stack_and_aggregates(
+    test_environment: Environment,
+):
+    env = test_environment.materialize_for_select()
+    datasource = next(iter(env.datasources.values()))
+    columns = [column.concept for column in datasource.columns]
+    stack = _scan(columns, datasource, datasource.grain, SourceType.UNION)
+    assert stacks_duplicate_rows(stack) is True
+    assert is_identity_group([stack], [], datasource.grain, None, columns, []) is False
+    total = _concept("total", purpose=Purpose.METRIC, derivation=Derivation.AGGREGATE)
+    assert (
+        is_identity_group(
+            [datasource], [], datasource.grain, None, columns + [total], []
+        )
+        is False
+    )

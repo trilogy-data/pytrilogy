@@ -1,16 +1,14 @@
 from collections import Counter
 
-from trilogy.core.enums import Derivation, JoinType, Purpose, SourceType
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
-    BuildDatasource,
     BuildRowsetItem,
 )
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
-    QueryDatasource,
     RecursiveCTE,
     UnionCTE,
 )
@@ -23,6 +21,11 @@ from trilogy.core.optimizations.utils import (
     repoint_consumers,
 )
 from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.grain_utility import (
+    join_preserves_left_rows,
+    stacks_duplicate_rows,
+    unique_at_declared_grain,
+)
 
 # Child must have no aggregates or other unsafe derivations - it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
@@ -44,10 +47,10 @@ def _clear_identity_group(cte: CTE) -> bool:
         not cte.group_to_grain
         or cte.source.grain != cte.grain
         or len(roots) != 1
-        or not _unique_at_declared_grain(roots[0])
+        or not unique_at_declared_grain(roots[0])
         or not set(roots[0].grain.components) <= set(cte.grain.components)
         or any(
-            not isinstance(join, BaseJoin) or not _join_preserves_left_rows(join)
+            not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
             for join in cte.source.joins
         )
         or cte.rollup_concepts
@@ -105,81 +108,6 @@ def _is_child_ineligible(concept: BuildConcept, cte: CTE, parent: CTE) -> bool:
     return cte.source_map.get(concept.address) != [parent.name]
 
 
-def _join_preserves_left_rows(join: BaseJoin) -> bool:
-    if join.join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
-        return False
-    right_grain = set(join.right_datasource.grain.components)
-    if not right_grain:
-        return True
-    right_keys = (
-        [pair.right for pair in join.concept_pairs]
-        if join.concept_pairs
-        else join.concepts or []
-    )
-    coverage = {address for key in right_keys for address in key.equivalent_addresses}
-    return right_grain <= coverage
-
-
-def _unique_at_declared_grain(source: BuildDatasource | QueryDatasource) -> bool:
-    """Whether `source` emits at most one row per its own declared grain.
-
-    A datasource's ``grain(...)`` is a uniqueness contract, and a GROUP
-    re-establishes uniqueness. Everything else just passes its inputs' rows
-    through, so it only holds the contract when every input is itself unique at
-    a grain the declaration already covers — a projection over a finer-grained
-    input (a correlated SUBSELECT over a row-grain scan) declares the coarser
-    grain it is *heading for*, not one it has reached. A UNION stack declares
-    the keyspace its arms jointly cover, but the arms are concatenated, so a key
-    in two arms arrives twice.
-
-    Dimensions joined on keys that cover their whole grain are lookups, not
-    fan-out, so they neither add rows nor need their own grain covered by the
-    declaration — only the sources feeding the row count have to hold it. This
-    mirrors the same row-preservation test ``_clear_identity_group`` applies to
-    the top-level joins.
-    """
-    if isinstance(source, BuildDatasource):
-        return True
-    if source.source_type == SourceType.GROUP:
-        return True
-    if source.source_type == SourceType.UNION:
-        return False
-    if any(
-        not isinstance(join, BaseJoin) or not _join_preserves_left_rows(join)
-        for join in source.joins
-    ):
-        return False
-    looked_up = {
-        join.right_datasource.identifier
-        for join in source.joins
-        if isinstance(join, BaseJoin)
-    }
-    declared = set(source.grain.components)
-    return all(
-        _unique_at_declared_grain(sub) and set(sub.grain.components) <= declared
-        for sub in source.datasources
-        if sub.identifier not in looked_up
-    )
-
-
-def _stacks_duplicate_rows(source: BuildDatasource | QueryDatasource) -> bool:
-    """Whether `source` can emit repeated rows at its own declared grain.
-
-    A UNION stack declares the keyspace grain its arms *jointly* cover, but the
-    arms are concatenated, so a key in two arms arrives twice. The grouping above
-    it is what establishes that grain rather than something the arms already
-    satisfy, so it is never an identity. A GROUP re-establishes uniqueness;
-    anything else passes its rows (and their duplicates) through.
-    """
-    if not isinstance(source, QueryDatasource):
-        return False
-    if source.source_type == SourceType.UNION:
-        return True
-    if source.source_type == SourceType.GROUP:
-        return False
-    return any(_stacks_duplicate_rows(sub) for sub in source.datasources)
-
-
 def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
     """Whether `parent` is an identity grouping safe to fuse into `cte`."""
     if not parent.source.datasources:
@@ -198,12 +126,12 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
         return False
     # The grain check below only proves identity if the root is actually unique
     # at its declared grain; a union stack is not.
-    if _stacks_duplicate_rows(roots[0]):
+    if stacks_duplicate_rows(roots[0]):
         return False
     if not set(roots[0].grain.components) <= set(parent.grain.components):
         return False
     if any(
-        not isinstance(join, BaseJoin) or not _join_preserves_left_rows(join)
+        not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
         for join in parent.source.joins
     ):
         return False

@@ -33,7 +33,9 @@ from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
     QueryDatasource,
+    UnnestJoin,
 )
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.utility import NodeType
 
 DataSource = QueryDatasource | BuildDatasource
@@ -1297,6 +1299,78 @@ def _raise_if_keyless_row_bearing_join(
                     "the join axis was lost upstream. This is a planner bug."
                 )
         tree.add(j.right)
+
+
+def single_row_source(ds: DataSource) -> bool:
+    """True when ``ds`` provably emits exactly one row: an ungrouped
+    aggregate computing every output here (a passed-through column would be
+    a group key), with no LIMIT, no ROLLUP and at most a scalar WHERE (which
+    filters the aggregate's input, never its single output row), or an
+    unfiltered, unjoined projection over one such source. A HAVING can
+    delete that row, so a non-scalar condition disqualifies."""
+    if not isinstance(ds, QueryDatasource):
+        return False
+    if ds.source_type in (SourceType.UNION, SourceType.RECURSIVE, SourceType.UNNEST):
+        return False
+    if ds.limit is not None or ds.rollup_concepts:
+        return False
+    if not ds.group_required:
+        return (
+            not ds.joins
+            and ds.condition is None
+            and len(ds.datasources) == 1
+            and single_row_source(ds.datasources[0])
+        )
+    outputs = ds.output_concepts
+    if any(ds.source_map.get(c.address) for c in outputs):
+        return False
+    output_by_addr = {c.address: c for c in outputs}
+    if not all(
+        (c := output_by_addr.get(component)) is not None
+        and c.purpose == Purpose.METRIC
+        and not c.keys
+        for component in ds.grain.components
+    ):
+        return False
+    if not any(get_grouped_aggregate_wrapper(c) is not None for c in outputs):
+        return False
+    if ds.condition is None:
+        return True
+    materialized = {address for address, v in ds.source_map.items() if v}
+    return is_scalar_condition(ds.condition, materialized=materialized)
+
+
+def _narrowed_keyless_type(left_has_rows: bool, right_has_rows: bool) -> JoinType:
+    if left_has_rows and right_has_rows:
+        return JoinType.INNER
+    if left_has_rows:
+        return JoinType.LEFT_OUTER
+    if right_has_rows:
+        return JoinType.RIGHT_OUTER
+    return JoinType.FULL
+
+
+def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
+    """A keyless FULL (``ON 1=1``) pairs every row with every row, so FULL
+    only differs from INNER when a side is EMPTY. Walk the joins in order
+    carrying whether the relation built so far provably has rows; a keyed or
+    unnest join makes that unknowable again, so later keyless joins narrow on
+    their explicit left and their right alone."""
+    left_has_rows = False
+    for join in joins:
+        if (
+            not isinstance(join, BaseJoin)
+            or join.join_type != JoinType.FULL
+            or join.concept_pairs
+            or join.concepts
+        ):
+            left_has_rows = False
+            continue
+        if join.left_datasource is not None:
+            left_has_rows = left_has_rows or single_row_source(join.left_datasource)
+        right_has_rows = single_row_source(join.right_datasource)
+        join.join_type = _narrowed_keyless_type(left_has_rows, right_has_rows)
+        left_has_rows = left_has_rows or right_has_rows
 
 
 def _padding_sources(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     ComparisonOperator,
@@ -7,6 +9,7 @@ from trilogy.core.enums import (
     FunctionType,
     JoinType,
     Purpose,
+    SourceType,
 )
 from trilogy.core.models.build import (
     BoolExpr,
@@ -25,7 +28,10 @@ from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
     concepts_implied_non_null,
     decompose_condition,
+    is_scalar_condition,
+    opaque_binding_addresses,
 )
+from trilogy.core.processing.join_resolution import deep_extent_free_spans
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -323,34 +329,134 @@ def _datasource_addresses(source: GrainSource) -> set[str]:
     return {concept.address for concept in source.output_concepts}
 
 
+def _left_join_sources(
+    join: BaseJoin,
+    final_datasets: list[GrainSource],
+) -> list[GrainSource]:
+    if join.left_datasource is not None:
+        return [join.left_datasource]
+    if not join.concept_pairs:
+        return [
+            source
+            for source in final_datasets
+            if source.identifier != join.right_datasource.identifier
+        ]
+    sources: dict[str, GrainSource] = {}
+    for pair in join.concept_pairs:
+        sources.setdefault(
+            pair.existing_datasource.identifier, pair.existing_datasource
+        )
+    return list(sources.values())
+
+
 def _left_join_addresses(
     join: BaseJoin,
     final_datasets: list[GrainSource],
 ) -> set[str]:
-    if join.left_datasource is not None:
-        return _datasource_addresses(join.left_datasource)
-    if not join.concept_pairs:
-        return {
-            address
-            for source in final_datasets
-            if source.identifier != join.right_datasource.identifier
-            for address in _datasource_addresses(source)
-        }
     return {
         address
-        for pair in join.concept_pairs or []
-        for address in _datasource_addresses(pair.existing_datasource)
+        for source in _left_join_sources(join, final_datasets)
+        for address in _datasource_addresses(source)
     }
 
 
-def downgrade_join_for_condition(
-    join: BaseJoin | UnnestJoin,
-    condition: BoolExpr | None,
-    final_datasets: list[GrainSource],
-) -> None:
-    if condition is None:
-        return
-    downgrade_join_for_proofs(join, non_null_proofs(condition), final_datasets)
+def _unprovable_addresses(sources: list[GrainSource]) -> set[str]:
+    """Addresses a non-null proof cannot force a side through: partial
+    bindings (the value may genuinely be absent from this side) and opaque
+    bindings (a CASE/raw column that is non-null even on padded rows)."""
+    out: set[str] = set()
+    for source in sources:
+        out |= {c.address for c in source.partial_concepts}
+        out |= opaque_binding_addresses(source)
+    return out
+
+
+@dataclass(frozen=True)
+class JoinProofs:
+    """What the merge knows, before its joins are typed, about which sides
+    every surviving row must match.
+
+    ``proofs`` (this node's own WHERE, null-propagating atoms only) and
+    ``branch_proofs`` (filters applied inside its branches) are the
+    conservative harvest a FULL needs: a FULL's merged key renders as a
+    cross-side COALESCE, so ``IS NOT NULL`` on it proves neither side.
+    ``side_proofs`` and ``or_groups`` are the full harvest (``IS NOT NULL``,
+    ``BETWEEN``, OR-of-ANDs) for a LEFT/RIGHT, whose padded side is one
+    materialized relation. ``filtered_ids`` are the sources that applied an
+    atom of the request WHERE this merge does not re-render, so each final
+    row must have a match there; ``coalescing_keys`` are authored union/full
+    relation keys whose preserving typing is row intent and stands."""
+
+    proofs: set[str] = field(default_factory=set)
+    branch_proofs: set[str] = field(default_factory=set)
+    side_proofs: set[str] = field(default_factory=set)
+    or_groups: list[list[set[str]]] = field(default_factory=list)
+    filtered_ids: set[str] = field(default_factory=set)
+    coalescing_keys: set[str] = field(default_factory=set)
+
+
+def collect_applied_conditions(source: GrainSource) -> list[BoolExpr]:
+    """All filter conditions applied anywhere within a parent branch's tree."""
+    out: list[BoolExpr] = []
+    if isinstance(source, QueryDatasource):
+        if source.condition is not None:
+            out.append(source.condition)
+        for parent in source.datasources:
+            out.extend(collect_applied_conditions(parent))
+    return out
+
+
+def _is_filter_population(
+    identifier: str,
+    by_id: dict[str, GrainSource],
+    filtered_ids: set[str],
+    join_addresses: set[str],
+) -> bool:
+    """Whether this side's row set IS the request WHERE's population.
+
+    It has to have applied the WHERE, and it must not owe its narrowness to
+    anything else. An extent-free branch covers only the span members its facts
+    bound (docs/extent_ownership.md), so a row missing there is a member nobody
+    referenced, not a row the WHERE rejected, and the other side stays
+    preserved."""
+    if identifier not in filtered_ids:
+        return False
+    source = by_id.get(identifier)
+    if source is None:
+        return True
+    suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
+        source
+    )
+    return not (join_addresses & suppressed)
+
+
+def _join_key_addresses(join: BaseJoin) -> tuple[set[str], set[str]]:
+    if join.concept_pairs:
+        return (
+            {pair.left.address for pair in join.concept_pairs},
+            {pair.right.address for pair in join.concept_pairs},
+        )
+    keys = {concept.address for concept in join.concepts or []}
+    return keys, set(keys)
+
+
+def _side_forced(
+    proofs: set[str],
+    or_groups: list[list[set[str]]],
+    side_only: set[str],
+    keys: set[str],
+    unprovable: set[str],
+) -> bool:
+    """A side is forced present when a proof names a column NULL exactly on
+    its padded rows: a side-only address (under every disjunct of an OR, for
+    a side-level proof), or the side's whole key tuple (complete on it, so
+    every non-null key value has a match there)."""
+    provable = side_only - unprovable
+    if proofs & provable:
+        return True
+    if any(all(disjunct & provable for disjunct in group) for group in or_groups):
+        return True
+    return bool(keys) and keys <= proofs and not keys & unprovable
 
 
 def downgrade_join_for_proofs(
@@ -358,33 +464,259 @@ def downgrade_join_for_proofs(
     proofs: set[str],
     final_datasets: list[GrainSource],
 ) -> None:
-    """Demote a FULL join when ``proofs`` (concepts forced non-null in any
-    surviving row) sit exclusively on one side: a FULL would null-extend the
-    opposite side and resurrect rows that violate the proof."""
+    """Narrow a FULL when ``proofs`` (concepts forced non-null in every
+    surviving row) rule out the padded rows it preserves: only the side
+    whose proof holds is kept, both forced is INNER."""
     if not isinstance(join, BaseJoin):
         return
     if join.join_type != JoinType.FULL or not proofs:
         return
-    if join.concept_pairs:
-        left_keys = {pair.left.address for pair in join.concept_pairs}
-        right_keys = {pair.right.address for pair in join.concept_pairs}
-    else:
-        left_keys = {concept.address for concept in join.concepts or []}
-        right_keys = set(left_keys)
+    left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
     right_all = _datasource_addresses(join.right_datasource)
-    left_forced = bool(proofs & (left_all - right_all)) or (
-        bool(left_keys) and left_keys.issubset(proofs)
-    )
-    right_forced = bool(proofs & (right_all - left_all)) or (
-        bool(right_keys) and right_keys.issubset(proofs)
-    )
+    left_forced = _side_forced(proofs, [], left_all - right_all, left_keys, set())
+    right_forced = _side_forced(proofs, [], right_all - left_all, right_keys, set())
     if left_forced and right_forced:
         join.join_type = JoinType.INNER
     elif left_forced:
         join.join_type = JoinType.LEFT_OUTER
     elif right_forced:
         join.join_type = JoinType.RIGHT_OUTER
+
+
+def downgrade_directional_join_for_proofs(
+    join: BaseJoin | UnnestJoin,
+    proofs: set[str],
+    or_groups: list[list[set[str]]],
+    final_datasets: list[GrainSource],
+) -> None:
+    """A LEFT/RIGHT whose padded side is forced present by ``proofs`` keeps
+    no padded row, so it is INNER. Partial and opaque bindings on the padded
+    side prove nothing (``_unprovable_addresses``)."""
+    if not isinstance(join, BaseJoin):
+        return
+    if join.join_type not in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER):
+        return
+    if not proofs and not or_groups:
+        return
+    left_keys, right_keys = _join_key_addresses(join)
+    left_all = _left_join_addresses(join, final_datasets)
+    right_all = _datasource_addresses(join.right_datasource)
+    if join.join_type == JoinType.LEFT_OUTER:
+        forced = _side_forced(
+            proofs,
+            or_groups,
+            right_all - left_all,
+            right_keys,
+            _unprovable_addresses([join.right_datasource]),
+        )
+    else:
+        forced = _side_forced(
+            proofs,
+            or_groups,
+            left_all - right_all,
+            left_keys,
+            _unprovable_addresses(_left_join_sources(join, final_datasets)),
+        )
+    if forced:
+        join.join_type = JoinType.INNER
+
+
+def tighten_join_for_filtered_branch(
+    join: BaseJoin | UnnestJoin,
+    filtered_ids: set[str],
+    coalescing_keys: set[str],
+    by_id: dict[str, GrainSource],
+) -> None:
+    """A side that IS the request WHERE's population must match every final
+    row, so a join that null-extends it resurrects rows the WHERE rejected.
+    Authored coalescing relations keep their preserving typing."""
+    if not isinstance(join, BaseJoin) or not filtered_ids:
+        return
+    join_addresses = {
+        address
+        for pair in join.concept_pairs or []
+        for address in (pair.left.address, pair.right.address)
+    } | {concept.address for concept in join.concepts or []}
+    if join_addresses & coalescing_keys:
+        return
+    left_ids: set[str] = set()
+    if join.left_datasource is not None:
+        left_ids.add(join.left_datasource.identifier)
+    for pair in join.concept_pairs or []:
+        left_ids.add(pair.existing_datasource.identifier)
+    right_filtered = _is_filter_population(
+        join.right_datasource.identifier, by_id, filtered_ids, join_addresses
+    )
+    left_filtered = any(
+        _is_filter_population(identifier, by_id, filtered_ids, join_addresses)
+        for identifier in left_ids
+    )
+    if join.join_type == JoinType.FULL:
+        if right_filtered and left_filtered:
+            join.join_type = JoinType.INNER
+        elif right_filtered:
+            join.join_type = JoinType.RIGHT_OUTER
+        elif left_filtered:
+            join.join_type = JoinType.LEFT_OUTER
+    elif (
+        join.join_type == JoinType.LEFT_OUTER
+        and right_filtered
+        or join.join_type == JoinType.RIGHT_OUTER
+        and left_filtered
+    ):
+        join.join_type = JoinType.INNER
+
+
+def narrow_join_types(
+    joins: list[BaseJoin | UnnestJoin],
+    proofs: JoinProofs,
+    final_datasets: list[GrainSource],
+) -> None:
+    """The planner's one narrowing decision over freshly typed joins: the
+    preserving form ``get_join_type`` chose is kept only where no surviving
+    row is already proven to match the preserved side."""
+    by_id = {source.identifier: source for source in final_datasets}
+    for join in joins:
+        downgrade_join_for_proofs(join, proofs.proofs, final_datasets)
+        downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
+        tighten_join_for_filtered_branch(
+            join, proofs.filtered_ids, proofs.coalescing_keys, by_id
+        )
+
+
+def narrow_directional_join_types(
+    joins: list[BaseJoin | UnnestJoin],
+    proofs: JoinProofs,
+    final_datasets: list[GrainSource],
+) -> None:
+    """Second narrowing step, after the directional joins' key pairs were
+    pruned to their preserved source: a LEFT/RIGHT whose padded side the
+    full harvest forces present is INNER."""
+    for join in joins:
+        downgrade_directional_join_for_proofs(
+            join, proofs.side_proofs, proofs.or_groups, final_datasets
+        )
+
+
+# Outputs whose value is computed by the grouping itself: a grouping that
+# emits one of them is never a pure identity over its parent rows.
+GROUP_COMPUTED_DERIVATIONS = frozenset(
+    {
+        Derivation.AGGREGATE,
+        Derivation.WINDOW,
+        Derivation.UNNEST,
+        Derivation.RECURSIVE,
+    }
+)
+
+
+def join_preserves_left_rows(join: BaseJoin) -> bool:
+    """A lookup join: INNER/LEFT onto a side whose whole grain the join keys
+    cover adds no rows to the left stream."""
+    if join.join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
+        return False
+    right_grain = set(join.right_datasource.grain.components)
+    if not right_grain:
+        return True
+    right_keys = (
+        [pair.right for pair in join.concept_pairs]
+        if join.concept_pairs
+        else join.concepts or []
+    )
+    coverage = {address for key in right_keys for address in key.equivalent_addresses}
+    return right_grain <= coverage
+
+
+def unique_at_declared_grain(source: GrainSource) -> bool:
+    """Whether ``source`` emits at most one row per its own declared grain.
+
+    A datasource's ``grain(...)`` is a uniqueness contract, and a GROUP
+    re-establishes uniqueness. Everything else passes its inputs' rows
+    through, so it only holds the contract when every row-feeding input is
+    itself unique at a grain the declaration already covers: a projection
+    over a finer-grained input declares the grain it is heading for, not one
+    it has reached, and a UNION stack concatenates its arms so a key in two
+    arms arrives twice. Lookup joins neither add rows nor need their grain
+    covered."""
+    if isinstance(source, BuildDatasource):
+        return True
+    if source.source_type == SourceType.GROUP:
+        return True
+    if source.source_type == SourceType.UNION:
+        return False
+    if any(
+        not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
+        for join in source.joins
+    ):
+        return False
+    looked_up = {
+        join.right_datasource.identifier
+        for join in source.joins
+        if isinstance(join, BaseJoin)
+    }
+    declared = set(source.grain.components)
+    return all(
+        unique_at_declared_grain(sub) and set(sub.grain.components) <= declared
+        for sub in source.datasources
+        if sub.identifier not in looked_up
+    )
+
+
+def stacks_duplicate_rows(source: GrainSource) -> bool:
+    """Whether ``source`` can emit repeated rows at its own declared grain: a
+    UNION stack does (its grouping establishes the grain rather than
+    restating it), a GROUP never does, anything else passes its inputs'
+    duplicates through."""
+    if not isinstance(source, QueryDatasource):
+        return False
+    if source.source_type == SourceType.UNION:
+        return True
+    if source.source_type == SourceType.GROUP:
+        return False
+    return any(stacks_duplicate_rows(sub) for sub in source.datasources)
+
+
+def is_identity_group(
+    datasets: list[GrainSource],
+    joins: list[BaseJoin | UnnestJoin],
+    target_grain: BuildGrain,
+    condition: BoolExpr | None,
+    output_concepts: list[BuildConcept],
+    rollup_concepts: list[BuildConcept],
+) -> bool:
+    """Grouping these joined sources to ``target_grain`` would keep every
+    row: one row-feeding root, already unique at a grain the target covers,
+    joined only to lookups, computing no aggregate of its own, under at most
+    a scalar WHERE."""
+    if rollup_concepts:
+        return False
+    right_ids = {
+        join.right_datasource.identifier for join in joins if isinstance(join, BaseJoin)
+    }
+    roots = [source for source in datasets if source.identifier not in right_ids]
+    if len(roots) != 1:
+        return False
+    root = roots[0]
+    if not unique_at_declared_grain(root):
+        return False
+    if not set(root.grain.components) <= set(target_grain.components):
+        return False
+    if any(
+        not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
+        for join in joins
+    ):
+        return False
+    supplied = {
+        concept.address for source in datasets for concept in source.output_concepts
+    }
+    if any(
+        concept.derivation in GROUP_COMPUTED_DERIVATIONS
+        and concept.address not in supplied
+        for concept in output_concepts
+    ):
+        return False
+    return condition is None or is_scalar_condition(condition, materialized=supplied)
 
 
 def calculate_joined_pregrain(

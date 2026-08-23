@@ -15,22 +15,29 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
-from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.condition_utility import (
+    decompose_condition,
+    gather_non_null_proofs,
+    gather_or_groups,
+)
 from trilogy.core.processing.grain_utility import (
+    JoinProofs,
     anti_join_preserved_grain,
     calculate_joined_pregrain,
+    collect_applied_conditions,
     condition_key_grain,
-    downgrade_join_for_condition,
-    downgrade_join_for_proofs,
     grain_satisfied_by_pregrain,
     has_condition_key_outside_grain,
+    is_identity_group,
+    narrow_directional_join_types,
+    narrow_join_types,
     non_null_proofs,
 )
 from trilogy.core.processing.join_resolution import (
     _collect_deep_partial_addresses,
     compute_outer_null_status,
-    deep_extent_free_spans,
     get_node_joins,
+    narrow_keyless_joins,
     partial_binding_sources,
     prune_outer_join_pairs,
     side_nullable,
@@ -128,41 +135,6 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
             _has_applied_condition(parent) for parent in source.datasources
         )
     return bool(source.where)
-
-
-def _collect_applied_conditions(source: QueryDatasource | BuildDatasource) -> list:
-    """All filter conditions applied anywhere within a parent branch's tree."""
-    out: list = []
-    if isinstance(source, QueryDatasource):
-        if source.condition is not None:
-            out.append(source.condition)
-        for parent in source.datasources:
-            out.extend(_collect_applied_conditions(parent))
-    return out
-
-
-def _is_filter_population(
-    identifier: str,
-    by_id: dict[str, QueryDatasource | BuildDatasource],
-    filtered_ids: set[str],
-    join_addresses: set[str],
-) -> bool:
-    """Whether this side's row set IS the request WHERE's population.
-
-    It has to have applied the WHERE, and it must not owe its narrowness to
-    anything else. An extent-free branch covers only the span members its facts
-    bound (docs/extent_ownership.md), so a row missing there is a member nobody
-    referenced, not a row the WHERE rejected, and the other side stays
-    preserved."""
-    if identifier not in filtered_ids:
-        return False
-    source = by_id.get(identifier)
-    if source is None:
-        return True
-    suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
-        source
-    )
-    return not (join_addresses & suppressed)
 
 
 def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
@@ -532,77 +504,83 @@ class MergeNode(StrategyNode):
             if changed:
                 parent.rebuild_cache()
 
-    def _tighten_joins_for_filtered_branches(
-        self,
-        joins: list[BaseJoin | UnnestJoin],
-        final_datasets: list[QueryDatasource | BuildDatasource],
-    ) -> None:
-        if self.preexisting_conditions is None:
-            return
-        rendered = list(decompose_condition(self.conditions)) if self.conditions else []
-        request_atoms = [
-            atom
-            for atom in decompose_condition(self.preexisting_conditions)
-            if not any(atom == r for r in rendered)
-        ]
-        if not request_atoms:
-            return
-        filtered_ids: set[str] = set()
+    def _join_proofs(
+        self, final_datasets: list[QueryDatasource | BuildDatasource]
+    ) -> JoinProofs:
+        proofs: set[str] = set()
+        side_proofs: set[str] = set()
+        or_groups: list[list[set[str]]] = []
+        if self.conditions:
+            proofs = non_null_proofs(self.conditions)
+            side_proofs = gather_non_null_proofs(self.conditions)
+            or_groups = gather_or_groups(self.conditions)
+        # A MULTISELECT align supplies explicit ``node_joins`` whose FULL is
+        # intentional (each arm's rows survive even where the other arm, with
+        # its own HAVING, has none), so arm-local evidence must not narrow it.
+        if self.node_joins is not None:
+            return JoinProofs(
+                proofs=proofs, side_proofs=side_proofs, or_groups=or_groups
+            )
+        # A query-level filter (e.g. a HAVING like ``customer_state > scaled``)
+        # is sometimes pushed into the single branch that exposes its columns
+        # rather than kept on this merge. It still constrains the FINAL output:
+        # any output concept it proves non-null must not be re-nulled by an
+        # outer join. That only holds when no branch supplies the column
+        # completely: with one branch COMPLETE and another PARTIAL on it (a
+        # rowset's `where order_id...` over its base key outer-joined back to
+        # the unfiltered base) the merge legitimately spans rows outside the
+        # filter, so the outer join must keep them.
+        output_addresses = {c.address for c in self.output_concepts}
+        branch_proofs: set[str] = set()
+        complete_addresses: set[str] = set()
+        partial_addresses: set[str] = set()
         for source in final_datasets:
-            applied = [
+            for condition in collect_applied_conditions(source):
+                branch_proofs |= non_null_proofs(condition)
+            source_partial = _collect_deep_partial_addresses(source)
+            source_outputs = {c.address for c in source.output_concepts}
+            complete_addresses |= source_outputs - source_partial
+            partial_addresses |= source_outputs & source_partial
+        branch_proofs &= output_addresses
+        branch_proofs -= complete_addresses & partial_addresses
+        # A branch carrying an atom of this merge's PRE-APPLIED request WHERE
+        # (preexisting_conditions the merge itself does not re-render) is the
+        # population: every final row must have a match there (q30: the
+        # `state = 'GA'` branch outer-joined once its key's honest nullability
+        # stopped the INNER typing). Branch-local filters (a rowset's internal
+        # WHERE) are not request atoms and keep their deliberate preservation.
+        filtered_ids: set[str] = set()
+        if self.preexisting_conditions is not None:
+            rendered = (
+                list(decompose_condition(self.conditions)) if self.conditions else []
+            )
+            request_atoms = [
                 atom
-                for condition in _collect_applied_conditions(source)
-                for atom in decompose_condition(condition)
+                for atom in decompose_condition(self.preexisting_conditions)
+                if not any(atom == r for r in rendered)
             ]
-            if any(any(atom == a for a in applied) for atom in request_atoms):
-                filtered_ids.add(source.identifier)
-        if not filtered_ids:
-            return
-        # Authored coalescing (union/full) relations declare row intent: their
-        # arms are preserved BY DESIGN, and only the provably-row-identical
-        # narrowing pass may tighten them — the same registry veto
-        # `get_join_type` honors (the composite union-join rowset family keeps
-        # its return-arm rows against a sales-side filter).
+            for source in final_datasets:
+                applied = [
+                    atom
+                    for condition in collect_applied_conditions(source)
+                    for atom in decompose_condition(condition)
+                ]
+                if any(any(atom == a for a in applied) for atom in request_atoms):
+                    filtered_ids.add(source.identifier)
+        # Authored coalescing (union/full) relations declare row intent: only
+        # the provably-row-identical narrowing pass may tighten them, the same
+        # registry veto `get_join_type` honors.
         coalescing = self.environment.domain_graph.outer_relation_keys() | set(
             self.environment.domain_graph.coalescing_relation_members()
         )
-        by_id = {source.identifier: source for source in final_datasets}
-        for join in joins:
-            if not isinstance(join, BaseJoin):
-                continue
-            join_addresses = {
-                address
-                for pair in join.concept_pairs or []
-                for address in (pair.left.address, pair.right.address)
-            } | {concept.address for concept in join.concepts or []}
-            if join_addresses & coalescing:
-                continue
-            left_ids = set()
-            if join.left_datasource is not None:
-                left_ids.add(join.left_datasource.identifier)
-            for pair in join.concept_pairs or []:
-                left_ids.add(pair.existing_datasource.identifier)
-            right_filtered = _is_filter_population(
-                join.right_datasource.identifier, by_id, filtered_ids, join_addresses
-            )
-            left_filtered = any(
-                _is_filter_population(identifier, by_id, filtered_ids, join_addresses)
-                for identifier in left_ids
-            )
-            if join.join_type == JoinType.FULL:
-                if right_filtered and left_filtered:
-                    join.join_type = JoinType.INNER
-                elif right_filtered:
-                    join.join_type = JoinType.RIGHT_OUTER
-                elif left_filtered:
-                    join.join_type = JoinType.LEFT_OUTER
-            elif (
-                join.join_type == JoinType.LEFT_OUTER
-                and right_filtered
-                or join.join_type == JoinType.RIGHT_OUTER
-                and left_filtered
-            ):
-                join.join_type = JoinType.INNER
+        return JoinProofs(
+            proofs=proofs,
+            branch_proofs=branch_proofs,
+            side_proofs=side_proofs,
+            or_groups=or_groups,
+            filtered_ids=filtered_ids,
+            coalescing_keys=coalescing,
+        )
 
     def _resolve(self) -> QueryDatasource:
         self._inject_scoped_join_key_exposure()
@@ -753,6 +731,7 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {raw_pregrain} and final merge node grain {grain}"
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
+        join_proofs = self._join_proofs(final_datasets)
         if len(join_candidates) > 1:
             joins: list[BaseJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, raw_pregrain, grain, self.environment
@@ -763,53 +742,7 @@ class MergeNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
-        for join in joins:
-            downgrade_join_for_condition(join, self.conditions, final_datasets)
-        # A query-level filter (e.g. a HAVING like ``customer_state > scaled``)
-        # is sometimes pushed into the single branch that exposes its columns
-        # rather than kept on this merge. It still constrains the FINAL output,
-        # so honor it here: any output concept it proves non-null must not be
-        # re-nulled by an outer join. Only for inferred-join merges — a
-        # MULTISELECT align supplies explicit ``node_joins`` whose FULL is
-        # intentional (each arm's rows survive even where the other arm, with
-        # its own HAVING, has none), so an arm-local proof must not force INNER.
-        if self.node_joins is None:
-            output_addresses = {c.address for c in self.output_concepts}
-            branch_proofs: set[str] = set()
-            for source in final_datasets:
-                for condition in _collect_applied_conditions(source):
-                    branch_proofs |= non_null_proofs(condition)
-            branch_proofs &= output_addresses
-            # A branch-local filter proves its column non-null, but that only
-            # constrains the FINAL output when no branch supplies the column
-            # completely. When one branch has it COMPLETE (non-partial) and
-            # another has it PARTIAL — e.g. a rowset's `where order_id...` over
-            # its base key outer-joined back to the unfiltered base — the merge
-            # legitimately spans rows outside the filter, so the outer join must
-            # keep them: the column is non-null in the filtered branch but not
-            # complete there. (A column complete on one branch and merely absent
-            # from the rest,  still
-            # forces INNER — it isn't partial anywhere.)
-            complete_addresses: set[str] = set()
-            partial_addresses: set[str] = set()
-            for source in final_datasets:
-                source_partial = _collect_deep_partial_addresses(source)
-                source_outputs = {c.address for c in source.output_concepts}
-                complete_addresses |= source_outputs - source_partial
-                partial_addresses |= source_outputs & source_partial
-            branch_proofs -= complete_addresses & partial_addresses
-            if branch_proofs:
-                for join in joins:
-                    downgrade_join_for_proofs(join, branch_proofs, final_datasets)
-            # A branch that carries an atom of this merge's PRE-APPLIED request
-            # WHERE (preexisting_conditions the merge itself does not
-            # re-render) is the population: every final row must have a match
-            # there, so a join that null-extends that branch resurrects rows
-            # the WHERE rejected (q30: the `state = 'GA'` branch outer-joined
-            # once its key's honest nullability stopped the INNER typing).
-            # Branch-local filters (a rowset's internal WHERE) are not request
-            # atoms and keep their deliberate preservation.
-            self._tighten_joins_for_filtered_branches(joins, final_datasets)
+        narrow_join_types(joins, join_proofs, final_datasets)
         # Compute per-datasource NULL-ability based on the resolved join graph.
         # Used to (a) order ``final_datasets`` so the preserved side wins
         # ``resolve_concept_map``'s first-pass for shared concepts and
@@ -817,6 +750,8 @@ class MergeNode(StrategyNode):
         # a preserved alternative exists. Both reduce redundant ``coalesce``.
         null_status = compute_outer_null_status(joins)
         prune_outer_join_pairs(joins, null_status)
+        narrow_directional_join_types(joins, join_proofs, final_datasets)
+        narrow_keyless_joins(joins)
         # ``full_join_concepts`` covers FULL JOINs only — both sides may be
         # NULL, so source_map needs every input that supplies the address. For
         # LEFT/RIGHT OUTER the preserved-side ordering above is sufficient.
@@ -873,6 +808,20 @@ class MergeNode(StrategyNode):
             force_group = True
         else:
             force_group = None
+        # A regroup is an identity when the joined rows are already unique at
+        # the output grain: nothing to collapse (a row filter on keys outside
+        # the grain cannot create duplicates), so render a plain projection.
+        if force_group and is_identity_group(
+            final_datasets,
+            joins,
+            BuildGrain.from_concepts(
+                self.output_concepts, environment=self.environment
+            ),
+            self.conditions,
+            self.output_concepts,
+            self.rollup_concepts,
+        ):
+            force_group = False
 
         qd_joins: list[BaseJoin | UnnestJoin] = [*joins]
 
