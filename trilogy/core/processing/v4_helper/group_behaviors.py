@@ -1,8 +1,8 @@
 """Per-derivation IO contracts for v4 group nodes.
 
-`group_rules.py` answers "how do concepts cluster into a bucket?" — this
-file answers "given a bucket, what are the rules for its input / output /
-hidden sets?"
+`group_rules.py` answers "how do concepts cluster into a bucket?"; this
+file answers "given a bucket, what are the rules for its input / output
+sets?"
 
 Two pure functions per derivation:
 
@@ -49,7 +49,6 @@ CanPreserveFn = Callable[
 class Behavior:
     """The IO contract for one derivation. See module docstring."""
 
-    derivation: Derivation | None
     native_grain: NativeGrainFn
     can_preserve: CanPreserveFn
 
@@ -67,17 +66,6 @@ def _lineage_parents(
 
 
 # ----- native_grain implementations -----------------------------------
-
-
-def native_grain_root(
-    bucket: GroupBucket,
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-) -> frozenset[str]:
-    """ROOT is the scan. There's no row-shape change to defend against, so
-    we return an empty grain and let `can_preserve_root` short-circuit."""
-    return frozenset()
 
 
 def native_grain_declared(
@@ -151,20 +139,6 @@ def native_grain_basic_inherited(
 
 
 # ----- can_preserve implementations -----------------------------------
-
-
-def can_preserve_root(
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-    native_grain: frozenset[str],
-    address: str,
-) -> bool:
-    """ROOT exposes only its primaries (the scan). There's no upstream
-    to preserve from. Returning False here is a safety net — the
-    orchestrator never asks ROOT about preservation because ROOT has
-    no predecessors."""
-    return False
 
 
 def can_preserve_grain_subset(
@@ -256,47 +230,36 @@ def can_preserve_grouping(
 # ----- registry --------------------------------------------------------
 
 # Default behavior: declared grain + subset preservation. Used for any
-# derivation we haven't enumerated below (RECURSIVE/UNION/ROWSET edge
-# cases) — safe because subset preservation is the conservative answer.
+# derivation not enumerated below (ROOT is the scan itself and never asks
+# about preservation; RECURSIVE/UNION/ROWSET edge cases): safe because
+# subset preservation is the conservative answer.
 _DEFAULT_BEHAVIOR = Behavior(
-    derivation=None,
     native_grain=native_grain_declared,
     can_preserve=can_preserve_grain_subset,
 )
 
 GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
-    Derivation.ROOT: Behavior(
-        derivation=Derivation.ROOT,
-        native_grain=native_grain_root,
-        can_preserve=can_preserve_root,
-    ),
     Derivation.BASIC: Behavior(
-        derivation=Derivation.BASIC,
         native_grain=native_grain_basic_inherited,
         can_preserve=can_preserve_grain_subset,
     ),
     Derivation.AGGREGATE: Behavior(
-        derivation=Derivation.AGGREGATE,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
     Derivation.GROUP_TO: Behavior(
-        derivation=Derivation.GROUP_TO,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
     Derivation.WINDOW: Behavior(
-        derivation=Derivation.WINDOW,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grouping,
     ),
     Derivation.FILTER: Behavior(
-        derivation=Derivation.FILTER,
         native_grain=native_grain_filter_inputs,
         can_preserve=can_preserve_grain_subset,
     ),
     Derivation.SUBSELECT: Behavior(
-        derivation=Derivation.SUBSELECT,
         native_grain=native_grain_declared,
         can_preserve=can_preserve_grain_subset,
     ),
@@ -306,7 +269,6 @@ GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
     # default behavior would strip the source keys and leave a sibling merge
     # with no axis (count-over-unnest beside a dim join cross-joins ON 1=1).
     Derivation.UNNEST: Behavior(
-        derivation=Derivation.UNNEST,
         native_grain=native_grain_filter_inputs,
         can_preserve=can_preserve_grain_subset,
     ),

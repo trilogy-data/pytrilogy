@@ -522,27 +522,6 @@ def _preserved_final_branch(
     )
 
 
-def _validate_not_pushed_past_independent_barrier(
-    atom: BoolExpr,
-    chosen_groups: tuple[str, ...],
-    producer_groups: set[str],
-    d0_group_ids: set[str],
-    group_graph: nx.DiGraph,
-) -> None:
-    consumed_barriers: set[str] = set(producer_groups)
-    for producer in producer_groups:
-        consumed_barriers |= nx.ancestors(group_graph, producer)
-    for chosen in chosen_groups:
-        chosen_ancestors = nx.ancestors(group_graph, chosen)
-        offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
-        if offending:
-            raise ValueError(
-                f"Atom {atom} would be injected at {chosen}, which is "
-                f"downstream of d0 barrier(s) {sorted(offending)}; "
-                f"conditions cannot be pushed past row-shape changes."
-            )
-
-
 def _grouping_barrier_host(
     candidates: list[str],
     dropped_hosts: list[str],
@@ -815,11 +794,11 @@ def plan_condition_placements(
     group_edges: EdgeMap,
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
-    environment: BuildEnvironment | None = None,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
@@ -833,9 +812,7 @@ def plan_condition_placements(
     # sits BELOW the aggregate, and a FINAL-deferred side WHERE would filter
     # aggregated rows instead of input rows (recursive-enrichment
     # `where parent.label = 'A' select count(id)` over-counted).
-    if environment is not None and not any(
-        b.derivation in GROUPING_DERIVATIONS for b in buckets.values()
-    ):
+    if not any(b.derivation in GROUPING_DERIVATIONS for b in buckets.values()):
         statement_relation_addresses = (
             statement_relation_addresses | computed_origin_relation_members(environment)
         )
@@ -945,12 +922,9 @@ def plan_condition_placements(
                 ca = attrs_by_address.get(addr)
                 if ca is not None and ca.rowset_name is not None:
                     return ca.rowset_name == own_rowset
-                if environment is not None:
-                    concept = environment.concepts.get(addr)
-                    if concept is not None and isinstance(
-                        concept.lineage, BuildRowsetItem
-                    ):
-                        return concept.lineage.rowset.name == own_rowset
+                concept = environment.concepts.get(addr)
+                if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
+                    return concept.lineage.rowset.name == own_rowset
                 namespace = addr.rpartition(".")[0]
                 return namespace == own_rowset or namespace.endswith(f".{own_rowset}")
 
@@ -1011,7 +985,7 @@ def plan_condition_placements(
                 mate_attrs = attrs_by_address.get(mate)
                 if mate_attrs is not None:
                     mates |= set(mate_attrs.keys)
-                elif environment is not None:
+                else:
                     mate_concept = environment.concepts.get(mate)
                     if mate_concept is not None and mate_concept.keys:
                         mates |= set(mate_concept.keys)
@@ -1285,11 +1259,10 @@ def plan_condition_placements(
                 )
                 continue
             # Drop hosts sitting downstream of a d0 row-shape barrier the
-            # atom's own producers don't already consume (the same criterion
-            # `_validate_not_pushed_past_independent_barrier` enforces): a
-            # cross-boundary atom (an OR of two boundaries' presence probes)
-            # can end up with only such hosts — its correct home is FINAL,
-            # above every barrier, not a crash.
+            # atom's own producers don't already consume: conditions cannot be
+            # pushed past row-shape changes. A cross-boundary atom (an OR of
+            # two boundaries' presence probes) can end up with only such hosts;
+            # its correct home is then FINAL, above every barrier.
             if restricted:
                 producer_groups = _producer_groups(row_inputs, buckets)
                 consumed_barriers: set[str] = set(producer_groups)
@@ -1335,13 +1308,6 @@ def plan_condition_placements(
                     chosen_groups = _choose_groups(
                         outer_hosts, lineage_ancestors_graph, main_lineage
                     )
-            _validate_not_pushed_past_independent_barrier(
-                atom,
-                chosen_groups,
-                _producer_groups(row_inputs, buckets),
-                d0_group_ids,
-                group_graph,
-            )
             placements.append(
                 ConditionPlacement(
                     atom=atom,

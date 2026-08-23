@@ -52,10 +52,8 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
     behavior_for,
     can_preserve_grain_subset,
     can_preserve_grouping,
-    can_preserve_root,
     native_grain_basic_inherited,
     native_grain_declared,
-    native_grain_root,
 )
 from trilogy.core.processing.v4_helper.group_graph import (
     _add_final_node,
@@ -91,6 +89,11 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _pre_merge_parents,
     _required_final_contract,
 )
+
+
+@pytest.fixture
+def empty_environment() -> BuildEnvironment:
+    return BuildEnvironment()
 
 
 def _attrs(address: str, spec: dict) -> ConceptAttrs:
@@ -229,7 +232,9 @@ def test_final_node_declares_logical_output_grain_contract():
     assert contract.deduplicate_to_grain is True
 
 
-def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
+def test_final_contributor_contract_preserves_rowset_merge_grain_for_root(
+    empty_environment: BuildEnvironment,
+):
     customer_id = _build_concept("customer.id", Purpose.KEY)
     customer_name = _build_concept(
         "customer.name",
@@ -266,9 +271,7 @@ def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
     add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
 
     _refresh_final_contract(
-        group_graph,
-        attrs,
-        [customer_name, bought_city],
+        group_graph, attrs, [customer_name, bought_city], empty_environment
     )
 
     contract = attrs[FINAL_NODE_ID].final_contract
@@ -281,7 +284,9 @@ def test_final_contributor_contract_preserves_rowset_merge_grain_for_root():
     assert root_contract.projection_grain == set()
 
 
-def test_final_contributor_contract_uses_rowset_lineage_join_key():
+def test_final_contributor_contract_uses_rowset_lineage_join_key(
+    empty_environment: BuildEnvironment,
+):
     order_id = _build_concept("order_id", Purpose.KEY)
     store_id_address = "local.store_id"
     store_id = _build_concept(
@@ -342,6 +347,7 @@ def test_final_contributor_contract_uses_rowset_lineage_join_key():
         group_graph,
         attrs,
         [order_id, rowset_order_id, rowset_store_id],
+        empty_environment,
     )
 
     contract = attrs[FINAL_NODE_ID].final_contract
@@ -357,7 +363,9 @@ def test_final_contributor_contract_uses_rowset_lineage_join_key():
     assert rowset_contract.projection_grain == {order_id.address}
 
 
-def test_final_merge_grain_takes_a_non_grouping_contributor_grain():
+def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
+    empty_environment: BuildEnvironment,
+):
     """A BASIC contributor's grain is a merge axis too.
 
     `customer_status <- case ... min(order_date) by user` is BASIC, not
@@ -400,7 +408,9 @@ def test_final_merge_grain_takes_a_non_grouping_contributor_grain():
     add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
     add_edge(group_graph, group_edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
 
-    _refresh_final_contract(group_graph, attrs, [customer_status, center_id])
+    _refresh_final_contract(
+        group_graph, attrs, [customer_status, center_id], empty_environment
+    )
 
     contract = attrs[FINAL_NODE_ID].final_contract
     assert contract is not None
@@ -827,25 +837,6 @@ class TestCanPreserveGrouping:
         )
 
 
-# ----- can_preserve_root ----------------------------------------------
-
-
-def test_can_preserve_root_always_false():
-    """ROOT has no upstream to preserve from. The orchestrator skips
-    asking, but the function should still be safe to call."""
-    cg, ce, ca = _cg({"anything": {"grain": set()}})
-    assert can_preserve_root(cg, ce, ca, frozenset(), "anything") is False
-
-
-# ----- native_grain_root ----------------------------------------------
-
-
-def test_native_grain_root_is_empty():
-    cg, ce, ca = _cg({})
-    bucket = _bucket(Derivation.ROOT, primaries=["x", "y"], grain={"x"})
-    assert native_grain_root(bucket, cg, ce, ca) == frozenset()
-
-
 # ----- native_grain_declared ------------------------------------------
 
 
@@ -942,7 +933,6 @@ class TestNativeGrainBasicInherited:
 @pytest.mark.parametrize(
     "derivation",
     [
-        Derivation.ROOT,
         Derivation.BASIC,
         Derivation.AGGREGATE,
         Derivation.GROUP_TO,
@@ -953,8 +943,14 @@ class TestNativeGrainBasicInherited:
 )
 def test_registry_covers_known_derivation(derivation: Derivation):
     assert derivation in GROUP_BEHAVIORS
-    beh = GROUP_BEHAVIORS[derivation]
-    assert beh.derivation == derivation
+    assert behavior_for(derivation) is GROUP_BEHAVIORS[derivation]
+
+
+def test_root_uses_default_behavior():
+    """ROOT is the scan: it takes the scan path before any preservation
+    question, so it needs no registry entry."""
+    assert Derivation.ROOT not in GROUP_BEHAVIORS
+    assert behavior_for(Derivation.ROOT) is behavior_for(None)
 
 
 def test_behavior_for_unknown_returns_default():

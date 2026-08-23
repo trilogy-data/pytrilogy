@@ -19,7 +19,6 @@ lives next to its rule.
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Literal, overload
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -134,7 +133,7 @@ def _d1_calc_subgraph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
 ) -> tuple[dict[int | None, set[str]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
 
@@ -334,7 +333,7 @@ def _split_strands_condition_scan(
     concept_attrs: dict[str, ConceptAttrs],
     split_roots: set[str],
     d1_subgraph: set[str],
-    environment: BuildEnvironment | None,
+    environment: BuildEnvironment,
 ) -> bool:
     """Whether scanning `split_roots` privately would leave that scan no join
     key back to the rows it filters.
@@ -364,8 +363,6 @@ def _split_strands_condition_scan(
     NO chain of bound datasource columns relates the two sides at all, so the
     physical-column components decide it.
     """
-    if environment is None:
-        return False
     condition_axis: set[str] = set()
     condition_addresses: set[str] = set()
     for node in split_roots:
@@ -1320,11 +1317,11 @@ def _inject_conditions(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
-    scoped_join_key_groups: dict[str, set[str]] | None = None,
-    concept_attrs: dict[str, ConceptAttrs] | None = None,
-    statement_relation_addresses: frozenset[str] = frozenset(),
-    environment: BuildEnvironment | None = None,
+    mandatory_list: list[BuildConcept],
+    scoped_join_key_groups: dict[str, set[str]],
+    concept_attrs: dict[str, ConceptAttrs],
+    statement_relation_addresses: frozenset[str],
+    environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
@@ -1335,10 +1332,10 @@ def _inject_conditions(
         buckets,
         conditions,
         mandatory_list,
+        environment,
         scoped_join_key_groups,
         concept_attrs,
         statement_relation_addresses,
-        environment,
         staged_conditions,
     )
     for placement in placements:
@@ -1533,7 +1530,7 @@ def _add_final_node(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
+    mandatory_list: list[BuildConcept],
 ) -> None:
     """Attach a single FINAL sink that collects every non-d1 concept, with a
     merge edge from every group. Added before `_inject_conditions` so a
@@ -1547,15 +1544,11 @@ def _add_final_node(
         depth_label=DepthLabel.FINAL,
         members=non_condition_members,
         conditions=[str(c) for c in conditions],
-        final_contract=(
-            FinalAssemblyContract(
-                output_addresses=frozenset(c.address for c in mandatory_list),
-                required_grain=frozenset(
-                    BuildGrain.from_concepts(mandatory_list).components
-                ),
-            )
-            if mandatory_list is not None
-            else None
+        final_contract=FinalAssemblyContract(
+            output_addresses=frozenset(c.address for c in mandatory_list),
+            required_grain=frozenset(
+                BuildGrain.from_concepts(mandatory_list).components
+            ),
         ),
     )
     for gid in buckets:
@@ -1614,17 +1607,13 @@ def _unwrapped_rowset_grain(
     )
 
 
-def _rollup_padded_addresses(
-    environment: BuildEnvironment | None,
-) -> frozenset[str]:
+def _rollup_padded_addresses(environment: BuildEnvironment) -> frozenset[str]:
     """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
     The subtotal rows NULL these, so they are not a row identity and must never
     be volunteered as a join axis: pairing on one drops every subtotal row (a
     rolled-up NULL matches nothing). The join resolver applies the same rule
     per-datasource via `rollup_padded_addresses`; this is the environment-wide
     view the demand pass needs before any datasource exists."""
-    if environment is None:
-        return frozenset()
     padded: set[str] = set()
     for concept in (
         *environment.concepts.values(),
@@ -1646,7 +1635,7 @@ def _rollup_padded_addresses(
 
 
 def _lineage_pinned_grain(
-    addresses: frozenset[str] | set[str], environment: BuildEnvironment | None
+    addresses: frozenset[str] | set[str], environment: BuildEnvironment
 ) -> frozenset[str]:
     """Grain components pinned by fixed-grain barriers in the lineage of
     ``addresses``. A BASIC that renames or derives from an aggregate
@@ -1659,8 +1648,6 @@ def _lineage_pinned_grain(
     axes. Members of an AUTHORED scoped-join relation are skipped: the
     authored keys are the axis there, and pairing on internal grain too would
     silently narrow the authored fan-out (q59 shape)."""
-    if environment is None:
-        return frozenset()
     scoped_members = environment.all_scoped_join_group_members()
     stack: list[BuildConcept] = []
     for addr in addresses:
@@ -1717,15 +1704,11 @@ def _final_merge_grain(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     mandatory_by_address = {concept.address: concept for concept in mandatory_list}
-    scoped_members = (
-        environment.all_scoped_join_group_members()
-        if environment is not None
-        else frozenset()
-    )
+    scoped_members = environment.all_scoped_join_group_members()
     grain: set[str] = set()
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         if gid not in attrs:
@@ -1789,7 +1772,7 @@ def _final_merge_grain(
     # declared join key and the FINAL merge cross-joins ON 1=1. The authored
     # members ARE the join axis: add them whenever a member lives on a FINAL
     # rowset boundary and another contributor exists to pair with.
-    if environment is not None and environment.scoped_join_key_groups:
+    if environment.scoped_join_key_groups:
         finals = [
             gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
         ]
@@ -1839,7 +1822,7 @@ def _group_final_grain_contribution(
     attrs: dict[str, GroupAttrs],
     gid: str,
     merge_grain: frozenset[str],
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
 ) -> frozenset[str]:
     if gid not in attrs:
         return frozenset()
@@ -1862,11 +1845,10 @@ def _group_final_grain_contribution(
     # merge cross-joins ON 1=1 (q44's decorrelated best/worst pairing). Global
     # `merge` identities are excluded — they pair INNER and never define a
     # statement's join axis (advertising one strands a partial dimension).
-    if environment is not None:
-        available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
-        rowset_keys |= (
-            _statement_scoped_relation_members(environment) & merge_grain & available
-        )
+    available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
+    rowset_keys |= (
+        _statement_scoped_relation_members(environment) & merge_grain & available
+    )
     # A non-grouping contributor whose outputs ride a fixed-grain barrier (a
     # BASIC rename/derivation of an aggregate: `cust_state_amt as total`, or
     # of a rowset member) is grain-pinned at that barrier's grain. Without
@@ -1884,7 +1866,7 @@ def _refresh_final_contract(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
     if FINAL_NODE_ID not in attrs:
@@ -1916,11 +1898,7 @@ def _refresh_final_contract(
     # matching one next-year store) must survive into the result (q59 shape,
     # independent_rowset_matrix). Deduping to the members' combined "grain"
     # would collapse those rows to distinct key pairs.
-    scoped_members = (
-        environment.all_scoped_join_group_members()
-        if environment is not None
-        else frozenset()
-    )
+    scoped_members = environment.all_scoped_join_group_members()
     axis_only_projection = bool(scoped_members) and all(
         concept.address in scoped_members for concept in mandatory_list
     )
@@ -1929,7 +1907,7 @@ def _refresh_final_contract(
     # A SOLE projected member of its relation is the unified axis — the
     # coalesce of the domains, deduped to the output grain (bare-member
     # projection cell).
-    if axis_only_projection and environment is not None:
+    if axis_only_projection:
         mandatory_addresses = {concept.address for concept in mandatory_list}
         axis_only_projection = any(
             len({canonical, *members} & mandatory_addresses) >= 2
@@ -2157,8 +2135,8 @@ class GroupFacts:
     primary: set[str]
     grain: frozenset[str]
     derivation: Derivation | None
+    behavior: Behavior
     native_grain: frozenset[str] = frozenset()
-    behavior: Behavior | None = None
 
 
 @dataclass
@@ -2166,7 +2144,6 @@ class GroupIOPlan:
     capability: dict[str, set[str]] = field(default_factory=dict)
     outputs: dict[str, set[str]] = field(default_factory=dict)
     inputs: dict[str, set[str]] = field(default_factory=dict)
-    hidden: dict[str, set[str]] = field(default_factory=dict)
 
     @classmethod
     def for_groups(cls, group_graph: nx.DiGraph) -> "GroupIOPlan":
@@ -2174,7 +2151,6 @@ class GroupIOPlan:
             capability={gid: set() for gid in group_graph.nodes},
             outputs={gid: set() for gid in group_graph.nodes},
             inputs={gid: set() for gid in group_graph.nodes},
-            hidden={gid: set() for gid in group_graph.nodes},
         )
 
 
@@ -2216,11 +2192,10 @@ def _build_group_facts(
             primary=set(a.primary_members),
             grain=frozenset(a.grain_components),
             derivation=a.derivation,
+            behavior=behavior_for(a.derivation),
         )
     for gid, bucket in buckets.items():
-        behavior = behavior_for(bucket.derivation)
-        facts[gid].behavior = behavior
-        facts[gid].native_grain = behavior.native_grain(
+        facts[gid].native_grain = facts[gid].behavior.native_grain(
             bucket, concept_graph, concept_edges, concept_attrs
         )
     return facts
@@ -2350,7 +2325,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
     facts: dict[str, GroupFacts],
     attrs: dict[str, GroupAttrs],
     mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment | None,
+    environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
     """A BASIC scalar mixing row values with a by-key aggregate
@@ -2405,14 +2380,11 @@ def _widen_mixed_scalar_basic_to_final_spine(
         return
     mandatory_addresses = {c.address for c in mandatory_list}
     extra_keys = spine - mandatory_addresses
-    if extra_keys and (
-        environment is None
-        or not all(
-            build_fd_determines(
-                environment, mandatory_addresses, addr, include_empty_grain=False
-            )
-            for addr in extra_keys
+    if extra_keys and not all(
+        build_fd_determines(
+            environment, mandatory_addresses, addr, include_empty_grain=False
         )
+        for addr in extra_keys
     ):
         return
     for gid in candidates:
@@ -2440,9 +2412,7 @@ def _topological_dependency_order(
         return None
 
 
-def _scoped_axis_mates(
-    environment: BuildEnvironment | None,
-) -> dict[str, frozenset[str]]:
+def _scoped_axis_mates(environment: BuildEnvironment) -> dict[str, frozenset[str]]:
     """Each STATEMENT-scoped join axis member -> the OTHER sides' members. They
     are alternative physical columns for one logical axis, so a group that owns
     one of them owns the axis. Global `merge` identities are excluded (they pair
@@ -2452,8 +2422,6 @@ def _scoped_axis_mates(
     as a statement relation, and the concept graph re-injects it with RELATION
     edges, so its members must count as axis mates or the computing group never
     exposes the axis and is dropped from the FINAL cover."""
-    if environment is None:
-        return {}
     scoped = set(_statement_scoped_relation_members(environment)) | set(
         computed_origin_relation_members(environment)
     )
@@ -2486,12 +2454,12 @@ def _compute_concept_sets(
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
     scoped_join_member_addresses: frozenset[str] = frozenset(),
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
-    environment: BuildEnvironment | None = None,
 ) -> None:
-    """Per-group input/output/hidden concept sets.
+    """Per-group input/output concept sets.
 
     The pass has three explicit pieces:
     - stable graph facts (`GroupFacts`): primary members, grain, behavior
@@ -2503,10 +2471,8 @@ def _compute_concept_sets(
     # axis for the buckets hosting them, so rowset-grain resolution must not
     # volunteer extra equalities there (it would silently narrow the authored
     # fan-out, q59 shape).
-    scoped_relation_members = scoped_join_member_addresses | (
-        environment.all_scoped_join_group_members()
-        if environment is not None
-        else frozenset()
+    scoped_relation_members = (
+        scoped_join_member_addresses | environment.all_scoped_join_group_members()
     )
     rollup_padded = _rollup_padded_addresses(environment)
     # A struct field demanded as the canonical key (`local.a`) is produced under
@@ -2563,21 +2529,20 @@ def _compute_concept_sets(
     # there only widens the scan and the merge keys with equalities the fact
     # grain already determines.
     scan_advertisable_members: list[str] = []
-    if environment is not None:
-        for member in sorted(_statement_scoped_relation_members(environment)):
-            member_concept = environment.concepts.get(member)
-            if (
-                member_concept is not None
-                and member_concept.derivation != Derivation.ROWSET
-                and member not in all_primary_members
-            ):
-                scan_advertisable_members.append(member)
+    for member in sorted(_statement_scoped_relation_members(environment)):
+        member_concept = environment.concepts.get(member)
+        if (
+            member_concept is not None
+            and member_concept.derivation != Derivation.ROWSET
+            and member not in all_primary_members
+        ):
+            scan_advertisable_members.append(member)
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
         fact = facts[gid]
         cap: set[str] = set(fact.primary)
-        if fact.behavior is None or fact.derivation == Derivation.ROOT:
+        if fact.derivation == Derivation.ROOT:
             for addr in list(cap):
                 cap.update(source_grain_of.get(addr, frozenset()))
             # A fresh scan can re-source an authored scoped-join axis member
@@ -2588,12 +2553,11 @@ def _compute_concept_sets(
             # FINAL merge loses the authored join key (all_sales pivot).
             # Rowset handles are excluded: a scan that absorbs one would drop
             # the rowset's internal filter.
-            if environment is not None:
-                for member in scan_advertisable_members:
-                    if member not in cap and build_fd_determines(
-                        environment, cap, member, include_empty_grain=False
-                    ):
-                        cap.add(member)
+            for member in scan_advertisable_members:
+                if member not in cap and build_fd_determines(
+                    environment, cap, member, include_empty_grain=False
+                ):
+                    cap.add(member)
             # A dim-peel ROOT binds its entity key even though only the peeled
             # members are its primaries (the key rides as a secondary member,
             # outside the primary+source-grain capability). When a non-grouping
@@ -2880,60 +2844,25 @@ def _compute_concept_sets(
         if gid == FINAL_NODE_ID:
             continue
         attrs[gid].output_concepts = tuple(sorted(io.outputs[gid]))
-        attrs[gid].hidden_concepts = tuple(sorted(io.hidden[gid]))
         attrs[gid].input_concepts = tuple(sorted(io.inputs[gid]))
 
 
-@overload
 def build_group_graph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
+    mandatory_list: list[BuildConcept],
     datasource_columns: list[frozenset[str]] | None = None,
     *,
-    environment: BuildEnvironment | None = None,
-    return_merged_graph: Literal[False] = False,
+    environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
-) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]: ...
-
-
-@overload
-def build_group_graph(
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-    conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
-    datasource_columns: list[frozenset[str]] | None = None,
-    *,
-    environment: BuildEnvironment | None = None,
-    return_merged_graph: Literal[True],
-    staged_conditions: list[BuildWhereClause] | None = None,
-) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]: ...
-
-
-def build_group_graph(
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-    conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
-    datasource_columns: list[frozenset[str]] | None = None,
-    *,
-    environment: BuildEnvironment | None = None,
-    return_merged_graph: bool = False,
-    staged_conditions: list[BuildWhereClause] | None = None,
-) -> (
-    tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]
-    | tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]
-):
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
-    Returns the topology graph, its typed `group_edges` metadata map, and a
-    side-table of typed per-group attributes keyed by group id (plus the merged
-    graph + its edge map when ``return_merged_graph``).
+    Returns the topology graph, its typed `group_edges` metadata map, a
+    side-table of typed per-group attributes keyed by group id, and the merged
+    graph + its edge map as they stood before condition injection.
 
     Grouping is delegated to per-derivation rules in `group_rules.py`:
     most derivations group by equality on `(depth_label, grain)`; ROOT
@@ -2951,7 +2880,7 @@ def build_group_graph(
     condition_arg_addresses = frozenset(
         arg.address for clause in conditions for arg in clause.row_arguments
     )
-    output_addresses = frozenset(c.address for c in mandatory_list or [])
+    output_addresses = frozenset(c.address for c in mandatory_list)
     primary_group, buckets = _assign_groups(
         concept_graph,
         concept_edges,
@@ -2961,19 +2890,18 @@ def build_group_graph(
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
-    if environment is not None:
-        projected_scalar_root_args = _projected_scalar_root_args(mandatory_list or [])
-        _split_root_dimension_clusters(
-            buckets,
-            primary_group,
-            environment,
-            output_addresses | projected_scalar_root_args,
-            projected_scalar_root_args,
-            _pre_aggregate_filter_args(conditions),
-            _post_aggregate_filter_args(conditions)
-            | _post_aggregate_basic_args(mandatory_list or []),
-            _finer_filter_grains(conditions),
-        )
+    projected_scalar_root_args = _projected_scalar_root_args(mandatory_list)
+    _split_root_dimension_clusters(
+        buckets,
+        primary_group,
+        environment,
+        output_addresses | projected_scalar_root_args,
+        projected_scalar_root_args,
+        _pre_aggregate_filter_args(conditions),
+        _post_aggregate_filter_args(conditions)
+        | _post_aggregate_basic_args(mandatory_list),
+        _finer_filter_grains(conditions),
+    )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
@@ -3014,36 +2942,21 @@ def build_group_graph(
     )
     merged_group_graph = group_graph.copy()
     merged_group_edges = copy_edges(group_edges)
-    if mandatory_list is not None:
-        _compute_concept_sets(
-            group_graph,
-            group_edges,
-            attrs,
-            concept_graph,
-            concept_edges,
-            concept_attrs,
-            buckets,
-            mandatory_list,
-            environment=environment,
-        )
-        merged = _merge_basic_into_window_parent(
-            group_graph, group_edges, attrs, buckets, concept_attrs
-        )
-        changed = _regraft_group_sources(
-            group_graph, group_edges, attrs, buckets, concept_attrs
-        )
-        if changed or merged:
-            _compute_concept_sets(
-                group_graph,
-                group_edges,
-                attrs,
-                concept_graph,
-                concept_edges,
-                concept_attrs,
-                buckets,
-                mandatory_list,
-                environment=environment,
-            )
+    _compute_concept_sets(
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        buckets,
+        mandatory_list,
+        environment,
+    )
+    _merge_basic_into_window_parent(
+        group_graph, group_edges, attrs, buckets, concept_attrs
+    )
+    _regraft_group_sources(group_graph, group_edges, attrs, buckets, concept_attrs)
     condition_group_ids = _inject_conditions(
         group_graph,
         group_edges,
@@ -3051,13 +2964,9 @@ def build_group_graph(
         buckets,
         conditions,
         mandatory_list,
-        environment.scoped_join_key_groups if environment is not None else None,
+        environment.scoped_join_key_groups,
         concept_attrs,
-        (
-            _statement_relation_addresses(environment)
-            if environment is not None
-            else frozenset()
-        ),
+        _statement_relation_addresses(environment),
         environment,
         staged_conditions,
     )
@@ -3071,59 +2980,49 @@ def build_group_graph(
         datasource_columns or [],
     )
     _color_phases(group_graph, group_edges, condition_group_ids)
-    if mandatory_list is not None:
-        # Members of an authored join-axis equality whose collapsed side keeps
-        # its computed lineage as a first-class node (the concept graph's
-        # RELATION edges). These relations join above a computation, so the
-        # axis members must surface as group outputs and the FINAL merge grain
-        # — the same edges that drove the root-side partition.
-        relation_edge_members = frozenset(
-            concept_attrs[n].address
-            for u, v in concept_graph.edges
-            if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
-            for n in (u, v)
-        )
-        _compute_concept_sets(
-            group_graph,
-            group_edges,
-            attrs,
-            concept_graph,
-            concept_edges,
-            concept_attrs,
-            buckets,
-            mandatory_list,
-            scoped_join_member_addresses=(
-                frozenset(
-                    addr
-                    for canonical, members in (
-                        environment.scoped_join_key_groups or {}
-                    ).items()
-                    for addr in (canonical, *members)
-                )
-                if environment is not None
-                else frozenset()
-            ),
-            scoped_axis_mates=_scoped_axis_mates(environment),
-            relation_edge_members=relation_edge_members,
-            environment=environment,
-        )
-        _refresh_input_contracts(
-            group_graph, group_edges, attrs, concept_attrs, concept_edges
-        )
-        _refresh_final_contract(
-            group_graph,
-            attrs,
-            mandatory_list,
-            environment,
-            relation_edge_members=relation_edge_members,
-        )
-        if environment is not None:
-            attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-                group_graph, attrs, environment
-            )
-    if return_merged_graph:
-        return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
-    return group_graph, group_edges, attrs
+    # Members of an authored join-axis equality whose collapsed side keeps
+    # its computed lineage as a first-class node (the concept graph's
+    # RELATION edges). These relations join above a computation, so the
+    # axis members must surface as group outputs and the FINAL merge grain:
+    # the same edges that drove the root-side partition.
+    relation_edge_members = frozenset(
+        concept_attrs[n].address
+        for u, v in concept_graph.edges
+        if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
+        for n in (u, v)
+    )
+    _compute_concept_sets(
+        group_graph,
+        group_edges,
+        attrs,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        buckets,
+        mandatory_list,
+        environment,
+        scoped_join_member_addresses=frozenset(
+            addr
+            for canonical, members in environment.scoped_join_key_groups.items()
+            for addr in (canonical, *members)
+        ),
+        scoped_axis_mates=_scoped_axis_mates(environment),
+        relation_edge_members=relation_edge_members,
+    )
+    _refresh_input_contracts(
+        group_graph, group_edges, attrs, concept_attrs, concept_edges
+    )
+    _refresh_final_contract(
+        group_graph,
+        attrs,
+        mandatory_list,
+        environment,
+        relation_edge_members=relation_edge_members,
+    )
+    attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
+        group_graph, attrs, environment
+    )
+    return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
 
 
 def _lineage_predecessors(
@@ -3451,7 +3350,7 @@ def _merge_basic_into_window_parent(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
-) -> bool:
+) -> None:
     """Collapse a same-grain scalar BASIC group into a WINDOW parent that already
     supplies all of its inputs, so the projection renders inline in the window's
     own SELECT (the single-CTE window+round shape, q2.1/q2.2) instead of a
@@ -3468,7 +3367,6 @@ def _merge_basic_into_window_parent(
     been injected yet (this runs before `_inject_conditions`), and placement
     refuses to host a filter on a window group's own output, so it defers to
     FINAL."""
-    changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:
             continue
@@ -3513,8 +3411,6 @@ def _merge_basic_into_window_parent(
         ):
             continue
         _absorb_group(gid, parent_gid, group_graph, group_edges, attrs, buckets)
-        changed = True
-    return changed
 
 
 def _regraft_group_sources(
@@ -3523,7 +3419,7 @@ def _regraft_group_sources(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
-) -> bool:
+) -> None:
     """Topology-only repair for groups whose best row source is already built.
 
     This is still a grouping-phase concern: it may add group edges or a
@@ -3531,7 +3427,6 @@ def _regraft_group_sources(
     but concrete datasource selection remains in `source_planning` and
     StrategyNode construction remains in `strategy_builder`.
     """
-    changed = False
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:
             continue
@@ -3562,5 +3457,3 @@ def _regraft_group_sources(
         if parent_gid is None or group_graph.has_edge(parent_gid, gid):
             continue
         add_edge(group_graph, group_edges, parent_gid, gid, EdgeKind.LINEAGE)
-        changed = True
-    return changed

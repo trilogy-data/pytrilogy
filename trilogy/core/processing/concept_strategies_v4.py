@@ -374,7 +374,6 @@ def _build_from_graph(
         mandatory_list,
         datasource_columns,
         environment=environment,
-        return_merged_graph=True,
         staged_conditions=staged_conditions,
     )
     # `build_strategy_node` scopes each group's extent routing on the shared

@@ -144,7 +144,6 @@ class GroupAttrs:
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     # Populated by `_compute_concept_sets`. Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
-    hidden_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
     # Populated only for FINAL: the logical output/grain contract Stage 3
     # physically satisfies or prunes, and the statement's extent routing.

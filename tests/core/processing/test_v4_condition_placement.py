@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy.core import graph as nx
 from trilogy.core.enums import ComparisonOperator, Derivation, Purpose
 from trilogy.core.models.build import (
@@ -20,6 +22,11 @@ from trilogy.core.processing.v4_helper.constants import (
 )
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
 from trilogy.core.processing.v4_helper.models import GroupBucket
+
+
+@pytest.fixture
+def empty_environment() -> BuildEnvironment:
+    return BuildEnvironment()
 
 
 def _addr(name: str) -> str:
@@ -70,7 +77,9 @@ def _graph() -> tuple[nx.DiGraph, EdgeMap]:
     return nx.DiGraph(), {}
 
 
-def test_root_condition_lands_on_upstream_root() -> None:
+def test_root_condition_lands_on_upstream_root(
+    empty_environment: BuildEnvironment,
+) -> None:
     graph, edges = _graph()
     buckets = {
         "root": _bucket(Derivation.ROOT, [_addr("x")]),
@@ -82,7 +91,7 @@ def test_root_condition_lands_on_upstream_root() -> None:
     add_edge(graph, edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("x")], [_concept("y")]
+        graph, edges, buckets, [_where("x")], [_concept("y")], empty_environment
     )
 
     assert len(placements) == 1
@@ -90,7 +99,9 @@ def test_root_condition_lands_on_upstream_root() -> None:
     assert placements[0].reason is PlacementReason.UPSTREAM_MOST
 
 
-def test_window_output_condition_lands_on_downstream_consumer() -> None:
+def test_window_output_condition_lands_on_downstream_consumer(
+    empty_environment: BuildEnvironment,
+) -> None:
     graph, edges = _graph()
     buckets = {
         "root": _bucket(Derivation.ROOT, [_addr("x")]),
@@ -110,7 +121,7 @@ def test_window_output_condition_lands_on_downstream_consumer() -> None:
         add_edge(graph, edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("ranked")], [_concept("out")]
+        graph, edges, buckets, [_where("ranked")], [_concept("out")], empty_environment
     )
 
     assert len(placements) == 1
@@ -118,7 +129,9 @@ def test_window_output_condition_lands_on_downstream_consumer() -> None:
     assert placements[0].reason is PlacementReason.UPSTREAM_MOST
 
 
-def test_cross_grain_aggregate_comparison_defers_to_final() -> None:
+def test_cross_grain_aggregate_comparison_defers_to_final(
+    empty_environment: BuildEnvironment,
+) -> None:
     graph, edges = _graph()
     buckets = {
         "root": _bucket(Derivation.ROOT, [_addr("x"), _addr("y")]),
@@ -152,7 +165,7 @@ def test_cross_grain_aggregate_comparison_defers_to_final() -> None:
     )
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [condition], [_concept("out")]
+        graph, edges, buckets, [condition], [_concept("out")], empty_environment
     )
 
     assert len(placements) == 1
@@ -233,7 +246,7 @@ def test_atom_a_filter_scope_cannot_propagate_lands_outside_the_scope() -> None:
         buckets,
         [_where("region")],
         [_concept("out")],
-        environment=_filter_environment("region"),
+        _filter_environment("region"),
     )
 
     assert len(placements) == 1
@@ -251,7 +264,7 @@ def test_atom_the_scope_keys_its_value_by_stays_in_the_scope() -> None:
         buckets,
         [_where("region")],
         [_concept("out")],
-        environment=_filter_environment("region"),
+        _filter_environment("region"),
     )
 
     assert len(placements) == 1
