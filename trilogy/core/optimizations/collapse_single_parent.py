@@ -28,7 +28,10 @@ from trilogy.core.optimizations.utils import (
     rename_reference,
     repoint_consumers,
 )
-from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.condition_utility import (
+    gather_windows,
+    merge_conditions_and_dedup,
+)
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
@@ -46,17 +49,20 @@ class MergeMode(Enum):
     PASSTHROUGH = "passthrough"
 
 
-def is_passthrough_projection(cte: CTE) -> bool:
-    if cte.group_to_grain or cte.joins or cte.condition is not None:
+_NON_PROJECTION_SOURCE_TYPES = (
+    SourceType.GROUP,
+    SourceType.WINDOW,
+    SourceType.UNNEST,
+    SourceType.RECURSIVE,
+    SourceType.SUBSELECT,
+    SourceType.UNION,
+)
+
+
+def is_projection_shape(cte: CTE) -> bool:
+    if cte.group_to_grain or cte.joins:
         return False
-    if cte.source.source_type in (
-        SourceType.GROUP,
-        SourceType.WINDOW,
-        SourceType.UNNEST,
-        SourceType.RECURSIVE,
-        SourceType.SUBSELECT,
-        SourceType.UNION,
-    ):
+    if cte.source.source_type in _NON_PROJECTION_SOURCE_TYPES:
         return False
     # A column with a non-empty source_map entry is pulled from upstream as a
     # plain column — safe to pass through whatever its derivation. Only a
@@ -74,6 +80,39 @@ def is_passthrough_projection(cte: CTE) -> bool:
         )
         for concept in cte.output_columns
     )
+
+
+def is_passthrough_projection(cte: CTE) -> bool:
+    return cte.condition is None and is_projection_shape(cte)
+
+
+def computes_sensitive_derivation(cte: CTE) -> bool:
+    """A window/unnest/recursive value rendered by this CTE itself (not pulled
+    from upstream), including a window nested inside arithmetic. A WHERE
+    folded in from a child would then apply before that derivation instead of
+    over its output."""
+    materialized = {addr for addr, sources in cte.source_map.items() if sources}
+    for column in cte.output_columns:
+        if column.address in materialized:
+            continue
+        if column.derivation in SENSITIVE_DERIVATIONS:
+            return True
+        if gather_windows(column.lineage, materialized):
+            return True
+    return False
+
+
+def is_filtered_projection(cte: CTE, parent: CTE) -> bool:
+    """A WHERE (plus ORDER BY/LIMIT) over a subset of the parent's own
+    columns. Folded, the predicate evaluates in the parent's scope, where the
+    renderer classifies each atom as WHERE, HAVING, or QUALIFY by what it
+    references, so the rows it keeps are the same."""
+    if cte.condition is None or not is_projection_shape(cte):
+        return False
+    if computes_sensitive_derivation(parent):
+        return False
+    parent_outputs = parent.output_lcl
+    return all(column.address in parent_outputs for column in cte.output_columns)
 
 
 def renders_off_parent_output(
@@ -193,7 +232,7 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
         return MergeMode.WINDOW
     if has_basic_derivation(cte):
         return MergeMode.BASIC
-    if is_passthrough_projection(cte):
+    if is_projection_shape(cte):
         return MergeMode.PASSTHROUGH
     return None
 
@@ -296,8 +335,6 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
 
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.WINDOW and cte.condition is not None:
-        return True
-    if merge_mode == MergeMode.BASIC and cte.condition is not None:
         return True
     if merge_mode == MergeMode.AGGREGATE:
         return any(
@@ -461,7 +498,9 @@ class CollapseSingleParent(OptimizationRule):
         if merge_mode is None:
             return False, None
 
-        if self.passthrough_only and merge_mode != MergeMode.PASSTHROUGH:
+        if self.passthrough_only and (
+            merge_mode != MergeMode.PASSTHROUGH or cte.condition is not None
+        ):
             return False, None
 
         if child_has_merge_blockers(cte, merge_mode):
@@ -486,6 +525,22 @@ class CollapseSingleParent(OptimizationRule):
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
+        # A row-shape child with a WHERE folds only when it is the statement's
+        # final projection (no consumer) over a subset of the parent's own
+        # columns: the predicate moves into the parent's scope unchanged. A
+        # consumed filter is predicate pushdown's job, whose guards cover
+        # null-extension and union parents; a BASIC child computing its own
+        # columns under a WHERE stays.
+        filtered_projection = False
+        if cte.condition is not None and merge_mode in (
+            MergeMode.BASIC,
+            MergeMode.PASSTHROUGH,
+        ):
+            if inverse_map.get(cte.name) or not is_filtered_projection(cte, parent):
+                self.debug(f"CTE {cte.name} is a consumed or local filter, skipping")
+                return False, None
+            merge_mode = MergeMode.PASSTHROUGH
+            filtered_projection = True
         # A row LIMIT on the PARENT is an opaque boundary: folding the child's
         # shape into it moves work below the limit (pre-limit rows change).
         # A limited CHILD is fine — LIMIT evaluates last in the merged SELECT
@@ -519,7 +574,11 @@ class CollapseSingleParent(OptimizationRule):
                 f"{parent.name}, skipping"
             )
             return False, None
-        if destroys_subset_anchor_boundary(cte, parent, self.domain_graph):
+        # The boundary only matters to a consumer that joins this CTE as a
+        # side; an unconsumed CTE (the statement root) has none.
+        if inverse_map.get(cte.name) and destroys_subset_anchor_boundary(
+            cte, parent, self.domain_graph
+        ):
             self.debug(
                 f"CTE {cte.name} is a subset-narrowing rowset boundary its "
                 f"parent {parent.name} cannot preserve, skipping"
@@ -573,7 +632,10 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
 
-        if has_unsafe_derivations(parent):
+        # A filtered projection only needs the parent's LOCAL window/unnest
+        # columns ruled out (done in `is_filtered_projection`): its WHERE
+        # cannot disturb a window the parent merely carries from upstream.
+        if not filtered_projection and has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
 

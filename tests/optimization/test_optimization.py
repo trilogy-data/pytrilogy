@@ -33,7 +33,6 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,
-    _grains_equivalent,
     canonicalize_graph,
     filter_irrelevant_ctes,
 )
@@ -488,19 +487,6 @@ def test_predicate_pushdown_existence_promotion_registers_in_existence_map():
     assert parent.existence_source_map[exists.address] == [existence_parent.name]
     assert parent.source_map[exists.address] == [existence_parent.name]
     assert parent.parent_ctes == [existence_parent]
-
-
-def test_grains_equivalent_rejects_empty_grain_fallback(test_environment):
-    build_env = test_environment.materialize_for_select()
-    product_id = build_env.concepts["product_id"]
-    child = _simple_cte(
-        "child",
-        [product_id],
-        grain=BuildGrain(components={product_id.address}),
-    )
-    parent = _simple_cte("parent", [product_id], grain=BuildGrain())
-
-    assert not _grains_equivalent(child, parent)
 
 
 def test_parent_nullable_ignores_non_join_entries(test_environment):

@@ -52,7 +52,6 @@ class Optimizations:
     predicate_pushdown: bool = True
     datasource_inlining: bool = True
     constant_inline_cutoff: int = 10
-    direct_return: bool = True
     hide_unused_concepts: bool = True
     merge_aggregate: bool = True
     merge_irrelevant_group_by: bool = True

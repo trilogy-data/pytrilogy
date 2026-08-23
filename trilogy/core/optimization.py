@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.models.execute import CTE, Join, RecursiveCTE, UnionCTE
+from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
     HideUnusedConcepts,
@@ -30,8 +30,6 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
-from trilogy.core.optimizations.utils import SENSITIVE_DERIVATIONS
-from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
@@ -277,106 +275,13 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
     return inverse_map
 
 
-def _grains_equivalent(cte: CTE | UnionCTE, direct_parent: CTE | UnionCTE) -> bool:
-    return direct_parent.grain == cte.grain
-
-
-def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
-    # if isinstance(select, (PersistStatement, MultiSelectStatement)):
-    #     return False
-    parents = cte.dependency_nodes()
-    if len(parents) != 1:
-        return None
-    direct_parent = parents[0]
-    if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
-        return None
-
-    if cte.group_to_grain:
-        return None
-
-    output_addresses = {x.address for x in cte.output_columns}
-    parent_output_addresses = {x.address for x in direct_parent.output_columns}
-    if not output_addresses.issubset(parent_output_addresses):
-        return None
-    if not _grains_equivalent(cte, direct_parent):
-        logger.info(
-            optimization_log("DirectReturn", "grain mismatch, cannot early exit")
-        )
-        return None
-
-    assert isinstance(cte, CTE)
-    derived_concepts = [
-        c for c in cte.source.output_concepts if c not in cte.source.input_concepts
-    ]
-
-    parent_derived_concepts = [
-        c
-        for c in direct_parent.source.output_concepts
-        if c not in direct_parent.source.input_concepts
-    ]
-    condition_arguments = cte.condition.row_arguments if cte.condition else []
-    for x in derived_concepts:
-        if x.derivation in SENSITIVE_DERIVATIONS:
-            return None
-    # `cte`'s condition collapses into the parent's SELECT scope. If the parent
-    # derives a window (or other sensitive derivation), the predicate would then
-    # evaluate in the same scope as that window — and SQL applies WHERE before
-    # window functions, so a lead/lag/rank would see only the surviving rows
-    # instead of the full series. Keep the scopes separate so the predicate
-    # filters the window's OUTPUT (a HAVING applies after the window), whether or
-    # not the predicate references the window itself.
-    if cte.condition is not None:
-        for x in parent_derived_concepts:
-            if x.derivation in SENSITIVE_DERIVATIONS:
-                return None
-    for x in condition_arguments:
-        # if it's derived in the parent
-        if x.address in parent_derived_concepts:
-            if x.derivation in SENSITIVE_DERIVATIONS:
-                return None
-            # this maybe needs to be recursive if we flatten a ton of derivation
-            # into one CTE
-            if not x.lineage:
-                continue
-            for z in x.lineage.concept_arguments:
-                # if it was preexisting in the parent, it's safe
-                if z.address in direct_parent.source.input_concepts:
-                    continue
-                # otherwise if it's dangerous, play it safe.
-                if z.derivation in SENSITIVE_DERIVATIONS:
-                    return None
-    logger.info(
-        optimization_log(
-            "DirectReturn",
-            f"Removing redundant output CTE {cte.name} with derived_concepts {[x.address for x in derived_concepts]}",
-        )
-    )
-    return direct_parent
-
-
-def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
-    upstream.order_by = downstream.order_by
-    upstream.limit = downstream.limit
-    upstream.hidden_concepts = downstream.hidden_concepts.union(
-        upstream.hidden_concepts
-    )
-    # An existence subselect on the collapsed root resolves its set columns
-    # through existence_source_map; dropping the entries strands the
-    # membership and lets the feeder CTE be pruned as unreferenced.
-    if isinstance(downstream, CTE) and isinstance(upstream, CTE):
-        for address, sources in downstream.existence_source_map.items():
-            if address not in upstream.existence_source_map:
-                upstream.existence_source_map[address] = sources
-    if downstream.condition:
-        if upstream.condition:
-            # Dedup on AND-atoms: a root remap can re-pass a predicate the
-            # upstream CTE already carries, and stacking it raw compounds into
-            # `H AND H AND H` across optimizer loops (q31's HAVING).
-            upstream.condition = merge_conditions_and_dedup(
-                downstream.condition, upstream.condition
-            )
-        else:
-            upstream.condition = downstream.condition
+def carry_root_contract(old_root: CTE | UnionCTE, new_root: CTE | UnionCTE) -> None:
+    """The statement's ORDER BY, LIMIT and hidden set belong to whichever CTE
+    is the root; a merge rule carries its child's WHERE and existence
+    references but only a limited child's ordering."""
+    new_root.order_by = old_root.order_by
+    new_root.limit = old_root.limit
+    new_root.hidden_concepts = new_root.hidden_concepts | old_root.hidden_concepts
 
 
 def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
@@ -804,15 +709,6 @@ def optimize_ctes(
     domain_graph: DomainGraph | None = None,
     supports_full_join: bool = True,
 ) -> list[CTE | UnionCTE]:
-    direct_parent: CTE | UnionCTE | None = root_cte
-    while CONFIG.optimizations.direct_return and (
-        direct_parent := is_direct_return_eligible(root_cte)
-    ):
-        pass_up_metadata(root_cte, direct_parent)
-        root_cte = direct_parent
-
-        sort_select_output_processed(root_cte, select)
-
     # Materialize the statement's output contract before demand-driven rules run.
     # Rendering applies the same projection, but doing it only at render time makes
     # carried, non-selected root columns appear live to their parent CTEs.
@@ -862,7 +758,7 @@ def optimize_ctes(
 
                         if new_root_name in cte_lookup:
                             parent = cte_lookup[new_root_name]
-                            pass_up_metadata(root_cte, parent)
+                            carry_root_contract(root_cte, parent)
                             root_cte = parent
                             logger.info(
                                 optimization_log(
