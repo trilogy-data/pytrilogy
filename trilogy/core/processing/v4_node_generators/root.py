@@ -4,7 +4,12 @@ from typing import cast
 
 from trilogy.core.enums import BooleanOperator, Derivation, Purpose
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
+from trilogy.core.models.build import (
+    BoolExpr,
+    BuildConcept,
+    BuildConditional,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -353,6 +358,42 @@ def _has_upgradable_outer_join(node: StrategyNode, guard_addresses: set[str]) ->
     return False
 
 
+def _where_clause(atoms: list[BoolExpr]) -> BuildWhereClause | None:
+    combined = combine_condition_atoms(atoms)
+    return BuildWhereClause(conditional=combined) if combined is not None else None
+
+
+def _split_aggregate_gates(
+    conditions: BuildWhereClause | None,
+) -> tuple[BuildWhereClause | None, BuildWhereClause | None]:
+    """(row atoms, cross-row gates): an atom with an aggregate-derived argument
+    needs a feeder merge; the rest can ride the row scan itself."""
+    if conditions is None:
+        return None, None
+    row_atoms: list[BoolExpr] = []
+    gates: list[BoolExpr] = []
+    for atom in decompose_condition(conditions.conditional):
+        if any(arg.derivation == Derivation.AGGREGATE for arg in atom.row_arguments):
+            gates.append(atom)
+        else:
+            row_atoms.append(atom)
+    return _where_clause(row_atoms), _where_clause(gates)
+
+
+def _conjoin(
+    clause: BuildWhereClause, other: BuildWhereClause | None
+) -> BuildWhereClause:
+    if other is None:
+        return clause
+    return BuildWhereClause(
+        conditional=BuildConditional(
+            left=clause.conditional,
+            right=other.conditional,
+            operator=BooleanOperator.AND,
+        )
+    )
+
+
 def gen_root(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -398,16 +439,35 @@ def gen_root(
             conditions,
             environment,
         )
-        node = plan_source(
-            SourceRequest(
-                outputs=fallback_outputs,
-                environment=environment,
-                graph=g,
-                history=history,
-                conditions=None,
-                complete_partials=complete_partials,
+        # A cross-row gate (`sum(x) by k > 0`) is what sent the conditioned
+        # request to this fallback; the plain row atoms beside it still belong
+        # on the row scan, so only the gates go to the feeder merge.
+        row_atoms, gates = _split_aggregate_gates(row_conditions)
+        node = None
+        if row_atoms is not None and gates is not None:
+            node = plan_source(
+                SourceRequest(
+                    outputs=fallback_outputs,
+                    environment=environment,
+                    graph=g,
+                    history=history,
+                    conditions=row_atoms,
+                    complete_partials=complete_partials,
+                )
             )
-        )
+            if node is not None:
+                conditions = _conjoin(gates, existence_conditions)
+        if node is None:
+            node = plan_source(
+                SourceRequest(
+                    outputs=fallback_outputs,
+                    environment=environment,
+                    graph=g,
+                    history=history,
+                    conditions=None,
+                    complete_partials=complete_partials,
+                )
+            )
         if node is None:
             return None
         sources = _resolve_root_condition_sources(
