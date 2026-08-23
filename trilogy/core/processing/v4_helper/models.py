@@ -12,7 +12,7 @@ from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import DepthLabel
-from .edges import EdgeMap, copy_edges
+from .edges import EdgeMap
 
 
 def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
@@ -241,63 +241,19 @@ class BuildInfo:
     strategy_node: StrategyNode | None = None
 
     def copy(self) -> "BuildInfo":
+        """Only the strategy node is mutated downstream; the graphs and
+        attribute maps are read-only after build and shared."""
         return BuildInfo(
-            concept_graph=self.concept_graph.copy(),
-            merged_group_graph=self.merged_group_graph.copy(),
-            group_graph=self.group_graph.copy(),
-            group_attrs={k: _copy_attrs(v) for k, v in self.group_attrs.items()},
-            concept_attrs={
-                k: _copy_concept_attrs(v) for k, v in self.concept_attrs.items()
-            },
-            concept_edges=copy_edges(self.concept_edges),
-            merged_group_edges=copy_edges(self.merged_group_edges),
-            group_edges=copy_edges(self.group_edges),
+            concept_graph=self.concept_graph,
+            merged_group_graph=self.merged_group_graph,
+            group_graph=self.group_graph,
+            group_attrs=self.group_attrs,
+            concept_attrs=self.concept_attrs,
+            concept_edges=self.concept_edges,
+            merged_group_edges=self.merged_group_edges,
+            group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
         )
-
-
-def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
-    return GroupAttrs(
-        depth_label=a.depth_label,
-        derivation=a.derivation,
-        grain_components=a.grain_components,
-        label=a.label,
-        members=a.members,
-        primary_members=a.primary_members,
-        secondary_members=a.secondary_members,
-        member_depths=dict(a.member_depths),
-        condition_atoms=list(a.condition_atoms),
-        conjunction_atoms=list(a.conjunction_atoms),
-        conditions=list(a.conditions),
-        output_concepts=a.output_concepts,
-        hidden_concepts=a.hidden_concepts,
-        input_concepts=a.input_concepts,
-        aggregate_input_grain=a.aggregate_input_grain,
-        aggregate_distinct_addrs=a.aggregate_distinct_addrs,
-        final_contract=a.final_contract,
-        extent_ownership=a.extent_ownership,
-        input_contracts=a.input_contracts,
-    )
-
-
-def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
-    return ConceptAttrs(
-        address=a.address,
-        label=a.label,
-        derivation=a.derivation,
-        purpose=a.purpose,
-        granularity=a.granularity,
-        depth_label=a.depth_label,
-        grain_components=a.grain_components,
-        grouping_mode=a.grouping_mode,
-        rowset_name=a.rowset_name,
-        aggregate_input_grain=a.aggregate_input_grain,
-        aggregate_distinct_rewritable=a.aggregate_distinct_rewritable,
-        keys=a.keys,
-        pseudonyms=a.pseudonyms,
-        is_rename=a.is_rename,
-        existence_only=a.existence_only,
-    )
 
 
 @dataclass

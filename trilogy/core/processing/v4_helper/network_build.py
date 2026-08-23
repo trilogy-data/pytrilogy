@@ -120,14 +120,8 @@ def _graph_pseudonym_pairs(graph: ReferenceGraph) -> frozenset[tuple[str, str]]:
     )
 
 
-def _condition_addresses(conditions: BuildWhereClause) -> set[str]:
-    return {c.address for c in conditions.row_arguments}
-
-
 def _condition_fit(
     datasource: BuildDatasource | BuildUnionDatasource,
-    emitted: set[str],
-    full: set[str],
     conditions: BuildWhereClause | None,
 ) -> ConditionFit:
     if conditions is None:
@@ -141,14 +135,7 @@ def _condition_fit(
         datasource, BuildDatasource
     ) and datasource_has_filter_sensitive_aggregate(datasource, conditions):
         return ConditionFit.SENSITIVE
-    required = _condition_addresses(conditions)
-    if not required:
-        return ConditionFit.NEUTRAL
-    if required <= full and not conditions.existence_arguments:
-        return ConditionFit.APPLIES
-    if required.isdisjoint(emitted):
-        return ConditionFit.UNAFFECTED
-    return ConditionFit.DEFERRED
+    return ConditionFit.NEUTRAL
 
 
 def _emitted_addresses(graph: ReferenceGraph, node: str) -> set[str]:
@@ -209,7 +196,7 @@ def _candidate(
         node=node,
         datasource=datasource,
         bindings=_bindings_for(emitted, partial, stored, equivalence),
-        condition=_condition_fit(datasource, emitted, emitted - partial, conditions),
+        condition=_condition_fit(datasource, conditions),
         is_union=isinstance(datasource, BuildUnionDatasource),
         grain=_grain_classes(datasource, equivalence),
     )

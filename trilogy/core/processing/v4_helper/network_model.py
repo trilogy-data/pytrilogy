@@ -47,30 +47,18 @@ class BindingStrength(Enum):
 class ConditionFit(Enum):
     """How this datasource stands to the request's WHERE.
 
-    Only two bits are READ: `disqualifying` (SENSITIVE) removes a candidate, and
-    `partial_is_full` (IMPLIED_EXACT) makes a partial binding authoritative.
-    APPLIES / UNAFFECTED / DEFERRED / NEUTRAL are computed and reported but are
-    indistinguishable to the search — §3 of the design doc offered them as
-    dominance inputs and nothing wired them in. They are kept rather than
-    collapsed because APPLIES is the natural input to a push-down cost axis
-    (whether the WHERE lands on the scan or post-merge is a SHAPE question, so
-    it belongs to the size work, not to source selection). Until then, do not
-    read a distinction between the four into any search behaviour."""
+    `disqualifying` (SENSITIVE) removes a candidate; `partial_is_full`
+    (IMPLIED_EXACT) makes a partial binding authoritative. Where the WHERE
+    lands (scan vs post-merge) is a shape question, not a selection input."""
 
-    # No conditions in the request.
+    # No conditions bear on selection.
     NEUTRAL = "neutral"
     # A `complete where` partial whose predicate the query implies: pre-filtered
     # to exactly the requested rows, so it is authoritative and its partiality is
     # never dominance evidence.
     IMPLIED_EXACT = "implied_exact"
-    # Binds every condition column fully; the WHERE can be pushed onto its scan.
-    APPLIES = "applies"
-    # Shares no condition column; the filter lands post-merge.
-    UNAFFECTED = "unaffected"
     # Carries an aggregate the filter would invalidate.
     SENSITIVE = "sensitive"
-    # Condition columns partly present but not fully bound; filter post-merge.
-    DEFERRED = "deferred"
 
     @property
     def disqualifying(self) -> bool:
@@ -390,8 +378,8 @@ class SourceNetwork:
 
     def _partners(self) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
         """The two UNDIRECTED pair predicates as adjacency sets, built once:
-        `join_partners` is "shares any binding key" and `functional_partners`
-        is `joins_functionally`. The obligation scan asks both per (state,
+        index 0 is "shares any binding key" and index 1 is
+        `joins_functionally`. The obligation scan asks both per (state,
         source, candidate) — an unsourceable request walks the full state
         budget, so a pairwise call per ask is the dominant cost of concluding
         "no solution" (s66). Symmetric, so each unordered pair is asked once."""
@@ -415,12 +403,6 @@ class SourceNetwork:
             )
             self._partner_cache[0] = cached
         return cached
-
-    def join_partners(self, node: str) -> frozenset[str]:
-        return self._partners()[0][node]
-
-    def functional_partners(self, node: str) -> frozenset[str]:
-        return self._partners()[1][node]
 
     def functional_successors(self, node: str) -> frozenset[str]:
         return self._adjacency()[0][node]

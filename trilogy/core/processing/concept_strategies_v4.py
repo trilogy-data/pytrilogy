@@ -342,7 +342,6 @@ def _materialized_root_addresses(
 def _build_from_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
-    depth: int,
     g: ReferenceGraph,
     history: V4History,
     conditions: list[BuildWhereClause],
@@ -492,7 +491,6 @@ def _search_concepts(
     info = _build_from_graph(
         mandatory_list,
         environment,
-        depth,
         g,
         history,
         conditions,
@@ -504,7 +502,6 @@ def _search_concepts(
         info = _build_from_graph(
             mandatory_list,
             environment,
-            depth,
             g,
             history,
             conditions,

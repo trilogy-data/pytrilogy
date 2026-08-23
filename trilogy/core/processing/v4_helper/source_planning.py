@@ -34,7 +34,6 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
     inject_authored_join_key_terminals,
-    reinject_common_join_keys_v2,
 )
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
@@ -63,6 +62,8 @@ from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
     SearchResult,
     SourceNetwork,
+    find,
+    union,
 )
 from trilogy.core.processing.v4_helper.network_search import search_sources
 from trilogy.utility import unique
@@ -128,26 +129,6 @@ def _concept_node_grain_addresses(node: str) -> set[str]:
         return set()
     grain = node.split(marker, maxsplit=1)[1].rsplit(">", maxsplit=1)[0]
     return {address for address in grain.split(",") if address}
-
-
-def _concepts_in_graph(
-    graph: ReferenceGraph, environment: BuildEnvironment
-) -> list[BuildConcept]:
-    """Resolve every concept node the bridge kept to this environment's
-    concepts. A Steiner solution can traverse a lineage-bridge node for a
-    derived variant minted in ANOTHER build scope (e.g. a rowset body's
-    `alias(...)` key built under different scoped joins, reachable through the
-    handle's pseudonym web but never registered here). Such a node proves
-    connectivity but cannot be requested or planned in this environment —
-    resolve what this scope knows and drop the rest."""
-    out: list[BuildConcept] = []
-    for node in graph.nodes:
-        if not node.startswith("c~"):
-            continue
-        concept = environment.canonical_concepts.get(_concept_node_address(node))
-        if concept is not None:
-            out.append(concept)
-    return out
 
 
 def _condition_row_concepts(
@@ -551,17 +532,6 @@ def _network_source(
     graph.remove_reference_nodes([n for n in list(graph.nodes) if not _keep(n)])
     if not graph.datasources:
         return None
-    # §5 carry-over. The ladder gets this from inside `determine_induced_minimal_nodes`,
-    # which this path bypasses: a key two chosen sources share must be an edge on BOTH
-    # of them, or the side that never materializes its own member drops out of the
-    # merge join's equality and the join degrades to the keys that remain (the q05
-    # fan-out — `s.return_channel_dim_id` falling out left `cheerful` joined on
-    # `s.channel` alone).
-    synonyms: dict[str, str] = {}
-    for concept in bridge_concepts:
-        for pseudonym in concept.pseudonyms:
-            synonyms[pseudonym] = concept.address
-    reinject_common_join_keys_v2(request.graph, graph, synonyms)
     return NetworkDecision(
         bridge=BridgePlan(
             concepts=bridge_concepts,
@@ -1488,20 +1458,6 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     )
 
 
-def _uf_find(parent: dict[str, str], node: str) -> str:
-    while parent.get(node, node) != node:
-        parent[node] = parent.get(parent[node], parent[node])
-        node = parent[node]
-    return node
-
-
-def _uf_union(parent: dict[str, str], left: str, right: str) -> None:
-    a, b = _uf_find(parent, left), _uf_find(parent, right)
-    if a != b:
-        lo, hi = sorted((a, b))
-        parent[hi] = lo
-
-
 def _terminal_components(network) -> list[set[str]]:
     """Terminals grouped by join-connectivity of the candidates binding them.
     Empty when some terminal has no binder at all."""
@@ -1510,17 +1466,17 @@ def _terminal_components(network) -> list[set[str]]:
     for index, left in enumerate(nodes):
         for right in nodes[index + 1 :]:
             if network.join_keys(left, right):
-                _uf_union(parent, left, right)
+                union(parent, left, right)
     for address in network.terminals:
         binders = network.binders(address)
         for other in binders[1:]:
-            _uf_union(parent, binders[0], other)
+            union(parent, binders[0], other)
     groups: dict[str, set[str]] = {}
     for address in network.terminals:
         binders = network.binders(address)
         if not binders:
             return []
-        groups.setdefault(_uf_find(parent, binders[0]), set()).add(address)
+        groups.setdefault(find(parent, binders[0]), set()).add(address)
     return [groups[key] for key in sorted(groups)]
 
 
