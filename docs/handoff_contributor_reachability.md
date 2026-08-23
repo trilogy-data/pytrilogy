@@ -3,7 +3,16 @@
 ## OPEN 2026-08-22. Supersedes the thelook half of
 ## docs/handoff_invisible_contributor_joins.md
 
-## The defect class
+## Summary
+
+The redundant contributor is NOT an election error. Election is correct on the
+inputs it has; the contributor nodes are then reconstructed, and the replacement
+gains the concept as a join key, which is what strands the contributor. The fix
+belongs immediately after join-key materialization. Sections below record the
+four hypotheses that were measured and rejected getting there — check them before
+re-deriving one.
+
+## The framing that motivated this (partly wrong, kept for the trace)
 
 Two stages ask the same question and get different answers:
 
@@ -51,41 +60,74 @@ column from it.
    elected node's narrowed projection.
 
 3. **"Move join-key materialization earlier."** Cannot work as stated: the node
-   that carries the key does not exist at election time. The gap is a missing
-   PREDICATE, not a mis-ordered step.
+   that carries the key does not exist at election time, and the elected node
+   cannot be widened to the key by any path (see the measurement below).
+
+4. **"Election needs a reachability predicate."** Measured and rejected — the
+   contributor it would point at cannot carry the concept either.
 
 A peer-fold pass (drop a contributor whose whole coverage a peer can carry once
-widened) was prototyped and measured: **0 changed across 195 statements**,
-because the precheck was written against projection boundaries — the very thing
-that is wrong. Reverted, not committed.
+widened) was prototyped and measured: **0 changed across 195 statements**.
+Reverted, not committed.
+
+## The election is NOT wrong. Measured, 2026-08-22.
+
+The obvious fix — give election a reachability predicate so it sees that the
+already-chosen `juicy` could carry `order.id` — does not apply, because **juicy
+cannot carry it**. Asked directly at election time, every path refuses:
+
+    BEFORE outputs=['product.id', 'user.id']
+      _widen_scan_chain(GroupNode force_group=True)  -> False
+      _widen_scan_chain(SelectNode products)         -> False
+      _widen_scan_chain(SelectNode users)            -> False
+    AFTER _widen_passthrough_group  outputs=['product.id', 'user.id']   (unchanged)
+
+`order_id` lives under the force_group GroupNode arm, and neither widener will
+cross it. So a third contributor for `order.id` is genuinely REQUIRED on the
+inputs election has. Set cover does not help either: `user.id` is exposed only by
+`juicy`, the three measures only by `uneven`, and neither exposes `order.id`.
+
+A pure mirror of `_widen_scan_chain` was also checked against the real function
+on every (node, concept, depth) triple it is called with across the corpus:
+**12/12 agreement, no drift**. Purity is achievable and the mirror is sound —
+it simply answers False here, correctly.
+
+## Where the redundancy actually comes from
+
+Between election and the merge, the contributor nodes are **reconstructed**. The
+FINAL merge receives four parents where election chose three, and the extra one
+is a dedup wrapper around the elected MergeNode. That wrapper has a different
+parent chain, and `_widen_merge_join_keys` successfully widens it with the merge's
+join keys — `keys=['local.id','order.id']`, gaining `order.id`.
+
+That is the whole mechanism, and the rendered SQL confirms it: the FINAL
+projection reads `"juicy"."order_id"` and `"juicy"."id"`, i.e. BOTH from the
+wrapper, not from the contributors elected to supply them. `uneven` survives
+because it still owns revenue/margin/total; `highfalutin` was elected for
+`order.id` alone, so once the wrapper carries `order.id` it renders nothing.
+
+**The redundancy is created by node reconstruction after election, not by a bad
+election.** No predicate available at election time can prevent it, because the
+node that gains the capability does not exist yet and does not inherit the
+elected node's parents.
 
 ## The change
 
-Make reachability ONE pure, tested query, and have both stages call it.
+Fold contributors AFTER join-key materialization, before the merge node is
+constructed: once `_widen_merge_join_keys` has widened the parents, a parent
+whose entire elected coverage is now present on another parent is redundant and
+should be dropped there. That is the first moment the information exists, and it
+is still the planner — the join is never built, rather than built and deleted.
 
-    def carryable(node_or_group, concept) -> bool
+Do NOT attempt it earlier. Two earlier placements were prototyped and measured:
 
-Requirements, in priority order:
+- A peer-fold before materialization, keyed on projection boundaries:
+  **0 changed across 195 statements** (it cannot see the capability yet).
+- Giving election a reachability predicate: inapplicable, per the section above.
 
-1. **Pure.** Today the only way to learn the answer is to call
-   `_widen_scan_chain`, which mutates on success and partially mutates on
-   failure. A predicate that cannot be asked without changing the plan cannot be
-   consulted by election. This is the load-bearing piece.
-2. **Agrees with the widener by construction.** A hand-written mirror of
-   `_widen_scan_chain` was tried and disagreed with it (it returned False for
-   cases the real function answers True). Do not mirror it — refactor
-   `_widen_scan_chain` into `can_widen` + `apply_widen` over one shared walk, so
-   drift is impossible. A test that asserts agreement on a corpus of nodes is
-   the guard.
-3. **Answerable from the GRAPH where possible.** Reachability is fundamentally
-   about what the scans underneath bind, which the source graph knows before any
-   projection is narrowed. Deriving it from built-node state is what created the
-   boundary/subtree split. Graph-derived is the goal; node-derived agreement is
-   the fallback.
-
-Then election's candidate test becomes "exposes it OR can carry it", with an
-explicit preference for a contributor already chosen for something else — a
-contributor covering nothing another cannot carry should never be recruited.
+Note this makes the planner fold and `PruneInvisibleOuterJoins` structurally the
+same test at two different times. That is expected — the point is to move it to
+the moment the plan can still avoid building the join.
 
 ## Bar for the change
 
