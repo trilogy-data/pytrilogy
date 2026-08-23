@@ -1,33 +1,41 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+import pytest
+
 from trilogy.constants import CONFIG
-from trilogy.core.optimization import build_optimization_rule_plan
+from trilogy.core.optimization import (
+    OptimizationRulePlan,
+    PredicatePushdownRemove,
+    build_optimization_rule_plan,
+    validate_optimization_rule_plan,
+)
+
+FLAGS = {
+    "merge_aggregate",
+    "merge_irrelevant_group_by",
+    "join_hoist",
+    "datasource_inlining",
+    "predicate_pushdown",
+    "push_filtered_aggregate_input",
+    "push_filtered_count_into_join",
+    "push_semi_join_into_aggregate",
+    "upgrade_condition_joins",
+    "upgrade_outer_key_set_equivalence",
+    "narrow_keyless_full_joins",
+    "simplify_null_safe_joins",
+    "strip_redundant_not_null",
+    "union_dim_pushdown",
+    "hide_unused_concepts",
+    "order_inner_joins_first",
+}
 
 
 @contextmanager
 def _optimization_flags(**overrides: bool) -> Iterator[None]:
-    fields = {
-        "merge_aggregate",
-        "merge_irrelevant_group_by",
-        "join_hoist",
-        "datasource_inlining",
-        "predicate_pushdown",
-        "push_filtered_aggregate_input",
-        "push_filtered_count_into_join",
-        "push_semi_join_into_aggregate",
-        "upgrade_condition_joins",
-        "upgrade_outer_key_set_equivalence",
-        "narrow_keyless_full_joins",
-        "simplify_null_safe_joins",
-        "strip_redundant_not_null",
-        "union_dim_pushdown",
-        "hide_unused_concepts",
-        "order_inner_joins_first",
-    }
-    original = {field: getattr(CONFIG.optimizations, field) for field in fields}
+    original = {field: getattr(CONFIG.optimizations, field) for field in FLAGS}
     try:
-        for field in fields:
+        for field in FLAGS:
             setattr(CONFIG.optimizations, field, False)
         for field, value in overrides.items():
             setattr(CONFIG.optimizations, field, value)
@@ -144,15 +152,11 @@ def test_pipeline_refires_group_merge_after_shape_cleanup():
     assert list(by_name) == [
         "merge_irrelevant_group_by",
         "join_hoist",
-        "merge_irrelevant_group_by.after_join_hoist",
         "predicate_pushdown.initial",
         "predicate_pushdown.remove",
         "merge_irrelevant_group_by.after_predicate_remove",
         "collapse_single_parent.passthrough_after_pushdown",
     ]
-    assert by_name["merge_irrelevant_group_by.after_join_hoist"].refires_after == (
-        "join_hoist",
-    )
     assert by_name[
         "merge_irrelevant_group_by.after_predicate_remove"
     ].refires_after == ("predicate_pushdown.remove",)
@@ -180,3 +184,32 @@ def test_pipeline_omits_inner_join_ordering_when_disabled():
         plan = build_optimization_rule_plan()
 
     assert "order_inner_joins_first" not in [phase.name for phase in plan]
+
+
+def test_pipeline_validation_rejects_forward_and_unknown_dependencies():
+    with _optimization_flags(predicate_pushdown=True):
+        plan = build_optimization_rule_plan()
+    validate_optimization_rule_plan(plan)
+
+    late = OptimizationRulePlan(
+        name="late", rule_factory=PredicatePushdownRemove, depends_on=("early",)
+    )
+    early = OptimizationRulePlan(name="early", rule_factory=PredicatePushdownRemove)
+    validate_optimization_rule_plan([early, late])
+    with pytest.raises(ValueError, match="does not run before"):
+        validate_optimization_rule_plan([late, early])
+    with pytest.raises(ValueError, match="does not run before"):
+        validate_optimization_rule_plan([late])
+    with pytest.raises(ValueError, match="registered twice"):
+        validate_optimization_rule_plan([early, early])
+
+
+@pytest.mark.parametrize("flag", sorted(FLAGS))
+def test_single_flag_plans_validate(flag: str):
+    with _optimization_flags(**{flag: True}):
+        build_optimization_rule_plan()
+
+
+def test_all_flags_plan_validates():
+    with _optimization_flags(**{flag: True for flag in FLAGS}):
+        build_optimization_rule_plan()

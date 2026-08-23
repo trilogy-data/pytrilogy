@@ -34,7 +34,6 @@ from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
     BooleanOperator,
-    Derivation,
     JoinType,
     Modifier,
 )
@@ -58,31 +57,18 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import SENSITIVE_DERIVATIONS, base_datasource
 from trilogy.core.processing.condition_utility import (
     comparison_proves_non_null,
     concepts_implied_non_null,
     decompose_condition,
 )
+from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
+
 
 # Joins whose surviving rows can be a strict subset under a null-rejecting
 # WHERE. INNER joins already drop both unmatched sides, so they're never
 # eligible to be downgraded further.
-_OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
-
-# A rejected consumer row proves nothing about the producer when the consumer
-# computes windows (a rejected output row still shaped surviving rows' window
-# values), so those consumers are opaque to cross-CTE proof transfer.
-_SENSITIVE_DERIVATIONS = (Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE)
-
-
-def _base_datasource(
-    datasource: BuildDatasource | QueryDatasource,
-) -> BuildDatasource | QueryDatasource | None:
-    if isinstance(datasource, QueryDatasource):
-        return datasource.base_datasource
-    return None
-
-
 @dataclass
 class _ProofState:
     direct: set[str]
@@ -483,7 +469,7 @@ def _downgrade(
 ) -> JoinType | None:
     """Pick the strictest join that still produces the same surviving rows."""
     current = join.jointype
-    if current not in _OUTER_JOIN_TYPES:
+    if current not in OUTER_JOIN_TYPES:
         return None
 
     pairs = join.joinkey_pairs or []
@@ -593,7 +579,7 @@ def _downgrade_base_join(
         return None
 
     right_ds = base_join.right_datasource
-    right_base = _base_datasource(right_ds)
+    right_base = base_datasource(right_ds)
     right_all = {c.address for c in right_ds.output_concepts}
     if right_base is not None:
         right_all |= {c.address for c in right_base.output_concepts}
@@ -707,7 +693,7 @@ def _cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
 
 def _sensitive_outputs(cte: CTE) -> bool:
     return any(
-        c.derivation in _SENSITIVE_DERIVATIONS for c in cte.source.output_concepts
+        c.derivation in SENSITIVE_DERIVATIONS for c in cte.source.output_concepts
     )
 
 
@@ -913,11 +899,11 @@ class UpgradeJoinOnGuards(OptimizationRule):
         if not isinstance(cte, CTE):
             return False, None
         has_outer_cte_join = not self.base_join_only and any(
-            isinstance(j, Join) and j.jointype in _OUTER_JOIN_TYPES
+            isinstance(j, Join) and j.jointype in OUTER_JOIN_TYPES
             for j in (cte.joins or [])
         )
         has_outer_base_join = any(
-            isinstance(j, BaseJoin) and j.join_type in _OUTER_JOIN_TYPES
+            isinstance(j, BaseJoin) and j.join_type in OUTER_JOIN_TYPES
             for j in (cte.source.joins or [])
         )
         if not has_outer_cte_join and not has_outer_base_join:
@@ -958,7 +944,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
                 for idx, join in enumerate(cte.joins or []):
                     if (
                         not isinstance(join, Join)
-                        or join.jointype not in _OUTER_JOIN_TYPES
+                        or join.jointype not in OUTER_JOIN_TYPES
                     ):
                         continue
                     target = _downgrade(cte, idx, join, proofs)
@@ -982,7 +968,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
             for base_join in cte.source.joins or []:
                 if (
                     not isinstance(base_join, BaseJoin)
-                    or base_join.join_type not in _OUTER_JOIN_TYPES
+                    or base_join.join_type not in OUTER_JOIN_TYPES
                 ):
                     continue
                 target = _downgrade_base_join(cte, base_join, proofs)

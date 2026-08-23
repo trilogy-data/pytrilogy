@@ -21,10 +21,10 @@ from trilogy.core.optimization import reorder_ctes
 from trilogy.core.optimizations.union_dim_pushdown import (
     UnionDimPushdown,
     _add_render_dependencies,
-    _base_datasource,
     _datasource_matches_raw_id,
     _DimDescriptor,
     _find_dim_cte_for_qds,
+    base_datasource,
 )
 
 
@@ -576,8 +576,8 @@ def test_union_dim_pushdown_helper_paths_for_raw_datasources(test_environment):
     )
     concepts = _add_render_dependencies([derived], raw)
 
-    assert _base_datasource(raw) is None
-    assert _base_datasource(wrapped) is raw
+    assert base_datasource(raw) is None
+    assert base_datasource(wrapped) is raw
     assert _datasource_matches_raw_id(raw, raw.identifier) is True
     assert category_id in concepts
     assert (

@@ -38,6 +38,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import equivalent_addresses
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
@@ -45,13 +46,6 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
 from trilogy.core.processing.utility import find_nullable_concepts
-
-
-def _equivalent_addresses(concepts: list) -> set[str]:
-    out: set[str] = set()
-    for c in concepts:
-        out |= c.equivalent_addresses
-    return out
 
 
 def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
@@ -93,8 +87,8 @@ class StripRedundantNotNull(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or cte.condition is None:
             return False, None
-        nullable = _equivalent_addresses(cte.nullable_concepts)
-        output = _equivalent_addresses(cte.output_columns)
+        nullable = equivalent_addresses(cte.nullable_concepts)
+        output = equivalent_addresses(cte.output_columns)
         atoms = decompose_condition(cte.condition)
         survivors: list = []
         dropped = False

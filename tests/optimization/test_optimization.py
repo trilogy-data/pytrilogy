@@ -10,7 +10,6 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
-    BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -42,8 +41,8 @@ from trilogy.core.optimizations.predicate_pushdown import (
     _consumer_outer_joins_union,
     _parent_covers_condition,
     _parent_nullable_in_cte,
-    is_child_of,
 )
+from trilogy.core.optimizations.utils import condition_contains_atom
 from trilogy.core.processing.condition_utility import decompose_condition
 
 
@@ -79,7 +78,7 @@ def _simple_cte(
     )
 
 
-def test_canonicalize_graph_dedupes_live_references_and_realigns_union_branches():
+def test_canonicalize_graph_dedupes_live_references():
     a = BuildConcept(
         name="a",
         canonical_name="a",
@@ -162,9 +161,7 @@ def test_canonicalize_graph_dedupes_live_references_and_realigns_union_branches(
     assert child.joins[1].right_cte is live_parent
     assert child.joins[1].left_cte is live_parent
     assert pair.cte is live_parent
-    assert missing_branch.output_columns == [a]
-    assert short_branch.output_columns == full_branch.output_columns
-    assert short_branch.hidden_concepts == full_branch.hidden_concepts
+    assert union.internal_ctes == [missing_branch, short_branch, full_branch]
 
 
 def test_filter_irrelevant_ctes_keeps_union_branch_parents_but_not_branches():
@@ -209,40 +206,40 @@ def test_is_child_function():
         operator=BooleanOperator.AND,
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
             condition.left,
         )
         is True
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
             condition.right,
         )
         is True
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
             condition.right,
         )
         is False
     )
     assert (
-        is_child_of(
+        condition_contains_atom(
             BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
             condition.left,
         )
@@ -320,74 +317,6 @@ def test_predicate_pushdown_remove_drops_existence_only_parent():
     assert optimized is True
     assert consumer.condition is None
     assert consumer.parent_ctes == [filtered_parent]
-
-
-def test_predicate_remove_prunes_unused_global_aggregate_cross_join(monkeypatch):
-    row = BuildConcept(
-        name="row_id",
-        canonical_name="row_id",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.KEY,
-        build_is_aggregate=False,
-        grain=BuildGrain(),
-    )
-    scalar = BuildConcept(
-        name="scalar",
-        canonical_name="scalar",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        build_is_aggregate=True,
-        grain=BuildGrain(),
-        lineage=BuildAggregateWrapper(
-            function=BuildFunction(
-                operator=FunctionType.MAX,
-                arguments=[row],
-                output_data_type=DataType.INTEGER,
-                output_purpose=Purpose.METRIC,
-                arg_count=1,
-            )
-        ),
-    )
-    condition = BuildComparison(left=row, right=1, operator=ComparisonOperator.GT)
-    parent = _simple_cte("filtered", [row], condition=condition)
-    global_aggregate = _simple_cte("global_aggregate", [scalar], group_to_grain=True)
-    global_aggregate.source_map[scalar.address] = []
-    consumer = _simple_cte(
-        "consumer",
-        [row],
-        condition=condition,
-        parent_ctes=[parent, global_aggregate],
-        source_map={row.address: [parent.name]},
-        joins=[
-            Join(
-                right_cte=global_aggregate,
-                jointype=JoinType.INNER,
-                joinkey_pairs=[],
-            )
-        ],
-    )
-    consumer.source.datasources = [parent.source, global_aggregate.source]
-    consumer.source.source_map = {row.address: {parent.source}}
-    monkeypatch.setattr(
-        "trilogy.core.optimizations.predicate_pushdown.render_cte_used_map",
-        lambda cte: {parent.name: {row.address}},
-    )
-    assert PredicatePushdownRemove()._prune_unused_single_row_parents(consumer) is True
-    consumer.parent_ctes.append(global_aggregate)
-    consumer.joins.append(
-        Join(
-            right_cte=global_aggregate,
-            jointype=JoinType.INNER,
-            joinkey_pairs=[],
-        )
-    )
-
-    optimized, _ = PredicatePushdownRemove().optimize(consumer, {})
-
-    assert optimized is True
-    assert consumer.condition is None
-    assert consumer.parent_ctes == [parent]
-    assert consumer.joins == []
 
 
 def test_predicate_pushdown_union_branch_propagates_existence_dependency():
@@ -712,8 +641,8 @@ auto qty_per_order <- sum(order_id);
         condition,
         {group_parent.name: [consumer]},
     )
-    assert is_child_of(condition, group_parent.condition)
-    assert is_child_of(condition, consumer.condition)
+    assert condition_contains_atom(condition, group_parent.condition)
+    assert condition_contains_atom(condition, consumer.condition)
 
 
 def test_child_of_complex():
@@ -751,7 +680,7 @@ key year int;
         operator=BooleanOperator.AND,
     )
 
-    assert is_child_of(comp, comp) is True
+    assert condition_contains_atom(comp, comp) is True
 
 
 def test_decomposition_function():
@@ -816,7 +745,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     assert rule2.optimize(cte2, inverse_map)[0] is True
     assert (
         cte2.condition is None
-    ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
+    ), f"{cte2.condition}, {parent.condition}, {condition_contains_atom(cte2.condition, parent.condition)}"
 
 
 def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
@@ -1174,9 +1103,9 @@ def test_union_branch_pushdown(test_environment, test_environment_graph):
     rule = PredicatePushdown()
     assert rule.optimize(consumer, inverse_map)[0] is True
     assert branch1.condition is not None
-    assert is_child_of(consumer_condition, branch1.condition)
+    assert condition_contains_atom(consumer_condition, branch1.condition)
     assert branch2.condition is not None
-    assert is_child_of(consumer_condition, branch2.condition)
+    assert condition_contains_atom(consumer_condition, branch2.condition)
 
     # second time around it's idempotent
     fresh_rule = PredicatePushdown()
@@ -1505,7 +1434,7 @@ def test_parent_covers_condition_union(test_environment, test_environment_graph)
     union_empty.internal_ctes = []
     assert _parent_covers_condition(union_empty, atom) is False
 
-    # Plain CTE delegates to ``is_child_of`` against the parent's condition.
+    # Plain CTE delegates to ``condition_contains_atom`` against the parent's condition.
     plain = _make_branch_cte("plain", products, product_id, category_id)
     plain.condition = atom
     assert _parent_covers_condition(plain, atom) is True

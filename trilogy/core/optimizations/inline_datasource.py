@@ -203,12 +203,18 @@ class InlineDatasource(OptimizationRule):
                 continue
             to_inline.append(parent_cte)
 
-        optimized = False
+        # Register every candidate before inlining any, so the cutoff count
+        # reflects all consumers of a raw source.
+        registered = False
         for replaceable in to_inline:
             if replaceable.name not in self.candidates[cte.name]:
                 self.candidates[cte.name].add(replaceable.name)
                 self.count[replaceable.source.identifier] += 1
-                return True, None
+                registered = True
+        if registered:
+            return True, None
+        optimized = False
+        for replaceable in to_inline:
             if (
                 self.count[replaceable.source.identifier]
                 > CONFIG.optimizations.constant_inline_cutoff

@@ -16,6 +16,8 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    SENSITIVE_DERIVATIONS,
+    is_grouped_cte,
     is_sole_consumer,
     render_cte_used_map,
     repoint_consumers,
@@ -24,21 +26,7 @@ from trilogy.core.processing.condition_utility import is_scalar_condition
 
 # Child must have no aggregates or other unsafe derivations - it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
-CHILD_INELIGIBLE_DERIVATIONS = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-    Derivation.RECURSIVE,
-    Derivation.AGGREGATE,
-}
-PARENT_INELIGIBLE_DERIVATIONS = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-    Derivation.RECURSIVE,
-}
-
-
-def _is_group_by_cte(cte: CTE) -> bool:
-    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
+CHILD_INELIGIBLE_DERIVATIONS = SENSITIVE_DERIVATIONS | {Derivation.AGGREGATE}
 
 
 def _clear_identity_group(cte: CTE) -> bool:
@@ -280,7 +268,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             return False, None
         if cte.condition:
             return False, None
-        if not _is_group_by_cte(cte):
+        if not is_grouped_cte(cte):
             return False, None
         active_parents = _active_parent_ctes(cte)
         if len(active_parents) != 1:
@@ -300,7 +288,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         # limit transfers to the merged CTE below.
         if parent.limit is not None:
             return False, None
-        if not _is_group_by_cte(parent):
+        if not is_grouped_cte(parent):
             return False, None
 
         # Parent must only be used by this CTE
@@ -334,7 +322,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
 
         parent_has_aggregate = False
         for concept in parent.output_columns:
-            if concept.derivation in PARENT_INELIGIBLE_DERIVATIONS:
+            if concept.derivation in SENSITIVE_DERIVATIONS:
                 return False, None
             if concept.derivation == Derivation.AGGREGATE:
                 parent_has_aggregate = True

@@ -1,7 +1,7 @@
 import dataclasses
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, FunctionType
+from trilogy.core.enums import BooleanOperator, Derivation, FunctionType, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -12,6 +12,31 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+
+# Derivations whose rows cannot be re-scoped: a window, unnest or recursive
+# output changes meaning when its CTE is folded into, or filtered by, another.
+SENSITIVE_DERIVATIONS = frozenset(
+    {Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE}
+)
+
+
+def is_grouped_cte(cte: CTE) -> bool:
+    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
+
+
+def equivalent_addresses(concepts: list[BuildConcept]) -> set[str]:
+    out: set[str] = set()
+    for c in concepts:
+        out |= c.equivalent_addresses
+    return out
+
+
+def base_datasource(
+    datasource: BuildDatasource | QueryDatasource,
+) -> BuildDatasource | QueryDatasource | None:
+    if isinstance(datasource, QueryDatasource):
+        return datasource.base_datasource
+    return None
 
 
 def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
@@ -26,11 +51,6 @@ def render_cte_used_map(cte: CTE | UnionCTE) -> dict[str, set[str]]:
     renderer.SUPPORTS_QUALIFY = True
     renderer.render_cte(cte)
     return dict(renderer.used_map)
-
-
-def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE) -> None:
-    """Replace old parent with new parent in target CTE's source map."""
-    target.replace_dependency(old, new)
 
 
 def condition_contains_atom(atom: object, condition: object | None) -> bool:
@@ -89,10 +109,6 @@ def add_datasource_sorted(
         cte.source.datasources + [datasource],
         key=lambda x: x.identifier,
     )
-
-
-def add_parent_cte(cte: CTE | UnionCTE, parent: CTE | UnionCTE) -> None:
-    cte.add_dependency(parent)
 
 
 def rename_reference(column: BuildConcept) -> BuildConcept | None:
@@ -188,6 +204,6 @@ def repoint_consumers(
     """Redirect all consumers of old to new and update the inverse map."""
     consumers = inverse_map.get(old.name, [])
     for child in consumers:
-        replace_parent(old, new, child)
+        child.replace_dependency(old, new)
     if consumers:
         inverse_map[new.name] = inverse_map.get(new.name, []) + consumers

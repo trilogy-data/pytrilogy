@@ -20,7 +20,9 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    SENSITIVE_DERIVATIONS,
     consumed_parent_column,
+    is_grouped_cte,
     is_sole_consumer,
     rebind_rename_to_consumed,
     rename_reference,
@@ -30,12 +32,6 @@ from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
-
-UNSAFE_DERIVATIONS = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-    Derivation.RECURSIVE,
-}
 
 
 class MergeMode(Enum):
@@ -70,7 +66,7 @@ def is_passthrough_projection(cte: CTE) -> bool:
     return all(
         bool(cte.source_map.get(concept.address))
         or (
-            concept.derivation not in UNSAFE_DERIVATIONS
+            concept.derivation not in SENSITIVE_DERIVATIONS
             and concept.derivation != Derivation.AGGREGATE
             and not isinstance(
                 concept.lineage, (BuildAggregateWrapper, BuildWindowItem)
@@ -113,7 +109,7 @@ def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
 def has_unsafe_derivations(cte: CTE) -> bool:
     """Check if a CTE derives any concepts that can't be merged into an aggregate."""
     for concept in cte.output_columns:
-        if concept.derivation in UNSAFE_DERIVATIONS:
+        if concept.derivation in SENSITIVE_DERIVATIONS:
             return True
         if isinstance(concept.lineage, BuildWindowItem):
             return True
@@ -151,7 +147,7 @@ def unbound_rowset_blocks_merge(
     merge_mode: MergeMode,
     domain_graph: "DomainGraph | None",
 ) -> bool:
-    if merge_mode == MergeMode.PASSTHROUGH and parent_is_group(parent):
+    if merge_mode == MergeMode.PASSTHROUGH and is_grouped_cte(parent):
         return False
     if merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
         # An identity fold: every child output address is one the parent
@@ -180,7 +176,7 @@ def grouped_unbound_passthrough_should_wait(
         return False
     parent = parents[0]
     return (
-        parent_is_group(parent)
+        is_grouped_cte(parent)
         and get_merge_mode(parent) == MergeMode.AGGREGATE
         and bool(parent.dependency_nodes())
         and (
@@ -265,10 +261,6 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
     )
 
 
-def parent_is_group(parent: CTE) -> bool:
-    return parent.group_to_grain or parent.source.source_type == SourceType.GROUP
-
-
 def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
     """Gate the BASIC-into-GROUP fold to the provably row-preserving subset.
 
@@ -293,7 +285,7 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
         if column.address in parent_outputs:
             continue  # passthrough of a parent grain key / aggregate -- safe
         if (
-            column.derivation in UNSAFE_DERIVATIONS
+            column.derivation in SENSITIVE_DERIVATIONS
             or column.derivation == Derivation.AGGREGATE
         ):
             return False
@@ -448,7 +440,6 @@ class CollapseSingleParent(OptimizationRule):
         passthrough_only: bool = False,
     ) -> None:
         super().__init__()
-        self.completed: set[str] = set()
         self.domain_graph = domain_graph
         # A bare passthrough (single parent, no local compute/WHERE/regroup) is
         # pure noise regardless of aggregate merging, so it is collapsed even
@@ -461,9 +452,6 @@ class CollapseSingleParent(OptimizationRule):
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, (UnionCTE, RecursiveCTE)):
-            return False, None
-
-        if cte.name in self.completed:
             return False, None
 
         if cte.joins:
@@ -512,7 +500,7 @@ class CollapseSingleParent(OptimizationRule):
             return False, None
         if (
             merge_mode == MergeMode.BASIC
-            and parent_is_group(parent)
+            and is_grouped_cte(parent)
             and not basic_fold_into_group_is_safe(parent, cte)
         ):
             self.debug(

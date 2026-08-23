@@ -49,7 +49,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_sole_consumer
+from trilogy.core.optimizations.utils import is_grouped_cte, is_sole_consumer
 
 # A restriction may only ride below these; anything that reorders, pads or
 # truncates rows changes which groups exist independently of the key.
@@ -59,10 +59,6 @@ UNSAFE_SOURCE_TYPES = {
     SourceType.RECURSIVE,
     SourceType.UNION,
 }
-
-
-def is_aggregate(cte: CTE) -> bool:
-    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
 
 def groups_on(cte: CTE, keys: list[BuildConcept]) -> bool:
@@ -151,7 +147,7 @@ def placement_target(
         if (
             parent.limit is not None
             or parent.source.source_type in UNSAFE_SOURCE_TYPES
-            or not is_aggregate(parent)
+            or not is_grouped_cte(parent)
             or not groups_on(parent, keys)
             or not is_sole_consumer(target, parent, inverse_map)
         ):
@@ -172,7 +168,7 @@ def descend_to_aggregate(
     """
     seen: set[str] = set()
     while isinstance(node, CTE) and not isinstance(node, RecursiveCTE):
-        if is_aggregate(node):
+        if is_grouped_cte(node):
             return node if groups_on(node, keys) else None
         if node.name in seen:
             return None

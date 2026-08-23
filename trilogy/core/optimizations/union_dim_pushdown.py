@@ -61,6 +61,7 @@ from trilogy.core.optimizations.base_optimization import (
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
+    base_datasource,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -70,19 +71,11 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.utility import unique
 
 
-def _base_datasource(
-    datasource: BuildDatasource | QueryDatasource,
-) -> BuildDatasource | QueryDatasource | None:
-    if isinstance(datasource, QueryDatasource):
-        return datasource.base_datasource
-    return None
-
-
 def _datasource_wraps(
     datasource: BuildDatasource | QueryDatasource,
     target: BuildDatasource | QueryDatasource,
 ) -> bool:
-    return _base_datasource(datasource) is target
+    return base_datasource(datasource) is target
 
 
 def _datasource_matches_dim(
@@ -188,7 +181,7 @@ def _datasource_matches_raw_id(
 ) -> bool:
     if isinstance(datasource, BuildDatasource) and datasource.identifier == source_id:
         return True
-    base = _base_datasource(datasource)
+    base = base_datasource(datasource)
     return isinstance(base, BuildDatasource) and base.identifier == source_id
 
 

@@ -5,7 +5,7 @@ from trilogy.core.models.execute import CTE, QueryDatasource
 from trilogy.core.optimizations.merge_irrelevant_group_by import (
     MergeIrrelevantGroupBy,
     _clear_identity_group,
-    _is_group_by_cte,
+    is_grouped_cte,
 )
 
 
@@ -40,11 +40,11 @@ def _make_group_cte(
     )
 
 
-def test_is_group_by_cte(test_environment: Environment):
+def testis_grouped_cte(test_environment: Environment):
     cols = _get_cols(test_environment)[:1]
     col = cols[0]
     group_cte = _make_group_cte("a", cols)
-    assert _is_group_by_cte(group_cte) is True
+    assert is_grouped_cte(group_cte) is True
 
     ds = QueryDatasource(
         input_concepts=[col],
@@ -62,7 +62,7 @@ def test_is_group_by_cte(test_environment: Environment):
         grain=BuildGrain(),
         source_map={},
     )
-    assert _is_group_by_cte(non_group) is False
+    assert is_grouped_cte(non_group) is False
 
 
 def test_clear_identity_group_over_unique_datasource(test_environment: Environment):

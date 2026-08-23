@@ -7,9 +7,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildSubselectComparison,
 )
-from trilogy.core.optimizations.predicate_pushdown import (
-    is_child_of,
-)
+from trilogy.core.optimizations.utils import condition_contains_atom
 from trilogy.core.processing.condition_utility import decompose_condition
 
 
@@ -67,11 +65,11 @@ def test_child_of():
         right=BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
-    assert is_child_of(test, test2) is True
+    assert condition_contains_atom(test, test2) is True
 
     children = decompose_condition(test)
     for child in children:
-        assert is_child_of(child, test2) is True
+        assert condition_contains_atom(child, test2) is True
 
 
 DUAL_EXISTENCE = """
