@@ -1,10 +1,8 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from jinja2 import Template
-
 from trilogy.core.enums import DatePart, FunctionType
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
+from trilogy.dialect.base import BaseDialect
 
 
 def date_diff(first: str, second: str, grain: DatePart) -> str:
@@ -34,43 +32,6 @@ FUNCTION_MAP = {
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
-}
-
-PG_SQL_TEMPLATE = Template("""{%- if output %}
-DROP TABLE IF EXISTS {{ output.address.location }};
-CREATE TABLE {{ output.address.location }} AS
-{% endif %}{%- if ctes %}
-WITH {% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{%- else -%}
-SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{% for join in joins %}
-{{ join }}
-{% endfor %}{% endif %}
-{% if where %}WHERE
-    {{ where }}
-{% endif %}
-{%- if group_by %}GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-\t{{ having }}{% endif %}
-{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %}{% endif %}
-""")
-
 MAX_IDENTIFIER_LENGTH = 50
 
 
@@ -79,12 +40,8 @@ class PostgresDialect(BaseDialect):
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     QUOTE_CHARACTER = '"'
-    SQL_TEMPLATE = PG_SQL_TEMPLATE
+    RECURSIVE_KEYWORD = ""
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     # `relation "orders" does not exist` / `schema "analytics" does not exist`.
     # Anchored on the object kind: bare `does not exist` also covers a missing

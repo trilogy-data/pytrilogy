@@ -120,7 +120,6 @@ class CTE:
     output_columns: list[BuildConcept]
     source_map: dict[str, list[str]]
     grain: BuildGrain
-    base: bool = False
     group_to_grain: bool = False
     existence_source_map: dict[str, list[str]] = field(default_factory=dict)
     # Generated semi-join restrictions (see SemiJoinFilter). Deliberately not
@@ -323,9 +322,6 @@ class CTE:
         )
         self.joins = coalesce_duplicate_joins(
             unique(self.joins + other.joins, "unique_id")
-        )
-        self.partial_concepts = unique(
-            self.partial_concepts + other.partial_concepts, "address"
         )
         self.rollup_concepts = unique(
             self.rollup_concepts + other.rollup_concepts, "address"
@@ -740,10 +736,6 @@ class CTE:
         return not (isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET)
 
     @property
-    def sourced_concepts(self) -> list[BuildConcept]:
-        return [c for c in self.output_columns if c.address in self.source_map]
-
-    @property
     def inlined_alias_map(self) -> dict[str, str]:
         """Map inlined CTE names to the raw table aliases this consumer emits."""
         used: set[str] = {p.name for p in self.parent_ctes}
@@ -787,30 +779,12 @@ class CTE:
             )
         return bindings
 
-    def source_key_for(
-        self,
-        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
-    ) -> str:
+    def source_key_for(self, source: str | CTE | UnionCTE) -> str:
         if isinstance(source, str):
             return self.resolve_render_alias(source)
         if isinstance(source, DatasourceCTE) and self.renders_inline(source):
             return self.resolve_render_alias(source.name)
-        if isinstance(source, (CTE, UnionCTE)):
-            return source.name
-        if isinstance(source, BuildDatasource):
-            for binding in self.source_bindings(include_inlined=True):
-                if binding.datasource is source:
-                    return binding.key
-                if (
-                    binding.datasource is not None
-                    and binding.datasource.identifier == source.identifier
-                ):
-                    return binding.key
-            return source.safe_identifier
-        for binding in self.source_bindings(include_inlined=True):
-            if binding.datasource is source:
-                return binding.key
-        return source.safe_identifier
+        return source.name
 
     def dependency_nodes(
         self,
@@ -946,7 +920,6 @@ class UnnestJoin:
     concepts: list[BuildConcept]
     parent: BuildFunction
     alias: str = "unnest"
-    rendering_required: bool = True
 
     def __hash__(self):
         return self.safe_identifier.__hash__()
@@ -1471,25 +1444,16 @@ class QueryDatasource:
             + extent_free
         )
 
-    def get_alias(
-        self,
-        concept: BuildConcept,
-        use_raw_name: bool = False,
-        force_alias: bool = False,
-        source: str | None = None,
-    ):
+    def get_alias(self, concept: BuildConcept, source: str | None = None):
         for x in self.datasources:
-            # query datasources should be referenced by their alias, always
-            force_alias = isinstance(x, QueryDatasource)
-            use_raw_name = isinstance(x, BuildDatasource) and not force_alias
             if source and x.safe_identifier != source:
                 continue
+            scoped = concept.with_grain(self.grain)
             try:
-                return x.get_alias(
-                    concept.with_grain(self.grain),
-                    use_raw_name,
-                    force_alias=force_alias,
-                )
+                # query datasources are referenced by their alias, always
+                if isinstance(x, QueryDatasource):
+                    return x.get_alias(scoped)
+                return x.get_alias(scoped, use_raw_name=True, force_alias=False)
             except ValueError:
                 continue
         existing = [c.with_grain(self.grain) for c in self.output_concepts]
@@ -1783,13 +1747,6 @@ class UnionCTE:
     def condition(self, value):
         raise NotImplementedError
 
-    @property
-    def inlined_alias_map(self) -> dict[str, str]:
-        return {}
-
-    def resolve_render_alias(self, source: str) -> str:
-        return source
-
     def source_bindings(self, include_branches: bool = True) -> list[SourceBinding]:
         bindings = [
             SourceBinding(
@@ -1827,18 +1784,10 @@ class UnionCTE:
             if binding.node is not None
         ]
 
-    def source_key_for(
-        self,
-        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
-    ) -> str:
+    def source_key_for(self, source: str | CTE | UnionCTE) -> str:
         if isinstance(source, str):
             return source
-        if isinstance(source, (CTE, UnionCTE)):
-            return source.name
-        for binding in self.source_bindings(include_branches=True):
-            if binding.datasource is source:
-                return binding.key
-        return source.safe_identifier
+        return source.name
 
     def add_dependency(self, parent: CTE | UnionCTE) -> None:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
@@ -1923,7 +1872,6 @@ class Join:
     jointype: JoinType
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: list[CTEConceptPair] | None = None
-    quote: str | None = None
     condition: BoolExpr | None = None
     modifiers: list[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
@@ -1960,24 +1908,23 @@ class Join:
         """Alias token a consumer references ``node``'s columns by."""
         return self._resolve_alias(consumer, node)
 
-    def reference_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
+    def reference_for(
+        self, consumer: CTE | UnionCTE, node: CTE | UnionCTE, quote_character: str
+    ) -> str:
         """FROM/JOIN source text for ``node`` as seen from ``consumer``.
 
         A normal CTE is referenced by name; an inlined ``DatasourceCTE``
         renders its raw table directly under the resolved alias."""
         node = self.authoritative(consumer, node)
-        alias = self._resolve_alias(consumer, node)
-        q = self.quote or ""
+        q = quote_character
+        alias = f"{q}{self._resolve_alias(consumer, node)}{q}"
         if (
             isinstance(consumer, CTE)
             and isinstance(node, DatasourceCTE)
             and consumer.renders_inline(node)
         ):
-            location = node.datasource.safe_location
-            if self.quote:
-                location = safe_quote(location, self.quote)
-            return f"{location} as {q}{alias}{q}"
-        return f"{q}{alias}{q}"
+            return f"{safe_quote(node.datasource.safe_location, q)} as {alias}"
+        return alias
 
     @property
     def right_name(self) -> str:

@@ -38,14 +38,10 @@ def render_unnest(
         address = UNNEST_NAME
     else:
         address = concept.safe_address
-    if unnest_mode == UnnestMode.CROSS_JOIN:
-        return f"{render_func(concept, cte)} as {quote_character}{address}{quote_character}"
-    elif unnest_mode == UnnestMode.CROSS_JOIN_UNNEST:
+    if unnest_mode == UnnestMode.CROSS_JOIN_UNNEST:
         return f"unnest({render_func(concept, cte)}) as {quote_character}{address}{quote_character}"
     elif unnest_mode == UnnestMode.PRESTO:
         return f"unnest({render_func(concept, cte)}) as t({quote_character}{UNNEST_NAME}{quote_character})"
-    elif unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
-        return f"{render_func(concept, cte)} as unnest_wrapper ({quote_character}{address}{quote_character})"
     elif unnest_mode == UnnestMode.SNOWFLAKE:
         # if we don't actually have a join, we're directly unnesting a concept, and we can skip the flatten
         if not cte.render_from_clause:
@@ -93,12 +89,7 @@ def _render_unnest_join(
     unnest_clause = render_unnest(
         unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte
     )
-    if unnest_mode in (
-        UnnestMode.CROSS_JOIN,
-        UnnestMode.CROSS_JOIN_UNNEST,
-        UnnestMode.CROSS_JOIN_ALIAS,
-        UnnestMode.PRESTO,
-    ):
+    if unnest_mode in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
         return f"CROSS JOIN {unnest_clause}"
     if unnest_mode == UnnestMode.SNOWFLAKE:
         return f"LEFT JOIN LATERAL {unnest_clause}"
@@ -114,6 +105,19 @@ def _collect_modifiers(pair: ConceptPair, join: Join) -> list[Modifier]:
     )
 
 
+def _renders_in_from(consumer: CTE, join: Join, node: CTE | UnionCTE) -> bool:
+    """Whether ``node`` is the consumer's base or the right side of one of its
+    joins. A join rendered outside the consumer's own join list has no FROM
+    scope to check against and is accepted as is."""
+    if not any(j is join for j in consumer.joins):
+        return True
+    alias = join.name_for(consumer, node)
+    return alias == consumer.base_alias or any(
+        isinstance(j, Join) and join.name_for(consumer, j.right_cte) == alias
+        for j in consumer.joins
+    )
+
+
 def _render_left_concept(
     pair: CTEConceptPair,
     join: Join,
@@ -123,78 +127,6 @@ def _render_left_concept(
     use_map: dict[str, set[str]],
 ) -> str:
     node = join.authoritative(consumer, pair.cte)
-    # A join key whose CTE resolves to the consumer itself, while the consumer's
-    # FROM is a *different* source (``base_alias`` names another CTE), is a stale
-    # self-reference: an optimization merged the inner source that supplied the
-    # key up into the consumer, but the join key pair still points at the merged
-    # consumer. ``self_name.col`` is invalid SQL there — pin it to the FROM-base
-    # CTE instead. (When ``base_alias == name`` the CTE legitimately IS its own
-    # FROM and ``name.col`` is correct, so leave those alone.)
-    if (
-        isinstance(consumer, CTE)
-        and node.name == consumer.name
-        and consumer.base_alias != consumer.name
-    ):
-        base = next(
-            (p for p in consumer.dependency_nodes() if p.name == consumer.base_alias),
-            None,
-        )
-        if base is not None:
-            return render_join_concept(
-                join.name_for(consumer, base),
-                quote_character,
-                base,
-                pair.left,
-                consumer.column_for(base, pair.left),
-                render_expr_func,
-                use_map=use_map,
-            )
-    # The join's recorded left node can be an inlined/folded datasource that no
-    # longer renders in the consumer's FROM — e.g. a unified-model 2-hop
-    # (``customer`` -> ``customer.address``) where the FK key was already
-    # materialized by the grouped FROM-base CTE, leaving the raw customer table
-    # inlined-but-dangling. The tell is that the consumer's own ``source_map``
-    # for the left concept does NOT list this node, but DOES list the FROM-base
-    # CTE — so referencing the node's alias is "table not found" while the base
-    # carries the column. Pin the key to the base. (A legitimately-inlined source
-    # IS in the source_map for its key; and we target only ``base_alias``, the one
-    # parent guaranteed to render in the FROM, so normal joins stay untouched.)
-    if isinstance(consumer, CTE) and consumer.base_alias != consumer.name:
-        left_sources = consumer.source_map.get(pair.left.address) or []
-        # A node that itself renders in the consumer's FROM/JOIN chain is
-        # never dangling — its alias is referenceable even when first-wins
-        # source_map resolution credited the key to a sibling (a coalesced
-        # merged key lists only its class sources, not every provider). Only
-        # a genuinely absent node (folded away, not any join's right side)
-        # takes the base pin.
-        renders_in_from = node.name == consumer.base_alias or any(
-            isinstance(j, Join) and j.right_cte.name == node.name
-            for j in consumer.joins
-        )
-        if (
-            not renders_in_from
-            and consumer.base_alias in left_sources
-            and consumer.source_key_for(node) not in left_sources
-            and node.name not in left_sources
-        ):
-            base = next(
-                (
-                    p
-                    for p in consumer.dependency_nodes()
-                    if p.name == consumer.base_alias
-                ),
-                None,
-            )
-            if base is not None:
-                return render_join_concept(
-                    base.name,
-                    quote_character,
-                    base,
-                    pair.left,
-                    consumer.column_for(base, pair.left),
-                    render_expr_func,
-                    use_map=use_map,
-                )
     if join.left_is_local:
         # LHS key is the rendering branch's own base column (no self-alias).
         # If the key also resolves through a hoisted dim, the generic concept
@@ -216,6 +148,11 @@ def _render_left_concept(
                     f".{quote_character}{col}{quote_character}"
                 )
         return render_expr_func(pair.left, consumer)
+    if isinstance(consumer, CTE) and not _renders_in_from(consumer, join, node):
+        raise ValueError(
+            f"Join key {pair.left.address} of {consumer.name} references {node.name},"
+            f" which is not in its FROM scope (base {consumer.base_alias})"
+        )
     col = (
         consumer.column_for(node, pair.left)
         if isinstance(consumer, CTE)
@@ -357,7 +294,6 @@ def render_join(
         return _render_unnest_join(
             join, unnest_mode, quote_character, render_expr_func, cte
         )
-    join.quote = quote_character
     joinkeys = " AND ".join(
         sorted(
             _build_joinkeys(
@@ -365,7 +301,7 @@ def render_join(
             )
         )
     )
-    right_ref = join.reference_for(cte, join.right_cte)
+    right_ref = join.reference_for(cte, join.right_cte, quote_character)
     base = f"{join.jointype.value.upper()} JOIN {right_ref} on {joinkeys}"
     if join.condition:
         base = f"{base} and {render_expr_func(join.condition, cte)}"

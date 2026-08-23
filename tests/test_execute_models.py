@@ -21,7 +21,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
     raise_helpful_join_validation_error,
 )
-from trilogy.dialect.base import BaseDialect, safe_get_cte_value
+from trilogy.dialect.base import BaseDialect
 
 
 def test_raise_helpful_join_validation_error():
@@ -256,12 +256,11 @@ def test_join_reference_for_inlined_datasource_renders_raw_table():
         existence_source_map={},
     )
     join = Join(right_cte=dim, jointype=JoinType.INNER)
-    join.quote = '"'
 
     # normal parent: referenced by CTE name
     assert consumer.renders_inline(dim) is False
     assert join.name_for(consumer, dim) == dim.name
-    assert join.reference_for(consumer, dim) == f'"{dim.name}"'
+    assert join.reference_for(consumer, dim, '"') == f'"{dim.name}"'
 
     # folded into the consumer (parked on inlined_parents): raw table under
     # the datasource alias
@@ -269,7 +268,7 @@ def test_join_reference_for_inlined_datasource_renders_raw_table():
     consumer.inlined_parents = [dim]
     assert consumer.renders_inline(dim) is True
     assert join.name_for(consumer, dim) == base_ds.safe_identifier
-    ref = join.reference_for(consumer, dim)
+    ref = join.reference_for(consumer, dim, '"')
     assert base_ds.safe_location in ref
     assert f'as "{base_ds.safe_identifier}"' in ref
 
@@ -301,11 +300,10 @@ def test_join_reference_for_emitted_datasource_ignores_scanned_raw_source():
         existence_source_map={},
     )
     join = Join(right_cte=dim, jointype=JoinType.INNER)
-    join.quote = '"'
 
     assert consumer.renders_inline(dim) is False
     assert join.name_for(consumer, dim) == dim.name
-    assert join.reference_for(consumer, dim) == f'"{dim.name}"'
+    assert join.reference_for(consumer, dim, '"') == f'"{dim.name}"'
 
 
 def test_join_reference_for_union_consumer_uses_node_name():
@@ -327,14 +325,13 @@ def test_join_reference_for_union_consumer_uses_node_name():
         grain=BuildGrain(),
     )
     join = Join(right_cte=branch, jointype=JoinType.INNER)
-    join.quote = '"'
 
     assert union.identifier == union.name
     assert union.safe_identifier == union.name
     assert union.group_to_grain is False
     assert union.group_concepts == []
     assert join.name_for(union, branch) == branch.name
-    assert join.reference_for(union, branch) == f'"{branch.name}"'
+    assert join.reference_for(union, branch, '"') == f'"{branch.name}"'
     assert join.right_name == branch.name
 
 
@@ -399,7 +396,7 @@ def test_source_bindings_include_emitted_and_inlined_sources():
     assert consumer.source_key_for(folded) == folded.datasource.safe_identifier
 
 
-def test_source_key_for_resolves_bound_datasources_by_identity_and_identifier():
+def test_source_key_for_resolves_inlined_and_emitted_parents():
     key = _key_concept("k")
     emitted = _datasource_cte("emitted_ds", key)
     folded = _datasource_cte("folded_ds", key)
@@ -407,32 +404,10 @@ def test_source_key_for_resolves_bound_datasources_by_identity_and_identifier():
     consumer = _query_cte("consumer", key, [emitted, query_parent])
     consumer.add_inlined_datasource(folded)
 
-    same_identifier = BuildDatasource(
-        name=folded.datasource.name,
-        columns=[],
-        address="other_addr",
-        grain=BuildGrain(),
-    )
-    unbound = BuildDatasource(
-        name="unbound",
-        columns=[],
-        address="unbound_addr",
-        grain=BuildGrain(),
-    )
-    unbound_qds = QueryDatasource(
-        input_concepts=[],
-        output_concepts=[],
-        datasources=[],
-        grain=BuildGrain(),
-        joins=[],
-        source_map={},
-    )
-
-    assert consumer.source_key_for(folded.datasource) == folded.datasource.name
-    assert consumer.source_key_for(same_identifier) == folded.datasource.name
-    assert consumer.source_key_for(unbound) == unbound.safe_identifier
-    assert consumer.source_key_for(query_parent.source) == query_parent.name
-    assert consumer.source_key_for(unbound_qds) == unbound_qds.safe_identifier
+    assert consumer.source_key_for(folded) == folded.datasource.name
+    assert consumer.source_key_for(folded.name) == folded.datasource.name
+    assert consumer.source_key_for(query_parent) == query_parent.name
+    assert consumer.source_key_for(emitted) == emitted.name
 
 
 def test_replace_dependency_updates_cte_references_and_source_tokens():
@@ -568,7 +543,6 @@ def test_query_datasource_passes_when_address_in_source_map_but_canonical_differ
 def test_unnest_join_equality_and_hash():
     """``UnnestJoin`` equality/hash is keyed on ``safe_identifier`` (alias +
     concept addresses); non-UnnestJoin comparisons return ``NotImplemented``."""
-    from trilogy.core.enums import FunctionType
     from trilogy.core.models.build import BuildFunction
     from trilogy.core.models.execute import UnnestJoin
 
@@ -820,14 +794,7 @@ def test_safe_get_cte_value_returns_none_when_no_source_can_render():
     missing = _property_concept("missing")
     cte = _query_cte("consumer", key)
 
-    rendered = safe_get_cte_value(
-        BaseDialect().FUNCTION_MAP[FunctionType.COALESCE],
-        cte,
-        missing,
-        "`",
-        BaseDialect().render_expr,
-        {},
-    )
+    rendered = BaseDialect().safe_get_cte_value(cte, missing)
 
     assert rendered is None
 
@@ -872,20 +839,10 @@ def test_union_source_key_helpers_resolve_parents_branches_and_fallbacks():
         output_columns=[key],
         grain=BuildGrain(),
     )
-    unbound = BuildDatasource(
-        name="unbound",
-        columns=[],
-        address="unbound_addr",
-        grain=BuildGrain(),
-    )
-
     union.add_dependency(parent)
 
     assert union.source_key_for("literal") == "literal"
     assert union.source_key_for(parent) == parent.name
-    assert union.source_key_for(parent.datasource) == parent.name
-    assert union.source_key_for(branch.source) == branch.name
-    assert union.source_key_for(unbound) == unbound.safe_identifier
     assert union.dependency_nodes() == [parent]
     assert union.dependency_nodes(include_branches=True) == [parent, branch]
 

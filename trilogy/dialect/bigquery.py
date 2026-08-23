@@ -20,7 +20,6 @@ from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import CompiledCTE
 from trilogy.core.statements.execute import CreateTableInfo, ProcessedQueryPersist
 from trilogy.dialect.base import (
-    AGGREGATE_GRAIN_MATCH_MAP,
     BaseDialect,
     TableColumn,
     safe_quote,
@@ -103,10 +102,7 @@ def null_wrapper(
 
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda x, types: f"count({x[0]})",
-    FunctionType.SUM: lambda x, types: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
-    FunctionType.AVG: lambda x, types: f"avg({x[0]})",
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
     FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
@@ -137,8 +133,6 @@ FUNCTION_MAP = {
     FunctionType.GEO_FROM_TEXT: lambda x, types: f"ST_GEOGFROMTEXT({x[0]})",
     FunctionType.GEO_POINT: lambda x, types: f"ST_GEOGPOINT({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_DISTANCE({x[0]}, {x[1]})",
-    FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",
-    FunctionType.GEO_Y: lambda x, types: f"ST_Y({x[0]})",
     FunctionType.GEO_CENTROID: lambda x, types: f"ST_CENTROID({x[0]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
     # aggregate
@@ -154,11 +148,6 @@ FUNCTION_MAP = {
     ),
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
-}
-
 DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "STRING",
     DataType.INTEGER: "INT64",
@@ -171,38 +160,6 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.DATETIME: "DATETIME",
     DataType.TIMESTAMP: "TIMESTAMP",
 }
-
-
-BQ_SQL_TEMPLATE = Template("""{%- if output %}
-{{output}}
-{% endif %}{%- if ctes %}
-WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% else%}
-{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{%- else -%}
-SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
-    {{ join }}{% endfor %}{% endif %}
-{% if where %}WHERE
-    {{ where }}
-{% endif %}
-{%- if group_by %}GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-\t{{ having }}{% endif %}{% if qualify %}
-QUALIFY
-\t{{ qualify }}{% endif %}
-{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %}{% endif %}
-""")
 
 
 BQ_CREATE_TABLE_SQL_TEMPLATE = Template("""
@@ -253,13 +210,8 @@ class BigqueryDialect(BaseDialect):
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     QUOTE_CHARACTER = "`"
     NULL_WRAPPER = staticmethod(null_wrapper)
-    SQL_TEMPLATE = BQ_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
@@ -446,41 +398,6 @@ class BigqueryDialect(BaseDialect):
         if from_clause:
             source = f"{from_clause}, {source}"
         return source, self.ARRAY_MEMBER_COLUMN
-
-    def render_simple_case(
-        self,
-        e,
-        cte=None,
-        cte_map=None,
-        raise_invalid: bool = True,
-    ) -> str:
-        """BigQuery does not support simple CASE syntax, so expand to searched CASE."""
-        when_clauses = []
-        else_clause = ""
-        from trilogy.core.models.build import BuildCaseElse, BuildCaseWhen
-
-        for arg in e.arguments:
-            if isinstance(arg, BuildCaseWhen):
-                # Render the full comparison (switch_expr = val)
-                condition = self.render_expr(
-                    arg.comparison,
-                    cte=cte,
-                    cte_map=cte_map,
-                    raise_invalid=raise_invalid,
-                )
-                result = self.render_expr(
-                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-                when_clauses.append(f"WHEN {condition} THEN {result}")
-            elif isinstance(arg, BuildCaseElse):
-                result = self.render_expr(
-                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-                else_clause = f"ELSE {result}"
-        clauses = "\n\t".join(when_clauses)
-        if else_clause:
-            clauses += f"\n\t{else_clause}"
-        return f"CASE\n\t{clauses}\n\tEND"
 
     def render_partition_clause(self, target: CreateTableInfo) -> str:
         if not target.partition_keys:
