@@ -3292,17 +3292,21 @@ class CustomFunctionFactory:
         self.function_arguments = function_arguments
         self.name = name
 
-    def with_namespace(self, namespace: str):
-        self.namespace = namespace
-        self.function = (
-            self.function.with_namespace(namespace)
-            if isinstance(self.function, Namespaced)
-            else self.function
+    def with_namespace(self, namespace: str) -> CustomFunctionFactory:
+        # Copy, never mutate: the source environment is shared across import
+        # edges, so rewriting in place re-prefixes arguments once per edge.
+        return CustomFunctionFactory(
+            function=(
+                self.function.with_namespace(namespace)
+                if isinstance(self.function, Namespaced)
+                else self.function
+            ),
+            namespace=namespace,
+            function_arguments=[
+                x.with_namespace(namespace) for x in self.function_arguments
+            ],
+            name=self.name,
         )
-        self.function_arguments = [
-            x.with_namespace(namespace) for x in self.function_arguments
-        ]
-        return self
 
     def to_dict(self) -> dict:
         from pydantic import TypeAdapter
