@@ -1,0 +1,18 @@
+# Cross-cluster edit needed for site A (trilogy/core/processing/nodes/merge_node.py, MergeNode._resolve):
+# the joined pregrain and the identity-group test must see JOIN CANDIDATES only; an
+# existence-only feeder (a membership subselect source) is already excluded from
+# raw_pregrain and from the joins but still reaches these two calls through
+# `final_datasets`, so a MergeNode hosting an existence condition directly reports a
+# spurious regroup (its feeder's grain lands in the pregrain; is_identity_group sees
+# two roots). Corpus effect of this edit alone: 0 statements.
+-            calculate_joined_pregrain(
+-                final_datasets, joins, grain, self.environment
+-            ).components,
++            calculate_joined_pregrain(
++                join_candidates, joins, grain, self.environment
++            ).components,
+...
+-        if force_group and is_identity_group(
+-            final_datasets,
++        if force_group and is_identity_group(
++            join_candidates,

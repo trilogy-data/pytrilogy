@@ -23,32 +23,45 @@ commit message records its corpus A/B result. Item status:
 | 2.2 | LANDED c4cc2a05f, 81ce16e8c | `_clear_identity_group` deleted after GroupNode honours is_identity_group and CollapseSingleParent treats `sum(x) by k` over the grouping parent as a rename |
 | 2.3(a) | LANDED f3c846fbb | the planner emits `min(leaf)` in the ordering of a grouped final; a plain reference is impossible for that shape (GROUP BY lower(ch) vs ORDER BY ch), so this is one owner, not zero wrapping |
 | 2.4 | LANDED fc533ce3f | direct return deleted; the 16 residual roots were conditioned projections, not ORDER BY/LIMIT shapes |
-| 2.6 | BLOCKED (wave 2), retried in wave 3 | the 142 pushes originate at gen_root's existence wrapper (34) and source_planning's bridge merge (57), not the strategy_builder sites; a conditioned COPY of a history-cached node diverges (q64) and a node condition refines nullability-derived join rendering (q80) |
-| 2.7 | 3 of 4 LANDED c2897f784; 4th in wave 3 | `_inject_scoped_join_key_exposure` fires on derived-key union joins under join_matrix |
+| 2.6 | PARTIAL 9a2892dfb; site A patches in docs/patches | the 142 pushes originate at gen_root's existence wrapper (34) and source_planning's bridge merge (57), not the strategy_builder sites; a conditioned COPY of a history-cached node diverges (q64) and a node condition refines nullability-derived join rendering (q80) |
+| 2.7 | LANDED c2897f784, 737bb0e37 | the resolve-time exposure is now a gen_aggregate construction obligation |
 | 3.6 | BLOCKED, design decision needed | the divergence is real but not where the spec pointed: node-level stamps are output-restricted while `_collect_deep_partial_addresses` reads NON-projected `~` columns for join typing (gcat:inline29 flips INNER->LEFT/FULL when the QDS honours the stamps), and post-construction widening (`projection.widen_projection`, `set_output_concepts`) never restamps (gcat:inline32 loses its date-spine FULL). Decide whether non-projected partials are join-typing input; then either widen the stamp or make join typing read datasource columns, and restamp on widening. Also: dropping the construction-time `_refine_nullable_for_conditions` loses q64's membership pushdown (`semi_join_pushdown.nullable_in` reads `cte.nullable_concepts`) |
-| 2.3(b)(c), 3.3 | wave 3 | see the per-item sections |
+| 2.3(b)(c), 3.3 | NOT LANDED | agent R was stopped mid-edit; see Resume here |
 
-### Resume here (paused 2026-08-23 during wave 3)
+### Resume here (stopped 2026-08-23 during wave 3)
 
-Landed: 11 commits, aecae9837 .. 737bb0e37 on `more_eval_tuning`, each
-gated by a same-process corpus A/B and the TPC-DS/TPC-H row batteries.
+Landed: 13 commits, aecae9837 .. 9a2892dfb on `additional_refinement`
+(pushed to origin), each gated by a same-process corpus A/B and the
+TPC-DS/TPC-H row batteries. `more_eval_tuning` is untouched.
 
-In flight when paused (two background agents, not committed):
+Stopped mid-flight, NOT committed: agent R (2.3b, 2.3c, 3.3) had
+uncommitted, unverified edits in `trilogy/core/models/execute.py` and
+`trilogy/dialect/base.py` (about +103/-71). Treat that diff as a draft: run
+the gate below on it or discard those two files. Nothing else of R's is in
+the tree.
 
-- Agent R (2.3b, 2.3c, 3.3): owns dialect/*, execute.py, query_processor.py,
-  optimization.py, optimizations/*, having_normalization.py, plus
-  group_graph.py / group_node.py / discovery_utility.py for the planner side
-  of 2.3. Had written nothing to the tree at pause time.
-- Agent Q (2.6 retry at gen_root / source_planning): owns
-  v4_node_generators/root.py, v4_helper/{source_planning,strategy_builder,
-  condition_injection,condition_placement}.py. `root.py` was modified and
-  uncommitted at pause time.
+2.6 after the wave-3 retry (commit 9a2892dfb landed the gen_root fallback):
 
-If the session resumes, their completion reports arrive as task
-notifications and each is committed separately after review. If it does not,
-`git diff` on those files is their partial work: verify with the gate below
-before keeping any of it, or discard it (only those files; the timing
-artifacts are separate, see next point).
+- Site A (gen_root existence wrapper, 34 of the 142 pushdown relocations)
+  is PREPARED, not landed: `docs/patches/handoff_2_6_siteA_merge_node.patch`
+  (MergeNode._resolve passes `join_candidates`, not `final_datasets`, to
+  `calculate_joined_pregrain` and `is_identity_group`, so an existence-only
+  feeder stops contributing grain; 0 corpus effect alone) and
+  `docs/patches/handoff_2_6_siteA_root.patch` (drop the
+  `_has_upgradable_outer_join` gate so the copy-and-attach path is the
+  default under the three structural gates). Applied TOGETHER: 34 -> 12
+  pushes, 8 statements change by CTE rename only (q14, 16, 54, 56, 60, 69,
+  94, 95) and q35 loses a two-consumer passthrough CTE (-898 chars, same
+  predicates and scopes); batteries 173 passed. Applied separately, five
+  statements grow a spurious GROUP BY. Apply both, re-run the gate, commit.
+- Site B (source_planning bridge merge, 57 relocations) is NOT a
+  construction-time decision: InlineDatasource runs before pushdown and
+  refuses a filtered root scan unless sole-consumer and all-INNER, so
+  planner-hosted scan atoms split scans that are inlined today (75
+  statements changed, 6 new errors in the prototype). The remaining 30 are
+  union-arm pushes/prunes the spec keeps in the optimizer. Closed.
+- The other 43 (final-condition injection, build_strategy_node wrapper,
+  gen_filter/gen_basic, cascades) were not attempted.
 
 Also uncommitted, deliberately: the regenerated tests/modeling timing
 artifacts (`*.png`, `*-summary.md`, `zquery*.log`) and
@@ -58,8 +71,13 @@ tree after the last wave, not per wave.
 
 Remaining work, in order:
 
-1. Collect R and Q; commit what passes the gate; mark the table rows.
-2. Regenerate and commit the timing artifacts on the final tree.
+1. Decide R's draft diff (keep only if the gate passes) and apply the two
+   site-A patches; mark the table rows.
+2. Regenerate and commit the timing artifacts on the final tree (today's
+   regenerated `tests/modeling/**/zquery*.log`, `*-summary.md`, `*.png` and
+   `crates/trilogy-io/Cargo.lock` are uncommitted in the tree; they reflect
+   the post-wave-2 SQL and are safe to commit as-is if no further SQL change
+   lands first).
 3. Full suite (`.venv/Scripts/python.exe -m pytest tests -m "not
    adventureworks_execution" --ignore=tests/cli/test_cloud_live.py`; takes
    ~22 minutes, run it detached, the Bash tool kills at 10 minutes); expected:
