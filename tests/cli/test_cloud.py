@@ -14,6 +14,7 @@ from typing import ClassVar
 import click
 import pytest
 
+from tests.scripts.test_json_output import parse_events
 from trilogy.scripts import cloud as cloud_mod
 from trilogy.scripts.cloud import (
     DEFAULT_API_URL,
@@ -1349,6 +1350,21 @@ class TestJobCommands:
         assert not any(
             c.method in ("POST", "PUT") and "/jobs" in c.path for c in logged_in.calls
         )
+
+    def test_push_dry_run_emits_a_json_event_not_a_success_line(
+        self, logged_in, run_cloud, tmp_path, json_mode
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "fresh", "--dry-run"
+        )
+        assert result.exit_code == 0, result.output
+        payload = next(
+            e for e in parse_events(result.output) if e["event"] == "job_dry_run"
+        )
+        assert payload["action"] == "create"
+        assert payload["files"] == 2
+        assert payload["dry_run"] is True
 
     def test_push_dry_run_reports_an_update_for_an_existing_name(
         self, logged_in, run_cloud, tmp_path
