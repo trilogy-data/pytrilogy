@@ -1030,3 +1030,158 @@ def test_debug_before_file_path_resolves_cleanly(cmd):
     assert "Debug mode enabled" in result.output, result.output
     assert "does not exist" in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output
+
+
+RUN_DRY_RUN_SCRIPT = """
+key id int;
+property id.name string;
+
+datasource people (
+    id: id,
+    name: name
+)
+grain (id)
+query '''select 1 as id, 'a' as name''';
+
+persist people_copy into people_out from select id, name;
+"""
+
+
+def test_run_dry_run_compiles_without_executing(tmp_path: Path):
+    import duckdb
+
+    script = tmp_path / "etl.preql"
+    script.write_text(RUN_DRY_RUN_SCRIPT)
+    db = tmp_path / "w.db"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["run", str(script), "duckdb", "--dry-run", f"path={db}"]
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "CREATE OR REPLACE TABLE" in result.output
+    assert "people_out" in result.output
+    assert "Dry run: 1 statement compiled, none executed" in result.output
+
+    tables = duckdb.connect(str(db)).sql("show tables").fetchall()
+    assert tables == [], f"dry run must not have created a table, got {tables}"
+
+
+def test_run_dry_run_directory_prints_sql_per_script(tmp_path: Path):
+    (tmp_path / "etl.preql").write_text(RUN_DRY_RUN_SCRIPT)
+    (tmp_path / "other.preql").write_text(
+        RUN_DRY_RUN_SCRIPT.replace("people", "folk").replace("id", "fid")
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["run", str(tmp_path), "duckdb", "--dry-run"])
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "-- etl.preql:" in result.output
+    assert "-- other.preql:" in result.output
+    assert "CREATE OR REPLACE TABLE" in result.output
+    assert "Dry run: 2 statements compiled, none executed" in result.output
+    assert "All scripts executed successfully!" not in result.output
+
+
+def test_run_dry_run_short_alias_matches_refresh(tmp_path: Path):
+    script = tmp_path / "etl.preql"
+    script.write_text(RUN_DRY_RUN_SCRIPT)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["run", str(script), "duckdb", "-n"])
+    assert result.exit_code == 0
+    assert "Dry run:" in result.output
+
+
+def test_run_dry_run_agent_mode_still_fails_a_no_op(tmp_path: Path):
+    script = tmp_path / "defs.preql"
+    script.write_text("key id int;")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--agent", "run", str(script), "duckdb", "-n"])
+    assert result.exit_code == 1
+    assert "Nothing was executed" in result.output
+
+
+MIXED_STATEMENT_SCRIPT = "key id int;\nproperty id.name string;\n\ndatasource people (\n    id: id,\n    name: name\n)\ngrain (id)\nquery '''select 1 as id, 'a' as name''';\n\nraw_sql('''create table if not exists side (x int)''');\n\nchart layer barh (\n    y_axis <- name,\n    x_axis <- count(id) as c\n);"
+
+
+def test_run_dry_run_renders_raw_sql_and_charts(tmp_path: Path):
+    """generate_sql has to cover every statement a run can execute, or a dry
+    run aborts on the first raw block or chart in an otherwise fine script."""
+    script = tmp_path / "mixed.preql"
+    script.write_text(MIXED_STATEMENT_SCRIPT)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["run", str(script), "duckdb", "--dry-run"])
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "create table if not exists side" in result.output
+    assert "count(" in result.output
+
+
+def test_compile_queries_reports_statements_that_have_no_sql():
+    """A validate statement runs outside query generation; a dry run says so
+    rather than aborting over it."""
+    from trilogy.dialect.enums import Dialects
+    from trilogy.scripts.common import compile_queries
+
+    class NotSql:
+        pass
+
+    executor = Dialects.DUCK_DB.default_executor()
+    compiled = compile_queries(executor, [NotSql()])  # type: ignore[list-item]
+    assert len(compiled) == 1
+    assert "no SQL to render" in compiled[0].sql
+
+
+def _walk_commands(command, ctx, prefix=()):
+    import click
+
+    yield prefix, command
+    if isinstance(command, click.Group):
+        for name in command.list_commands(ctx):
+            sub = command.get_command(ctx, name)
+            if sub is not None:
+                yield from _walk_commands(sub, ctx, (*prefix, name))
+
+
+def test_every_dry_run_flag_carries_the_same_short_alias():
+    """`--dry-run` comes from one decorator so a new one cannot drift; `cloud
+    sync` shipped without `-n` when each command spelled its own."""
+    import click
+
+    ctx = click.Context(cli)
+    missing = []
+    for path, command in _walk_commands(cli, ctx):
+        for param in command.params:
+            if "--dry-run" in param.opts and "-n" not in param.opts:
+                missing.append(" ".join(path))
+    assert not missing, f"--dry-run without -n: {missing}"
+
+
+def test_dry_run_is_offered_by_every_writing_command():
+    import click
+
+    ctx = click.Context(cli)
+    expected = {
+        "run",
+        "refresh",
+        "ingest",
+        "import",
+        "env publish",
+        "cloud sync",
+        "cloud jobs push",
+        "cloud workspaces push",
+    }
+    found = {
+        " ".join(path)
+        for path, command in _walk_commands(cli, ctx)
+        if any("--dry-run" in p.opts for p in command.params)
+    }
+    assert expected <= found, f"missing --dry-run on: {sorted(expected - found)}"

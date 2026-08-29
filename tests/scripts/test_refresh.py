@@ -459,7 +459,7 @@ def test_execute_script_for_refresh_dry_run(tmp_path, capsys):
     assert "SELECT" in captured.out, captured.out
     assert "Dry run" in captured.out, captured.out
     assert stats.update_count == 1
-    assert stats.refresh_queries, "Should have collected SQL"
+    assert stats.compiled_queries, "Should have collected SQL"
 
 
 def test_execute_refresh_mode_dry_run(capsys):
@@ -1285,3 +1285,15 @@ class TestRefreshWithoutASourceOfTruth:
 
         assert result.exit_code in (0, 2), result.output
         assert "Nothing can be refreshed" not in result.output
+
+
+def test_cli_params_derives_dry_run_from_refresh_params():
+    """One flag, two carriers: a caller that fills in only the deep one must
+    not produce an invocation that reports itself as a real run."""
+    from trilogy.scripts.common import CLIRuntimeParams, RefreshParams
+
+    params = CLIRuntimeParams(input=".", refresh_params=RefreshParams(dry_run=True))
+    assert params.dry_run is True
+
+    assert CLIRuntimeParams(input=".").dry_run is False
+    assert CLIRuntimeParams(input=".", refresh_params=RefreshParams()).dry_run is False

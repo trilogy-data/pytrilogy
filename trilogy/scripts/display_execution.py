@@ -1,6 +1,7 @@
 """Display helpers for single-script execution output."""
 
 import os
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -166,18 +167,73 @@ def summarize_definitions(definitions: list) -> str:
     return ", ".join(_pluralize(label, count) for label, count in ordered)
 
 
-def show_execution_start(num_queries: int) -> None:
+def show_execution_start(num_queries: int, dry_run: bool = False) -> None:
     """Show execution start message."""
     if is_json_mode():
         return  # chrome; the summary event reports the statement count
     statement_word = "statement" if num_queries == 1 else "statements"
     hint = " (are you missing a select?)" if num_queries == 0 else ""
+    verb = "Compiling" if dry_run else "Executing"
     if _core.RICH_AVAILABLE and _core.console is not None:
         _core.console.print(
-            f"\n[bold]Executing {num_queries} {statement_word}...[/bold]{hint}"
+            f"\n[bold]{verb} {num_queries} {statement_word}...[/bold]{hint}"
         )
     else:
-        print_info(f"Executing {num_queries} {statement_word}...{hint}")
+        print_info(f"{verb} {num_queries} {statement_word}...{hint}")
+
+
+def show_dry_run_summary(num_statements: int, total_duration: object = None) -> None:
+    """The dry-run counterpart of ``show_execution_summary``.
+
+    Deliberately not that function with a flag: "Execution Complete" is the one
+    thing a dry run must never report, and every consumer of the summary event
+    keys on ``ok``/``rows`` that a dry run has no honest value for.
+    """
+    statement_word = "statement" if num_statements == 1 else "statements"
+    if is_json_mode():
+        emit_event(
+            "summary",
+            statements=num_statements,
+            duration_ms=_duration_ms(total_duration) if total_duration else None,
+            ok=True,
+            dry_run=True,
+        )
+        return
+    print_success(f"Dry run: {num_statements} {statement_word} compiled, none executed")
+
+
+def show_compiled_queries(queries: Iterable[Any], source: str | None = None) -> None:
+    """Print dry-run SQL: one commented header per statement, then its SQL.
+
+    ``queries`` are ``CompiledQuery`` records — the same shape whether they came
+    from a refresh (labelled by datasource) or a run (labelled by statement).
+    JSON mode gets one event each; raw SQL on stdout would corrupt the stream.
+    """
+    for q in queries:
+        if is_json_mode():
+            emit_event("compiled_query", source=source, label=q.label, sql=q.sql)
+            continue
+        header = f"-- {source}: {q.label}" if source else f"-- {q.label}"
+        if _core.RICH_AVAILABLE and _core.console is not None:
+            _core.console.print(f"\n[dim]{header}[/dim]")
+            _core.console.print(q.sql)
+        else:
+            echo(f"\n{header}\n{q.sql}")
+
+
+def show_dry_run_queries(results: Iterable[Any]) -> None:
+    """Display SQL collected by a parallel dry run, once every script is done.
+
+    Worker stdout is suppressed during parallel execution, so the SQL is
+    stashed on each result's stats and printed here instead.
+    """
+    from trilogy.scripts.dependency import ScriptNode
+
+    for r in results:
+        if not (r.success and r.stats and r.stats.compiled_queries):
+            continue
+        source = r.node.path.name if isinstance(r.node, ScriptNode) else r.node.address
+        show_compiled_queries(r.stats.compiled_queries, source)
 
 
 def create_progress_context() -> "Progress":

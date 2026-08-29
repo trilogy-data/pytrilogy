@@ -1336,6 +1336,49 @@ class TestJobCommands:
         }
         assert "Scheduled 'nightly-schedule'" in result.output
 
+    def test_push_dry_run_sends_nothing_but_still_size_checks(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "fresh", "--dry-run"
+        )
+        assert result.exit_code == 0, result.output
+        assert "Bundled 2 files" in result.output
+        assert "would create job 'fresh'" in result.output
+        assert not any(
+            c.method in ("POST", "PUT") and "/jobs" in c.path for c in logged_in.calls
+        )
+
+    def test_push_dry_run_reports_an_update_for_an_existing_name(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs", "push", "--source", str(source), "--name", "nightly", "-n"
+        )
+        assert result.exit_code == 0, result.output
+        assert "would update job 'nightly'" in result.output
+
+    def test_push_dry_run_does_not_create_the_cron_schedule(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = self._project(tmp_path)
+        result = run_cloud(
+            "jobs",
+            "push",
+            "--source",
+            str(source),
+            "--name",
+            "fresh",
+            "--cron",
+            "0 3 * * *",
+            "--dry-run",
+        )
+        assert result.exit_code == 0, result.output
+        assert "schedule on '0 3 * * *'" in result.output
+        assert not any("/schedules" in c.path for c in logged_in.calls)
+
     def test_push_emits_json_events(self, logged_in, run_cloud, tmp_path, json_mode):
         source = self._project(tmp_path)
         result = run_cloud(
@@ -2429,6 +2472,18 @@ class TestWorkspacePush:
         )
         body = logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")
         assert body["config"] == "[engine]\ndeliberate = 1\n"
+
+    def test_push_dry_run_sends_nothing(self, logged_in, run_cloud, tmp_path):
+        source = self._source(tmp_path, **{"model.preql": "key id int;"})
+        result = run_cloud(
+            "workspaces", "push", "--source", str(source), "--name", "space", "-n"
+        )
+        assert result.exit_code == 0, result.output
+        assert "would update workspace 'space'" in result.output
+        assert not any(
+            c.method in ("POST", "PUT") and "/workspaces" in c.path
+            for c in logged_in.calls
+        )
 
     def test_an_empty_source_is_refused(self, logged_in, run_cloud, tmp_path):
         empty = tmp_path / "empty"

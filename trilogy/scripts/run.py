@@ -1,6 +1,7 @@
 """Run command for Trilogy CLI."""
 
 import sys
+from functools import partial
 from pathlib import Path as PathlibPath
 
 import click
@@ -10,6 +11,7 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.click_utils import (
+    dry_run_option,
     misplaced_group_value_hint,
     report_options,
     state_file_option,
@@ -26,10 +28,10 @@ from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execu
 
 
 def execute_script_for_run(
-    exec: Executor, node: ScriptNode, quiet: bool = False
+    exec: Executor, node: ScriptNode, quiet: bool = False, dry_run: bool = False
 ) -> ExecutionStats:
     """Execute a script for the 'run' command (parallel execution mode)."""
-    return execute_script_with_stats(exec, node.path, run_statements=True)
+    return execute_script_with_stats(exec, node.path, dry_run=dry_run)
 
 
 def _looks_like_missing_path(value: str) -> bool:
@@ -190,6 +192,10 @@ def _format_import(value: str) -> str:
     default=None,
     help="Build into this deployment environment (overrides the activated one)",
 )
+@dry_run_option(
+    "Compile every statement and print the SQL it would issue, without "
+    "executing any of it. Nothing is queried, persisted or created."
+)
 @report_options
 @state_file_option
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
@@ -208,6 +214,7 @@ def run(
     all_rows: bool,
     scope: bool,
     environment: str | None,
+    dry_run: bool,
     report_file: str | None,
     run_id: str | None,
     state_input: str | None,
@@ -252,6 +259,9 @@ def run(
             dialect=dialect,
             parallelism=parallelism,
             config_path=str(config) if config else None,
+            # Stamped on run_start so a report consumer can tell an invocation
+            # that wrote nothing on purpose from one that did the work.
+            dry_run=dry_run or None,
         ):
             cli_params = CLIRuntimeParams(
                 input=_normalize_run_input(input, imports),
@@ -267,6 +277,7 @@ def run(
                 row_limit=None if all_rows else displayed_rows,
                 show_scopes=scope,
                 timeout=timeout,
+                dry_run=dry_run,
             )
             from trilogy.execution.envs import env_activation_scope
             from trilogy.scripts.env_commands import (
@@ -287,10 +298,15 @@ def run(
                     with state_input_scope(state_input, cli_params):
                         run_parallel_execution(
                             cli_params=cli_params,
-                            execution_fn=execute_script_for_run,
+                            execution_fn=partial(
+                                execute_script_for_run, dry_run=dry_run
+                            ),
                             execution_mode=ExecutionMode.RUN,
                         )
-                    if activation:
+                    # A dry run built nothing, so the env's recorded model
+                    # fingerprint must not claim it did -- the same guard
+                    # refresh applies.
+                    if activation and not dry_run:
                         from trilogy.scripts.env_commands import (
                             record_env_fingerprint,
                         )

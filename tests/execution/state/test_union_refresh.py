@@ -67,10 +67,10 @@ def test_union_full_refreshed_from_partials(refreshed):
 
     count = executor.execute_raw_sql("SELECT count(*) FROM union_data").fetchone()[0]
     assert count == 20, f"union_data: expected 20 rows, got {count}"
-    assert any("union_data" in q.sql for q in stats.refresh_queries)
+    assert any("union_data" in q.sql for q in stats.compiled_queries)
     assert not any(
-        "raw" in q.sql and "union_data" in q.sql for q in stats.refresh_queries
-    ), [x for x in stats.refresh_queries if "raw" in x.sql and "union_data" in x.sql]
+        "raw" in q.sql and "union_data" in q.sql for q in stats.compiled_queries
+    ), [x for x in stats.compiled_queries if "raw" in x.sql and "union_data" in x.sql]
 
 
 def test_union_refresh_produces_twenty_rows(refreshed):

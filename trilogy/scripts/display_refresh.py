@@ -402,25 +402,6 @@ def show_asset_status_summary(
         _print_env_max_table(env_max)
 
 
-def show_dry_run_queries(results: list) -> None:
-    """Display collected dry-run SQL after parallel refresh completes."""
-    from trilogy.scripts.dependency import ScriptNode
-
-    for r in results:
-        if not (r.success and r.stats and r.stats.refresh_queries):
-            continue
-        for q in r.stats.refresh_queries:
-            node_name = (
-                r.node.path.name if isinstance(r.node, ScriptNode) else r.node.address
-            )
-            header = f"-- {node_name}: {q.datasource_id}"
-            if _core.RICH_AVAILABLE and _core.console is not None:
-                _core.console.print(f"\n[dim]{header}[/dim]")
-                _core.console.print(q.sql)
-            else:
-                echo(f"\n{header}\n{q.sql}")
-
-
 def show_refresh_plan(
     stale_assets: list,
     watermarks: dict,

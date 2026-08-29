@@ -42,15 +42,16 @@ from trilogy.execution.state import (
     target_partition_selector,
 )
 from trilogy.scripts.click_utils import (
+    dry_run_option,
     report_options,
     state_file_option,
     validate_dialect,
 )
 from trilogy.scripts.common import (
     CLIRuntimeParams,
+    CompiledQuery,
     ExecutionStats,
     RefreshParams,
-    RefreshQuery,
     handle_execution_exception,
     parse_force_sources,
     require_a_source_of_truth,
@@ -787,7 +788,7 @@ def _run_refresh_plan(
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
         emit_asset_refresh_query(ds_id, sql, dry_run)
-        stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
+        stats.compiled_queries.append(CompiledQuery(label=ds_id, sql=sql))
         if dry_run and not quiet:
             print_info(f"\n-- {ds_id}\n{sql}")
 
@@ -1045,13 +1046,7 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     default=False,
     help="Show refresh plan and prompt for approval before applying changes",
 )
-@option(
-    "--dry-run",
-    "-n",
-    is_flag=True,
-    default=False,
-    help="Show SQL that would be executed without running it",
-)
+@dry_run_option("Show SQL that would be executed without running it")
 @option(
     "--environment",
     default=None,
@@ -1130,6 +1125,9 @@ def refresh(
             dialect=dialect,
             parallelism=parallelism,
             config_path=str(config) if config else None,
+            # Stamped on run_start so a report consumer can tell an invocation
+            # that wrote nothing on purpose from one that did the work.
+            dry_run=dry_run or None,
         ):
             from trilogy.execution.envs import env_activation_scope
             from trilogy.execution.state.phases import phase_recording

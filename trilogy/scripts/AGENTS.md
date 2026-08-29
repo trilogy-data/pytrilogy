@@ -84,6 +84,37 @@ Always check the actual `.preql` files before concluding how many physical roots
 `_plan_and_execute_refresh` in `single_execution.py` is the single path for display + interactive confirm + execution + result reporting. Both single-file and directory refresh flow through it. Do not duplicate this logic.
 
 
+## Dry runs (`--dry-run` / `-n`)
+
+Every command that writes offers one, and they all mean the same thing:
+*do the work up to the write, report what the write would be, perform none of
+it.* `run`/`refresh` compile SQL, `ingest` renders model files, `env publish`
+plans the cutover, `cloud sync`/`jobs push`/`workspaces push` bundle and
+size-check.
+
+- **The flag comes from `click_utils.dry_run_option`, never a hand-rolled
+  `@option`.** `cloud sync` shipped without `-n` for exactly as long as each
+  command spelled its own; `tests/scripts/test_trilogy.py` now pins both the
+  alias and the set of commands that must offer the flag.
+- **`CLIRuntimeParams.dry_run` is the shallow question** ("did this invocation
+  write?") that display and reporting ask. `RefreshParams.dry_run` is the same
+  flag carried deep into the refresh planner, and the former is *derived* from
+  the latter in `__post_init__` — never set both by hand.
+- **`compile_queries` (common.py) is the one renderer**, for the single-script
+  path and the per-node parallel path alike. It leans on
+  `Executor.generate_sql`, so a statement type that lands in a script but not
+  in that dispatch aborts the dry run: register it there rather than special-
+  casing it here. Statements with no SQL form at all (validate, mock, natural)
+  fall back to a marker line.
+- **Parallel workers run quiet**, so their SQL is stashed on
+  `ExecutionStats.compiled_queries` and printed by `show_dry_run_queries` once
+  every script is done. JSON mode gets one `compiled_query` event each — raw
+  SQL on stdout would corrupt the stream.
+- **A dry run is still held to the no-op bar.** A script with no executable
+  statements fails under `--agent` exactly as a real run does, and `run` skips
+  `record_env_fingerprint` because it built nothing the env's recorded model
+  fingerprint could honestly claim.
+
 ## Deployment environments (`trilogy env`)
 
 `trilogy/execution/envs.py` + `scripts/env_commands.py`. An environment is a

@@ -605,3 +605,32 @@ def test_record_vocabulary_pins(runner, tmp_path):
         "state_snapshot",
         "summary",
     } <= seen
+
+
+def test_run_dry_run_is_stamped_on_the_report(tmp_path: Path):
+    """A report consumer must be able to tell an invocation that wrote nothing
+    on purpose from one that did the work — both report success."""
+    script = tmp_path / "q.preql"
+    script.write_text("select 1 -> one;")
+    report = tmp_path / "report.jsonl"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["run", str(script), "duckdb", "--dry-run", "--report-file", str(report)],
+    )
+    assert result.exit_code == 0, result.output
+    start = json.loads(report.read_text().splitlines()[0])
+    assert start["type"] == "run_start"
+    assert start["dry_run"] is True
+
+
+def test_run_without_dry_run_omits_the_flag(tmp_path: Path):
+    script = tmp_path / "q.preql"
+    script.write_text("select 1 -> one;")
+    report = tmp_path / "report.jsonl"
+
+    runner = CliRunner()
+    runner.invoke(cli, ["run", str(script), "duckdb", "--report-file", str(report)])
+    start = json.loads(report.read_text().splitlines()[0])
+    assert "dry_run" not in start
