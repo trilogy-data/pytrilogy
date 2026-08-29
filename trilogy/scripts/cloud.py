@@ -78,6 +78,13 @@ job runs* as one deployable project, and upserts each against its
 against its name. Which environment it deploys into comes from the branch, so
 one command in CI sends main to production and a feature branch to a namespace
 of its own; ``cloud env`` manages those namespaces.
+
+**Production is the absence of an environment**, on both commands, and both of
+them say so where it would otherwise be guessed at: ``sync --environment
+production`` targets production's own jobs rather than building a namespace
+called `production` beside them, and ``env delete`` on an environment that
+holds jobs asks whether to delete them or move them into production, because
+deleting the record alone does the latter — schedules and all.
 """
 
 from __future__ import annotations
@@ -136,6 +143,7 @@ from trilogy.scripts.source_identity import (
     SourceOrigin,
     content_digest,
     environment_label,
+    is_valid_environment_name,
     resolve_origin,
 )
 
@@ -1875,6 +1883,61 @@ def jobs_run(
         _report_finished_run(org, finished, logs=logs)
 
 
+@jobs.command("delete")
+@click.argument("jobs_args", metavar="JOB...", nargs=-1, required=True)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.pass_context
+def jobs_delete(ctx: click.Context, jobs_args: tuple[str, ...], yes: bool) -> None:
+    """Delete one or more jobs (by name or id), with their run history.
+
+    Takes several because the reason to reach for it is usually a set: a
+    duplicated deploy, or the jobs an environment left behind. Names are
+    ambiguous exactly then — two jobs deployed under one name is what a
+    duplicate looks like — so a name matching more than one job is an error
+    naming the ids, and ids can be mixed in freely.
+
+    A schedule bound to nothing but deleted jobs goes too. It can never fire
+    again, and leaving the row behind makes cleaning up a duplicate set a
+    two-step job with the second step easy to miss.
+    """
+    client, org = _org_client(ctx)
+    known = client.get_many(f"/orgs/{org}/jobs", Job)
+    # By id, so naming one job twice deletes it once rather than 404ing on the
+    # second pass.
+    targets = {job.id: job for job in (_find_job(known, org, j) for j in jobs_args)}
+    if not yes:
+        click.confirm(
+            f"Delete {len(targets)} job(s): "
+            + ", ".join(sorted(job.name for job in targets.values()))
+            + "?",
+            abort=True,
+        )
+    for job in targets.values():
+        client.delete(f"/orgs/{org}/jobs/{job.id}")
+        print_success(f"Deleted job {job.name!r} ({job.id})")
+    _delete_emptied_schedules(client, org, set(targets))
+
+
+def _delete_emptied_schedules(
+    client: CloudClient, org: str, deleted_ids: set[str]
+) -> None:
+    """Delete every schedule whose bound jobs were all just deleted.
+
+    Matched on ``job_ids`` only: a schedule whose bindings came back empty is
+    an API older than the field rather than an empty schedule, and deleting
+    somebody's live row on that reading is not a mistake worth risking. A
+    schedule that also binds a surviving job is left alone — it still has
+    something to fire.
+    """
+    for schedule in client.get_many(f"/orgs/{org}/schedules", ScheduleExt):
+        if schedule.job_ids and set(schedule.job_ids) <= deleted_ids:
+            client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+            print_info(
+                f"  removed schedule {schedule.name!r}, which bound only "
+                "deleted jobs"
+            )
+
+
 @jobs.command("versions")
 @click.argument("job")
 @click.option(
@@ -2769,6 +2832,29 @@ def discover_projects(root: Path) -> list[DeployableProject]:
     return found
 
 
+#: What an explicit ``--environment`` may call the *default* environment.
+#: Production is the absence of one — a job with no ``environment_id`` builds
+#: unprefixed addresses — so there is no row for a flag to name, and a name
+#: that means it has to resolve to "no environment" rather than to a row of
+#: its own. Without this, ``--environment production`` created an environment
+#: literally called `production` and a second copy of every job inside it, on
+#: schedules of their own, beside the jobs it was asked to update.
+PRODUCTION_ENVIRONMENT_NAMES = ("production", "prod", "default")
+
+
+def _find_environment_named(
+    client: CloudClient, org: str, name: str
+) -> EnvironmentExt | None:
+    return next(
+        (
+            env
+            for env in client.get_many(f"/orgs/{org}/environments", EnvironmentExt)
+            if env.name == name
+        ),
+        None,
+    )
+
+
 def _resolve_sync_environment(
     client: CloudClient,
     org: str,
@@ -2776,7 +2862,7 @@ def _resolve_sync_environment(
     explicit: str | None,
     create: bool,
 ) -> tuple[str | None, str | None, bool]:
-    """``(environment_id, environment_name)`` for this sync.
+    """``(environment_id, environment_name, exists)`` for this sync.
 
     *origin* is the sync **root's**, not any one project's: the environment is
     a property of the checkout being deployed, and a root spanning a submodule
@@ -2788,18 +2874,53 @@ def _resolve_sync_environment(
     idempotent, so CI calling this on every push costs one extra request and
     needs no separate setup step.
 
+    **An explicit name resolves against what exists before anything is
+    created**, which is what makes ``--environment X`` an upsert against X's
+    jobs rather than a parallel deployment beside them. Two spellings of the
+    target reach the same place: a name that already has a row is that row,
+    and a name for the default environment (`PRODUCTION_ENVIRONMENT_NAMES`, or
+    the row flagged default on a deployment that keeps one) is production —
+    ``None``, the same answer main gives. That lookup is on the explicit path
+    only: a branch label carries a digest, so it can be neither of those, and
+    the idempotent create already returns the existing row.
+
+    A name that exists nowhere and cannot become an environment is refused
+    rather than created: the name prefixes managed tables and suffixes managed
+    files, so a row called `feature/x` is one nothing can ever build into.
+
     ``create=False`` is what makes ``--dry-run`` truthful. Creating the
     environment is a write, and a dry run that quietly left a new row behind is
     precisely what the flag promises not to do — so the dry path *looks the
     name up* instead, and reports an absent environment rather than making one.
     """
-    label = explicit if explicit is not None else origin.environment_label()
+    label = (explicit if explicit is not None else origin.environment_label()) or ""
+    label = label.strip()
     if not label:
         return None, None, True
+    existing = (
+        _find_environment_named(client, org, label)
+        if explicit is not None or not create
+        else None
+    )
+    if existing is not None:
+        # A row flagged default *is* production: its jobs carry no
+        # environment_id, which is what production means on a job.
+        if existing.is_default:
+            return None, None, True
+        return existing.id, existing.name, True
+    if explicit is not None:
+        if label.lower() in PRODUCTION_ENVIRONMENT_NAMES:
+            return None, None, True
+        if not is_valid_environment_name(label):
+            raise CloudError(
+                f"No environment named {label!r}, and it cannot be created: an "
+                "environment name prefixes managed tables and suffixes managed "
+                "files, so it must be letters, digits and underscores, "
+                "starting with a letter or underscore. "
+                "`trilogy cloud env label <branch>` prints the name a branch "
+                "maps to."
+            )
     if not create:
-        for existing in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
-            if existing.name == label:
-                return existing.id, existing.name, True
         return None, label, False
     env = client.post_one(
         f"/orgs/{org}/environments",
@@ -2824,8 +2945,10 @@ def _resolve_sync_environment(
     "--environment",
     "environment_flag",
     default=None,
-    help="Deployment environment to sync into. Default: derived from the git "
-    "branch, with a default branch (main/master) meaning production.",
+    help="Deployment environment to sync into: an existing one is updated, a "
+    "new name is created, and 'production' (or 'prod'/'default') means the "
+    "default environment. Default: derived from the git branch, with a "
+    "default branch (main/master) meaning production.",
 )
 @click.option(
     "--dry-run", is_flag=True, help="Report what would change and write nothing."
@@ -2879,7 +3002,12 @@ def cloud_sync(
 
     Which environment it syncs into comes from the current branch, so the same
     command in CI deploys main to production and a feature branch to its own
-    namespace.
+    namespace. ``--environment`` overrides that, and *targets* rather than
+    forks: a name that already has an environment updates that environment's
+    jobs, and ``production`` (or ``prod``/``default``) is the default
+    environment — the same place a main-branch sync deploys to — so hot-fixing
+    production from a branch checkout updates production's jobs instead of
+    deploying a second set of them beside it.
 
     **Existing jobs are not adopted by name.** A job the platform holds with no
     ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
@@ -3495,27 +3623,71 @@ def env_fork(
 @click.option(
     "--with-jobs",
     is_flag=True,
-    help="Delete the environment's jobs, their runs and their schedules too. "
-    "Without this the jobs are left behind, pointing at production.",
+    help="Delete the environment's jobs, their runs and their schedules too.",
+)
+@click.option(
+    "--keep-jobs",
+    is_flag=True,
+    help="Delete only the environment record. Its jobs fall back into "
+    "production and keep firing on their own schedules — say so deliberately.",
 )
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.pass_context
-def env_delete(ctx: click.Context, name: str, with_jobs: bool, yes: bool) -> None:
+def env_delete(
+    ctx: click.Context, name: str, with_jobs: bool, keep_jobs: bool, yes: bool
+) -> None:
     """Delete an environment by name — the teardown for a merged branch.
+
+    **An environment that holds jobs needs ``--with-jobs`` or ``--keep-jobs``.**
+    Deleting the record does not delete the jobs; it *reparents* them, and a
+    job with no environment is a production job — so an unqualified teardown of
+    a nine-job branch environment moved nine jobs onto production's cadence,
+    beside the production jobs they were branched from, and the next tick ran
+    everything twice. Neither outcome is guessable from "delete the
+    environment", so a non-empty one says which it needs. An empty environment
+    has nothing at stake and deletes with no flag.
 
     Warehouse assets the environment built are **not** touched: they are in the
     warehouse, not the platform, and dropping them is
     ``trilogy env delete <name> --drop-assets`` against the project itself.
     """
     client, org = _org_client(ctx)
+    if with_jobs and keep_jobs:
+        raise CloudError(
+            "--with-jobs and --keep-jobs ask for opposite things; pass one."
+        )
     env = _find_environment(client, org, name)
 
-    if with_jobs and not yes and env.job_count:
-        click.confirm(
-            f"Delete {env.job_count} job(s) in {env.name!r}, with their run "
-            "history and schedules?",
-            abort=True,
+    if env.job_count and not (with_jobs or keep_jobs):
+        raise CloudError(
+            f"Environment {env.name!r} holds {env.job_count} job(s), and "
+            "deleting it does not delete them — a job with no environment is a "
+            "production job, so they would run in production on the schedules "
+            "they have now. Pass --with-jobs to delete them with the "
+            "environment, or --keep-jobs to move them into production."
         )
+    if env.job_count and not yes:
+        prompt = (
+            f"Delete {env.job_count} job(s) in {env.name!r}, with their run "
+            "history and schedules?"
+            if with_jobs
+            else f"Move {env.job_count} job(s) out of {env.name!r} into "
+            "production, schedules included?"
+        )
+        click.confirm(prompt, abort=True)
+
+    # Read before the delete, because after it nothing says which jobs these
+    # were: they are ordinary production jobs, name-identical to the ones they
+    # were branched from, and `jobs delete` needs an id to disambiguate.
+    moved = (
+        [
+            job
+            for job in client.get_many(f"/orgs/{org}/jobs", Job)
+            if job.environment_id == env.id
+        ]
+        if keep_jobs and env.job_count
+        else []
+    )
 
     query = "?cascade=jobs" if with_jobs else ""
     result = client.request("DELETE", f"/orgs/{org}/environments/{env.id}{query}") or {}
@@ -3528,6 +3700,15 @@ def env_delete(ctx: click.Context, name: str, with_jobs: bool, yes: bool) -> Non
             else f" ({env.job_count} job(s) left in production)"
         )
     )
+    if moved:
+        print_warning(
+            f"{len(moved)} job(s) now run in production on their existing "
+            "schedules: "
+            + ", ".join(
+                f"{job.name} ({job.id})" for job in sorted(moved, key=lambda j: j.name)
+            )
+            + ". Remove them with `trilogy cloud jobs delete <id>`."
+        )
 
 
 def _find_environment(client: CloudClient, org: str, name_or_id: str) -> EnvironmentExt:

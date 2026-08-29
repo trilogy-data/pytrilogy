@@ -82,6 +82,11 @@ DEFAULT_BRANCHES: tuple[str, ...] = ("main", "master")
 #: which is what keeps the duplication from drifting.
 _ENV_LABEL_DISALLOWED = re.compile(r"[^a-z0-9]+")
 
+#: The same rule stated positively, for names that did *not* come from
+#: `environment_label` — a `--environment` typed at the command line, which is
+#: the only way an unusable name can reach the platform.
+_VALID_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 #: Slug length before the disambiguating digest. Kept short because the label
 #: is prepended to every managed table name and appended to every managed
 #: filename, and some warehouses cap identifiers well below 128 characters.
@@ -200,6 +205,16 @@ def environment_label(
     if slug[0].isdigit():
         slug = f"b_{slug}"
     return f"{slug}_{digest}"
+
+
+def is_valid_environment_name(name: str) -> bool:
+    """Whether *name* can be used as an environment.
+
+    Everything :func:`environment_label` builds satisfies this by
+    construction; a name a human typed does not, and a rejected one is worth
+    catching before it becomes a row nothing can build into.
+    """
+    return bool(_VALID_ENV_NAME.match(name))
 
 
 def path_digest(directory: Path) -> str:
