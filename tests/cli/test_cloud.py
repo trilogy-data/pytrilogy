@@ -3125,33 +3125,25 @@ class TestCloudSync:
         assert result.exit_code == 0, result.output
         assert "0 to create, 1 to update" in result.output
 
-    @pytest.mark.parametrize("name", ["production", "prod", "default", "PRODUCTION"])
-    def test_naming_production_as_an_environment_points_at_the_flag(
+    @pytest.mark.parametrize("name", ["prod", "production"])
+    def test_a_name_that_reads_like_production_is_just_a_name(
         self, logged_in, run_cloud, tmp_path, name
     ):
-        """Not a synonym for `--production`: reading it as one would reserve
-        three legal environment names, and would change meaning the day
-        somebody creates a real environment called `prod`. It refuses, and the
-        refusal is what stops the duplicate deploy."""
+        """No reserved words: `--production` is the one way to reach the
+        production namespace, so every name `--environment` takes is an
+        ordinary environment of that name."""
         root = self._repo(tmp_path, operation='"run"')
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
+        env = {**self.ENV, "name": name}
+        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", env)
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
         result = run_cloud("sync", str(root), "--environment", name)
-        assert result.exit_code != 0
-        assert "--production" in result.output
-        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
-
-    def test_an_environment_that_really_is_called_prod_still_works(
-        self, logged_in, run_cloud, tmp_path
-    ):
-        """The name is guarded, not reserved: an org that made one keeps it."""
-        root = self._repo(tmp_path, operation='"run"')
-        prod = {**self.ENV, "name": "prod"}
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [prod])
-        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", prod)
-        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
-        result = run_cloud("sync", str(root), "--environment", "prod")
         assert result.exit_code == 0, result.output
+        assert (
+            logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")[0][
+                "name"
+            ]
+            == name
+        )
         created = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")[0]
         assert created["environment_id"] == "env-1"
 
