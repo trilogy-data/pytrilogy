@@ -1401,8 +1401,7 @@ class TestJobCommands:
         assert logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-2")
 
     def test_delete_of_an_ambiguous_name_names_the_ids(self, logged_in, run_cloud):
-        """Two jobs under one name is the state this command is reached for,
-        and the state a name cannot address."""
+        """A name cannot address either of them."""
         logged_in.set(
             "GET",
             f"/orgs/{logged_in.org}/jobs",
@@ -3063,8 +3062,8 @@ class TestCloudSync:
     def test_an_explicit_environment_that_exists_is_targeted_not_recreated(
         self, logged_in, run_cloud, tmp_path
     ):
-        """`--environment X` upserts against X's jobs — the create route is
-        idempotent, so an existing environment comes back as itself."""
+        """The create route is idempotent, so an existing environment comes
+        back as itself and its jobs are what the sync upserts against."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
         logged_in.set("POST", f"/orgs/{logged_in.org}/environments", self.ENV)
@@ -3082,9 +3081,8 @@ class TestCloudSync:
     def test_production_updates_productions_own_jobs(
         self, logged_in, run_cloud, tmp_path, flag
     ):
-        """Hot-fixing production from a branch checkout, in both spellings: the
-        flag for a person, the empty environment for a CI step templating
-        `env label`, which prints nothing on a default branch."""
+        """Both spellings of production, from a checkout whose branch would
+        otherwise derive an environment of its own."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
         logged_in.set(
@@ -3112,8 +3110,7 @@ class TestCloudSync:
     def test_a_dry_run_against_production_reports_updates_not_creates(
         self, logged_in, run_cloud, tmp_path
     ):
-        """The dry run is where an operator finds out what the target resolves
-        to, so it has to agree with the write path."""
+        """The dry run reports the same target the write path resolves."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
         logged_in.set(
@@ -3129,9 +3126,8 @@ class TestCloudSync:
     def test_a_name_that_reads_like_production_is_just_a_name(
         self, logged_in, run_cloud, tmp_path, name
     ):
-        """No reserved words: `--production` is the one way to reach the
-        production namespace, so every name `--environment` takes is an
-        ordinary environment of that name."""
+        """No reserved words: every name `--environment` takes is an ordinary
+        environment of that name."""
         root = self._repo(tmp_path, operation='"run"')
         env = {**self.ENV, "name": name}
         logged_in.set("POST", f"/orgs/{logged_in.org}/environments", env)
@@ -3150,8 +3146,8 @@ class TestCloudSync:
     def test_an_unusable_environment_name_is_refused_not_created(
         self, logged_in, run_cloud, tmp_path
     ):
-        """The name prefixes managed tables; a row called `feature/x` is one
-        nothing can ever build into."""
+        """The name prefixes managed tables and suffixes managed files, so it
+        has to be an identifier."""
         root = self._repo(tmp_path, operation='"run"')
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
         result = run_cloud("sync", str(root), "--environment", "feature/x")
@@ -3704,8 +3700,7 @@ schedule = "0 0 6 * * *"
         self, logged_in, run_cloud, tmp_path
     ):
         """A branch environment suffixes the workspace name so it cannot build
-        over production's shared tree. Production is not a branch: suffixing
-        there deployed a second workspace beside the real one."""
+        over production's shared tree. Production takes no suffix."""
         root = self._repo(tmp_path)
         self._seed(logged_in)
         result = run_cloud("sync", str(root), "--production")
@@ -4140,9 +4135,8 @@ class TestEnvironmentCommands:
     def test_delete_of_a_non_empty_environment_needs_a_choice(
         self, logged_in, run_cloud
     ):
-        """Deleting the record reparents its jobs into production, schedules
-        live — the teardown of a merged branch is not obviously either
-        outcome, so it asks instead of picking one."""
+        """Deleting the record reparents its jobs into production with their
+        schedules, so a non-empty environment asks which is wanted."""
         logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
         logged_in.set("DELETE", f"/orgs/{logged_in.org}/environments/env-1", {})
         result = run_cloud("env", "delete", "feature_x")
@@ -4178,8 +4172,7 @@ class TestEnvironmentCommands:
         self, logged_in, run_cloud
     ):
         """The names collide with the production jobs they were branched from,
-        so the ids are the only way back — and they are unreadable once the
-        environment that grouped them is gone."""
+        so the report carries ids."""
         logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
         logged_in.set(
             "GET",

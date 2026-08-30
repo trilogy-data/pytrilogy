@@ -82,9 +82,8 @@ DEFAULT_BRANCHES: tuple[str, ...] = ("main", "master")
 #: which is what keeps the duplication from drifting.
 _ENV_LABEL_DISALLOWED = re.compile(r"[^a-z0-9]+")
 
-#: The same rule stated positively, for names that did *not* come from
-#: `environment_label` — a `--environment` typed at the command line, which is
-#: the only way an unusable name can reach the platform.
+#: The same rule stated positively, for a name that did not come from
+#: `environment_label` — one typed at the command line.
 _VALID_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 #: Slug length before the disambiguating digest. Kept short because the label
@@ -211,8 +210,7 @@ def is_valid_environment_name(name: str) -> bool:
     """Whether *name* can be used as an environment.
 
     Everything :func:`environment_label` builds satisfies this by
-    construction; a name a human typed does not, and a rejected one is worth
-    catching before it becomes a row nothing can build into.
+    construction; a name typed by hand does not.
     """
     return bool(_VALID_ENV_NAME.match(name))
 

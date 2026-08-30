@@ -359,8 +359,7 @@ class TestEnvironmentLabel:
 
     @pytest.mark.parametrize("name", ["feature/x", "my-branch", "2026", "", " x"])
     def test_a_name_execution_rejects_is_not_usable(self, name):
-        """The check exists for names a human typed at `--environment`;
-        `environment_label` cannot produce one of these."""
+        """`environment_label` cannot produce one of these."""
         from trilogy.execution.envs import validate_env_name
 
         assert not is_valid_environment_name(name)

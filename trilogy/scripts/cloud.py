@@ -79,12 +79,11 @@ against its name. Which environment it deploys into comes from the branch, so
 one command in CI sends main to production and a feature branch to a namespace
 of its own; ``cloud env`` manages those namespaces.
 
-**Production is the absence of an environment**, on both commands, and each
-gives it a spelling of its own rather than leaving it to be guessed at:
-``sync`` reaches production by ``--production`` (or the empty environment a CI
-step templates), never by a name, and ``env delete`` on an environment holding
-jobs asks whether to delete them or move them into production, because deleting
-the record alone does the latter — schedules and all.
+**Production is the absence of an environment**, and each command spells it
+rather than naming it: ``sync`` reaches production by ``--production`` (or the
+empty ``--environment`` a CI step templates), and ``env delete`` on an
+environment holding jobs takes ``--with-jobs`` or ``--keep-jobs``, since
+deleting the record alone moves them into production with their schedules.
 """
 
 from __future__ import annotations
@@ -1890,15 +1889,11 @@ def jobs_run(
 def jobs_delete(ctx: click.Context, jobs_args: tuple[str, ...], yes: bool) -> None:
     """Delete one or more jobs (by name or id), with their run history.
 
-    Takes several because the reason to reach for it is usually a set: a deploy
-    that landed somewhere it was not meant to, or the jobs a deleted
-    environment moved into production. Names are ambiguous exactly then — two
-    jobs under one name is what that state looks like — so a name matching more
-    than one job is an error naming the ids, and ids can be mixed in freely.
+    Names and ids may be mixed. A name matching more than one job is an error
+    naming the ids, since a name cannot address either of them.
 
-    A schedule bound to nothing but deleted jobs goes too. It can never fire
-    again, and leaving the row behind makes the cleanup a two-step job with the
-    second step easy to miss.
+    Deletes any schedule left bound to nothing but these jobs; a schedule that
+    also binds a surviving job is left alone.
     """
     client, org = _org_client(ctx)
     known = client.get_many(f"/orgs/{org}/jobs", Job)
@@ -1923,11 +1918,9 @@ def _delete_emptied_schedules(
 ) -> None:
     """Delete every schedule whose bound jobs were all just deleted.
 
-    Matched on ``job_ids`` only: a schedule whose bindings came back empty is
-    an API older than the field rather than an empty schedule, and deleting
-    somebody's live row on that reading is not a mistake worth risking. A
-    schedule that also binds a surviving job is left alone — it still has
-    something to fire.
+    Matched on ``job_ids`` only, so a schedule whose bindings came back empty —
+    which is what an API older than that field answers with — is left alone
+    rather than read as binding nothing.
     """
     for schedule in client.get_many(f"/orgs/{org}/schedules", ScheduleExt):
         if schedule.job_ids and set(schedule.job_ids) <= deleted_ids:
@@ -2851,22 +2844,16 @@ def _resolve_sync_environment(
     idempotent, so CI calling this on every push costs one extra request and
     needs no separate setup step.
 
-    **An empty *explicit* is production**, which is the spelling ``--production``
-    resolves to and the one CI can template: ``env label`` prints nothing on a
-    default branch, so ``--environment "$(trilogy cloud env label)"`` is right
-    on every branch including main. The empty string can say this and a name
-    cannot, because it is the one value the identifier rule excludes — a
-    sentinel inside the space of legal names would reserve one and change
-    meaning the day somebody creates it.
+    An empty *explicit* is production, which is what ``--production`` resolves
+    to and what ``--environment "$(trilogy cloud env label)"`` resolves to on a
+    default branch.
 
-    Every non-empty name is just a name, including one that reads like
-    production: there are no reserved words, so ``--environment production``
-    means an environment *called* `production`, the same as any other. Only the
-    unusable ones are refused — the name prefixes managed tables and suffixes
-    managed files, so `feature/x` is a namespace nothing can ever build into.
-    Everything past that is the branch-derived path unchanged: the create route
-    is idempotent, so a name that already has an environment comes back as that
-    environment and its jobs are what this sync upserts against.
+    Every non-empty name is an environment of that name, with no reserved
+    words: ``--environment production`` targets an environment called
+    `production`. A name that is not a valid identifier is refused rather than
+    created, since it prefixes managed tables and suffixes managed files. The
+    create route is idempotent, so a name that already has an environment comes
+    back as that environment.
 
     ``create=False`` is what makes ``--dry-run`` truthful. Creating the
     environment is a write, and a dry run that quietly left a new row behind is
@@ -2978,17 +2965,15 @@ def cloud_sync(
 
     Which environment it syncs into comes from the current branch, so the same
     command in CI deploys main to production and a feature branch to its own
-    namespace. ``--environment`` overrides that, and *targets* rather than
-    forks: a name that already has an environment updates that environment's
-    jobs.
+    namespace. ``--environment`` overrides that and targets rather than forks:
+    it updates the named environment's jobs, creating the environment if it
+    does not exist.
 
     **Production is reached by ``--production``, not by naming it.** A job with
-    no environment is a production job, so production has no row for
-    ``--environment`` to name — passing a name deploys a namespace beside it,
-    and `production` is a name like any other. The flag is how a branch
-    checkout hot-fixes production, updating production's own jobs;
-    ``--environment ""`` is the same thing spelled for a CI step that templates
-    the flag, since ``env label`` prints nothing on a default branch.
+    no environment is a production job, so production has no environment for
+    ``--environment`` to name — `production` there is an environment called
+    `production`, like any other name. ``--environment ""`` means production
+    too, for a CI step that templates the flag from ``env label``.
 
     **Existing jobs are not adopted by name.** A job the platform holds with no
     ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
@@ -3000,8 +2985,8 @@ def cloud_sync(
         raise CloudError(
             "--production and --environment name different targets; pass one."
         )
-    # The flag resolves to the empty explicit rather than to a branch of its
-    # own, so the two spellings of "production" cannot drift apart.
+    # Resolved to the empty explicit rather than carried separately, so both
+    # spellings take one path.
     if production:
         environment_flag = ""
     projects = discover_projects(root)
@@ -3628,14 +3613,10 @@ def env_delete(
     """Delete an environment by name — the teardown for a merged branch.
 
     **An environment that holds jobs needs ``--with-jobs`` or ``--keep-jobs``.**
-    Deleting the record does not delete the jobs; it *reparents* them, and a
-    job with no environment is a production job — so tearing down a branch
-    environment moves its jobs into production, schedules included, where they
-    fire beside the production jobs they were branched from. That was always
-    what "the jobs are left behind" meant, but "left behind" reads as inert and
-    a live schedule is not; neither outcome is guessable from "delete the
-    environment", so a non-empty one asks which is wanted. An empty environment
-    has nothing at stake and deletes with no flag.
+    Deleting the record does not delete the jobs; it reparents them, and a job
+    with no environment is a production job — so ``--keep-jobs`` moves them
+    into production, schedules included, where they fire alongside production's
+    own jobs. An empty environment deletes with no flag.
 
     Warehouse assets the environment built are **not** touched: they are in the
     warehouse, not the platform, and dropping them is
@@ -3666,9 +3647,8 @@ def env_delete(
         )
         click.confirm(prompt, abort=True)
 
-    # Read before the delete, because after it nothing says which jobs these
-    # were: they become ordinary production jobs, name-identical to the ones
-    # they were branched from, and `jobs delete` needs an id to disambiguate.
+    # Read before the delete: afterwards they are ordinary production jobs,
+    # name-identical to the ones they were branched from.
     moved = (
         [
             job
