@@ -3063,11 +3063,11 @@ class TestCloudSync:
     def test_an_explicit_environment_that_exists_is_targeted_not_recreated(
         self, logged_in, run_cloud, tmp_path
     ):
-        """`--environment X` upserts against X's jobs. Deriving identity
-        differently on the explicit path is what deployed a parallel set."""
+        """`--environment X` upserts against X's jobs — the create route is
+        idempotent, so an existing environment comes back as itself."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
+        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", self.ENV)
         logged_in.set(
             "GET",
             f"/orgs/{logged_in.org}/jobs",
@@ -3077,29 +3077,36 @@ class TestCloudSync:
         assert result.exit_code == 0, result.output
         assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
-        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
 
-    @pytest.mark.parametrize("name", ["production", "prod", "default"])
-    def test_an_explicit_production_updates_productions_own_jobs(
-        self, logged_in, run_cloud, tmp_path, name
+    @pytest.mark.parametrize("flag", [("--production",), ("--environment", "")])
+    def test_production_updates_productions_own_jobs(
+        self, logged_in, run_cloud, tmp_path, flag
     ):
-        """Hot-fixing production from a branch checkout. Production is the
-        *absence* of an environment, so naming it must resolve to no
-        environment — a row of its own would hold a duplicate of every job,
-        firing beside the originals."""
+        """Hot-fixing production from a branch checkout, in both spellings: the
+        flag for a person, the empty environment for a CI step templating
+        `env label`, which prints nothing on a default branch."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set(
             "GET",
             f"/orgs/{logged_in.org}/jobs",
             [_job_payload("job-1", "etl", source_key=key)],
         )
-        result = run_cloud("sync", str(root), "--environment", name)
+        result = run_cloud("sync", str(root), *flag)
         assert result.exit_code == 0, result.output
         assert "production" in result.output
         assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
+
+    def test_production_and_an_environment_are_not_both_a_target(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        root = self._repo(tmp_path, operation='"run"')
+        result = run_cloud(
+            "sync", str(root), "--production", "--environment", "feature_x_a1b2c3"
+        )
+        assert result.exit_code != 0
         assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
 
     def test_a_dry_run_against_production_reports_updates_not_creates(
@@ -3109,38 +3116,44 @@ class TestCloudSync:
         the write path."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set(
             "GET",
             f"/orgs/{logged_in.org}/jobs",
             [_job_payload("job-1", "etl", source_key=key)],
         )
-        result = run_cloud(
-            "sync", str(root), "--environment", "production", "--dry-run"
-        )
+        result = run_cloud("sync", str(root), "--production", "--dry-run")
         assert result.exit_code == 0, result.output
         assert "0 to create, 1 to update" in result.output
 
-    def test_the_default_environment_row_is_production(
+    @pytest.mark.parametrize("name", ["production", "prod", "default", "PRODUCTION"])
+    def test_naming_production_as_an_environment_points_at_the_flag(
+        self, logged_in, run_cloud, tmp_path, name
+    ):
+        """Not a synonym for `--production`: reading it as one would reserve
+        three legal environment names, and would change meaning the day
+        somebody creates a real environment called `prod`. It refuses, and the
+        refusal is what stops the duplicate deploy."""
+        root = self._repo(tmp_path, operation='"run"')
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        result = run_cloud("sync", str(root), "--environment", name)
+        assert result.exit_code != 0
+        assert "--production" in result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
+
+    def test_an_environment_that_really_is_called_prod_still_works(
         self, logged_in, run_cloud, tmp_path
     ):
-        """A deployment that keeps a row for the default environment still
-        holds its jobs with no `environment_id` — the row is not a namespace."""
+        """The name is guarded, not reserved: an org that made one keeps it."""
         root = self._repo(tmp_path, operation='"run"')
-        key = cloud_mod.discover_projects(root)[0].source_key
-        logged_in.set(
-            "GET",
-            f"/orgs/{logged_in.org}/environments",
-            [{**self.ENV, "name": "live", "is_default": True}],
-        )
-        logged_in.set(
-            "GET",
-            f"/orgs/{logged_in.org}/jobs",
-            [_job_payload("job-1", "etl", source_key=key)],
-        )
-        result = run_cloud("sync", str(root), "--environment", "live")
+        prod = {**self.ENV, "name": "prod"}
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [prod])
+        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", prod)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        result = run_cloud("sync", str(root), "--environment", "prod")
         assert result.exit_code == 0, result.output
-        assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        created = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")[0]
+        assert created["environment_id"] == "env-1"
 
     def test_an_unusable_environment_name_is_refused_not_created(
         self, logged_in, run_cloud, tmp_path
@@ -3148,7 +3161,6 @@ class TestCloudSync:
         """The name prefixes managed tables; a row called `feature/x` is one
         nothing can ever build into."""
         root = self._repo(tmp_path, operation='"run"')
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
         result = run_cloud("sync", str(root), "--environment", "feature/x")
         assert result.exit_code != 0
@@ -3249,7 +3261,6 @@ class TestNonGitProjects:
         """The manual override: a parallel namespace with no branch behind it."""
         root = self._repo(tmp_path)
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set(
             "POST",
             f"/orgs/{logged_in.org}/environments",
@@ -3455,7 +3466,6 @@ class TestScheduleReconciliation:
         root = self._repo(tmp_path)
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
         logged_in.set("GET", f"/orgs/{logged_in.org}/schedules", [])
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set(
             "POST",
             f"/orgs/{logged_in.org}/environments",
@@ -3706,8 +3716,7 @@ schedule = "0 0 6 * * *"
         there deployed a second workspace beside the real one."""
         root = self._repo(tmp_path)
         self._seed(logged_in)
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
-        result = run_cloud("sync", str(root), "--environment", "production")
+        result = run_cloud("sync", str(root), "--production")
         assert result.exit_code == 0, result.output
         assert (
             logged_in.body_for("POST", f"/orgs/{logged_in.org}/workspaces")["name"]

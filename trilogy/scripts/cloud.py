@@ -79,12 +79,13 @@ against its name. Which environment it deploys into comes from the branch, so
 one command in CI sends main to production and a feature branch to a namespace
 of its own; ``cloud env`` manages those namespaces.
 
-**Production is the absence of an environment**, on both commands, and both of
-them say so where it would otherwise be guessed at: ``sync --environment
-production`` targets production's own jobs rather than building a namespace
-called `production` beside them, and ``env delete`` on an environment that
-holds jobs asks whether to delete them or move them into production, because
-deleting the record alone does the latter — schedules and all.
+**Production is the absence of an environment**, on both commands, and neither
+lets that be guessed at: production is not a name ``--environment`` can take,
+so ``sync`` reaches it by ``--production`` (or the empty environment a CI step
+templates) and refuses a name that only looks like it, and ``env delete`` on an
+environment holding jobs asks whether to delete them or move them into
+production, because deleting the record alone does the latter — schedules and
+all.
 """
 
 from __future__ import annotations
@@ -2832,14 +2833,16 @@ def discover_projects(root: Path) -> list[DeployableProject]:
     return found
 
 
-#: What an explicit ``--environment`` may call the *default* environment.
-#: Production is the absence of one — a job with no ``environment_id`` builds
-#: unprefixed addresses — so there is no row for a flag to name, and a name
-#: that means it has to resolve to "no environment" rather than to a row of
-#: its own. Without this, ``--environment production`` created an environment
-#: literally called `production` and a second copy of every job inside it, on
-#: schedules of their own, beside the jobs it was asked to update.
-PRODUCTION_ENVIRONMENT_NAMES = ("production", "prod", "default")
+#: Names that read as "the default environment" and are **not** treated as
+#: one. Production is the absence of an environment, so it has no row for a
+#: name to refer to; a sync asked for one of these creates a namespace *beside*
+#: production holding a duplicate of every job, which is what put a parallel
+#: set of scheduled jobs into production. These are not synonyms for
+#: ``--production``: reading them as one would reserve three legal environment
+#: names, and would silently change meaning the day somebody creates a real
+#: environment called `prod`. They only produce an error pointing at the flag,
+#: and only when no environment actually goes by the name.
+RESERVED_ENVIRONMENT_NAMES = ("production", "prod", "default")
 
 
 def _find_environment_named(
@@ -2853,6 +2856,37 @@ def _find_environment_named(
         ),
         None,
     )
+
+
+def _reject_unusable_environment(client: CloudClient, org: str, label: str) -> None:
+    """Refuse an explicit ``--environment`` that cannot mean what it says.
+
+    Two ways it cannot. The name may be unusable outright — it prefixes
+    managed tables and suffixes managed files, so a row called `feature/x` is
+    one nothing can ever build into. Or it may name production, which is not a
+    row at all: deploying to `production` deploys *beside* production. The
+    second is checked against the org's environments first, so a deployment
+    that really does have an environment called `prod` keeps it.
+    """
+    if not is_valid_environment_name(label):
+        raise CloudError(
+            f"{label!r} cannot be an environment name: it prefixes managed "
+            "tables and suffixes managed files, so it must be letters, digits "
+            "and underscores, starting with a letter or underscore. "
+            "`trilogy cloud env label <branch>` prints the name a branch maps "
+            "to."
+        )
+    if (
+        label.lower() in RESERVED_ENVIRONMENT_NAMES
+        and _find_environment_named(client, org, label) is None
+    ):
+        raise CloudError(
+            f"There is no environment named {label!r}, and syncing to one "
+            "would not reach production: production is the *absence* of an "
+            f"environment, so a row called {label!r} is a namespace beside it "
+            "holding a second copy of every job, on schedules of its own. "
+            "Pass --production to deploy to production from any checkout."
+        )
 
 
 def _resolve_sync_environment(
@@ -2874,19 +2908,19 @@ def _resolve_sync_environment(
     idempotent, so CI calling this on every push costs one extra request and
     needs no separate setup step.
 
-    **An explicit name resolves against what exists before anything is
-    created**, which is what makes ``--environment X`` an upsert against X's
-    jobs rather than a parallel deployment beside them. Two spellings of the
-    target reach the same place: a name that already has a row is that row,
-    and a name for the default environment (`PRODUCTION_ENVIRONMENT_NAMES`, or
-    the row flagged default on a deployment that keeps one) is production —
-    ``None``, the same answer main gives. That lookup is on the explicit path
-    only: a branch label carries a digest, so it can be neither of those, and
-    the idempotent create already returns the existing row.
+    **An empty *explicit* is production**, which is the spelling ``--production``
+    resolves to and the one CI can template: ``env label`` prints nothing on a
+    default branch, so ``--environment "$(trilogy cloud env label)"`` is right
+    on every branch including main. The empty string can say this and a name
+    cannot, because it is the one value the identifier rule excludes — a
+    sentinel inside the space of legal names would reserve one and change
+    meaning the day somebody creates it.
 
-    A name that exists nowhere and cannot become an environment is refused
-    rather than created: the name prefixes managed tables and suffixes managed
-    files, so a row called `feature/x` is one nothing can ever build into.
+    An explicit name that cannot mean what it says is refused rather than
+    deployed; see :func:`_reject_unusable_environment`. Everything past that is
+    the branch-derived path unchanged: the create route is idempotent, so a
+    name that already has an environment comes back as that environment and its
+    jobs are what this sync upserts against.
 
     ``create=False`` is what makes ``--dry-run`` truthful. Creating the
     environment is a write, and a dry run that quietly left a new row behind is
@@ -2897,30 +2931,12 @@ def _resolve_sync_environment(
     label = label.strip()
     if not label:
         return None, None, True
-    existing = (
-        _find_environment_named(client, org, label)
-        if explicit is not None or not create
-        else None
-    )
-    if existing is not None:
-        # A row flagged default *is* production: its jobs carry no
-        # environment_id, which is what production means on a job.
-        if existing.is_default:
-            return None, None, True
-        return existing.id, existing.name, True
     if explicit is not None:
-        if label.lower() in PRODUCTION_ENVIRONMENT_NAMES:
-            return None, None, True
-        if not is_valid_environment_name(label):
-            raise CloudError(
-                f"No environment named {label!r}, and it cannot be created: an "
-                "environment name prefixes managed tables and suffixes managed "
-                "files, so it must be letters, digits and underscores, "
-                "starting with a letter or underscore. "
-                "`trilogy cloud env label <branch>` prints the name a branch "
-                "maps to."
-            )
+        _reject_unusable_environment(client, org, label)
     if not create:
+        existing = _find_environment_named(client, org, label)
+        if existing is not None:
+            return existing.id, existing.name, True
         return None, label, False
     env = client.post_one(
         f"/orgs/{org}/environments",
@@ -2945,10 +2961,17 @@ def _resolve_sync_environment(
     "--environment",
     "environment_flag",
     default=None,
-    help="Deployment environment to sync into: an existing one is updated, a "
-    "new name is created, and 'production' (or 'prod'/'default') means the "
-    "default environment. Default: derived from the git branch, with a "
-    "default branch (main/master) meaning production.",
+    help="Deployment environment to sync into: an existing one is updated and "
+    "a new name is created. Empty ('') means production, so a CI step can pass "
+    "`$(trilogy cloud env label)` on every branch. Default: derived from the "
+    "git branch, with a default branch (main/master) meaning production.",
+)
+@click.option(
+    "--production",
+    is_flag=True,
+    help="Sync into production from any checkout, updating production's own "
+    "jobs. Production has no environment to name, so this is how a branch "
+    "checkout targets it.",
 )
 @click.option(
     "--dry-run", is_flag=True, help="Report what would change and write nothing."
@@ -2965,6 +2988,7 @@ def cloud_sync(
     ctx: click.Context,
     root: Path,
     environment_flag: str | None,
+    production: bool,
     dry_run: bool,
     prune: bool,
 ) -> None:
@@ -3004,10 +3028,15 @@ def cloud_sync(
     command in CI deploys main to production and a feature branch to its own
     namespace. ``--environment`` overrides that, and *targets* rather than
     forks: a name that already has an environment updates that environment's
-    jobs, and ``production`` (or ``prod``/``default``) is the default
-    environment — the same place a main-branch sync deploys to — so hot-fixing
-    production from a branch checkout updates production's jobs instead of
-    deploying a second set of them beside it.
+    jobs.
+
+    **Production is not an environment name.** A job with no environment is a
+    production job, so there is no row for ``--environment`` to name and
+    passing one deploys a namespace *beside* production. ``--production`` is
+    how a branch checkout hot-fixes production — it updates production's own
+    jobs — and ``--environment ""`` is the same thing spelled for a CI step
+    that templates the flag, since ``env label`` prints nothing on a default
+    branch.
 
     **Existing jobs are not adopted by name.** A job the platform holds with no
     ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
@@ -3015,6 +3044,14 @@ def cloud_sync(
     those deliberately; a one-shot automatic migration is not worth carrying.
     """
     client, org = _org_client(ctx)
+    if production and environment_flag is not None:
+        raise CloudError(
+            "--production and --environment name different targets; pass one."
+        )
+    # The flag resolves to the empty explicit rather than to a branch of its
+    # own, so the two spellings of "production" cannot drift apart.
+    if production:
+        environment_flag = ""
     projects = discover_projects(root)
     if not projects:
         raise CloudError(
