@@ -298,3 +298,25 @@ def state_file_option(fn: Callable) -> Callable:
             "change the exit code."
         ),
     )(fn)
+
+
+def dry_run_option(help: str) -> Callable[[Callable], Callable]:
+    """``--dry-run`` / ``-n``: describe the writes instead of performing them.
+
+    One decorator so every command that offers a dry run spells it the same
+    way -- same short alias, same ``dry_run`` destination. Only the sentence
+    naming *what* would be written varies, because that is the only part that
+    legitimately differs between compiling SQL, writing model files and
+    pushing a bundle."""
+
+    def decorate(fn: Callable) -> Callable:
+        return click.option(
+            "--dry-run",
+            "-n",
+            "dry_run",
+            is_flag=True,
+            default=False,
+            help=help,
+        )(fn)
+
+    return decorate

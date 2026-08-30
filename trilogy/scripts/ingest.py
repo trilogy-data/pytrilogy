@@ -33,6 +33,7 @@ from trilogy.dialect.duckdb import DUCKDB_SAMPLE_SEED
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parsing.render import Renderer
+from trilogy.scripts.click_utils import dry_run_option
 from trilogy.scripts.common import (
     MODEL_ROOT_DIR,
     create_executor,
@@ -118,7 +119,9 @@ class IngestSummaryRow:
 
     @property
     def ok(self) -> bool:
-        return self.status == "ok"
+        # Anything that is not a failure counts: a dry run's "would write" is a
+        # successful introspection that deliberately wrote nothing.
+        return not self.status.startswith("failed")
 
 
 @contextmanager
@@ -912,6 +915,10 @@ def _grain_label(datasource: Datasource) -> str:
     type=str,
     help="Override the generated datasource name (only valid for a single source)",
 )
+@dry_run_option(
+    "Introspect the sources and report the model files that would be written, "
+    "without creating the output directory or writing any of them."
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def ingest(
@@ -926,6 +933,7 @@ def ingest(
     infer_level: str,
     env,
     name: str | None,
+    dry_run: bool,
     conn_args,
 ):
     """Bootstrap one or more datasources from tables or files.
@@ -982,7 +990,8 @@ def ingest(
         found_config = find_trilogy_config()
         base = found_config.parent if found_config else PathlibPath.cwd()
         output_dir = base / MODEL_ROOT_DIR
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     cli_env_vars: dict[str, str] = {}
     if env:
@@ -1171,8 +1180,9 @@ def ingest(
         # so a freshly ingested file is already format-stable.
         if not content.endswith("\n"):
             content += "\n"
-        with safe_open(str(output_file), "w", newline="\n") as f:
-            f.write(content)
+        if not dry_run:
+            with safe_open(str(output_file), "w", newline="\n") as f:
+                f.write(content)
         ingested_files.append(output_file)
         summary_rows.append(
             IngestSummaryRow(
@@ -1180,13 +1190,19 @@ def ingest(
                 output=str(output_file),
                 columns=str(len(rec.concepts)),
                 grain=_grain_label(rec.datasource),
-                status="ok",
+                status="would write" if dry_run else "ok",
             )
         )
 
     exec.close()
     show_ingest_summary(summary_rows)
     show_fk_summary(inferred_fks, explicit_fk_map)
+    if dry_run and ingested_files:
+        noun = "file" if len(ingested_files) == 1 else "files"
+        print_info(
+            f"Dry run: {len(ingested_files)} {noun} would be written to "
+            f"{output_dir}; nothing was created."
+        )
 
     if not ingested_files:
         raise Exit(1)

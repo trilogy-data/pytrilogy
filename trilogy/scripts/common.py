@@ -50,10 +50,13 @@ DEFAULT_STAT_TYPES: list[str] = ["persist", "update", "validate"]
 
 
 @dataclass
-class RefreshQuery:
-    """A refresh query that was executed, with the target datasource and compiled SQL."""
+class CompiledQuery:
+    """One statement rendered to SQL, with whatever names it: the target
+    datasource for a refresh, the statement's position and type for a run.
 
-    datasource_id: str
+    Shared by every dry run so a single display path can print them all."""
+
+    label: str
     sql: str
 
 
@@ -67,7 +70,7 @@ class ExecutionStats:
     agent_question_count: int = 0
     agent_passed: int = 0
     agent_skipped: int = 0
-    refresh_queries: list[RefreshQuery] = field(default_factory=list)
+    compiled_queries: list[CompiledQuery] = field(default_factory=list)
     #: Counts describe what a refresh *would* do, not what happened.
     dry_run: bool = False
 
@@ -79,7 +82,7 @@ class ExecutionStats:
             agent_question_count=self.agent_question_count + other.agent_question_count,
             agent_passed=self.agent_passed + other.agent_passed,
             agent_skipped=self.agent_skipped + other.agent_skipped,
-            refresh_queries=self.refresh_queries + other.refresh_queries,
+            compiled_queries=self.compiled_queries + other.compiled_queries,
             dry_run=self.dry_run or other.dry_run,
         )
 
@@ -288,6 +291,18 @@ class CLIRuntimeParams:
     # Seconds a single statement may run before the driver is asked to cancel
     # it (`run --timeout`). ``None`` leaves statements unbounded.
     timeout: float | None = None
+    # ``--dry-run``: compile every statement and print the SQL, execute none of
+    # it.
+    dry_run: bool = False
+
+    def __post_init__(self) -> None:
+        # The flag has two carriers: ``RefreshParams.dry_run`` rides deep into
+        # the refresh planner, while this field answers the shallower "did this
+        # invocation write anything?" that display and reporting ask. Derived
+        # rather than set twice, so a refresh dry run cannot report itself as a
+        # real one just because a caller filled in only the deep one.
+        if self.refresh_params is not None and self.refresh_params.dry_run:
+            self.dry_run = True
 
 
 def merge_runtime_config(
@@ -1047,19 +1062,45 @@ def count_statement_stats(
     return ExecutionStats(persist_count=persist_count, validate_count=validate_count)
 
 
+def compile_queries(
+    exec: Executor, queries: Sequence[PROCESSED_STATEMENT_TYPES]
+) -> list[CompiledQuery]:
+    """Render statements to SQL without executing any of them.
+
+    The dry-run counterpart to executing the same list: ``generate_sql``
+    dispatches on statement type, so DDL and multi-statement ``show`` bodies
+    render exactly as they would run.
+    """
+    compiled: list[CompiledQuery] = []
+    total = len(queries)
+    for idx, query in enumerate(queries):
+        label = f"{idx + 1}/{total} {type(query).__name__}"
+        try:
+            rendered = exec.generate_sql(query)
+        except NotImplementedError:
+            # Validate, chart and mock statements do their work outside SQL
+            # generation. Reporting that beats aborting the whole dry run over
+            # a statement that was never going to render.
+            rendered = ["-- no SQL to render; runs outside query generation"]
+        compiled.extend(CompiledQuery(label=label, sql=sql) for sql in rendered)
+    return compiled
+
+
 def execute_script_with_stats(
-    exec: Executor, script_path: PathlibPath, run_statements: bool = True
+    exec: Executor, script_path: PathlibPath, dry_run: bool = False
 ) -> ExecutionStats:
-    """Parse and optionally execute a script, returning execution stats."""
+    """Parse and execute a script, returning execution stats. Under ``dry_run``
+    the statements are compiled and collected instead, and nothing runs."""
     from datetime import datetime
 
     from trilogy.execution.report import emit_statement_end
 
     with safe_open(script_path) as f:
         queries = exec.parse_text(f.read())
-    stats = ExecutionStats()
-    if not run_statements:
-        return stats
+    stats = ExecutionStats(dry_run=dry_run)
+    if dry_run:
+        stats.compiled_queries.extend(compile_queries(exec, queries))
+        return count_statement_stats(queries, stats)
     total = len(queries)
     for idx, query in enumerate(queries):
         start = datetime.now()

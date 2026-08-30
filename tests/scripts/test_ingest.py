@@ -2766,3 +2766,34 @@ def test_parse_foreign_keys():
     # None
     result = parse_foreign_keys(None)
     assert result == {}
+
+
+def test_ingest_dry_run_writes_nothing(tmp_path):
+    csv = tmp_path / "batting.csv"
+    csv.write_text("player_id,hits\np1,10\np2,20\n", newline="\n")
+    out_dir = tmp_path / "raw"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["ingest", csv.as_posix(), "--output", str(out_dir), "--dry-run"]
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "would be written" in result.output
+    assert not out_dir.exists(), "dry run must not create the output directory"
+
+
+def test_ingest_dry_run_reports_success_not_failure(tmp_path):
+    """A dry-run row is a successful introspection, so the summary must not
+    read 0/1 ok and the command must not exit 1."""
+    csv = tmp_path / "batting.csv"
+    csv.write_text("player_id,hits\np1,10\n", newline="\n")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["ingest", csv.as_posix(), "--output", str(tmp_path / "raw"), "-n"],
+    )
+    assert result.exit_code == 0
+    assert "0/1 ok" not in result.output

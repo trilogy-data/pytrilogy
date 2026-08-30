@@ -605,3 +605,55 @@ def test_record_vocabulary_pins(runner, tmp_path):
         "state_snapshot",
         "summary",
     } <= seen
+
+
+def test_run_dry_run_is_stamped_on_the_report(tmp_path: Path):
+    """A report consumer must be able to tell an invocation that wrote nothing
+    on purpose from one that did the work — both report success."""
+    script = tmp_path / "q.preql"
+    script.write_text("select 1 -> one;")
+    report = tmp_path / "report.jsonl"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["run", str(script), "duckdb", "--dry-run", "--report-file", str(report)],
+    )
+    assert result.exit_code == 0, result.output
+    start = json.loads(report.read_text().splitlines()[0])
+    assert start["type"] == "run_start"
+    assert start["dry_run"] is True
+
+
+def test_run_without_dry_run_omits_the_flag(tmp_path: Path):
+    script = tmp_path / "q.preql"
+    script.write_text("select 1 -> one;")
+    report = tmp_path / "report.jsonl"
+
+    runner = CliRunner()
+    runner.invoke(cli, ["run", str(script), "duckdb", "--report-file", str(report)])
+    start = json.loads(report.read_text().splitlines()[0])
+    assert "dry_run" not in start
+
+
+def test_run_dry_run_json_mode_emits_events_not_raw_sql(tmp_path: Path):
+    """The SQL a dry run prints would corrupt the NDJSON stream if written to
+    stdout, so JSON mode carries it as one event per statement instead."""
+    script = tmp_path / "q.preql"
+    script.write_text("select 1 -> one;")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["--format", "json", "run", str(script), "duckdb", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+
+    # Raises on any non-JSON text, which is the regression being pinned.
+    events = parse_events(result.output)
+    compiled = events_of(events, "compiled_query")
+    assert len(compiled) == 1
+    assert "SELECT" in compiled[0]["sql"].upper()
+
+    summary = events_of(events, "summary")[-1]
+    assert summary["dry_run"] is True
+    assert summary["statements"] == 1

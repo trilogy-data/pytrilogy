@@ -20,7 +20,8 @@ Consumers MUST ignore unknown record types and unknown fields.
 Record vocabulary (fields with ``None`` values are omitted):
 
 - ``run_start``: command, target, dialect, trilogy_version, parallelism,
-  config_path, mode ("single" | "directory")
+  config_path, mode ("single" | "directory"), dry_run (present only when the
+  invocation compiled its work instead of performing it)
 - ``file_start``: file (script path) — or address + owner_script for managed
   refresh nodes; node_kind ("script" | "managed_address")
 - ``statement_end``: file (omitted on the single-file path — implied by the
@@ -28,7 +29,7 @@ Record vocabulary (fields with ``None`` values are omitted):
   error_type, error
 - ``file_end``: same attribution as ``file_start``, success, skipped
   (dependency-propagated failure), duration_s, error_type, error, stats
-  {persist_count, update_count, validate_count, refresh_query_count}
+  {persist_count, update_count, validate_count, compiled_query_count}
 - ``refresh_plan``: scope (file/dir label), stale_count, forced_count,
   root_assets, all_assets, assets [{datasource_id, address, reason, kind}]
 - ``asset_refresh``: datasource_id, address, reason (emitted as each asset's

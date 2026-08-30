@@ -119,7 +119,7 @@ def test_multi_enum_correctness():
         dry_run=True,
         policy=RefreshPolicy(force_sources=frozenset({"boston_tree_info"})),
     )
-    for q in queries.refresh_queries:
+    for q in queries.compiled_queries:
         assert "arboretum_raw_tree_info" in q.sql, q.sql
         assert "city_raw_tree_info" in q.sql, q.sql
 

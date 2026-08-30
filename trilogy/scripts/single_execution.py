@@ -18,8 +18,9 @@ from trilogy.execution.report import (
 from trilogy.execution.state import RefreshPlan
 from trilogy.execution.state import RefreshResult as StateRefreshResult
 from trilogy.scripts.common import (
+    CompiledQuery,
     ExecutionStats,
-    RefreshQuery,
+    compile_queries,
     require_a_source_of_truth,
     validate_refresh_policy,
 )
@@ -38,7 +39,9 @@ from trilogy.scripts.display import (
     print_success,
     print_warning,
     show_asset_status_summary,
+    show_compiled_queries,
     show_derived_value_scopes,
+    show_dry_run_summary,
     show_execution_start,
     show_execution_summary,
     show_root_probe_breakdown,
@@ -326,16 +329,25 @@ def execute_run_mode(
     row_limit: int | None = None,
     definitions: list[Any] | None = None,
     show_scopes: bool = False,
+    dry_run: bool = False,
 ) -> None:
-    """Execute queries in run mode with progress tracking."""
+    """Execute queries in run mode with progress tracking. Under ``dry_run``
+    the same statements are compiled and printed, and none of them run."""
     start = datetime.now()
-    show_execution_start(len(queries))
+    show_execution_start(len(queries), dry_run=dry_run)
 
     # Zero executable statements is the whole trigger: an import-only or empty
     # body is as much a no-op as a declarations-only file, and drawing the line
-    # between them only made the failure inconsistent.
+    # between them only made the failure inconsistent. A dry run is held to the
+    # same bar -- it compiled nothing, which is the no-op an agent must see.
     if not queries:
         _report_no_executable_statements(definitions or [], start)
+
+    if dry_run:
+        compiled = compile_queries(exec, queries)
+        show_compiled_queries(compiled)
+        show_dry_run_summary(len(compiled), datetime.now() - start)
+        return
 
     # The rich progress bar is chrome that would corrupt the NDJSON stream, so
     # JSON mode always takes the simple (no-progress) execution path.
@@ -446,7 +458,7 @@ def _plan_and_execute_refresh(
         def on_refresh_query(ds_id: str, sql: str) -> None:
             emit_asset_refresh_query(ds_id, sql, dry_run)
             if stats is not None:
-                stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
+                stats.compiled_queries.append(CompiledQuery(label=ds_id, sql=sql))
             if dry_run and not quiet:
                 print_info(f"\n-- {ds_id}\n{sql}")
 
