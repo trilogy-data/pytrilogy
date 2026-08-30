@@ -11,9 +11,7 @@ from trilogy.rendering.base import BaseRenderer, prettify_label
 try:
     import plotext as plt
 
-    # plotext 6.0 replaced the module-level pyplot surface this renderer is
-    # written against, so importable is not the same as usable.
-    PLOTEXT_AVAILABLE = hasattr(plt, "clear_figure")
+    PLOTEXT_AVAILABLE = True
 except ImportError:
     PLOTEXT_AVAILABLE = False
     plt = None  # type: ignore[assignment]

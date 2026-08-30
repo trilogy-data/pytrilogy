@@ -9,13 +9,7 @@ from trilogy.core.statements.execute import (
     ProcessedChartStatement,
     ProcessedQuery,
 )
-from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE, TerminalRenderer
-
-# Rendering needs the module-level pyplot surface plotext 6.0 removed; the
-# degradation path is covered by the tests that stub PLOTEXT_AVAILABLE off.
-pytestmark = pytest.mark.skipif(
-    not PLOTEXT_AVAILABLE, reason='terminal charts require "plotext<6"'
-)
+from trilogy.rendering.terminal_renderer import TerminalRenderer
 
 
 def _query_for(fields: dict[str, DataType]) -> ProcessedQuery:
