@@ -30,7 +30,7 @@ from trilogy.execution.envs import (
     parse_tracked_entry,
     rewritable_address,
 )
-from trilogy.scripts.click_utils import validate_dialect
+from trilogy.scripts.click_utils import dry_run_option, validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     create_executor,
@@ -623,13 +623,7 @@ def env_delete(
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True)
 @option("--config", "config_path", type=click.Path(exists=True), default=None)
-@option(
-    "--dry-run",
-    "-n",
-    is_flag=True,
-    default=False,
-    help="Show the cutover plan without executing",
-)
+@dry_run_option("Show the cutover plan without executing")
 @option(
     "--keep-backups",
     is_flag=True,

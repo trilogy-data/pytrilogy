@@ -103,6 +103,7 @@ import click
 import tomllib
 from pydantic import BaseModel, ValidationError
 
+from trilogy.scripts.click_utils import dry_run_option
 from trilogy.scripts.cloud_models import (
     Environment,
     EnvironmentExt,
@@ -1231,6 +1232,10 @@ def _find_job(jobs_: Sequence[Job], org: str, name_or_id: str) -> Job:
     help="Always create a new job, even if one of this name exists — leaving "
     "the existing job, its runs and its schedules untouched.",
 )
+@dry_run_option(
+    "Bundle and size-check the source, report whether the push would create or "
+    "update the job, and send nothing."
+)
 @click.pass_context
 def jobs_push(
     ctx: click.Context,
@@ -1249,6 +1254,7 @@ def jobs_push(
     rewrite_glob: tuple[str, ...],
     cron: str | None,
     force_create: bool,
+    dry_run: bool,
 ) -> None:
     """Push a local project directory to a job, creating or updating it.
 
@@ -1326,6 +1332,13 @@ def jobs_push(
     encoded = check_bundle_size(payload)
     print_info(f"Bundled {len(files)} files ({len(encoded):,} bytes) from {source}")
     print_info(f"Source: {origin.describe()} (content {fingerprint.content[:12]}…)")
+
+    if dry_run:
+        schedule_note = (
+            f" and a schedule on {cron!r}" if cron and existing is None else ""
+        )
+        _report_push_dry_run("job", name, existing, files, schedule_note)
+        return
 
     job, outcome = _upsert_job(client, org, encoded, existing)
     _report_push(org, job, outcome, fingerprint)
@@ -1489,6 +1502,32 @@ def _existing_job(
             "to update. Delete the duplicates, or pass --create to add another."
         )
     return matches[0] if matches else None
+
+
+def _report_push_dry_run(
+    kind: str, name: str, existing: Any | None, files: list[dict], extra: str = ""
+) -> None:
+    """What a ``--dry-run`` push reports instead of writing.
+
+    Bundling, rewrites and the size check have all already run by the time this
+    is reached -- that work is exactly what a dry run exists to exercise, so the
+    only thing skipped is the write itself.
+    """
+    action = "update" if existing is not None else "create"
+    if is_json_mode():
+        emit_event(
+            f"{kind}_dry_run",
+            org_name=name,
+            action=action,
+            files=len(files),
+            existing_id=getattr(existing, "id", None),
+            dry_run=True,
+        )
+        return
+    print_success(
+        f"Dry run: would {action} {kind} {name!r} with {len(files)} file(s)"
+        f"{extra}; nothing was written."
+    )
 
 
 def _report_push(
@@ -2035,6 +2074,10 @@ def workspaces_fetch(
     multiple=True,
     help="Restrict --rewrite to files matching these globs (default: all).",
 )
+@dry_run_option(
+    "Bundle and size-check the tree, report whether the push would create or "
+    "update the workspace, and send nothing."
+)
 @click.pass_context
 def workspaces_push(
     ctx: click.Context,
@@ -2051,6 +2094,7 @@ def workspaces_push(
     exclude: tuple[str, ...],
     rewrite: list[tuple[str, str]],
     rewrite_glob: tuple[str, ...],
+    dry_run: bool,
 ) -> None:
     """Push a local directory to a workspace, creating or updating it.
 
@@ -2130,6 +2174,10 @@ def workspaces_push(
     )
     encoded = check_bundle_size(payload)
     print_info(f"Bundled {len(files)} files ({len(encoded):,} bytes) from {source}")
+
+    if dry_run:
+        _report_push_dry_run("workspace", name, existing, files)
+        return
 
     workspace, outcome = _upsert_workspace(client, org, encoded, existing)
     if is_json_mode():
@@ -2786,9 +2834,7 @@ def _resolve_sync_environment(
     "jobs. Production has no environment to name, so this is how a branch "
     "checkout targets it.",
 )
-@click.option(
-    "--dry-run", is_flag=True, help="Report what would change and write nothing."
-)
+@dry_run_option("Report what would change and write nothing.")
 @click.option(
     "--prune",
     is_flag=True,

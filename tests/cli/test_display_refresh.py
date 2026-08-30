@@ -17,7 +17,6 @@ from trilogy.scripts.display_refresh import (
     probe_progress,
     root_probe_progress,
     show_asset_status_summary,
-    show_dry_run_queries,
     show_grouped_refresh_assets,
     show_managed_asset_list,
     show_refresh_plan,
@@ -356,13 +355,14 @@ class TestShowDryRunQueries:
     def test_shows_sql(self, rich_mode):
         from pathlib import Path
 
-        from trilogy.scripts.common import ExecutionStats, RefreshQuery
+        from trilogy.scripts.common import CompiledQuery, ExecutionStats
         from trilogy.scripts.dependency import ScriptNode
+        from trilogy.scripts.display_execution import show_dry_run_queries
         from trilogy.scripts.parallel_execution import ExecutionResult
 
         node = ScriptNode(path=Path("etl.preql"))
         stats = ExecutionStats(
-            refresh_queries=[RefreshQuery(datasource_id="my_ds", sql="SELECT 1")]
+            compiled_queries=[CompiledQuery(label="my_ds", sql="SELECT 1")]
         )
         result = ExecutionResult(node=node, success=True, stats=stats, duration=1.0)
         with capture_rich_output() as buf:
@@ -375,6 +375,7 @@ class TestShowDryRunQueries:
         from pathlib import Path
 
         from trilogy.scripts.dependency import ScriptNode
+        from trilogy.scripts.display_execution import show_dry_run_queries
         from trilogy.scripts.parallel_execution import ExecutionResult
 
         node = ScriptNode(path=Path("etl.preql"))

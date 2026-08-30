@@ -70,8 +70,6 @@ mysql = ["pymysql"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
-# plotext 6.0 is an API rewrite: the module-level pyplot surface the terminal
-# renderer is written against (bar/plot/show/build/theme/subplots/...) is gone.
 cli = ["rich", "plotext<6"]
 serve = ["fastapi", "uvicorn"]
 analysis = ["altair", "pandas", "vl-convert-python"]

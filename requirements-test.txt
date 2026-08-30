@@ -25,7 +25,9 @@ uvicorn
 altair
 vl-convert-python
 markdown
-# See the cli extra in pyproject.toml: 6.0 is an incompatible API rewrite.
+# 6.0.0 (2026-08-23) is a ground-up rewrite: the top-level plotting API
+# terminal_renderer.py builds on (clear_figure/theme/bar/plot/subplots/build)
+# is gone entirely. Held at 5.x until that renderer is ported.
 plotext<6
 # chdb has no Windows wheels (macOS + Linux only); skip on win32
 chdb; sys_platform != "win32"

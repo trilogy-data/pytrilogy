@@ -556,6 +556,7 @@ def run_single_script_execution(
     row_limit: int | None = None,
     show_scopes: bool = False,
     query_timeout: float | None = None,
+    dry_run: bool = False,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import create_executor
@@ -586,6 +587,7 @@ def run_single_script_execution(
             row_limit=row_limit,
             refresh_params=refresh_params,
             show_scopes=show_scopes,
+            dry_run=dry_run,
         )
     finally:
         # The parallel path closes its executors in _execute_single; close here
@@ -602,6 +604,7 @@ def _dispatch_single_script_execution(
     row_limit: int | None,
     refresh_params: RefreshParams | None,
     show_scopes: bool = False,
+    dry_run: bool = False,
 ) -> int:
     from trilogy.scripts.common import (
         flush_debugging_hooks,
@@ -625,6 +628,7 @@ def _dispatch_single_script_execution(
                 row_limit=row_limit,
                 definitions=definitions,
                 show_scopes=show_scopes,
+                dry_run=dry_run,
             )
         elif execution_mode == ExecutionMode.INTEGRATION:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
@@ -693,7 +697,7 @@ def _report_file_end(result: ExecutionResult) -> None:
                 "persist_count": stats.persist_count,
                 "update_count": stats.update_count,
                 "validate_count": stats.validate_count,
-                "refresh_query_count": len(stats.refresh_queries),
+                "compiled_query_count": len(stats.compiled_queries),
             }
             if stats
             else None
@@ -777,6 +781,7 @@ def run_parallel_execution(
         print_info,
         print_success,
         show_dry_run_queries,
+        show_dry_run_summary,
         show_execution_info,
         show_parallel_execution_start,
         show_parallel_execution_summary,
@@ -827,6 +832,7 @@ def run_parallel_execution(
                 row_limit=cli_params.row_limit,
                 show_scopes=cli_params.show_scopes,
                 query_timeout=cli_params.timeout,
+                dry_run=cli_params.dry_run,
             )
         except BaseException as e:
             _report_single_script_outcome(
@@ -950,13 +956,9 @@ def run_parallel_execution(
             graph=execution_plan,
         )
 
-    # For dry-run refresh, print collected SQL after all scripts complete
-    refresh_dry_run = False
-    if execution_mode == ExecutionMode.REFRESH:
-        rp = cli_params.refresh_params or RefreshParams()
-        refresh_dry_run = rp.dry_run
-        if refresh_dry_run:
-            show_dry_run_queries(summary.results)
+    # Workers run quiet, so any SQL a dry run compiled is printed here.
+    if cli_params.dry_run:
+        show_dry_run_queries(summary.results)
 
     # For refresh mode, calculate skipped (successful but no updates)
     if execution_mode == ExecutionMode.REFRESH:
@@ -1002,9 +1004,13 @@ def run_parallel_execution(
             raise Exit(1)
         return summary
 
-    if refresh_dry_run:
+    if cli_params.dry_run and execution_mode == ExecutionMode.REFRESH:
         would_refresh = sum(r.stats.update_count for r in summary.results if r.stats)
         print_info(f"Dry run: {would_refresh} asset(s) would be refreshed")
+    elif cli_params.dry_run:
+        show_dry_run_summary(
+            sum(len(r.stats.compiled_queries) for r in summary.results if r.stats)
+        )
     else:
         print_success("All scripts executed successfully!")
     return summary

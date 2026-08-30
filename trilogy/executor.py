@@ -1047,6 +1047,30 @@ class Executor:
     ) -> list[str]:
         return [self.generator.compile_statement(command)]
 
+    @generate_sql.register(ProcessedChartStatement)
+    @generate_sql.register(ProcessedChartCopyStatement)
+    def _(
+        self, command: ProcessedChartStatement | ProcessedChartCopyStatement
+    ) -> list[str]:
+        """A chart is a rendering of one query per layer; those queries are the
+        only thing about it that reaches the warehouse."""
+        chart = (
+            command.chart
+            if isinstance(command, ProcessedChartCopyStatement)
+            else command
+        )
+        return [
+            self.generator.compile_statement(layer.query)
+            for layer in chart.layers
+            if layer.query is not None
+        ]
+
+    @generate_sql.register
+    def _(self, command: ProcessedRawSQLStatement) -> list[str]:
+        # The statement IS its SQL; rendering it is a passthrough, and without
+        # this a whole-script render silently stops at the first raw block.
+        return [command.text]
+
     @generate_sql.register
     def _(self, command: ProcessedShowStatement) -> list[str]:
         output = []

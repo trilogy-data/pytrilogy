@@ -73,8 +73,10 @@ property <name,stage_no,variant>.stage_apogee int;
 property <name,stage_no,variant>.stage_perigee int;
 property <name,stage_no,variant>.perigee_qual string;
 
+# A vehicle with no recorded stages (currently WYH) is in lv_info but has no
+# lvs_info rows, so this table does not carry every vehicle name.
 datasource lvs_info (
-    LV_Name: name,
+    LV_Name: ~name,
     LV_Variant: variant,
     Stage_No: stage_no,
     Stage_Name: ~stage.name,
