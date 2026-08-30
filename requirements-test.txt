@@ -25,7 +25,8 @@ uvicorn
 altair
 vl-convert-python
 markdown
-plotext
+# See the cli extra in pyproject.toml: 6.0 is an incompatible API rewrite.
+plotext<6
 # chdb has no Windows wheels (macOS + Linux only); skip on win32
 chdb; sys_platform != "win32"
 clickhouse-sqlalchemy

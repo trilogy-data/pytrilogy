@@ -11,7 +11,9 @@ from trilogy.rendering.base import BaseRenderer, prettify_label
 try:
     import plotext as plt
 
-    PLOTEXT_AVAILABLE = True
+    # plotext 6.0 replaced the module-level pyplot surface this renderer is
+    # written against, so importable is not the same as usable.
+    PLOTEXT_AVAILABLE = hasattr(plt, "clear_figure")
 except ImportError:
     PLOTEXT_AVAILABLE = False
     plt = None  # type: ignore[assignment]
@@ -50,8 +52,9 @@ class TerminalRenderer(BaseRenderer):
     def __init__(self):
         if not PLOTEXT_AVAILABLE:
             raise ImportError(
-                "plotext is required for terminal chart rendering. "
-                "Install with: pip install plotext"
+                "plotext<6 is required for terminal chart rendering "
+                "(6.0 dropped the API this renderer uses). "
+                'Install with: pip install "plotext<6"'
             )
 
     def render(

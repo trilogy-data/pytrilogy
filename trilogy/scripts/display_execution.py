@@ -504,7 +504,7 @@ def print_chart_terminal(
     from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE
 
     if not PLOTEXT_AVAILABLE:
-        print_info("Install plotext for terminal charts: pip install plotext")
+        print_info('Install plotext for terminal charts: pip install "plotext<6"')
         return False
 
     if not any(layer_data):
