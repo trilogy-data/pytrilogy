@@ -1401,8 +1401,8 @@ class TestJobCommands:
         assert logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-2")
 
     def test_delete_of_an_ambiguous_name_names_the_ids(self, logged_in, run_cloud):
-        """Two jobs under one name is what a duplicated deploy looks like, so
-        it is exactly the state this command is reached for."""
+        """Two jobs under one name is the state this command is reached for,
+        and the state a name cannot address."""
         logged_in.set(
             "GET",
             f"/orgs/{logged_in.org}/jobs",
@@ -3112,8 +3112,8 @@ class TestCloudSync:
     def test_a_dry_run_against_production_reports_updates_not_creates(
         self, logged_in, run_cloud, tmp_path
     ):
-        """What made the duplicate discoverable, and what has to agree with
-        the write path."""
+        """The dry run is where an operator finds out what the target resolves
+        to, so it has to agree with the write path."""
         root = self._repo(tmp_path, operation='"run"')
         key = cloud_mod.discover_projects(root)[0].source_key
         logged_in.set(

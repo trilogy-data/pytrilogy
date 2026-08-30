@@ -1890,15 +1890,15 @@ def jobs_run(
 def jobs_delete(ctx: click.Context, jobs_args: tuple[str, ...], yes: bool) -> None:
     """Delete one or more jobs (by name or id), with their run history.
 
-    Takes several because the reason to reach for it is usually a set: a
-    duplicated deploy, or the jobs an environment left behind. Names are
-    ambiguous exactly then — two jobs deployed under one name is what a
-    duplicate looks like — so a name matching more than one job is an error
-    naming the ids, and ids can be mixed in freely.
+    Takes several because the reason to reach for it is usually a set: a deploy
+    that landed somewhere it was not meant to, or the jobs a deleted
+    environment moved into production. Names are ambiguous exactly then — two
+    jobs under one name is what that state looks like — so a name matching more
+    than one job is an error naming the ids, and ids can be mixed in freely.
 
     A schedule bound to nothing but deleted jobs goes too. It can never fire
-    again, and leaving the row behind makes cleaning up a duplicate set a
-    two-step job with the second step easy to miss.
+    again, and leaving the row behind makes the cleanup a two-step job with the
+    second step easy to miss.
     """
     client, org = _org_client(ctx)
     known = client.get_many(f"/orgs/{org}/jobs", Job)
@@ -3629,11 +3629,12 @@ def env_delete(
 
     **An environment that holds jobs needs ``--with-jobs`` or ``--keep-jobs``.**
     Deleting the record does not delete the jobs; it *reparents* them, and a
-    job with no environment is a production job — so an unqualified teardown of
-    a nine-job branch environment moved nine jobs onto production's cadence,
-    beside the production jobs they were branched from, and the next tick ran
-    everything twice. Neither outcome is guessable from "delete the
-    environment", so a non-empty one says which it needs. An empty environment
+    job with no environment is a production job — so tearing down a branch
+    environment moves its jobs into production, schedules included, where they
+    fire beside the production jobs they were branched from. That was always
+    what "the jobs are left behind" meant, but "left behind" reads as inert and
+    a live schedule is not; neither outcome is guessable from "delete the
+    environment", so a non-empty one asks which is wanted. An empty environment
     has nothing at stake and deletes with no flag.
 
     Warehouse assets the environment built are **not** touched: they are in the
@@ -3666,8 +3667,8 @@ def env_delete(
         click.confirm(prompt, abort=True)
 
     # Read before the delete, because after it nothing says which jobs these
-    # were: they are ordinary production jobs, name-identical to the ones they
-    # were branched from, and `jobs delete` needs an id to disambiguate.
+    # were: they become ordinary production jobs, name-identical to the ones
+    # they were branched from, and `jobs delete` needs an id to disambiguate.
     moved = (
         [
             job
