@@ -50,8 +50,9 @@ class TerminalRenderer(BaseRenderer):
     def __init__(self):
         if not PLOTEXT_AVAILABLE:
             raise ImportError(
-                "plotext is required for terminal chart rendering. "
-                "Install with: pip install plotext"
+                "plotext<6 is required for terminal chart rendering "
+                "(6.0 dropped the API this renderer uses). "
+                'Install with: pip install "plotext<6"'
             )
 
     def render(

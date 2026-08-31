@@ -22,6 +22,7 @@ from trilogy.scripts.source_identity import (
     SourceOrigin,
     content_digest,
     environment_label,
+    is_valid_environment_name,
     label_token,
     normalize_remote,
     path_token,
@@ -348,6 +349,22 @@ class TestEnvironmentLabel:
         from trilogy.execution.envs import validate_env_name
 
         validate_env_name(environment_label(branch))
+
+    @pytest.mark.parametrize("name", ["prod", "feature_x_a1b2c3", "_scratch", "Env2"])
+    def test_a_usable_name_is_one_execution_accepts(self, name):
+        from trilogy.execution.envs import validate_env_name
+
+        assert is_valid_environment_name(name)
+        validate_env_name(name)
+
+    @pytest.mark.parametrize("name", ["feature/x", "my-branch", "2026", "", " x"])
+    def test_a_name_execution_rejects_is_not_usable(self, name):
+        """`environment_label` cannot produce one of these."""
+        from trilogy.execution.envs import validate_env_name
+
+        assert not is_valid_environment_name(name)
+        with pytest.raises(ValueError):
+            validate_env_name(name)
 
     def test_the_origin_method_agrees_with_the_function(self):
         origin = SourceOrigin(kind="git", location="h/o/r", branch="feature/x")

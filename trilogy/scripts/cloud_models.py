@@ -86,15 +86,14 @@ class SourceFingerprint(BaseModel):
 
     Written by ``jobs push`` onto the create/update payload; built by
     ``trilogy.scripts.source_identity``, which owns the rules. The one model
-    here the CLI *sends* — the API ignores unknown request fields, so a server
-    that does not store it yet accepts the push unchanged and simply answers
-    with ``source_fingerprint`` unset. Nothing may depend on the round trip.
+    here the CLI *sends*: a server that does not store it accepts the push and
+    answers with ``source_fingerprint`` unset, so nothing may depend on the
+    round trip.
 
     ``content`` is the digest of the config text plus the exact file set sent
-    (after ``--rewrite``), so two pushes agree iff they carried the same bytes
-    — which is what makes "this job is running the code in my working
-    directory" answerable at all. ``origin`` is the git remote when there is
-    one, else an opaque local token: absolute paths never leave the machine.
+    (after ``--rewrite``), so two pushes agree iff they carried the same bytes.
+    ``origin`` is the git remote when there is one, else an opaque local token;
+    absolute paths never leave the machine.
     """
 
     version: int = SOURCE_FINGERPRINT_VERSION
@@ -128,9 +127,10 @@ class Environment(BaseModel):
     ``^[A-Za-z_][A-Za-z0-9_]*$``; ``source_identity.environment_label`` is what
     derives a valid one from a branch name.
 
-    A job whose ``environment_id`` is ``None`` is in the *default* environment,
-    which builds unprefixed production addresses — so "no environment" and
-    "production" are the same thing, and there is no row for it.
+    A job whose ``environment_id`` is ``None`` is in the *default*
+    environment, which builds unprefixed production addresses: "no
+    environment" and "production" are the same thing, and there is no row for
+    it.
     """
 
     id: str
@@ -158,14 +158,13 @@ class EnvironmentExt(Environment):
 class Job(BaseModel):
     """``models/job.rs::Job``.
 
-    ``config`` is the job's trilogy.toml as raw text, carried in a JSON string
-    rather than a parsed table — the platform stores it verbatim and hands it
-    to the worker as a file.
+    ``config`` is the job's trilogy.toml as raw text in a JSON string; the
+    platform stores it verbatim and hands it to the worker as a file.
 
     The row is stable *identity*; the content fields are a copy of the newest
     ``job_versions`` row, which ``current_version_id`` names. Editing content
     (``PUT``) mints a version and moves that pointer under the same id, so run
-    history and schedule bindings survive an edit — the movement of
+    history and schedule bindings survive an edit, and the movement of
     ``current_version_id`` across a write is how the CLI tells a real update
     from a no-op push.
     """
@@ -222,10 +221,9 @@ class JobVersion(BaseModel):
     """``models/job.rs::JobVersion`` — one immutable snapshot of a job's
     content, from ``GET /orgs/{slug}/jobs/{id}/versions`` (newest first).
 
-    Content rides along: a version is small, and "what changed between v3 and
-    v4" is the whole reason to ask. Rolling back is re-``PUT``ing an old
-    version's content, which mints a *new* version — history is never
-    rewritten.
+    Content rides along, so a version answers "what changed between v3 and
+    v4". Rolling back is re-``PUT``ing an old version's content, which mints a
+    *new* version; history is never rewritten.
     """
 
     id: str
@@ -355,21 +353,18 @@ class Workspace(BaseModel):
     """``models/workspace.rs::Workspace`` — reusable job configuration.
 
     A workspace is files, config, parameters and resource defaults that its
-    jobs inherit and may override. `cloud sync` creates exactly one per
-    multi-job project and puts the whole tree in it, so the jobs can be what
-    actually distinguishes them — an operation and an entrypoint.
+    jobs inherit and may override. `cloud sync` creates one per multi-job
+    project and puts the whole tree in it, leaving an operation and an
+    entrypoint to distinguish the jobs.
 
-    The content fields are here because a workspace is now *exported* as well
-    as written (``workspaces fetch``), and because ``PUT`` replaces a workspace
-    wholesale — an omitted field is cleared, exactly as for a job — so anything
-    an update means to keep has to be read back off the workspace and resent.
-    A field this model does not carry cannot be carried, which is why the list
-    below is the whole write surface of ``routes/workspaces.rs::WorkspaceWrite``
-    and not just the parts one command happens to need.
+    The fields below are the whole write surface of
+    ``routes/workspaces.rs::WorkspaceWrite``, not just what one command needs:
+    ``PUT`` replaces a workspace wholesale — an omitted field is cleared,
+    exactly as for a job — so a field this model does not carry cannot be
+    carried by an update.
 
-    Timestamps are deliberately absent: nothing here has a use for them, and
-    the API returns the same struct from the list and detail routes, so a
-    workspace read for its files is read complete either way.
+    Timestamps are absent. The API returns the same struct from the list and
+    detail routes, so a workspace read for its files is read complete.
     """
 
     id: str
@@ -380,9 +375,9 @@ class Workspace(BaseModel):
     #: nearest to the job wins — so a chain has to be walked, not merged from
     #: one row. Capped at `MAX_WORKSPACE_DEPTH` platform-side, cycles refused.
     parent_workspace_id: str | None = None
-    #: trilogy.toml text, like `Job.config`. Set by nobody today: layering a
+    #: trilogy.toml text, like `Job.config`. Unset in practice: layering a
     #: workspace's config onto a job's needs pytrilogy's `--config-overlay`,
-    #: which has not shipped, so `cloud sync` leaves config on the jobs.
+    #: so `cloud sync` leaves config on the jobs.
     config: Any = None
     files: Any | None = None
     secret_env: Any | None = None

@@ -1430,6 +1430,80 @@ class TestJobCommands:
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs/*/versions", [])
         assert "predates versioning" in run_cloud("jobs", "versions", "nightly").output
 
+    def test_delete_removes_a_job_by_name(self, logged_in, run_cloud):
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/jobs/*", {})
+        logged_in.set("GET", f"/orgs/{logged_in.org}/schedules", [])
+        result = run_cloud("jobs", "delete", "nightly", "--yes")
+        assert result.exit_code == 0, result.output
+        assert logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-1")
+
+    def test_delete_confirms_first(self, logged_in, run_cloud):
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/jobs/*", {})
+        result = run_cloud("jobs", "delete", "nightly", input="n\n")
+        assert result.exit_code != 0
+        assert not logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-1")
+
+    def test_delete_takes_several_and_deletes_each_once(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "nightly"), _job_payload("job-2", "publish")],
+        )
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/jobs/*", {})
+        logged_in.set("GET", f"/orgs/{logged_in.org}/schedules", [])
+        result = run_cloud("jobs", "delete", "nightly", "job-1", "publish", "--yes")
+        assert result.exit_code == 0, result.output
+        assert (
+            len(logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-1"))
+            == 1
+        )
+        assert logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-2")
+
+    def test_delete_of_an_ambiguous_name_names_the_ids(self, logged_in, run_cloud):
+        """A name cannot address either of them."""
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "nightly"), _job_payload("job-2", "nightly")],
+        )
+        result = run_cloud("jobs", "delete", "nightly", "--yes")
+        assert result.exit_code != 0
+        assert "job-1" in result.output and "job-2" in result.output
+        assert not logged_in.requests_for("DELETE", f"/orgs/{logged_in.org}/jobs/job-1")
+
+    def test_delete_removes_a_schedule_left_bound_to_nothing(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/jobs/*", {})
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/schedules",
+            [_schedule_payload("nightly-schedule", "0 3 * * *", job_ids=["job-1"])],
+        )
+        result = run_cloud("jobs", "delete", "nightly", "--yes")
+        assert result.exit_code == 0, result.output
+        assert logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        )
+
+    def test_delete_leaves_a_schedule_that_still_binds_a_live_job(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/jobs/*", {})
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/schedules",
+            [
+                _schedule_payload(
+                    "nightly-schedule", "0 3 * * *", job_ids=["job-1", "job-2"]
+                )
+            ],
+        )
+        assert run_cloud("jobs", "delete", "nightly", "--yes").exit_code == 0
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/schedules/sched-1"
+        )
+
     def test_run_triggers_by_name(self, logged_in, run_cloud):
         result = run_cloud("jobs", "run", "nightly")
         assert "Triggered run run-new" in result.output
@@ -3048,12 +3122,109 @@ class TestCloudSync:
     ):
         root = self._repo(tmp_path, operation='"run"')
         logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [])
         logged_in.set("POST", f"/orgs/{logged_in.org}/environments", self.ENV)
         result = run_cloud("sync", str(root), "--environment", "feature_x_a1b2c3")
         assert result.exit_code == 0, result.output
         assert "feature_x_a1b2c3" in result.output
         created = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")[0]
         assert created["environment_id"] == "env-1"
+
+    def test_an_explicit_environment_that_exists_is_targeted_not_recreated(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The create route is idempotent, so an existing environment comes
+        back as itself and its jobs are what the sync upserts against."""
+        root = self._repo(tmp_path, operation='"run"')
+        key = cloud_mod.discover_projects(root)[0].source_key
+        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", self.ENV)
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "etl", source_key=key, environment_id="env-1")],
+        )
+        result = run_cloud("sync", str(root), "--environment", "feature_x_a1b2c3")
+        assert result.exit_code == 0, result.output
+        assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+
+    @pytest.mark.parametrize("flag", [("--production",), ("--environment", "")])
+    def test_production_updates_productions_own_jobs(
+        self, logged_in, run_cloud, tmp_path, flag
+    ):
+        """Both spellings of production, from a checkout whose branch would
+        otherwise derive an environment of its own."""
+        root = self._repo(tmp_path, operation='"run"')
+        key = cloud_mod.discover_projects(root)[0].source_key
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "etl", source_key=key)],
+        )
+        result = run_cloud("sync", str(root), *flag)
+        assert result.exit_code == 0, result.output
+        assert "production" in result.output
+        assert logged_in.requests_for("PUT", f"/orgs/{logged_in.org}/jobs/job-1")
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
+
+    def test_production_and_an_environment_are_not_both_a_target(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        root = self._repo(tmp_path, operation='"run"')
+        result = run_cloud(
+            "sync", str(root), "--production", "--environment", "feature_x_a1b2c3"
+        )
+        assert result.exit_code != 0
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
+
+    def test_a_dry_run_against_production_reports_updates_not_creates(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The dry run reports the same target the write path resolves."""
+        root = self._repo(tmp_path, operation='"run"')
+        key = cloud_mod.discover_projects(root)[0].source_key
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [_job_payload("job-1", "etl", source_key=key)],
+        )
+        result = run_cloud("sync", str(root), "--production", "--dry-run")
+        assert result.exit_code == 0, result.output
+        assert "0 to create, 1 to update" in result.output
+
+    @pytest.mark.parametrize("name", ["prod", "production"])
+    def test_a_name_that_reads_like_production_is_just_a_name(
+        self, logged_in, run_cloud, tmp_path, name
+    ):
+        """No reserved words: every name `--environment` takes is an ordinary
+        environment of that name."""
+        root = self._repo(tmp_path, operation='"run"')
+        env = {**self.ENV, "name": name}
+        logged_in.set("POST", f"/orgs/{logged_in.org}/environments", env)
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        result = run_cloud("sync", str(root), "--environment", name)
+        assert result.exit_code == 0, result.output
+        assert (
+            logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")[0][
+                "name"
+            ]
+            == name
+        )
+        created = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")[0]
+        assert created["environment_id"] == "env-1"
+
+    def test_an_unusable_environment_name_is_refused_not_created(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The name prefixes managed tables and suffixes managed files, so it
+        has to be an identifier."""
+        root = self._repo(tmp_path, operation='"run"')
+        logged_in.set("GET", f"/orgs/{logged_in.org}/jobs", [])
+        result = run_cloud("sync", str(root), "--environment", "feature/x")
+        assert result.exit_code != 0
+        assert "env label" in result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/environments")
 
     def test_nothing_deployable_is_an_error_not_a_silent_success(
         self, logged_in, run_cloud, tmp_path
@@ -3081,10 +3252,13 @@ def _job_payload(job_id: str, name: str, **over) -> dict:
 
 
 def _schedule_payload(
-    name: str, cron_expr: str, job_names: list[str] | None = None
+    name: str,
+    cron_expr: str,
+    job_names: list[str] | None = None,
+    job_ids: list[str] | None = None,
 ) -> dict:
-    """`job_names` is what a sync matches on — a schedule bound to exactly this
-    job is the one it owns, whatever the schedule itself is called."""
+    """The binding is what matches a schedule to its jobs — by id where the
+    API sends them, by name for one that predates the field."""
     return {
         "id": "sched-1",
         "org_id": "org-acme",
@@ -3094,6 +3268,7 @@ def _schedule_payload(
         "next_run_at": TS,
         "created_at": TS,
         "updated_at": TS,
+        "job_ids": job_ids or [],
         "job_names": (
             job_names if job_names is not None else [name.removesuffix("-schedule")]
         ),
@@ -3592,6 +3767,20 @@ schedule = "0 0 6 * * *"
         }
         assert all(job["workspace_id"] == "ws-1" for job in jobs)
 
+    def test_an_explicit_production_does_not_namespace_the_workspace(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A branch environment suffixes the workspace name so it cannot build
+        over production's shared tree. Production takes no suffix."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        result = run_cloud("sync", str(root), "--production")
+        assert result.exit_code == 0, result.output
+        assert (
+            logged_in.body_for("POST", f"/orgs/{logged_in.org}/workspaces")["name"]
+            == "data"
+        )
+
     def test_an_existing_job_is_rebound_into_the_workspace(
         self, logged_in, run_cloud, tmp_path
     ):
@@ -4004,7 +4193,9 @@ class TestEnvironmentCommands:
         assert "4 job(s) copied" in result.output
 
     def test_delete_resolves_a_name_to_an_id(self, logged_in, run_cloud):
-        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
+        logged_in.set(
+            "GET", f"/orgs/{logged_in.org}/environments", [{**self.ENV, "job_count": 0}]
+        )
         logged_in.set("DELETE", f"/orgs/{logged_in.org}/environments/env-1", {})
         result = run_cloud("env", "delete", "feature_x")
         assert result.exit_code == 0, result.output
@@ -4012,14 +4203,62 @@ class TestEnvironmentCommands:
             "DELETE", f"/orgs/{logged_in.org}/environments/env-1"
         )
 
-    def test_delete_without_with_jobs_says_the_jobs_are_still_there(
+    def test_delete_of_a_non_empty_environment_needs_a_choice(
         self, logged_in, run_cloud
     ):
-        """They fall back to production, which is a live change to what runs."""
+        """Deleting the record reparents its jobs into production with their
+        schedules, so a non-empty environment asks which is wanted."""
         logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
         logged_in.set("DELETE", f"/orgs/{logged_in.org}/environments/env-1", {})
         result = run_cloud("env", "delete", "feature_x")
+        assert result.exit_code != 0
+        assert "--with-jobs" in result.output and "--keep-jobs" in result.output
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/environments/env-1"
+        )
+
+    def test_delete_refuses_both_flags_at_once(self, logged_in, run_cloud):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
+        result = run_cloud(
+            "env", "delete", "feature_x", "--with-jobs", "--keep-jobs", "--yes"
+        )
+        assert result.exit_code != 0
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/environments/env-1"
+        )
+
+    def test_keep_jobs_confirms_before_moving_them_into_production(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/environments/env-1", {})
+        result = run_cloud("env", "delete", "feature_x", "--keep-jobs", input="n\n")
+        assert result.exit_code != 0
+        assert "production" in result.output
+        assert not logged_in.requests_for(
+            "DELETE", f"/orgs/{logged_in.org}/environments/env-1"
+        )
+
+    def test_keep_jobs_names_the_jobs_it_left_running_in_production(
+        self, logged_in, run_cloud
+    ):
+        """The names collide with the production jobs they were branched from,
+        so the report carries ids."""
+        logged_in.set("GET", f"/orgs/{logged_in.org}/environments", [self.ENV])
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs",
+            [
+                _job_payload("job-a", "etl", environment_id="env-1"),
+                _job_payload("job-b", "publish", environment_id=None),
+            ],
+        )
+        logged_in.set("DELETE", f"/orgs/{logged_in.org}/environments/env-1", {})
+        result = run_cloud("env", "delete", "feature_x", "--keep-jobs", "--yes")
+        assert result.exit_code == 0, result.output
         assert "2 job(s) left in production" in result.output
+        assert "etl (job-a)" in result.output
+        assert "publish" not in result.output
         assert (
             logged_in.call_for(
                 "DELETE", f"/orgs/{logged_in.org}/environments/env-1"

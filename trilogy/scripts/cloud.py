@@ -6,11 +6,9 @@ hands it back on a localhost redirect; ``--token`` accepts a pre-issued value
 instead. Tokens are stored per API URL in ``~/.trilogy/cloud_credentials.json``.
 
 Commands resolve which token to send in order of precedence: ``--token``,
-``TRILOGY_CLOUD_TOKEN``, then the credentials file. The environment variable is
-the CI path — a runner has no credentials file, and a token passed in argv is
-visible to process listings and any command echo. ``login`` and ``logout`` are
-the exceptions: they manage the credentials file and never read the variable,
-but warn when it is set, since it would shadow what they just wrote.
+``TRILOGY_CLOUD_TOKEN``, then the credentials file. ``login`` and ``logout``
+are the exceptions: they manage the credentials file and never read the
+variable, but warn when it is set, since it would shadow what they just wrote.
 
 The target environment defaults to the production API. Point elsewhere with,
 in order of precedence: ``--api``, ``TRILOGY_CLOUD_API``, or a ``[cloud]``
@@ -21,29 +19,24 @@ section in the working directory's ``trilogy.toml``::
     org = "trilogy"
 
 Responses are parsed into the models in ``cloud_models``, which mirror the
-API's own response types — an unexpected shape is a clean error naming the
-field, not a ``KeyError`` three frames deep.
+API's own response types, so an unexpected shape is an error naming the field.
 
 ``jobs push`` bundles a local project directory into the job's inline files —
 paths relative to ``--source``, so the directory shape (relative imports,
-``sys.path`` tricks in Python datasources) survives the trip. This mirrors
-trilogy-cloud's ``development/scripts/bundle_project.py``, including the
-PubSub size budget: a bundle that cannot fit in a queue message is refused at
-push time, not an hour later by a broker error.
+``sys.path`` tricks in Python datasources) survives the trip. A bundle over the
+PubSub size budget is refused at push time.
 
 **Push is an upsert, keyed by job name.** Jobs are versioned platform-side —
-the row is stable identity and its content is a copy of the newest version —
-so re-pushing a job ``PUT``s new content under the same id: run history and
-schedule bindings survive, and content the job already has mints no version at
-all. It used to only ever ``POST``, which silently minted a *second* job of
-the same name and left every schedule pointing at the first, so the edit never
-ran. ``--create`` asks for that old behaviour deliberately.
+the row is stable identity and its content is a copy of the newest version — so
+re-pushing a job ``PUT``s new content under the same id: run history and
+schedule bindings survive, and content the job already has mints no version.
+``--create`` forces a new job instead.
 
 Every push carries a ``source_fingerprint`` (see ``cloud_models``): the digest
 of the bytes sent, plus where they came from — the git remote and commit when
 the source directory is in a repository, and an opaque local token when it is
 not. Absolute paths never leave the machine. A server that does not record the
-field ignores it, so nothing here depends on reading it back.
+field ignores it.
 
 ``jobs fetch`` and ``workspaces fetch`` are the inverse, and the read half of a
 fetch-edit-push loop: an entity's config and inline files written back to a
@@ -52,24 +45,21 @@ with ``jobs push`` / ``workspaces push``.
 
 **A fetch writes what a push would send back.** Each command exports exactly
 the entity's *own* content, so the round trip is lossless and re-pushing an
-unedited fetch mints no version. ``--resolved`` is the deliberate exception: it
-also materializes the files a job or workspace *inherits* from the workspace
-chain above it, which is what makes the directory something you can run — and
-which is why the result is no longer a bundle to push back, since pushing it
-would install a copy of the shared tree into the thing that was inheriting it.
-That is said out loud at fetch time and again at push time.
+unedited fetch mints no version. ``--resolved`` is the exception: it also
+materializes the files a job or workspace *inherits* from the workspace chain
+above it, which makes the directory runnable but no longer a bundle to push
+back — pushing it would install a copy of the shared tree into the thing that
+was inheriting it. Both commands say so.
 
 A job in a workspace carries **no files of its own** — the workspace holds the
 whole tree and the job names the one script it runs — so fetching such a job
-without ``--resolved`` writes a config and nothing else. The command says where
-its files actually live rather than leaving an empty directory to explain
-itself.
+without ``--resolved`` writes a config and nothing else, and says where its
+files live.
 
 ``jobs run`` returns as soon as the run is queued, so on its own a zero exit
-means "accepted", not "succeeded" — a CI step that stops there is green
-whatever the job does. ``--wait`` (and ``runs wait <id>``) blocks until the
-server stamps the run finished and then exits non-zero unless it ended
-``completed``.
+means "accepted", not "succeeded". ``--wait`` (and ``runs wait <id>``) blocks
+until the server stamps the run finished and then exits non-zero unless it
+ended ``completed``.
 
 ``cloud sync`` is the declarative form of the same push. It walks a directory
 tree, treats every ``trilogy.toml`` whose ``[cloud]`` block declares *how the
@@ -78,6 +68,12 @@ job runs* as one deployable project, and upserts each against its
 against its name. Which environment it deploys into comes from the branch, so
 one command in CI sends main to production and a feature branch to a namespace
 of its own; ``cloud env`` manages those namespaces.
+
+**Production is the absence of an environment**, and each command spells it
+rather than naming it: ``sync`` reaches production by ``--production`` (or the
+empty ``--environment`` a CI step templates), and ``env delete`` on an
+environment holding jobs takes ``--with-jobs`` or ``--keep-jobs``, since
+deleting the record alone moves them into production with their schedules.
 """
 
 from __future__ import annotations
@@ -137,6 +133,7 @@ from trilogy.scripts.source_identity import (
     SourceOrigin,
     content_digest,
     environment_label,
+    is_valid_environment_name,
     resolve_origin,
 )
 
@@ -233,13 +230,7 @@ MAX_PRIORITY = 4
 
 
 def _setting_error(source: Path, key: str, detail: str) -> CloudError:
-    """Every ``[cloud]`` complaint, naming the file that holds it.
-
-    A sync deploys a directory tree, so validation happens here rather than at
-    the API: one bad value should name the toml it is written in, not fail the
-    twelfth of twenty HTTP calls with a message about a job name the author
-    never wrote.
-    """
+    """Every ``[cloud]`` complaint, naming the file that holds it."""
     return CloudError(f"{source}: [cloud].{key} {detail}")
 
 
@@ -311,16 +302,12 @@ def _cpus_setting(table: Mapping[str, Any], source: Path) -> float | None:
 class DeploySettings:
     """One project's declared job settings, parsed out of its ``[cloud]`` block.
 
-    Every field is optional and ``None`` means *unspecified*, which a sync
-    turns into "carry whatever the job already has" rather than into a platform
-    default — the same distinction ``jobs push`` draws for its command-line
-    flags, and for the same reason: a ``PUT`` replaces content wholesale, so an
-    omitted field would otherwise reset a job's operation or secrets on every
-    sync.
+    Every field is optional and ``None`` means *unspecified*: a sync carries
+    whatever the job already has rather than applying a platform default, since
+    a ``PUT`` replaces content wholesale.
 
-    The field list is the source of truth for :data:`DEPLOY_KEYS`, which is in
-    turn what ``execution.config`` audits a ``[cloud]`` block against, so a new
-    setting is declared once here and accepted everywhere.
+    The field list is the source of truth for :data:`DEPLOY_KEYS`, which is what
+    ``execution.config`` audits a ``[cloud]`` block against.
     """
 
     #: What to call the job. Optional, and unlike everything else here it is
@@ -334,9 +321,8 @@ class DeploySettings:
     #: Identity fragment for one entry of a ``[[cloud.job]]`` array, appended
     #: to the directory's `source_key` as ``::{key}``. **Immutable**: it is
     #: what a sync upserts against, so editing it deploys a new job and
-    #: orphans the old one, exactly as moving a directory does. Meaningless
-    #: on a bare ``[cloud]`` block (there is only one job), and rejected
-    #: there rather than silently ignored.
+    #: orphans the old one. Rejected on a bare ``[cloud]`` block, which
+    #: declares only one job.
     key: str | None = None
 
     #: The one script this job runs, relative to the project root. Required
@@ -373,11 +359,8 @@ class DeploySettings:
     def merged_over(self, defaults: DeploySettings) -> DeploySettings:
         """This entry's settings with *defaults* filling every unset field.
 
-        What makes ``[cloud]`` shared defaults and ``[[cloud.job]]`` the
-        per-job override: an org's `secret_env` and `exclude` are written once
-        at the top and each entry says only what differs. `name` and `key` are
-        never inherited — two jobs sharing either would be two jobs deploying
-        as one.
+        ``[cloud]`` holds the shared defaults and each ``[[cloud.job]]`` says
+        only what differs. `name` and `key` are never inherited.
         """
         merged = {
             field.name: getattr(self, field.name) or getattr(defaults, field.name)
@@ -421,19 +404,12 @@ class DeploySettings:
 
     def declared_fields(self) -> dict[str, Any]:
         """Only what the toml actually said, JSON-ready — ``None`` dropped and
-        tuples flattened, since a payload is JSON and JSON has no tuple.
+        tuples flattened.
 
-        ``name`` is deliberately absent, which is what keeps it from doing two
-        jobs it should not: it is not a content field (it feeds the ``name=``
-        argument), and it does not make a directory deployable. A toml saying
-        only ``name = "reports"`` describes nothing to run, and deploying the
-        directory it sits in because of it is the surprise this method's
-        `declared` property exists to prevent.
-
-        ``key``, ``include`` and ``exclude`` are absent for the same reason
-        twice over: they describe *which* job this is and *which files* it
-        gets, neither of which the platform stores, and a toml saying only
-        ``exclude = [...]`` describes nothing to run either.
+        ``name`` is absent: it feeds the ``name=`` argument rather than the
+        content, and it does not make a directory deployable. ``key``,
+        ``include`` and ``exclude`` are absent too — they say which job this is
+        and which files it gets, neither of which the platform stores.
         """
         declared = {
             "entrypoint": self.entrypoint,
@@ -453,9 +429,8 @@ class DeploySettings:
     def declared(self) -> bool:
         """Whether this ``[cloud]`` block describes a *job* at all.
 
-        A repo-root toml that only points at an API (``api_url``/``org``) is
-        configuration, and `sync` must not deploy the whole repository as one
-        job because of it.
+        A toml that only points at an API (``api_url``/``org``) is
+        configuration, and is not deployed.
         """
         return bool(self.declared_fields())
 
@@ -543,9 +518,8 @@ def store_token(api_url: str, token: str, email: str | None) -> None:
 def resolve_token(explicit: str | None, api_url: str) -> str | None:
     """--token flag > TRILOGY_CLOUD_TOKEN env > stored credentials for this API.
 
-    The env var is the CI path: a runner has no credentials file, and passing
-    ``--token`` there puts the secret in argv, where process listings and any
-    command echo can read it.
+    The env var is the CI path: a runner has no credentials file, and a token
+    in argv is readable from process listings.
     """
     if explicit:
         return explicit
@@ -583,9 +557,8 @@ class CloudClient:
     ) -> Any:
         """The decoded JSON body, or ``None`` when the response is empty.
 
-        ``body`` may be pre-encoded bytes: ``jobs push`` measures its bundle
-        against the queue limit and sends exactly what it measured, rather than
-        serializing a multi-megabyte payload a second time.
+        ``body`` may be pre-encoded bytes, so a caller that measured a bundle
+        against the queue limit sends exactly what it measured.
         """
         url = f"{self.api_url}{path}"
         if isinstance(body, bytes):
@@ -796,9 +769,8 @@ def _fmt_schedule(schedule: ScheduleExt) -> str:
 def _file_count(files: Any) -> int:
     """How many inline files an entity carries.
 
-    ``files`` is untyped JSON on both sides of the wire (the column is a blob),
-    so a row holding ``null`` — every job in a workspace — and one holding an
-    object rather than a list both have to answer 0 instead of raising.
+    ``files`` is untyped JSON on the wire, so ``null`` (every job in a
+    workspace) and a non-list both answer 0 rather than raising.
     """
     return len(files) if isinstance(files, list) else 0
 
@@ -891,8 +863,7 @@ def parse_rewrite(
 def check_bundle_size(payload: dict) -> bytes:
     """The encoded payload, refused if it cannot fit in a queue message.
 
-    Returns the bytes so the caller sends exactly what was measured, instead of
-    serializing a multi-megabyte bundle twice.
+    Returns the bytes, so the caller sends exactly what was measured.
     """
     encoded = json.dumps(payload).encode("utf-8")
     budget = int(PUBSUB_MAX_BYTES * SAFETY_MARGIN)
@@ -969,8 +940,8 @@ def browser_login(api_url: str) -> str:
     """Run the OAuth loopback: local listener, browser to the API, token back.
 
     A fresh random nonce rides out in ``redirect_to`` (``cli:{port}:{nonce}``)
-    and must come back as ``state`` on the callback — the standard OAuth
-    loopback CSRF guard, enforced in the handler above.
+    and must come back as ``state`` on the callback; the handler above enforces
+    that.
     """
     result = _LoginResult()
     nonce = pysecrets.token_urlsafe(32)
@@ -1292,8 +1263,7 @@ def jobs_push(
     has mints nothing, so re-running this is idempotent.
 
     Settings not named on the command line are carried over from the job being
-    updated, so pushing an edited file is a change to the *source* and not a
-    silent reset of the job's operation, timeouts or secrets.
+    updated, so pushing an edited file changes the source only.
     """
     client, org = _org_client(ctx)
 
@@ -1391,16 +1361,13 @@ def jobs_push(
 def _carried_settings(existing: Job | None) -> dict[str, Any]:
     """The settings a write has to send back when it is updating a job.
 
-    ``PUT`` replaces a job's content wholesale — an omitted field is *cleared*,
-    not left alone — so every setting the caller was not told about has to be
-    read off the job being updated. Empty for a create, which falls through to
-    "let the platform decide" for everything but ``operation``.
+    ``PUT`` replaces a job's content wholesale — an omitted field is *cleared*
+    — so every setting the caller did not name is read off the job being
+    updated. Empty for a create, which leaves everything but ``operation`` to
+    the platform.
 
-    **Every content field on `Job` belongs here.** A field the model carries
-    but this dict omits is silently reset on every write, which is the exact
-    failure the "unspecified means carry" design exists to prevent; a field
-    here that `Job` does not model cannot be carried at all, so the two lists
-    are pinned against each other in `tests/cli/test_cloud.py`.
+    **Every content field on `Job` belongs here**, and nothing `Job` does not
+    model; `tests/cli/test_cloud.py` pins the two lists against each other.
     """
     if existing is None:
         return {}
@@ -1446,8 +1413,7 @@ def _apply_carried(
     entity being updated already holds.
 
     A field neither supplies is left out rather than sent as null, which on a
-    create is "let the platform decide". Shared by the job and workspace writes
-    so the two cannot drift on the rule.
+    create leaves it to the platform. Shared by the job and workspace writes.
     """
     for field in fields:
         value = declared.get(field)
@@ -1468,12 +1434,10 @@ def _job_payload(
 ) -> dict:
     """The body of a job create or update.
 
-    Shared by ``jobs push`` (which declares settings on the command line) and
-    ``cloud sync`` (which declares them in a ``[cloud]`` block) so the two
-    cannot drift on which fields survive an update — a divergence that does not
-    fail, it just quietly clears whatever the shorter list forgot.
+    Shared by ``jobs push`` (settings from the command line) and ``cloud sync``
+    (settings from a ``[cloud]`` block), so both send the same field set.
 
-    *declared* is "what the caller asked for", ``None`` meaning unspecified;
+    *declared* is what the caller asked for, ``None`` meaning unspecified;
     *extra* is for fields with no carried counterpart (``source_key``,
     ``environment_id``) and is sent verbatim.
     """
@@ -1497,10 +1461,8 @@ def _upsert_job(
 ) -> tuple[Job, str]:
     """Create or replace a job, and say which happened.
 
-    ``PUT`` replaces the job's *content* under its existing id. POSTing over an
-    existing job would leave the original in place with its schedules still
-    bound to it, so the edit would never run — the failure mode ``jobs push``
-    had for as long as it only created.
+    ``PUT`` replaces the job's *content* under its existing id, so its
+    schedules stay bound to the job the edit landed on.
     """
     if existing is None:
         return client.post_one(f"/orgs/{org}/jobs", Job, encoded), "created"
@@ -1518,14 +1480,11 @@ def _existing_job(
 ) -> Job | None:
     """The one job of this name to update, or ``None`` to create a new one.
 
-    Ambiguity is refused rather than resolved: the platform puts no unique
-    constraint on job names, and picking one of several by recency would edit
-    whichever job happened to be touched last. That is the same reasoning the
-    cloud's own declarative deploy applies to duplicate names.
+    Job names carry no unique constraint platform-side, so several matches is
+    an error rather than a pick.
 
-    ``--create`` always creates, but still looks: making a second job of a name
-    that is already taken is the thing it is for, and also the thing worth
-    saying out loud — the schedules on the org keep pointing at the first one.
+    ``--create`` always creates, but still looks, and says so when the name is
+    already taken: the org's schedules keep pointing at the first job.
     """
     matches = [j for j in client.get_many(f"/orgs/{org}/jobs", Job) if j.name == name]
     if force_create:
@@ -1598,11 +1557,9 @@ def _report_push(
 def _is_contained_name(name: str) -> bool:
     """Whether *name* is a directory-relative path on **every** platform.
 
-    Judged against both flavours rather than the host's, because containment
-    is a property of the bundle, not of the machine unpacking it: ``C:/x`` is
-    an escape that a POSIX ``resolve()`` would quietly turn into a directory
-    named ``C:``, and ``a\\..\\..\\x`` likewise reads as one harmless filename
-    there. A name the push side never produces is refused wherever it lands.
+    Judged against both flavours rather than the host's: ``C:/x`` and
+    ``a\\..\\..\\x`` are escapes that a POSIX ``resolve()`` reads as ordinary
+    filenames.
     """
     flavours = [PureWindowsPath(name), PurePosixPath(name)]
     return not any(p.anchor or ".." in p.parts for p in flavours)
@@ -1611,16 +1568,12 @@ def _is_contained_name(name: str) -> bool:
 def _resolve_bundle_entries(dest: Path, files: Any) -> list[tuple[Path, str]]:
     """``(target, content)`` for every inline file, resolved against *dest*.
 
-    **Entry names are checked against the destination, not trusted.** They come
-    back from the platform as stored, and a name like ``../../.bashrc`` or an
-    absolute path would otherwise turn a fetch into an arbitrary file write.
-    The push side only ever produces directory-relative POSIX paths, so a name
-    that escapes is either corruption or an attack, and both deserve a refusal
-    rather than a best-effort sanitize.
+    **Entry names are checked against the destination, not trusted.** A name
+    that escapes *dest* — ``../../.bashrc``, an absolute path — is refused
+    rather than sanitized.
 
-    Every name is resolved *before* anything is written, so a bundle carrying
-    one bad entry leaves no half-unpacked directory behind — the refusal has to
-    be something you can act on, not something you then have to clean up after.
+    Every name is resolved before anything is written, so a bundle carrying one
+    bad entry leaves no half-unpacked directory behind.
     """
     root = dest.resolve()
     resolved: list[tuple[Path, str]] = []
@@ -1644,17 +1597,11 @@ def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path | None
     """Write a config and inline files under *dest*, mirroring the layout they
     were bundled from. Returns ``(file_count, config_path)``.
 
-    ``config`` of ``None`` writes no trilogy.toml at all — a workspace normally
-    has none (config stays on its jobs until pytrilogy's ``--config-overlay``
-    ships), and a file holding the four bytes ``null`` is not a config anyone
-    can edit or push back.
+    ``config`` of ``None`` writes no trilogy.toml at all, which is the normal
+    case for a workspace.
 
-    **Bytes land as stored** (``newline=""``). Python's text mode otherwise
-    rewrites every ``\\n`` as ``\\r\\n`` on Windows, so a fetch produced a file
-    that differed from the platform's copy on every line — invisible to a push
-    back, which reads with universal newlines and normalizes it again, and
-    glaring in the case the fetch is *for*: dropped over a checkout with
-    ``--force``, where it turns a two-line edit into a whole-file diff.
+    **Bytes land as stored** (``newline=""``), so a fetch is byte-identical to
+    the platform's copy rather than newline-translated on Windows.
     """
     entries = _resolve_bundle_entries(dest, files)
 
@@ -1677,12 +1624,8 @@ def _write_bundle(dest: Path, config: Any, files: Any) -> tuple[int, Path | None
 
 
 def _guard_destination(dest: Path, force: bool) -> None:
-    """Refuse a non-empty destination unless *force*.
-
-    The natural mistake is fetching over a checkout and silently reverting
-    local edits to whatever the cloud last received. Shared by both fetches so
-    the two cannot answer the question differently.
-    """
+    """Refuse a non-empty destination unless *force*, so a fetch does not
+    revert local edits. Shared by both fetch commands."""
     if dest.exists() and any(dest.iterdir()) and not force:
         raise CloudError(
             f"{dest} is not empty; pass --force to write into it. (Fetching over "
@@ -1695,8 +1638,7 @@ def _find_workspace(
 ) -> Workspace:
     """Resolve a workspace reference against an already-fetched list.
 
-    No ambiguity to refuse, unlike ``_find_job``: the platform makes workspace
-    names unique per org, which is also why ``cloud sync`` matches them by name.
+    Workspace names are unique per org, so there is no ambiguity to refuse.
     """
     for workspace in workspaces_:
         if workspace.id == name_or_id or workspace.name == name_or_id:
@@ -1709,16 +1651,11 @@ def _workspace_chain(
 ) -> list[Workspace]:
     """The chain above a job or workspace, **nearest first**.
 
-    Resolved against one already-fetched list rather than by walking the API:
-    the list and detail routes return the same struct, files included, so a
-    chain costs one request however deep it is.
+    Resolved against one already-fetched list, so a chain costs one request
+    however deep it is.
 
-    A parent the caller cannot see (deleted mid-read, or a chain that crosses
-    into another org) ends the walk rather than failing it — the point of the
-    walk is to materialize what there is, and a partial tree is a better answer
-    to "give me this job's files" than a refusal. Depth and a visited set bound
-    it: the platform refuses cycles at the write, but a client that trusted
-    that alone would spin forever on a database repaired by hand.
+    A parent the caller cannot see ends the walk rather than failing it. Depth
+    and a visited set bound the walk against a cycle.
     """
     by_id = {w.id: w for w in workspaces_}
     chain: list[Workspace] = []
@@ -1737,12 +1674,9 @@ def _workspace_chain(
 def _merge_chain_files(layers: Sequence[Any]) -> list[dict]:
     """Flatten file layers given **nearest first** into one bundle.
 
-    Nearest to the job wins on a path collision, which is the platform's own
-    resolution rule (`db/workspace_resolution.py`): a job's copy of
-    ``model.preql`` shadows its workspace's, and a workspace's shadows its
-    parent's. Applied by writing the layers in reverse and letting the nearer
-    one overwrite, so the merged bundle is what the executor would actually
-    see rather than a union in arbitrary order.
+    Nearest wins on a path collision, matching the platform's own resolution
+    (`db/workspace_resolution.py`): a job's copy of ``model.preql`` shadows its
+    workspace's, and a workspace's shadows its parent's.
     """
     merged: dict[str, str] = {}
     for layer in reversed(list(layers)):
@@ -1780,20 +1714,17 @@ def jobs_fetch(
 
     The inverse of ``jobs push``: the job's ``trilogy.toml`` and every inline
     file land at their bundled paths, so the result is a working project you
-    can run, edit and push back. Round-trips exactly — the bundle is stored as
-    sent, and re-pushing an unedited fetch mints no version.
+    can run, edit and push back. Re-pushing an unedited fetch mints no version.
 
     A job **in a workspace carries no files of its own**: the workspace holds
     the whole tree and the job names the one script it runs. Fetching one
-    without ``--resolved`` therefore writes a config and nothing else, and says
-    where the files actually are. ``--resolved`` materializes the whole chain
-    (nearest wins on a collision, as the executor sees it), which makes the
-    directory runnable and makes it the *workspace's* content rather than this
-    job's — push edits back with ``workspaces push``.
+    without ``--resolved`` writes a config and nothing else, and says where the
+    files are. ``--resolved`` materializes the whole chain (nearest wins on a
+    collision, as the executor sees it), which makes the directory runnable and
+    makes it the *workspace's* content rather than this job's — push edits back
+    with ``workspaces push``.
 
-    Refuses a non-empty destination unless ``--force``, because the natural
-    mistake is fetching over a checkout and silently reverting local edits to
-    whatever the cloud last received.
+    Refuses a non-empty destination unless ``--force``.
     """
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
@@ -1837,11 +1768,8 @@ def jobs_fetch(
 def _report_chain(chain: Sequence[Workspace], resolved: bool) -> None:
     """Say what the workspace chain contributed, or would have.
 
-    An unresolved fetch of a workspace-bound job writes a config and no files,
-    and an empty directory is a bad way to learn that a job's tree lives
-    somewhere else. A resolved one is the opposite problem: it looks like a
-    bundle and is not one, so the warning names the command that *does* accept
-    those edits back.
+    Unresolved, it names where the job's files live; resolved, it names the
+    command that accepts edits to them back.
     """
     if not chain:
         return
@@ -1914,6 +1842,55 @@ def jobs_run(
         _report_finished_run(org, finished, logs=logs)
 
 
+@jobs.command("delete")
+@click.argument("jobs_args", metavar="JOB...", nargs=-1, required=True)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
+@click.pass_context
+def jobs_delete(ctx: click.Context, jobs_args: tuple[str, ...], yes: bool) -> None:
+    """Delete one or more jobs (by name or id), with their run history.
+
+    Names and ids may be mixed. A name matching more than one job is an error
+    naming the ids, since a name cannot address either of them.
+
+    Deletes any schedule left bound to nothing but these jobs; a schedule that
+    also binds a surviving job is left alone.
+    """
+    client, org = _org_client(ctx)
+    known = client.get_many(f"/orgs/{org}/jobs", Job)
+    # By id, so naming one job twice deletes it once rather than 404ing on the
+    # second pass.
+    targets = {job.id: job for job in (_find_job(known, org, j) for j in jobs_args)}
+    if not yes:
+        click.confirm(
+            f"Delete {len(targets)} job(s): "
+            + ", ".join(sorted(job.name for job in targets.values()))
+            + "?",
+            abort=True,
+        )
+    for job in targets.values():
+        client.delete(f"/orgs/{org}/jobs/{job.id}")
+        print_success(f"Deleted job {job.name!r} ({job.id})")
+    _delete_emptied_schedules(client, org, set(targets))
+
+
+def _delete_emptied_schedules(
+    client: CloudClient, org: str, deleted_ids: set[str]
+) -> None:
+    """Delete every schedule whose bound jobs were all just deleted.
+
+    Matched on ``job_ids`` only, so a schedule whose bindings came back empty —
+    which is what an API older than that field answers with — is left alone
+    rather than read as binding nothing.
+    """
+    for schedule in client.get_many(f"/orgs/{org}/schedules", ScheduleExt):
+        if schedule.job_ids and set(schedule.job_ids) <= deleted_ids:
+            client.delete(f"/orgs/{org}/schedules/{schedule.id}")
+            print_info(
+                f"  removed schedule {schedule.name!r}, which bound only "
+                "deleted jobs"
+            )
+
+
 @jobs.command("versions")
 @click.argument("job")
 @click.option(
@@ -1923,9 +1900,8 @@ def jobs_run(
 def jobs_versions(ctx: click.Context, job: str, limit: int) -> None:
     """Version history of a job (by name or id), newest first.
 
-    A version is minted by every content-changing push; rolling back is
-    pushing an old version's content again, which mints a new version rather
-    than rewriting history.
+    A version is minted by every content-changing push. Rolling back is pushing
+    an old version's content again, which mints a new version.
     """
     client, org = _org_client(ctx)
     found = _find_job(client.get_many(f"/orgs/{org}/jobs", Job), org, job)
@@ -1964,12 +1940,8 @@ def workspaces_list(ctx: click.Context) -> None:
 @click.argument("workspace")
 @click.pass_context
 def workspaces_jobs(ctx: click.Context, workspace: str) -> None:
-    """List the jobs that run out of a workspace.
-
-    Which is what a workspace is *for*, and the question a fetch raises: the
-    tree on disk is shared, so what each job does with it is the entrypoint it
-    names and nothing else.
-    """
+    """List the jobs that run out of a workspace, with the entrypoint each
+    one executes."""
     client, org = _org_client(ctx)
     found = _find_workspace(
         client.get_many(f"/orgs/{org}/workspaces", Workspace), org, workspace
@@ -2014,14 +1986,13 @@ def workspaces_fetch(
     multi-job project: the whole tree lands at its bundled paths and the jobs
     that run out of it are listed, each with the script it executes.
 
-    Round-trips exactly — only the workspace's *own* files are written, so
-    pushing an unedited fetch mints no version. ``--resolved`` adds what it
-    inherits from its parent, which makes the directory runnable and makes it
-    no longer this workspace's content.
+    Only the workspace's *own* files are written, so pushing an unedited fetch
+    mints no version. ``--resolved`` adds what it inherits from its parent,
+    which makes the directory runnable and makes it no longer this workspace's
+    content.
 
-    A workspace usually has no ``trilogy.toml`` of its own: config layering
-    needs pytrilogy's ``--config-overlay``, so ``cloud sync`` leaves config on
-    the jobs. Nothing is written for it when there is none.
+    A workspace usually has no ``trilogy.toml`` of its own; nothing is written
+    for it when there is none.
     """
     client, org = _org_client(ctx)
     all_workspaces = client.get_many(f"/orgs/{org}/workspaces", Workspace)
@@ -2128,13 +2099,11 @@ def workspaces_push(
     """Push a local directory to a workspace, creating or updating it.
 
     The write half of the loop ``workspaces fetch`` opens, and where edits to a
-    shared tree belong: the jobs that run out of the workspace carry no files,
-    so pushing the tree to *them* would give each a private copy of it.
+    shared tree belong: the jobs that run out of the workspace carry no files.
 
-    Matched by name, which the platform makes unique per org — the same key
-    ``cloud sync`` deploys against, so this and a sync of the same project
-    write the same row. Settings not named on the command line are carried
-    over from the workspace being updated, since a ``PUT`` replaces content
+    Matched by name, which is unique per org and the same key ``cloud sync``
+    deploys against. Settings not named on the command line are carried over
+    from the workspace being updated, since a ``PUT`` replaces content
     wholesale.
     """
     client, org = _org_client(ctx)
@@ -2249,9 +2218,8 @@ WORKSPACE_CARRIED_FIELDS = (
 def _carried_workspace_settings(existing: Workspace | None) -> dict[str, Any]:
     """The settings a workspace write has to send back when it is updating one.
 
-    The workspace twin of `_carried_settings`, and typed the same way rather
-    than read off the model by name: a key here that the model does not carry
-    is a mypy error instead of a field that silently never carries.
+    The workspace twin of `_carried_settings`, spelled out field by field so a
+    key the model does not carry is a mypy error.
     """
     if existing is None:
         return {}
@@ -2276,9 +2244,8 @@ def _workspace_payload(
 ) -> dict:
     """The body of a workspace create or update.
 
-    *declared* is "what the caller asked for", ``None`` meaning unspecified and
-    therefore carried off *existing*. ``config`` is carried the same way: a
-    workspace that has one keeps it unless the push supplies a replacement.
+    *declared* is what the caller asked for, ``None`` meaning unspecified and
+    therefore carried off *existing*. ``config`` is carried the same way.
     """
     payload: dict = {"name": name, "files": files}
     if config_text is not None:
@@ -2350,9 +2317,8 @@ def runs_list(
 ) -> None:
     """Recent runs across the org's jobs.
 
-    Filtered server-side, because the route answers with the newest N runs:
-    a backfill or a burst of successes otherwise evicts every failure — and
-    every scheduled run — from the window before the client ever sees them.
+    Filtered server-side: the route answers with the newest N runs, so a
+    client-side filter would only see what fits that window.
     """
     client, org = _org_client(ctx)
     query = {"limit": str(max(1, min(limit, RUNS_MAX_LIMIT)))}
@@ -2362,8 +2328,8 @@ def runs_list(
         query["source"] = source_filter
     path = f"/orgs/{org}/jobs/runs?{urlencode(query)}"
     rows = client.get_many(path, JobRunExt)
-    # Naming the filters in the empty message: "no runs at all" and "none that
-    # match" are different answers, and only one of them is alarming.
+    # The empty message names the filters, so "no runs at all" and "none that
+    # match" read differently.
     applied = ", ".join(
         part
         for part in (
@@ -2417,11 +2383,7 @@ def _print_run_logs(run: JobRunExt) -> None:
 def _report_finished_run(org: str, run: JobRunExt, logs: bool = False) -> None:
     """Render a finished run and make a non-success fail the command.
 
-    Exiting non-zero is the entire point of ``--wait`` in CI: a workflow step
-    that reports green over a failed job is worse than no wait at all. A
-    failure also prints the log tail unasked, because the alternative is a
-    workflow that says only "it failed" and a second round trip to find out
-    why — with a run id the operator has to scrape out of the first one.
+    A failure prints the log tail whether or not it was asked for.
     """
     failed = run.status != SUCCESS_RUN_STATUS
     if is_json_mode():
@@ -2556,12 +2518,10 @@ def schedules_delete(ctx: click.Context, schedule_id: str) -> None:
     print_success(f"Deleted schedule {schedule_id}")
 
 
-#: Directory positions a sync refuses to read as a project even when they carry
-#: a declared ``[cloud]`` block: fixtures and scratch, not deployments. Narrower
-#: than `DEFAULT_EXCLUDE`, which also filters *files* out of a bundle — a
-#: directory cannot be a ``*.pyc``. A skip here is always reported; a project
-#: that vanishes from a deploy with no explanation is worse than one that
-#: deploys by mistake.
+#: Directory positions a sync refuses to read as a project even when they
+#: carry a declared ``[cloud]`` block: fixtures and scratch, not deployments.
+#: Narrower than `DEFAULT_EXCLUDE`, which also filters *files* out of a
+#: bundle. A skip here is always reported.
 DISCOVERY_EXCLUDE = ("*/__pycache__/*", "*/.venv/*", "*/tests/*", "*/test_*")
 
 
@@ -2587,28 +2547,19 @@ class DeployableProject:
     @property
     def exclude(self) -> tuple[str, ...]:
         """Declared excludes *add* to the defaults, the same way
-        ``jobs push --exclude`` does: the defaults exist to keep caches and
-        virtualenvs out of a bundle, and nobody excluding `debug.preql` means
-        to let `.venv` back in."""
+        ``jobs push --exclude`` does."""
         return DEFAULT_EXCLUDE + (self.settings.exclude or ())
 
 
 def derive_job_name(root: Path, directory: Path) -> str:
     """A job's name when its ``[cloud]`` block declares none.
 
-    ``duckdb/covid19_open_data/data`` -> ``duckdb-covid19_open_data-data``. The
-    whole relative path rather than the leaf, because leaves collide constantly
-    in a models repo — half of them are called ``data``. Which is also the
-    limit of what a path can say: a project that *is* its own repository has no
-    path under the root to speak of and gets the bare directory name, so
-    ``sf_tree_reporting/data`` synced from ``data`` deploys a job called
-    ``data``. That is what ``[cloud] name`` is for.
+    The whole relative path, not the leaf: ``duckdb/covid19_open_data/data`` ->
+    ``duckdb-covid19_open_data-data``. A project synced from its own root has
+    no path under the root and gets the bare directory name, which is what
+    ``[cloud] name`` is for.
 
-    The name is display only — ``source_key`` is what a sync matches on — but
-    both are path-derived by default, so a *move* is a new job either way (a
-    declared name does not change that: identity is not declarable). What
-    identity buys is stability across branches and commits, which is what
-    groups a branch's job under the mainline job it forked from.
+    The name is display only; ``source_key`` is what a sync matches on.
     """
     relative = directory.resolve().relative_to(root.resolve())
     parts = [p for p in relative.parts if p not in (".", "")]
@@ -2636,16 +2587,14 @@ def _reject_nested(found: Sequence[DeployableProject]) -> None:
 
     The outer one's bundle would swallow the inner one's whole tree and both
     would deploy, so the same files run twice under two names. There is no
-    reading of that which is obviously intended, and guessing which the author
-    meant is worse than saying so.
+    reading of that which is obviously intended.
     """
     for outer in found:
         for inner in found:
             if inner is outer:
                 continue
-            # Several jobs declared by one toml share a directory on purpose —
-            # that is what `[[cloud.job]]` is — and each takes the slice of it
-            # its own include/exclude describes.
+            # Several jobs declared by one toml share a directory on purpose,
+            # each taking the slice its own include/exclude describes.
             if inner.config_path == outer.config_path:
                 continue
             if inner.directory.resolve().is_relative_to(outer.directory.resolve()):
@@ -2660,13 +2609,9 @@ def _reject_nested(found: Sequence[DeployableProject]) -> None:
 def _reject_duplicate_names(found: Sequence[DeployableProject]) -> None:
     """Refuse a sync where two projects would deploy under one name.
 
-    Path-derived names cannot collide — the path is unique and nesting is
-    already refused — so this is the guard that comes with letting a toml
-    declare one. Both jobs would still deploy (identity is `source_key`, which
-    stays distinct), and nothing would break; they would simply be
-    indistinguishable in every list, every run row and every schedule binding,
-    including the one `_reconcile_schedule` reports on. Saying so at discovery
-    costs nothing and is the only moment both files are in view.
+    Only a declared name can collide; a path-derived one cannot. Both jobs
+    would deploy — identity is `source_key` — but would be indistinguishable in
+    every list, run row and schedule binding.
     """
     by_name: dict[str, list[DeployableProject]] = {}
     for project in found:
@@ -2686,15 +2631,12 @@ def _job_entries(
 ) -> list[DeploySettings]:
     """The ``[[cloud.job]]`` entries of one toml, each merged over *defaults*.
 
-    Empty when the file declares none, which is the single-job form and every
-    toml written before this existed.
+    Empty when the file declares none, which is the single-job form.
 
-    ``key`` and ``name`` are both required per entry, and the reason is the
-    same one that makes them different from each other: the path can no longer
-    tell two jobs apart. `key` is the identity a sync upserts on (immutable —
-    changing it deploys a new job and orphans the old), `name` is what the job
-    is called (free to change, which is the whole point of declaring it). A
-    directory deploying four jobs cannot derive either from the directory.
+    ``key`` and ``name`` are both required per entry, since the path can no
+    longer tell two jobs apart: `key` is the identity a sync upserts on
+    (immutable — changing it deploys a new job and orphans the old), `name` is
+    what the job is called.
     """
     raw = table.get(JOB_ARRAY_KEY)
     if raw is None:
@@ -2751,18 +2693,12 @@ def discover_projects(root: Path) -> list[DeployableProject]:
 
     Deployable means "has a trilogy.toml whose ``[cloud]`` block declares at
     least one deployment key". A toml that only names an API and an org is
-    configuration — the repo-root one usually is — and deploying the whole
-    repository as one job because of it would be a surprising way to find that
-    out.
+    configuration and is not deployed.
 
-    A toml may also declare **several** jobs over one directory, as
+    A toml may declare **several** jobs over one directory, as
     ``[[cloud.job]]`` entries, each with its own identity, name and bundle
-    filters. That exists because a directory holds exactly one `trilogy.toml`,
-    so "one toml, one job" made a pipeline of a refresh plus the jobs that
-    publish its output impossible to declare — and the platform now orders
-    jobs *within a schedule*, which is the shape those pipelines want. The
-    entries share the directory and the block's defaults; each takes the slice
-    of the tree its `include`/`exclude` describes.
+    filters. The entries share the directory and the block's defaults; each
+    takes the slice of the tree its `include`/`exclude` describes.
     """
     found: list[DeployableProject] = []
     for config_path in sorted(root.rglob("trilogy.toml")):
@@ -2824,26 +2760,40 @@ def _resolve_sync_environment(
     explicit: str | None,
     create: bool,
 ) -> tuple[str | None, str | None, bool]:
-    """``(environment_id, environment_name)`` for this sync.
+    """``(environment_id, environment_name, exists)`` for this sync.
 
     *origin* is the sync **root's**, not any one project's: the environment is
-    a property of the checkout being deployed, and a root spanning a submodule
-    would otherwise take its branch from whichever project sorted first.
+    a property of the checkout being deployed.
 
     ``--environment`` wins; otherwise the branch decides, and a default branch
     (or no branch at all) means production, which has no row and always
-    "exists". The environment is created on demand — the create route is
-    idempotent, so CI calling this on every push costs one extra request and
-    needs no separate setup step.
+    "exists". The environment is created on demand, through an idempotent
+    route, so no separate setup step is needed.
 
-    ``create=False`` is what makes ``--dry-run`` truthful. Creating the
-    environment is a write, and a dry run that quietly left a new row behind is
-    precisely what the flag promises not to do — so the dry path *looks the
-    name up* instead, and reports an absent environment rather than making one.
+    An empty *explicit* is production, which is what ``--production`` resolves
+    to and what ``--environment "$(trilogy cloud env label)"`` resolves to on a
+    default branch.
+
+    Every non-empty name is an environment of that name, with no reserved
+    words: ``--environment production`` targets an environment called
+    `production`. A name that is not a valid identifier is refused rather than
+    created, since it prefixes managed tables and suffixes managed files.
+
+    ``create=False`` is what makes ``--dry-run`` truthful: it looks the name up
+    instead of creating it, and reports an absent environment.
     """
-    label = explicit if explicit is not None else origin.environment_label()
+    label = (explicit if explicit is not None else origin.environment_label()) or ""
+    label = label.strip()
     if not label:
         return None, None, True
+    if explicit is not None and not is_valid_environment_name(label):
+        raise CloudError(
+            f"{label!r} cannot be an environment name: it prefixes managed "
+            "tables and suffixes managed files, so it must be letters, digits "
+            "and underscores, starting with a letter or underscore. "
+            "`trilogy cloud env label <branch>` prints the name a branch maps "
+            "to."
+        )
     if not create:
         for existing in client.get_many(f"/orgs/{org}/environments", EnvironmentExt):
             if existing.name == label:
@@ -2872,8 +2822,17 @@ def _resolve_sync_environment(
     "--environment",
     "environment_flag",
     default=None,
-    help="Deployment environment to sync into. Default: derived from the git "
-    "branch, with a default branch (main/master) meaning production.",
+    help="Deployment environment to sync into: an existing one is updated and "
+    "a new name is created. Empty ('') means production, so a CI step can pass "
+    "`$(trilogy cloud env label)` on every branch. Default: derived from the "
+    "git branch, with a default branch (main/master) meaning production.",
+)
+@click.option(
+    "--production",
+    is_flag=True,
+    help="Sync into production from any checkout, updating production's own "
+    "jobs. Production has no environment to name, so this is how a branch "
+    "checkout targets it.",
 )
 @dry_run_option("Report what would change and write nothing.")
 @click.option(
@@ -2888,6 +2847,7 @@ def cloud_sync(
     ctx: click.Context,
     root: Path,
     environment_flag: str | None,
+    production: bool,
     dry_run: bool,
     prune: bool,
 ) -> None:
@@ -2914,25 +2874,39 @@ def cloud_sync(
     this command's own upsert) goes through its id or its ``source_key``.
 
     *Identity* is not declarable. It comes from the repository and
-    subdirectory the project lives in (``source_key``), which is what groups a
-    branch's job under the production job it forked from — stable across
-    branches and commits, which a name is not.
+    subdirectory the project lives in (``source_key``), stable across branches
+    and commits, which is what groups a branch's job under the production job
+    it forked from.
 
-    It is **not** stable across a move. Identity is derived from the path, so
-    relocating a directory deploys a new job and leaves the old one behind with
-    its run history; ``--prune`` is what clears it out. A declared name does
-    not change that — it renames the job, it does not move it.
+    It is **not** stable across a move: relocating a directory deploys a new
+    job and leaves the old one behind with its run history, which ``--prune``
+    clears out. A declared name renames a job, it does not move it.
 
     Which environment it syncs into comes from the current branch, so the same
     command in CI deploys main to production and a feature branch to its own
-    namespace.
+    namespace. ``--environment`` overrides that and targets rather than forks:
+    it updates the named environment's jobs, creating the environment if it
+    does not exist.
+
+    **Production is reached by ``--production``, not by naming it.** A job with
+    no environment is a production job, so production has no environment for
+    ``--environment`` to name — `production` there is an environment called
+    `production`, like any other name. ``--environment ""`` means production
+    too, for a CI step that templates the flag from ``env label``.
 
     **Existing jobs are not adopted by name.** A job the platform holds with no
     ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
-    to this command and will be duplicated rather than updated. Move or delete
-    those deliberately; a one-shot automatic migration is not worth carrying.
+    to this command and will be duplicated rather than updated.
     """
     client, org = _org_client(ctx)
+    if production and environment_flag is not None:
+        raise CloudError(
+            "--production and --environment name different targets; pass one."
+        )
+    # Resolved to the empty explicit rather than carried separately, so both
+    # spellings take one path.
+    if production:
+        environment_flag = ""
     projects = discover_projects(root)
     if not projects:
         raise CloudError(
@@ -3074,9 +3048,8 @@ def _sync_summary(
     """The closing line, counting what actually happened.
 
     A dry run reports creates and updates separately and says nothing about
-    "unchanged": it never sent a ``PUT``, so it cannot know whether one would
-    have minted a version, and rolling both into a single "changed" count while
-    reporting every project as unchanged is worse than not counting at all.
+    "unchanged": having sent no ``PUT``, it cannot know whether one would have
+    minted a version.
     """
     tally = Counter(str(r["action"] if dry_run else r["outcome"]) for r in results)
     suffix = f", {pruned} pruned" if pruned is not None else ""
@@ -3100,11 +3073,9 @@ def _prune_stale(
 ) -> int:
     """Delete jobs in this environment whose source directory is gone.
 
-    **Scoped to the repositories ROOT actually covers.** A `source_key` is
-    ``{location}#{subpath}``, and an org routinely holds jobs synced from more
-    than one repository into the same environment; pruning on "not in this
-    root's project list" alone would delete every one of them, from a command
-    whose help says it removes directories that went away.
+    **Scoped to the repositories ROOT actually covers**, by the location half
+    of each `source_key` (``{location}#{subpath}``), so jobs synced into the
+    same environment from another repository are left alone.
     """
     live = {p.source_key for p in projects}
     locations = {p.origin.location for p in projects}
@@ -3130,31 +3101,19 @@ def _ensure_workspace(
     """Create or update the workspace a multi-job project deploys into, and
     say which happened.
 
-    **The workspace holds the whole tree.** Its jobs carry no files at all —
-    only which script of it they run — which is the arrangement the platform's
-    `entrypoint` exists to allow. Before it, a job executed its entire workdir,
-    so every job needed its own disjoint copy of the project and a workspace
-    could not hold a shared model layer at all: `refresh` adopts every managed
-    datasource it can reach, and a model file visible to a refresh job would
-    become one of its targets whether or not another job owned it.
+    **The workspace holds the whole tree.** Its jobs carry no files at all,
+    only which script of it they run.
 
-    `config` deliberately stays on the *jobs* rather than moving here.
-    Workspace config layering needs pytrilogy's `--config-overlay`, which has
-    not shipped (docs/handoff-pytrilogy-config-overlay.md in the platform
-    repo); a job inheriting workspace config fails today on the unknown flag.
-    Files are the part that can move, and the part worth moving.
+    `config` stays on the *jobs*: workspace config layering needs pytrilogy's
+    `--config-overlay`, which has not shipped. Files are the part that moves.
 
-    Matched by name, which is what the platform makes unique per org. There is
-    no `source_key` on a workspace, so a renamed one is a new workspace and the
-    old one is left behind — the same trade a moved directory makes, and
+    Matched by name, which is unique per org. A workspace has no `source_key`,
+    so a renamed one is a new workspace and the old one is left behind;
     `--prune` does not cover it.
 
     Everything a sync does not declare is **carried** off the workspace being
-    updated, through the same payload builder `workspaces push` uses. A `PUT`
-    replaces a workspace wholesale, and this body names only the tree: sending
-    it bare cleared the parameters, secrets and resource defaults of every
-    workspace it touched, on every sync, silently — the failure the job side's
-    `_carried_settings` has always existed to prevent.
+    updated, through the payload builder `workspaces push` uses, since a `PUT`
+    replaces a workspace wholesale and this body names only the tree.
     """
     existing = next(
         (
@@ -3251,15 +3210,12 @@ def _sync_one(
             "outcome": f"would {action}",
         }, None
 
-    # A job's workspace is *identity*, so a content PUT deliberately leaves it
-    # alone — an existing job never moves into the workspace this sync just
-    # built unless it is rebound explicitly, and a migrated project would
-    # otherwise keep self-contained jobs beside a workspace nothing reads.
+    # A job's workspace is *identity*, so a content PUT leaves it alone and an
+    # existing job has to be rebound explicitly.
     #
     # **Before** the content write, not after: the API resolves the entrypoint
-    # against the job's *current* chain, so a job still unbound is a job whose
-    # files are the empty set the PUT is about to install — and the entrypoint
-    # names a file that, from where the API is standing, exists nowhere.
+    # against the job's *current* chain, so an unbound job has no file the
+    # entrypoint could name.
     if (
         found is not None
         and workspace_id is not None
@@ -3283,14 +3239,9 @@ def _sync_one(
             "It is running a build from before job names could be declared."
         )
 
-    # Schedules belong to production only. A branch environment inheriting the
-    # declared cron would fire branch builds on production's cadence from the
-    # moment it was created — running, and billing, continuously for as long as
-    # the branch is open, without anyone asking for a single one of those runs.
-    # A branch job is triggered deliberately (`jobs run`, or CI). This is also
-    # what keeps the binding match unambiguous: derived names are identical
-    # across environments, so if both had schedules, `job_names == [job.name]`
-    # could not tell one environment's from another's.
+    # Schedules belong to production only; a branch job is triggered by hand
+    # or by CI. It also keeps the binding match unambiguous, since derived
+    # names are identical across environments.
     if env_id is not None and project.settings.schedule:
         print_info(
             f"    {'unscheduled':>12}  {project.name} "
@@ -3315,44 +3266,24 @@ def _reconcile_schedule(
 ) -> None:
     """Bring one group's schedule in line with what its config declares.
 
-    A *group* is the jobs one toml declares on one cron — usually one job, and
-    several when a ``[[cloud.job]]`` array puts a refresh and the jobs that
-    publish its output on the same cadence. They share a schedule **row** on
-    purpose: the platform fires a schedule as a single tick and orders that
-    tick by what each job reads and writes, so a shared row is what makes the
-    publish wait for the refresh instead of racing it. A schedule each would
-    put them in separate firings with only wall clock between them.
+    A *group* is the jobs one toml declares on one cron. They share a schedule
+    **row**: the platform fires a schedule as a single tick and orders that
+    tick by what each job reads and writes, so a shared row is what makes a
+    publish wait for the refresh it reads instead of racing it.
 
-    **Matched by binding — by job id, not by name.** A schedule this sync owns
-    is one bound to this job *and to nothing else*; its own name is incidental.
-    Matching on the bound job's name looks equivalent and is not, now that
-    ``[cloud] name`` can rename a job in place: the org's schedules are listed
-    *before* the job is PUT, so on the sync that renames, every schedule still
-    reports the old name, the one this job already has goes unrecognized, and a
-    second is created beside it. The job then fires twice a day — the same
-    failure `jobs push` had when it created instead of updating.
-
-    Falls back to the name for a schedule whose ``job_ids`` came back empty,
-    which is what an API older than that field looks like. Same answer as
-    before for every case that existed then, and no crash against a deployment
-    that has not rolled yet.
+    **Matched by binding — by job id, not by name.** Schedules are listed
+    before any job is PUT, so a sync that renames a job would not recognize its
+    own row by name. Falls back to names for a schedule whose ``job_ids`` came
+    back empty, which is what an API older than that field answers with.
 
     **Ownership is "binds only jobs this toml declares", not "binds exactly
-    this group".** The difference is what happens the day a job is added: with
-    exact-set matching, yesterday's two-job schedule no longer matches today's
-    three-job group, goes unrecognized, and a second schedule is created beside
-    it — so the two original jobs fire *twice a tick*. That is the same
-    duplicate-schedule failure the rename bug had, reintroduced from the other
-    end, and it was live on dev for about a minute on 2026-08-14.
+    this group"**, so a schedule still matches after a job is added to or
+    removed from the toml. *owned* is every job this toml declares, across all
+    its groups; a schedule binding a job from outside it is left alone.
 
-    *owned* is every job this toml declares, across all its groups. A schedule
-    binding a job from outside it is somebody else's grouping and is left
-    alone; one binding a subset of it, and at least one job of this group, is
-    the row this sync wrote and is the row it replaces.
-
-    A declared cron that differs is replaced rather than edited — there is no
-    schedule update route — and an unchanged one is left untouched, so a sync
-    does not churn `next_run_at` and risk skipping a tick.
+    A declared cron that differs is replaced rather than edited, since there is
+    no schedule update route; an unchanged one is left untouched, so a sync
+    does not churn `next_run_at`.
 
     *schedules* is the org's list, fetched once by the caller.
     """
@@ -3381,10 +3312,9 @@ def _reconcile_schedule(
             print_info(f"    {'unscheduled':>12}  {label}")
         return
 
-    # "Already correct" means the cadence *and* the bindings match. Cadence
-    # alone is not enough now that ownership is broader than the group: a row
-    # left over from before a job was added has the right cron and the wrong
-    # jobs, and treating it as current is how the new job silently never runs.
+    # "Already correct" means the cadence *and* the bindings match: ownership
+    # is broader than the group, so a row can have the right cron and the
+    # wrong jobs.
     def binds_this_group(s: ScheduleExt) -> bool:
         return set(s.job_ids) == ids if s.job_ids else set(s.job_names) == names
 
@@ -3421,8 +3351,7 @@ def cloud_env() -> None:
     prefixes its managed tables and suffixes its managed files with the
     environment's name — so a branch can run against the cloud without building
     over production. The default environment is the *absence* of one: jobs with
-    no environment build unprefixed production addresses, which is what every
-    job did before this existed.
+    no environment build unprefixed production addresses.
     """
 
 
@@ -3457,16 +3386,14 @@ def env_label(branch: str | None) -> None:
     """Print the environment label a branch maps to, and nothing for a default
     branch.
 
-    Purely local — it contacts no API and needs no login, which is what makes
-    it usable in a CI step that runs before (or instead of) a deploy.
-
-    The sanitizing is lossy and digest-suffixed, so anything that needs the
-    label — a CI teardown step, a script — has to ask rather than derive it
-    again and get it subtly different. Reads the current checkout's branch when
+    Purely local: it contacts no API and needs no login, so a CI step can run
+    it before or instead of a deploy. Reads the current checkout's branch when
     none is given.
 
-    Exits 0 either way: "this is main, there is no environment" is an answer,
-    not a failure, and a teardown step should not fail the workflow over it.
+    The sanitizing is lossy and digest-suffixed, so anything that needs the
+    label should ask for it here rather than derive it again.
+
+    Exits 0 either way; a default branch simply prints nothing.
     """
     if branch is None:
         branch = resolve_origin(Path.cwd()).branch
@@ -3517,11 +3444,9 @@ def env_fork(
 ) -> None:
     """Fork SOURCE's jobs into a new environment NAME.
 
-    SOURCE is an environment id, or ``default`` for production — forking "what
-    is running now" is the common case, and production has no row of its own.
-    Copies jobs only: run history belongs to the job that produced it, and an
-    inherited schedule would start firing branch builds on production's cadence
-    the moment the fork existed.
+    SOURCE is an environment id, or ``default`` for production, which has no
+    row of its own. Copies jobs only: run history stays with the job that
+    produced it, and the fork's jobs start unscheduled.
     """
     client, org = _org_client(ctx)
     result = client.post(
@@ -3541,27 +3466,67 @@ def env_fork(
 @click.option(
     "--with-jobs",
     is_flag=True,
-    help="Delete the environment's jobs, their runs and their schedules too. "
-    "Without this the jobs are left behind, pointing at production.",
+    help="Delete the environment's jobs, their runs and their schedules too.",
+)
+@click.option(
+    "--keep-jobs",
+    is_flag=True,
+    help="Delete only the environment record. Its jobs fall back into "
+    "production and keep firing on their own schedules — say so deliberately.",
 )
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.pass_context
-def env_delete(ctx: click.Context, name: str, with_jobs: bool, yes: bool) -> None:
+def env_delete(
+    ctx: click.Context, name: str, with_jobs: bool, keep_jobs: bool, yes: bool
+) -> None:
     """Delete an environment by name — the teardown for a merged branch.
+
+    **An environment that holds jobs needs ``--with-jobs`` or ``--keep-jobs``.**
+    Deleting the record does not delete the jobs; it reparents them, and a job
+    with no environment is a production job — so ``--keep-jobs`` moves them
+    into production, schedules included, where they fire alongside production's
+    own jobs. An empty environment deletes with no flag.
 
     Warehouse assets the environment built are **not** touched: they are in the
     warehouse, not the platform, and dropping them is
     ``trilogy env delete <name> --drop-assets`` against the project itself.
     """
     client, org = _org_client(ctx)
+    if with_jobs and keep_jobs:
+        raise CloudError(
+            "--with-jobs and --keep-jobs ask for opposite things; pass one."
+        )
     env = _find_environment(client, org, name)
 
-    if with_jobs and not yes and env.job_count:
-        click.confirm(
-            f"Delete {env.job_count} job(s) in {env.name!r}, with their run "
-            "history and schedules?",
-            abort=True,
+    if env.job_count and not (with_jobs or keep_jobs):
+        raise CloudError(
+            f"Environment {env.name!r} holds {env.job_count} job(s), and "
+            "deleting it does not delete them — a job with no environment is a "
+            "production job, so they would run in production on the schedules "
+            "they have now. Pass --with-jobs to delete them with the "
+            "environment, or --keep-jobs to move them into production."
         )
+    if env.job_count and not yes:
+        prompt = (
+            f"Delete {env.job_count} job(s) in {env.name!r}, with their run "
+            "history and schedules?"
+            if with_jobs
+            else f"Move {env.job_count} job(s) out of {env.name!r} into "
+            "production, schedules included?"
+        )
+        click.confirm(prompt, abort=True)
+
+    # Read before the delete: afterwards they are ordinary production jobs,
+    # name-identical to the ones they were branched from.
+    moved = (
+        [
+            job
+            for job in client.get_many(f"/orgs/{org}/jobs", Job)
+            if job.environment_id == env.id
+        ]
+        if keep_jobs and env.job_count
+        else []
+    )
 
     query = "?cascade=jobs" if with_jobs else ""
     result = client.request("DELETE", f"/orgs/{org}/environments/{env.id}{query}") or {}
@@ -3574,6 +3539,15 @@ def env_delete(ctx: click.Context, name: str, with_jobs: bool, yes: bool) -> Non
             else f" ({env.job_count} job(s) left in production)"
         )
     )
+    if moved:
+        print_warning(
+            f"{len(moved)} job(s) now run in production on their existing "
+            "schedules: "
+            + ", ".join(
+                f"{job.name} ({job.id})" for job in sorted(moved, key=lambda j: j.name)
+            )
+            + ". Remove them with `trilogy cloud jobs delete <id>`."
+        )
 
 
 def _find_environment(client: CloudClient, org: str, name_or_id: str) -> EnvironmentExt:

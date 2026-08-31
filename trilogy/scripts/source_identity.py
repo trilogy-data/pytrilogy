@@ -17,26 +17,21 @@ Two things are derived from an origin and are load-bearing beyond provenance:
 against, and ``SourceOrigin.environment_label()``, the deployment namespace a
 non-default branch builds into.
 
-Deliberately stdlib-only and subprocess-free, for the same reason
-``project_config`` is: ``trilogy cloud`` must not pay for the executor stack
-to push a job, and must work on a machine where ``git`` is not installed. Git
-facts are read straight out of ``.git``.
+**Stdlib-only and subprocess-free**, like ``project_config``: ``trilogy
+cloud`` must not pay for the executor stack to push a job, and must work where
+``git`` is not installed. Git facts are read straight out of ``.git``.
 
 **Absolute paths never leave the machine.** With no git remote to name, a
 project's origin is ``local:<label>-<digest>`` — the label is the directory
-name, the digest is of the canonicalized path. That is exactly the studio
-store id's construction (``path_token``, called by ``serve.build_store_id``),
-so the same directory identifies itself consistently to a studio store and to
-the cloud, and neither carries a filesystem layout off the box.
+name, the digest is of the canonicalized path. That is the studio store id's
+construction (``path_token``, called by ``serve.build_store_id``), so one
+directory identifies itself the same way to a studio store and to the cloud.
 
-This is **not** ``trilogy.core.fingerprint``. That one hashes parsed model
-objects to answer "did the semantics change, and which datasources need
-rebuild"; it requires a parse, and it deliberately ignores changes that cannot
-affect a build. This one is provenance of bytes: it notices a comment edit,
-because a comment edit is a different bundle, and it never parses anything.
-Nor is it ``serve_helpers.state_cache.fingerprint_directory``, which hashes
-size and mtime rather than content on purpose — it runs on every cache read
-and must stay cheaper than the probe it guards.
+This is **not** ``trilogy.core.fingerprint``, which hashes parsed model objects
+to answer "did the semantics change"; this one is provenance of bytes, notices
+a comment edit, and never parses anything. Nor is it
+``serve_helpers.state_cache.fingerprint_directory``, which hashes size and
+mtime rather than content.
 """
 
 from __future__ import annotations
@@ -81,6 +76,10 @@ DEFAULT_BRANCHES: tuple[str, ...] = ("main", "master")
 #: `tests/cli/test_source_identity.py` imports both and asserts they agree,
 #: which is what keeps the duplication from drifting.
 _ENV_LABEL_DISALLOWED = re.compile(r"[^a-z0-9]+")
+
+#: The same rule stated positively, for a name that did not come from
+#: `environment_label` — one typed at the command line.
+_VALID_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 #: Slug length before the disambiguating digest. Kept short because the label
 #: is prepended to every managed table name and appended to every managed
@@ -167,25 +166,21 @@ def environment_label(
 ) -> str | None:
     """The deployment-environment name a branch builds into.
 
-    ``None`` for a default branch, and for no branch at all (a detached HEAD or
-    a non-repository directory has no branch to scope to). ``None`` means the
-    *production* namespace — unprefixed addresses — so the mapping is
-    deliberately conservative: an unrecognized state builds where it always did
-    rather than inventing a namespace nobody will think to clean up.
+    ``None`` for a default branch, and for no branch at all — a detached HEAD
+    or a non-repository directory has none to scope to. ``None`` means the
+    production namespace, which builds unprefixed addresses.
 
-    Everything else becomes ``<slug>_<digest>``, which is guaranteed to satisfy
-    the identifier rule the environment machinery enforces:
+    Everything else becomes ``<slug>_<digest>``, which always satisfies the
+    identifier rule the environment machinery enforces:
 
     * lowercased, with every run of non-alphanumerics collapsed to one ``_``
-    * trimmed of leading/trailing ``_`` (so it cannot start with one and read
-      as a private identifier) and capped at ``ENV_LABEL_SLUG_CHARS``
-    * prefixed ``b_`` when what survives starts with a digit, since an
-      identifier may not
-    * suffixed with a digest of the *original* branch name, because the
+    * trimmed of leading/trailing ``_`` and capped at ``ENV_LABEL_SLUG_CHARS``
+    * prefixed ``b_`` when what survives starts with a digit
+    * suffixed with a digest of the *original* branch name, since the
       collapsing is lossy and two branches must never share a namespace
 
-    A branch that sanitizes away entirely (``---``, or a non-Latin name) is not
-    an error: it keeps the digest alone, which is still a valid, unique label.
+    A branch that sanitizes away entirely (``---``, or a non-Latin name) keeps
+    the digest alone, which is still a valid, unique label.
     """
     if branch is None:
         return None
@@ -200,6 +195,15 @@ def environment_label(
     if slug[0].isdigit():
         slug = f"b_{slug}"
     return f"{slug}_{digest}"
+
+
+def is_valid_environment_name(name: str) -> bool:
+    """Whether *name* can be used as an environment.
+
+    Everything :func:`environment_label` builds satisfies this by
+    construction; a name typed by hand does not.
+    """
+    return bool(_VALID_ENV_NAME.match(name))
 
 
 def path_digest(directory: Path) -> str:
@@ -218,10 +222,8 @@ def path_token(directory: Path, label: str | None = None) -> str:
     about where the directory actually is.
 
     The digest rather than the path keeps the filesystem layout out of
-    anything that stores this — a studio client's storage keys, a cloud job's
-    recorded provenance. The label is a courtesy for humans reading it back
-    and carries no identity of its own, so a label that sanitizes away leaves
-    the bare digest rather than an empty string.
+    anything that stores this. The label carries no identity of its own, so one
+    that sanitizes away leaves the bare digest.
     """
     slug = label_token(label if label is not None else directory.name)
     digest = path_digest(directory)
@@ -292,12 +294,10 @@ def repository_root(start: Path) -> Path | None:
 def _parse_git_config(path: Path) -> dict[str, dict[str, str]]:
     """``{section: {key: value}}`` from a git config file.
 
-    Hand-rolled rather than ``configparser``: git indents keys with a tab, and
-    ``configparser`` reads an indented line as a continuation of the previous
-    value — so every remote URL would come back glued to the section before
-    it. Only what this module reads is understood; anything else is skipped
-    rather than raised on, because an unreadable config means "no git
-    identity", never a failed push.
+    Hand-rolled rather than ``configparser``, which reads git's tab-indented
+    keys as continuations of the previous value. Only what this module reads is
+    understood; anything else is skipped rather than raised on, so an
+    unreadable config means "no git identity" rather than a failure.
     """
     sections: dict[str, dict[str, str]] = {}
     current: dict[str, str] | None = None
@@ -340,17 +340,13 @@ def _remote_url(sections: Mapping[str, Mapping[str, str]]) -> str | None:
 def normalize_remote(url: str) -> str | None:
     """``host/owner/repo`` for a remote that names a host, else ``None``.
 
-    Every spelling of one repository collapses to one string — ``ssh://``,
-    ``scp``-style ``git@host:path``, and ``https://`` all normalize together,
-    so a push from a colleague's clone matches a push from CI.
+    Every spelling of one repository collapses to one string: ``ssh://``,
+    ``scp``-style ``git@host:path`` and ``https://`` all normalize together.
 
-    Credentials are dropped, not carried: a remote written as
-    ``https://user:token@host/repo`` is common in CI checkouts, and a
-    fingerprint is a thing that gets stored and displayed. Returning ``None``
-    for a hostless remote (``file://``, a bare local path, a relative
-    submodule URL, a Windows drive path) is deliberate — those name a
-    filesystem, so the caller falls back to path identity instead of
-    publishing someone's disk layout.
+    Credentials are dropped rather than carried. A hostless remote
+    (``file://``, a bare local path, a relative submodule URL, a Windows drive
+    path) answers ``None``, so the caller falls back to path identity rather
+    than publishing a disk layout.
     """
     text = url.strip()
     if not text:
@@ -430,8 +426,7 @@ class SourceProvider(Protocol):
     Providers are consulted in order and the first non-``None`` answer wins.
     A provider **never raises**: an unreadable, half-written or unrecognized
     source of truth means "I cannot name this directory", which is the next
-    provider's problem. Provenance is a nice-to-have on a push and must never
-    be able to fail one.
+    provider's problem.
     """
 
     #: Matches ``SourceOrigin.kind`` for the origins this returns.
@@ -443,10 +438,9 @@ class SourceProvider(Protocol):
 class GitSourceProvider:
     """Identity from a git checkout, read straight out of ``.git``.
 
-    Answers ``None`` — rather than a half-populated origin — when the directory
-    is not in a repository, or when the repository names no remote that
-    identifies a *host*. A remote that names only a filesystem is not an
-    identity worth publishing; see :func:`normalize_remote`.
+    Answers ``None`` rather than a half-populated origin when the directory is
+    not in a repository, or names no remote that identifies a *host*; see
+    :func:`normalize_remote`.
     """
 
     kind = "git"
@@ -480,9 +474,9 @@ class GitSourceProvider:
 class PathSourceProvider:
     """The terminal fallback: a directory always has a path identity.
 
-    Never returns ``None``, which is what makes :func:`resolve_origin` total.
-    Kept out of the registry for exactly that reason — a registered provider
-    could otherwise be appended after it and never be reached.
+    Never returns ``None``, which is what makes :func:`resolve_origin` total,
+    and is why it is kept out of the registry: a provider appended after it
+    could never be reached.
     """
 
     kind = "path"
@@ -538,18 +532,16 @@ def content_digest(
 ) -> str:
     """Hex digest of exactly the content being pushed.
 
-    Order-independent (entries are sorted by name) and whitespace-exact: the
-    point is to answer "is this the same bundle the last push sent", and a
-    fingerprint that forgave reformatting would answer a different question
-    than the one the server's own content comparison answers.
+    Order-independent (entries are sorted by name) and whitespace-exact, so it
+    answers "is this the same bundle the last push sent" the same way the
+    server's own content comparison does.
 
-    Names and contents are length-prefixed so no rename can produce the digest
-    of a different file set — ``{"ab": "c"}`` and ``{"a": "bc"}`` are
-    different bundles and hash differently.
+    Names and contents are length-prefixed, so no rename can produce the digest
+    of a different file set — ``{"ab": "c"}`` and ``{"a": "bc"}`` hash
+    differently.
 
-    *files* are ``{"name", "content"}`` entries, the same shape the cloud API
-    takes; entries missing either key are treated as empty rather than
-    rejected, since the caller has already validated the bundle it built.
+    *files* are ``{"name", "content"}`` entries, the shape the cloud API takes;
+    an entry missing either key is treated as empty rather than rejected.
     """
     digest = hashlib.sha256()
     digest.update(f"trilogy-source/{SOURCE_FINGERPRINT_VERSION}\n".encode())
