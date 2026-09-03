@@ -95,8 +95,7 @@ def append_condition(
     if condition is None:
         return atom
     # Dedup on AND-atoms so re-appending a predicate the condition already
-    # carries is a no-op (returns `condition` unchanged) rather than growing
-    # an `X AND X` chain across optimizer re-fires.
+    # carries returns `condition` unchanged instead of growing `X AND X`.
     return merge_conditions_and_dedup(atom, condition)
 
 
@@ -117,8 +116,8 @@ def rename_reference(column: BuildConcept) -> BuildConcept | None:
     Two rename shapes exist: a rowset boundary output (`with rs as select x ...`
     exposing `rs.x` over `x`) and a concept alias (`select x as y`). Both render
     as `<content's sql> as <new name>`, so a CTE whose novel outputs are all
-    renames of parent columns folds into the parent — the merged CTE renders the
-    rename from lineage (no source_map entry) against its own columns."""
+    renames of parent columns folds into the parent, which renders the rename
+    from lineage (no source_map entry) against its own columns."""
     lineage = column.lineage
     if isinstance(lineage, BuildRowsetItem):
         return lineage.content
@@ -140,10 +139,9 @@ def consumed_parent_column(
     """The parent output column `cte` actually renders `column` from, when that
     render is a bare parent-column reference (`"parent"."T"`); None otherwise.
 
-    Pseudonym recovery may have picked ANY exposed twin T — including a
-    scoped-join canonical whose expression is a coalesce the lineage chain
-    never mentions — so T must be recovered from the actual render, not
-    predicted from lineage."""
+    Pseudonym recovery may pick any exposed twin T, including a scoped-join
+    canonical whose coalesce expression the lineage chain never mentions, so T
+    is recovered from the actual render rather than predicted from lineage."""
     from trilogy.dialect.base import BaseDialect
 
     renderer = BaseDialect()
@@ -164,16 +162,14 @@ def consumed_parent_column(
 def rebind_rename_to_consumed(
     column: BuildConcept, consumed: BuildConcept
 ) -> BuildConcept:
-    """Rebind a rename column's lineage to the exact parent column OBJECT it
-    consumed, so the merged CTE renders it through that object forever.
+    """Rebind a rename column's lineage to the exact parent column object it
+    consumed, so the merged CTE always renders it through that object.
 
-    A rename's lineage re-derivation FLOATS: it resolves against whatever
-    bindings the CTE has when rendered, and later phases (datasource inlining,
-    further collapses) add bindings that flip it to a same-address side-variant
-    (raw column where the child read the coalescing canonical — a FULL
-    union-join axis then NULLs one-sided keys). Pinning the consumed object
-    makes the rename and the parent's own output render identically in every
-    future context, because they are the same object."""
+    A rename's lineage resolves against whatever bindings the CTE has when
+    rendered; later phases add bindings that can flip it to a same-address
+    side-variant (a raw column where the child read the coalescing canonical,
+    which NULLs one-sided keys on a FULL union-join axis). Pinning the consumed
+    object makes the rename and the parent's own output the same object."""
     lineage = column.lineage
     if isinstance(lineage, BuildRowsetItem) and lineage.content is not consumed:
         return dataclasses.replace(

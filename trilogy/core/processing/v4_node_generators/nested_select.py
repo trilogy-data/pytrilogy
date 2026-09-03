@@ -1,10 +1,10 @@
-"""Planning one nested select — a rowset body, a merge arm, a union TVF arm.
+"""Planning one nested select: a rowset body, a merge arm, a union TVF arm.
 
 Every nested select is a self-contained sub-query, so all three consumers need
 the same sequence: build it in its own scope, gate connectivity, search its
 outputs, then apply the post-aggregate HAVING and the body LIMIT that belong to
 the select itself. Only what the consumer does with the resulting producer
-differs — project it under rowset handles, FULL-join it to sibling arms, or
+differs: project it under rowset handles, FULL-join it to sibling arms, or
 stack it. Keeping the sequence here is what stops the three from drifting apart.
 """
 
@@ -42,7 +42,7 @@ def _scoped_joins_for_rowset(
     """A query-scoped `join`/`merge` relates the rowset's *output* to an outer
     concept; it must not be applied inside the rowset's own (independent-scope)
     build. Such a join collapses the outer concept onto the rowset output via
-    the merge map/pseudonym — so if the rowset's WHERE references that outer
+    the merge map/pseudonym, so if the rowset's WHERE references that outer
     concept (e.g. a membership existence feeder), sourcing the feeder redirects
     back to the rowset's own output and the rowset depends on itself (infinite
     recursion). Drop any join referencing a concept this rowset derives."""
@@ -122,7 +122,7 @@ def build_nested_select(
     ``with rs as inner join a.aid = b.bid select ...``) that the outer resolution
     never saw. Those joins live on ``SelectLineage.scoped_joins`` and must be fed
     to BOTH the factory (so the joined keys build to one canonical) and the build
-    env (so the graph bridges the two datasources) -- otherwise the body builds
+    env (so the graph bridges the two datasources); otherwise the body builds
     with no join, its datasources come back as separate components, and the
     read-back raises a misleading DisconnectedConceptsException for a join that is
     in fact present inside the rowset.
@@ -130,7 +130,7 @@ def build_nested_select(
     ``exclude_derived`` carries a rowset body's own derived concepts: an OUTER
     query-scoped join referencing them (``subset join a.store = b.store``)
     relates this rowset's output to its sibling and must not be applied inside
-    the body's independent scope (see `_scoped_joins_for_rowset`) — the body
+    the body's independent scope (see `_scoped_joins_for_rowset`); the body
     would canonicalize its own output onto the cross-rowset group and source it
     back through itself."""
     author_env = history.base_environment
@@ -142,7 +142,7 @@ def build_nested_select(
         caches.pseudonym_map = get_canonical_pseudonyms(author_env)
     # The shared build caches are keyed on address/grain identity alone, which
     # is only correct while every build in the resolution applies the SAME
-    # scoped joins — a join changes what an address builds to (canonical
+    # scoped joins; a join changes what an address builds to (canonical
     # collapse + pseudonym stamping). When this body carries its OWN joins the
     # outer resolution never saw, entries the outer scope cached are wrong
     # here (an outer-built join key comes back with no pseudonym link to its
@@ -150,7 +150,7 @@ def build_nested_select(
     # FINAL cross-joins ON 1=1); build this scope with fresh caches. The
     # converse (outer joins EXCLUDED here via `exclude_derived`) keeps the
     # shared caches: boundary pairing reads the outer join's pseudonym stamps
-    # off them (subset_presence_probe rowset pairs).
+    # off them.
     if any(j not in caches.scoped_joins for j in scoped_joins):
         caches = BuildCaches(
             pseudonym_map=caches.pseudonym_map, scoped_joins=scoped_joins
@@ -167,9 +167,8 @@ def build_nested_select(
     # Materialized as baseline + overlay delta: the context-free build of the
     # whole environment under these scoped joins is computed once per
     # resolution (per join set) and each arm replays only the units its own
-    # overlay actually changes — measured 0-10 of ~1500 on the nested-heavy
-    # corpus queries. `materialize_for_select` is the reference spelling the
-    # delta must stay byte-equivalent to (test_nested_env_delta.py).
+    # overlay actually changes. `materialize_for_select` is the reference
+    # spelling the delta must stay byte-equivalent to.
     baseline_key = author_env.materialize_join_key(scoped_joins)
     baseline = caches.env_baselines.get(baseline_key)
     if baseline is None:
@@ -205,7 +204,7 @@ def plan_nested_select(
 ) -> NestedPlan | None:
     """Plan one nested select to a producer node. See the module docstring."""
     # `exclude_derived` also filters this scope's scoped joins, so the
-    # connectivity set is tracked separately -- widening the join filter to the
+    # connectivity set is tracked separately; widening the join filter to the
     # inherited set would drop joins a body legitimately carries.
     inherited = history.nested_exclusions
     hidden = inherited | frozenset(hide_from_connectivity or exclude_derived or ())

@@ -36,8 +36,6 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
 
-# Joins upgrade_join_on_guards can still make stricter; see _atom_guards_outer_join.
-
 
 def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
     """True if ``node`` reaches ``target_name`` through its dependency chain."""
@@ -60,13 +58,11 @@ def _predicate_safe_past_null_extension(
     parent_cte: CTE | UnionCTE,
 ) -> bool:
     """A predicate that NULL operands can satisfy (`x IS NULL`, null-defaulted
-    coalesce forms) may hold at this CTE precisely BECAUSE an outer join
-    null-extended the parent's columns — a presence probe's `IS NULL` is true
+    coalesce forms) may hold at this CTE precisely because an outer join
+    null-extended the parent's columns: a presence probe's `IS NULL` is true
     exactly on the rows the parent contributed nothing to. Evaluated inside
-    the parent it reads the parent's real rows instead and inverts meaning
-    (the parent's own probe column is never null, so the pushed filter empties
-    the parent and the outer test trivially passes for every row). Only
-    null-REJECTING predicates commute with a null-extending join: rows they
+    the parent it reads real rows instead and inverts meaning. Only
+    null-rejecting predicates commute with a null-extending join: rows they
     keep must have real parent values, so pre- and post-join filtering agree."""
     if not isinstance(cte, CTE):
         return True
@@ -104,9 +100,9 @@ def _promotion_would_cycle(
     """True if making ``target`` depend on any of ``sources`` closes a cycle.
 
     Promoting an existence source adds a ``target -> source`` edge. If a source
-    already (transitively) depends on ``target`` — the symmetric case where two
-    existence filters on the same concept push into each other's producers — the
-    new edge makes the CTE graph non-acyclic and ``reorder_ctes`` cannot sort it.
+    already transitively depends on ``target`` (two existence filters on the
+    same concept pushing into each other's producers), the new edge makes the
+    CTE graph cyclic and ``reorder_ctes`` cannot sort it.
     """
     return any(
         s.name == target.name or _transitively_depends_on(s, target.name)
@@ -116,17 +112,15 @@ def _promotion_would_cycle(
 
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:
     """True if ``consumer`` references ``union`` on the nullable side of an
-    outer join — pushing predicates into the union branches in that case
-    changes outer-join semantics."""
+    outer join; pushing predicates into the union branches there changes
+    which rows survive the join."""
     if not isinstance(consumer, CTE):
         return True
     for j in consumer.joins:
         if not isinstance(j, Join) or j.jointype == JoinType.INNER:
             continue
-        # right side of any outer join is nullable
         if isinstance(j.right_cte, UnionCTE) and j.right_cte.name == union.name:
             return True
-        # left side is nullable for RIGHT_OUTER/FULL only
         if j.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
             isinstance(j.left_cte, UnionCTE) and j.left_cte.name == union.name
         ):
@@ -136,11 +130,9 @@ def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bo
 
 def _branch_constraint_implies(branch: CTE | UnionCTE, condition) -> bool:
     """True if the branch's base_datasource ``non_partial_for`` constraint
-    value-implies the condition (so the condition is tautologically true on
-    rows from this branch). Handles the partial-datasource case where a
-    branch is bounded to a literal — e.g. ``complete where channel='CATALOG'``
-    makes any pushed ``channel in ('WEB','CATALOG')`` redundant on that
-    branch."""
+    value-implies the condition, so it is tautologically true on rows from
+    this branch (a datasource ``complete where channel='CATALOG'`` makes a
+    pushed ``channel in ('WEB','CATALOG')`` redundant there)."""
     if not isinstance(branch, CTE):
         return False
     base = branch.source.base_datasource
@@ -152,13 +144,8 @@ def _branch_constraint_implies(branch: CTE | UnionCTE, condition) -> bool:
 def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     """True if the consumer's ``condition`` is implied by ``parent``.
 
-    For a plain CTE that's just ``condition_contains_atom(condition, parent.condition)``.
-    For a UnionCTE, the parent has no top-level condition — we check that
-    every branch's condition covers the consumer atom (so the post-union
-    rows are already filtered). A branch can also cover via its base
-    datasource's ``non_partial_for`` constraint (e.g. a partial datasource
-    bounded to ``channel='CATALOG'`` covers any pushed
-    ``channel in ('WEB','CATALOG')`` predicate).
+    A UnionCTE has no top-level condition, so every branch's condition (or
+    its base datasource's ``non_partial_for`` constraint) must cover the atom.
     """
     if isinstance(parent, UnionCTE):
         if not parent.internal_ctes:
@@ -171,11 +158,9 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     if condition_contains_atom(condition, parent.condition):
         return True
     # Transitive hop: the parent may merely pass through rows an ancestor
-    # already filtered — e.g. a join CTE reading a HAVING-filtered group,
-    # with the consumer's WHERE copy referencing only columns the join
-    # sources from that ancestor on a non-nullable side (usa_names
-    # aggregate-filter under v4). Every source of every referenced column
-    # must be a covering, non-NULL-padded ancestor.
+    # already filtered (a join CTE reading a HAVING-filtered group). Every
+    # source of every referenced column must be a covering, non-NULL-padded
+    # ancestor.
     if not isinstance(condition, BuildConceptArgs):
         return False
     grandparents = {p.name: p for p in parent.dependency_nodes()}
@@ -195,16 +180,10 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
 
 
 def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
-    """Addresses a parent CTE exposes as plain output columns.
-
-    For a plain ``CTE``, a non-empty ``source_map`` entry means the concept is
-    pulled in from upstream rather than derived inline — i.e. its value lives
-    in the CTE's projection as a column, not as an inline aggregate. A
-    ``UnionCTE`` exposes whatever appears in its output columns. We hand this
-    set to ``is_scalar_condition`` so an aggregate-derived concept that's
-    already materialized in the parent counts as scalar in *that* parent's
-    context, unblocking WHERE-pushdown of predicates the parent could
-    actually evaluate against a column reference.
+    """Addresses a parent CTE exposes as plain output columns: a non-empty
+    ``source_map`` entry means the concept is pulled from upstream rather than
+    derived inline. Handed to ``is_scalar_condition`` so an aggregate-derived
+    concept already materialized in the parent counts as scalar there.
     """
     if isinstance(parent, UnionCTE):
         return {c.address for c in parent.output_columns}
@@ -255,15 +234,12 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     """True if ``candidate`` can be pushed into/below ``cte`` without changing
     the result of any window function ``cte`` computes.
 
-    A row predicate may only cross a window when it references *only* that
+    A row predicate may only cross a window when it references only that
     window's PARTITION BY keys: dropping whole partitions leaves every surviving
     row's window value unchanged. A predicate on an ORDER BY key or any other
-    input (e.g. q59's ``year_flag``, which is the lead's order key and feeds the
-    partition expression but is not itself a partition key) changes
-    lead/lag/rank results, so it must stay above the window. Window virt-concepts
-    aren't in ``source_map``, so detection keys off output-column lineage —
-    including windows nested inside arithmetic (``sum(x) / lead(sum(x), N)``),
-    whose column lineage is a function with the window one level down.
+    input changes lead/lag/rank results, so it must stay above the window.
+    Window virt-concepts are not in ``source_map``, so detection keys off
+    output-column lineage, including windows nested inside arithmetic.
     """
     materialized = _parent_materialized_addrs(cte)
     window_lineages: list[BuildWindowItem] = []
@@ -287,18 +263,13 @@ def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
     """True if ``candidate`` can be applied inside ``cte`` without changing any
     aggregate it computes.
 
-    A scalar predicate lands in a grouping CTE as WHERE — a pre-aggregation row
-    filter — which preserves the aggregates only when the predicate is constant
-    within each group, so it drops whole groups: every row argument must be a
-    group key (or pseudonym of one), or a property whose keys are all group
-    keys. Anything else filters rows *inside* groups and silently changes the
-    aggregates (q81: a grain-key membership semijoin pushed into an
-    avg-by-partition group averaged only the semijoin-surviving rows).
-
-    This holds for every atom regardless of provenance: pushdown is an
-    optimization pass, so a push that changes what a group computes is a
-    semantics change, never a legal relocation. Pre-aggregation placement of a
-    WHERE is discovery's job, not this pass's.
+    A scalar predicate lands in a grouping CTE as a pre-aggregation WHERE,
+    which preserves the aggregates only when the predicate is constant within
+    each group and so drops whole groups: every row argument must be a group
+    key (or pseudonym of one), or a property whose keys are all group keys.
+    Anything else filters rows inside groups and silently changes the
+    aggregates. This holds for every atom regardless of provenance;
+    pre-aggregation placement of a WHERE is discovery's job, not this pass's.
     """
     if isinstance(cte, UnionCTE) or not cte.group_to_grain:
         return True
@@ -321,8 +292,8 @@ class PredicatePushdown(OptimizationRule):
     def __init__(self, having_alias: bool = False) -> None:
         super().__init__()
         self.complete: dict[str, bool] = {}
-        # only relocate aggregate predicates into a group HAVING when the
-        # target dialect can reference SELECT aliases there
+        # Aggregate predicates relocate into a group HAVING only when the
+        # target dialect can reference SELECT aliases there.
         self.having_alias = having_alias
 
     def _push_into_union_branches(
@@ -345,16 +316,13 @@ class PredicatePushdown(OptimizationRule):
             return False
         if parent_cte.source.source_type == SourceType.FILTER:
             return False
-        # EXCEPT/INTERSECT arms participate in whole-row set comparison;
-        # conservatively leave them untouched (pushing a filter on the compared
-        # outputs is provably sound, but branch source_map extras are not).
+        # EXCEPT/INTERSECT arms participate in whole-row set comparison, so
+        # branch source_map extras are not safe to filter on.
         if parent_cte.operator != SetOperator.UNION_ALL.value:
             return False
 
-        # Concepts the union can expose. ``output_columns`` lists what the
-        # union QDS chose to project, but each branch's ``source_map`` often
-        # carries additional concepts (joined dim columns, etc.) that the
-        # rendered UNION ALL still emits, so use the wider view.
+        # Each branch's ``source_map`` often carries concepts beyond the
+        # union's ``output_columns`` that the rendered UNION ALL still emits.
         union_reachable = {x.address for x in parent_cte.output_columns}
         for b in parent_cte.internal_ctes:
             union_reachable |= set(b.source_map.keys())
@@ -364,7 +332,7 @@ class PredicatePushdown(OptimizationRule):
         existence_conditions = {
             y.address for x in candidate.existence_arguments for y in x
         }
-        # Existence concepts produced inside the union itself can't be
+        # Existence concepts produced inside the union itself cannot be
         # referenced as external IN targets from a branch.
         if existence_conditions and existence_conditions.intersection(union_reachable):
             return False
@@ -379,13 +347,9 @@ class PredicatePushdown(OptimizationRule):
             condition_contains_atom(candidate, child.condition) for child in children
         ):
             return False
-        # Bail when any consumer outer-joins the union — predicates on the
-        # union's outputs interact with NULL-padding semantics and pushing
-        # them into branches changes which rows survive the outer join.
         if any(_consumer_outer_joins_union(child, parent_cte) for child in children):
             return False
 
-        # Only handle plain-CTE branches for now (mirrors UnionDimPushdown).
         if not all(isinstance(b, CTE) for b in parent_cte.internal_ctes):
             return False
 
@@ -397,11 +361,8 @@ class PredicatePushdown(OptimizationRule):
                 candidate, branch.condition
             ):
                 continue
-            # Branch's partial-datasource constraint may already value-imply
-            # the candidate (e.g. branch is fixed to ``channel='CATALOG'`` and
-            # candidate is ``channel in ('WEB','CATALOG')``). No need to push
-            # the tautology in — the rendered SQL would just carry
-            # ``'CATALOG' in ('WEB','CATALOG')``.
+            # A branch whose partial-datasource constraint already implies the
+            # candidate would only carry a tautology.
             if _branch_constraint_implies(branch, candidate):
                 continue
             if branch.condition is not None and not is_scalar_condition(
@@ -462,8 +423,7 @@ class PredicatePushdown(OptimizationRule):
             for x in existence_extras:
                 if x in branch.source_map or x in branch.existence_source_map:
                     continue
-                # Propagate from whichever map the consumer used (regular
-                # source_map vs. existence_source_map for subselect-only).
+                # Propagate from whichever map the consumer used.
                 if x in cte.source_map:
                     origin = list(cte.source_map[x])
                     branch.source_map[x] = origin
@@ -500,9 +460,8 @@ class PredicatePushdown(OptimizationRule):
     ) -> bool:
         if not isinstance(candidate, BuildConceptArgs):
             return False
-        # Dropping an arm of EXCEPT/INTERSECT changes the set result (for
-        # EXCEPT even a provably-empty-under-filter subtracted arm is only
-        # droppable if actually empty). Prune UNION ALL stacks only.
+        # Dropping an arm of EXCEPT/INTERSECT changes the set result; prune
+        # UNION ALL stacks only.
         if parent_cte.operator != SetOperator.UNION_ALL.value:
             return False
         children = inverse_map.get(parent_cte.name, [])
@@ -519,11 +478,8 @@ class PredicatePushdown(OptimizationRule):
         if not row_conditions.issubset(union_outputs):
             return False
 
-        # Dropping branches changes the rows EVERY consumer sees. Only safe when
-        # every consumer of the union already carries this filter — otherwise a
-        # co-sourcing consumer that needs the other branches (e.g. an unfiltered
-        # ``sum(... ? channel='STORE')`` reading the same union as a
-        # ``channel='CATALOG'`` membership feeder) silently loses its rows.
+        # Dropping branches changes the rows every consumer sees, so every
+        # consumer must already carry this filter.
         children = inverse_map.get(parent_cte.name, [])
         if not children or not all(
             condition_contains_atom(candidate, child.condition) for child in children
@@ -573,9 +529,7 @@ class PredicatePushdown(OptimizationRule):
     ):
         if not isinstance(candidate, BuildConceptArgs):
             return False
-        # Never push a predicate into a row-limited parent: filtering before
-        # the LIMIT changes which rows fill it (a rowset body `limit N` is a
-        # semantic boundary, not a plan detail).
+        # Filtering before a LIMIT changes which rows fill it.
         if parent_cte.limit is not None:
             return False
         if isinstance(parent_cte, UnionCTE):
@@ -616,7 +570,8 @@ class PredicatePushdown(OptimizationRule):
         if not row_conditions or not materialized:
             return False
         output_addresses = {x.address for x in parent_cte.output_columns}
-        # if any of the existence conditions are created on the asset, we can't push up to it
+        # An existence concept the parent itself produces cannot be its own
+        # external IN target.
         if existence_conditions and existence_conditions.intersection(output_addresses):
             return False
         if existence_conditions:
@@ -625,7 +580,7 @@ class PredicatePushdown(OptimizationRule):
             )
             if parent_cte.source.source_type == SourceType.FILTER:
                 return False
-        # if it's a root datasource, we can filter on _any_ of the output concepts
+        # A root datasource can filter on any of its base's output concepts.
         if parent_cte.is_root_datasource:
             base = parent_cte.source.base_datasource
             assert base is not None  # is_root_datasource guarantees this
@@ -641,24 +596,15 @@ class PredicatePushdown(OptimizationRule):
                 condition_contains_atom(candidate, child.condition)
                 for child in children
             ):
-                # Existence sources to promote onto the parent (computed before
-                # any mutation so the cycle guard can veto the whole push).
-                # The consumer may source an existence concept either from a
-                # regular dependency CTE or from an already-inlined datasource
-                # (datasource inlining runs before this pass) — propagate both
-                # so the pushed subselect has a real source to render against
-                # instead of a dangling CTE reference. A subselect-only feeder
-                # is absent from ``source_map`` entirely and lives in
-                # ``existence_source_map``; promote it into the same map. A
-                # feeder the consumer double-lists (naturally-planned CTEs
-                # carry existence concepts in BOTH maps) promotes into both:
-                # the renderer's WHERE/QUALIFY split and materialized-scalar
-                # checks read ``source_map``, while the sibling-feeder
-                # chaining guard in ``optimize`` reads only
-                # ``existence_source_map`` — writing just one map either
-                # mis-renders the pushed subselect (QUALIFY with no window)
-                # or blinds the guard and re-chains membership semijoins
-                # O(n^2).
+                # Existence sources to promote onto the parent, computed before
+                # any mutation so the cycle guard can veto the whole push. The
+                # consumer may source an existence concept from a dependency
+                # CTE or from an already-inlined datasource; both propagate so
+                # the pushed subselect renders against a real source. A feeder
+                # listed in both of the consumer's maps promotes into both: the
+                # renderer's WHERE/QUALIFY split reads ``source_map`` while the
+                # sibling-feeder chaining guard in ``optimize`` reads only
+                # ``existence_source_map``.
                 promotions: list[
                     tuple[
                         str, list[str], bool, list[CTE | UnionCTE], list[DatasourceCTE]
@@ -729,7 +675,6 @@ class PredicatePushdown(OptimizationRule):
                     )
                 else:
                     parent_cte.condition = candidate
-                # promote up existence sources
                 for (
                     x,
                     source_names,
@@ -764,38 +709,32 @@ class PredicatePushdown(OptimizationRule):
         parent's HAVING and strip the redundant copy from safe consumers.
 
         Filtering inside the group is identical to filtering its output
-        downstream, and pushing it *before* the consumers' joins/aggregations
-        prunes rows early (e.g. usa_names: filter names in the by-name group so
-        the join back to the base table sees only qualifying names). The
-        renderer splits a group CTE's condition into WHERE (scalar atoms) and
-        HAVING (non-scalar atoms) and emits the HAVING by alias, so the
-        relocation neither changes results nor bloats the SQL.
+        downstream, and doing it before the consumers' joins/aggregations
+        prunes rows early. The renderer splits a group CTE's condition into
+        WHERE (scalar atoms) and HAVING (non-scalar atoms) emitted by alias.
 
-        Safe because: the predicate's columns are produced by ``parent_cte``
-        (a real GROUP BY); every consumer already AND-carries the atom; and no
+        Safe because the predicate's columns are produced by ``parent_cte``
+        (a real GROUP BY), every consumer already AND-carries the atom, and no
         consumer leaves ``parent_cte`` on the nullable side of an outer join.
         The downstream copy is only redundant when each consumer row must map
         to a surviving HAVING-passed group row.
         """
         if not isinstance(parent_cte, CTE):
             return False
-        # Relocating a predicate into a row-limited group applies it before
-        # the LIMIT, changing which rows fill it.
+        # Filtering before a LIMIT changes which rows fill it.
         if parent_cte.limit is not None:
             return False
-        # A HAVING is only valid where a GROUP BY is emitted.
         if not parent_cte.group_to_grain:
             return False
         if not isinstance(candidate, BuildConceptArgs):
             return False
-        # existence/subselect predicates are out of scope for this case
         if any(arg for group in candidate.existence_arguments for arg in group):
             return False
         row_conditions = {x.address for x in candidate.row_arguments}
         if not row_conditions:
             return False
-        # the filtered columns must be produced by this group so HAVING can
-        # reference them (and so we aren't pushing a row filter past the group)
+        # The filtered columns must be produced by this group so HAVING can
+        # reference them and no row filter is pushed past the group.
         output_addresses = {x.address for x in parent_cte.output_columns}
         if not row_conditions.issubset(output_addresses):
             return False
@@ -805,21 +744,18 @@ class PredicatePushdown(OptimizationRule):
         if not children:
             return False
         for child in children:
-            # every consumer must AND-carry the atom (else filtering in the
-            # group changes its result) and source the filtered columns from
-            # this group, with the group non-nullable in the child (else a
-            # NULL-padded row would bypass the now-removed predicate)
+            # Every consumer must AND-carry the atom and source the filtered
+            # columns from this group, with the group non-nullable in the child
+            # (a NULL-padded row would bypass the removed predicate).
             if not isinstance(child, CTE):
                 return False
             if not condition_contains_atom(candidate, child.condition):
                 return False
             if _parent_nullable_in_cte(child, parent_cte.name):
                 return False
-            # Relocating the predicate into the group parent applies it *before*
-            # any window the consumer computes over the parent's rows (SQL WHERE
-            # precedes window evaluation), changing lead/lag/rank results unless
-            # it only drops whole partitions. See q59: filtering `year_flag` here
-            # strips the year-2 rows the cross-year lead needs.
+            # The relocated predicate applies before any window the consumer
+            # computes over the parent's rows, changing lead/lag/rank results
+            # unless it only drops whole partitions.
             if not _predicate_safe_past_windows(candidate, child):
                 return False
             for addr in row_conditions:
@@ -878,10 +814,10 @@ class PredicatePushdown(OptimizationRule):
         )
         # CTEs feeding this consumer's existence subselects. Sibling membership
         # atoms of one AND-group are mutually redundant inside each other's
-        # feeder sets (the final AND already intersects them), but each push
-        # promotes the other feeder as a dependency — with N HAVING-derived
-        # semijoins that chains feeder k over feeders 1..k-1: O(N^2) SQL and a
-        # combinatorial explosion for the executing engine (q11 25GiB OOM).
+        # feeder sets (the final AND already intersects them), and each push
+        # would promote the other feeder as a dependency, chaining feeder k
+        # over feeders 1..k-1: O(N^2) SQL and a join fan-out blow-up in the
+        # executing engine.
         existence_feeders: set[str] = set()
         for sources in cte.existence_source_map.values():
             existence_feeders.update(sources)
@@ -890,15 +826,11 @@ class PredicatePushdown(OptimizationRule):
             candidate_has_existence = isinstance(candidate, BuildConceptArgs) and any(
                 arg for group in candidate.existence_arguments for arg in group
             )
-            # Scalarity is *parent-relative*: a candidate like
-            # ``manufact_matches > 0`` is non-scalar in the abstract (its concept
-            # has aggregate lineage) but becomes scalar inside a parent CTE that
-            # materializes ``manufact_matches`` as a plain output column — the
-            # aggregate has already been computed there, the parent just
-            # filters on its value. Pushing such filters as WHERE into a
-            # non-aggregating parent prunes rows earlier and (the case that
-            # motivated this) lets ``UpgradeJoinOnGuards`` see a
-            # null-rejecting predicate next to the producing outer join.
+            # Scalarity is parent-relative: a predicate on an aggregate-lineage
+            # concept is scalar inside a parent that materializes that concept
+            # as a plain output column. Pushing it there prunes rows earlier
+            # and lets ``UpgradeJoinOnGuards`` see a null-rejecting predicate
+            # next to the producing outer join.
             for parent_cte in parents:
                 if candidate_has_existence and parent_cte.name in existence_feeders:
                     self.debug(
@@ -916,14 +848,13 @@ class PredicatePushdown(OptimizationRule):
                     )
                     optimized = optimized or local_pushdown
                     if local_pushdown:
-                        # taint a CTE again when something is pushed up to it.
                         self.complete[parent_cte.name] = False
                     self.debug(
                         f"Pushed down {candidate} from {cte.name} to {parent_cte.name}"
                     )
                 elif self.having_alias:
-                    # Non-scalar even for this parent: a true aggregate-result
-                    # predicate. Only a group parent can carry it as HAVING.
+                    # Non-scalar even for this parent; only a group parent can
+                    # carry it as HAVING.
                     local = self._push_having_into_group_parent(
                         cte=cte,
                         parent_cte=parent_cte,
@@ -968,8 +899,8 @@ class PredicatePushdownRemove(OptimizationRule):
         self, atom, cte: CTE, existence_only: set[str]
     ) -> bool:
         """True if every non-existence parent that exposes `atom`'s row
-        arguments already enforces `atom`. Parents that don't expose those
-        concepts are irrelevant — they can't filter on them."""
+        arguments already enforces `atom`. Parents that do not expose those
+        concepts cannot filter on them and are irrelevant."""
         atom_args = {c.address for c in atom.row_arguments}
         relevant_parents = [
             p
@@ -985,12 +916,10 @@ class PredicatePushdownRemove(OptimizationRule):
         """Whether atom removal on `cte` should wait for join types to settle.
 
         A pending OUTER join makes the WHERE load-bearing beyond row selection:
-        ``upgrade_join_on_guards.final`` reads it to prove the NULL-padded rows
-        can never survive, and it runs after this phase. Dropping a redundant
-        atom is row-equivalent but erases that proof, so the join stays outer —
-        worse SQL, and the padded rows then flow on into downstream null-safe
-        joins. The post-upgrade instance of this rule sweeps these up once the
-        proofs have been consumed.
+        the join-upgrade phase after this one reads it to prove the NULL-padded
+        rows can never survive. Dropping a redundant atom is row-equivalent but
+        erases that proof, leaving the join outer. The post-upgrade instance of
+        this rule sweeps these up once the proofs have been consumed.
         """
         if self.after_join_upgrades:
             return False
@@ -1023,7 +952,6 @@ class PredicatePushdownRemove(OptimizationRule):
             parent.name: _parent_covers_condition(parent, cte.condition)
             for parent in parents
         }
-        # flatten existnce argument tuples to a list
 
         flattened_existence = [
             x.address for y in cte.condition.existence_arguments for x in y
@@ -1044,7 +972,6 @@ class PredicatePushdownRemove(OptimizationRule):
                 f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
             )
             cte.condition = None
-            # remove any "parent" CTEs that provided only existence inputs
             if existence_only:
                 original = [y.name for y in parents]
                 cte.parent_ctes = [x for x in parents if x.name not in existence_only]
@@ -1053,15 +980,9 @@ class PredicatePushdownRemove(OptimizationRule):
                 )
             return True, None
 
-        # Per-conjunct removal: even when the full condition isn't covered (e.g.
-        # cte joins dim tables inline that contribute their own filter atoms),
-        # individual atoms whose row_arguments are sourced entirely from parent
-        # CTEs and which are covered by every parent that exposes those concepts
-        # are still redundant — predicate-pushdown already arranged for them to
-        # be enforced upstream. The per-atom outer-join safety check happens
-        # inside the loop: an atom whose source parent is on the nullable side
-        # of an outer join in `cte` can't be removed (NULL-padding bypasses
-        # the parent's filter).
+        # Per-conjunct removal: even when the full condition is not covered,
+        # an atom sourced entirely from parent CTEs and covered by every parent
+        # that exposes its concepts is redundant.
         if self._defers_to_join_upgrade(cte):
             return optimized, None
         existence_set = set(existence_only)
@@ -1081,9 +1002,8 @@ class PredicatePushdownRemove(OptimizationRule):
             ):
                 surviving.append(atom)
                 continue
-            # Per-atom outer-join safety: if any source parent for this atom
-            # is on the nullable side of an outer join in cte, NULL-padded
-            # rows could bypass the predicate. Keep the atom in that case.
+            # A source parent on the nullable side of an outer join here lets
+            # NULL-padded rows bypass the parent's filter; keep the atom.
             atom_sources: set[str] = set()
             if isinstance(atom, BuildConceptArgs):
                 for c in atom.row_arguments:

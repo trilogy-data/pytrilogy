@@ -83,9 +83,9 @@ def gen_union(
         parent.add_output_concepts(resolved)
         # A pure projection is row-preserving: carry the arm's OWN row grain,
         # not the union outputs' claimed grain. The FINAL dedup check reads the
-        # first arm's grain off the stacked QDS — masking it
-        # with the output grain elides the set-semantics GROUP BY and a key in
-        # both arms counts twice (union_overlapping_keys).
+        # first arm's grain off the stacked QDS; masking it with the output
+        # grain elides the set-semantics GROUP BY and a key in both arms counts
+        # twice.
         parent_nodes.append(
             SelectNode(
                 input_concepts=list(parent.output_concepts),

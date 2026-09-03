@@ -69,9 +69,9 @@ CONDITION_TYPES = (
 )
 
 # Operators whose result is NULL (and therefore not TRUE) when either operand is
-# NULL — when one of these atoms appears in an AND chain, both sides' concept
-# references must be non-null in surviving rows. (Tuple, not set, since
-# ComparisonOperator overrides __eq__ without __hash__.)
+# NULL: in an AND chain, both sides' concept references must be non-null in
+# surviving rows. (Tuple, not set, since ComparisonOperator overrides __eq__
+# without __hash__.)
 NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.EQ,
     ComparisonOperator.NE,
@@ -88,8 +88,8 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.CONTAINS,
 )
 
-# Functions whose result can be non-null even when an argument is NULL — we
-# can't recurse through them to claim the args are non-null.
+# Functions whose result can be non-null even when an argument is NULL, so
+# recursing through them cannot claim the args are non-null.
 NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
     FunctionType.COALESCE,
     FunctionType.NULLIF,
@@ -233,10 +233,9 @@ def is_scalar_condition(
     elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
             return True
-        # Recurse into any lineage type is_scalar_condition understands, so an
-        # aggregate wrapped behind a concept name — directly (AggregateWrapper),
-        # in an expression (Function), or in a boolean (Comparison/Conditional/
-        # Between) — is seen and routed to HAVING rather than inlined in WHERE.
+        # Recurse into the lineage so an aggregate wrapped behind a concept
+        # name (directly, in an expression, or in a boolean) is seen and
+        # routed to HAVING rather than inlined in WHERE.
         if element.lineage and isinstance(
             element.lineage,
             AGGREGATE_TYPES + FUNCTION_TYPES + CONDITION_TYPES,
@@ -263,12 +262,11 @@ def is_scalar_condition(
 def gather_windows(
     element: Any, materialized: set[str] | None = None
 ) -> list[BuildWindowItem]:
-    """Every window function (``rank/lag/... over (…)``) that must be *emitted*
-    by ``element`` — i.e. appears in the tree and isn't already a materialized
-    column. A materialized window concept is just a plain column reference
-    (computed by a parent CTE); an inline one must lower to QUALIFY since SQL
-    forbids windows in WHERE/HAVING. Windows nested inside arithmetic/case wrappers
-    (e.g. ``sum(x) / lead(sum(x), N) over (...)``) are reached too."""
+    """Every window function that ``element`` must emit: it appears in the tree
+    and is not already a materialized column. A materialized window concept is
+    a plain column reference; an inline one must lower to QUALIFY since SQL
+    forbids windows in WHERE/HAVING. Windows nested inside arithmetic/case
+    wrappers are reached too."""
     if isinstance(element, WINDOW_TYPES):
         return [element]
     elif isinstance(element, PARENTHETICAL_TYPES):
@@ -314,8 +312,8 @@ def contains_window(element: Any, materialized: set[str] | None = None) -> bool:
 def reduce_expression(
     datatype: Any, group_tuple: list[tuple[ComparisonOperator, Any]]
 ) -> bool:
-    """True when ``group_tuple`` — ``(operator, value)`` atoms against a single
-    concept of type ``datatype`` — covers that type's entire domain."""
+    """True when ``group_tuple`` (``(operator, value)`` atoms against a single
+    concept of type ``datatype``) covers that type's entire domain."""
     if isinstance(datatype, EnumType):
         covered = {
             str(v)
@@ -328,7 +326,7 @@ def reduce_expression(
     upper_check: Any
     declared_ranges = None
     if isinstance(datatype, ValidatedType):
-        # Declared ranges shrink the domain that must be covered — same trust
+        # Declared ranges shrink the domain that must be covered, same trust
         # model as the EnumType branch above (data conformance is checked by
         # datasource validation). Regex domains are not reasoned about.
         if datatype.pattern is not None or not datatype.ranges:
@@ -450,7 +448,7 @@ def conditions_cover_domain(
     grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]],
 ) -> bool:
     """True when every concept's ``(operator, value)`` atoms span its whole
-    domain — i.e. the disjunction of all the atoms is a tautology.
+    domain, i.e. the disjunction of all the atoms is a tautology.
 
     ``grouped`` maps a concept identity to ``(datatype, atoms)``. Empty input
     proves nothing, so returns False.
@@ -463,7 +461,7 @@ def conditions_cover_domain(
 def simplify_conditions(
     conditions: list[BoolExpr],
 ) -> bool:
-    # Key by address string — concept objects from different datasources may not
+    # Key by address string: concept objects from different datasources may not
     # hash/compare identically even when they represent the same concept.
     grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]] = {}
     for condition in conditions:
@@ -622,13 +620,10 @@ def condition_value_implies(
     Every per-column allowed value-set from ``constraint`` must be a subset
     of ``candidate``'s allowed set for the same column, AND every atom of
     ``candidate`` must be a literal EQ/IS/IN against a concept (so its allowed
-    set is computable). For mixed/unsupported operators we return False —
-    we can't prove implication without value semantics.
+    set is computable). Mixed/unsupported operators return False.
 
-    Use case: a partial datasource bounded ``complete where channel='CATALOG'``
-    value-implies a pushed predicate ``channel in ('WEB','CATALOG')`` — the
-    pushed atom is tautological on that branch and adding it just bloats the
-    rendered SQL.
+    A partial datasource's ``complete where k = 'a'`` value-implies a pushed
+    predicate ``k in ('a', 'b')``, which is tautological on that branch.
     """
     cand_atoms = decompose_condition(candidate)
     if not cand_atoms:
@@ -734,12 +729,13 @@ def merge_conditions(
     """Merge a list of OR'd conditions into a minimal equivalent.
 
     Keeps atoms common to all conditions, then drops per-concept varying atoms
-    that are provably complete (cover all enum values or the full numeric/date/bool
-    range via simplify_conditions). Returns None if the merged result is unconditional.
-    If varying atoms cannot be proven complete, returns the first condition unchanged.
+    that are provably complete (cover all enum values or the full
+    numeric/date/bool range via simplify_conditions). Returns None if the merged
+    result is unconditional. If varying atoms cannot be proven complete, returns
+    the first condition unchanged.
 
-    Example: [city='USBOS' AND status='a', city='USBOS' AND status='b'] where
-    status has only values {'a','b'} → returns city='USBOS'.
+    Example: [k='x' AND status='a', k='x' AND status='b'] where status has only
+    values {'a','b'} returns k='x'.
     """
     if not conditions:
         return None
@@ -765,8 +761,9 @@ def filter_union_children(
 ) -> dict[str, BoolExpr | None]:
     """Filter union datasource children based on query conditions.
 
-    Takes a mapping of child ID → non_partial_for clause and the query condition.
-    Returns a mapping of kept child IDs → injected condition (None = no extra filter needed).
+    Takes a mapping of child ID to non_partial_for clause and the query condition.
+    Returns a mapping of kept child IDs to injected condition (None = no extra
+    filter needed).
 
     Children whose non_partial_for is mutually exclusive with the query are dropped.
     Children whose non_partial_for is implied by the query have redundant atoms stripped.
@@ -816,7 +813,7 @@ def _not_null_concept(
 def concepts_implied_non_null(value: object) -> set[str]:
     """Concepts whose individual non-nullness is implied when ``value`` evaluates non-null.
 
-    Stops at null-opaque functions (``COALESCE`` et al.) — those can produce a
+    Stops at null-opaque functions (``COALESCE`` et al.): those can produce a
     non-null result even when an argument is NULL, so descending past them
     would over-claim.
     """
@@ -871,7 +868,7 @@ def _literal_value(value: object) -> object | None:
     """Return the Python literal carried by ``value``, unwrapping parens.
 
     ``None`` is returned for anything that isn't a concrete literal (concepts,
-    functions, the NULL sentinel, etc.) — callers use that as "can't fold"."""
+    functions, the NULL sentinel, etc.); callers use that as "can't fold"."""
     while isinstance(value, BuildParenthetical):
         value = value.content  # type: ignore[assignment]
     if is_null_literal(value):
@@ -926,10 +923,10 @@ def _coalesce_primary_proves_non_null(
     maybe_coalesce: object, op: ComparisonOperator, rhs: object
 ) -> set[str]:
     """``coalesce(PRIMARY, default1, default2, ...) <op> rhs``: when every
-    default is a literal that statically *fails* ``<op> rhs`` (and ``rhs`` is
+    default is a literal that statically fails ``<op> rhs`` (and ``rhs`` is
     itself a literal), the surviving rows can't have come from a default
-    branch — so the coalesce had to fall on ``PRIMARY``, proving PRIMARY's
-    concepts non-null.
+    branch, so the coalesce fell on ``PRIMARY``, proving PRIMARY's concepts
+    non-null.
 
     Returns the implied non-null set, or empty when the pattern doesn't apply
     (LHS isn't a coalesce, any default is a non-literal, any default survives
@@ -960,11 +957,9 @@ def _forced_true_proofs(value: object) -> set[str]:
     """Non-null proofs carried by ``<value> = True`` / ``IS True``.
 
     Forcing ``value`` TRUE forces the boolean expression it names to be
-    satisfied, so everything THAT condition proves non-null holds too — both
-    for an inline condition and for a concept whose lineage is one (q95:
-    ``is_returned is True`` where ``is_returned <- _returned_order_number is
-    not null`` proves the NULL-padded column non-null, soundly licensing a
-    join upgrade the flag's own address never could)."""
+    satisfied, so everything THAT condition proves non-null holds too, both
+    for an inline condition and for a concept whose lineage is one (a flag
+    defined as ``x is not null`` proves ``x`` non-null when forced TRUE)."""
     while isinstance(value, BuildParenthetical):
         value = value.content  # type: ignore[assignment]
     if isinstance(value, BuildConcept) and isinstance(value.lineage, CONDITION_TYPES):
@@ -985,7 +980,7 @@ def comparison_proves_non_null(
     """
     left, right, op = atom.left, atom.right, atom.operator
     if op == ComparisonOperator.IS_NOT:
-        # `<expr> IS NOT NULL` — every concept inside the expression is non-null.
+        # `<expr> IS NOT NULL`: every concept inside the expression is non-null.
         if is_null_literal(right):
             return concepts_implied_non_null(left)
         if is_null_literal(left):
@@ -1010,11 +1005,9 @@ def comparison_proves_non_null(
             if left is True:
                 proofs |= _forced_true_proofs(right)
         # Peer through a ``coalesce(PRIMARY, defaults...)`` wrapper when every
-        # default statically fails the comparison — surviving rows can only
-        # come from PRIMARY, so PRIMARY's concepts are non-null. The renderer
-        # wraps ``count(...)`` aggregates in ``coalesce(..., 0)`` to satisfy
-        # the "count-of-empty is 0, not NULL" convention; predicates like
-        # ``> 0`` over the wrapped column otherwise become opaque to us.
+        # default statically fails the comparison. The renderer wraps
+        # ``count(...)`` in ``coalesce(..., 0)``, so predicates like ``> 0``
+        # over the wrapped column would otherwise be opaque.
         proofs |= _coalesce_primary_proves_non_null(left, op, right)
         flipped = _flip_op(op)
         if flipped is not None:
@@ -1029,16 +1022,14 @@ def _atom_proves_non_null(
     if isinstance(atom, BuildParenthetical):
         return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
-        # A surviving row satisfies at least one disjunct but we don't know
-        # which — only concepts non-null under *every* disjunct are proven.
+        # A surviving row satisfies at least one unknown disjunct; only concepts
+        # non-null under every disjunct are proven.
         sets = [condition_proves_non_null(d) for d in _non_null_or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
         # ``decompose_condition`` returns the whole AND as one chunk when a
-        # child isn't in ``CONDITION_TYPES`` (e.g. a ``raw(...)`` predicate
-        # arrives as a bare ``BuildFunction``). Walk both sides ourselves so
-        # ordinary Comparison proofs sitting next to the opaque child still
-        # contribute.
+        # child isn't in ``CONDITION_TYPES`` (a bare ``BuildFunction``); walk
+        # both sides so proofs beside the opaque child still contribute.
         return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
     if not isinstance(atom, BuildComparison):
         return set()
@@ -1050,9 +1041,9 @@ def condition_proves_non_null(
 ) -> set[str]:
     """Concept addresses a *fully applied* condition forces non-null.
 
-    Unlike ``non_null_proofs`` (logical/merge stage — deliberately ignores
-    ``IS NOT NULL`` because a merged join key may materialize as
-    ``COALESCE(left, right)``), this honors ``IS NOT NULL`` too. Safe only for
+    Unlike ``non_null_proofs`` (merge stage; ignores ``IS NOT NULL`` because a
+    merged join key may materialize as ``COALESCE(left, right)``), this honors
+    ``IS NOT NULL`` too. Safe only for
     a caller asking about a single datasource's own columns under that scan's
     own applied WHERE, where no cross-source COALESCE of the key exists.
     """
@@ -1160,12 +1151,11 @@ def opaque_binding_addresses(source: ProofSource | None) -> set[str]:
 
     A plain column is NULL-padded when its row is unmatched, so a non-null
     proof on it genuinely forces that side present. A ``RawColumnExpr``
-    (opaque SQL, e.g. ``CASE WHEN <rightcol> IS NOT NULL THEN True ELSE
+    (opaque SQL such as ``CASE WHEN <rightcol> IS NOT NULL THEN True ELSE
     False END``) or a null-opaque function can yield a non-null value for an
     unmatched row, so proving such a concept non-null proves nothing about
-    the join and must never force a stricter type (the ``is_returned =
-    false`` trap: the predicate is satisfied by exactly the unmatched rows,
-    yet the CASE-derived flag is non-null)."""
+    the join and must never force a stricter type: a ``flag = false``
+    predicate over such a CASE is satisfied by exactly the unmatched rows."""
     out: set[str] = set()
     _scan_opaque_bindings(source, out, set())
     return out

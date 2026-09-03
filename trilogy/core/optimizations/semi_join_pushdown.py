@@ -13,13 +13,12 @@ GROUP BY key removes whole groups and leaves every surviving group's value
 byte-identical, whatever grain the consumer's own predicates live at. That is
 the only thing this rule pushes.
 
-The restriction is placed at the DEEPEST aggregate that still groups on the
-key, not merely the joined one. TPC-H q21 stacks two group-bys and stopping at
-the first measures 1.7x against 6.0x for the full descent, because the bottom
-aggregate is the one scanning the fact table.
+The restriction is placed at the deepest aggregate that still groups on the
+key, not merely the joined one: with stacked group-bys the bottom aggregate is
+the one scanning the fact table.
 
 The consumer often joins a projection or an enrichment rather than the
-aggregate itself, so the search for that aggregate starts *above* it and walks
+aggregate itself, so the search for that aggregate starts above it and walks
 down through nodes that neither filter nor truncate. Row-preserving joins are
 crossed on the way: dropping a target row can leave a dimension row unmatched,
 so the join synthesizes a NULL-padded row that did not exist before. That is
@@ -28,13 +27,12 @@ construction absent from the feeder, and the consumer's join rejects it. Any
 aggregate met on the way down has to group on the key, otherwise removing rows
 would move a surviving group's measure.
 
-Only the FEEDER's key may not be nullable. The probe reads
+Only the feeder's key may not be nullable. The probe reads
 ``k in (select k from feeder)``, which drops a NULL k, and the join being
 mirrored rejects that same row whether it rendered as ``=`` or as IS NOT
 DISTINCT FROM, because a non-nullable feeder key has no NULL to pair with. A
-nullable key on the target side is therefore no reason to skip, and skipping
-one cost TPC-DS q64 a 5.7x scan restriction: every key of an enrichment built
-over full joins is nullable there.
+nullable key on the target side is therefore no reason to skip; every key of
+an enrichment built over full joins is nullable there.
 """
 
 from __future__ import annotations
@@ -62,9 +60,9 @@ UNSAFE_SOURCE_TYPES = {
 
 
 def groups_on(cte: CTE, keys: list[BuildConcept]) -> bool:
-    """True when every key is a grain component of `cte` — i.e. a GROUP BY
-    column, never an aggregate output. Restricting on one of these can only
-    delete whole groups."""
+    """True when every key is a grain component of `cte` (a GROUP BY column,
+    never an aggregate output). Restricting on one of these can only delete
+    whole groups."""
     components = set(cte.grain.components)
     for key in keys:
         if key.address not in components:
@@ -78,10 +76,9 @@ def restricts_rows(cte: CTE | UnionCTE) -> bool:
     """True when `cte`'s subtree carries a WHERE somewhere, so its key set is
     genuinely narrower than the aggregate's and the subquery buys something.
 
-    A join is deliberately NOT evidence. Most joins here are FK lookups that
+    A join is deliberately not evidence. Most joins here are FK lookups that
     every fact row matches, so mirroring one produces a semi-join against an
-    unrestricted relation: all cost, no rows removed. TPC-H q18 (customer x
-    orders) and q10 (customer x nation) both regress ~2x when joins count."""
+    unrestricted relation: all cost, no rows removed."""
     seen: set[str] = set()
     stack: list[CTE | UnionCTE] = [cte]
     while stack:
@@ -134,7 +131,7 @@ def placement_target(
 ) -> CTE:
     """Walk down from `aggregate` to the deepest ancestor that still groups on
     every key and is consumed by nothing but this chain. Each step must be a
-    sole-consumer link — restricting a shared parent would silently narrow the
+    sole-consumer link: restricting a shared parent would silently narrow the
     sibling that shares it."""
     target = aggregate
     while True:
@@ -212,9 +209,9 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
                 continue
             restrictor = join.joinkey_pairs[0].cte
             if restrictor.name in inlined or restrictor.name == cte.name:
-                # An inlined datasource has no CTE to select from — the feeder
+                # An inlined datasource has no CTE to select from; the feeder
                 # would have to be synthesized as a subquery over the raw table
-                # plus the consumer's own predicates (TPC-H q04's shape).
+                # plus the consumer's own predicates.
                 continue
             if not any(p.name == restrictor.name for p in cte.dependency_nodes()):
                 continue
@@ -243,10 +240,9 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
         # make the CTE graph cyclic.
         if reaches(restrictor, aggregate.name):
             return False
-        # The mirror image: an aggregate that already reads FROM the feeder is
-        # restricted by it by construction, so probing it is a tautology — and
-        # once the descent reaches the feeder itself, a CTE probing its own
-        # name (TPC-H q17's `wakeful.k in (select k from wakeful)`).
+        # An aggregate that already reads from the feeder is restricted by it
+        # by construction, so the probe is a tautology (and, once the descent
+        # reaches the feeder itself, a CTE probing its own name).
         if reaches(aggregate, restrictor.name):
             return False
         if not restricts_rows(restrictor):
@@ -278,13 +274,11 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
         if host is None:
             return False
         target = placement_target(host, keys, inverse_map)
-        # Fire only into an aggregate that is grouping its base table WHOLE.
-        # There is no cardinality model here, so the mirror is only taken where
-        # the asymmetry is structural: an unfiltered target provably scans and
-        # groups everything, while the feeder is provably narrowed (checked
-        # above). Where the target already filters, the measured effect flips —
-        # TPC-H q02/q20 lose ~15% because the feeder's hash build costs more
-        # than the already-restricted group set saves.
+        # Fire only into an aggregate grouping its base table whole. There is
+        # no cardinality model here, so the mirror is only taken where the
+        # asymmetry is structural: an unfiltered target scans everything while
+        # the feeder is provably narrowed. Against an already-filtered target
+        # the feeder's hash build can cost more than it saves.
         if restricts_rows(target):
             return False
         # `target` may sit below `aggregate`; re-resolve the probe against it.

@@ -21,10 +21,10 @@ def _grain_claim_needs_group(
     """True when this projection can only make its grain claim true by grouping.
 
     A projection's grain is inferred from what it projects, but a plain SELECT
-    emits one row per PARENT row. Project `species` and `upper(species)` off a
-    `tree_id`-grain union and the node advertises grain `species` while emitting
-    one row per tree; a consumer then joins it on `species` and fans the other
-    side out — silently, since the SQL is valid.
+    emits one row per PARENT row. Project a coarse attribute and a scalar over
+    it off a finer-grain parent and the node advertises the attribute's grain
+    while emitting one row per parent row; a consumer then joins it on the
+    attribute and fans the other side out silently, since the SQL is valid.
 
     Two things can make the claim true, and only the second is ours to do here:
 
@@ -37,10 +37,10 @@ def _grain_claim_needs_group(
 
     When the parent does NOT expose its own grain there is nothing to widen with,
     and grouping is the only repair left. The outputs are functionally determined
-    by the grouped set, so the dedupe cannot drop a row — it removes exactly the
+    by the grouped set, so the dedupe cannot drop a row; it removes exactly the
     duplicates the parent's finer grain introduced.
 
-    Returns SelectNode's own default (False) when it does not fire -- passing
+    Returns SelectNode's own default (False) when it does not fire: passing
     None instead would flip every other basic projection onto ``_resolve``'s
     grain-less branch, which is a plan change for nodes this has no business
     touching.

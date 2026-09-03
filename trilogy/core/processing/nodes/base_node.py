@@ -121,8 +121,6 @@ def resolve_existence_map(
 def get_all_parent_partial(
     all_concepts: list[BuildConcept], parents: list["StrategyNode"]
 ) -> list[BuildConcept]:
-    # Index each parent's partial concepts by address once, rather than
-    # rebuilding the address list for every concept (was an O(n^2) rescan).
     partial_addrs = [{x.address for x in p.partial_concepts} for p in parents]
     return unique(
         [
@@ -141,24 +139,20 @@ def get_all_parent_nullable(
     all_concepts: list[BuildConcept],
     parents: Sequence["StrategyNode | QueryDatasource | BuildDatasource"],
 ) -> list[BuildConcept]:
-    """Accepts nodes or RESOLVED sources — only `nullable_concepts` is read.
+    """Accepts nodes or RESOLVED sources; only `nullable_concepts` is read.
     Prefer resolved sources where available: a node's attribute is a
     construction-time snapshot that grows at its first resolve."""
     for x in parents:
         if not x:
             raise ValueError(parents)
-    # Index each parent's nullable concepts by address once (was an O(n^2)
-    # rescan rebuilding the address list per concept).
     nullable_addrs = [{x.address for x in p.nullable_concepts} for p in parents]
     return unique(
         [
             c
             for c in all_concepts
             if any(c.address in addrs for addrs in nullable_addrs)
-            # a scalar derivation of a nullable input is itself nullable
-            # (`l_key + 1` is NULL wherever `l_key` is): infer it at the node
-            # that computes the derivation so address-based propagation carries
-            # it upward from here
+            # a scalar derivation of a nullable input is itself nullable; infer
+            # it at the computing node so address-based propagation carries it up
             or (
                 propagates_argument_nulls(c)
                 and any(
@@ -265,12 +259,9 @@ class StrategyNode:
                     non_hidden.add(psd)
             for z in x.hidden_concepts:
                 hidden.add(z)
-        # Accept inputs that match a parent's output by canonical_address (same
-        # lineage hash). Two distinct addresses can resolve to the same canonical
-        # concept (e.g. an inline `year(flight_date)` used alongside the
-        # attribute-access form `flight_date.year`); both project from the same
-        # SQL expression at render time, so the parent producing one canonically
-        # satisfies the other.
+        # Inputs may match a parent's output by canonical_address: two addresses
+        # with the same lineage render from the same SQL expression, so a parent
+        # producing one satisfies the other.
         missing = [
             x.address
             for x in self.input_concepts
@@ -290,23 +281,13 @@ class StrategyNode:
 
     def _refine_nullable_for_conditions(self) -> None:
         """Strip concepts from ``nullable_concepts`` that this node's own
-        ``conditions`` null-rejects.
+        ``conditions`` null-rejects, so each node's nullability reflects its own
+        rows and downstream nodes inherit that via ``get_all_parent_nullable``.
 
-        Built-in propagation (``get_all_parent_nullable``) carries up every
-        parent's nullable column without inspecting the local WHERE — so a
-        union branch that filters ``customer_id is not null`` still claims
-        customer_id is nullable, and that pessimism poisons every downstream
-        consumer. Refining here means each node's ``nullable_concepts``
-        reflects the truth on its own rows, and downstream nodes inherit the
-        improved view via ``get_all_parent_nullable`` without ever looking
-        downstream themselves.
-
-        Caveat for consumers: after this refinement, absence from
-        ``nullable_concepts`` conflates "never nullable" with "nullable but
-        proven non-null by this node's own condition". Anything that reasons
-        about the condition itself (e.g. ``StripRedundantNotNull``) must not
-        treat absence as ground truth — the q78 bug stripped the very
-        ``IS NOT NULL`` whose presence caused the refinement.
+        After this refinement, absence from ``nullable_concepts`` conflates
+        "never nullable" with "proven non-null by this node's own condition".
+        Anything that reasons about the condition itself (e.g.
+        ``StripRedundantNotNull``) must not treat absence as ground truth.
         """
         if not self.conditions or not self.nullable_concepts:
             return
@@ -320,8 +301,6 @@ class StrategyNode:
     def derive_partials(
         self, partial_concepts: list[BuildConcept] | None = None
     ) -> list[BuildConcept]:
-        # validate parents exist
-        # assign partial values where needed
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
@@ -393,7 +372,6 @@ class StrategyNode:
         rebuild: bool = True,
         change_visibility: bool = True,
     ):
-        # exit if no changes
         if self.output_concepts == concepts:
             return self
         self.output_concepts = concepts
@@ -456,11 +434,9 @@ class StrategyNode:
     ) -> BuildGrain:
         """The grain to declare when the planner passed none.
 
-        Deriving it from ``output_concepts`` states the grain the projection
-        *selects*, which is only the row grain if something deduped to it. For a
-        row-preserving node nothing did, so it reports its parents' rows: a
-        narrowing projection that claims the narrow grain reads as already
-        deduped, and consumers skip the GROUP BY that would make it true.
+        A row-preserving node reports its parents' grain: claiming the grain of
+        its own (possibly narrower) projection would read as already deduped,
+        and consumers would skip the GROUP BY that makes it true.
         """
         if self.inherits_parent_grain and parent_sources and not self.force_group:
             # An existence feeder is read through a subselect: it rejects rows,
@@ -488,15 +464,11 @@ class StrategyNode:
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
 
-        # Nullability is recomputed from the RESOLVED parents, not trusted from
-        # the construction-time snapshot: `get_all_parent_nullable` at
-        # construction reads the parent NODE attribute, which only carries
-        # resolve-time join analysis after the parent's first resolve — so two
-        # copies of one logical node built before/after that resolve would
-        # otherwise resolve to different plans (divergent Nullable join
-        # modifiers, q29's mirrored-base merges). Parents have just resolved
-        # here, so their QDS stamps are authoritative; the node's own
-        # condition-refinement still applies on top.
+        # Nullability is recomputed from the RESOLVED parents rather than the
+        # construction-time snapshot: the parent NODE attribute only carries
+        # join analysis after its first resolve, so copies built before and
+        # after that resolve would otherwise plan differently. The node's own
+        # condition refinement still applies on top.
         nullable = unique(
             self.nullable_concepts
             + get_all_parent_nullable(self.output_concepts, parent_sources),
@@ -542,13 +514,10 @@ class StrategyNode:
             return self.resolution_cache
         qds = self._resolve()
         self.resolution_cache = qds
-        # Nullability computed at resolve time (join-analysis null-extension in
-        # MergeNode, ROLLUP NULL-padding in GroupNode) is stamped onto the
-        # QueryDatasource; downstream nodes read the StrategyNode attribute
-        # (get_all_parent_nullable at construction, the rowset translation's
-        # rename mapping). Sync it back or that nullability is erased at this
-        # boundary and downstream joins render a plain `=` on a null-extended
-        # column, silently deleting rows (q51, q86 rowset variant).
+        # Resolve-time nullability (outer-join null extension, ROLLUP padding) is
+        # stamped on the QueryDatasource, but downstream nodes read the node
+        # attribute; sync it back or joins on a null-extended column render a
+        # plain `=` and silently drop rows.
         self.nullable_concepts = unique(
             self.nullable_concepts + list(qds.nullable_concepts), "address"
         )

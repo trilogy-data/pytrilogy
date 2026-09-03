@@ -33,7 +33,7 @@ def _structural_partial_concepts(
     """Column-level (``~``) partials, which survive a satisfied complete-where.
 
     For a union these are the children's unhealed intrinsic partials (see
-    ``union_unhealed_partial_addresses``) — a union of subset-covering bindings
+    ``union_unhealed_partial_addresses``): a union of subset-covering bindings
     is still subset-covering, so it must not score as complete against a rival
     union whose children bind the same keys fully.
     """
@@ -48,21 +48,18 @@ def membership_complete_grain_keys(
     """Canonical addresses of ``ds``'s ``~`` GRAIN keys that the query WHERE
     proves complete for this result.
 
-    A ``~`` grain key (``store_returns.~item.id``) covers only a subset of the
-    key's universe (return rows), so the planner otherwise keeps a sibling fact
-    (``store_sales``, keys complete) to anchor the full grain and re-fetches the
-    key as "complete" downstream. But if the WHERE proves-non-null a concept that
-    ``ds`` provides and its same-grain siblings do NOT (``return_channel_dim_id``),
-    every surviving row is a ``ds`` row (implicit ``complete where``) — the keys
-    cover the whole result population, so they are non-partial *for this query*.
+    A ``~`` grain key covers only a subset of the key's universe, so the planner
+    otherwise keeps a same-grain sibling with complete keys to anchor the full
+    grain. But if the WHERE proves non-null a concept that ``ds`` provides and
+    its same-grain siblings do NOT, every surviving row is a ``ds`` row
+    (implicit ``complete where``), so the keys are non-partial for this query.
 
-    Two call sites share this one proof: source selection drops it from the
-    partial map (so the redundant sibling falls out via the ordinary subset
-    rule), and the datasource node drops it from ``partial_concepts`` (so the
-    discovery loop doesn't see the key come back partial and re-source it).
+    Two call sites share this proof: source selection drops it from the
+    partial map (so the redundant sibling falls out via the subset rule), and
+    the datasource node drops it from ``partial_concepts`` (so the discovery
+    loop does not re-source the key as partial).
 
-    Empty unless BOTH a ``~`` grain key exists AND the membership proof holds, so
-    every other query is unaffected.
+    Empty unless BOTH a ``~`` grain key exists AND the membership proof holds.
     """
     if conditions is None or not isinstance(ds, BuildDatasource):
         return set()
@@ -74,12 +71,11 @@ def membership_complete_grain_keys(
     }
     if not grain_keys:
         return set()
-    # A ~ key is only worth "completing" if a same-grain sibling supplies it
-    # non-structurally — i.e. there is an anchor we'd otherwise pull in. With no
-    # such sibling the key is genuinely partial (nothing covers its full
-    # universe) and must stay partial. `sibling_outputs` also gives the concepts
-    # a WHERE proof can key off: one exclusive to `ds` proves the surviving rows
-    # are `ds`'s rows.
+    # A ~ key is only worth completing if a same-grain sibling supplies it
+    # non-structurally (an anchor that would otherwise be pulled in); with no
+    # such sibling the key is genuinely partial. `sibling_outputs` also gives
+    # the concepts a WHERE proof can key off: one exclusive to `ds` proves the
+    # surviving rows are `ds`'s rows.
     sibling_outputs: set[str] = set()
     sibling_completes: set[str] = set()
     for other in datasources:
@@ -120,8 +116,8 @@ def get_graph_partial_nodes(
             )
         ):
             # Condition satisfies the DS's complete-where, so the implicit
-            # table-level partial stamp goes away — but column-level ~ partials
-            # are structural and must survive.
+            # table-level partial stamp goes away; column-level ~ partials are
+            # structural and survive.
             partial[node] = [
                 concept_to_node(c)
                 for c in _structural_partial_concepts(ds)
@@ -396,11 +392,9 @@ def resolve_subgraphs(
     concept_map: dict[str, set[str]] = {}
     non_partial_map: dict[str, set[str]] = {}
     for ds in datasources:
-        # Only consider concepts in the requested set when judging coverage.
-        # A DS that exposes extra non-relevant concepts (e.g. a returns DS that
-        # also surfaces return_channel_dim_id when the query never asks for it)
-        # would otherwise look like it "uniquely covers" something — and never
-        # be recognized as a subset of a broader DS that the query does need.
+        # Judge coverage on the requested set only: a DS exposing extra
+        # non-relevant concepts would otherwise look like it uniquely covers
+        # something and never read as a subset of a broader DS.
         all_addrs = {
             concepts[c].canonical_address for c in subgraphs[ds]
         } & canonical_relevant
@@ -428,11 +422,9 @@ def resolve_subgraphs(
             (o, n) for o in datasources if o != ds for n in (mine & ds_join_nodes[o])
         }
 
-    # Datasources that uniquely provide some requested concept — pruning a join
-    # path to one of these would lose data, so a bridge to it is load-bearing.
-    # A bridge to a datasource whose concepts are all available elsewhere is a
-    # redundant alternative path and stays prunable (avoids re-introducing an
-    # ambiguous relationship).
+    # Datasources that uniquely provide some requested concept: a bridge to one
+    # is load-bearing. A bridge to a datasource whose concepts are all
+    # available elsewhere is a redundant alternative path and stays prunable.
     _provider_count: dict[str, int] = {}
     for _ds in datasources:
         for _c in concept_map[_ds]:
@@ -462,13 +454,11 @@ def resolve_subgraphs(
             ):
                 if not condition_atom_map[key].issubset(condition_atom_map[other_key]):
                     continue
-                # `key` may share fewer *requested* concepts than `other_key`
-                # yet still be the only join path to a datasource that uniquely
-                # supplies a needed concept (a dimension bridging a fact to a
-                # transitive attribute). Dropping it then severs that join and
-                # fans the result out, so keep it. A bridge to a datasource that
-                # is redundant elsewhere is NOT protected (it would re-introduce
-                # an ambiguous alternative path).
+                # `key` may cover fewer requested concepts than `other_key` yet
+                # be the only join path to a sole provider (a dimension bridging
+                # a fact to a transitive attribute); dropping it would sever
+                # that join and fan the result out. A bridge to a redundant
+                # datasource is not protected.
                 other_edges = _bridge_edges(other_key)
                 key_only_bridges = {
                     o

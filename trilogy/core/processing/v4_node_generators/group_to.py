@@ -12,7 +12,7 @@ def gen_group_to(
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    """`group_to(...)` always materializes the grain change — force a GROUP
+    """`group_to(...)` always materializes the grain change: force a GROUP
     BY even when the parent is already at the target grain."""
     return GroupNode(
         output_concepts=outputs,

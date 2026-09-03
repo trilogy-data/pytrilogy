@@ -1,11 +1,10 @@
 """Edge metadata for the concept / group graphs.
 
 The graphs themselves stay plain ``nx.DiGraph`` topology (string nodes, no
-attributes) — every edge's metadata lives in a side map keyed by the ``(u, v)``
+attributes); every edge's metadata lives in a side map keyed by the ``(u, v)``
 tuple, exactly like per-node state lives in ``dict[str, ConceptAttrs]`` /
 ``dict[str, GroupAttrs]``. Keeping metadata off the graph keeps the planner
-portable to a future string-only topology engine (e.g. a Rust backend) that
-won't carry typed attributes on its edges.
+portable to a string-only topology engine that carries no typed edge attributes.
 
 All edge access goes through the typed helpers here, so there is no stringly
 ``graph.edges[u, v]["kind"]`` left for mypy to miss.
@@ -29,7 +28,7 @@ class EdgeAttrs:
     kind: EdgeKind
     phase: EdgePhase | None = None
     # When set, this lineage edge is one ALTERNATIVE among several feeding the
-    # same pseudonym-hub node — exactly one survives `resolve_alternatives`,
+    # same pseudonym-hub node; exactly one survives `resolve_alternatives`,
     # which then strips the tag. All edges sharing a tag are mutually exclusive
     # candidates (e.g. `local.a` reachable via `uA.a` OR `uB.a`). Downstream
     # (group graph onward) never sees a tagged edge: resolution runs first.

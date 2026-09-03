@@ -77,38 +77,35 @@ Gate: `tests/join_matrix`, `tests/engine/test_duckdb_return_only_anchor_elision.
 `tests/modeling/test_nullability.py`, corpus. q78/q51/q86 notes live in the
 comments at those sites.
 
-## 2. 2.3(b)(c) Filter-virtual wrapping and the passthrough-group gate (NOT LANDED)
+## 2. 2.3(b) Filter-virtual wrapping (NOT LANDED)
 
-RENDER decisions that should be planner decisions. 2.3(a), the ORDER BY
+RENDER decision that should be a planner decision. 2.3(a), the ORDER BY
 `min(leaf)` wrapping, landed; the planner emits it now and
-`query_processor._scalar_order_leaves:664` is the surviving owner.
+`query_processor._scalar_order_leaves` is the surviving owner. 2.3(c), the
+passthrough-group gate, landed: `MergeNode._resolve` clears `force_group`
+when any output passes a ROLLUP/CUBE/GROUPING SETS row through, and the
+renderer's `_all_grouped_outputs_are_passthrough` / `_has_local_aggregate`
+pair is deleted (0 firings across the full suite, fuzzer and corpus after the
+planner change).
 
-(b) Filter virtuals are wrapped in `MAX(...)` at render (`dialect/base.py:1309-1317`)
-in coordination with `execute.CTE.filter_collapses_to_grain:566` and the GROUP BY
-exclusion at `execute.py:771`, plus `_aggregate_over_collapsed_filter`
-(`dialect/base.py:262-275`, applied at `:1443`). This is live and load-bearing
-for the q16 `count(<key>)` double-count; two files coordinate through
-`filter_collapses_to_grain` to keep `group_concepts` and the rendered column in
-agreement.
+Filter virtuals are wrapped in `MAX(...)` at render (`dialect/base.py`,
+`render_concept_sql`) in coordination with `execute.CTE.filter_collapses_to_grain`
+and the GROUP BY exclusion in `CTE.group_concepts`, plus
+`_aggregate_over_collapsed_filter` (`dialect/base.py`). This is live and
+load-bearing for the `count(<key>)` double-count over a filter virtual whose
+keys sit inside the grain but whose predicate reads non-grain columns; two files
+coordinate through `filter_collapses_to_grain` to keep `group_concepts` and the
+rendered column in agreement.
 
-- Change: build a filter virtual whose keys are within the grain but whose
-  predicate reads non-grain columns with a `max(case ...)` aggregate lineage at
-  build time, so the two agree by construction.
+- Change: build such a filter virtual with a `max(case ...)` aggregate lineage
+  at the hosting GroupNode, so the two agree by construction. The grain that
+  decides it is only known at node resolve, not at concept build, so the
+  substitution changes a concept's identity mid-plan.
 
-(c) `_all_grouped_outputs_are_passthrough` (`dialect/base.py:2566`) and
-`_has_local_aggregate` (`:2551`) decide at render that a grouping node should
-not group (gate at `:2707-2709`). Zero corpus hits, but pinned.
-
-- Change: a passthrough group should not be emitted as `group_to_grain` in the
-  first place (`QueryDatasource.force_group` / `group_required`).
-
-Delete after: ~110 LOC in `base.py`, ~30 in `execute.py`, ~70 for the
-passthrough gate. Pins: q16/q95/q05 rows,
-`tests/engine/test_duckdb_rollup_passthrough.py`,
-`tests/test_filtered_count_at_regroup_grain.py`,
-`tests/test_filter_cte_grouped_metric_projection.py`,
-`tests/test_rollup_multi_window.py`. Risk MEDIUM-HIGH (semantics), confidence
-MEDIUM.
+Delete after: ~110 LOC in `base.py`, ~30 in `execute.py`. Pins: q16/q95/q05
+rows, `tests/test_filtered_count_at_regroup_grain.py`,
+`tests/test_filter_cte_grouped_metric_projection.py`. Risk MEDIUM-HIGH
+(semantics), confidence MEDIUM.
 
 ## 3. 2.1 step 4: the residual optimizer LEFT/RIGHT to INNER branches (decision)
 
@@ -137,17 +134,24 @@ generator-agnostic but wired only into `gen_aggregate` (`:155`). Wire it into
 `gen_basic` / `gen_filter` / `gen_window` only if a test shape needs it. Nothing
 fires today.
 
-## 5. Known gaps (pre-existing, not simplification work)
+## 5. Known gaps
 
-Surfaced by the audit's review, none introduced by it:
+The three gaps the audit's review surfaced are closed; each is pinned by a
+DuckDB row test:
 
-- `query_processor._scalar_order_leaves:664` returns None for a CASE in ORDER BY
-  over an unprojected leaf, which renders an invalid GROUP BY on DuckDB.
-- `join_resolution.narrow_keyless_joins:1353` re-derives the left side of a
-  keyless join from the explicit left after a keyed reset (the same override the
-  deleted optimizer rule had).
-- A rowset consumed through basic wrappers on both sides of a FULL join drops the
-  derived key.
+- CASE or comparison in ORDER BY over an unprojected leaf on a grouped final
+  node: `_scalar_order_leaves` walks CASE arms and comparisons and the min()
+  wrap parenthesizes a bare comparison
+  (`tests/engine/test_duckdb_order_by_case_unprojected_leaf.py`).
+- `narrow_keyless_joins` no longer re-derives the left side from the explicit
+  left after a keyed or unnest join; only keyless right sides accumulate
+  from then on. Zero corpus, fuzzer or suite decisions changed.
+- A scoped join on expression keys between rowsets where the FINAL
+  contributors are projection wrappers over the boundaries: the union form
+  tripped the keyless-join guard or cross-joined, the subset form always
+  cross-joined. `_widen_merge_join_keys` now runs a second pass that carries
+  the unprojected expression mates onto whichever parent renders them
+  (`tests/engine/test_duckdb_scoped_join_expression_keys_through_wrappers.py`).
 
 ## Closed: do not re-chase
 

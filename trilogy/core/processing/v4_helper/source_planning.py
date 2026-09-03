@@ -1,8 +1,9 @@
 """Root datasource planning.
 
-Handles the case where a set of sourced concepts needs connector concepts added
-before datasource components can be merged. The connector search still reuses the graph Steiner helper for
-now, but component sourcing and final assembly stay in the v4 root planner.
+Turns the network search's chosen sources into StrategyNodes: scans each chosen
+datasource, materializes derived connectors, completes partial bindings, and
+merges the components. Also hosts the typed fallbacks a declined search falls
+through to.
 """
 
 from __future__ import annotations
@@ -77,11 +78,10 @@ class SourceRequest:
     history: History
     conditions: BuildWhereClause | None = None
     depth: int = 0
-    # The ONE partiality constraint left in v4: this request's answer must
-    # bind every requested output FULLY. Set only by the partial-completion
-    # sub-call — completing a partial output with another partial read would
-    # complete nothing. Everywhere else the search prices partiality per
-    # binding and no outer mode exists.
+    # This request's answer must bind every requested output FULLY. Set only
+    # by the partial-completion sub-call: completing a partial output with
+    # another partial read would complete nothing. Everywhere else the search
+    # prices partiality per binding and no outer mode exists.
     require_full: bool = False
     # False inside a partial-completion sub-call, so completing a partial output
     # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
@@ -93,12 +93,11 @@ class SourceRequest:
 class NetworkDecision:
     """What the network search concluded for a request.
 
-    `None` from `_network_source` means the search DECLINED — it found no
+    `None` from `_network_source` means the search DECLINED: it found no
     solution, or found one the emitter cannot express. A decision with
     `bridge=None` is not a decline: the search succeeded and the answer is a
-    single scan, which `_direct_source` renders (design §4). Keeping the two
-    apart is what lets the ladder go: a decline needs another home, a
-    single-scan does not."""
+    single scan, which `_direct_source` renders. A decline needs another home,
+    a single-scan does not."""
 
     bridge: BridgePlan | None
 
@@ -110,7 +109,7 @@ class BridgePlan:
     # Connector aliases the network search CHOSE as join hops. Address coverage
     # must not veto planning these: a merged key's surviving address is bound by
     # the dimension scan and its input keys by the fact scan, so every address
-    # looks covered — yet the two scans share no column and only the connector's
+    # looks covered, yet the two scans share no column and only the connector's
     # subplan (e.g. a merged-unnest bridge) can relate them.
     connector_aliases: tuple[str, ...] = ()
 
@@ -151,9 +150,8 @@ def _single_source_covers(requested: set[str], environment: BuildEnvironment) ->
 
     Completeness is the whole condition: a `partial`/`complete where` source
     covering the request is one arm of an answer, not the answer, and the grain
-    keys are what carry the other arms in (`channel_dim_text_id` over a WEB and
-    a CATALOG partial). A partial binding of a single column is the same story
-    at column scope.
+    keys are what carry the other arms in. A partial binding of a single column
+    is the same story at column scope.
     """
     for datasource in environment.datasources.values():
         if not isinstance(datasource, BuildDatasource):
@@ -174,21 +172,18 @@ def _concepts_with_grain_keys(
     expanded: list[BuildConcept] = []
     requested_addresses = {concept.address for concept in concepts}
     # A grain key is expanded so the request can REACH a concept living on
-    # another source -- the key is the join spine. When one datasource already
+    # another source: the key is the join spine. When one datasource already
     # binds every requested address the cover joins nothing, so no spine is
     # needed and demanding the key only forces in a bridge chain whose columns
-    # nothing reads (gcat: a summary binding `org.state_code`/`org.hex` but
-    # not `org.code` picked up `launch_info` + `organizations`). Whenever a join
-    # IS in play the key stays a terminal: dropping it there does not degrade to
-    # a connector, it re-picks the source and pairs on properties instead
-    # (tpc_ds aggregates q03).
+    # nothing reads. Whenever a join IS in play the key stays a terminal:
+    # dropping it there does not degrade to a connector, it re-picks the
+    # source and pairs on properties instead.
     keys_are_affordances = _single_source_covers(requested_addresses, environment)
     # A requested aggregate pins the population at its own grain: its axis
     # members join BY THEMSELVES, so their authored host-row keys are not
     # requirements of the request. Expanding them would demand the finer key
     # and force the raw table into a cover that a materialized rollup source
-    # answers alone (daily_fact: `select ride_year, ride_month, total_rides`
-    # dragging `ride_id` in).
+    # answers alone.
     aggregate_axes: set[str] = set()
     for concept in concepts:
         if concept.derivation == Derivation.AGGREGATE:
@@ -243,18 +238,17 @@ def _direct_source(request: SourceRequest, accept_partial: bool) -> StrategyNode
 def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
     """ROOT lineage sources of any *derived* condition row-arg.
 
-    A derived WHERE arg (e.g. `launch_date <- launch_jd`) is dropped by the
-    `filter_downstream` Steiner pass, so without its sourceable root in the
-    search the datasource that supplies it (`launch_info`) is scanned only for
+    A derived WHERE arg is not itself a terminal, so without its sourceable
+    root in the search the datasource that supplies it is scanned only for
     join keys and the rendered WHERE references an unscanned column
     (INVALID_REFERENCE). Pull those roots into the bridge search explicitly.
 
     A row-shape-barrier arg (RECURSIVE/AGGREGATE/WINDOW/...) is deliberately
     NOT inlined this way: pulling its roots lets the renderer recompute it from
     lineage (a RECURSIVE collapses to a single-step CASE), giving wrong rows.
-    Such an arg must be sourced through its own node and joined — left to
-    `gen_root`'s `_resolve_root_condition_sources` fallback, which the bridge
-    triggers by failing to source the arg here."""
+    Such an arg must be sourced through its own node and joined, which is left
+    to `gen_root`'s `_resolve_root_condition_sources` fallback; the bridge
+    triggers it by failing to source the arg here."""
     roots: list[BuildConcept] = []
     for concept in _condition_row_concepts(request.conditions):
         if concept.lineage is None:
@@ -330,8 +324,8 @@ def _inject_union_datasources(
 def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
     """The search, memoized for this build request on the network's structural
     signature. The ROOT planner re-asks the same question several times per
-    query — the same terminals reached through the condition retry, the
-    partial-completion sub-call and the single-scan re-ask — and the search is
+    query (the same terminals reached through the condition retry, the
+    partial-completion sub-call and the single-scan re-ask), and the search is
     the dominant cost of v4 generation. Nothing build-scoped is stored: the key
     is addresses and node names, the value node names and integers."""
     if not isinstance(history, V4History):
@@ -349,17 +343,16 @@ def _report_truncation(network: SourceNetwork, result: SearchResult) -> None:
 
     With a solution in hand the plan is valid but need not be cost-minimal.
     Without one the search DECLINED FOR LACK OF BUDGET, which is not the same
-    claim as "no solution exists" — yet `plan_source` falls through to
-    `_direct_source` and the unconditioned retry identically for both. Until
-    branch-and-bound removes the truncation, saying so is the difference between
-    a known limitation and a silent one."""
+    claim as "no solution exists", yet `plan_source` falls through to
+    `_direct_source` and the unconditioned retry identically for both. Saying
+    so is the difference between a known limitation and a silent one."""
     logger.warning(
         "[v4] source search hit %s over %d candidates for terminals %s: %s",
         result.limit.value if result.limit else "no limit",
         len(network.candidates),
         ",".join(network.terminals),
         (
-            "no solution emitted — falling through to the single-scan planners, "
+            "no solution emitted, falling through to the single-scan planners, "
             "which is a guess, not evidence that none exists"
             if result.exhausted
             else "solution kept but it may not be cost-minimal"
@@ -370,14 +363,13 @@ def _report_truncation(network: SourceNetwork, result: SearchResult) -> None:
 def _network_source(
     request: SourceRequest, defer_single_scan: bool = True
 ) -> NetworkDecision | None:
-    """Stage D, as an adapter: let the network search PICK the sources, and keep the
-    existing bridge machinery as the emitter.
+    """Stage D: let the network search PICK the sources, and hand the choice to
+    the bridge machinery as the emitter.
 
-    The solution is expressed as a `BridgePlan` — a graph holding exactly the chosen
-    datasources plus the concept nodes it binds — so `_datasource_nodes_for_bridge`,
-    `_merge_component_sources` and `_complete_partial_requested` are unchanged and every
-    §5 carry-over they implement stays in force. That keeps the cutover diff to "who
-    chose the sources", which is the only thing under test.
+    The solution is expressed as a `BridgePlan` (a graph holding exactly the
+    chosen datasources plus the concept nodes it binds) so that
+    `_datasource_nodes_for_bridge`, `_merge_component_sources` and
+    `_complete_partial_requested` render it without knowing who chose.
     """
     concepts = _search_concepts_for_bridge(request)
     v4_history = request.history if isinstance(request.history, V4History) else None
@@ -402,10 +394,10 @@ def _network_source(
     if result.split:
         # A proof, not a budget: no join-component of the candidate pool holds
         # binders for every terminal, so no connected cover exists and the
-        # fall-through is evidence-based — contrast _report_truncation.
+        # fall-through is evidence-based (contrast _report_truncation).
         logger.info(
             "[v4] source search declined: terminals %s share no join-component "
-            "with the rest of the request — no connected cover exists; falling "
+            "with the rest of the request, no connected cover exists; falling "
             "through to the single-scan planners",
             ",".join(sorted(result.split)),
         )
@@ -424,11 +416,11 @@ def _network_source(
             ].bindings.values()
         )
     ):
-        # A one-scan solution is `_direct_source`'s job (design §4): it is the
-        # renderer for a single assignment and knows the grain-aware scoring and
-        # the force-group the bridge emitter has no reason to apply. Routing it
+        # A one-scan solution is `_direct_source`'s job: it is the renderer for
+        # a single assignment and knows the grain-aware scoring and the
+        # force-group the bridge emitter has no reason to apply. Routing it
         # through the bridge drops the GROUP BY that collapses a scan at finer
-        # grain than the request. A union stays here — `_direct_source` cannot
+        # grain than the request. A union stays here; `_direct_source` cannot
         # render one. A solution leaning on an INJECTED binding (a pinned probe
         # the graph never offered) is the exception: `_direct_source`'s
         # graph-scored select cannot see it, only the bridge emitter's
@@ -474,12 +466,12 @@ def _network_source(
         # merge key: each side of the declared equality owns one variant, known
         # only to `canonical_concepts` (the demoted side's real lineage lives in
         # `alias_origin_lookup`). Carry, per CHOSEN source, the concept behind
-        # the binding that source actually reads — its own side's variant — so
+        # the binding that source actually reads (its own side's variant), so
         # each scan materializes its side and the merge joins them on the
         # pseudonym equivalence (the `renders_derived_key` contract downstream).
-        # Never the whole equivalence class: an unread member (gcat's
-        # `first_org`, a second declared alias for the same key) would hand the
-        # join a column the authored FK already provides, changing the join.
+        # Never the whole equivalence class: an unread member (a second
+        # declared alias for the same key) would hand the join a column the
+        # authored FK already provides, changing the join.
         for node in result.solution.sources:
             binding = network.candidates[node].bindings.get(address)
             if binding is None:
@@ -501,15 +493,11 @@ def _network_source(
     # answer to THIS request, however good its source pick is: a single-row `<*>`
     # watermark (excluded from the search because it joins by cross product, and
     # the bridge emitter has no cross join) or a rowset output with no backing
-    # scan both render as INVALID_REFERENCE. `_direct_source` handles them, and
-    # the ladder reaches the same conclusion through its own
-    # `requested <= bridged_addresses` gate.
+    # scan both render as INVALID_REFERENCE. `_direct_source` handles them.
     #
-    # No carve-out for the terminals the search drops as DECOMPOSABLE, tempting
-    # as it is: "the emitter can compute this inline" is a claim about lineage,
-    # and it does not survive a parent that is itself only reachable through a
-    # rowset body. Measured — exempting them costs `test_rowset_shape` and buys
-    # one request back from the ladder.
+    # No carve-out for the terminals the search drops as DECOMPOSABLE: "the
+    # emitter can compute this inline" is a claim about lineage, and it does not
+    # survive a parent that is itself only reachable through a rowset body.
     bridged_addresses = {concept.address for concept in bridge_concepts}
     if not {c.address for c in _requested_concepts(request)} <= bridged_addresses:
         return NetworkDecision(bridge=None)
@@ -545,7 +533,7 @@ def _concept_has_non_basic_merge_origin(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> bool:
     """`concept` is a merge key whose value comes from a non-BASIC (recursive /
-    aggregate) origin — its real lineage lives in `alias_origin_lookup` under the
+    aggregate) origin: its real lineage lives in `alias_origin_lookup` under the
     concept's address or a pseudonym, while `environment.concepts` holds a demoted
     lineage-less ROOT. Such a key is materialized by `_derived_connector_nodes`,
     never a raw scan. A BASIC merge origin (`p_last <- split(p_name)`) computes
@@ -582,20 +570,18 @@ def _datasource_nodes_for_bridge(
 ) -> list[StrategyNode] | None:
     parents: list[StrategyNode] = []
     bridge_addresses = {concept.address for concept in plan.concepts}
-    # A datasource the Steiner tree reached only via the post-pass (a derived
-    # merge key routed the walk through the key's reverse-lineage instead of the
-    # datasource) is a node in the bridge graph but missing from its
-    # `.datasources` registry (rebuilt from the Steiner nodes). Re-point it from
-    # the full source graph so the loop scans it. `plan.graph` is this bridge's
+    # A datasource node present in the bridge graph but missing from its
+    # `.datasources` registry (reached through a derived merge key's
+    # reverse-lineage rather than a datasource edge) is re-pointed from the
+    # full source graph so the loop scans it. `plan.graph` is this bridge's
     # private copy, so this never disturbs the shared graph or the recursive
-    # connector's own bridges (unlike mutating the Steiner helper directly).
+    # connector's own bridges.
     #
     # Skip entirely when a bridge concept merges with a non-BASIC (recursive /
     # aggregate) origin: that key is supplied by `_derived_connector_nodes`, and
     # re-pointing the datasources its subplan consumes lets the bridge scan the
-    # merged key directly, stranding the connector (recursive enrichment). A
-    # BASIC merge key (`r_last <- split`) is computed inline on the scan, so it
-    # is safe.
+    # merged key directly, stranding the connector. A BASIC merge key
+    # (`r_last <- split`) is computed inline on the scan, so it is safe.
     if not _bridge_has_non_basic_merge(plan, request.environment):
         covered = {
             concept.address
@@ -613,7 +599,7 @@ def _datasource_nodes_for_bridge(
             # Only fill a genuine gap: register the missing source iff it provides
             # a bridge concept no already-registered datasource covers. Blindly
             # registering every reachable alternate over-sources a union/semijoin
-            # bridge (regresses partial_union_bridge_semijoin).
+            # bridge.
             provides = {c.address for c in source_ds.output_concepts} & bridge_addresses
             if provides - covered:
                 plan.graph.datasources[ds_node] = source_ds
@@ -647,9 +633,9 @@ def _datasource_nodes_for_bridge(
             continue
         # Pass the WHERE only to a `complete where` partial the query implies, so
         # `create_select_node_candidate` clears its partial flag (partial_is_full)
-        # and applies the predicate on the scan -- otherwise its outputs stay
-        # partial and `_complete_partial_requested` joins the full table back in
-        # (geography exact-match). Other sources get the condition post-merge.
+        # and applies the predicate on the scan; otherwise its outputs stay
+        # partial and `_complete_partial_requested` joins the full table back in.
+        # Other sources get the condition post-merge.
         ds_obj = plan.graph.datasources.get(ds_node)
         ds_conditions = (
             request.conditions
@@ -717,8 +703,8 @@ def _derived_connector_nodes(
     """Materialize bridge concepts whose source is a *derived* connector.
 
     The bridge can route through a merged derivation (e.g. a recursive
-    `recurse_edge` whose output was `merge`d into a dimension key) that is not a
-    real datasource — its real lineage lives in `alias_origin_lookup`, keyed by
+    `recurse_edge` whose output is `merge`d into a dimension key) that is not a
+    real datasource: its real lineage lives in `alias_origin_lookup`, keyed by
     the concept's address or any pseudonym, while `environment.concepts` holds a
     demoted lineage-less ROOT. Such a connector is dropped by the `ds~`-only
     loop above, leaving the concept it provides unsourced (INVALID_REFERENCE).
@@ -744,7 +730,7 @@ def _derived_connector_nodes(
             # Skip non-derived origins, anything a datasource already sources,
             # and any connector currently mid-plan. The last is the re-entry
             # guard: planning a connector recurses to source its own inputs,
-            # whose bridge re-routes through the same connector — without the
+            # whose bridge re-routes through the same connector; without the
             # guard that re-injects forever.
             if (
                 origin is None
@@ -757,19 +743,18 @@ def _derived_connector_nodes(
             # Carry the connector's grain keys (e.g. a recursion keyed by `id`
             # must emit `id`, not group it away) so the merge can join the
             # connector back to the consumer on that key. The key must be emitted
-            # even when another parent already covers it — it IS the join column;
-            # dropping it leaves the merge with no shared key and a 1=1 cross join
-            # (hackernews: the recursion's `id` is also the post scan's `id`).
-            # An uncovered bridge concept FD-riding the connector's grain must
-            # ride the connector too: the datasource gap-fill stands down for
-            # non-BASIC merge bridges, so no raw scan will ever supply it
-            # (window-key join: `orders.amt` rides the rank connector at oid
-            # grain, so the window computes inline on the amt-carrying scan).
-            # A connector whose grain offers no axis beyond the merged key emits
-            # its input keys instead (see `connector_join_keys`) — the same
-            # contract `_connector_candidates` bound when the search picked it.
-            # Without them the subplan joins the consumer only on the key it
-            # exists to relate, which is no join at all.
+            # even when another parent already covers it: it IS the join column,
+            # and dropping it leaves the merge with no shared key and a 1=1
+            # cross join. An uncovered bridge concept FD-riding the connector's
+            # grain must ride the connector too: the datasource gap-fill stands
+            # down for non-BASIC merge bridges, so no raw scan will ever supply
+            # it (a window keyed by the connector's grain then computes inline
+            # on the scan carrying its argument). A connector whose grain
+            # offers no axis beyond the merged key emits its input keys instead
+            # (see `connector_join_keys`), the same contract
+            # `_connector_candidates` bound when the search picked it. Without
+            # them the subplan joins the consumer only on the key it exists to
+            # relate, which is no join at all.
             grain_components = set(origin.grain.components) | connector_join_keys(
                 alias, origin
             )
@@ -865,7 +850,7 @@ def _datasource_rolls_up_to(
     environment: BuildEnvironment,
 ) -> bool:
     """`datasource` binds an additive aggregate that SUM-rolls up to `concept` at
-    `concept`'s own grain — the anonymous-alias analogue of binding it outright.
+    `concept`'s own grain: the anonymous-alias analogue of binding it outright.
 
     A named metric reaches its summary table because query and column share an
     address; an agent-authored `sum(x) as total` shares an address with nothing,
@@ -926,11 +911,11 @@ def _datasource_renders_probe(
 ) -> bool:
     """A presence probe pins side identity: post-substitution every key-group
     member's binding shares the canonical address, so lineage-based checks pass
-    on BOTH sides of the scoped relation — but the probe is NULL exactly where
+    on BOTH sides of the scoped relation, but the probe is NULL exactly where
     the member's side is absent, so only a scan physically carrying the
     member's authored column (via `origin_address`) may compute it. Computing
     it on the complement side makes the probe never-NULL and the null test a
-    silent no-op (the q84/q59 idiom). Non-probe concepts pass through.
+    silent no-op. Non-probe concepts pass through.
 
     Graph nodes carry the probe's canonical `_virt_func_*` address; the
     `_virt_presence_*` identity (whose hash names the pinned member) lives on
@@ -1027,7 +1012,7 @@ def _local_concept_nodes_for_datasource(
                 queue.append(neighbor)
                 continue
             # Bridge addresses are keyed by `.address`, but a derived concept's
-            # graph node uses its `.canonical_address` (a `_virt_func_*` name) —
+            # graph node uses its `.canonical_address` (a `_virt_func_*` name),
             # so a derived merge key (`da <- o.amt+1` merged/joined with
             # `db <- c.cost+1`) is missed unless we also match the node concept's
             # `.address`. Restrict that fallback to a BASIC-derived key this
@@ -1035,7 +1020,7 @@ def _local_concept_nodes_for_datasource(
             # bound column): a scoped-merged key exposes one variant per join side
             # (INNER links them as pseudonyms; FULL keeps them distinct to
             # coalesce), and only the side binding the base column may compute the
-            # inline expression -- the sibling scan supplies the other variant and
+            # inline expression; the sibling scan supplies the other variant and
             # the join relates them. Assigning a scan a variant it cannot render
             # emits an unbound column (INVALID_REFERENCE); a recursive/complex
             # merge key must instead come from `_derived_connector_nodes`.
@@ -1047,7 +1032,7 @@ def _local_concept_nodes_for_datasource(
             )
             # A datasource-materialized aggregate/window (`customer_order_count`
             # in a summary table) is requested by its `.address` but reaches this
-            # scan under its `_virt_agg_*` canonical node -- match the canonical
+            # scan under its `_virt_agg_*` canonical node; match the canonical
             # too, but only when the scan physically BINDS it as a column. Without
             # the binding guard a fact scan would emit the aggregate via its
             # reverse-lineage edge (order_id -> count) and recompute it wrongly;
@@ -1055,7 +1040,7 @@ def _local_concept_nodes_for_datasource(
             # Restricted to AGGREGATE/WINDOW: a plain root concept already matches
             # via `address in bridge_addresses` (its canonical IS its address), and
             # widening this to every derivation re-sources probe/filter members off
-            # the wrong scan (gcat decom_spine).
+            # the wrong scan.
             renders_materialized_canonical = (
                 canonical is not None
                 and canonical.derivation in (Derivation.AGGREGATE, Derivation.WINDOW)
@@ -1132,12 +1117,12 @@ def _complete_partial_requested(
     """Upgrade a requested output that the bridge could only bind *partially*.
 
     On a strict (non-partial) pass a bridge can still carry a requested concept
-    as a partial column -- e.g. the `~vehicle.name` merge key on `launch_info`:
-    every launch has one, but the column is not vehicle.name's authoritative
-    domain, so it is flagged partial and the final-output guard rejects it.
-    Complete such a key against its dimension source (`lv_info`) and join. If no
-    *complete* source exists the node is left
-    unchanged -- the genuinely-partial case stays for the partial passes / guard.
+    as a partial column, e.g. a `~` merge key on a fact: every fact row has one,
+    but the column is not the dimension's authoritative domain, so it is flagged
+    partial and the final-output guard rejects it. Complete such a key against
+    its dimension source and join. If no *complete* source exists the node is
+    left unchanged; the genuinely-partial case stays for the partial passes /
+    guard.
     """
     requested = {c.address for c in _requested_concepts(request)}
     partial_requested = [c for c in node.partial_concepts if c.address in requested]
@@ -1145,10 +1130,10 @@ def _complete_partial_requested(
         return node
     partial_addresses = {c.address for c in partial_requested}
     # Carry the WHERE onto the completing dimension when every column it
-    # references is one we are completing (e.g. `vehicle.name like '%Falcon%'`);
-    # otherwise the unfiltered dimension would re-introduce keys the bridge's
-    # filter excluded. If the filter spans other columns the completion source
-    # cannot satisfy it, so leave it on the bridge side only.
+    # references is one we are completing; otherwise the unfiltered dimension
+    # would re-introduce keys the bridge's filter excluded. If the filter spans
+    # other columns the completion source cannot satisfy it, so leave it on the
+    # bridge side only.
     completion_conditions = None
     if (
         request.conditions is not None
@@ -1178,7 +1163,7 @@ def _complete_partial_requested(
     )
     # Anchor the complete (and filtered) dimension and outer-join the bridge, so
     # the requested key is non-partial and every surviving dimension value is
-    # kept -- the `lv_info LEFT JOIN launch_info` shape.
+    # kept.
     return MergeNode(
         input_concepts=inputs,
         output_concepts=node.output_concepts,
@@ -1196,7 +1181,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     `customer_id` grain), so the only correct plan is to scan a summary table
     that carries both the aggregate and the finer column, push the filter into
     that scan, then SUM-roll to the requested grain. A coarser exact table
-    (`agg_by_customer`) can't express the filter — joining its unfiltered count
+    (`agg_by_customer`) can't express the filter: joining its unfiltered count
     to a separately-filtered key list double-counts. We require ONE datasource
     that binds every requested aggregate, holds the requested grain keys, and
     supports the finer filter; otherwise there is no safe pinned source."""
@@ -1212,7 +1197,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     target_components = set(target_grain.components)
     if not target_components:
         return None
-    # Every output must be a rolled aggregate or a target-grain key — a property
+    # Every output must be a rolled aggregate or a target-grain key; a property
     # or other shape would not survive the pinned scan + SUM-roll.
     if any(not c.is_aggregate and c.address not in target_components for c in outputs):
         return None
@@ -1255,13 +1240,13 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
     implies `<c>`.
 
     A partial datasource pre-filtered to `complete where customer_revenue > 100`
-    is *complete* for any query whose conditions imply that predicate — every row
+    is *complete* for any query whose conditions imply that predicate: every row
     it would otherwise be missing is excluded by the filter anyway. Pinning it
     lets `create_datasource_node` clear the partial flag (`partial_is_full`) and
     treat the predicate as already applied, instead of the planner picking a
     generic summary and then trying to render a HAVING it can't (the requested
     aggregate and the filter's aggregate are canonically equal but differently
-    named, so the filter column isn't projected — INVALID_REFERENCE).
+    named, so the filter column isn't projected: INVALID_REFERENCE).
 
     Requires ONE partial datasource whose `non_partial_for` is implied by the
     conditions, that binds every requested output at the requested grain, and
@@ -1289,9 +1274,9 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
             continue
         # Only datasources exposed as a standalone scan in this graph are
-        # addressable here. A union *member* (e.g. `store_sales_unified`) lives
-        # in the environment but the graph only carries the union node, so
-        # scanning it directly would KeyError -- leave it to the union planner.
+        # addressable here. A union *member* lives in the environment but the
+        # graph only carries the union node, so scanning it directly would
+        # KeyError; leave it to the union planner.
         if f"ds~{ds.name}" not in request.graph.datasources:
             continue
         if not condition_implies(
@@ -1302,12 +1287,11 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         if not output_canonicals.issubset(ds_canonicals):
             continue
         # The scan must still apply any residual predicate beyond
-        # `non_partial_for`, so its columns must be present -- UNLESS
+        # `non_partial_for`, so its columns must be present, UNLESS
         # `non_partial_for` also implies the query condition (the two are
         # equivalent). Then the datasource is pre-filtered to exactly the
         # requested rows, there is no residual WHERE, and the filter columns
-        # (e.g. `name` for a `complete where name = 'Sarah'` source that only
-        # binds customer_id/revenue) need not be bound.
+        # need not be bound.
         residual_free = condition_implies(
             ds.non_partial_for.conditional, conditions.conditional
         )
@@ -1390,14 +1374,14 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
 
 def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
     """Bare projection of a coalescing (`full`/`union`) axis: the unified axis
-    is the union of member domains, so no single member's scan may satisfy it —
+    is the union of member domains, so no single member's scan may satisfy it;
     assemble the mandatory coalesce of every member side.
 
-    Deliberately narrow: fires only when EVERY
-    requested concept (outputs and filter columns alike) is a key of one
-    coalescing group. A request carrying any other column is querying a side or
-    already forces the member scans into the bridge, where probe pinning and
-    partial-driven join typing assemble the axis population natively."""
+    Deliberately narrow: fires only when EVERY requested concept (outputs and
+    filter columns alike) is a key of one coalescing group. A request carrying
+    any other column is querying a side or already forces the member scans
+    into the bridge, where probe pinning and partial-driven join typing
+    assemble the axis population natively."""
     env = request.environment
     requested = _requested_concepts(request)
     canonicals: set[str] = set()
@@ -1479,11 +1463,10 @@ def _terminal_components(network) -> list[set[str]]:
 
 def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bool:
     """Every output is reachable from every other in the reference graph,
-    lineage edges included. This is the ladder's real criterion for assembling
-    a join-disconnected request: the Steiner walk crossed component boundaries
-    exactly when a derivation's lineage related them (`overall <- sum(samt) +
-    sum(wamt)`), and failed loudly when nothing did — the q75/q64/q35 correct
-    disconnects, which must stay errors."""
+    lineage edges included. This is the criterion for assembling a
+    join-disconnected request: components may be crossed exactly when a
+    derivation's lineage relates them (`overall <- sum(samt) + sum(wamt)`);
+    when nothing does, the disconnect must stay a loud error."""
     targets: list[set[str]] = []
     for concept in outputs:
         matches = {
@@ -1509,16 +1492,16 @@ def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bo
 
 def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     """Assemble a lineage-related but join-disconnected request from its
-    components — the `sum(samt) + sum(wamt)` scalar shape: two facts related
-    only through a derived expression's lineage, with no key to join on. The
-    ladder's Steiner walk answered these by scanning each component and letting
-    the aggregate machinery collapse each side before a single-row cross join
-    (design §0.1: a disconnected cover is a CROSS PRODUCT, and the merge
-    renders exactly that); the network search correctly refuses to call such a
-    cover JOINED, so the assembly lives here as an explicit fallback.
+    components: the `sum(samt) + sum(wamt)` scalar shape, two facts related
+    only through a derived expression's lineage, with no key to join on. Each
+    component is scanned on its own and the aggregate machinery collapses each
+    side before a single-row cross join (a disconnected cover is a CROSS
+    PRODUCT, and the merge renders exactly that). The network search refuses
+    to call such a cover JOINED, so the assembly lives here as an explicit
+    fallback.
 
     Gated on `_lineage_connected`, which separates "the query itself relates
-    these components" from "nothing does" — the latter must stay a loud
+    these components" from "nothing does"; the latter must stay a loud
     disconnect error."""
     if len(request.outputs) < 2:
         return None
@@ -1550,10 +1533,9 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     # each collapses to a scalar and the cross join is the answer. When one
     # component's concepts are FD-determined by another's, the components have a
     # real key relationship and a JOIN on it is mandatory: crossing them
-    # multiplies rows instead (a PERSIST of `split` alone drops the `scalar` it
-    # is keyed by, and `select split, scalar` then paired every split with every
-    # scalar). Refuse, so the caller reports a disconnect rather than silently
-    # returning a cartesian.
+    # multiplies rows instead (a persisted property without its key, selected
+    # beside that key, pairs every property with every key). Refuse, so the
+    # caller reports a disconnect rather than silently returning a cartesian.
     component_addresses = [
         frozenset(concept.address for concept in members)
         for members in grouped.values()
@@ -1618,19 +1600,18 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
         merged = _emit_bridge(request, decision.bridge)
         if merged is not None:
             return merged
-    # Either the search answered with a single scan (design §4: `_direct_source`
-    # is that solution's renderer), or it declined and this is the last read that
-    # might still work. The escalation is only "may this read accept a partial
-    # binding" — it is not a re-search.
+    # Either the search answered with a single scan (`_direct_source` is that
+    # solution's renderer), or it declined and this is the last read that might
+    # still work. The escalation is only "may this read accept a partial
+    # binding"; it is not a re-search.
     for accept_partial in ((False,) if request.require_full else (False, True)):
         direct = _direct_source(request, accept_partial)
         if direct is not None:
             return direct
     if decision is not None and decision.bridge is None:
-        # The single-scan solution `_direct_source` could not render — a
-        # derived output only the bridge's concept-node assembly computes (the
-        # persist-refresh watermark shape, where the ladder likewise answered
-        # with a one-datasource bridge). Re-ask for the bridge rendering.
+        # The single-scan solution `_direct_source` could not render: a derived
+        # output only the bridge's concept-node assembly computes (the
+        # persist-refresh watermark shape). Re-ask for the bridge rendering.
         retry = _network_source(request, defer_single_scan=False)
         if retry is not None and retry.bridge is not None:
             merged = _emit_bridge(request, retry.bridge)

@@ -84,13 +84,8 @@ def _addresses_reachable(
     addresses: set[str],
     concepts_by_address: Mapping[str, BuildConcept] | None,
 ) -> bool:
-    """Every canonical address is bound by the datasource, or is a property the
-    datasource's grain functionally determines.
-
-    Property-of-key reachability: `region` is not on a customer-grain summary,
-    but `customer_id` is in its grain — the planner joins the dim that owns the
-    property. Without it, that summary is rejected for any use of a
-    customer-level attribute."""
+    """Every canonical address is bound by the datasource, or is a property whose
+    keys sit inside the datasource's grain (the planner joins the owning dim)."""
     datasource_addresses = {c.canonical_address for c in datasource.output_concepts}
     missing = addresses - datasource_addresses
     if not missing:
@@ -130,14 +125,10 @@ def filter_finer_row_args(
     target_grain: BuildGrain,
     concepts_by_address: Mapping[str, BuildConcept],
 ) -> list[BuildConcept]:
-    """Row-arg filter concepts that are NOT constant within a target-grain group
-    — i.e. filters on a column *finer* than the target grain. A concept is
-    group-level (excluded here) when it is single-row, a target-grain component,
-    or a property functionally determined by the target grain (its keys are a
-    subset of the grain components). Everything else (e.g. `order_date` below a
-    `customer_id` grain) splits groups: SUM-rolling a coarser precomputed
-    aggregate and filtering after the fact double-counts, so it must be applied
-    pre-aggregation on a finer summary table."""
+    """Row-arg filter concepts finer than the target grain: not single-row, not a
+    grain component, and not a property whose keys sit inside the grain. Such a
+    filter splits groups, so it must be applied before aggregation on a finer
+    summary rather than after rolling up a coarser one."""
     if conditions is None:
         return []
     target_components = set(target_grain.components)
@@ -177,10 +168,8 @@ def get_additive_rollup_concepts(
         return []
 
     datasource_grain = datasource.grain
-    # Grand total (no group-by components on the target side): any datasource
-    # that materializes an additive aggregate at finer grain can SUM-roll up
-    # to a single row. Skip when the datasource is itself grand-total —
-    # that's an exact match handled outside the rollup branch.
+    # Grand total target: any finer-grain additive aggregate rolls up to one row.
+    # A grand-total datasource is an exact match, handled outside the rollup branch.
     if not target_grain.components:
         if not datasource_grain.components:
             return []
@@ -200,10 +189,8 @@ def get_additive_rollup_concepts(
         return []
     if datasource_grain.issubset(target_grain):
         return []
-    # The table must be able to GROUP BY the target grain — every component
-    # bound here or reachable as a property of this grain. A customer-grain
-    # summary cannot answer a per-product question no matter how safely its
-    # own grain drops.
+    # The table must be able to GROUP BY the target grain: every component bound
+    # here or reachable as a property of this grain.
     if not _addresses_reachable(
         datasource, set(target_canonicals), concepts_by_address
     ):

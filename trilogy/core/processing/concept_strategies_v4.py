@@ -17,7 +17,7 @@
     output grain.
 
 The stage implementations live in `v4_helper/`; the per-derivation node
-builders (including the nested-select constructs — rowset, multiselect, union
+builders (including the nested-select constructs: rowset, multiselect, union
 TVF) live in `v4_node_generators/`. This file is just the public API, the
 materialized-root pre-pass, and the History cache wiring.
 """
@@ -92,19 +92,17 @@ def append_existence_check(
 
     Each subselect is gated for connectivity first. It is an independent
     resolution scope, so its concepts (with any FILTER's hidden condition
-    concepts surfaced) must be connected on their own — otherwise the feeder
+    concepts surfaced) must be connected on their own; otherwise the feeder
     plans as a cross join and the membership silently filters nothing. The gate
     has to run up front: the planner will happily assemble such a cross join
     rather than fail, so there is no unresolvable result to diagnose after.
 
     Rowset islanding stays ON here, unlike the WHERE-membership pre-gate in
     `query_processor`. A HAVING membership filters the statement's OUTPUTS, so
-    its subselect reads rowset outputs (`r.wk`) across the boundary, where the
-    rowset is genuinely opaque and islanding IS the diagnostic
-    (`test_q02_filter_rowset_output_by_out_of_grain_concept_clean_error`). A
-    WHERE-scope RHS is resolved against the base model instead, where a key that
-    happens to be a rowset output is a legitimate join-back and islanding
-    false-positives."""
+    its subselect reads rowset outputs across the boundary, where the rowset
+    is genuinely opaque and islanding IS the diagnostic. A WHERE-scope RHS is
+    resolved against the base model instead, where a key that happens to be a
+    rowset output is a legitimate join-back and islanding false-positives."""
     if not where.existence_arguments:
         return
     already_sourced = {c.address for c in node.input_concepts} | {
@@ -125,10 +123,10 @@ def append_existence_check(
         # A HAVING-derived membership subselect (`conditions` set) is this
         # query's own post-aggregation semijoin: the query WHERE must be
         # pushed pre-aggregate into its aggregate inputs, exactly as it is on
-        # the output path — else the membership recomputes the aggregate over
+        # the output path, else the membership recomputes the aggregate over
         # the unfiltered universe and its value never matches the filtered
-        # output (q44 silent-empty). A user `x in (select ...)` RHS is an
-        # independent set (no conditions) and stays unfiltered.
+        # output. A user `x in (select ...)` RHS is an independent set (no
+        # conditions) and stays unfiltered.
         parent = search_concepts(
             mandatory_list=[*subselect],
             history=history,
@@ -150,17 +148,17 @@ def _datasource_materializes(
     environment: BuildEnvironment,
 ) -> bool:
     """A datasource materializes `concept` iff it binds a COMPLETE column whose
-    canonical address matches — name-independent: a differently-named column with
-    the same underlying expression (`sum(x)` vs a bound `total`) satisfies it —
+    canonical address matches (name-independent: a differently-named column with
+    the same underlying expression, `sum(x)` vs a bound `total`, satisfies it)
     and can express the query's row-narrowing conditions.
 
     Partialness is relative to the query, via the same `condition_implies` rule
     source-planning's `partial_is_full` uses. Two partial mechanisms:
     - Population (`complete where X`, `ds.non_partial_for`): the table holds only
       the X-subset of rows, so it's a complete source only when the query implies
-      X. A `~key` merge column (`merge orid into ~orid_2`) is the degenerate case —
-      intrinsically one row per key, missing values that never appear as a key,
-      with no `non_partial_for` to recover it — so it never qualifies.
+      X. A `~key` merge column (`merge orid into ~orid_2`) is the degenerate case
+      (intrinsically one row per key, missing values that never appear as a key,
+      with no `non_partial_for` to recover it), so it never qualifies.
     - Column (`Modifier.PARTIAL`): a `partial ... complete where X` table's columns
       are individually partial but become complete once the query implies X.
 
@@ -174,7 +172,7 @@ def _datasource_materializes(
     )
     # When the persisted population is EXACTLY the query's desired rows (the query
     # `where` and the datasource's `non_partial_for` are mutually implied), the
-    # condition is already applied by materialization -- the datasource needs no
+    # condition is already applied by materialization; the datasource needs no
     # column to re-express it. A `persist ... from select derived where cat = 1`
     # drops the filter key (only the derived column is stored), so it can't pass
     # `_conditions_supported`, but its baked-in population already satisfies a
@@ -204,7 +202,7 @@ def _materialized_root_addresses(
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
 ) -> frozenset[str]:
-    """Demanded derived concepts that a datasource materializes directly — a
+    """Demanded derived concepts that a datasource materializes directly: a
     precomputed / pre-aggregated summary table or a persisted derived column.
     Stage 1 treats these as ROOT scans so v4 reads the table instead of
     re-deriving from base.
@@ -218,12 +216,12 @@ def _materialized_root_addresses(
 
     Additive rollup: an additive AGGREGATE (sum/count) that no datasource has at
     the exact grain, but a *finer*-grain table binds, is also treated as a root
-    scanned from that finer table — `_group_to_grain_if_required` then
+    scanned from that finer table; `_group_to_grain_if_required` then
     re-aggregates it to the target grain (`sum(finer.col)`).
 
     Condition row-args are candidates too (EXACT branch only): a WHERE over a
     materialized aggregate (`where customer_revenue > 100` beside its summary
-    table) reads the table and filters it, instead of re-deriving from base —
+    table) reads the table and filters it, instead of re-deriving from base,
     and without the mark the atom's arg is invisible to the root cluster's
     satisfiability check, silently dropping the WHERE. The rollup branch is
     mandatory-only: filtering a finer scan by a rolled-up value pre-aggregation
@@ -245,13 +243,12 @@ def _materialized_root_addresses(
     candidates = mandatory_list + list(condition_args_by_address.values())
     # An unbound bare KEY whose pseudonym origin recomposes it (`merge
     # composite_id_alt into composite_id`, alt <- concat(first, second)) is
-    # sourced by substituting the origin during the graph walk — so the
+    # sourced by substituting the origin during the graph walk, so the
     # origin's own args are lineage intermediates the walk must be able to
     # stop at. Without the mark, an arg that is bound-but-derived (`first <-
     # split(composite_id)`, also a physical column) walks its authored lineage
-    # back into the unbound key and the cluster dead-ends (circular aliasing
-    # inverse). Direct args only; each still passes the materializes + grain
-    # gates below.
+    # back into the unbound key and the cluster dead-ends. Direct args only;
+    # each still passes the materializes + grain gates below.
     ds_bound_addresses = {c.address for ds in datasources for c in ds.output_concepts}
     for concept in list(candidates):
         if concept.lineage is not None or concept.address in ds_bound_addresses:
@@ -309,8 +306,8 @@ def _materialized_root_addresses(
         # address can gate this: the finer instance is grain-pinned to a
         # different canonical, and an agent-authored alias (`sum(ss.price) as
         # total`) never shares an address with the table's bound column. The gate
-        # is therefore the *lineage signature* — (operator, sorted canonical arg
-        # addresses) — which is exactly what the rollup matcher below re-checks.
+        # is therefore the *lineage signature* (operator, sorted canonical arg
+        # addresses), which is exactly what the rollup matcher below re-checks.
         #
         # Marking the concept a root lets source-planning pick a table binding
         # it. `get_additive_rollup_concepts` below is passed the filter and only
@@ -318,7 +315,7 @@ def _materialized_root_addresses(
         # a group-level filter (constant within a target-grain group) matches any
         # coarser/exact table, while a finer filter (`order_date` below a
         # `customer_id` grain) only matches a finer summary that carries the
-        # column — `plan_source._plan_finer_filter_rollup` then pins that table,
+        # column; `plan_source._plan_finer_filter_rollup` then pins that table,
         # pushes the filter pre-aggregation, and SUM-rolls. A coarser table is
         # never matched under a finer filter, so post-rollup decoupling can't
         # double-count.
@@ -416,7 +413,7 @@ def _own_build_of(
 
     A request that merely REFERENCES a member beside outer derivations (an
     ORDER BY carrying a grouped-away union column next to aggregates over the
-    rowset) is NOT the construct's own build — intercepting it would stamp the
+    rowset) is NOT the construct's own build: intercepting it would stamp the
     outer outputs onto the union/merge node itself. The graph path plans that
     case with the construct as a boundary group instead."""
     for concept in mandatory_list:
@@ -433,7 +430,7 @@ def _own_build_of(
 
 def _combined_build_info(node: StrategyNode | None) -> BuildInfo:
     """Wrap a node the arm combiners built directly. They plan no concept or
-    group graph — each arm is its own sub-plan — so the diagnostic graphs the
+    group graph (each arm is its own sub-plan), so the diagnostic graphs the
     stages normally populate are empty."""
     return BuildInfo(
         concept_graph=nx.DiGraph(),
@@ -453,7 +450,7 @@ def _search_concepts(
     complete_partials: bool,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> BuildInfo:
-    # A top-level multiselect (merge/align) isn't a single source graph — its
+    # A top-level multiselect (merge/align) isn't a single source graph; its
     # arms are independent sub-plans joined on the alignment concept. Resolve
     # each arm through v4 and stitch them, rather than trying to source both
     # arms' columns from one (unjoinable) root scan.

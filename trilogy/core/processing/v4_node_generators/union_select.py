@@ -1,6 +1,6 @@
 """TVF_UNION generator: a relational `union(...)`/`except(...)`/`intersect(...)`.
 
-Sibling of `multiselect` — same per-arm recursion, but the arms are stacked
+Sibling of `multiselect`: same per-arm recursion, but the arms are stacked
 column-positionally rather than joined on an alignment key. Intercepted in
 `concept_strategies_v4._search_concepts`, not reachable through dispatch.
 """
@@ -33,7 +33,7 @@ def gen_union_select(
     Each arm is planned independently (same arm recursion as a multiselect),
     then each arm projects its i-th column onto the shared output concept and
     the arms are combined with a `UnionNode` carrying the lineage's set
-    operator (UNION ALL / EXCEPT / INTERSECT) — not joined. Arm order is
+    operator (UNION ALL / EXCEPT / INTERSECT), not joined. Arm order is
     preserved; for EXCEPT it is semantic (left-fold)."""
     lineage = union_concept.lineage
     assert isinstance(lineage, BuildUnionSelectLineage)
@@ -52,7 +52,7 @@ def gen_union_select(
     for plan in plans:
         arm_node = plan.node
         # Expose each arm's i-th column under the shared union output, in the
-        # canonical align order — a UNION ALL stacks positionally, so every
+        # canonical align order: a UNION ALL stacks positionally, so every
         # arm's projection must list the outputs in the same order regardless
         # of its own column order. A scoped join inside the arm can emit the
         # authored key under its partner's address, so resolve through the

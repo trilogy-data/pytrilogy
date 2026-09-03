@@ -45,13 +45,10 @@ def member_binding_datasources(
     binding) or in an unsubstituted exact address match.
 
     Ordering: a binding AT the member's own grain is its defining table
-    (dimension PK) and spans the member's whole domain — probing it is a
-    tautology whenever the relation's other side draws from that same domain
-    (TPC-DS q84: `ss.return_customer_demographic.sk` is defined by
-    customer_demographics but the presence question is about the FK carrier,
-    store_returns). Prefer off-grain (FK-carrier) bindings; the defining
-    binding is the fallback when the member has no carrier, where domain
-    membership is the only readable population."""
+    (dimension PK) and spans the member's whole domain, so probing it is a
+    tautology whenever the relation's other side draws from that same domain.
+    Prefer off-grain (FK-carrier) bindings; the defining binding is the
+    fallback when the member has no carrier."""
     at_grain: list[BuildDatasource] = []
     off_grain: list[BuildDatasource] = []
     for datasource in environment.datasources.values():
@@ -79,7 +76,7 @@ def coalescing_axis_group(
     address: str, environment: BuildEnvironment
 ) -> tuple[str, set[str]] | None:
     """``(canonical, group)`` when `address` participates in a coalescing
-    (`full`/`union`) key group — as its canonical or any member — else None.
+    (`full`/`union`) key group, as its canonical or any member, else None.
     Under a coalescing declaration the unified axis is the union of the
     members' domains, so no single member's source can satisfy it. Member
     addresses matter for ROWSET members, which keep their own identity
@@ -148,19 +145,17 @@ def gen_coalescing_axis_node(
     coalesce of EVERY group member's own side.
 
     Post-substitution a ROOT member's binding shares the canonical's address,
-    so generic sourcing satisfies the axis from whichever single table scores
-    best — silently projecting one member's domain as the unified axis. Build
-    one side node per member — a scan pinned to the member's own datasource
-    for bound (ROOT) members, the member's own sourcing (its rowset) for
-    unbound ones — and merge them: the sides relate FULL (the union-key
-    registry forbids narrowing) and render the coalesce.
+    so generic sourcing would satisfy the axis from whichever single table
+    scores best, projecting one member's domain as the unified axis. Instead,
+    build one side node per member (a scan pinned to the member's own
+    datasource for bound ROOT members, the member's own sourcing for unbound
+    ones) and merge them: the sides relate FULL and render the coalesce.
 
     Deliberately NOT a completeness invariant: a query touching only one
-    side's own attributes/predicates stays single-sourced (the author is
-    querying that side; forcing the traversal is pure cost). This assembles
-    the full axis only at the two sites that are ABOUT the axis: a bare axis
-    projection and a presence probe's key (an `is null` probe's answer lives
-    on the complement side)."""
+    side's own attributes stays single-sourced. The full axis is assembled
+    only at the sites that are ABOUT the axis: a bare axis projection and a
+    presence probe's key (an `is null` probe's answer lives on the complement
+    side)."""
     found = coalescing_axis_group(concept.address, environment)
     if found is None:
         return None
@@ -175,9 +170,8 @@ def gen_coalescing_axis_node(
         for member in sorted(group):
             side = _pinned_member_node(member, key, environment, depth)
             if side is None and source_concepts is not None:
-                # No datasource carries the member (rowset/derived): source
-                # the member itself — its own scope materializes it, and the
-                # in-progress guard above keeps that sourcing one-sided.
+                # No datasource carries the member (rowset/derived): source the
+                # member itself; the in-progress guard keeps that one-sided.
                 member_concept = environment.concepts.get(member)
                 if member_concept is not None:
                     side = source_concepts(

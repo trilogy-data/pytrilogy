@@ -18,11 +18,11 @@ def gen_constant(
     """A constant has no inputs by definition, so parents are normally ignored.
 
     The exception is an EXISTS-style gate: a WHERE whose row args are non-constant
-    columns this group doesn't produce (e.g. `where sum(x) by k < ... select <const>`
-    — an aggregate gate disconnected from a constant output). A bare ConstantNode
+    columns this group doesn't produce (e.g. `where sum(x) by k < ... select <const>`,
+    an aggregate gate disconnected from a constant output). A bare ConstantNode
     can't source those columns, so the predicate renders as an unresolved reference.
     When a parent supplies the gate's inputs, filter that parent by the gate and
-    group the constants to their own (empty) grain, so the result is 0 or 1 rows —
+    group the constants to their own (empty) grain, so the result is 0 or 1 rows,
     the boolean "did any row satisfy the gate": the constant SELECT is sourced
     from the gate's scan and the predicate applied as a HAVING."""
     if conditions and parents:

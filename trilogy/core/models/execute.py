@@ -92,15 +92,14 @@ class SemiJoinFilter:
     aggregate CTE, mirroring an INNER join that a downstream consumer applies to
     that CTE's group key.
 
-    Restricting the *set of groups* an aggregate produces can never change a
+    Restricting the set of groups an aggregate produces can never change a
     surviving group's value, so this is sound wherever the consuming join is an
-    INNER equi-join on (a subset of) the group key — unlike pushing the
+    INNER equi-join on (a subset of) the group key, unlike pushing the
     consumer's predicate itself, which is only sound at the predicate's own
-    grain. Emitted as a plain uncorrelated ``IN (SELECT ...)`` rather than
-    reusing the null-safe existence render: engines plan the semi-join form
-    substantially better (TPC-H q21 measures 6x vs 3x for the ``EXISTS`` form),
-    and the mirrored INNER join already drops NULL keys, so the null-safe
-    identity semantics that shape exists for is not what is being expressed."""
+    grain. Emitted as a plain uncorrelated ``IN (SELECT ...)`` rather than the
+    null-safe existence render: engines plan the semi-join form better, and the
+    mirrored INNER join already drops NULL keys, so null-safe identity
+    semantics are not what is being expressed."""
 
     feeder: str
     # (probe rendered in the hosting CTE, member exposed by ``feeder``)
@@ -226,16 +225,13 @@ class CTE:
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         """Fold a single-datasource parent into this consumer.
 
-        Structurally identical to the historical inline (so every downstream
-        optimizer rule sees the consumer exactly as before — predicate
-        placement, ``is_root_datasource``, grouping all unchanged): the parent
-        QDS is replaced by its ``BuildDatasource`` in ``source.datasources``,
-        ``base_datasource``/source maps are repointed, and the parent leaves
-        ``parent_ctes``. The *only* change is representation: instead of an
-        ``InlinedCTE`` record + per-join ``inline_cte`` maps + render-site
-        branching, the folded leaf (a ``DatasourceCTE``) is parked on
-        ``inlined_parents`` and rendered from the raw datasource in that
-        consumer's scope.
+        The parent QDS is replaced by its ``BuildDatasource`` in
+        ``source.datasources``, ``base_datasource`` and the source maps are
+        repointed, and the parent leaves ``parent_ctes``, so downstream
+        optimizer rules (predicate placement, ``is_root_datasource``, grouping)
+        see the consumer as if the datasource were scanned directly. The folded
+        leaf is parked on ``inlined_parents`` and rendered from the raw
+        datasource in this consumer's scope.
         """
         if not isinstance(parent, DatasourceCTE):
             return False
@@ -405,8 +401,7 @@ class CTE:
             return True
         if not self.source.datasources:
             return False
-        # No explicit base, but datasources is non-empty — preserve historical
-        # behavior of consulting the first listed datasource for quoting.
+        # No explicit base: the first listed datasource decides quoting.
         first = self.source.datasources[0]
         if isinstance(first, BuildDatasource):
             if isinstance(first.address, Address):
@@ -482,8 +477,8 @@ class CTE:
     def from_scope_aliases(self) -> set[str]:
         """Alias tokens referenceable in this CTE's rendered FROM clause: the
         base plus every join participant. A parent wired in only through an
-        EXISTS subquery (e.g. the post-aggregation HAVING semijoin) is in
-        parent_ctes — and can leak into source_map — but is NOT in scope."""
+        EXISTS subquery (the post-aggregation HAVING semijoin) is in
+        parent_ctes, and can appear in source_map, but is not in scope."""
         scope = {self.base_alias}
         for join in self.joins:
             if not isinstance(join, Join):
@@ -504,15 +499,15 @@ class CTE:
                     continue
                 # A normal parent (incl. a materialized DatasourceCTE) is
                 # referenced as ``name.safe_address``. Inlined datasources are
-                # not in parent_ctes — handled by the fallback below.
+                # not in parent_ctes; the fallback below handles them.
                 return concept.safe_address
 
         # A derived-key FULL join coalesces the canonical key across both sides;
-        # the null-extendable side outputs it under a pseudonym column (da for
-        # db), so render that side's own column. Walk the pseudonym closure so a
-        # transitively-equivalent key resolves (e.g. an OUTER merge key whose only
+        # the null-extendable side outputs it under a pseudonym column, so
+        # render that side's own column. Walk the pseudonym closure so a
+        # transitively-equivalent key resolves (an OUTER merge key whose only
         # pseudonym is a binding key that is itself a pseudonym of the rendered
-        # join-key alias), and prefer a NON-hidden member: a hidden column is
+        # join-key alias), and prefer a non-hidden member: a hidden column is
         # absent from the source's SELECT, so referencing it is invalid SQL.
         for cte in self.parent_ctes:
             if source and source != cte.name:
@@ -538,9 +533,8 @@ class CTE:
                 if addr in seen:
                     continue
                 seen.add(addr)
-                # sorted: several equivalent members can match, and the first
-                # non-hidden one wins — unordered traversal makes the rendered
-                # column vary run to run.
+                # sorted: several equivalent members can match and the first
+                # non-hidden one wins, so traversal order must be stable.
                 frontier.extend(sorted(edges.get(addr, set()) - seen))
                 match = by_address.get(addr)
                 if match is None or addr == concept.address:
@@ -569,10 +563,10 @@ class CTE:
         property of the grain, not a grouping key: the per-row
         ``CASE WHEN cond THEN content END`` fans a mixed key out into
         ``{content, NULL}``, so keeping it in GROUP BY breaks the contract that
-        the stream is deduplicated to the grain (q16 ``count(<key>)``
-        double-count). The renderer collapses it with MAX instead (base.py).
-        When the CTE's own condition implies the predicate the CASE is elided
-        to bare content — grain-determined — and it stays a group key."""
+        the stream is deduplicated to the grain. The renderer collapses it with
+        MAX instead (dialect/base.py). When the CTE's own condition implies the
+        predicate, the CASE is elided to bare content, which the grain
+        determines, and it stays a group key."""
         from trilogy.core.processing.condition_utility import condition_implies
 
         if not (
@@ -704,15 +698,15 @@ class CTE:
                 and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
             ):
                 return True
-            # the filtered content renders as the value, but when the per-row
-            # CASE WHEN is emitted (not elided) the where condition becomes part
-            # of the column expression too -- so a local aggregate in the
-            # predicate (e.g. a HAVING `sum(x) > threshold` lowered to a
-            # `_virt_filter` existence column) makes the column aggregate-bearing
-            # and unfit for GROUP BY. When the CTE's own condition implies the
-            # filter predicate the renderer elides the CASE to bare content
-            # (base.py) -- the where aggregate is then NOT in the column and the
-            # filter follows its content, so only widen for the un-elided case.
+            # The filtered content renders as the value, but when the per-row
+            # CASE WHEN is emitted the where condition is part of the column
+            # expression too, so a local aggregate in the predicate (a HAVING
+            # `sum(x) > threshold` lowered to a filter virtual) makes the column
+            # aggregate-bearing and unfit for GROUP BY. When the CTE's own
+            # condition implies the filter predicate the renderer elides the
+            # CASE to bare content (dialect/base.py); the where aggregate is
+            # then not in the column and the filter follows its content, so
+            # only widen for the un-elided case.
             if c.derivation == Derivation.FILTER and isinstance(
                 c.lineage, BuildFilterItem
             ):
@@ -745,11 +739,10 @@ class CTE:
                 return check_is_not_in_group(c.lineage.content)
 
             # An aligned multiselect column resolves, in this arm CTE, to the
-            # underlying per-arm concept (e.g. `lc` -> `cnt1`). It inherits that
-            # concept's group-ness: aligning an aggregate must NOT add it to the
-            # GROUP BY (DuckDB rejects aggregates in GROUP BY); aligning a
-            # dimension keeps it a group key. Derive items are computed at the
-            # merge grain — never a group key here.
+            # underlying per-arm concept and inherits its group-ness: aligning
+            # an aggregate must not add it to the GROUP BY; aligning a dimension
+            # keeps it a group key. Derive items are computed at the merge
+            # grain, never a group key here.
             if c.derivation == Derivation.MULTISELECT:
                 assert isinstance(c.lineage, BuildMultiSelectLineage)
                 if c.address in c.lineage.calculated_derivations:
@@ -777,7 +770,7 @@ class CTE:
                 and c.lineage
             ):
                 # A GROUP_TO (`group(agg, key)`) renders as its inner aggregate
-                # value, so it follows that aggregate — never a group key here.
+                # value, so it follows that aggregate and is never a group key.
                 if (
                     isinstance(c.lineage, BuildFunction)
                     and c.lineage.operator == FunctionType.GROUP
@@ -1104,14 +1097,14 @@ class BaseJoin:
 
     @property
     def unique_id(self) -> str:
-        # Order-independent: SQL renderer AND-joins keys after sorting, so two
-        # BaseJoins with the same pairs in different order produce identical
+        # Order-independent: the SQL renderer AND-joins keys after sorting, so
+        # two BaseJoins with the same pairs in different order produce identical
         # SQL. Dedupe on the sorted form so set-iteration nondeterminism in
-        # upstream pair construction can't slip a duplicate past `unique()`.
+        # upstream pair construction cannot slip a duplicate past `unique()`.
         # INNER is additionally orientation-independent: `a JOIN b ON x=y` and
         # `b JOIN a ON y=x` are one join, and two independently-built merges
-        # over the same parents can legitimately pick opposite bases — kept
-        # both, the merged plan joins the same partner twice (duplicate alias).
+        # over the same parents can pick opposite bases; keeping both joins the
+        # same partner twice (duplicate alias).
         if self.concept_pairs:
             if self.join_type == JoinType.INNER:
                 partners = sorted(
@@ -1328,7 +1321,7 @@ class QueryDatasource:
         return False
 
     def __add__(self, other) -> QueryDatasource:
-        # these are syntax errors to avoid being caught by current
+        # SyntaxError on purpose so generic TypeError handlers do not catch it
         if not isinstance(other, QueryDatasource):
             raise SyntaxError("Can only merge two query datasources")  # noqa: TRY004
         if not other.grain == self.grain:
@@ -1400,7 +1393,7 @@ class QueryDatasource:
         other_hidden: set[str] = other.hidden_concepts or set()
         # hidden is the minimum overlapping set
         hidden = self_hidden.intersection(other_hidden)
-        # Carry the base from LHS through the merge — the merged datasources
+        # Carry the base from LHS through the merge; the merged datasources
         # dict may have folded the original base into a wider entry (same
         # safe_identifier), so resolve through it.
         merged_base: BuildDatasource | QueryDatasource | None = None
@@ -1463,10 +1456,10 @@ class QueryDatasource:
 
     def _compute_identifier(self) -> str:
         if self.source_type == SourceType.UNION:
-            # The arms — each addressable by their underlying base table — are
-            # what make a union unique. Two unions over the same arms can be
-            # merged by combining their projected columns, so don't fold the
-            # outer grain (which reflects the projected column subset) into the
+            # The arms, each addressable by its underlying base table, are what
+            # make a union unique. Two unions over the same arms can be merged
+            # by combining their projected columns, so the outer grain (which
+            # reflects the projected column subset) is not part of the
             # identifier. UnionCTE.condition is always None at render time
             # (consumers wrap row-level filters as CASE), so the QDS-level
             # condition is also irrelevant to identity. The operator IS
@@ -1492,16 +1485,14 @@ class QueryDatasource:
         # Sort member identifiers: a join is commutative for identity, but
         # optimization passes reassign ``datasources`` post-construction (no
         # __post_init__ re-sort), so the same logical join can present its
-        # members in two orders. Canonicalizing here — mirroring the sorted
-        # grain/filter suffixes — keeps A_join_B and B_join_A one identity so
-        # get_datasource_cte can find the built CTE. (UNION path above keeps
-        # list order on purpose for EXCEPT arm semantics.)
-        # A row LIMIT is identity: a limited source is a proper row SUBSET of
-        # the same shape unlimited, so the two must never collide and merge
-        # (a multiselect arm's `limit 1` merged into its unlimited sibling and
-        # the limit vanished from the plan). The ordering rides along — under a
-        # limit it selects WHICH rows survive. Same rule as the row-limited veto
-        # in ``deduplicate_nodes``.
+        # members in two orders. Canonicalizing here, like the sorted
+        # grain/filter suffixes, keeps A_join_B and B_join_A one identity so
+        # get_datasource_cte can find the built CTE. (The UNION path above
+        # keeps list order on purpose for EXCEPT arm semantics.)
+        # A row LIMIT is identity: a limited source is a proper row subset of
+        # the same shape unlimited, so the two must never collide and merge.
+        # The ordering rides along, since under a limit it selects which rows
+        # survive. Same rule as the row-limited veto in ``deduplicate_nodes``.
         limited = ""
         if self.limit is not None:
             limited = f"_limited_{self.limit}"
@@ -1709,7 +1700,6 @@ class RecursiveCTE(CTE):
         bottom_source_map = {
             left_recurse_concept.address: [top.identifier],
             right_recurse_concept.address: [parent_identifier],
-            # recursive_derived.address: self.source_map[recursive_derived.address],
             join_gate.address: [top.identifier],
             recursive_derived.address: [top.identifier],
         }
@@ -1901,10 +1891,10 @@ class UnionCTE:
                 new_internal.append(new)
                 continue
             # An arm renders inline against its own base (``FROM <arm-source>``);
-            # if that source is the CTE being replaced, repoint the arm too —
-            # otherwise the arm dangles at a CTE that was merged away. The arm
-            # object lives only here (it is not in the optimizer's working set),
-            # so the consumer-level repoint never reaches it.
+            # if that source is the CTE being replaced, repoint the arm too, or
+            # it dangles at a CTE that was merged away. The arm object lives
+            # only here (not in the optimizer's working set), so the
+            # consumer-level repoint never reaches it.
             if any(
                 p.safe_identifier == old.safe_identifier for p in branch.parent_ctes
             ):
@@ -1922,26 +1912,24 @@ class UnionCTE:
 
     @property
     def group_to_grain(self) -> bool:
-        """A union never dedupes itself — only its consumer can decide.
+        """A union never dedupes itself; only its consumer can decide.
 
-        A UNION ALL whose projection drops its arms' grain keys does hold
-        duplicate rows against its own declared grain, so this is NOT the
-        "already a unique set" it looks like. But the duplicates are only noise
-        to a consumer joining the union as a key set; to a consumer aggregating
-        it they are the data. `select species, sum(dbh)` over two tree-grain
-        partitions projects (species, dbh) and must keep all three of three
-        identically-valued trees — deduping here silently under-counts the sum.
+        A UNION ALL whose projection drops its arms' grain keys holds duplicate
+        rows against its own declared grain. Those duplicates are noise to a
+        consumer joining the union as a key set, but data to a consumer
+        aggregating it: `select species, sum(dbh)` over two row-grain
+        partitions must keep every identically-valued row, and deduping here
+        would under-count the sum.
 
-        The union cannot tell those apart, so the obligation sits with whoever
-        reads it at a coarser grain: that consumer must group. See
-        `_grain_claim_needs_group` in v4_node_generators/basic.py, which is the
-        projection-shaped case of exactly that.
+        The union cannot tell those apart, so whoever reads it at a coarser
+        grain must group. See `_grain_claim_needs_group` in
+        v4_node_generators/basic.py for the projection-shaped case.
         """
         return False
 
     @property
     def group_concepts(self) -> list[BuildConcept]:
-        # Nothing to group by: see group_to_grain — deduping is the consumer's
+        # Nothing to group by: see group_to_grain, deduping is the consumer's
         # obligation, never the union's.
         return []
 
@@ -2031,7 +2019,7 @@ class Join:
 
     @property
     def unique_id(self) -> str:
-        # Order- and (for INNER) orientation-independent — see
+        # Order- and (for INNER) orientation-independent; see
         # BaseJoin.unique_id for rationale.
         if self.joinkey_pairs:
             if self.jointype == JoinType.INNER:
@@ -2074,19 +2062,18 @@ def coalesce_duplicate_joins(
 ) -> list[Join | InstantiatedUnnestJoin]:
     """Coalesce keyed Joins sharing (type, left, right) into one join carrying
     the union of their key pairs. CTE-level joins have no aliasing, so a second
-    join to the same right CTE re-joins the very same rows — never a self-join —
+    join to the same right CTE re-joins the very same rows (never a self-join),
     and re-matching on a differing key subset multiplies rows and renders an
-    ambiguous duplicate table reference (q11: two copies of one logical CTE
-    each carried a FULL join to the same parent whose pair sets differed by one
-    redundant column). Both copies are plans for the same logical relation, so
-    the joined rows must satisfy the union of their pairings."""
+    ambiguous duplicate table reference. Both copies are plans for the same
+    logical relation, so the joined rows must satisfy the union of their
+    pairings."""
     merged: dict[tuple[JoinType, str | None, str], Join] = {}
     # INNER joins additionally merge orientation-independently: two
     # independently-built plans for the same logical merge can pick opposite
     # bases (`a JOIN b` vs `b JOIN a` on the mirrored pairs), and CTE-level
     # joins have no aliasing, so keeping both renders a duplicate table
-    # reference. A pair present in both orientations keeps the INTERSECTION of
-    # its modifiers — rendering both joins would AND both conditions, and the
+    # reference. A pair present in both orientations keeps the intersection of
+    # its modifiers: rendering both joins would AND both conditions, and the
     # conjunction of `=` with `is not distinct from` is `=`.
     inner_merged: dict[frozenset[str], Join] = {}
 
@@ -2183,7 +2170,6 @@ def coalesce_duplicate_joins(
 
 def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
     final_ctes_dict: dict[str, CTE | UnionCTE] = {}
-    # merge CTEs
     for cte in ctes:
         if cte.name not in final_ctes_dict:
             final_ctes_dict[cte.name] = cte

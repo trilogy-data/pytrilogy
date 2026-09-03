@@ -1,19 +1,14 @@
 """Sourcing the inputs a condition needs, then injecting it at a node.
 
-Used wherever v4 applies a clause over an already-materialized producer — a
+Used wherever v4 applies a clause over an already-materialized producer: a
 rowset boundary, a multiselect's post-join WHERE, a nested select's HAVING.
 
 ROOT forks only the ROW branch (`root._resolve_root_condition_sources`), because
 it re-sources from datasources rather than consuming parents and so must widen
 the search to grain keys, seed a correlation identity, and carry ancestor atoms.
-Existence args are shared outright via `resolve_existence_sources`.
-
-The two were written from one template in June 2026 and drifted three times
-before being reconciled: the existence-feeder slice below was added here and
-never mirrored (costing an extra pass-through CTE on every ROOT-scan
-membership), and both unresolvable-feeder cases were silently skipped there
-while raising here. Nothing outside the row branch should diverge again — if a
-fix belongs to one path, ask first whether it belongs to both.
+Existence args are shared outright via `resolve_existence_sources`. Nothing
+outside the row branch should diverge between the two: a fix that belongs to
+one path usually belongs to both.
 """
 
 from trilogy.core.exceptions import UnresolvableQueryException
@@ -55,7 +50,7 @@ def resolve_condition_sources(
             )
         # The standalone feeder plan hides its own grain keys at its FINAL
         # layer (non-mandatory there), but hidden outputs are invisible to
-        # downstream join inference — the merge back onto `node` degrades to
+        # downstream join inference, so the merge back onto `node` degrades to
         # a cartesian. Un-hide any key the consumer also carries so the pair
         # joins keyed (a keyless feeder, e.g. a `by *` global, still
         # cross-joins).
@@ -84,7 +79,7 @@ def resolve_existence_sources(
 ) -> None:
     """Source each existence (`x IN <subselect>`) arg group onto `sources`.
 
-    Shared verbatim by the generic and ROOT paths — an existence feeder is a
+    Shared verbatim by the generic and ROOT paths: an existence feeder is a
     side-channel subselect, so nothing about how the consumer sourced its own
     rows changes how the feeder is built. Only the search `depth` differs.
     """
@@ -109,7 +104,7 @@ def resolve_existence_sources(
         # subselect columns (its mandatory contract). The nested plan can come
         # back carrying its predicate args as extra row outputs (`max_total`
         # for a HAVING membership), and any of those shared with the consumer
-        # promotes the feeder to a row-join candidate in MergeNode resolution —
+        # promotes the feeder to a row-join candidate in MergeNode resolution:
         # a spurious value-join whose grain then leaks the plan-local virt
         # across the rowset boundary. The feeder renders as the bare
         # subselect column; match it.

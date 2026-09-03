@@ -113,19 +113,15 @@ def _best_enum_union(
             cols[id(ds)] = frozenset(col.concept.address for col in ds.columns)
             scores[id(ds)] = _datasource_score(ds)
 
-    # Members MAY disagree on intrinsic (~) partiality of a shared column
-    # (a "mixed-family" combo, e.g. web_sales + catalog/store_returns).
-    # Such a union is a legitimate per-channel provider of columns it binds
-    # complete (q05: a web return's return-site lives on web_sales), and
-    # union partial propagation keeps its ~-partial keys from ever outranking
-    # a pure family that binds them complete (q14) — so don't reject it here.
-    # An empty overlap beyond the merge key IS rejected, at the first step it
-    # appears: intersection only shrinks, so no continuation can revive it.
-    # Ties reproduce the old product enumeration exactly: per signature the
+    # Members MAY disagree on intrinsic (~) partiality of a shared column (a
+    # mixed-family combo): such a union is a legitimate provider of the columns
+    # it binds complete, and union partial propagation keeps its ~-partial keys
+    # from outranking a pure family, so it is not rejected here. An empty
+    # overlap beyond the merge key IS rejected at the first step it appears:
+    # intersection only shrinks. Ties are deterministic: per signature the
     # winner is the first max-scoring combo in product order (`combo_key` =
-    # candidate index tuple, lexicographic = product order), and signatures
-    # order by their first-achieving combo (`min_key`, tracked over ALL combos
-    # reaching a signature, not just the best-scoring one).
+    # candidate index tuple), and signatures order by their first-achieving
+    # combo (`min_key`, tracked over ALL combos reaching a signature).
     merge_key_addr = merge_key.address
     # signature -> (score, combo, combo_key, min_key)
     states: dict[
@@ -190,11 +186,9 @@ def _best_enum_union(
     }
     if not best_per_overlap:
         return None
-    # Keep only maximal overlap signatures: drop a signature whose concept set
-    # is a strict subset of another's. This filters out "mixed" combos (e.g.,
-    # 2 sales + 1 dim) whose overlap is a strict subset of a pure-grouping
-    # combo (e.g., 3 sales). Pure parallel partitionings (sales/returns/dim)
-    # remain incomparable and all survive.
+    # Keep only maximal overlap signatures: a mixed combo whose overlap is a
+    # strict subset of a pure-family combo's is dropped, while parallel
+    # partitionings remain incomparable and all survive.
     sigs = list(best_per_overlap.keys())
     maximal = [s for s in sigs if not any(s < other for other in sigs)]
     return [best_per_overlap[s][0] for s in maximal]
@@ -268,11 +262,9 @@ def describe_incomplete_partitions(
     """Why a `complete where` family failed to union into a complete source.
 
     ``get_union_sources`` only unions arms whose predicates provably exhaust the
-    discriminator's domain — a family that misses a value would silently drop
-    those rows. A plain `string` discriminator has no enumerable domain, so no
-    set of equality predicates over it can ever be proven complete. Without this
-    the query just reports "no complete sources", which reads as a planner
-    failure rather than a modeling one.
+    discriminator's domain. A plain `string` discriminator has no enumerable
+    domain, so no set of equality predicates over it can be proven complete;
+    this names that modeling gap instead of a generic "no complete sources".
     """
     reasons: list[str] = []
     for merge_key_addr, dses in _partition_families(datasources, concepts).items():

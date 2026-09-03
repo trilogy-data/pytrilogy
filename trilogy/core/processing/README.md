@@ -4,7 +4,7 @@ Query planning is divided into 3 core phases: discovery builds an abstract node
 tree, each node is then resolved to an abstract CTE, and finally each CTE is
 rendered to a backend-appropriate query.
 
-Discovery is a staged planner — concept graph, group graph, per-group
+Discovery is a staged planner: concept graph, group graph, per-group
 materialization, final assembly. It is documented in
 [`docs/v4_network_discovery_design.md`](../../../docs/v4_network_discovery_design.md);
 the entrypoint is `concept_strategies_v4.search_concepts`, the stage

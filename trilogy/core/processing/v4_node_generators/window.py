@@ -18,7 +18,7 @@ def gen_window(
     preexisting_conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Window functions (LEAD/LAG/RANK/...) over an already-built parent.
-    WindowNode has no `conditions` arg — `conditions` (new at this group)
+    WindowNode has no `conditions` arg: `conditions` (new at this group)
     and `preexisting_conditions` (atoms applied upstream) collapse into one
     `preexisting_conditions` since the WindowNode can't filter on its own."""
     passthrough = passthrough_if_materialized(

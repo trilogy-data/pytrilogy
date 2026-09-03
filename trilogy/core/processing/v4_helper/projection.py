@@ -9,7 +9,7 @@ from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
     # A hidden parent output is dropped from that parent's CTE SELECT, so a
-    # consumer cannot read it — exclude it from what's "available".
+    # consumer cannot read it; exclude it from what's "available".
     return {
         output.address
         for parent in node.parents
@@ -72,10 +72,8 @@ def concept_satisfiable(
     if concept.address in available or concept.address in keep:
         return True
     # A constant is a literal rendered inline (e.g. the `by all_rows` grand-total
-    # marker), never sourced from a row parent — always satisfiable. Without this,
-    # dropping its standalone constant scan (a cross-joined `SELECT 1`) would make
-    # an output whose grain references it (the `count() by all_rows`) look
-    # unsatisfiable and get pruned.
+    # marker), never sourced from a row parent, so it is always satisfiable even
+    # when its standalone constant scan is dropped.
     if concept.derivation == Derivation.CONSTANT:
         return True
     # A merged/struct concept can be available under a pseudonym address (e.g.
@@ -152,15 +150,14 @@ def widen_projection(
 ) -> bool:
     """Widen `node`'s projection in place; returns whether anything changed.
 
-    `rebuild=False` defers the resolve to the caller — only safe while nothing
+    `rebuild=False` defers the resolve to the caller; only safe while nothing
     resolves the node (or a descendant of it) before that rebuild lands."""
     changed = False
     # A union's columns are the STACK of its arms' columns; widening the union
     # alone claims a column no arm produces, and the renderer's union escape
-    # hatch emits it as a bare reference rather than raising (a phantom
-    # `"cheerful"."_virt_filter_*"` shipped to the db). Every arm has to compute
-    # it from its own scan, so this is all-or-nothing: one arm that cannot
-    # render it means the union cannot carry it at all.
+    # hatch emits it as a bare reference rather than raising. Every arm has to
+    # compute it from its own scan, so this is all-or-nothing: one arm that
+    # cannot render it means the union cannot carry it at all.
     if isinstance(node, UnionNode) and node.parents:
         arm_candidates = list(input_candidates)
         arm_outputs = list(output_concepts)

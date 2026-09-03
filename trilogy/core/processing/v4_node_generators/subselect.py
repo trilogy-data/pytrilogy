@@ -25,12 +25,11 @@ def gen_subselect(
 ) -> StrategyNode | None:
     """Correlated subselect: the group graph supplies the OUTER (correlation)
     parent. For a cross-datasource subselect (`outer_arguments` set), the INNER
-    select reads a separate datasource (`@close_warehouses` reads `warehouse_*`
-    while the outer correlates on `customer_lat/lon`); plan it recursively and
-    add it as a second parent so the SubselectNode can render the correlated
-    sub-query.
+    select reads a separate datasource while the outer correlates on its own
+    columns; plan it recursively and add it as a second parent so the
+    SubselectNode can render the correlated sub-query.
 
-    SubselectNode has no `conditions` arg — both this-level and inherited atoms
+    SubselectNode has no `conditions` arg; both this-level and inherited atoms
     collapse into `preexisting_conditions`."""
     combined = collapse_conditions(conditions, preexisting_conditions)
 
@@ -54,7 +53,7 @@ def gen_subselect(
 
     # The inner select's columns are referenced only INSIDE the correlated
     # sub-query, so they are inputs (made available by the inner parent), not
-    # outputs of this node — exposing them as outputs would make the resolver
+    # outputs of this node; exposing them as outputs would make the resolver
     # base the CTE on the inner datasource and drop the outer correlation
     # columns from scope. The outer parent stays the driving row source.
     all_parents = list(parents) + inner_parents
@@ -70,7 +69,7 @@ def gen_subselect(
         preexisting_conditions=combined,
     )
     # A non-correlated subselect is one global value, but the node computes it
-    # once per parent row and its QDS grain (from the outputs) hides that — so
+    # once per parent row and its QDS grain (from the outputs) hides that, so
     # when NO output carries the parent's row grain, dedup to the output set
     # (per-row compute CTE, then a GROUP BY collapse CTE).
     if outputs and all(

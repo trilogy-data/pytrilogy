@@ -56,8 +56,7 @@ LOGGER_PREFIX = "[DISCOVERY LOOP]"
 def calculate_effective_parent_grain(
     node: QueryDatasource | BuildDatasource,
 ) -> BuildGrain:
-    # calculate the effective grain of the parent node
-    # this is the union of all parent grains
+    # the union of all parent grains, minus joins that do not change grain
     if isinstance(node, QueryDatasource):
         if node.group_required:
             return node.grain
@@ -93,9 +92,8 @@ def calculate_effective_parent_grain(
                 grain += join.right_datasource.grain
             seen.add(join.right_datasource.name)
         for x in qds.datasources:
-            # if we haven't seen it, it's still contributing to grain
-            # unless used ONLY in a subselect
-            # so the existence check is a [bad] proxy for that
+            # an unjoined source still contributes grain unless it is used only
+            # in a subselect; the existence check is a proxy for that
             if x.name not in seen and not (
                 qds.condition
                 and qds.condition.existence_arguments
@@ -128,8 +126,6 @@ def check_if_group_required(
     for source in parents:
         comp_grain += calculate_effective_parent_grain(source)
 
-    # dynamically select if we need to group
-    # we must avoid grouping if we are already at grain
     if comp_grain.abstract and not target_grain.abstract:
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain is abstract, cannot determine grouping requirement, assuming group required"
@@ -142,14 +138,12 @@ def check_if_group_required(
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
     # Expand target via concept-coverage so a MULTISELECT align identity
-    # covers its source keys (e.g. local.customer_id covers customer.id and
-    # store_sales.customer.id), and a comp_grain that arrives carrying the
-    # source keys does not look like extra grain. When *every* target
-    # component is itself an aggregate (e.g. TPC-H Q13 distribution shape:
-    # ``select count(x) by Y -> per_y, count(Y) -> dist``), exclude aggregate
-    # by-keys from coverage: there is no non-aggregate concept anchoring the
-    # output to the by-grain, so an upstream at the by-grain is strictly
-    # finer and a regroup is required to roll up to the aggregate's grain.
+    # covers its source keys and a comp_grain carrying them does not look like
+    # extra grain. When EVERY target component is itself an aggregate (an
+    # aggregate-of-aggregate distribution: ``count(x) by y`` then ``count(y)``),
+    # exclude aggregate by-keys from coverage: nothing anchors the output to
+    # the by-grain, so an upstream at the by-grain is strictly finer and a
+    # regroup is required.
     target_has_only_aggregates = bool(target_grain.components) and all(
         environment.concepts[address].is_aggregate
         for address in target_grain.components
@@ -164,7 +158,6 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
-    # find out what extra is in the comp grain vs target grain
     difference = [
         environment.concepts[c] for c in (comp_grain - target_grain).components
     ]
@@ -176,8 +169,8 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Difference concept {x.address} purpose {x.purpose} keys {x.keys}"
         )
 
-    # if the difference is all unique properties whose keys are in the source grain
-    # we can also suppress the group
+    # a difference of only properties whose keys sit in the source grain does
+    # not need a group
     if difference and all(
         x.keys
         and all(
@@ -199,7 +192,6 @@ def check_if_group_required(
             if x.address in target_grain.components
         ]
         replaced_grain = [item for sublist in replaced_grain_raw for item in sublist]
-        # if the replaced grain is a subset of the comp grain, we can skip the group
         unique_grain_comp = BuildGrain.from_concepts(
             replaced_grain, environment=environment
         )
@@ -238,10 +230,9 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
 def _upstream_concepts(
     base: BuildConcept, nested: bool, cache: dict[int, set[str]]
 ) -> set[str]:
-    # Lineage DAGs are diamond-shaped: the same concept is reached via many
-    # paths, so an unmemoized recursion is exponential. BuildConcepts are
-    # immutable during resolution, so memoize the (nested=True) result by
-    # identity for the lifetime of the top-level call.
+    # Lineage DAGs are diamond-shaped, so unmemoized recursion is exponential.
+    # BuildConcepts are immutable during resolution, so the (nested=True) result
+    # is memoized by identity for the lifetime of the top-level call.
     if nested:
         memoized = cache.get(id(base))
         if memoized is not None:
@@ -251,11 +242,9 @@ def _upstream_concepts(
         upstream.add(base.address)
     if base.lineage:
         for x in base.lineage.concept_arguments:
-            # if it's derived from any value in a rowset, ALL rowset items are
-            # upstream. use the rowset's already-namespaced derived_concepts
-            # rather than splicing `rowset.name` onto the underlying SELECT's
-            # addresses, which would produce nonsense like
-            # `deduped.local.group_key` and silently miss real upstreams.
+            # A value derived from a rowset has ALL rowset items upstream. The
+            # rowset's derived_concepts are already namespaced; splicing the
+            # rowset name onto the body's addresses would miss real upstreams.
             if x.derivation == Derivation.ROWSET:
                 assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
                 upstream.update(x.lineage.rowset.derived_concepts)
@@ -323,11 +312,10 @@ def _aggregate_grain_only_parents(
     An aggregate can be regrouped to any grain, so an edge from it to its ``by``
     key is not a join relationship and must not bridge otherwise-unconnected
     components. ``add_concept`` adds a graph edge for every ``concept_argument``,
-    and an aggregate's ``concept_arguments`` include its ``by`` keys — so without
-    this, ``sum(web.measure) by store.county`` would connect the (separate) web
-    and store subgraphs through ``store.county``. Mirrors the
-    "aggregate up to an arbitrary grain can be joined in later" rule in
-    ``calculate_graph_relevance``.
+    and an aggregate's ``concept_arguments`` include its ``by`` keys, so
+    ``sum(a.measure) by b.key`` would otherwise connect the separate ``a`` and
+    ``b`` subgraphs. Mirrors the "aggregate up to an arbitrary grain can be
+    joined in later" rule in ``calculate_graph_relevance``.
     """
     out: dict[str, set[str]] = {}
     for c in environment.concepts.values():
@@ -344,8 +332,7 @@ def _aggregate_grain_only_parents(
         measure_addrs = {a.address for a in measure if isinstance(a, BuildConcept)}
         if not measure_addrs:
             # Literal measure (sum(1), count(1)): the grain keys ARE the row
-            # demand — the aggregate cannot be computed anywhere but over its
-            # grain's row set, so those edges are real join relationships.
+            # demand, so those edges are real join relationships.
             continue
         grain_only = set(c.grain.components) - measure_addrs
         if grain_only:
@@ -365,19 +352,17 @@ def _component_map(
     judge reachability identically. Returns the map and the graph it was built on.
 
     ``excluded_addresses`` are treated as absent for reachability only. A nested
-    select must not reach connectivity through the outputs of the construct it is
-    the body of: `yr -> rs.yr -> rowset~rs -> rs.oname -> oname` otherwise makes
-    two unrelated models look joined, and the gate can never fire on the very
-    query defining `rs`. Dropped from the undirected COPY, so no shared concept,
-    pseudonym or graph is touched -- narrowing the environment instead is not an
-    option, since surviving concepts still name these addresses as pseudonyms."""
+    select must not reach connectivity through the outputs of the construct it
+    is the body of (`yr -> rs.yr -> rowset~rs -> rs.oname -> oname` makes two
+    unrelated models look joined). Dropped from the undirected COPY only:
+    surviving concepts still name these addresses as pseudonyms, so narrowing
+    the environment is not an option."""
     from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
 
     g = g if g is not None else generate_graph(environment)
 
-    # Compute connectivity on an undirected copy so we can drop aggregate
-    # grain-only edges without mutating the shared resolution graph.
+    # undirected copy, so edges can be dropped without mutating the shared graph
     cg = g.to_undirected()
     grain_only = _aggregate_grain_only_parents(environment)
     if grain_only:
@@ -394,8 +379,8 @@ def _component_map(
         island_rowsets_for_connectivity(g, cg, grain_only)
     else:
         # Even without islanding, one rowset's co-produced outputs are a single
-        # sub-query — weld them so a join declared INSIDE the rowset body
-        # (invisible at this level) doesn't split its own handles.
+        # sub-query; weld them so a join declared INSIDE the rowset body
+        # (invisible at this level) does not split its own outputs.
         link_rowset_outputs_for_connectivity(g, cg)
 
     if excluded_addresses:
@@ -418,24 +403,21 @@ def disconnected_components(
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
-    iff their reference-graph nodes are in the same weakly-connected component
-    (i.e. some join / FK / merge path relates them). >1 group means a genuinely
-    unconnected set — a real missing join/merge, not merely a grain conflict.
+    iff their reference-graph nodes are in the same weakly-connected component.
+    More than one group means a genuinely unconnected set, a missing join or
+    merge rather than a grain conflict.
 
-    Pass the resolution's graph as ``g`` to reuse it; otherwise one is built from
-    ``environment``. Crossjoinable (single-row/constant) concepts are skipped.
-    Aggregate grain-only ``by`` edges are dropped first (see
-    ``_aggregate_grain_only_parents``) so a regroupable aggregate never bridges
-    two otherwise-disconnected models through its grouping key.
+    Pass the resolution's graph as ``g`` to reuse it; otherwise one is built
+    from ``environment``. Crossjoinable (single-row/constant) concepts are
+    skipped. Aggregate grain-only ``by`` edges are dropped first (see
+    ``_aggregate_grain_only_parents``).
 
-    ``island_rowsets`` controls rowset islanding (see
-    ``island_rowsets_for_connectivity``): when
-    set, a base concept reachable only by navigating into a rowset's derivation is
-    not treated as a real join path. This is correct as a *post-failure* message
-    refiner (called once discovery has already failed independently), but as a
-    *pre-check gate* it false-positives on legitimate rowset join-backs (a base
-    key that IS a rowset output, or a concept DERIVED from one) — so the
-    pre-gate disables it and lets discovery decide. Defaults to on.
+    ``island_rowsets`` (see ``island_rowsets_for_connectivity``): when set, a
+    base concept reachable only by navigating into a rowset's derivation is not
+    a real join path. Correct as a post-failure message refiner, but as a
+    pre-check gate it false-positives on legitimate rowset join-backs (a base
+    key that IS a rowset output, or a concept DERIVED from one), so the
+    pre-gate disables it and lets discovery decide.
 
     See ``_component_map`` for ``excluded_addresses``.
     """
@@ -483,13 +465,11 @@ def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
 def _is_global_aggregate_gate(
     group: list[BuildConcept], output_addresses: set[str]
 ) -> bool:
-    """True when a disconnected subgraph is a pure WHERE aggregate gate rather than
-    a missing join: every member is an aggregate row-arg (not an output) at a grain
-    absent from the outputs. Such a condition is a global filter gate — the planner
-    bridges it via the gate's grain and cross-joins/dedups the (constant) outputs
-    (e.g. `where sum(x) by name < ... select <const>`). A disconnected
-    raw-column arg (`where bv > 0`) implies a row-level correlation that genuinely
-    needs a join, so it is NOT a gate and must still raise."""
+    """True when a disconnected subgraph is a pure WHERE aggregate gate rather
+    than a missing join: every member is an aggregate row-arg (not an output).
+    The planner bridges such a gate via its grain and cross-joins the constant
+    outputs. A disconnected raw-column arg implies a row-level correlation
+    that genuinely needs a join, so it is NOT a gate and must still raise."""
     return all(
         c.address not in output_addresses and c.derivation == Derivation.AGGREGATE
         for c in group
@@ -515,13 +495,11 @@ def membership_span_note(
     g: "ReferenceGraph | None" = None,
     island_rowsets: bool = True,
 ) -> str | None:
-    """When the disconnected-subgraph error is about to be raised and the WHERE
-    holds membership/existence predicates whose left side sits in one reported
-    subgraph while the right side derives from another, name them. A membership
-    semi-join only filters its left side — it never relates the two sides for
-    outputs or grouping — and its right-side concepts plan as a separate island,
-    so without this note they are absent from the reported components and the
-    error reads as if the authored predicate was silently dropped."""
+    """Name membership/existence predicates in the WHERE whose left side sits in
+    one reported subgraph while the right side derives from another. A
+    membership semi-join only filters its left side and never relates the two
+    sides for outputs or grouping; its right-side concepts plan as a separate
+    island and would otherwise be absent from the reported components."""
     if conditions is None or len(subgraphs) < 2:
         return None
     comparisons = _collect_subselect_comparisons(conditions.conditional)
@@ -566,7 +544,7 @@ def membership_span_note(
     rendered = "; ".join(notes)
     return (
         f"Note: the membership predicate(s) {rendered} span these subgraphs, but "
-        "membership only filters rows on its left side — it does not join the two "
+        "membership only filters rows on its left side, it does not join the two "
         "sides, so it cannot relate them for outputs or grouping. To combine "
         "values from both sides, author a query-scoped join or a merge on shared "
         "keys."
@@ -582,17 +560,14 @@ def raise_if_disconnected_for(
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> None:
-    """Connectivity gate for a select's required concepts (its outputs plus any
-    WHERE row args): raise the typed subgraph error when they span unconnected
-    reference-graph components. Crossjoinable (single-row/constant) concepts are
-    skipped by ``disconnected_components``, so e.g. two ungrouped scalar aggregates
-    still resolve via cross-join. A disconnected subgraph consisting solely of
-    aggregate WHERE row-args is a global filter gate (not a missing join) and is
-    dropped before counting — see ``_is_global_aggregate_gate``. Shared verbatim by
-    the top-level select and nested rowset inner selects — rowset discovery is
-    recursive query discovery, so the connectivity diagnostic must be identical. See
-    ``disconnected_components`` for ``island_rowsets`` (the v4 pre-gate passes
-    ``False``)."""
+    """Connectivity gate for a select's required concepts (outputs plus WHERE
+    row args): raise the typed subgraph error when they span unconnected
+    reference-graph components. Crossjoinable concepts are skipped by
+    ``disconnected_components``. A disconnected subgraph consisting solely of
+    aggregate WHERE row-args is a global filter gate, not a missing join, and
+    is dropped before counting (``_is_global_aggregate_gate``). Shared by the
+    top-level select and nested rowset inner selects so the diagnostic is
+    identical. See ``disconnected_components`` for ``island_rowsets``."""
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
     if conditions:
@@ -647,8 +622,9 @@ def connected_equivalent_suggestions(
     connected component; shortest such prefix wins. Returns
     ``(stranded_address, connected_address)`` pairs, or ``[]`` when no twin exists
     (the caller then falls back to the generic join/merge hint). Reachability is
-    judged with ``_component_map`` — same ``island_rowsets``/``excluded_addresses``
-    as the split — so it matches ``disconnected_components``."""
+    judged with ``_component_map`` under the same ``island_rowsets`` and
+    ``excluded_addresses`` as the split, so it matches
+    ``disconnected_components``."""
     if environment is None:
         return []
     comp_of, _ = _component_map(environment, g, island_rowsets, excluded_addresses)
@@ -730,7 +706,7 @@ def format_disconnected_subgraphs_error(
     )
     if suggestions:
         lines = "\n".join(
-            f"  - `{disc}` is disconnected — did you mean `{conn}`? "
+            f"  - `{disc}` is disconnected, did you mean `{conn}`? "
             "(connected to the other concepts)"
             for disc, conn in suggestions
         )
@@ -746,11 +722,11 @@ def format_disconnected_subgraphs_error(
 def _filter_hidden_concepts(
     output_concepts: list[BuildConcept],
 ) -> list[BuildConcept]:
-    """The concepts a FILTER output hides inside its lineage: the value it filters
-    and its ``? <cond>`` row-arguments. The top-level disconnect check only sees
-    outputs + WHERE row-args, so a filter whose condition can't be related to the
-    value it filters never splits — it dead-ends on the opaque virtual address.
-    Surfacing these lets the standard reachability check do its job."""
+    """The concepts a FILTER output hides inside its lineage: the value it
+    filters and its ``? <cond>`` row-arguments. The top-level disconnect check
+    only sees outputs + WHERE row-args, so a filter whose condition can't be
+    related to the value it filters never splits; it dead-ends on the opaque
+    virtual address. Surfacing these lets the reachability check see it."""
     extra: list[BuildConcept] = []
     for c in output_concepts:
         if not isinstance(c.lineage, BuildFilterItem):
@@ -761,12 +737,11 @@ def _filter_hidden_concepts(
 
 
 def filter_disconnect_context(output_concepts: list[BuildConcept]) -> str:
-    """Specific context appended to the general disconnected-subgraphs message when
-    the split runs through a filter on a rowset output. The filtered value (a rowset
-    output) and the condition concept genuinely can't be related without relating the
-    two — so name the concrete ways to do that: pull the condition into the rowset,
-    compare via an existence/membership set, or join the rowset back to the source.
-    Empty string when no such filter is involved."""
+    """Context appended to the disconnected-subgraphs message when the split
+    runs through a filter on a rowset output: names the concrete ways to relate
+    the filtered value and the condition concept (pull the condition into the
+    rowset, compare via a membership set, or join the rowset back to the
+    source). Empty string when no such filter is involved."""
     for c in output_concepts:
         if not isinstance(c.lineage, BuildFilterItem):
             continue
@@ -874,19 +849,17 @@ def raise_if_filter_disconnected(
     extra_required: list[BuildConcept] | None = None,
     island_rowsets: bool = True,
 ) -> None:
-    """Re-run the reachability check with FILTER outputs' hidden condition concepts
-    surfaced (see ``_filter_hidden_concepts``). When that splits the set, raise the
-    standard named-subgraph error — same 'add a join or merge' diagnostic as any
-    disconnected grouping — plus a rowset-filter-specific hint. No-op otherwise, so
-    the caller falls through to the generic connectivity error.
+    """Re-run the reachability check with FILTER outputs' hidden condition
+    concepts surfaced (see ``_filter_hidden_concepts``). When that splits the
+    set, raise the standard named-subgraph error plus a rowset-filter-specific
+    hint. No-op otherwise, so the caller falls through to the generic error.
 
-    ``island_rowsets`` as in ``disconnected_components``, and it is NOT simply
-    "off for pre-check gates" — it turns on whether the caller reads rowset
-    outputs across the boundary. A WHERE-scope gate resolves its concepts
-    against the base model, where a key that happens to be a rowset output is a
-    legitimate join-back, so it must pass False. A HAVING-scope gate filters the
-    statement's outputs, where the rowset is genuinely opaque and islanding is
-    the whole diagnostic, so it keeps the default."""
+    ``island_rowsets`` as in ``disconnected_components``; it turns on whether
+    the caller reads rowset outputs across the boundary. A WHERE-scope gate
+    resolves its concepts against the base model, where a key that is also a
+    rowset output is a legitimate join-back, so it must pass False. A
+    HAVING-scope gate filters the statement's outputs, where the rowset is
+    genuinely opaque, so it keeps the default."""
     # Drop the FILTER outputs themselves: their connectivity is fully captured by
     # the surfaced content + condition concepts, and the virtual filter concept
     # has no condition edges in the graph (see add_concept), so keeping it would

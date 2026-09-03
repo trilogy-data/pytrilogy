@@ -70,7 +70,6 @@ def calculate_graph_relevance(
         if concept.grain and len(concept.grain.components) > 0:
             relevance += 1
             continue
-        # Added 2023-10-18 since we seemed to be strangely dropping things
         relevance += 1
     return relevance
 
@@ -109,8 +108,7 @@ def find_nullable_concepts(
     """
     nullable_datasources = set()
     # ``identifier`` is an expensive recursive property; resolve it once per
-    # datasource and reuse it everywhere below. The source_map loop alone
-    # would otherwise re-derive it O(source_map x datasources) times.
+    # datasource and reuse it below.
     ds_idents: list[tuple[BuildDatasource | QueryDatasource, str]] = [
         (x, x.identifier) for x in datasources
     ]
@@ -121,12 +119,9 @@ def find_nullable_concepts(
     ]
     datasource_map = {i: x for x, i in typed_idents}
 
-    # pre-build address sets for O(1) lookup in inner loops. Include each
-    # nullable concept's pseudonyms so a column whose ``Modifier.NULLABLE``
-    # only sits on the pre-merge address (e.g. ``store_sales.date.id``) is
-    # still detected when the caller looks it up under the merged target
-    # (``date.id``). Without this, ``MERGE store_sales.date.* into ~date.*``
-    # would silently strip nullability off the merged join key.
+    # Nullable address sets include each concept's pseudonyms, so a NULLABLE
+    # modifier sitting on the pre-merge address is still found when looked up
+    # under the merged target address.
     def _expanded_nullable_addrs(ds) -> set[str]:
         out: set[str] = set()
         for c in ds.nullable_concepts:
@@ -140,12 +135,10 @@ def find_nullable_concepts(
     output_addrs: dict[str, set[str]] = {
         i: {c.address for c in x.output_concepts} for x, i in typed_idents
     }
-    # Joins are emitted left-deep: each entry adds its ``right`` datasource to a
-    # growing left input whose ``left_datasource`` is recorded as None. A FULL
-    # (or RIGHT) join null-extends that ENTIRE accumulated left input, not just
-    # the immediate operand — e.g. in `m1 INNER f FULL m2`, an m2-only row leaves
-    # BOTH m1 and f NULL. Seed the accumulator with the anchor(s) (datasources
-    # that never appear as a ``right``) and grow it in join order.
+    # Joins are left-deep: each entry adds its ``right`` datasource to a growing
+    # left input (``left_datasource`` None). A FULL or RIGHT join null-extends the
+    # ENTIRE accumulated left input, not just the immediate operand. Seed the
+    # accumulator with the anchors (never a ``right``) and grow it in join order.
     base_joins = [j for j in joins if isinstance(j, BaseJoin)]
     right_ids = {j.right_datasource.identifier for j in base_joins}
     accumulated_left: set[str] = {i for _, i in typed_idents if i not in right_ids}
@@ -154,9 +147,8 @@ def find_nullable_concepts(
         if not isinstance(join, BaseJoin):
             continue
         right_id = join.right_datasource.identifier
-        # The JOIN type itself can introduce NULLs. LEFT/RIGHT/FULL outer
-        # joins make the corresponding side's concepts nullable in the
-        # output, regardless of the source's own nullability.
+        # Outer joins make the extended side nullable regardless of the source's
+        # own nullability.
         if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
             right_ds = datasource_map.get(right_id)
             if right_ds is not None:
@@ -189,7 +181,7 @@ def find_nullable_concepts(
                 break
         if is_on_nullable_condition:
             # right_id can be a synthetic self-join-key pseudonym datasource
-            # absent from datasource_map — guard like the outer-join cases above.
+            # absent from datasource_map.
             right_ds = datasource_map.get(right_id)
             if right_ds is not None:
                 nullable_datasources.add(right_ds)
@@ -239,9 +231,8 @@ def unrenderable_outputs(
     scoped_merge_map: dict[str, str] | None = None,
 ) -> list[str]:
     """Target addresses `sort_select_output` would silently omit from the
-    projection. A caller that cannot tolerate a short SELECT — a persist writes
-    positionally, so a missing column shifts every later one — asks here and
-    fails naming the column instead."""
+    projection. A caller that cannot tolerate a short SELECT (a persist writes
+    positionally) asks here and fails naming the column instead."""
     merge_map = scoped_merge_map or {}
     return [
         target.address

@@ -1,29 +1,18 @@
 """Hoist predicate-only inner joins from a child CTE to its shared parent CTE.
 
-Motivation:
-
-When several siblings all read from a shared parent
-CTE AND all apply the same dim joins purely to filter rows via a
-shared WHERE predicate, the dim joins + predicate are redundantly evaluated
-N times — once per sibling. The classic example is q73, where three siblings
-each re-join (date_dim, store, household_demographics) only to evaluate
-``D_DOM BETWEEN 1 AND 2 AND S_COUNTY IN (...) AND HD_BUY_POTENTIAL = ...``.
-
-This rule recognizes the pattern and pushes the dim join + its predicate up to
-the shared parent so the work happens once.
-
-Conceptually we treat ``JOIN dim WHERE dim.col = X`` as an existence-style
-predicate on the FK column already on the parent. Once hoisted, the parent
-materializes the same row set for every sibling, and the siblings shrink to
-thin projections of the parent.
+When several siblings read from a shared parent CTE and each applies the same
+dim joins purely to filter rows via the same WHERE predicate, the dim joins and
+predicate are evaluated once per sibling. Pushing the join and its predicate up
+to the shared parent does that work once: ``JOIN dim WHERE dim.col = X`` acts
+as an existence predicate on the FK column already on the parent, and the
+siblings shrink to thin projections of it.
 
 Safety constraints:
 
-  - INNER join only — outer joins change row presence.
-  - Right side at-grain (dim grain ⊆ join keys) — no fan-out.
-  - The dim concepts the join brings in are referenced ONLY by the candidate
-    predicate, nowhere else in the child (no SELECT, no other WHERE clauses,
-    no GROUP BY, no other joins).
+  - INNER join only (a LEFT join a bundled predicate forces INNER counts).
+  - Right side at-grain (dim grain within the join keys), so no fan-out.
+  - The dim concepts the join brings in are referenced only by the bundled
+    predicates, nowhere else in the child.
   - All siblings of the parent already carry the same predicate, so the
     post-hoist row set matches every sibling's existing expectation.
 
@@ -141,13 +130,10 @@ class JoinHoist(OptimizationRule):
         """Addresses cte still consumes from any parent after the bundled
         candidates are hypothetically removed.
 
-        Renders cte (mirroring ``HideUnusedConcepts``) so the check follows
-        alias/lineage chains a shallow scan of ``output_columns`` would miss —
-        e.g. ``store_cumulative <- alias(store_cume)`` is rendered as
-        ``parent.store_cume`` even though only ``store_cumulative`` is in
-        ``output_columns``. The bundled candidates are temporarily stripped
-        from ``cte.condition`` so their own references aren't counted as
-        "needed elsewhere".
+        Renders cte so the check follows alias/lineage chains a shallow scan
+        of ``output_columns`` would miss. The bundled candidates are
+        temporarily stripped from ``cte.condition`` so their own references
+        are not counted as needed elsewhere.
         """
         original_condition = cte.condition
         stripped_condition = original_condition
@@ -161,10 +147,8 @@ class JoinHoist(OptimizationRule):
         referenced: set[str] = set()
         for addrs in used_map.values():
             referenced.update(addrs)
-        # Concepts cte exposes downstream — these don't show up in cte's own
-        # used_map (consumers haven't been re-rendered) but the renderer still
-        # has to project them, so they pin source_map entries we shouldn't
-        # strip.
+        # Outputs do not show up in cte's own used_map but still have to be
+        # projected, so they pin source_map entries.
         referenced.update(c.address for c in cte.output_columns)
         return referenced
 
@@ -177,14 +161,10 @@ class JoinHoist(OptimizationRule):
         """Per-join plan: which joins to hoist, and which candidate predicates
         ride along with each.
 
-        For each predicate-only inner join, gather every candidate predicate in
-        ``cte.condition`` that references concepts the join brings in. The join
-        + candidates move together. Joins are only included when:
-          - the dim concepts the join supplies are referenced ONLY by the
-            bundled candidates, nowhere else in cte;
-          - all siblings of parent_cte already carry every bundled candidate;
-          - the FK keys are materialized on parent_cte.
-        Returns the plan, or None if nothing's hoistable."""
+        A join is included only when the dim concepts it supplies are
+        referenced solely by the bundled candidates, all siblings of
+        parent_cte already carry every bundled candidate, and the FK keys are
+        materialized on parent_cte. Returns None if nothing is hoistable."""
         if parent_cte.condition and not is_scalar_condition(parent_cte.condition):
             return None
         # Hoisting a join+predicate into a row-limited parent filters before
@@ -205,8 +185,8 @@ class JoinHoist(OptimizationRule):
             c
             for c in self._candidates(cte)
             if isinstance(c, BoolExpr) and is_scalar_condition(c)
-            # `existence_arguments` may carry literal IN-list values for
-            # SubselectComparison; only reject actual concept-bearing ones
+            # `existence_arguments` may carry literal IN-list values; only
+            # reject concept-bearing ones.
             and not any(arg for tup in c.existence_arguments for arg in tup)
         ]
         if not candidates:
@@ -220,9 +200,8 @@ class JoinHoist(OptimizationRule):
             and j.right_cte.name != parent_cte.name
             and j.right_cte.source is not parent_cte.source
         ]
-        # A dim the parent already reads FROM (one of its own parent CTEs /
-        # sources) can't be hoisted: the parent would render as
-        # `FROM dim <join> dim` — an unaliased self-join (DuckDB binder error).
+        # A dim the parent already reads from cannot be hoisted: the parent
+        # would render an unaliased self-join `FROM dim <join> dim`.
         parent_source_names = {p.name for p in parent_cte.dependency_nodes()}
         plan: list[tuple[Join, list, list, JoinType]] = []
         for j in child_joins:
@@ -252,10 +231,9 @@ class JoinHoist(OptimizationRule):
                 continue
             join_brings = {c.address for c in join.right_cte.output_columns}
             filter_concepts = join_brings - join_keys_right
-            # bundle candidates that reference this dim's concepts. Two flavors:
-            #   - to_push: not yet on parent.condition; we'll AND-extend parent
-            #   - to_strip_only: already on parent.condition (hoisted via a
-            #     sibling earlier this round); just strip from cte
+            # to_push: not yet on parent.condition, AND-extend the parent.
+            # to_strip_only: already on parent.condition (hoisted via a
+            # sibling), only strip from cte.
             to_push: list = []
             to_strip_only: list = []
             bail = False
@@ -270,9 +248,8 @@ class JoinHoist(OptimizationRule):
                 if already_on_parent:
                     to_strip_only.append(cand)
                     continue
-                # if not already on parent, the candidate must apply to all
-                # siblings — either on each sibling's condition, or already
-                # pushed up to parent
+                # The candidate must apply to all siblings, on each sibling's
+                # own condition or already pushed up to the parent.
                 if not all(
                     condition_contains_atom(cand, s.condition)
                     or condition_contains_atom(cand, parent_cte.condition)
@@ -289,7 +266,6 @@ class JoinHoist(OptimizationRule):
             join_type = self._join_type_after_hoist(join, bundled)
             if join_type is None:
                 continue
-            # dim concepts must be unused outside the bundled candidates
             needed_elsewhere = self._collect_referenced_addresses_excluding(
                 cte, bundled
             )
@@ -339,13 +315,11 @@ class JoinHoist(OptimizationRule):
             dim_was_inlined = True
             dim_qds = dim_cte.datasource
         # An inlined dim appears in cte.source_map under its folded datasource
-        # identifier, not its CTE name; the cleanup below must scrub whichever
-        # token actually occurs or it leaves references to a table no longer in
-        # this CTE's FROM (e.g. a group-by coalesce member).
+        # identifier, not its CTE name; the cleanup below scrubs whichever
+        # token occurs so nothing references a table no longer in the FROM.
         dim_render_token = cte.source_key_for(dim_cte)
         dim_tokens = {dim_cte.name, dim_render_token}
 
-        # find the corresponding BaseJoin in cte.source.joins (matches by right ds)
         cte_base_join: BaseJoin | None = None
         for bj in cte.source.joins:
             if isinstance(bj, BaseJoin) and _datasource_matches(
@@ -435,13 +409,11 @@ class JoinHoist(OptimizationRule):
                 if dim_source_key not in parent_cte.source_map[c.address]:
                     parent_cte.source_map[c.address].append(dim_source_key)
 
-        # ---- strip the join from cte ----
         cte.joins.remove(join)
         if cte_base_join is not None and cte_base_join in cte.source.joins:
             cte.source.joins.remove(cte_base_join)
-        # filter-only concepts (not join keys) the dim brought in — these go
-        # away entirely. Join keys remain because cte may still need them
-        # from the FK side.
+        # Filter-only concepts the dim brought in go away entirely; join keys
+        # remain because cte may still need them from the FK side.
         join_keys_right = {p.right.address for p in (join.joinkey_pairs or [])}
         dim_filter_addresses = {
             c.address for c in dim_cte.output_columns
@@ -475,14 +447,13 @@ class JoinHoist(OptimizationRule):
         ]
         for addr in dim_filter_addresses:
             cte.source_map.pop(addr, None)
-        # for join keys in cte.source_map that pointed to the dim, redirect
-        # to the FK source — the original pair.cte. Otherwise cte renders
-        # `dim_cte.col` for a dim that's no longer in its FROM. The FK (left)
-        # key always redirects. The dim (right) key only renders identically to
-        # the FK after an INNER join (left == right for every surviving row); a
-        # scoped join onto a rowset carries that rowset key forward as cte's own
-        # output, so it must redirect too — get_alias then resolves it via the
-        # FK source's pseudonym (e.g. `late.ss_item_text_id`).
+        # Join keys in cte.source_map that pointed to the dim redirect to the
+        # FK source (the original pair.cte), or cte renders `dim_cte.col` for a
+        # dim no longer in its FROM. The FK (left) key always redirects. The
+        # dim (right) key only renders identically to the FK after an INNER
+        # join; a scoped join onto a rowset carries that key forward as cte's
+        # own output, so it redirects too and get_alias resolves it via the FK
+        # source's pseudonym.
         for pair in join.joinkey_pairs or []:
             redirect_addrs = [pair.left.address]
             if join_type == JoinType.INNER and pair.right.address != pair.left.address:
@@ -497,7 +468,6 @@ class JoinHoist(OptimizationRule):
                 if pair.cte is not None and pair.cte.name not in new_sources:
                     new_sources.append(pair.cte.name)
                 cte.source_map[addr] = new_sources
-                # mirror the redirect at the QDS level
                 qds_set = cte.source.source_map.get(addr)
                 if qds_set is not None:
                     qds_set = {
@@ -523,10 +493,9 @@ class JoinHoist(OptimizationRule):
             cte.parent_ctes = [
                 p for p in cte.dependency_nodes() if p.name != dim_cte.name
             ]
-            # A folded dim with no remaining join is gone from the FROM: drop it
-            # from inlined_parents and purge its now-dangling token from any
-            # leftover source_map entries (dim-only attributes never joined
-            # locally), so nothing renders a reference to an absent table.
+            # A folded dim with no remaining join is gone from the FROM: drop
+            # it from inlined_parents and purge its dangling token from any
+            # leftover source_map entries.
             if dim_was_inlined:
                 cte.inlined_parents = [
                     p for p in cte.inlined_parents if p.name != dim_cte.name

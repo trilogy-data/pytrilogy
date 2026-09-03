@@ -51,15 +51,11 @@ class OptimizationRulePlan:
 def canonicalize_graph(input: list[CTE]) -> None:
     """Make the CTE graph self-consistent.
 
-    Optimization rules (inline, merge, collapse) replace or fold CTEs, but
-    other CTEs / joins can retain references to the *old* object. Those stale
-    copies are the source of "table does not exist" / reorder ``KeyError``
-    bugs. Rewrite every cross-reference to the single live instance keyed by
-    name:
+    Optimization rules replace or fold CTEs, but other CTEs / joins can
+    retain references to the old object. Rewrite every cross-reference to the
+    single live instance keyed by name:
 
-    - ``parent_ctes``: keep only references whose target is still in the
-      working set (a folded/merged parent is sourced via inline/merge now);
-      dedupe to the live object.
+    - ``parent_ctes``: dedupe to the live object.
     - join endpoints (``right_cte``/``left_cte``/``joinkey_pairs[].cte``):
       resolve to the live emitted CTE, or to the consumer's folded
       ``inlined_parents`` instance so the render contract stays in sync.
@@ -77,9 +73,8 @@ def canonicalize_graph(input: list[CTE]) -> None:
             )
 
     def resolve(node: CTE | UnionCTE) -> CTE | UnionCTE:
-        # Sync to the single live instance; never drop a reference (a missing
-        # target means another rule must still resolve it — dropping it would
-        # corrupt reachability).
+        # Never drop a reference: a missing target means another rule must
+        # still resolve it.
         return emitted.get(node.name) or inlined.get(node.name) or node
 
     for cte in input:
@@ -110,12 +105,9 @@ def canonicalize_graph(input: list[CTE]) -> None:
                 branch = binding.node
                 live = resolve(branch)
                 # A union arm renders inline and must project exactly this
-                # union's columns. If the same-named live emitted CTE carries a
-                # different projection — a name collision between this inline arm
-                # and an unrelated standalone CTE over the same source+grain
-                # (QDS identity ignores projection) — collapsing onto it would
-                # force one projection onto both and corrupt the other consumer.
-                # Keep the arm's own instance in that case.
+                # union's columns. A same-named live CTE with a different
+                # projection is a name collision (QDS identity ignores
+                # projection), so the arm keeps its own instance.
                 if live is not branch and {x.address for x in live.output_columns} != {
                     x.address for x in branch.output_columns
                 }:
@@ -136,10 +128,9 @@ def subquery_sources(
     cte: CTE | UnionCTE,
     lookup: dict[str, CTE] | dict[str, CTE | UnionCTE],
 ) -> list[CTE | UnionCTE]:
-    """CTEs `cte` reads only from inside a subquery — existence membership
-    feeders and generated semi-join feeders. They are real references (the
-    rendered SQL names them) but not row sources, so they never appear in
-    ``dependency_nodes``."""
+    """CTEs `cte` reads only from inside a subquery: existence membership
+    feeders and generated semi-join feeders. The rendered SQL names them, but
+    they are not row sources, so they never appear in ``dependency_nodes``."""
     if not isinstance(cte, CTE):
         return []
     names: list[str] = [
@@ -162,20 +153,17 @@ def reorder_ctes(
     input: list[CTE],
 ):
     canonicalize_graph(input)
-    # STABLE topological order: among ready CTEs, earliest input position
-    # first. The result is a pure function of the input order and the
-    # dependency EDGE SET — never of edge/hash iteration order, which is what
-    # let sibling CTEs swap emission order between runs (PYTHONHASHSEED).
-    # Only nodes in the working set participate; a parent that isn't is
-    # sourced elsewhere (inlined/merged) and not emitted.
+    # Stable topological order: among ready CTEs, earliest input position
+    # first, so the result depends only on input order and the dependency
+    # edge set, never on hash iteration order. Only nodes in the working set
+    # participate; a parent that is not is sourced elsewhere and not emitted.
     position = {cte.name: index for index, cte in enumerate(input)}
     mapping: dict[str, CTE] = {cte.name: cte for cte in input}
     children: dict[str, set[str]] = {name: set() for name in mapping}
     indegree: dict[str, int] = {name: 0 for name in mapping}
     for cte in input:
-        # A CTE read only through a subquery — an existence membership's feeder
-        # or a generated semi-join's — still has to be DECLARED first: a WITH
-        # list is sequential, so an unordered reference is "table not found".
+        # A CTE read only through a subquery still has to be declared first:
+        # a WITH list is sequential.
         for parent in [*cte.dependency_nodes(), *subquery_sources(cte, mapping)]:
             if parent.name in mapping and cte.name not in children[parent.name]:
                 children[parent.name].add(cte.name)
@@ -208,11 +196,8 @@ def filter_irrelevant_ctes(
 
     def recurse(cte: CTE | UnionCTE, emit: bool = True):
         if cte.name in visited:
-            # Promote to emitted if we now reach this CTE as a real parent.
             # A CTE first visited as a union branch (emit=False) and later
-            # reached via parent_ctes of some sibling needs its own WITH entry;
-            # without this it gets filtered out while consumers still
-            # reference its name. The visited-set still prevents re-traversal.
+            # reached as a real parent needs its own WITH entry.
             if emit:
                 relevant_ctes.add(cte.name)
             return
@@ -222,9 +207,7 @@ def filter_irrelevant_ctes(
 
         for parent in cte.dependency_nodes():
             recurse(parent)
-        # A subquery renders `FROM <feeder>` for CTEs referenced only through
-        # existence_source_map or a generated semi-join — those need WITH
-        # entries too.
+        # Subquery feeders need WITH entries too.
         for node in subquery_sources(cte, by_name):
             recurse(node)
         if isinstance(cte, UnionCTE):
@@ -257,11 +240,10 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
         else:
             dependencies = cte.dependency_nodes()
         seen = {parent.name for parent in dependencies}
-        # A source referenced ONLY from inside a subquery (existence membership
-        # or generated semi-join) is a real consumer relationship: a merge that
-        # repoints just the row consumers leaves that reference naming a dead
-        # CTE. Count it so is_sole_consumer sees it and repoint_consumers (via
-        # replace_dependency) rewrites it.
+        # A subquery-only reference is a real consumer relationship: a merge
+        # that repoints just the row consumers would leave it naming a dead
+        # CTE. Counting it lets is_sole_consumer see it and repoint_consumers
+        # rewrite it.
         for node in subquery_sources(cte, by_name):
             if node.name not in seen:
                 dependencies.append(node)
@@ -418,35 +400,25 @@ def build_optimization_rule_plan(
         plan.append(
             OptimizationRulePlan(
                 name="collapse_single_parent.after_pushdown",
-                # Must carry the domain graph like the other two phases: without
-                # it `produces_unbound_rowset` cannot tell a bound rowset key
-                # from an unbound one and conservatively treats EVERY aliased
-                # rowset output as unbound, so this phase collapses nothing that
-                # crosses a rowset boundary — which is most of what it exists to
-                # collapse.
+                # Without the domain graph `produces_unbound_rowset` treats
+                # every aliased rowset output as unbound and this phase
+                # collapses nothing across a rowset boundary.
                 rule_factory=lambda: CollapseSingleParent(domain_graph=domain_graph),
                 depends_on=("predicate_pushdown.remove",),
                 refires_after=("predicate_pushdown.remove",),
                 reason=(
                     "a per-contributor projection becomes a bare passthrough once "
                     "predicate pushdown relocates its WHERE onto the parent scan, "
-                    "so re-collapse it then (q81's dim-scan projection)"
+                    "so re-collapse it then"
                 ),
             )
         )
     elif not opts.merge_aggregate and opts.predicate_pushdown:
-        # merge_aggregate gates the full CollapseSingleParent rule, but a bare
-        # passthrough (single parent, no compute/WHERE/join/regroup) is pure
-        # noise unrelated to aggregate merging -- e.g. the semijoin-projection
-        # residue left once predicate pushdown relocates its WHERE onto the
-        # parent scan. Collapse it even with aggregate
-        # merging off. Deliberately UNCONDITIONAL (no refires_after): unlike the
-        # merge_aggregate branch above, this path has no initial collapse phase,
-        # so this sole phase must run regardless of whether pushdown made changes
-        # -- it is positioned after `remove`, so it sweeps any passthrough left by
-        # planning OR by an earlier optimization phase, not only pushdown-created
-        # ones. Gating on `remove` would leak a passthrough whenever remove is a
-        # no-op. It still loops to fixpoint internally like every phase.
+        # A bare passthrough is pure noise unrelated to aggregate merging, so
+        # it collapses even with merge_aggregate off. Deliberately no
+        # refires_after: this path has no initial collapse phase, so this sole
+        # phase must sweep passthroughs left by planning or by any earlier
+        # phase, not only pushdown-created ones.
         plan.append(
             OptimizationRulePlan(
                 name="collapse_single_parent.passthrough_after_pushdown",
@@ -610,7 +582,7 @@ def build_optimization_rule_plan(
                 ),
                 reason=(
                     "the mirror is only sound for a settled INNER join, and it "
-                    "reads the feeder's visible outputs — so it runs after join "
+                    "reads the feeder's visible outputs, so it runs after join "
                     "types and output pruning are final. Adds no CTE and rewrites "
                     "no condition, so nothing downstream needs to re-fire"
                 ),
@@ -723,7 +695,6 @@ def optimize_ctes(
         phase_changed = False
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
-            # assume we go through all CTEs once
             look_at = unique([root_cte, *reversed(input)], property="name")
             look_at = _optimization_visit_order(rule, look_at)
             inverse_map = gen_inverse_map(look_at)
@@ -733,7 +704,6 @@ def optimize_ctes(
                 if merged:
                     cte_lookup.update({c.name: c for c in input})
                     cte_lookup[root_cte.name] = root_cte
-                    # Remap root_cte if it was merged
                     if root_cte.name in merged:
                         new_root_name = merged[root_cte.name]
 
@@ -747,7 +717,6 @@ def optimize_ctes(
                                     f"Remapped root_cte to {new_root_name}",
                                 )
                             )
-                    # Filter out merged CTEs from input
                     input = [c for c in input if c.name not in merged]
             complete = not actions_taken
             phase_changed = phase_changed or actions_taken
@@ -771,8 +740,8 @@ def optimize_ctes(
         )
 
     if not supports_full_join:
-        # Last: the rewrite adds CTEs and repoints FROM bases, so every
-        # join-type and placement decision must already be final.
+        # The rewrite adds CTEs and repoints FROM bases, so every join-type
+        # and placement decision must already be final.
         input = lower_full_joins(input, root_cte)
 
     return reorder_ctes(filter_irrelevant_ctes(input, root_cte))

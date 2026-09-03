@@ -8,12 +8,11 @@ from trilogy.core.optimizations.utils import render_cte_used_map
 
 
 class HideUnusedConcepts(OptimizationRule):
-    """Rule instances are phase-local (``make_rule`` per phase), so the
-    used-map cache below lives exactly one phase: it survives the fixpoint
-    loops (the confirming last loop and multi-parent repeats hit it). The only
-    mutations that can occur while the phase runs are this rule's own
-    ``hidden_concepts`` writes, each of which evicts the mutated object and
-    any cached union whose render included it."""
+    """Rule instances are phase-local, so the used-map cache below lives for
+    exactly one phase and survives its fixpoint loops. The only mutations
+    during the phase are this rule's own ``hidden_concepts`` writes, each of
+    which evicts the mutated object and any cached union whose render
+    included it."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -50,13 +49,10 @@ class HideUnusedConcepts(OptimizationRule):
             self._used_maps.pop(union_key, None)
 
     def _hide_branch_only_outputs(self, cte: UnionCTE) -> bool:
-        """Hide any concept that appears in a branch's ``output_columns`` but
-        not in the union's ``output_columns`` — those columns are projected
-        by the branch SELECT yet aren't reachable from any consumer (the
-        union doesn't expose them). E.g. ``UnionDimPushdown`` filter-only
-        mode adds a dim's projected concepts to each branch for the WHERE
-        atom to render, but consumers keep their own dim join so the union
-        never advertises them.
+        """Hide concepts a branch projects but the union does not expose: no
+        consumer can reach them through the union. ``UnionDimPushdown``
+        filter-only mode creates these, adding a dim's concepts to each branch
+        so the WHERE atom renders while consumers keep their own dim join.
         """
         union_addrs = {c.address for c in cte.output_columns}
         changed = False
@@ -96,10 +92,9 @@ class HideUnusedConcepts(OptimizationRule):
         if not children:
             return False, None
         if isinstance(cte, UnionCTE) and cte.operator != SetOperator.UNION_ALL.value:
-            # EXCEPT/INTERSECT arms dedupe and compare on the entire projected
-            # row: every declared output column is set-op row identity, so
-            # demand-driven pruning silently changes results. Branch-only
-            # extras (not in the declared tuple) still hide — arms must
+            # EXCEPT/INTERSECT compare the entire projected row, so every
+            # declared output column is row identity and demand-driven pruning
+            # would change results. Branch-only extras still hide: arms must
             # project exactly the declared outputs.
             return self._hide_branch_only_outputs(cte), None
         used: set[str] = set()
@@ -107,11 +102,9 @@ class HideUnusedConcepts(OptimizationRule):
             self.debug(f"Analyzing usage of {cte.name} in {v.name}")
             child_used_map = self._used_map(v)
             used.update(child_used_map.get(cte.name, set()))
-        # A child may consume a concept this CTE only carries under a pseudonym
-        # (e.g. a union merge exposes ``web_sales.date.id`` whose pseudonym is the
-        # canonical ``date.id`` the child renders); the child's used-map records
-        # the canonical address, so treat the physical pseudonym column as used too
-        # — otherwise we hide the column it physically reads, yielding invalid SQL.
+        # A child's used-map records the canonical address it renders, which may
+        # be a pseudonym of the column this CTE physically carries; mark that
+        # physical column used too or the child reads a hidden column.
         for concept in cte.output_columns:
             if concept.address not in used and concept.pseudonyms & used:
                 used.add(concept.address)
@@ -156,13 +149,9 @@ class HideUnusedConcepts(OptimizationRule):
             )
             cte.hidden_concepts = new_hidden
             self._evict(cte)
-        # UnionCTE rendering joins the per-branch CTEs with UNION ALL; each
-        # branch's SELECT list is filtered by *that branch's* hidden_concepts,
-        # not the union's. Propagate the hide so the branches also drop the
-        # unused columns from their projections (e.g. q66's pushed-up
-        # ``sales.ship_mode.carrier`` / ``sales.time.time`` that no consumer
-        # references after stripping). Re-checked every loop: a branch may only
-        # gain the column on a later pass.
+        # Each union branch's SELECT list is filtered by that branch's own
+        # hidden_concepts, so propagate the hide. Re-checked every loop: a
+        # branch may only gain the column on a later pass.
         if isinstance(cte, UnionCTE):
             for branch in cte.internal_ctes:
                 if not isinstance(branch, CTE):
@@ -175,7 +164,6 @@ class HideUnusedConcepts(OptimizationRule):
                     branch.hidden_concepts |= to_hide
                     self._evict(branch)
                     changed = True
-        # Report True only on a real change: returning True on a no-op (the set
-        # is already applied) keeps the driver re-running this phase until
-        # MAX_OPTIMIZATION_LOOPS, spamming the log every loop.
+        # Report True only on a real change; a no-op True keeps the driver
+        # re-running this phase until MAX_OPTIMIZATION_LOOPS.
         return changed or branch_only_hidden, None

@@ -41,11 +41,9 @@ class MergeMode(Enum):
     AGGREGATE = "aggregate"
     WINDOW = "window"
     BASIC = "basic"
-    # A CTE that only re-projects a subset of its single parent's columns — no
-    # local computation, no WHERE, no join, no regroup. It adds nothing the parent
-    # can't render, so it folds away entirely (the FINAL merge reads the parent
-    # directly). v4's per-contributor projection emits these (q81's dim scan ->
-    # a bare 16-col projection of the customer⋈customer_address CTE).
+    # A CTE that only re-projects a subset of its single parent's columns: no
+    # local computation, no WHERE, no join, no regroup. It folds away entirely
+    # and its consumers read the parent directly.
     PASSTHROUGH = "passthrough"
 
 
@@ -65,10 +63,9 @@ def is_projection_shape(cte: CTE) -> bool:
     if cte.source.source_type in _NON_PROJECTION_SOURCE_TYPES:
         return False
     # A column with a non-empty source_map entry is pulled from upstream as a
-    # plain column — safe to pass through whatever its derivation. Only a
-    # column computed LOCALLY (inline aggregate/window render) disqualifies
-    # the fold (usa_names: a stripped condition wrapper still carrying its
-    # now-unused aggregate virts as passthrough columns).
+    # plain column, safe to pass through whatever its derivation. Only a
+    # column computed locally (inline aggregate/window render) disqualifies
+    # the fold.
     return all(
         bool(cte.source_map.get(concept.address))
         or (
@@ -118,12 +115,10 @@ def is_filtered_projection(cte: CTE, parent: CTE) -> bool:
 def renders_off_parent_output(
     column: BuildConcept, cte: CTE, parent: CTE, parent_outputs: set[str]
 ) -> bool:
-    """True when `column` is a rename the merged parent will render
-    IDENTICALLY to the child's render today: the child renders it as a bare
-    parent-column reference and `rename_rederivation_preserves_value` proves
-    the parent-context re-derivation emits that same column's expression.
-    A parent-side source_map binding for the column's own address is
-    disqualifying — it wins over the lineage render and can name a RAW column
+    """True when `column` is a rename the merged parent renders identically to
+    the child: the child renders it as a bare parent-column reference. A
+    parent-side source_map binding for the column's own address is
+    disqualifying; it wins over the lineage render and can name a raw column
     where the child read a derived one. Lineage-less pseudonym twins never
     fold: candidate recovery re-runs in the parent's richer binding context
     and can settle on a different twin than it did in the child."""
@@ -160,17 +155,14 @@ def has_basic_derivation(cte: CTE) -> bool:
 
 
 def produces_unbound_rowset(cte: CTE, domain_graph: "DomainGraph | None") -> bool:
-    """True if `cte` is a rowset node whose rename output backs an UNBOUND
-    merge/scoped canonical key — a key with no datasource binding, renderable
-    only through this rename (`stages.stage` -> `local.step`). Collapsing folds
-    the rename away and strands the key (INVALID_REFERENCE_BUG), so keep the
-    boundary intact.
+    """True if `cte` is a rowset node whose rename output backs an unbound
+    merge/scoped canonical key: a key with no datasource binding, renderable
+    only through this rename. Collapsing folds the rename away and strands the
+    key.
 
-    A rowset output that is unaliased (no pseudonyms) or backs a BOUND key
-    (`agg.item_sk` -> `ss.item.id`, resolvable from its own datasource columns)
-    is safe to fold — the reference survives via the bound column. When no
-    domain graph is available (direct construction), fall back to treating any
-    aliased rowset output as unbound (conservative: correctness over size)."""
+    A rowset output that is unaliased (no pseudonyms) or backs a bound key
+    (resolvable from its own datasource columns) is safe to fold. With no
+    domain graph, any aliased rowset output is treated as unbound."""
     for column in cte.output_columns:
         if not isinstance(column.lineage, BuildRowsetItem):
             continue
@@ -189,14 +181,11 @@ def unbound_rowset_blocks_merge(
     if merge_mode == MergeMode.PASSTHROUGH and is_grouped_cte(parent):
         return False
     if merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
-        # An identity fold: every child output address is one the parent
-        # already outputs, so the merge removes no rename — every unbound key
-        # stays renderable through the parent's own column. Without this the
-        # guard permanently pins TVF union-arm layers (`SELECT x as x` over
-        # synthetic ___tvf_arm_* concepts, whose pseudonyms are never bound).
-        # Those layers classify as BASIC (their outputs carry BASIC/CONSTANT
-        # derivations), so the carve-out must cover BASIC too, not just
-        # PASSTHROUGH.
+        # An identity fold (every child output address is one the parent
+        # already outputs) removes no rename, so every unbound key stays
+        # renderable through the parent's own column. TVF union-arm layers
+        # (`SELECT x as x` over synthetic concepts whose pseudonyms are never
+        # bound) classify as BASIC, so the carve-out covers BASIC too.
         parent_outputs = parent.output_lcl
         if all(c.address in parent_outputs for c in cte.output_columns):
             return False
@@ -238,11 +227,10 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
 
 
 def lineage_contains_aggregate(concept: BuildConcept, seen: set[str]) -> bool:
-    """True if `concept`'s lineage tree contains an aggregate anywhere — directly
-    (`sum(x)`), or wrapped in a filter/function/rowset (`sum(x) ? cond`,
-    `coalesce(sum(x), 0)`). Used to detect a parent column that renders an
-    aggregate inline; folding it into an AGGREGATE child's `sum(...)` would
-    nest aggregates ("aggregate function calls cannot be nested")."""
+    """True if `concept`'s lineage tree contains an aggregate anywhere, directly
+    or wrapped in a filter/function/rowset (`sum(x) ? cond`,
+    `coalesce(sum(x), 0)`). Folding such a column into an AGGREGATE child's
+    `sum(...)` would nest aggregates."""
     if concept.address in seen:
         return False
     seen.add(concept.address)
@@ -264,10 +252,8 @@ def has_nonstandard_aggregate_grouping(concept: BuildConcept) -> bool:
 
 def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.PASSTHROUGH:
-        # A passthrough collapses into any single parent that renders its columns
-        # (verified in `optimize`); it adds no computation, WHERE, or regroup, so
-        # no parent shape is unsafe. UNION/RECURSIVE parents are excluded by the
-        # isinstance guard in `optimize`.
+        # A passthrough adds no computation, WHERE, or regroup, so no parent
+        # shape is unsafe; UNION/RECURSIVE parents are excluded in `optimize`.
         return False
     if merge_mode == MergeMode.AGGREGATE:
         return parent.group_to_grain or parent.source.source_type in (
@@ -288,11 +274,9 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
             )
         )
     # BASIC: a scalar projection over a GROUP parent folds into the GROUP's
-    # SELECT list (`sum(a)/sum(b)` rendered alongside the GROUP BY is valid SQL,
-    # giving a single-CTE shape). This is only sound for the safe subset
-    # gated by `basic_fold_into_group_is_safe` (checked separately in `optimize`),
-    # never blanket. WINDOW/SUBSELECT/UNNEST parents still can't absorb a
-    # downstream row projection without changing row shape.
+    # SELECT list, but only for the subset `basic_fold_into_group_is_safe`
+    # admits (checked in `optimize`). WINDOW/SUBSELECT/UNNEST parents cannot
+    # absorb a downstream row projection without changing row shape.
     return parent.source.source_type in (
         SourceType.WINDOW,
         SourceType.SUBSELECT,
@@ -303,26 +287,17 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
 def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
     """Gate the BASIC-into-GROUP fold to the provably row-preserving subset.
 
-    Folding a row projection into a GROUP parent is only sound when it cannot
-    alter the parent's grouping. GROUP BY is rendered solely from
-    ``parent.group_concepts`` (which `apply_child_merge`'s BASIC path leaves
-    untouched), and a BASIC-merge child is row-preserving by construction (it is
-    not ``group_to_grain`` and its source is not GROUP, so it never regroups).
-    The remaining requirement is that every output the child *derives locally*
-    is a scalar row projection over the parent's ``{grain keys, aggregates}``:
-
-    - aggregate / window / unnest / recursive columns the child computes *anew*
-      can't ride in the parent's GROUP BY select, so they disqualify the fold;
-    - the same column kinds merely *passed through* from the GROUP parent are
-      fine (already computed there) -- e.g. a dimension projection that joins a
-      label onto a grouped fact carries the parent's aggregates straight through.
-
-    The caller has already established the GROUP is the child's sole parent, so
-    every child input necessarily resolves to a parent output."""
+    GROUP BY renders solely from ``parent.group_concepts``, which the BASIC
+    merge path leaves untouched, and a BASIC child never regroups. The
+    remaining requirement is that every output the child derives locally is a
+    scalar row projection over the parent's grain keys and aggregates:
+    aggregate / window / unnest / recursive columns the child computes anew
+    cannot ride in the parent's GROUP BY select. The same column kinds merely
+    passed through from the parent are already computed there and are fine."""
     parent_outputs = parent.output_lcl
     for column in cte.output_columns:
         if column.address in parent_outputs:
-            continue  # passthrough of a parent grain key / aggregate -- safe
+            continue
         if (
             column.derivation in SENSITIVE_DERIVATIONS
             or column.derivation == Derivation.AGGREGATE
@@ -348,7 +323,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     for column in cte.output_columns:
         if column not in parent.output_columns:
             # A rename consumed as a bare parent-column reference is pinned to
-            # the consumed OBJECT so its render can never drift to another
+            # the consumed object so its render cannot drift to another
             # same-address variant (see rebind_rename_to_consumed).
             consumed = (
                 consumed_parent_column(column, cte, parent)
@@ -359,31 +334,27 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
                 column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
 
-    # Carry the child's nullability metadata: the merged CTE now exposes the
-    # child's columns (rename addresses included), and an under-reported
-    # nullable set lets SimplifyNullSafeJoins falsely prove a key non-null and
-    # downgrade IS NOT DISTINCT FROM to `=`, dropping NULL-keyed groups.
+    # Carry the child's nullability: an under-reported nullable set lets
+    # SimplifyNullSafeJoins falsely prove a key non-null and downgrade
+    # IS NOT DISTINCT FROM to `=`, dropping NULL-keyed groups.
     nullable_addresses = {c.address for c in parent.nullable_concepts}
     for column in cte.nullable_concepts:
         if column.address not in nullable_addresses:
             parent.nullable_concepts.append(column)
 
-    # Carry the child's existence references: an `IN (<set>)` rendered by the
-    # child resolves its set columns through existence_source_map; dropping
-    # those entries strands the membership (INVALID_REFERENCE on every set
-    # component) and lets the feeder CTE be pruned as unreferenced.
+    # Carry the child's existence references: an `IN (<set>)` resolves its set
+    # columns through existence_source_map; dropping those entries strands the
+    # membership and lets the feeder CTE be pruned as unreferenced.
     for address, sources in cte.existence_source_map.items():
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
 
-    # AND-combine the child's WHERE into the parent: for AGGREGATE merges the
-    # child sits BELOW the aggregate (its condition is the pre-aggregation
-    # WHERE), and the parent becomes the aggregate after the merge, so its
-    # WHERE has to carry the predicate forward. WINDOW merges are blocked
-    # upstream by `child_has_merge_blockers` when the child has a condition; a
+    # AND-combine the child's WHERE into the parent. For AGGREGATE merges the
+    # child's condition is the pre-aggregation WHERE and the parent becomes the
+    # aggregate, so its WHERE carries the predicate forward. WINDOW merges with
+    # a conditioned child are blocked by `child_has_merge_blockers`; a
     # conditioned BASIC child arrives through the filtered-projection branch.
-    # Dedup on AND-atoms so a chain of merges (or a predicate already carried
-    # by the parent) can't re-stamp it into `H AND H AND H` — q31's HAVING.
+    # Dedup on AND-atoms so a chain of merges cannot re-stamp `H AND H AND H`.
     if cte.condition is not None:
         parent.condition = (
             merge_conditions_and_dedup(cte.condition, parent.condition)
@@ -391,17 +362,15 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             else cte.condition
         )
 
-    # The child's row limit (and the ORDER BY it selects under) applies to the
-    # merged CTE's output — LIMIT is the last logical operation of a SELECT,
-    # so absorbing the parent's shape below it is row-identical. (The caller
-    # rejects limited PARENTS, the direction that would cross the boundary.)
+    # LIMIT is the last logical operation of a SELECT, so the child's limit
+    # and ORDER BY apply unchanged to the merged CTE. The caller rejects
+    # limited parents, the direction that would cross the boundary.
     if cte.limit is not None:
         parent.limit = cte.limit
         parent.order_by = cte.order_by
 
     if merge_mode == MergeMode.AGGREGATE:
-        # Aggregate merge: keep only columns the child exposes (grouping keys +
-        # aggregate outputs). Everything else is rolled up.
+        # Keep only columns the child exposes; everything else is rolled up.
         parent.output_columns = [
             column
             for column in parent.output_columns
@@ -410,12 +379,11 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         parent.group_to_grain = True
         parent.grain = cte.grain
     elif merge_mode == MergeMode.WINDOW:
-        # Window merge: the parent's intermediate columns may still be referenced
-        # by window expressions (e.g. inlined CASE branches or unmaterialized
-        # aggregates). Don't prune — just extend.
+        # The parent's intermediate columns may still be referenced by window
+        # expressions, so extend without pruning.
         parent.source.source_type = SourceType.WINDOW
-    # BASIC / PASSTHROUGH merge: keep parent's source_type; the child's columns
-    # render alongside parent's outputs. HideUnusedConcepts handles pruning later.
+    # BASIC / PASSTHROUGH keep the parent's source_type; HideUnusedConcepts
+    # prunes later.
 
 
 def destroys_subset_anchor_boundary(
@@ -427,11 +395,11 @@ def destroys_subset_anchor_boundary(
     `_rowset_definition_boundary` (value_set_join_upgrade) proves a rowset
     output complete-by-construction only at a CTE that has CTE parents which
     do not carry the output's own address. Folding the boundary projection
-    into a datasource-bound scan removes that structure and the FULL join a
+    into a datasource-bound scan removes that structure, and the FULL join a
     `subset join x = rs.k` should narrow to the anchored LEFT stays FULL.
-    Only outputs that are the SUPERSET target of a declared subset edge feed
-    that proof, so only those block the fold. With no domain graph the edge
-    set is unknowable — treat any rowset output as potentially targeted."""
+    Only outputs that are the superset target of a declared subset edge feed
+    that proof, so only those block the fold. With no domain graph any rowset
+    output is treated as potentially targeted."""
     from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 
     targets: set[str] | None = None
@@ -459,17 +427,11 @@ def destroys_subset_anchor_boundary(
 
 
 class CollapseSingleParent(OptimizationRule):
-    """Collapse a child CTE into its single parent by folding the parent's
-    datasources and conditions into the child's shape.
+    """Collapse a child CTE into its single parent, eliminating a subquery.
 
-    Handles three merge modes (AGGREGATE, WINDOW, BASIC). When the child CTE
-    has a single parent that:
-    1. Is only used by this child (no other children)
-    2. Doesn't derive window functions or other unsafe derivations
-    3. Has compatible datasources
-
-    We can merge the parent's datasources and conditions directly into the
-    child, eliminating an unnecessary subquery.
+    The parent must be consumed only by this child (a rename-only projection
+    is the exception), derive no unsafe derivations, and be a shape the
+    child's ``MergeMode`` can fold into.
     """
 
     def __init__(
@@ -479,11 +441,9 @@ class CollapseSingleParent(OptimizationRule):
     ) -> None:
         super().__init__()
         self.domain_graph = domain_graph
-        # A bare passthrough (single parent, no local compute/WHERE/regroup) is
-        # pure noise regardless of aggregate merging, so it is collapsed even
-        # when the merge_aggregate config (which gates the full rule) is off --
-        # e.g. to clean up a projection that predicate pushdown just reduced to
-        # a passthrough by relocating its WHERE onto the parent scan.
+        # A bare passthrough is pure noise regardless of aggregate merging, so
+        # it collapses even when the merge_aggregate config gating the full
+        # rule is off.
         self.passthrough_only = passthrough_only
 
     def optimize(
@@ -512,7 +472,6 @@ class CollapseSingleParent(OptimizationRule):
         if not parents:
             return False, None
 
-        # Only merge single-parent scenarios for simplicity
         if len(parents) != 1:
             self.debug(f"CTE {cte.name} has multiple parents, skipping")
             return False, None
@@ -528,10 +487,9 @@ class CollapseSingleParent(OptimizationRule):
             return False, None
         # A row-shape child with a WHERE folds only when it is the statement's
         # final projection (no consumer) over a subset of the parent's own
-        # columns: the predicate moves into the parent's scope unchanged. A
-        # consumed filter is predicate pushdown's job, whose guards cover
-        # null-extension and union parents; a BASIC child computing its own
-        # columns under a WHERE stays.
+        # columns. A consumed filter is predicate pushdown's job, whose guards
+        # cover null-extension and union parents; a BASIC child computing its
+        # own columns under a WHERE stays.
         filtered_projection = False
         if cte.condition is not None and merge_mode in (
             MergeMode.BASIC,
@@ -542,10 +500,9 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
             filtered_projection = True
-        # A row LIMIT on the PARENT is an opaque boundary: folding the child's
-        # shape into it moves work below the limit (pre-limit rows change).
-        # A limited CHILD is fine — LIMIT evaluates last in the merged SELECT
-        # and `apply_child_merge` carries it (with its ORDER BY) across.
+        # A limited parent is an opaque boundary: folding the child's shape
+        # into it moves work below the limit. A limited child is fine, LIMIT
+        # evaluates last and `apply_child_merge` carries it across.
         if parent.limit is not None:
             self.debug(f"Parent {parent.name} carries a row limit, skipping")
             return False, None
@@ -567,9 +524,8 @@ class CollapseSingleParent(OptimizationRule):
         if merge_mode == MergeMode.PASSTHROUGH and not passthrough_renders_from_parent(
             cte, parent
         ):
-            # Not a true passthrough — the child renders a column the parent
-            # neither exposes nor can express as a rename, so folding would
-            # drop it. Leave it.
+            # The child renders a column the parent neither exposes nor can
+            # express as a rename, so folding would drop it.
             self.debug(
                 f"Passthrough {cte.name} renders a column absent from parent "
                 f"{parent.name}, skipping"
@@ -585,12 +541,10 @@ class CollapseSingleParent(OptimizationRule):
                 f"parent {parent.name} cannot preserve, skipping"
             )
             return False, None
-        # An existence subselect must always read FROM a CTE other than its
-        # host. Two self-reference shapes, one per direction: the child's
-        # exists() reads from the parent (merged, the exists() references the
-        # CTE it lives in), or the parent's exists() reads from the child
-        # (the post-merge repoint rewrites the parent's own existence map to
-        # name itself). Either way the feeder must stay a separate CTE.
+        # An existence subselect must read from a CTE other than its host, in
+        # either direction: a child exists() over the parent would reference
+        # the CTE it lives in, and a parent exists() over the child would be
+        # repointed to name the parent itself.
         if any(
             parent.name in (sources or [])
             for sources in cte.existence_source_map.values()
@@ -604,14 +558,11 @@ class CollapseSingleParent(OptimizationRule):
             )
             return False, None
 
-        # Parent must only be used by this CTE — except for a rename-only
-        # projection, whose fold only appends output columns to the parent (no
-        # condition, no regroup, no joins), leaving the parent's other consumers
-        # unaffected. That covers PASSTHROUGH, and BASIC CTEs whose only local
-        # computation is aliasing (`x as y` renders the parent's column under a
-        # new name — get_merge_mode calls that BASIC, but it carries no compute).
-        # A limited child is excluded: carrying its LIMIT onto a shared parent
-        # would truncate the siblings' rows.
+        # A shared parent only accepts a rename-only projection, whose fold
+        # merely appends output columns (no condition, regroup, or joins) and
+        # leaves the other consumers unaffected. That covers PASSTHROUGH and
+        # BASIC CTEs whose only local computation is aliasing. A limited child
+        # is excluded: its LIMIT on a shared parent would truncate siblings.
         if not is_sole_consumer(cte, parent, inverse_map):
             rename_only = (
                 merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC)
@@ -619,11 +570,9 @@ class CollapseSingleParent(OptimizationRule):
                 and is_passthrough_projection(cte)
                 and passthrough_renders_from_parent(cte, parent)
             )
-            # A consumer that already depends on the parent would end up
-            # joining the parent to itself after the repoint (two rowset
-            # renames of one scan, joined to each other, both folding into
-            # that scan -> `p JOIN p` under one alias). Keep this child
-            # materialized; the sibling that folded first already saved a CTE.
+            # A consumer that already depends on the parent would join the
+            # parent to itself under one alias after the repoint, so keep this
+            # child materialized.
             consumer_joins_parent = any(
                 parent.name in {d.name for d in consumer.dependency_nodes()}
                 for consumer in inverse_map.get(cte.name, [])
@@ -633,16 +582,15 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
 
-        # A filtered projection only needs the parent's LOCAL window/unnest
+        # A filtered projection only needs the parent's local window/unnest
         # columns ruled out (done in `is_filtered_projection`): its WHERE
         # cannot disturb a window the parent merely carries from upstream.
         if not filtered_projection and has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
 
-        # Never fold away a rowset node whose rename backs an unbound merge/
-        # scoped key: collapsing strands the key (INVALID_REFERENCE_BUG). A
-        # rowset over bound keys (or unaliased outputs) folds normally.
+        # A rowset node whose rename backs an unbound merge/scoped key must
+        # stay: collapsing strands the key.
         if unbound_rowset_blocks_merge(cte, parent, merge_mode, self.domain_graph):
             self.debug(
                 f"CTE {cte.name} or parent {parent.name} is a rowset node backing "
@@ -651,12 +599,11 @@ class CollapseSingleParent(OptimizationRule):
             return False, None
 
         # A source_map entry pointing at the parent under an address the parent
-        # does not itself output is a pseudonym rename — e.g. a merge node
-        # exposing a canonical key (`local.step`) from a side that materializes
-        # its merged pseudonym (`stages.stage`). That mapping exists ONLY in
-        # this CTE's source_map; `apply_child_merge` does not carry it, and a
-        # lineage-less key has no local derivation to fall back on, so the
-        # collapsed CTE could never render the address (INVALID_REFERENCE_BUG).
+        # does not itself output is a pseudonym rename (a merge node exposing a
+        # canonical key from a side that materializes its pseudonym). That
+        # mapping exists only in this CTE's source_map; `apply_child_merge`
+        # does not carry it, and a lineage-less key has no local derivation to
+        # fall back on, so the collapsed CTE could never render the address.
         parent_outputs = parent.output_lcl
         renders_from_lineage = {
             column.address
@@ -667,8 +614,8 @@ class CollapseSingleParent(OptimizationRule):
             if (
                 parent.name in sources
                 and address not in parent_outputs
-                # A rename whose referent the parent exposes needs no source_map
-                # entry after the fold — the merged CTE renders it from lineage.
+                # A rename whose referent the parent exposes renders from
+                # lineage after the fold and needs no source_map entry.
                 and address not in renders_from_lineage
             ):
                 self.log(
@@ -677,12 +624,9 @@ class CollapseSingleParent(OptimizationRule):
                 )
                 return False, None
         if merge_mode == MergeMode.AGGREGATE:
-            # An AGGREGATE merge wraps the parent's exposed columns in the child's
-            # aggregates. A parent column that is rendered inline (no source_map
-            # entry — not materialized by a grouping below) and whose lineage
-            # contains an aggregate would be folded *inside* the child's `sum(...)`,
-            # producing illegal nested aggregates. This covers a direct aggregate
-            # column and one wrapped in a filter/function (`sum(x) ? cond`).
+            # A parent column rendered inline (no source_map entry) whose
+            # lineage contains an aggregate would fold inside the child's
+            # `sum(...)`, producing illegal nested aggregates.
             for x in parent.output_columns:
                 if not parent.source_map.get(x.address) and lineage_contains_aggregate(
                     x, set()
@@ -691,13 +635,11 @@ class CollapseSingleParent(OptimizationRule):
                         f"Parent {parent.name} renders inline aggregate {x.address}, skipping"
                     )
                     return False, None
-            # An aggregate ARGUMENT renders inside the merged CTE by lineage
-            # re-derivation — it is not an output, so the rename rebind can
-            # never pin it. A ROWSET boundary re-exposure re-derived in the
-            # parent's context can settle on a different same-address twin
-            # (count(rs.k) over a coalescing body picked the one-arm authored
-            # key — unrenderable), so the fold must keep the boundary CTE
-            # that materializes it.
+            # An aggregate argument renders inside the merged CTE by lineage
+            # re-derivation; it is not an output, so the rename rebind cannot
+            # pin it. A ROWSET boundary re-exposure re-derived in the parent's
+            # context can settle on a different, unrenderable same-address
+            # twin, so the boundary CTE that materializes it must stay.
             for column in cte.output_columns:
                 for arg in column.concept_arguments:
                     if (
@@ -718,5 +660,4 @@ class CollapseSingleParent(OptimizationRule):
         apply_child_merge(parent, cte, merge_mode)
         repoint_consumers(cte, parent, inverse_map)
 
-        # Return merged map: old CTE name -> replacement CTE name
         return True, {cte.name: parent.name}

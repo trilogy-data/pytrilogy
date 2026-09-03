@@ -1,6 +1,6 @@
 """MULTISELECT generator: a merge/align of independently planned arms.
 
-Not reachable through `dispatch.build_node` — a multiselect is never a group in
+Not reachable through `dispatch.build_node`: a multiselect is never a group in
 the group graph. `concept_strategies_v4._search_concepts` intercepts a request
 the multiselect produces in full and routes it here; a rowset-wrapped one is
 planned inside `rowset.resolve_rowset`.

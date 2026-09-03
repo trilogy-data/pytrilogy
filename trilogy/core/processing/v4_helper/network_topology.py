@@ -3,9 +3,8 @@ cover is one piece, and which declared relations it actually materializes.
 
 Shared deliberately by the two stages above it. The obligation search demands a
 structure and the cost charges for its absence, so a predicate stated twice
-would let the search discharge a requirement the cost still charges for — the
-merged-key predicate alone had five spellings before s55. One definition, two
-readers.
+would let the search discharge a requirement the cost still charges for. One
+definition, two readers.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ def materializes(
     """This node can PRODUCE the authored equality on that side: it carries the
     side AND the merged key. See `JoinRequirement`.
 
-    One definition on purpose — `unpaired_join_keys` charges for a side this is
+    One definition on purpose: `unpaired_join_keys` charges for a side this is
     false of and the `paired` obligation demands one this is true of. If the two
     spellings drifted, the search would discharge an obligation the cost still
     charges for."""
@@ -57,8 +56,7 @@ def joined_pairs(
     network: SourceNetwork, sources: frozenset[str]
 ) -> tuple[tuple[str, str], ...]:
     # Memoized: `_reduce` re-asks per drop candidate of every cover, and the
-    # rest-sets repeat heavily across covers (q23: ~30k topology questions over
-    # ~2k distinct source sets).
+    # rest-sets repeat heavily across covers.
     cached = network._pair_cache.get(sources)
     if cached is None:
         joined = network._partners()[0]
@@ -74,7 +72,7 @@ def joined_pairs(
 def components(
     network: SourceNetwork, sources: frozenset[str]
 ) -> tuple[frozenset[str], ...]:
-    """Components of the cover under "shares any binding" — the same predicate
+    """Components of the cover under "shares any binding", the same predicate
     `blend_joins`' pair scan reads, taken from the partner table since this
     runs per enumeration state. `union` roots a class at its minimum
     member, so iterating sorted sources yields the components in
@@ -100,7 +98,7 @@ def components(
 
 def is_connected(network: SourceNetwork, sources: frozenset[str]) -> bool:
     """Pure connectivity CHECK: a disconnected cover is not this search's to
-    answer. Every join-justified addition happens as an obligation — including
+    answer. Every join-justified addition happens as an obligation, including
     multi-hop functional chains, which `labelable` walks (grainless targets get
     an inferred KEY grain so the chain terminus is judgeable). A declined
     request falls to the typed homes: `_direct_source`,
@@ -120,9 +118,9 @@ def blend_joins(network: SourceNetwork, sources: frozenset[str]) -> int:
 
     Minimised over spanning trees rather than summed over pairs, which is what
     makes it un-launderable: an extra source adds a node the tree must span, so
-    it can only lower this by supplying a functional PATH — co-locating the key,
-    the actual fix — never by widening the yardstick the way a per-source
-    key-completeness count could.
+    it can only lower this by supplying a functional PATH (co-locating the key),
+    never by widening the yardstick the way a per-source key-completeness count
+    could.
 
     Memoized per source set (see `joined_pairs`)."""
     cached = network._blend_cache.get(sources)

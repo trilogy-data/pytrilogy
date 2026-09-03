@@ -35,6 +35,10 @@ from trilogy.core.models.author import (
     prepend_where_stage,
 )
 from trilogy.core.models.build import (
+    BuildCaseElse,
+    BuildCaseSimpleWhen,
+    BuildCaseWhen,
+    BuildComparison,
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
@@ -48,6 +52,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildRowsetItem,
     BuildSelectLineage,
+    BuildSubselectComparison,
     BuildWhereClause,
     Factory,
     get_canonical_pseudonyms,
@@ -140,8 +145,7 @@ def _extract_params(*concept_dicts) -> dict:
 def base_join_to_join(
     base_join: BaseJoin | UnnestJoin, ctes: list[CTE | UnionCTE]
 ) -> Join | InstantiatedUnnestJoin:
-    """This function converts joins at the datasource level
-    to joins at the CTE level"""
+    """Convert a datasource-level join into a CTE-level join."""
     if isinstance(base_join, UnnestJoin):
         object_to_unnest = base_join.parent.arguments[0]
         if not isinstance(
@@ -216,7 +220,7 @@ def base_join_to_join(
 def _pseudonym_closure(address: str, ctes: list[CTE | UnionCTE]) -> set[str]:
     """Addresses transitively pseudonym-equivalent to ``address`` across the
     child CTEs' output columns. Pseudonym sets on chained merged keys
-    (`a=b=c`) are pairwise, not closed — a↔b and b↔c without a↔c — so a
+    (`a=b=c`) are pairwise, not closed (a-b and b-c without a-c), so a
     one-hop test misses the far member."""
     edges: dict[str, set[str]] = defaultdict(set)
     for cte in ctes:
@@ -267,8 +271,8 @@ def generate_source_map(
                     if x.address not in [z.address for z in cte.partial_concepts]
                 ]
                 # A derived-key FULL join sources the canonical key from a side
-                # that outputs it under a pseudonym column (da for the merged db);
-                # accept that side so the renderer coalesces both physical columns.
+                # that outputs it under a pseudonym column; accept that side so
+                # the renderer coalesces both physical columns.
                 provides_pseudonym = multi_source and any(
                     x.address != qdk and x.address in closure
                     for x in cte.output_columns
@@ -412,7 +416,7 @@ def datasource_to_cte(
         return final
 
     # set in the single-source branch when the QDS is one raw, non-constant
-    # BuildDatasource — the candidate for inline-datasource folding
+    # BuildDatasource: the candidate for inline-datasource folding
     leaf_datasource: BuildDatasource | None = None
 
     if len(query_datasource.datasources) > 1 or any(
@@ -431,7 +435,7 @@ def datasource_to_cte(
         source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
 
     else:
-        # single-source QDS — render directly from its base datasource
+        # single-source QDS: render directly from its base datasource
         source = query_datasource.base_datasource
         if source is not None:
             # constant datasets have no actual source; render without FROM
@@ -465,7 +469,6 @@ def datasource_to_cte(
 
     if query_datasource.source_type == SourceType.RECURSIVE:
         cte_class = RecursiveCTE
-        # extra_kwargs['left_recursive_concept'] = query_datasource.left
     elif leaf_datasource is not None:
         cte_class = DatasourceCTE
         extra_kwargs["datasource"] = leaf_datasource
@@ -489,7 +492,6 @@ def datasource_to_cte(
         ],
         source_map=source_map,
         existence_source_map=existence_map,
-        # related columns include all referenced columns, such as filtering
         joins=final_joins,
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
@@ -538,18 +540,16 @@ def _carry_order_by_concepts(
     """Pull `union(...)`/multiselect ORDER BY columns into the query grain so a
     single group node keeps them.
 
-    A plain order-by concept is rendered from whichever CTE already exposes it
-    (its source_map entry), so it needs no special handling. But a `union(...)` /
-    multiselect output column is rendered via `find_source`, which only resolves
-    at the union node itself — once an outer aggregate groups it away it is gone
-    from every downstream CTE, and the renderer crashes trying to map it
-    ("Could not find upstream map for multiselect ...").
+    A plain order-by concept renders from whichever CTE exposes it. A union /
+    multiselect output column renders via `find_source`, which resolves only at
+    the union node, so once an outer aggregate groups it away no downstream CTE
+    can map it.
 
-    Such a column is always an alias-source of a selected transform (the author
-    validation enforces order-by ⊆ outputs ∪ alias-sources), so it is 1:1 with a
-    grain key — adding it to the grain (and as a hidden output) keeps the group a
-    single node, rather than sourcing it as a finer optional that gets joined
-    back via a (broken) enrichment merge."""
+    Such a column is always an alias-source of a selected transform (author
+    validation keeps order-by within outputs plus alias-sources), so it is 1:1
+    with a grain key: adding it to the grain as a hidden output keeps the group a
+    single node instead of sourcing it as a finer optional joined back through
+    an enrichment merge."""
     if not isinstance(build_statement, BuildSelectLineage):
         return
     if not build_statement.order_by:
@@ -559,7 +559,7 @@ def _carry_order_by_concepts(
     for item in build_statement.order_by.items:
         for c in item.concept_arguments:
             # Already projected (directly, or as the rowset handle the order-by
-            # names) — it renders from the output, no carry needed.
+            # names): it renders from the output, no carry needed.
             if c.address in output_addresses:
                 continue
             target = _find_source_target(c)
@@ -567,14 +567,12 @@ def _carry_order_by_concepts(
                 if target.address not in output_addresses:
                     carry.setdefault(target.address, target)
                 continue
-            # A rowset output (a measure materialized in its own upstream CTE)
-            # referenced in ORDER BY but only consumed inside a projected scalar
-            # (e.g. wrapped in a CASE) is sourced into the final node's parent
-            # but is NOT one of the final group node's keys — DuckDB then rejects
-            # it ("must appear in GROUP BY"). Carry it into the grain as a hidden
-            # output so it becomes a group key. Only safe when it is functionally
-            # determined by the select grain (same/coarser); a finer measure has
-            # no single value per output row, so ordering by it is ambiguous.
+            # A rowset output referenced in ORDER BY but consumed only inside a
+            # projected scalar is sourced into the final node's parent without
+            # becoming a final group key, so the engine rejects it as not in
+            # GROUP BY. Carry it into the grain as a hidden output. Only safe
+            # when the select grain determines it; a finer measure has no single
+            # value per output row, so ordering by it is ambiguous.
             if c.derivation == Derivation.ROWSET:
                 if c.grain.issubset(build_statement.grain):
                     carry.setdefault(c.address, c)
@@ -598,25 +596,24 @@ def _carry_order_by_concepts(
 def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     """The union column an order-by concept ultimately renders from, or None.
 
-    A `union(...)`/multiselect output column is rendered through `find_source`,
-    which resolves only at the union node — unlike a plain column it can't be
-    referenced from a downstream CTE once grouped away. Walk through a rowset
-    handle to the union column it wraps and return that column (the thing to
-    carry into the grain); a plain concept returns None (no carry needed)."""
+    A `union(...)`/multiselect output column renders through `find_source`,
+    which resolves only at the union node, so unlike a plain column it cannot
+    be referenced from a downstream CTE once grouped away. Walk through a
+    rowset handle to the union column it wraps and return the concept to carry
+    into the grain; a plain concept returns None."""
     lineage = concept.lineage
     if isinstance(lineage, BuildMultiSelectLineage):
         return concept
     if isinstance(lineage, BuildRowsetItem):
         # A handle whose own rowset IS the union/multiselect renders via
-        # find_source at the union node — carry the inner union column it wraps.
+        # find_source at the union node: carry the inner union column it wraps.
         if isinstance(lineage.rowset.select, MultiSelectLineage):
             return _find_source_target(lineage.content)
-        # A plain SELECT/aggregate rowset (e.g. a rollup over a union-rowset)
-        # materializes this grain column as a real output its own node exposes.
-        # Recursing on to the inner union column would split the carried key off
-        # the outer rowset's node and disconnect the query — carry THIS handle
-        # instead, but only when it ultimately wraps a union that needs the
-        # find_source carry at all (a plain inner column needs no carry).
+        # A plain SELECT/aggregate rowset over a union rowset materializes this
+        # grain column as a real output of its own node. Recursing to the inner
+        # union column would split the carried key off the outer rowset's node
+        # and disconnect the query, so carry THIS handle instead, and only when
+        # it ultimately wraps a union column that needs the carry at all.
         if _find_source_target(lineage.content) is not None:
             return concept
         return None
@@ -667,8 +664,9 @@ def _scalar_order_leaves(
     """Leaf concepts of a purely scalar ORDER BY expression as the final node
     renders it. A concept the node outputs is a group key or aggregate and ends
     the walk; one it neither outputs nor sources re-renders from its lineage.
-    None when the expression holds an aggregate, window or other compound node,
-    which already evaluates in group scope."""
+    CASE arms and comparisons are walked as scalars. None when the expression
+    holds an aggregate, window or subselect, which already evaluates in group
+    scope."""
     leaves: list[BuildConcept] = []
     stack: list[Any] = [expr]
     seen: set[str] = set()
@@ -691,6 +689,16 @@ def _scalar_order_leaves(
             if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 return None
             stack.extend(node.arguments)
+        elif isinstance(node, BuildCaseWhen):
+            stack.extend((node.comparison, node.expr))
+        elif isinstance(node, BuildCaseSimpleWhen):
+            stack.extend((node.value_expr, node.expr))
+        elif isinstance(node, BuildCaseElse):
+            stack.append(node.expr)
+        elif isinstance(node, BuildSubselectComparison):
+            return None
+        elif isinstance(node, (BuildComparison, BuildConditional)):
+            stack.extend((node.left, node.right))
         elif isinstance(node, BuildConceptArgs):
             return None
     return leaves
@@ -724,17 +732,27 @@ def _group_safe_ordering(
             leaves is None
             or all(c.address in safe for c in leaves)
             or not isinstance(
-                item.expr, (BuildConcept, BuildFunction, BuildParenthetical)
+                item.expr,
+                (
+                    BuildConcept,
+                    BuildFunction,
+                    BuildParenthetical,
+                    BuildComparison,
+                    BuildConditional,
+                ),
             )
         ):
             items.append(item)
             continue
+        expr = item.expr
+        if isinstance(expr, (BuildComparison, BuildConditional)):
+            expr = BuildParenthetical(content=expr)
         items.append(
             BuildOrderItem(
                 expr=BuildFunction(
                     operator=FunctionType.MIN,
-                    arguments=[item.expr],
-                    output_data_type=arg_to_datatype(item.expr),
+                    arguments=[expr],
+                    output_data_type=arg_to_datatype(expr),
                 ),
                 order=item.order,
             )
@@ -770,11 +788,11 @@ def _raise_if_disconnected(
     )
     if conditions is None:
         return
-    # An existence subselect (`x in (<set>)`) is its own resolution scope —
+    # An existence subselect (`x in (<set>)`) is its own resolution scope,
     # planned as an independent query, so its RHS concepts (with any FILTER's
     # hidden content/condition concepts surfaced) must be connected on their
-    # own. A correlated filter across unmerged models (`b ? b = a`, q64)
-    # otherwise plans a FROM-less feeder that dies at render.
+    # own. A correlated filter across unmerged models (`b ? b = a`) otherwise
+    # plans a FROM-less feeder that fails at render.
     for arg_group in conditions.existence_arguments or ():
         if not arg_group:
             continue
@@ -823,23 +841,21 @@ def _plan_query_node(
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
     # cross-joins (scalar aggregates, constants) still resolve below.
     _raise_if_disconnected(build_statement, build_environment, graph, conditions)
-    # Inherit the outer resolution's build caches — chiefly `scoped_joins`, the
-    # query-scoped JOIN merges. Sub-selects (rowsets, multiselect arms)
+    # Inherit the outer resolution's build caches, chiefly `scoped_joins` (the
+    # query-scoped JOIN merges). Sub-selects (rowsets, multiselect arms)
     # materialize their own build env via these caches; a fresh BuildCaches
-    # would drop the merges, leaving a cross-fact rowset join unresolvable
-    # (q29: `inner join catalog_sales.* = store_sales.*` on the outer select
-    # feeds the rowset's combined source).
+    # would drop the merges and leave a cross-fact rowset join unresolvable.
     v4_history = V4History(
         base_environment=history.base_environment,
         build_caches=history.build_caches,
     )
-    # A presence probe in the HAVING must be MATERIALIZED below the merge, on
+    # A presence probe in the HAVING must be materialized below the merge, on
     # its own member's side. The HAVING wrap sits above the merge, where the
     # member reads as the group's mandatory coalesce, so re-deriving the probe
-    # inline there is self-defeating (it can never be NULL). Demanding it as a
-    # hidden output pins it to the member's own boundary and carries it through
-    # the join un-fused. The WHERE path gets this free -- its condition args
-    # already enter the concept graph.
+    # inline there can never yield NULL. Demanding it as a hidden output pins it
+    # to the member's own boundary and carries it through the join un-fused.
+    # The WHERE path needs no such step: its condition args already enter the
+    # concept graph.
     having_probes = _having_presence_probes(build_statement, build_environment)
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components) + having_probes,
@@ -887,11 +903,10 @@ def _plan_query_node(
         final = build_statement.having_clause.conditional
         # Fold the merge's own conditions into the HAVING wrap only when the
         # wrap can express them: a FINAL-deferred WHERE can reference a filter
-        # arg the merge carries as a hidden JOIN input without projecting it
-        # (`where st.s_cid is not null` beside outputs that only rename it) —
-        # re-stated above the projection, the arg re-derives by lineage into a
-        # missing base column (INVALID_REFERENCE). Left unfolded, the merge
-        # renders its WHERE at its own layer, where the column exists.
+        # arg the merge carries as a hidden JOIN input without projecting it,
+        # and re-stated above the projection that arg re-derives by lineage into
+        # a base column the wrap cannot see. Left unfolded, the merge renders
+        # its WHERE at its own layer, where the column exists.
         usable_addrs = {c.address for c in ds.usable_outputs}
         if ds.conditions and all(
             arg.address in usable_addrs
@@ -911,10 +926,10 @@ def _plan_query_node(
             conditions=final,
         )
         # Source any existence (`x in <set>`) args onto the HAVING-carrying node
-        # -- without this the membership subselect renders a dangling CTE
-        # reference (INVALID_REFERENCE_BUG). Idempotent. The query WHERE is
-        # threaded so the membership's aggregates filter pre-aggregation
-        # (matching the output path), not over the whole universe.
+        # so the membership subselect has a CTE to reference. Idempotent. The
+        # query WHERE is threaded so the membership's aggregates filter
+        # pre-aggregation (matching the output path), not over the whole
+        # universe.
         append_existence_check(
             ds,
             build_environment,
@@ -959,15 +974,14 @@ def _authored_reference_addresses(
     environment: Environment,
     include_where: bool = True,
 ) -> set[str]:
-    """Transitive closure of AUTHOR-referenced concept addresses for this
-    select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage —
-    walked on author objects, before scoped-join canonical substitution
-    rewrites addresses. The scoped-join declarations themselves are
-    deliberately excluded: a declared relation whose far side the author
-    never references is pure domain metadata and must not force that side
-    into the plan. `include_where=False` drops the WHERE clauses — the
-    outputs-only closure distinguishes row-stream contributors from
-    population-scope (condition) references."""
+    """Transitive closure of author-referenced concept addresses for this
+    select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage,
+    walked on author objects before scoped-join canonical substitution
+    rewrites addresses. Scoped-join declarations are excluded: a declared
+    relation whose far side the author never references is domain metadata
+    and must not force that side into the plan. `include_where=False` drops
+    the WHERE clauses; the outputs-only closure distinguishes row-stream
+    contributors from population-scope (condition) references."""
     selects = (
         statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
     )
@@ -1006,10 +1020,10 @@ def _authored_reference_addresses(
 _SESSION_CACHE_STORE: dict[int, tuple] = {}
 
 # Stamp generations retained per environment. More than one because refresh
-# planning alternates between two long-lived states — the full environment and
+# planning alternates between two long-lived states, the full environment and
 # the probes' hidden-datasource window (see execution/state/isolation.py, which
-# restores the stamp on exit exactly when content is restored) — and a
-# single-generation store made every alternation a full baseline rebuild.
+# restores the stamp on exit exactly when content is restored); a single
+# generation would rebuild the baseline on every alternation.
 _SESSION_CACHE_GENERATIONS = 4
 
 
@@ -1022,23 +1036,20 @@ def _session_build_caches(
     scoped_joins: list[tuple[str, str, JoinType]] | None,
 ) -> BuildCaches:
     """The BuildCaches bundle for this (environment state, scoped-join set),
-    reused across statements: every entry in the bundle (build caches, env
-    baselines, pseudonym map) is a pure function of the author environment and
-    the folded join set, so it stays valid exactly until either changes. The
-    stamp covers every author mutation channel a build reads: the concept and
-    datasource dict effective-write counters (content_version, not mutations —
-    overlay push/pop and identical re-registrations from a re-parsed script
-    must not evict the bundle), in-place datasource status flips (persist
-    marks PUBLISHED without a dict write), datasource membership, and the
-    alias map; env merges ride in the join key. If a concept overlay is
-    somehow live at generation time, fall back to the raw mutation counter so
-    overlay-visible state is covered. A statement with its own scoped joins
-    gets its own bundle — address/grain-keyed cache entries are only shareable
-    under ONE join set (the same rule that gives nested arms fresh caches).
-    A few recent stamps are retained per environment so states an executor
-    alternates between (full env / probe-hidden env) keep their bundles;
-    correctness rests on a stamp identifying exactly one content state, which
-    holds because counters only ever rewind on provably identical content."""
+    reused across statements. Every entry in the bundle is a pure function of
+    the author environment and the folded join set, so it stays valid exactly
+    until either changes. The stamp covers every author mutation channel a
+    build reads: the concept and datasource effective-write counters
+    (content_version rather than mutations, so overlay push/pop and identical
+    re-registrations do not evict the bundle), in-place datasource status
+    flips (persist marks PUBLISHED without a dict write), datasource
+    membership, and the alias map; env merges ride in the join key. While a
+    concept overlay is live, the raw mutation counter is used instead so
+    overlay-visible state is covered. Address/grain-keyed cache entries are
+    only shareable under one join set, so a statement with its own scoped
+    joins gets its own bundle. Correctness rests on a stamp identifying
+    exactly one content state, which holds because counters only rewind on
+    provably identical content."""
     from functools import partial
     from weakref import ref
 
@@ -1237,11 +1248,10 @@ def _validate_persist_projection(
     """Reject a persist whose plan cannot render every column it declares.
 
     The write is positional: the select's Nth column lands in the datasource's
-    Nth declared column, so a projection short one column is not a missing value
-    but a SHIFT of every column after it. The warehouse only catches that when
-    the counts disagree AND it checks arity before types; one more trailing
-    column, or compatible shifted types, and it writes silently wrong data. The
-    counts are known here, before any SQL is sent."""
+    Nth declared column, so a projection short one column shifts every column
+    after it. The warehouse may not catch that (compatible shifted types, or a
+    trailing column restoring the count), so the check runs here before any
+    SQL is sent."""
     declared = [c for c in statement.datasource.columns if c.is_concrete]
     missing = unrenderable_outputs(
         select.base, [c.concept for c in declared], select.scoped_merge_map
@@ -1273,12 +1283,11 @@ def process_persist(
     # the planner treats sources with matching non_partial_for as non-partial and
     # selects them directly rather than resorting to a covering union.
     select_stmt = statement.select
-    # Inject an *authored* `complete where`, whether the partiality it needs
-    # came from the `partial datasource` keyword or from a `~` column — the
-    # parser accepts both, so both must gate the write. Datasources created
-    # from a persist-with-WHERE already embed the condition in the SELECT, so
-    # injecting again would duplicate it (and push its HAVING atoms into a
-    # pre-aggregation WHERE).
+    # Inject an authored `complete where` whether the partiality comes from the
+    # `partial datasource` keyword or from a `~` column; both must gate the
+    # write. A datasource created from a persist-with-WHERE already embeds the
+    # condition in its SELECT, and injecting again would duplicate it (and push
+    # its HAVING atoms into a pre-aggregation WHERE).
     if ds.non_partial_for and not ds.non_partial_for_embedded:
         # AND into stage 1: the partition condition gates every row the persist
         # writes, so it belongs ahead of any `then where` staging, and every
@@ -1299,7 +1308,6 @@ def process_persist(
         ds.status = original_status
     _validate_persist_projection(statement, select)
 
-    # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
     partition_by: list[str] = []
     partition_types: list[DataType] = []
@@ -1339,7 +1347,6 @@ def process_copy(
         environment=environment, statement=statement.select, hooks=hooks
     )
 
-    # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
     return ProcessedCopyStatement(
         **arg_dict,
@@ -1523,14 +1530,14 @@ def process_query(
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
     )
-    # Every scoped join is a domain DECLARATION; collect them scope-tagged, in
+    # Every scoped join is a domain declaration; collect them scope-tagged, in
     # declaration-priority order (statement, then global merges, then
-    # rowset-BODY joins — `with rs as left join ...`, which ride the rowset's
-    # select lineage, not the outer statement's join_clauses). The resulting
-    # graph (docs/domain_graph_design.md) feeds CTE-level join narrowing: the
-    # subset side of every LEFT/subset relation drives directional narrowing;
+    # rowset-body joins, which ride the rowset's select lineage rather than the
+    # outer statement's join_clauses). The resulting graph
+    # (docs/domain_graph_design.md) feeds CTE-level join narrowing: the subset
+    # side of every subset relation drives directional narrowing, and
     # EQUAL/INCOMPARABLE endpoints veto the outer-join upgrade (an EQUAL key
-    # may still narrow to INNER once completeness tests pass — a query-scoped
+    # may still narrow to INNER once completeness tests pass; a query-scoped
     # FULL/UNION key never does).
     scoped_pairs: list[tuple[tuple[str, str, JoinType], EdgeScope]] = []
     seen_joins: set[tuple[str, str, JoinType]] = set()
@@ -1550,10 +1557,10 @@ def process_query(
         if join not in seen_joins:
             seen_joins.add(join)
             scoped_pairs.append((join, scope))
-    # The optimizer needs the FULL graph — structural ⊑ edges (rowset/filter
-    # lineage) and binding facts drive proof-based narrowing (rule B), not just
-    # the declared overlay. Registry shims filter on DECLARED provenance, so
-    # the canonical map and veto sets are unchanged by the extra edges.
+    # The optimizer needs the full graph: structural subset edges (rowset/filter
+    # lineage) and binding facts drive proof-based narrowing, not just the
+    # declared overlay. Registry shims filter on declared provenance, so the
+    # canonical map and veto sets are unchanged by the extra edges.
     domain_graph = assemble_full_graph(
         environment, DomainGraph.from_scoped_joins(scoped_pairs)
     )
@@ -1567,7 +1574,7 @@ def process_query(
         domain_graph=domain_graph,
         supports_full_join=supports_full_join,
     )
-    # Observational only — a diagnostics failure must never block the query.
+    # Observational only: a diagnostics failure must never block the query.
     derived_value_scopes: list[DerivedValueScope] = []
     if build_lineage_sink:
         try:

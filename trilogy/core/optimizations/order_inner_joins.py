@@ -1,25 +1,22 @@
 """Emit reducing INNER joins ahead of optional LEFT OUTER joins.
 
-A selective INNER join placed *after* a non-reducing LEFT join forces the engine
-to materialize the full outer-join product first — DuckDB does not push the inner
-filter below the outer join — which can blow up runtime by orders of magnitude
-(TPC-DS q80: 153s vs 0.5s for the same rows, identical output). Bubbling such inner
-joins forward fixes it.
+An INNER join placed after a LEFT join makes the engine materialize the full
+outer-join product before applying the inner filter, which does not get pushed
+below the outer join. Bubbling inner joins forward avoids that.
 
-Runs as the final optimization phase so join *types* are settled (the upgrade
+Runs as the final optimization phase so join types are settled (the upgrade
 passes can flip INNER<->OUTER) and nothing downstream re-disturbs the order. It is
-the single place every CTE's join list is ordered, regardless of how the joins were
-assembled (``get_node_joins`` vs. the concatenated arm/scoped-join path).
+the single place every CTE's join list is ordered, however the joins were assembled.
 
-Correctness — why the reorder never changes results:
+Why the reorder never changes results:
 - An INNER join only jumps ahead of a LEFT OUTER join, and only when none of the
   sources its ON clause reads are produced by a deferred LEFT join. A LEFT join
   preserves every left row and only adds (nullable) right columns, so an INNER
   filter on non-LEFT columns commutes with it.
 - FULL and RIGHT OUTER joins are hard barriers: they null-extend the anchor, so a
   later INNER filter on the anchor legitimately drops rows that reordering would
-  resurrect. Nothing crosses them. Unnest / non-``Join`` entries are barriers too.
-  Relative order is otherwise preserved (stable).
+  resurrect. Unnest / non-``Join`` entries are barriers too. Relative order is
+  otherwise preserved (stable).
 """
 
 from __future__ import annotations

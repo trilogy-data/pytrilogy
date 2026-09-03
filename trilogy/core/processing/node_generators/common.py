@@ -23,7 +23,7 @@ LOGGER_PREFIX = "[COMMON]"
 class AuthoredJoinPair(NamedTuple):
     """A declared relation's endpoints in AUTHOR address space (each retaining
     its own `keys` for FK-carrier checks) plus the single BUILD concept the
-    merged key resolves to — ROOT members substitute onto one canonical, so
+    merged key resolves to: ROOT members substitute onto one canonical, so
     injection targets the canonical exactly like a physically shared key."""
 
     left: BuildConcept
@@ -65,10 +65,8 @@ def authored_join_pair_candidates(
 
     A pair of properties keyed by the SAME canonical entity key is excluded:
     the relation is a functional consequence of that key's own merge, which
-    discovery already enforces as a shared canonical — pairing the properties
-    independently is redundant (conformed-dimension property merges, stocks).
-    A pair whose keys stay distinct (q25's per-side customer surrogates) is the
-    load-bearing bridge and stays."""
+    discovery already enforces as a shared canonical. A pair whose keys stay
+    distinct (per-side surrogates) is the load-bearing bridge and stays."""
     out: list[AuthoredJoinPair] = []
     for edge in environment.domain_graph.edges:
         if edge.provenance is not EdgeProvenance.DECLARED:
@@ -100,7 +98,7 @@ def _member_carriers(
 ) -> set[str]:
     """Datasources that can anchor `member`'s side of a relation: they bind the
     member itself, or bind ALL of its keys (an FK carrier able to join to the
-    member's dimension at its grain). Exact author addresses only — canonical
+    member's dimension at its grain). Exact author addresses only: canonical
     or pseudonym matching would anchor both sides from one source."""
     keys = set(member.keys or ())
     return {
@@ -140,10 +138,9 @@ def _relevant_authored_join_pairs(
 
     Needs help: some member is NOT directly bound on a request datasource, or
     is bound only away from an FK carrier that must hop to reach it. When
-    every member is a physical column wherever its keys appear (the
-    fact→date-spine merge, the both-facts-bind-the-sk q25 form) the merged
+    every member is a physical column wherever its keys appear, the merged
     concept is already a natural shared join key and injection only perturbs
-    the plan (q2 date-spine regression).
+    the plan.
 
     Carrier matching runs in AUTHOR address space via the domain graph's
     binding edges (datasource columns rebind to the canonical at build time,
@@ -198,10 +195,10 @@ def inject_authored_join_key_terminals(
     """Force the merged key of each traversed authored join relation into the
     resolution as a mandatory terminal, mirroring shared-key treatment: each
     side's subgraph must materialize the key, so the merge join pairs the
-    authored equality instead of silently dropping it (TPC-DS q17/q25).
+    authored equality instead of silently dropping it.
 
     Each member's keys are injected too, pinning BOTH sides' FK hops as
-    mandatory — otherwise the side-paths to the one merged key read as
+    mandatory; otherwise the side-paths to the one merged key read as
     alternative resolutions and raise ambiguity."""
     pairs, _ = _relevant_authored_join_pairs(all_concepts, environment)
     if not pairs:
@@ -275,10 +272,8 @@ def reinject_common_join_keys_v2(
                 node_cache[addr] = concept_to_node(concept.with_default_grain())
         existing = {addr for addr in common if node_cache[addr] in final.nodes}
         for addr, concept in common.items():
-            # Aggregate metrics (e.g. `count`) can show up on multiple persisted
-            # datasources at different grains, but they are computed values,
-            # not join keys: joining on one is meaningless and would emit a
-            # virtual `_virt_agg_*` node into the graph.
+            # Aggregate metrics can sit on multiple persisted datasources at
+            # different grains, but they are computed values, not join keys.
             if addr in synonyms or addr not in reduced or concept.is_aggregate:
                 continue
             if addr in existing and not add_joins:
