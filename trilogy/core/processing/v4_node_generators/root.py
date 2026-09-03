@@ -409,17 +409,20 @@ def gen_root(
         )
     )
     if node is None and conditions is not None:
-        fallback_outputs = _with_condition_source_join_keys(
-            _outputs_with_grain_keys(inner_outputs, environment),
-            conditions,
-            environment,
-        )
+        grain_outputs = _outputs_with_grain_keys(inner_outputs, environment)
+        fallback_outputs = grain_outputs
         # A cross-row gate (`sum(x) by k > 0`) is what sent the conditioned
         # request to this fallback; the plain row atoms beside it still belong
-        # on the row scan, so only the gates go to the feeder merge.
+        # on the row scan, so only the gates go to the feeder merge. The scan
+        # is then widened by the gates' keys alone: judged on the mixed clause,
+        # the widening declines and the gate feeder, planned with no row
+        # correlation, has nothing to join back on.
         row_atoms, gates = _split_aggregate_gates(row_conditions)
         node = None
         if row_atoms is not None and gates is not None:
+            fallback_outputs = _with_condition_source_join_keys(
+                grain_outputs, gates, environment
+            )
             node = plan_source(
                 SourceRequest(
                     outputs=fallback_outputs,
@@ -433,6 +436,9 @@ def gen_root(
             if node is not None:
                 conditions = _conjoin(gates, existence_conditions)
         if node is None:
+            fallback_outputs = _with_condition_source_join_keys(
+                grain_outputs, conditions, environment
+            )
             node = plan_source(
                 SourceRequest(
                     outputs=fallback_outputs,
