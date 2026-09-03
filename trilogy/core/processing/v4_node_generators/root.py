@@ -28,6 +28,7 @@ from trilogy.core.processing.v4_helper.projection import lineage_existence_only
 from trilogy.core.processing.v4_helper.source_planning import SourceRequest, plan_source
 from trilogy.core.processing.v4_helper.staged_where import hosting_stage_index
 
+from .aggregate import outputs_with_scoped_join_mates
 from .common import search_parent
 from .condition_sources import resolve_existence_sources
 
@@ -521,9 +522,15 @@ def gen_root(
             gated.add_existence_concepts(sources.existence_concepts, rebuild=False)
             gated.rebuild_cache()
             return gated
+        # The wrapper is a merge side: a coalescing scoped-join member the
+        # sourced node carries (a membership row arg that is also the
+        # authored `union join` axis) must stay visible, or join inference
+        # above pairs nothing and cross-joins the sides.
         return SelectNode(
             input_concepts=list(node.output_concepts),
-            output_concepts=list(outputs),
+            output_concepts=outputs_with_scoped_join_mates(
+                list(outputs), [node], environment
+            ),
             environment=environment,
             parents=[node, *sources.existence_parents],
             partial_concepts=list(node.partial_concepts),
