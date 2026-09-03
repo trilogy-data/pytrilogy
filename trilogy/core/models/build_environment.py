@@ -123,6 +123,11 @@ class BuildEnvironment:
     # instead). Composite of graph facts and author derivations; dissolves once
     # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
+    # Discriminator address -> enum values this statement's row gate rules out
+    # (`partial_bridging.drop_excluded_partials`). Partition-family proofs
+    # (union coverage, `merge_conditions`) run over the remaining domain, so
+    # hiding a contradicted arm never breaks the proof the other arms need.
+    excluded_enum_values: dict[str, frozenset[str]] = field(default_factory=dict)
     # Members of each build-scoped join key equivalence group, keyed by the
     # group's canonical address: exactly the authored relation endpoints (union
     # of the scoped merge map's source->canonical entries), NOT the transitive

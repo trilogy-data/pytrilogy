@@ -289,7 +289,8 @@ def _inject_union_datasources(
         if isinstance(datasource, BuildDatasource)
     ]
     union_edges: list[tuple[str, str]] = []
-    for datasource_group in get_union_sources(datasources, concepts):
+    excluded = environment.excluded_enum_values
+    for datasource_group in get_union_sources(datasources, concepts, excluded):
         node_address = "ds~" + "-".join(
             [datasource.name for datasource in datasource_group]
         )
@@ -300,7 +301,8 @@ def _inject_union_datasources(
                 datasource.non_partial_for.conditional
                 for datasource in datasource_group
                 if datasource.non_partial_for is not None
-            ]
+            ],
+            excluded,
         )
         non_partial_for = (
             BuildWhereClause(conditional=merged_condition)

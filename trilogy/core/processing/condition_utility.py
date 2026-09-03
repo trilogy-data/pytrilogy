@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -444,6 +445,34 @@ def is_fully_covered(
     return current_end >= end
 
 
+# Discriminator address (or canonical address) -> enum values the statement's
+# row gate rules out. A per-statement view of the domain: a partition family
+# is complete once it covers the values that can still occur.
+ExcludedEnumValues = Mapping[str, frozenset[str]]
+
+
+def gate_allowed_values(conditional: BoolExpr) -> dict[str, set[object]]:
+    """Address -> literal values a row gate's EQ/IS/IN atoms allow."""
+    return _build_allowed_map(decompose_condition(conditional))
+
+
+def effective_enum_domain(
+    datatype: Any,
+    concept: BuildConcept,
+    excluded: ExcludedEnumValues | None,
+) -> Any:
+    """``datatype`` with the values the statement rules out for ``concept``
+    removed, so a domain proof runs over what can still occur."""
+    if not excluded or not isinstance(datatype, EnumType):
+        return datatype
+    gone = excluded.get(concept.address) or excluded.get(concept.canonical_address)
+    if not gone:
+        return datatype
+    return EnumType(
+        type=datatype.type, values=[v for v in datatype.values if str(v) not in gone]
+    )
+
+
 def conditions_cover_domain(
     grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]],
 ) -> bool:
@@ -460,6 +489,7 @@ def conditions_cover_domain(
 
 def simplify_conditions(
     conditions: list[BoolExpr],
+    excluded: ExcludedEnumValues | None = None,
 ) -> bool:
     # Key by address string: concept objects from different datasources may not
     # hash/compare identically even when they represent the same concept.
@@ -490,7 +520,10 @@ def simplify_conditions(
                 return False
             comparison = raw_comparison
 
-        entry = grouped.setdefault(concept.canonical_address, (concept.datatype, []))
+        entry = grouped.setdefault(
+            concept.canonical_address,
+            (effective_enum_domain(concept.datatype, concept, excluded), []),
+        )
         entry[1].append((condition.operator, comparison))
 
     return conditions_cover_domain(grouped)
@@ -725,6 +758,7 @@ def strip_condition_atoms(
 
 def merge_conditions(
     conditions: list[BoolExpr],
+    excluded: ExcludedEnumValues | None = None,
 ) -> BoolExpr | None:
     """Merge a list of OR'd conditions into a minimal equivalent.
 
@@ -749,7 +783,7 @@ def merge_conditions(
     if not all_varying:
         return combine_condition_atoms(common)
 
-    if not simplify_conditions(all_varying):
+    if not simplify_conditions(all_varying, excluded):
         return conditions[0]
 
     return combine_condition_atoms(common)
