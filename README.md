@@ -423,12 +423,13 @@ runs *because* another one failed:
 ```
 
 `when` is `completed` (the default, and the derived-edge rule), `failed`, or
-`always`. A `failed` script stands down as a successful skip when its
-upstreams held, so the run stays green; it runs when one of them broke, and
-anything it hands back — a `call`ed program printing
-`::trilogy-output name=fix_pr value=https://…` — is listed under Outputs
-after the summary and recorded in the `--report-file` report. Paths are
-relative to the toml, and naming a script the run does not manage is an error.
+`always`. A `failed` script stands down as a successful skip when its upstreams
+held, so the run stays green — and anything downstream of it stands down the
+same way, since the script it was waiting on never ran. It runs when one of
+them broke, and anything it hands back — a `call`ed program printing
+`::trilogy-output name=fix_pr value=https://…` — is listed under Outputs after
+the summary and recorded in the `--report-file` report. Paths are relative to
+the toml, and naming a script the run does not manage is an error.
 
 ## More Resources
 

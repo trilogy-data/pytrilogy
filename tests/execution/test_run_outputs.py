@@ -2,6 +2,7 @@
 ``output`` report records and a summary section (``trilogy.execution.outputs``)."""
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,8 @@ from trilogy.execution.outputs import (
     scan_outputs,
 )
 from trilogy.execution.report import ReportSink, set_report_sink
+from trilogy.scripts import display_core
+from trilogy.scripts.display import show_run_outputs
 from trilogy.scripts.trilogy import cli
 
 PR_URL = "https://github.com/o/r/pull/45?tab=files&x=1"
@@ -31,6 +34,31 @@ def _clean_outputs():
     from trilogy.scripts import display_core
 
     display_core.set_output_format("rich")
+
+
+#: CI runs the CLI suites twice, with and without ``rich`` installed, and the
+#: two renderings are different code paths. Tests that check what a run printed
+#: pin the mode explicitly and assert the rendering that mode produces, so one
+#: run covers both.
+rich_modes = pytest.mark.parametrize("rich", [True, False], ids=["rich", "plain"])
+
+
+def assert_output_listed(
+    printed: str, name: str, kind: str, value: str, rich: bool
+) -> None:
+    if rich:
+        assert "Outputs" in printed
+        assert name in printed and kind in printed
+    else:
+        assert f"Output {name} ({kind}): {value}" in printed
+
+
+@contextmanager
+def rich_mode(enabled: bool):
+    if enabled and not display_core.RICH_AVAILABLE:
+        pytest.skip("rich not installed")
+    with display_core.set_rich_mode(enabled):
+        yield
 
 
 def test_parse_link_defaults_kind_and_keeps_value_verbatim():
@@ -138,12 +166,14 @@ def _call_workspace(tmp_path: Path) -> Path:
     return script
 
 
-def test_cli_run_reports_and_prints_outputs(tmp_path: Path):
+@rich_modes
+def test_cli_run_reports_and_prints_outputs(tmp_path: Path, rich: bool):
     script = _call_workspace(tmp_path)
     report = tmp_path / "report.jsonl"
-    result = CliRunner().invoke(
-        cli, ["run", str(script), "duck_db", "--report-file", str(report)]
-    )
+    with rich_mode(rich):
+        result = CliRunner().invoke(
+            cli, ["run", str(script), "duck_db", "--report-file", str(report)]
+        )
     assert result.exit_code == 0, result.output
     records = [json.loads(line) for line in report.read_text().splitlines()]
     outputs = [r for r in records if r["type"] == "output"]
@@ -151,7 +181,7 @@ def test_cli_run_reports_and_prints_outputs(tmp_path: Path):
         ("fix_pr", "link", PR_URL)
     ]
     assert records[-1]["type"] == "summary"
-    assert f"Output fix_pr (link): {PR_URL}" in result.output
+    assert_output_listed(result.output, "fix_pr", "link", PR_URL, rich)
 
 
 def test_cli_run_json_mode_emits_outputs_event(tmp_path: Path):
@@ -167,8 +197,24 @@ def test_cli_run_json_mode_emits_outputs_event(tmp_path: Path):
     ]
 
 
-def test_cli_run_directory_prints_outputs(tmp_path: Path):
+@rich_modes
+def test_show_run_outputs_renders_in_both_modes(rich: bool, capsys):
+    with rich_mode(rich):
+        show_run_outputs([RunOutput("fix_pr", PR_URL, "link", "./emit.py")])
+    assert_output_listed(capsys.readouterr().out, "fix_pr", "link", PR_URL, rich)
+
+
+@rich_modes
+def test_show_run_outputs_says_nothing_when_there_are_none(rich: bool, capsys):
+    with rich_mode(rich):
+        show_run_outputs([])
+    assert capsys.readouterr().out == ""
+
+
+@rich_modes
+def test_cli_run_directory_prints_outputs(tmp_path: Path, rich: bool):
     _call_workspace(tmp_path)
-    result = CliRunner().invoke(cli, ["run", str(tmp_path), "duck_db"])
+    with rich_mode(rich):
+        result = CliRunner().invoke(cli, ["run", str(tmp_path), "duck_db"])
     assert result.exit_code == 0, result.output
-    assert "fix_pr" in result.output
+    assert_output_listed(result.output, "fix_pr", "link", PR_URL, rich)

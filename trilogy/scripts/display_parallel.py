@@ -9,6 +9,7 @@ import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, emit_event, is_json_mode
 
 if TYPE_CHECKING:
+    from trilogy.scripts.dependency import ExecutionNode
     from trilogy.scripts.parallel_execution import (
         ExecutionResult,
         ParallelExecutionSummary,
@@ -92,14 +93,10 @@ def failure_report(summary: "ParallelExecutionSummary") -> str:
     return "\n".join(lines)
 
 
-def _node_label(node: Any) -> str:
+def _node_label(node: "ExecutionNode") -> str:
     from trilogy.scripts.dependency import ScriptNode
 
-    return (
-        node.path.name
-        if isinstance(node, ScriptNode)
-        else getattr(node, "address", str(node))
-    )
+    return node.path.name if isinstance(node, ScriptNode) else node.address
 
 
 def _stat_row_label(noun: str, verb: str, dry_run: bool) -> str:

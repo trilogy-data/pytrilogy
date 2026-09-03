@@ -12,6 +12,11 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from tests.execution.test_run_outputs import (
+    assert_output_listed,
+    rich_mode,
+    rich_modes,
+)
 from trilogy.core import graph as nx
 from trilogy.scripts.dependency import (
     DependencyResolver,
@@ -20,6 +25,7 @@ from trilogy.scripts.dependency import (
 )
 from trilogy.scripts.parallel_execution import (
     ExecutionResult,
+    RunState,
     _mark_node_complete,
 )
 from trilogy.scripts.project_config import (
@@ -161,12 +167,14 @@ def test_declared_cycle_is_refused(tmp_path: Path):
 # Scheduling
 # ---------------------------------------------------------------------------
 
-A, B, REPAIR = (str(Path(f"/scripts/{n}.preql")) for n in ("a", "b", "repair"))
+A, B, REPAIR, NOTIFY = (
+    str(Path(f"/scripts/{n}.preql")) for n in ("a", "b", "repair", "notify")
+)
 
 
 def _graph(edges: list[tuple[str, str, str | None]]) -> nx.DiGraph:
+    """Only the nodes the edges name, so `ready` reads as what this graph released."""
     graph = nx.DiGraph()
-    graph.add_nodes_from([A, B, REPAIR])
     for upstream, dependent, when in edges:
         graph.add_edge(upstream, dependent)
         if when:
@@ -174,91 +182,97 @@ def _graph(edges: list[tuple[str, str, str | None]]) -> nx.DiGraph:
     return graph
 
 
-class _Run:
-    """The scheduler's state for one run, so a test reads as a sequence of
-    outcomes rather than a dozen positional arguments."""
+def _finish(state: RunState, node: str, success: bool) -> None:
+    """Claim `node` off the ready queue and complete it, as a worker would."""
+    if node in state.ready:
+        state.ready.remove(node)
+    state.in_progress.add(node)
+    _mark_node_complete(state, node, success, None)
 
-    def __init__(self, graph: nx.DiGraph) -> None:
-        self.graph = graph
-        self.node_map = {k: ScriptNode(path=Path(k)) for k in graph.nodes()}
-        self.completed: set[str] = set()
-        self.failed: set[str] = set()
-        self.in_progress: set[str] = set()
-        self.remaining = {k: graph.in_degree(k) for k in graph.nodes()}
-        self.ready: list[str] = []
-        self.results: list[ExecutionResult] = []
-        self.triggered: set[str] = set()
 
-    def finish(self, node: str, success: bool) -> None:
-        self.in_progress.add(node)
-        _mark_node_complete(
-            node,
-            success,
-            self.graph,
-            self.node_map,
-            self.completed,
-            self.failed,
-            self.in_progress,
-            self.remaining,
-            self.ready,
-            self.results,
-            None,
-            self.triggered,
-        )
-
-    def result_for(self, node: str) -> ExecutionResult:
-        return next(r for r in self.results if str(r.node.path) == node)
+def _result_for(state: RunState, node: str) -> ExecutionResult:
+    return next(r for r in state.results if str(r.node.path) == node)
 
 
 def test_repair_runs_when_its_upstream_fails():
-    run = _Run(_graph([(A, REPAIR, "failed")]))
-    run.finish(A, success=False)
-    assert run.ready == [REPAIR]
-    assert run.results == []
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed")]))
+    _finish(state, A, success=False)
+    assert state.ready == [REPAIR]
+    assert state.results == []
 
 
 def test_repair_stands_down_when_its_upstream_succeeds():
-    run = _Run(_graph([(A, REPAIR, "failed")]))
-    run.finish(A, success=True)
-    assert run.ready == []
-    result = run.result_for(REPAIR)
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed")]))
+    _finish(state, A, success=True)
+    assert state.ready == []
+    result = _result_for(state, REPAIR)
     assert result.success and result.skipped
     assert "a.preql did not fail" in str(result.error)
-    assert REPAIR in run.completed and REPAIR not in run.failed
+    assert REPAIR in state.completed and REPAIR not in state.failed
 
 
 def test_always_runs_either_way():
     for success in (True, False):
-        run = _Run(_graph([(A, REPAIR, "always")]))
-        run.finish(A, success=success)
-        assert run.ready == [REPAIR]
+        state = RunState.for_graph(_graph([(A, REPAIR, "always")]))
+        _finish(state, A, success=success)
+        assert state.ready == [REPAIR]
 
 
 def test_derived_edge_still_skips_on_failure():
-    run = _Run(_graph([(A, B, None)]))
-    run.finish(A, success=False)
-    result = run.result_for(B)
+    state = RunState.for_graph(_graph([(A, B, None)]))
+    _finish(state, A, success=False)
+    result = _result_for(state, B)
     assert not result.success and result.skipped
-    assert B in run.failed
+    assert B in state.failed
 
 
 def test_a_dependency_skip_is_not_a_failure():
     # a -> b (derived), b -> repair (when=failed). a fails, so b is skipped —
     # but b did not *fail*, so the repair for b has nothing to repair.
-    run = _Run(_graph([(A, B, None), (B, REPAIR, "failed")]))
-    run.finish(A, success=False)
-    assert run.ready == []
-    assert not run.result_for(B).success
-    repair = run.result_for(REPAIR)
+    state = RunState.for_graph(_graph([(A, B, None), (B, REPAIR, "failed")]))
+    _finish(state, A, success=False)
+    assert state.ready == []
+    assert not _result_for(state, B).success
+    repair = _result_for(state, REPAIR)
     assert repair.success and repair.skipped
 
 
+def test_a_stood_down_repair_does_not_release_its_downstream():
+    # notify exists to announce the repair. The repair never ran, so there is
+    # nothing to announce — and nothing failed either, so the skip is green.
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed"), (REPAIR, NOTIFY, None)]))
+    _finish(state, A, success=True)
+    assert state.ready == []
+    notify = _result_for(state, NOTIFY)
+    assert notify.success and notify.skipped
+    assert "repair.preql stood down" in str(notify.error)
+    assert NOTIFY not in state.failed
+
+
+def test_a_repair_that_fired_releases_its_downstream():
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed"), (REPAIR, NOTIFY, None)]))
+    _finish(state, A, success=False)
+    assert state.ready == [REPAIR]
+    _finish(state, REPAIR, success=True)
+    assert state.ready == [NOTIFY]
+
+
+def test_a_repair_that_fired_and_broke_skips_its_downstream_red():
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed"), (REPAIR, NOTIFY, None)]))
+    _finish(state, A, success=False)
+    _finish(state, REPAIR, success=False)
+    assert state.ready == []
+    notify = _result_for(state, NOTIFY)
+    assert not notify.success and notify.skipped
+    assert NOTIFY in state.failed
+
+
 def test_repair_waits_for_every_upstream():
-    run = _Run(_graph([(A, REPAIR, "failed"), (B, REPAIR, "failed")]))
-    run.finish(A, success=False)
-    assert run.ready == []  # b still running
-    run.finish(B, success=True)
-    assert run.ready == [REPAIR]
+    state = RunState.for_graph(_graph([(A, REPAIR, "failed"), (B, REPAIR, "failed")]))
+    _finish(state, A, success=False)
+    assert REPAIR not in state.ready  # b still running
+    _finish(state, B, success=True)
+    assert state.ready == [REPAIR]
 
 
 # ---------------------------------------------------------------------------
@@ -306,12 +320,14 @@ def _file_end(records: list[dict], name: str) -> dict:
     )
 
 
-def test_run_directory_fires_the_repair_on_failure(tmp_path: Path):
+@rich_modes
+def test_run_directory_fires_the_repair_on_failure(tmp_path: Path, rich: bool):
     _repair_workspace(tmp_path, BROKEN)
     report = tmp_path / "report.jsonl"
-    result = CliRunner().invoke(
-        cli, ["run", str(tmp_path), "duck_db", "--report-file", str(report)]
-    )
+    with rich_mode(rich):
+        result = CliRunner().invoke(
+            cli, ["run", str(tmp_path), "duck_db", "--report-file", str(report)]
+        )
     # The upstream failed, so the run is red — but the repair ran and reported.
     assert result.exit_code == 1, result.output
     records = _records(report)
@@ -323,7 +339,7 @@ def test_run_directory_fires_the_repair_on_failure(tmp_path: Path):
     summary = records[-1]
     assert summary["type"] == "summary"
     assert (summary["succeeded"], summary["failed"], summary["skipped"]) == (1, 1, 0)
-    assert f"Output fix_pr (link): {PR_URL}" in result.output
+    assert_output_listed(result.output, "fix_pr", "link", PR_URL, rich)
 
 
 def test_run_directory_stands_the_repair_down_on_success(tmp_path: Path):
