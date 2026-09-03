@@ -24,6 +24,7 @@ from trilogy.scripts.dependency import (
     ManagedRefreshNode,
     ScriptNode,
     create_script_nodes,
+    edge_condition,
 )
 from trilogy.utility import safe_open
 
@@ -46,8 +47,10 @@ class ExecutionResult:
     error: Exception | None = None
     duration: float = 0.0  # seconds
     stats: ExecutionStats | None = None
-    # True when the node never ran because a dependency failed. Kept distinct
-    # from success=False so telemetry can separate real failures from skips.
+    # True when the node never ran: because a dependency failed
+    # (success=False), or because its declared `when` condition was not met
+    # (success=True — a repair script standing down is the pipeline working).
+    # Kept distinct so telemetry can separate real failures from skips.
     skipped: bool = False
 
 
@@ -111,6 +114,162 @@ def build_node_map(graph: nx.DiGraph) -> NodeMap:
     return {key: ScriptNode(path=Path(key)) for key in graph.nodes()}
 
 
+# How a node ended, as far as its dependents are concerned. A dependency-skip
+# is not a failure of *this* script, and a `when = "failed"` dependent must
+# not fire on it — only on the script that actually broke.
+OUTCOME_SUCCEEDED = "succeeded"
+OUTCOME_FAILED = "failed"
+OUTCOME_SKIPPED = "skipped"
+#: Set of nodes whose `when = "failed"` condition has been met.
+TriggeredSet = set[str]
+
+DEPENDENCY_SKIP = "Skipped due to failed dependency"
+
+
+def _waits_for_failure(graph: nx.DiGraph, node_key: str) -> list[str]:
+    """The upstreams `node_key` runs *because of*, when it is a repair script."""
+    return [
+        upstream
+        for upstream in graph.predecessors(node_key)
+        if edge_condition(graph, upstream, node_key) == "failed"
+    ]
+
+
+def _finish_without_running(
+    node_key: str,
+    reason: str,
+    success: bool,
+    graph: nx.DiGraph,
+    node_map: NodeMap,
+    completed: CompletedSet,
+    failed: FailedSet,
+    in_progress: InProgressSet,
+    remaining_deps: RemainingDepsDict,
+    ready: ReadyList,
+    results: ResultsList,
+    triggered: TriggeredSet,
+    on_script_complete: OnCompleteCallback,
+) -> None:
+    result = ExecutionResult(
+        node=node_map[node_key],
+        success=success,
+        error=RuntimeError(reason),
+        duration=0.0,
+        skipped=True,
+    )
+    results.append(result)
+    completed.add(node_key)
+    if not success:
+        failed.add(node_key)
+    if on_script_complete:
+        on_script_complete(result)
+    _settle_dependents(
+        node_key,
+        OUTCOME_SUCCEEDED if success else OUTCOME_SKIPPED,
+        graph,
+        node_map,
+        completed,
+        failed,
+        in_progress,
+        remaining_deps,
+        ready,
+        results,
+        triggered,
+        on_script_complete,
+    )
+
+
+def _settle_dependents(
+    node_key: str,
+    outcome: str,
+    graph: nx.DiGraph,
+    node_map: NodeMap,
+    completed: CompletedSet,
+    failed: FailedSet,
+    in_progress: InProgressSet,
+    remaining_deps: RemainingDepsDict,
+    ready: ReadyList,
+    results: ResultsList,
+    triggered: TriggeredSet,
+    on_script_complete: OnCompleteCallback,
+) -> None:
+    """Tell every unstarted dependent of `node_key` how it ended.
+
+    A derived edge (`when = "completed"`) is the old rule: a failure or a
+    dependency-skip upstream skips the dependent, recursively, before it
+    ever counts down. A declared `failed` or `always` edge counts every
+    outcome down instead, and when the dependent's last upstream settles it
+    either runs, or — a repair script whose upstreams all held — stands
+    down as a *successful* skip so the pipeline stays green.
+    """
+    for dependent in graph.successors(node_key):
+        if dependent in completed or dependent in in_progress:
+            continue
+        when = edge_condition(graph, node_key, dependent)
+        if when == "completed" and outcome != OUTCOME_SUCCEEDED:
+            _finish_without_running(
+                dependent,
+                DEPENDENCY_SKIP,
+                False,
+                graph,
+                node_map,
+                completed,
+                failed,
+                in_progress,
+                remaining_deps,
+                ready,
+                results,
+                triggered,
+                on_script_complete,
+            )
+            continue
+        if when == "failed" and outcome == OUTCOME_FAILED:
+            triggered.add(dependent)
+        remaining_deps[dependent] -= 1
+        if remaining_deps[dependent] > 0:
+            continue
+        watched = _waits_for_failure(graph, dependent)
+        if watched and dependent not in triggered:
+            names = ", ".join(Path(key).name for key in watched)
+            _finish_without_running(
+                dependent,
+                f"{names} did not fail, so this script had nothing to do",
+                True,
+                graph,
+                node_map,
+                completed,
+                failed,
+                in_progress,
+                remaining_deps,
+                ready,
+                results,
+                triggered,
+                on_script_complete,
+            )
+        elif any(
+            upstream in failed
+            and edge_condition(graph, upstream, dependent) == "completed"
+            for upstream in graph.predecessors(dependent)
+        ):
+            _finish_without_running(
+                dependent,
+                DEPENDENCY_SKIP,
+                False,
+                graph,
+                node_map,
+                completed,
+                failed,
+                in_progress,
+                remaining_deps,
+                ready,
+                results,
+                triggered,
+                on_script_complete,
+            )
+        else:
+            ready.append(dependent)
+
+
 def _propagate_failure(
     failed_key: str,
     graph: nx.DiGraph,
@@ -120,34 +279,30 @@ def _propagate_failure(
     results: ResultsList,
     failed: FailedSet,
     on_script_complete: OnCompleteCallback,
+    remaining_deps: RemainingDepsDict | None = None,
+    ready: ReadyList | None = None,
+    triggered: TriggeredSet | None = None,
 ) -> None:
+    """Mark every unstarted dependent of a node that did not run as skipped.
+
+    The counters are optional only for graphs with no declared edges, where
+    nothing ever counts down past a failure; a graph carrying `when` edges
+    must pass the run's own state or a conditional dependent is lost.
     """
-    Recursively mark all *unstarted* dependents of a failed node as failed and skipped.
-    """
-    for dependent in graph.successors(failed_key):
-        if dependent not in completed and dependent not in in_progress:
-            skip_result = ExecutionResult(
-                node=node_map[dependent],
-                success=False,
-                error=RuntimeError("Skipped due to failed dependency"),
-                duration=0.0,
-                skipped=True,
-            )
-            results.append(skip_result)
-            completed.add(dependent)
-            failed.add(dependent)
-            if on_script_complete:
-                on_script_complete(skip_result)
-            _propagate_failure(
-                dependent,
-                graph,
-                node_map,
-                completed,
-                in_progress,
-                results,
-                failed,
-                on_script_complete,
-            )
+    _settle_dependents(
+        failed_key,
+        OUTCOME_SKIPPED,
+        graph,
+        node_map,
+        completed,
+        failed,
+        in_progress,
+        remaining_deps if remaining_deps is not None else {},
+        ready if ready is not None else [],
+        results,
+        triggered if triggered is not None else set(),
+        on_script_complete,
+    )
 
 
 def _get_next_ready(ready: ReadyList) -> str | None:
@@ -169,78 +324,30 @@ def _mark_node_complete(
     ready: ReadyList,
     results: ResultsList,
     on_script_complete: OnCompleteCallback,
+    triggered: TriggeredSet | None = None,
 ) -> None:
     """
-    Mark a node as complete, update dependent counts, and add newly ready/skipped nodes.
+    Mark an executed node complete and settle its dependents: count down,
+    release, or skip them according to each edge's condition.
     """
     in_progress.discard(node_key)
     completed.add(node_key)
     if not success:
         failed.add(node_key)
-
-    # Update dependents
-    for dependent in graph.successors(node_key):
-        if dependent in completed or dependent in in_progress:
-            continue
-
-        if success:
-            remaining_deps[dependent] -= 1
-            if remaining_deps[dependent] == 0:
-                # Check if any dependency failed before running
-                deps = set(graph.predecessors(dependent))
-                if deps & failed:
-                    # Skip this node - dependency failed
-                    skip_result = ExecutionResult(
-                        node=node_map[dependent],
-                        success=False,
-                        error=RuntimeError("Skipped due to failed dependency"),
-                        duration=0.0,
-                        skipped=True,
-                    )
-                    results.append(skip_result)
-                    completed.add(dependent)
-                    failed.add(dependent)
-                    if on_script_complete:
-                        on_script_complete(skip_result)
-                    # Recursively mark dependents as failed
-                    _propagate_failure(
-                        dependent,
-                        graph,
-                        node_map,
-                        completed,
-                        in_progress,
-                        results,
-                        failed,
-                        on_script_complete,
-                    )
-                else:
-                    ready.append(dependent)
-        else:
-            # Current node failed - mark this dependent as skipped
-            if dependent not in failed:
-                skip_result = ExecutionResult(
-                    node=node_map[dependent],
-                    success=False,
-                    error=RuntimeError("Skipped due to failed dependency"),
-                    duration=0.0,
-                    skipped=True,
-                )
-                results.append(skip_result)
-                completed.add(dependent)
-                failed.add(dependent)
-                if on_script_complete:
-                    on_script_complete(skip_result)
-                # Recursively mark dependents as failed
-                _propagate_failure(
-                    dependent,
-                    graph,
-                    node_map,
-                    completed,
-                    in_progress,
-                    results,
-                    failed,
-                    on_script_complete,
-                )
+    _settle_dependents(
+        node_key,
+        OUTCOME_SUCCEEDED if success else OUTCOME_FAILED,
+        graph,
+        node_map,
+        completed,
+        failed,
+        in_progress,
+        remaining_deps,
+        ready,
+        results,
+        triggered if triggered is not None else set(),
+        on_script_complete,
+    )
 
 
 def _is_execution_done(completed: CompletedSet, total_count: int) -> bool:
@@ -298,6 +405,7 @@ def _create_worker(
     execution_fn: Callable[[Any, Any], Any],
     on_script_start: Callable[[Any], None] | None,
     on_script_complete: OnCompleteCallback,
+    triggered: TriggeredSet | None = None,
 ) -> Callable[[], None]:
     """
     Create a worker function for thread execution to process the dependency graph.
@@ -352,6 +460,7 @@ def _create_worker(
                         ready,
                         results,
                         on_script_complete,
+                        triggered,
                     )
                     work_available.notify_all()  # Notify other workers of new ready/completed state
 
@@ -390,6 +499,7 @@ class EagerBFSStrategy:
         failed: FailedSet = set()
         in_progress: InProgressSet = set()
         results: ResultsList = []
+        triggered: TriggeredSet = set()
 
         # Calculate in-degrees (number of incomplete dependencies)
         remaining_deps: RemainingDepsDict = {
@@ -418,6 +528,7 @@ class EagerBFSStrategy:
             execution_fn=execution_fn,
             on_script_start=on_script_start,
             on_script_complete=on_script_complete,
+            triggered=triggered,
         )
 
         # Start worker threads
@@ -515,13 +626,15 @@ class ParallelExecutor:
         )
 
         total_duration = (datetime.now() - start_time).total_seconds()
-        successful = sum(1 for r in results if r.success)
+        successful = sum(1 for r in results if r.success and not r.skipped)
+        # A conditional script that stood down: not a failure, not a run.
+        skipped = sum(1 for r in results if r.success and r.skipped)
         failed = sum(1 for r in results if not r.success)
 
         return ParallelExecutionSummary(
             total_scripts=total_scripts,
             successful=successful,
-            skipped=0,
+            skipped=skipped,
             failed=failed,
             total_duration=total_duration,
             results=results,
@@ -974,7 +1087,7 @@ def run_parallel_execution(
         summary = ParallelExecutionSummary(
             total_scripts=summary.total_scripts,
             successful=summary.successful - skipped,
-            skipped=skipped,
+            skipped=summary.skipped + skipped,
             failed=summary.failed,
             total_duration=summary.total_duration,
             results=summary.results,
@@ -983,7 +1096,7 @@ def run_parallel_execution(
     show_parallel_execution_summary(summary)
     show_run_outputs(collected_outputs())
 
-    dep_skipped = sum(1 for r in summary.results if r.skipped)
+    dep_skipped = sum(1 for r in summary.results if r.skipped and not r.success)
     real_failed = summary.failed - dep_skipped
     emit_report(
         "summary",

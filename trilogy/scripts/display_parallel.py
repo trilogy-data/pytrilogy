@@ -92,6 +92,16 @@ def failure_report(summary: "ParallelExecutionSummary") -> str:
     return "\n".join(lines)
 
 
+def _node_label(node: Any) -> str:
+    from trilogy.scripts.dependency import ScriptNode
+
+    return (
+        node.path.name
+        if isinstance(node, ScriptNode)
+        else getattr(node, "address", str(node))
+    )
+
+
 def _stat_row_label(noun: str, verb: str, dry_run: bool) -> str:
     return f"{noun} That Would Be {verb}" if dry_run else f"{noun} {verb}"
 
@@ -205,7 +215,11 @@ def show_script_result(
         )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
-        if result.success:
+        if result.success and result.skipped:
+            _core.console.print(
+                f"  [dim]\u2298 {_node_label(result.node)} - {result.error}[/dim]"
+            )
+        elif result.success:
             if isinstance(result.node, ScriptNode):
                 _core.console.print(
                     f"  [green]\u2713[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
@@ -228,7 +242,9 @@ def show_script_result(
             else:
                 _core.console.print(str(result))
     else:
-        if result.success:
+        if result.success and result.skipped:
+            print(f"  \u2298 {_node_label(result.node)} - {result.error}")
+        elif result.success:
             if isinstance(result.node, ScriptNode):
                 print(
                     f"  \u2713 {result.node.path.name} ({result.duration:.2f}s){stats_str}"

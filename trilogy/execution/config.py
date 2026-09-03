@@ -238,6 +238,7 @@ _KNOWN_TOP_LEVEL: set[str] = {
     "import_paths",
     "cloud",
     "environments",
+    "dependencies",
 }
 _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "engine": {"dialect", "config", "env_file", "parallelism"},
@@ -250,6 +251,9 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "project": {"name"},
     "report": {"theme"},
     "environments": {"home"},
+    # Keyed by script path, read by `scripts.project_config
+    # .load_declared_dependencies`, which validates each entry itself.
+    "dependencies": None,
     # Consumed by `trilogy cloud` (scripts/cloud.py), not by RuntimeConfig —
     # listed so the documented [cloud] section doesn't audit as unknown.
     # `api_url`/`org` say which environment to talk to; the rest are the
