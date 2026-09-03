@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 3981
+gen_length = 3812
 preql_size = 1397
 comp_size = 1999
 generated_sql = """
@@ -37,7 +37,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and (\"cheerful\".\"sales_channel\" is not null and \"cheerful\".\"sales_channel\" in ('WEB','STORE'))
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
 uneven as (
 SELECT
@@ -88,15 +88,15 @@ GROUP BY
     2),
 juicy as (
 SELECT
+    \"abundant\".\"sales_item_sk\" as \"sales_item_sk\",
+    \"abundant\".\"sales_sale_date_date\" as \"sales_sale_date_date\",
     \"abundant\".\"store_has_row\" as \"store_has_row\",
     \"abundant\".\"web_has_row\" as \"web_has_row\",
     \"yummy\".\"store_cume\" as \"store_cume\",
-    \"yummy\".\"web_cume\" as \"web_cume\",
-    coalesce(\"abundant\".\"sales_item_sk\",\"yummy\".\"sales_item_sk\") as \"sales_item_sk\",
-    coalesce(\"abundant\".\"sales_sale_date_date\",\"yummy\".\"sales_sale_date_date\") as \"sales_sale_date_date\"
+    \"yummy\".\"web_cume\" as \"web_cume\"
 FROM
     \"yummy\"
-    FULL JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"yummy\".\"sales_sale_date_date\" is not distinct from \"abundant\".\"sales_sale_date_date\")
+    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"yummy\".\"sales_sale_date_date\" is not distinct from \"abundant\".\"sales_sale_date_date\")
 SELECT
     \"juicy\".\"sales_item_sk\" as \"item_sk\",
     \"juicy\".\"sales_sale_date_date\" as \"d_date\",

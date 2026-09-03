@@ -1,5 +1,5 @@
 query_id = "2.2"
-gen_length = 6822
+gen_length = 6707
 preql_size = 1232
 comp_size = 2566
 generated_sql = """
@@ -16,7 +16,7 @@ WHERE
 
 GROUP BY
     1),
-questionable as (
+wakeful as (
 SELECT
     \"date_date\".\"D_DATE_SK\" as \"date_sk\",
     \"date_date\".\"D_DATE_SK\" as \"web_sales_sale_date_sk\",
@@ -29,79 +29,79 @@ WHERE
 ),
 juicy as (
 SELECT
-    \"questionable\".\"date_week_seq\" as \"date_week_seq\",
+    \"wakeful\".\"date_week_seq\" as \"date_week_seq\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 0 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 0 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_9238538473336606\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 1 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 1 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_8302396398525202\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 2 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 2 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_6823422966658347\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 3 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 3 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_2293560889657522\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 4 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 4 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_8086371301050807\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 5 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 5 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_8833754379564371\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 6 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 6 THEN \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_5332872165953971\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-    INNER JOIN \"questionable\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"questionable\".\"date_sk\"
+    INNER JOIN \"wakeful\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"wakeful\".\"date_sk\"
 WHERE
-    exists (select 1 from cheerful where cheerful.\"relevent_week_seq\" is not distinct from \"questionable\".\"date_week_seq\")
+    exists (select 1 from cheerful where cheerful.\"relevent_week_seq\" is not distinct from \"wakeful\".\"date_week_seq\")
 
 GROUP BY
     1),
 abundant as (
 SELECT
-    \"questionable\".\"date_week_seq\" as \"date_week_seq\",
+    \"wakeful\".\"date_week_seq\" as \"date_week_seq\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 0 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 0 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_5446384850356435\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 1 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 1 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_7224794219444244\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 2 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 2 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_733654448721027\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 3 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 3 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_3727603509126659\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 4 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 4 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_2131371712943644\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 5 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 5 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_4518379598128005\",
     sum(CASE
-	WHEN \"questionable\".\"date_day_of_week\" = 6 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 6 THEN \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\"
 	ELSE cast(0.0 as numeric(15,2))
 	END) as \"_virt_agg_sum_7662941318754865\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-    INNER JOIN \"questionable\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"questionable\".\"date_sk\"
+    INNER JOIN \"wakeful\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"wakeful\".\"date_sk\"
 WHERE
-    exists (select 1 from cheerful where cheerful.\"relevent_week_seq\" is not distinct from \"questionable\".\"date_week_seq\")
+    exists (select 1 from cheerful where cheerful.\"relevent_week_seq\" is not distinct from \"wakeful\".\"date_week_seq\")
 
 GROUP BY
     1),

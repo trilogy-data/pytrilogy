@@ -46,6 +46,13 @@ byte-identical) and the TPC-DS/TPC-H row batteries:
   `virtual_addresses` set; postgres and presto emit `WITH RECURSIVE` (the
   shared template kept their old empty marker, which those engines reject);
   stale design-doc references to deleted helpers corrected.
+- Two regressions the corpus gate missed, found by the full suite and fixed
+  at construction time in `gen_root`: 737bb0e37 left the existence-gate
+  wrapper SelectNode without the scoped-join mates the deleted resolve-time
+  exposure used to add (q29 pins), and 9a2892dfb widened the split-fallback
+  scan against the mixed clause instead of the re-sourced gates
+  (`test_then_where_execution::test_scalar_stage_before_two_cross_row_stages`).
+  Both were keyless-join guard raises; both fixes are corpus-silent.
 - New pins: `tests/optimization/test_collapse_filtered_projection.py`
   (filtered projection never folds into a window-computing parent),
   `test_non_benchmark_queries::test_fourteen_renders_without_merge_aggregate`
@@ -85,9 +92,9 @@ run it from a cwd outside the repo with `PYTHONPATH=<worktree>` for the
 control leg.
 
 Verification of the final tree: full suite (`-m "not adventureworks_execution"`,
-cloud live tests ignored); the only expected failure is
-`tests/modeling/gcat/test_gcat.py::test_environment`, which fails on the
-pre-wave commit c8eab06fe as well (DatasourceColumnBindingError, unrelated).
+cloud live tests ignored) green after the rebase onto main (the earlier
+`tests/modeling/gcat/test_gcat.py::test_environment` failure was live-data
+skew fixed on main).
 
 The per-item sections below are the original audit text and keep their
 pre-landing line numbers.

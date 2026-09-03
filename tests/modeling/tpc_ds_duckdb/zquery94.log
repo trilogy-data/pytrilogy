@@ -1,11 +1,11 @@
 query_id = "94"
-gen_length = 2145
+gen_length = 2125
 preql_size = 619
 comp_size = 795
 generated_sql = """
 
 WITH 
-juicy as (
+uneven as (
 SELECT
     \"ws_web_sales\".\"WS_ORDER_NUMBER\" as \"ws_order_number\",
     \"ws_web_sales\".\"WS_WAREHOUSE_SK\" as \"ws_warehouse_sk\"
@@ -14,22 +14,22 @@ FROM
 GROUP BY
     1,
     2),
-vacuous as (
+yummy as (
 SELECT
-    \"juicy\".\"ws_order_number\" as \"ws_order_number\"
+    \"uneven\".\"ws_order_number\" as \"ws_order_number\"
 FROM
-    \"juicy\"
+    \"uneven\"
 GROUP BY
     1
 HAVING
-    count(\"juicy\".\"ws_warehouse_sk\") > 1
+    count(\"uneven\".\"ws_warehouse_sk\") > 1
 ),
-concerned as (
+juicy as (
 SELECT
-    \"vacuous\".\"ws_order_number\" as \"multi_warehouse_orders\"
+    \"yummy\".\"ws_order_number\" as \"multi_warehouse_orders\"
 FROM
-    \"vacuous\"),
-questionable as (
+    \"yummy\"),
+thoughtful as (
 SELECT
     coalesce(\"ws_web_returns\".\"WR_ORDER_NUMBER\",\"ws_web_sales\".\"WS_ORDER_NUMBER\") as \"returned_orders\"
 FROM
@@ -50,7 +50,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ws_ship_date_date\" on \"ws_web_sales\".\"WS_SHIP_DATE_SK\" = \"ws_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ws_pos_ship_address_customer_address\" on \"ws_web_sales\".\"WS_SHIP_ADDR_SK\" = \"ws_pos_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"ws_ship_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and \"ws_pos_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and exists (select 1 from concerned where concerned.\"multi_warehouse_orders\" is not distinct from \"ws_web_sales\".\"WS_ORDER_NUMBER\") and not exists (select 1 from questionable where questionable.\"returned_orders\" is not distinct from \"ws_web_sales\".\"WS_ORDER_NUMBER\")
+    cast(\"ws_ship_date_date\".\"D_DATE\" as date) BETWEEN date '1999-02-01' AND date '1999-04-02' and \"ws_pos_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"ws_web_site_web_site\".\"web_company_name\" = 'pri' and exists (select 1 from juicy where juicy.\"multi_warehouse_orders\" is not distinct from \"ws_web_sales\".\"WS_ORDER_NUMBER\") and not exists (select 1 from thoughtful where thoughtful.\"returned_orders\" is not distinct from \"ws_web_sales\".\"WS_ORDER_NUMBER\")
 
 ORDER BY 
     \"order_count\" asc

@@ -1,5 +1,5 @@
 query_id = "81"
-gen_length = 7314
+gen_length = 7246
 preql_size = 2098
 comp_size = 1459
 generated_sql = """
@@ -94,9 +94,6 @@ SELECT
 FROM
     \"uneven\"
     INNER JOIN \"young\" on \"uneven\".\"cs_return_customer_sk\" = \"young\".\"cs_return_customer_sk\"
-WHERE
-    \"young\".\"cs_return_customer_current_address_state\" = 'GA'
-
 ORDER BY 
     \"young\".\"cs_return_customer_id\" asc nulls first,
     \"young\".\"cs_return_customer_salutation\" asc nulls first,

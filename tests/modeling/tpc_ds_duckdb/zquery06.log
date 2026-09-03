@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 2410
+gen_length = 2322
 preql_size = 643
 comp_size = 654
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_current_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"store_sales_sale_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_sale_date_date\".\"D_MOY\" = 1 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null and \"store_sales_customer_current_address_customer_address\".\"CA_ADDRESS_SK\" is not null
+    \"store_sales_sale_date_date\".\"D_YEAR\" = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_sale_date_date\".\"D_MOY\" = 1 and \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" is not null
 )
 SELECT
     \"cooperative\".\"store_sales_customer_current_address_state\" as \"store_sales_customer_current_address_state\",
