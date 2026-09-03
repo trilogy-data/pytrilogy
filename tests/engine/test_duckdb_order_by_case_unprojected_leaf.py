@@ -33,3 +33,13 @@ select lower(channel) as ch, sum(amount) as total
 order by channel = 'A' desc;
 """)[0].fetchall()
     assert [tuple(r) for r in rows] == [("a", 15.0), ("b", 20.0)]
+
+
+def test_order_by_simple_case_over_unprojected_leaf_executes():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(FIXTURE)
+    rows = executor.execute_text("""
+select lower(channel) as ch, sum(amount) as total
+order by case channel when 'B' then 1 else 2 end asc;
+""")[0].fetchall()
+    assert [tuple(r) for r in rows] == [("b", 20.0), ("a", 15.0)]
