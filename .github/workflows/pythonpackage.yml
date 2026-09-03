@@ -142,6 +142,15 @@ jobs:
           python -m pip install pytest-cov
           python -m pytest tests/ --cov=trilogy -m "not adventureworks_execution and not cloud_live"
         env:
+          # Script datasources shell out to `uv run` once per query scan, so
+          # every spawn is a chance for uv to reach the registry. The warm step
+          # above has already materialized every script environment, so nothing
+          # here needs an index -- going offline takes the network off the spawn
+          # path entirely. Left online, a degraded runner turned a ~200ms spawn
+          # into ~15s: test_source_pushdown.py went 20s -> 1102s, test_gcat.py
+          # 4s -> 365s, and the job blew its 45-minute cap with no failing test
+          # to point at, because only the spawning tests were affected.
+          UV_OFFLINE: "1"
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -155,6 +164,9 @@ jobs:
           python -m pip install pytest-cov
           python -m pytest tests/ --cov=trilogy -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
         env:
+          # See the note on the first pytest step: warmed environments, so the
+          # spawn path must not touch the registry.
+          UV_OFFLINE: "1"
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Run differential fuzzer corpus
@@ -171,6 +183,10 @@ jobs:
           # filters are disjoint but each run re-collected the whole tests/ tree.
           python -m pip install rich
           python -m pytest tests/ --cov=trilogy --cov-append -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
+        env:
+          # See the note on the first pytest step: warmed environments, so the
+          # spawn path must not touch the registry.
+          UV_OFFLINE: "1"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
