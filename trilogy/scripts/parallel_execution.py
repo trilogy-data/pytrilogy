@@ -14,6 +14,7 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.execution.outputs import collected_outputs, reset_outputs
 from trilogy.execution.report import emit_report, exit_code_for
 from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
@@ -785,6 +786,7 @@ def run_parallel_execution(
         show_execution_info,
         show_parallel_execution_start,
         show_parallel_execution_summary,
+        show_run_outputs,
     )
     from trilogy.scripts.environment import parse_env_vars
 
@@ -877,6 +879,7 @@ def run_parallel_execution(
     # Get execution strategy
     strategy = get_execution_strategy(cli_params.execution_strategy)
 
+    reset_outputs()
     # Set up parallel executor
     parallel_exec = ParallelExecutor(
         max_workers=parallelism,
@@ -978,6 +981,7 @@ def run_parallel_execution(
         )
 
     show_parallel_execution_summary(summary)
+    show_run_outputs(collected_outputs())
 
     dep_skipped = sum(1 for r in summary.results if r.skipped)
     real_failed = summary.failed - dep_skipped

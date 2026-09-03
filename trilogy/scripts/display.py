@@ -53,6 +53,7 @@ from trilogy.scripts.display_execution import (  # noqa: F401
     show_execution_start,
     show_execution_summary,
     show_formatting_result,
+    show_run_outputs,
     show_statement_result,
     show_statement_type,
     summarize_definitions,

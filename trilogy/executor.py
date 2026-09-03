@@ -899,6 +899,11 @@ class Executor:
     @execute_query.register
     def _(self, query: ProcessedCallStatement) -> ResultProtocol | None:
         from trilogy.dialect.python_source import build_script_command
+        from trilogy.execution.outputs import (
+            is_output_line,
+            record_outputs,
+            scan_outputs,
+        )
 
         arg_pairs: list[tuple[str, Any]] = []
         if query.query is not None:
@@ -942,10 +947,16 @@ class Executor:
             cwd=str(self.environment.working_path),
             check=False,
         )
-        if completed.stdout and completed.stdout.strip():
-            logger.info(
-                f"call script '{query.target}' stdout: {completed.stdout.strip()}"
-            )
+        # Outputs are kept even when the script then fails: a repair script
+        # that opened an issue and died still reported where the issue is.
+        record_outputs(scan_outputs(completed.stdout or "", source=query.target))
+        stdout = "\n".join(
+            line
+            for line in (completed.stdout or "").splitlines()
+            if not is_output_line(line)
+        ).strip()
+        if stdout:
+            logger.info(f"call script '{query.target}' stdout: {stdout}")
         if completed.returncode != 0:
             detail = (completed.stderr or "").strip() or (
                 completed.stdout or ""

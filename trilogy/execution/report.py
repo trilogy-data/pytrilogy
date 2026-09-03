@@ -39,6 +39,9 @@ Record vocabulary (fields with ``None`` values are omitted):
 - ``state_snapshot``: a full StateSnapshot payload (see
   ``trilogy.execution.state.snapshot``), or {path} when written to a file
 - ``error``: error_type, message, file (fatal errors outside the file loop)
+- ``output``: name, kind ("link" | "text" | "json"), value, source (the
+  program that declared it) — a value a ``call``ed program handed back via a
+  ``::trilogy-output`` stdout marker (see ``trilogy.execution.outputs``)
 - ``summary``: terminal record — success, exit_code, total, succeeded,
   failed, skipped, partial_failure, total_duration_s, refreshed_assets.
   A multi-phase command (``integration --refresh-derived failed`` runs
