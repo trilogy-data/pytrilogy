@@ -9,6 +9,7 @@ import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, emit_event, is_json_mode
 
 if TYPE_CHECKING:
+    from trilogy.scripts.dependency import ExecutionNode
     from trilogy.scripts.parallel_execution import (
         ExecutionResult,
         ParallelExecutionSummary,
@@ -90,6 +91,12 @@ def failure_report(summary: "ParallelExecutionSummary") -> str:
         if error:
             lines.append(f"    Error: {error}")
     return "\n".join(lines)
+
+
+def _node_label(node: "ExecutionNode") -> str:
+    from trilogy.scripts.dependency import ScriptNode
+
+    return node.path.name if isinstance(node, ScriptNode) else node.address
 
 
 def _stat_row_label(noun: str, verb: str, dry_run: bool) -> str:
@@ -205,7 +212,11 @@ def show_script_result(
         )
         return
     if _core.RICH_AVAILABLE and _core.console is not None:
-        if result.success:
+        if result.success and result.skipped:
+            _core.console.print(
+                f"  [dim]\u2298 {_node_label(result.node)} - {result.error}[/dim]"
+            )
+        elif result.success:
             if isinstance(result.node, ScriptNode):
                 _core.console.print(
                     f"  [green]\u2713[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
@@ -228,7 +239,9 @@ def show_script_result(
             else:
                 _core.console.print(str(result))
     else:
-        if result.success:
+        if result.success and result.skipped:
+            print(f"  \u2298 {_node_label(result.node)} - {result.error}")
+        elif result.success:
             if isinstance(result.node, ScriptNode):
                 print(
                     f"  \u2713 {result.node.path.name} ({result.duration:.2f}s){stats_str}"

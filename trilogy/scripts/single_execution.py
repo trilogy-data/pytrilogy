@@ -9,6 +9,7 @@ from trilogy.core.statements.execute import (
     ProcessedValidateStatement,
 )
 from trilogy.dialect.results import ChartResult
+from trilogy.execution.outputs import collected_outputs, reset_outputs
 from trilogy.execution.report import (
     emit_asset_refresh,
     emit_asset_refresh_query,
@@ -45,6 +46,7 @@ from trilogy.scripts.display import (
     show_execution_start,
     show_execution_summary,
     show_root_probe_breakdown,
+    show_run_outputs,
     show_statement_result,
     show_statement_type,
     show_watermarks,
@@ -334,6 +336,7 @@ def execute_run_mode(
     """Execute queries in run mode with progress tracking. Under ``dry_run``
     the same statements are compiled and printed, and none of them run."""
     start = datetime.now()
+    reset_outputs()
     show_execution_start(len(queries), dry_run=dry_run)
 
     # Zero executable statements is the whole trigger: an import-only or empty
@@ -368,6 +371,7 @@ def execute_run_mode(
 
     total_duration = datetime.now() - start
     show_execution_summary(len(queries), total_duration, exception is None, total_rows)
+    show_run_outputs(collected_outputs())
 
     if exception:
         raise exception

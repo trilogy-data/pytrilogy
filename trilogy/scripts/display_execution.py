@@ -1,11 +1,13 @@
 """Display helpers for single-script execution output."""
 
+import json
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from trilogy.core.statements.execute import ProcessedChartStatement
+    from trilogy.execution.outputs import RunOutput
 
 from click import echo
 
@@ -350,6 +352,32 @@ def show_execution_summary(
             print_success(
                 f"Statements: {num_queries} Completed in: {format_duration(total_duration)}"
             )
+
+
+def show_run_outputs(outputs: "Sequence[RunOutput]") -> None:
+    """List the outputs called programs handed back, after the summary."""
+    if not outputs:
+        return
+    if is_json_mode():
+        emit_event("outputs", outputs=[o.as_record() for o in outputs])
+        return
+    if _core.RICH_AVAILABLE and _core.console is not None:
+        from rich.table import Table
+
+        table = Table(title="Outputs", show_header=True)
+        table.add_column("Name", style="cyan")
+        table.add_column("Kind", style="dim")
+        table.add_column("Value")
+        for o in outputs:
+            table.add_row(o.name, o.kind, _output_text(o))
+        _core.console.print(table)
+    else:
+        for o in outputs:
+            echo(f"Output {o.name} ({o.kind}): {_output_text(o)}")
+
+
+def _output_text(output: "RunOutput") -> str:
+    return json.dumps(output.value) if output.kind == "json" else str(output.value)
 
 
 def show_formatting_result(

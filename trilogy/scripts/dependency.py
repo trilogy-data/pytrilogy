@@ -7,6 +7,53 @@ from typing import Protocol, TypeAlias
 from trilogy.core import graph as nx
 from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError
+from trilogy.scripts.project_config import (
+    DEFAULT_DEPENDENCY_CONDITION,
+    find_trilogy_config,
+    load_declared_dependencies,
+)
+
+#: Edge attribute naming the condition a declared dependency runs on.
+#: Derived edges carry none and read as `completed`.
+EDGE_CONDITION = "when"
+
+
+def edge_condition(graph: nx.DiGraph, upstream: str, dependent: str) -> str:
+    return str(
+        graph.edges[(upstream, dependent)].get(
+            EDGE_CONDITION, DEFAULT_DEPENDENCY_CONDITION
+        )
+    )
+
+
+def add_declared_edges(
+    graph: nx.DiGraph, folder: Path, path_to_key: dict[Path, str]
+) -> None:
+    """Overlay the folder's `[dependencies]` on a derived script graph.
+
+    A declared edge names two scripts the run manages, or it is a mistake in
+    the toml: raising here is what stops a mistyped `after` from silently
+    ordering nothing. A declared edge over a derived one keeps its `when` —
+    the declaration is the more specific statement.
+    """
+    config_path = find_trilogy_config(folder)
+    if config_path is None:
+        return
+    for dep in load_declared_dependencies(config_path):
+        if dep.script not in path_to_key:
+            raise ValueError(
+                f"[dependencies] names {dep.script.name}, which is not a script under {folder}"
+            )
+        for upstream in dep.after:
+            if upstream not in path_to_key:
+                raise ValueError(
+                    f"[dependencies] {dep.script.name} runs after {upstream.name}, "
+                    f"which is not a script under {folder}"
+                )
+            graph.add_edge(path_to_key[upstream], path_to_key[dep.script])
+            graph.edges[(path_to_key[upstream], path_to_key[dep.script])][
+                EDGE_CONDITION
+            ] = dep.when
 
 
 def normalize_path_variants(path: str | Path) -> Path:
@@ -188,6 +235,7 @@ class ETLDependencyStrategy:
             if from_path in path_to_key and to_path in path_to_key:
                 graph.add_edge(path_to_key[from_path], path_to_key[to_path])
 
+        add_declared_edges(graph, folder, path_to_key)
         return graph
 
     def build_graph(self, nodes: list[ScriptNode]) -> nx.DiGraph:
@@ -239,6 +287,7 @@ class ETLDependencyStrategy:
             if from_path in path_to_key and to_path in path_to_key:
                 graph.add_edge(path_to_key[from_path], path_to_key[to_path])
 
+        add_declared_edges(graph, directory, path_to_key)
         return graph
 
 

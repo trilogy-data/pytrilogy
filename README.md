@@ -410,6 +410,27 @@ stubs out that dialect's connection parameters in `[engine.config]`. Init
 refuses to run over an existing `trilogy.toml`; `--force` overwrites it and
 leaves every other file untouched.
 
+### Declared dependencies
+
+Directory runs (`trilogy run .`) order scripts by what they import, declare
+and persist, and a script whose upstream failed is skipped. A `[dependencies]`
+table declares the one kind of edge content cannot express — a script that
+runs *because* another one failed:
+
+```toml
+[dependencies]
+"repair.preql" = { after = ["refresh.preql"], when = "failed" }
+```
+
+`when` is `completed` (the default, and the derived-edge rule), `failed`, or
+`always`. A `failed` script stands down as a successful skip when its upstreams
+held, so the run stays green — and anything downstream of it stands down the
+same way, since the script it was waiting on never ran. It runs when one of
+them broke, and anything it hands back — a `call`ed program printing
+`::trilogy-output name=fix_pr value=https://…` — is listed under Outputs after
+the summary and recorded in the `--report-file` report. Paths are relative to
+the toml, and naming a script the run does not manage is an error.
+
 ## More Resources
 
 - [Interactive demo](https://trilogydata.dev/demo/)
