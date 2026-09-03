@@ -124,6 +124,15 @@ jobs:
             echo "== $script"
             uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
           done
+      - name: Pre-fetch the gcat parquet fixtures
+        # tests/modeling/gcat/setup.sql builds its tables from nine parquet
+        # files on GCS. Left to the tests that is ~6.5MB plus an INSTALL httpfs
+        # pulled inside the pytest step on every matrix job, and latency is what
+        # hurts: a degraded runner took gcat from 4.4s to 365s. Fetched here it
+        # is a named step and the tests read local files. Like the uv warm above
+        # this is an optimization, never a gate -- the conftest falls back to
+        # the original URLs whenever a file is missing.
+        run: python .scripts/fetch_gcat_data.py
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names

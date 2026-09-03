@@ -327,24 +327,36 @@ def workspace() -> Path:
     return SCRIPT.parent
 
 
-def sql_for(workspace: Path, query: str) -> str:
-    executor = Dialects.DUCK_DB.default_executor(
+@pytest.fixture(scope="module")
+def executor(workspace: Path):
+    """One executor for the module, with ``MODEL`` already applied.
+
+    Building an executor installs the duckdb extensions and recreates the
+    ``uv_run`` macro -- ~0.37s that used to be paid on every ``sql_for`` and on
+    both sides of every pushdown comparison. Declaring the model once and
+    reusing the connection halves this file's runtime and removes the same
+    number of script spawns, with no loss of coverage: pushdown is chosen when
+    the query is generated, not when the executor is built, so one connection
+    serves both sides.
+    """
+    built = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=workspace),
         conf=DuckDBConfig(enable_python_datasources=True),
     )
-    return "\n".join(executor.generate_sql(MODEL + query))
+    built.execute_text(MODEL)
+    return built
 
 
-def rows_for(workspace: Path, query: str, pushdown: bool) -> list[tuple]:
+def sql_for(executor, query: str) -> str:
+    return "\n".join(executor.generate_sql(query))
+
+
+def rows_for(executor, query: str, pushdown: bool) -> list[tuple]:
     original = BaseDialect.source_pushdown
     if not pushdown:
         BaseDialect.source_pushdown = lambda self, cte, address: None
     try:
-        executor = Dialects.DUCK_DB.default_executor(
-            environment=Environment(working_path=workspace),
-            conf=DuckDBConfig(enable_python_datasources=True),
-        )
-        result = executor.execute_text(MODEL + query)
+        result = executor.execute_text(query)
         cursor = result[-1] if isinstance(result, list) else result
         return [tuple(row) for row in cursor.fetchall()]
     finally:
@@ -396,26 +408,26 @@ CASES = [
 
 
 @pytest.mark.parametrize("query,expected_arg", CASES, ids=lambda v: str(v)[:40])
-def test_pushdown_never_changes_the_answer(workspace, query, expected_arg):
-    on = rows_for(workspace, query, pushdown=True)
-    off = rows_for(workspace, query, pushdown=False)
+def test_pushdown_never_changes_the_answer(executor, query, expected_arg):
+    on = rows_for(executor, query, pushdown=True)
+    off = rows_for(executor, query, pushdown=False)
     assert on == off
     assert on, "query returned no rows; it would not discriminate"
 
 
 @pytest.mark.parametrize("query,expected_arg", CASES, ids=lambda v: str(v)[:40])
-def test_pushdown_fires_exactly_where_expected(workspace, query, expected_arg):
-    sql = sql_for(workspace, query)
+def test_pushdown_fires_exactly_where_expected(executor, query, expected_arg):
+    sql = sql_for(executor, query)
     if expected_arg is None:
         assert "args :=" not in sql, sql
     else:
         assert expected_arg in pushed_args(sql), sql
 
 
-def test_a_limit_never_travels_without_its_ordering(workspace):
+def test_a_limit_never_travels_without_its_ordering(executor):
     """The bug this guards: pushing `--limit N` alone under an ORDER BY makes
     the source truncate an arbitrary N rows instead of the top N."""
-    sql = sql_for(workspace, "select id order by id desc limit 5;")
+    sql = sql_for(executor, "select id order by id desc limit 5;")
     args = pushed_args(sql)
     assert "--limit" in args
     assert args.index("--order-by") < args.index("--limit"), args
@@ -426,29 +438,29 @@ def test_render_args_pairs_limit_with_order_by():
     assert render_args(request) == "--order-by id:desc --limit 5"
 
 
-def test_ordered_limit_returns_the_top_rows_not_arbitrary_ones(workspace):
-    rows = rows_for(workspace, "select id order by id desc limit 5;", pushdown=True)
+def test_ordered_limit_returns_the_top_rows_not_arbitrary_ones(executor):
+    rows = rows_for(executor, "select id order by id desc limit 5;", pushdown=True)
     assert [row[0] for row in rows] == [39, 38, 37, 36, 35]
 
 
-def test_a_value_needing_quoting_is_not_pushed_but_still_filters(workspace):
+def test_a_value_needing_quoting_is_not_pushed_but_still_filters(executor):
     """'north side' has a space, so it cannot survive the shell transport."""
     query = "where label = 'north side' select id, label order by id asc;"
-    assert "args :=" not in sql_for(workspace, query)
-    rows = rows_for(workspace, query, pushdown=True)
-    assert rows == rows_for(workspace, query, pushdown=False)
+    assert "args :=" not in sql_for(executor, query)
+    rows = rows_for(executor, query, pushdown=True)
+    assert rows == rows_for(executor, query, pushdown=False)
     assert {row[1] for row in rows} == {"north side"}
 
 
-def test_partial_pushdown_leaves_the_rest_to_sql(workspace):
+def test_partial_pushdown_leaves_the_rest_to_sql(executor):
     """One conjunct is pushable and one is not; the answer is still exact."""
     query = (
         "where state = 'CA' and label = 'north side' "
         "select id, state, label order by id asc;"
     )
-    sql = sql_for(workspace, query)
+    sql = sql_for(executor, query)
     assert "--filter state=CA" in pushed_args(sql)
     assert "label" not in pushed_args(sql)
-    rows = rows_for(workspace, query, pushdown=True)
-    assert rows == rows_for(workspace, query, pushdown=False)
+    rows = rows_for(executor, query, pushdown=True)
+    assert rows == rows_for(executor, query, pushdown=False)
     assert all(row[1] == "CA" and row[2] == "north side" for row in rows)
