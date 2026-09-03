@@ -276,13 +276,15 @@ def _union_candidates(
         if isinstance(datasource, BuildDatasource)
     ]
     out: dict[str, SourceCandidate] = {}
-    for group in get_union_sources(datasources, terminals):
+    excluded = environment.excluded_enum_values
+    for group in get_union_sources(datasources, terminals, excluded):
         merged = merge_conditions(
             [
                 child.non_partial_for.conditional
                 for child in group
                 if child.non_partial_for is not None
-            ]
+            ],
+            excluded,
         )
         union_datasource = BuildUnionDatasource(
             children=group,

@@ -16,7 +16,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.datasource import Address
-from trilogy.core.processing.condition_utility import simplify_conditions
+from trilogy.core.processing.condition_utility import (
+    ExcludedEnumValues,
+    effective_enum_domain,
+    simplify_conditions,
+)
 
 
 def _datasource_score(ds: BuildDatasource) -> int:
@@ -72,6 +76,7 @@ def _best_enum_union(
     dses: list[BuildDatasource],
     enum_type: EnumType,
     merge_key: BuildConcept,
+    excluded: ExcludedEnumValues | None = None,
 ) -> list[list[BuildDatasource]] | None:
     """Find the best minimal covering combinations for an enum-partitioned key.
 
@@ -85,7 +90,13 @@ def _best_enum_union(
     returns vs. dim, all keyed by the same channel enum) each contribute
     their own union datasource instead of collapsing into the single best.
     Materialized table sources score higher than script/query sources.
+    Coverage is judged over the effective domain: values the statement's row
+    gate rules out (``excluded``) need no arm, and an arm for such a value
+    cannot contribute.
     """
+    required = {
+        str(v) for v in effective_enum_domain(enum_type, merge_key, excluded).values
+    }
     by_value: dict[object, list[BuildDatasource]] = defaultdict(list)
     for ds in dses:
         if not ds.non_partial_for:
@@ -93,12 +104,12 @@ def _best_enum_union(
         val = _extract_enum_value_for_key(
             ds.non_partial_for.conditional, merge_key.address
         )
-        if val is None:
+        if val is None or str(val) not in required:
             continue
         by_value[val].append(ds)
 
-    # All enum values must have at least one candidate source
-    if {str(v) for v in by_value} < set(enum_type.values):
+    # Every value that can still occur must have at least one candidate source
+    if not required <= {str(v) for v in by_value}:
         return None
 
     values = list(by_value.keys())
@@ -236,7 +247,9 @@ def _merge_key(dses: list[BuildDatasource], merge_key_addr: str) -> BuildConcept
 
 
 def get_union_sources(
-    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+    datasources: list[BuildDatasource],
+    concepts: list[BuildConcept],
+    excluded: ExcludedEnumValues | None = None,
 ) -> list[list[BuildDatasource]]:
     final: list[list[BuildDatasource]] = []
     for merge_key_addr, dses in _partition_families(datasources, concepts).items():
@@ -244,20 +257,22 @@ def get_union_sources(
         if merge_key is None:
             continue
         if isinstance(merge_key.datatype, EnumType):
-            result = _best_enum_union(dses, merge_key.datatype, merge_key)
+            result = _best_enum_union(dses, merge_key.datatype, merge_key, excluded)
             if result:
                 final.extend(result)
         else:
             conditions = [
                 c.non_partial_for.conditional for c in dses if c.non_partial_for
             ]
-            if simplify_conditions(conditions):
+            if simplify_conditions(conditions, excluded):
                 final.append(dses)
     return final
 
 
 def describe_incomplete_partitions(
-    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+    datasources: list[BuildDatasource],
+    concepts: list[BuildConcept],
+    excluded: ExcludedEnumValues | None = None,
 ) -> str | None:
     """Why a `complete where` family failed to union into a complete source.
 
@@ -274,10 +289,11 @@ def describe_incomplete_partitions(
         if merge_key is None:
             continue
         if isinstance(merge_key.datatype, EnumType):
-            if _best_enum_union(dses, merge_key.datatype, merge_key):
+            if _best_enum_union(dses, merge_key.datatype, merge_key, excluded):
                 continue
         elif simplify_conditions(
-            [c.non_partial_for.conditional for c in dses if c.non_partial_for]
+            [c.non_partial_for.conditional for c in dses if c.non_partial_for],
+            excluded,
         ):
             continue
         names = ", ".join(sorted(d.name for d in dses))

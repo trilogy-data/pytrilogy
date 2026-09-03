@@ -97,6 +97,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.partial_bridging import (
+    drop_excluded_partials,
     heal_pinned_partials,
 )
 from trilogy.core.processing.utility import unrenderable_outputs
@@ -960,6 +961,7 @@ def _plan_query_node(
                 if isinstance(x, BuildDatasource)
             ],
             [c for c in ds.partial_concepts if c.address in partial_requested],
+            build_environment.excluded_enum_values,
         )
         raise UnresolvableQueryException(
             f"Query is unresolvable: no complete sources found for output concepts"
@@ -1172,6 +1174,18 @@ def get_query_node(
         build_statement.where_clauses
     ):
         heal_pinned_partials(build_environment, build_statement.where_clause)
+    # A partition source the row gate contradicts holds no usable row for this
+    # statement; hiding it keeps a sibling partition's bindings from standing
+    # in for a `merge` origin or seeding a union that filters to nothing.
+    if isinstance(build_statement, BuildSelectLineage):
+        drop_excluded_partials(
+            build_environment,
+            (
+                build_statement.where_clauses[0]
+                if build_statement.where_clauses
+                else build_statement.where_clause
+            ),
+        )
 
     graph = generate_graph(build_environment)
 

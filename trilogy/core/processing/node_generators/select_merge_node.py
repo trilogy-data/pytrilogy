@@ -99,7 +99,8 @@ def create_pruned_concept_graph(
 ) -> ReferenceGraph | None:
     orig_g = g
     g = g.copy()
-    union_options = get_union_sources(datasources, all_concepts)
+    excluded = environment.excluded_enum_values if environment is not None else None
+    union_options = get_union_sources(datasources, all_concepts, excluded)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
     target_grain = BuildGrain.from_concepts(all_concepts)
     rollup_edges: list[tuple[str, str]] = []
@@ -128,7 +129,8 @@ def create_pruned_concept_graph(
                 x.non_partial_for.conditional
                 for x in ds_list
                 if x.non_partial_for is not None
-            ]
+            ],
+            excluded,
         )
         reduced_non_partial_for = (
             BuildWhereClause(conditional=_merged) if _merged is not None else None
