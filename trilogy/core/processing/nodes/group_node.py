@@ -73,8 +73,7 @@ class GroupNode(StrategyNode):
         )
         target_grain = grains.target
         comp_grain = grains.upstream
-        # dynamically select if we need to group
-        # because sometimes, we are already at required grain
+        # skip the group when parents already sit at the target grain
         if not grains.required and (
             self.force_group is not True
             or is_identity_group(
@@ -86,7 +85,6 @@ class GroupNode(StrategyNode):
                 self.rollup_concepts,
             )
         ):
-            # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
             logger.info(
@@ -113,35 +111,28 @@ class GroupNode(StrategyNode):
         input_addresses = {c.address for c in self.input_concepts}
         for concept in self.output_concepts:
             if concept.is_aggregate and concept.address not in rollup_addresses:
-                # An aggregate that arrives via input_concepts is being
-                # passed through from an upstream node (e.g. a wrapper
-                # GroupNode added by group_if_required_v2 over a node that
-                # already aggregated). Keep its parent source so we project
-                # the precomputed value instead of re-rendering the lineage
-                # against inputs that may no longer be available.
+                # An aggregate arriving via input_concepts is passed through from
+                # an upstream node; keep its parent source so the precomputed
+                # value is projected rather than the lineage re-rendered.
                 if concept.address in input_addresses:
                     continue
                 source_map[concept.address] = set()
         nullable_addresses = find_nullable_concepts(
             source_map=source_map, joins=[], datasources=parent_sources
         )
-        # A scalar condition already applied at/below this group (e.g.
-        # ``store.id IS NOT NULL``, often pushed into an upstream scan so it
-        # only shows up here as a preexisting condition) filters the rows, so
-        # any concept it proves non-null must not be re-marked nullable by the
-        # parent-derived recompute above — otherwise the join scorer emits an
-        # OUTER ``is not distinct from`` (defeats hash joins). Consumers that
-        # judge the condition itself must not trust the resulting absence —
-        # see StrategyNode._refine_nullable_for_conditions.
+        # A scalar condition applied at or below this group (often only visible
+        # here as a preexisting condition) filters the rows, so concepts it
+        # proves non-null must not be re-marked nullable by the recompute above;
+        # otherwise the join scorer emits a null-safe OUTER comparison. See
+        # StrategyNode._refine_nullable_for_conditions for the consumer caveat.
         applied = self.preexisting_conditions or self.conditions
         proven_non_null = (
             condition_proves_non_null(applied)
             if applied and is_scalar_condition(applied)
             else set()
         )
-        # union the source-analysis nullables with node-level nullables — the
-        # latter carry inferred nullability for concepts COMPUTED in this
-        # subtree (e.g. a derived join key over a nullable column)
+        # node-level nullables carry inferred nullability for concepts COMPUTED
+        # in this subtree (e.g. a derived join key over a nullable column)
         node_nullable = {x.address for x in self.nullable_concepts}
         nullable_concepts = [
             x
@@ -151,11 +142,9 @@ class GroupNode(StrategyNode):
                 {x.address, x.canonical_address, *x.pseudonyms}
             )
         ]
-        # A ROLLUP/CUBE/GROUPING SETS injects NULLs into its grouping-key dims at
-        # the subtotal/grand-total rows. Mark those dims — and any dim derived
-        # from them (e.g. ``concat('x', txt)``, which propagates the NULL) —
-        # nullable, so downstream joins on them use null-safe (OUTER) semantics
-        # and preserve the rollup rows instead of dropping or doubling them.
+        # ROLLUP/CUBE/GROUPING SETS inject NULLs into grouping-key dims on the
+        # subtotal rows. Mark those dims, and any dim derived from them,
+        # nullable so downstream joins use null-safe semantics.
         rollup_by_addresses: set[str] = set()
         for c in self.output_concepts:
             if (wrapper := nonstandard_grouping_lineage(c)) is not None:
@@ -175,8 +164,7 @@ class GroupNode(StrategyNode):
                     or rollup_by_addresses & get_upstream_concepts(x)
                 )
             ]
-        # Merge partial concepts from parent resolved sources
-        # so partial keys from upstream datasources propagate through grouping.
+        # partial keys from upstream datasources propagate through grouping
         output_addresses = {c.address for c in self.output_concepts}
         inherited_partials = unique(
             self.partial_concepts

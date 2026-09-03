@@ -191,9 +191,8 @@ def nullable_from_str(value: object) -> bool:
 def null_wrapper(
     lval: str, rval: str, modifiers: list[Modifier], jointype: JoinType | None = None
 ) -> str:
-    # ``jointype`` is the join this key belongs to. The base expansion is legal
-    # under every join type and ignores it; dialects that restrict what a FULL
-    # OUTER JOIN's ON clause may contain (BigQuery) key off it.
+    # The base expansion is legal under every join type and ignores ``jointype``;
+    # dialects that restrict a FULL OUTER JOIN's ON clause (BigQuery) key off it.
     if Modifier.NULLABLE in modifiers:
         return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
     return f"{lval} = {rval}"
@@ -245,16 +244,15 @@ PARENTHETICAL_ITEMS = (BuildParenthetical,)
 
 
 def _aggregate_collapse_safe(cte: "CTE | UnionCTE", agg: BuildAggregateWrapper) -> bool:
-    """The not-grouping grain-match collapse (`agg(x)` -> single-row formula)
+    """The non-grouping grain-match collapse (`agg(x)` -> single-row formula)
     is unsafe in exactly one shape: an abstract (`by *`) aggregate rendered
     into a CTE carrying real grain components. A global aggregate belongs in a
     single-row CTE; a keyed CTE means the plan re-grained it (e.g. a join key
-    injected into its group node) and the collapse silently turns the global
-    value into each row's own (q23). Keyed aggregates stay collapsible: a
+    injected into its group node), and the collapse would silently turn the
+    global value into each row's own. Keyed aggregates stay collapsible: a
     by-grain listing properties functionally determined by the CTE's keys
-    reduces to the CTE grain (#572), and authored scoped-join keys
-    legitimately extend a keyed aggregate's partition (the composite
-    union-join cells in tests/engine/test_duckdb_rowset.py)."""
+    reduces to the CTE grain, and authored scoped-join keys legitimately
+    extend a keyed aggregate's partition."""
     agg_by_abstract = all(p.address.endswith(ALL_ROWS_CONCEPT) for p in agg.by)
     return not agg_by_abstract or cte.grain.abstract
 
@@ -265,11 +263,10 @@ def _aggregate_over_collapsed_filter(
     """True when this grouping CTE renders one of the aggregate's arguments with
     the filter-collapse MAX wrap (render_concept_sql). The wrap already reduces
     the group to the single grain-determined value the filter denotes, so
-    composing the real aggregate around it nests aggregates (q95
-    `count(max(CASE ...))`). The aggregate of that one value is its single-row
-    collapse formula instead: the same grain-match reduction used when a CTE is
-    already at the aggregate's grain, applied here because the collapse has
-    consumed the group."""
+    composing the real aggregate around it would nest aggregates. The aggregate
+    of that one value is its single-row collapse formula instead: the same
+    grain-match reduction used when a CTE is already at the aggregate's grain,
+    applied here because the collapse has consumed the group."""
     if not isinstance(cte, CTE):
         return False
     return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
@@ -288,7 +285,7 @@ INLINE_SAFE_PARAM_DATATYPES = frozenset({DataType.INTEGER, DataType.BOOL})
 
 
 def _constant_bindable(lineage: BuildFunction) -> bool:
-    """A CONSTANT whose value is a MagicConstants (e.g. NULL) can't be bound — no
+    """A CONSTANT whose value is a MagicConstants (e.g. NULL) cannot be bound: no
     driver can transform the enum into a value. Render it inline instead."""
     return not (lineage.arguments and isinstance(lineage.arguments[0], MagicConstants))
 
@@ -663,7 +660,6 @@ FUNCTION_MAP = {
     FunctionType.REPLACE: lambda x, types: f"REPLACE({x[0]},{x[1]},{x[2]})",
     FunctionType.HASH: lambda x, types: hash_from_args(x[0], x[1]),
     FunctionType.HEX: lambda x, types: f"HEX({x[0]})",
-    # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc({x[0]},{x[1]})",
     FunctionType.DATE_PART: lambda x, types: f"date_part({x[0]},{x[1]})",
@@ -704,13 +700,12 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "current_timestamp()",
 }
 
-# How each aggregate collapses over a single-row group (i.e. when the node is
-# already at the aggregate's grain, so no GROUP BY is emitted). Every aggregate
-# in FunctionClass.AGGREGATE_FUNCTIONS MUST have an entry here — otherwise it
-# falls through to its real FUNCTION_MAP rendering and emits an invalid
-# ungrouped aggregate (see test_all_aggregates_have_grain_match_formula).
-# `sum/avg/max/min/any/bool_*` reduce to the value itself; `count` to a 0/1
-# presence flag; two-pass `stddev/variance` (sample) of one value are NULL;
+# How each aggregate collapses over a single-row group (the node is already at
+# the aggregate's grain, so no GROUP BY is emitted). Every aggregate in
+# FunctionClass.AGGREGATE_FUNCTIONS MUST have an entry here; otherwise it falls
+# through to its real FUNCTION_MAP rendering and emits an invalid ungrouped
+# aggregate. `sum/avg/max/min/any/bool_*` reduce to the value itself; `count`
+# to a 0/1 presence flag; sample `stddev/variance` of one value are NULL;
 # `array_agg` is a singleton array; `grouping`/`grouping_id` off a rollup are 0.
 # The formulas are portable SQL, so dialects share this map (layered after their
 # own FUNCTION_MAP so it is never shadowed by a dialect aggregate override).
@@ -834,10 +829,9 @@ class BaseDialect:
     # Whether ``prepare_sources`` does anything. Off by default so the executor
     # skips walking a query's datasource tree on every execution.
     REQUIRES_SOURCE_PREPARATION = False
-    # Whether this dialect can produce a full-result summary — per-column stats
-    # over the query with its output LIMIT removed. Off by default; gates whether
-    # `run` returns it. Dialects that set it True must override
-    # ``summarize_result``.
+    # Whether this dialect can produce a full-result summary (per-column stats
+    # over the query with its output LIMIT removed). Gates whether `run` returns
+    # it; dialects that set it True must override ``summarize_result``.
     SUPPORTS_RESULT_SUMMARY = False
     # Whether the dialect has FULL OUTER JOIN. Join resolution renders
     # row-preserving by default, so FULL is the natural form for a partial or
@@ -855,9 +849,8 @@ class BaseDialect:
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
     # Case-insensitive regexes matched against driver error text. Keep them
-    # permissive - driver wording shifts between versions (duckdb reworded its
-    # 404 in 1.5), and a missed match turns a recoverable "source is missing"
-    # into a hard failure.
+    # permissive: driver wording shifts between versions, and a missed match
+    # turns a recoverable "source is missing" into a hard failure.
     TABLE_NOT_FOUND_PATTERN: str | None = None
     HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None
@@ -1104,9 +1097,8 @@ class BaseDialect:
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
     ) -> str:
-        # check if it's in our output select projection
-        # and we can just reference by there directly and save
-        # on re-expression (smaller output query)
+        # A visible output can be ordered by its SELECT alias instead of
+        # re-rendering the expression.
         if (
             isinstance(order_item.expr, BuildConcept)
             and order_item.expr.address in cte.output_columns
@@ -1114,11 +1106,11 @@ class BaseDialect:
             and self.ALIAS_ORDER_REFERENCING_ALLOWED
         ):
             if cte.source_map.get(order_item.expr.address, []):
-                # if it is sourced from somewhere, we need to reference the alias directly
+                # sourced from a parent: reference that column
                 return self.render_ordering(
                     self.render_expr(order_item.expr, cte=cte), order_item.order
                 )
-            # otherwise we've derived it, safe to use alias
+            # derived here: the alias is the only name
             return self.render_ordering(
                 f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER}",
                 order_item.order,
@@ -1139,8 +1131,8 @@ class BaseDialect:
         """Concepts in this CTE sharing ``c``'s canonical lineage but bound under
         a different address. A concept materialized-as-root (lineage stripped
         because its canonical lineage is precomputed) has no source_map entry of
-        its own when the plan binds a canonical sibling instead — e.g. inline
-        ``year(flight_date)`` selected alongside the named auto ``flight_year``.
+        its own when the plan binds a canonical sibling instead, e.g. an inline
+        ``year(d)`` selected alongside a named concept with the same lineage.
         The sibling produces the same SQL expression, so rendering through it
         satisfies ``c``. A canonically-equivalent concept under the *same*
         address but carrying lineage (the un-stripped duplicate) also qualifies."""
@@ -1160,12 +1152,11 @@ class BaseDialect:
         self, lineage: BuildFilterItem, cte: CTE | UnionCTE
     ) -> bool:
         """A filter-item's per-row CASE is redundant when the CTE's SOLE parent
-        already guarantees the filter's predicate — e.g. predicate pushdown
-        relocated the filter's aggregate condition into a group parent's HAVING
-        and stripped the redundant copy from this consumer. A single-parent (no
-        join) projection can't NULL-pad rows, so every surviving row satisfies
-        the where; render the content bare (which then lets CollapseSingleParent
-        fold this passthrough into the group parent, giving a single node).
+        already guarantees the filter's predicate, e.g. when predicate pushdown
+        places the filter's aggregate condition in a group parent's HAVING. A
+        single-parent (no join) projection cannot NULL-pad rows, so every
+        surviving row satisfies the where; rendering the content bare also lets
+        CollapseSingleParent fold this passthrough into the group parent.
 
         Gated to a single plain-CTE parent whose condition implies the where and
         which supplies every column the filter references, so no row that fails
@@ -1325,7 +1316,6 @@ class BaseDialect:
         cte: CTE | UnionCTE,
         raise_invalid: bool = False,
     ) -> str:
-        # only recurse while it's in sources of the current cte
         logger.debug(
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
@@ -1379,14 +1369,9 @@ class BaseDialect:
                         c.lineage.offset,
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
-                # When the CTE's WHERE already restricts rows to those satisfying
-                # the filter's predicate (either exact match or a superset that
-                # implies it), the per-row CASE WHEN is redundant — emit just
-                # the content. Same when the CTE's SOLE parent already guarantees
-                # the predicate: predicate pushdown relocates a filter's
-                # aggregate condition into a group parent's HAVING and strips the
-                # copy here, so `cte.condition` no longer names it even though
-                # every surviving row satisfies it.
+                # The per-row CASE WHEN is redundant when the CTE's WHERE implies
+                # the filter's predicate, or when its sole parent guarantees it
+                # (_filter_guaranteed_by_sole_parent): emit just the content.
                 where_cond = c.lineage.where.conditional
                 if (
                     cte.condition is not None
@@ -1436,10 +1421,7 @@ class BaseDialect:
                 # precedence reason as BuildComparison above.
                 rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
-                args = [
-                    self.render_expr(v, cte)  # , alias=False)
-                    for v in c.lineage.function.arguments
-                ]
+                args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
                 if cte.group_to_grain:
                     if _aggregate_over_collapsed_filter(cte, c.lineage):
                         rval = self.FUNCTION_GRAIN_MATCH_MAP[
@@ -1453,9 +1435,8 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
                 else:
                     # A global (`by *`) aggregate in a keyed, non-grouping CTE:
-                    # the collapse would silently turn it into identity (q23 —
-                    # every row's "global max" became its own value). Fail
-                    # loudly instead.
+                    # the collapse would silently turn it into each row's own
+                    # value. Fail loudly instead.
                     rval = INVALID_REFERENCE_STRING(
                         f"global (by *) aggregate {c.address} rendered in CTE "
                         f"{cte.name} at keyed grain {cte.grain}",
@@ -1470,7 +1451,8 @@ class BaseDialect:
                     for x in c.lineage.arguments
                     if isinstance(x, BuildConcept) and x.address in cte.output_columns
                 ]
-                # if we're sorting by the output of the union
+                # no arm is local here (e.g. ordering by the union output):
+                # reference the union column by name
                 if not local_matched:
                     rval = c.safe_address
                 else:
@@ -1525,8 +1507,7 @@ class BaseDialect:
 
             rval = self.safe_get_cte_value(cte, c, raise_invalid)
             if not rval:
-                # unions won't have a specific source mapped; just use a generic column reference
-                # we shouldn't ever have an expression at this point, so will be safe
+                # a UnionCTE has no per-source map; reference the column by name
                 if isinstance(cte, UnionCTE):
                     rval = c.safe_address
                 else:
@@ -1537,12 +1518,11 @@ class BaseDialect:
                     rval = INVALID_REFERENCE_STRING(
                         f"Missing source reference to {c.address}"
                     )
-        # Pre-aggregated COUNT columns sourced from a sparse materialization
-        # leak NULL through a LEFT/FULL JOIN when a dim row has no matching
-        # fact row. The granular path's `count(...)` returns 0 in that case
-        # (count over an empty group is 0). Coalesce to keep the two paths
-        # result-equivalent. SUM is left alone — `SUM` over an empty group
-        # is NULL in both paths.
+        # A pre-aggregated COUNT sourced from a sparse materialization leaks
+        # NULL through a LEFT/FULL JOIN when a dim row has no matching fact
+        # row, while the granular `count(...)` path returns 0 there. Coalesce
+        # to keep the two paths result-equivalent. SUM is left alone: SUM over
+        # an empty group is NULL in both paths.
         if (
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT
@@ -1551,8 +1531,7 @@ class BaseDialect:
             and any(n.address == c.address for n in cte.nullable_concepts)
             # A multiselect-align merge CTE is the exception: a NULL count there
             # means "this entity is absent from this arm", not "0 facts", and
-            # must stay NULL so a cross-arm comparison (q64 `cnt_00 <= cnt_99`)
-            # excludes single-arm rows. Coalescing to 0 would let them through.
+            # must stay NULL so a cross-arm comparison excludes single-arm rows.
             and not any(
                 isinstance(o.lineage, BuildMultiSelectLineage)
                 for o in cte.output_columns
@@ -1617,7 +1596,7 @@ class BaseDialect:
         if lineage.where:
             cond = lineage.where.conditional
             # Bare concept ref in WHERE = correlation key (e.g. "where category"),
-            # not a boolean filter — skip rendering it as a WHERE clause.
+            # not a boolean filter: skip rendering it as a WHERE clause.
             if not isinstance(cond, BuildConcept):
                 rendered = self.render_expr(cond, cte=cte, raise_invalid=raise_invalid)
                 where_parts.append(_to_inner(rendered))
@@ -1714,11 +1693,12 @@ class BaseDialect:
     ) -> str | None:
         """A single source name able to supply EVERY component of a composite
         membership tuple. Each component resolves independently, so a shared row
-        parent can shadow the tuple's common feeder for a subset of components
-        (q29: the leading key doubles as a coalesced join axis) — but composite
-        membership must render against ONE subselect source. Prefer a name common
-        to every component's candidate list; else a parent CTE carrying all
-        components. None when no common source exists (caller raises)."""
+        parent can shadow the tuple's common feeder for a subset of components,
+        for example when one component's key also serves as a coalesced join
+        axis, but composite membership must render against ONE subselect
+        source. Prefer a name common to every component's candidate list; else
+        a parent CTE carrying all components. None when no common source
+        exists (caller raises)."""
         candidate_lists: list[list[str]] = []
         for rc in concepts:
             lookup_cte = cte
@@ -1819,13 +1799,13 @@ class BaseDialect:
         existence subquery: `exists (select 1 from cte where x is not distinct
         from a and y is not distinct from b)` (`not exists` for NOT IN).
 
-        Composite membership is row *identity* matching — a NULL component
-        matches a NULL component — for authored tuples and the engine-generated
+        Composite membership is row *identity* matching, a NULL component
+        matches a NULL component, for authored tuples and the engine-generated
         HAVING grain-key semijoin alike. SQL row-`IN` is NULL-unsafe (`(1,
         NULL) IN (select 1, NULL)` is NULL, never TRUE), so the IN form would
-        silently delete every NULL-keyed group (q11/q59). A model that needs
-        SQL parity filters NULL components out of the set explicitly (see
-        tpc_ds query14). All right components share one existence CTE."""
+        silently drop every NULL-keyed group. A model that needs SQL parity
+        filters NULL components out of the set explicitly. All right
+        components share one existence CTE."""
         left_sql = [
             self.render_expr(
                 a,
@@ -2119,7 +2099,7 @@ class BaseDialect:
     ) -> str:
         # ``materialized_addresses`` is the set of concept addresses available
         # as SELECT-list aliases at this point in the render. Propagated through
-        # every recursion except the aggregate-function branch — dialects can
+        # every recursion except the aggregate-function branch: dialects can
         # reference an alias from a top-level position in HAVING and from
         # inside CASE/arithmetic/non-aggregate functions, but not from inside
         # an aggregate (DuckDB resolves aggregate inputs against FROM, not the
@@ -2414,7 +2394,7 @@ class BaseDialect:
             )
         elif isinstance(e, AGGREGATE_ITEMS):
             # aggregate input columns must resolve from FROM, not the
-            # projection — don't propagate alias addresses into the function
+            # projection: don't propagate alias addresses into the function
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )
@@ -2433,7 +2413,7 @@ class BaseDialect:
                 # only bind the literal where it's first materialized; if it's
                 # already a column in a source CTE (e.g. an ORDER BY term sourced
                 # from a join), reference that column instead of re-emitting the
-                # bind param — a bare param is illegal in ORDER BY.
+                # bind param, a bare param is illegal in ORDER BY.
                 and not (cte and cte.source_map.get(e.address))
             ):
                 return f":{e.safe_address}"
@@ -2508,78 +2488,6 @@ class BaseDialect:
         else:
             raise TypeError(f"Unable to render type {type(e)} {e}")
 
-    @staticmethod
-    def _grouped_output_is_parent_passthrough(
-        concept: BuildConcept,
-        cte: CTE | UnionCTE,
-        parents_by_name: dict[str, CTE | UnionCTE],
-    ) -> bool:
-        # A non-standard-grouped output is a "passthrough" when its source_map
-        # points exclusively at parent CTEs that already applied the same
-        # rollup/cube/grouping-sets aggregation. Re-emitting GROUP BY here
-        # would double-aggregate the parent's output (or, for ROLLUP, error
-        # because the passthrough columns aren't inside an aggregate).
-        if not isinstance(cte, CTE):
-            return False
-        aggregate = get_grouped_aggregate_wrapper(concept)
-        if aggregate is None or aggregate.grouping == AggregateGroupingMode.STANDARD:
-            return False
-        sources = cte.source_map.get(concept.address, [])
-        if not sources:
-            return False
-        by_addresses = [c.address for c in aggregate.by]
-        for src in sources:
-            parent = parents_by_name.get(src)
-            if parent is None:
-                return False
-            parent_concept = next(
-                (c for c in parent.output_columns if c.address == concept.address),
-                None,
-            )
-            if parent_concept is None:
-                return False
-            parent_aggregate = get_grouped_aggregate_wrapper(parent_concept)
-            if parent_aggregate is None:
-                return False
-            if parent_aggregate.grouping != aggregate.grouping:
-                return False
-            if [c.address for c in parent_aggregate.by] != by_addresses:
-                return False
-        return True
-
-    @staticmethod
-    def _has_local_aggregate(cte: CTE | UnionCTE) -> bool:
-        """True if the CTE computes an aggregate locally (not merely passing one
-        through from a parent). Such a CTE must emit a GROUP BY even when its only
-        rollup output is a passthrough — which would otherwise short-circuit the
-        GROUP BY via ``_all_grouped_outputs_are_passthrough`` and leave the local
-        aggregate ungrouped (invalid SQL)."""
-        if not isinstance(cte, CTE):
-            return False
-        return any(
-            get_grouped_aggregate_wrapper(c) is not None
-            and not cte.source_map.get(c.address)
-            for c in cte.output_columns
-        )
-
-    @classmethod
-    def _all_grouped_outputs_are_passthrough(cls, cte: CTE | UnionCTE) -> bool:
-        if not isinstance(cte, CTE) or not cte.parent_ctes:
-            return False
-        grouped_concepts = [
-            c
-            for c in cte.output_columns
-            if (agg := get_grouped_aggregate_wrapper(c)) is not None
-            and agg.grouping != AggregateGroupingMode.STANDARD
-        ]
-        if not grouped_concepts:
-            return False
-        parents_by_name = {p.name: p for p in cte.parent_ctes}
-        return all(
-            cls._grouped_output_is_parent_passthrough(c, cte, parents_by_name)
-            for c in grouped_concepts
-        )
-
     def _get_aggregate_grouping(
         self, cte: CTE | UnionCTE
     ) -> tuple[AggregateGroupingMode, list[BuildConcept], list[list[BuildConcept]]]:
@@ -2589,7 +2497,7 @@ class BaseDialect:
             if (aggregate := get_grouped_aggregate_wrapper(c)) is not None
             and aggregate.grouping != AggregateGroupingMode.STANDARD
             # A passthrough rollup (already aggregated upstream, selected here as a
-            # plain column) must not drive this CTE's grouping mode — re-emitting
+            # plain column) must not drive this CTE's grouping mode: re-emitting
             # its ROLLUP would double-aggregate. Only locally-computed grouped
             # aggregates set the mode.
             and not cte.source_map.get(c.address)
@@ -2702,11 +2610,6 @@ class BaseDialect:
     ) -> list[str] | None:
 
         if not cte.group_to_grain:
-            return None
-
-        if self._all_grouped_outputs_are_passthrough(
-            cte
-        ) and not self._has_local_aggregate(cte):
             return None
 
         grouping_mode = self._render_grouping_mode(cte, select_index)
@@ -2865,7 +2768,7 @@ class BaseDialect:
                 source = None
         else:
             # Inlined-datasource base is rendered via the consistent
-            # source_address / base_*_override path (set by inline) — the same
+            # source_address / base_*_override path (set by inline), the same
             # path a non-inlined leaf datasource uses for its own FROM.
             addr = cte.source_address
             if isinstance(addr, Address):
@@ -2905,7 +2808,7 @@ class BaseDialect:
         rendered_qualify = self.render_expr(qualify, cte) if qualify else None
         if having is not None and self.SUPPORTS_ALIAS_IN_HAVING:
             # reference the SELECT alias rather than re-inlining the aggregate.
-            # Only valid at the top of the HAVING tree — dialects resolve
+            # Only valid at the top of the HAVING tree: dialects resolve
             # aliases against the projection only at the outermost comparison
             # operands, not inside nested functions/aggregates/case/etc.
             rendered_having: str | None = self.render_expr(
@@ -3230,7 +3133,7 @@ class BaseDialect:
                 )
             elif isinstance(statement, ValidateNaturalStatement):
                 # Compiling the expected select here IS the free tier: authored
-                # answers that no longer build fail at parse/generate time.
+                # answers that fail to build error out at parse/generate time.
                 if hooks:
                     for hook in hooks:
                         hook.process_select_info(statement.expected)
@@ -3318,8 +3221,8 @@ class BaseDialect:
 
         A partitioned append must be idempotent per partition: rerunning one
         slice may not duplicate its rows, and may not touch any other slice.
-        Standard SQL has no single statement for that — ``INSERT OVERWRITE`` is
-        Hive-family only — so the portable form stages the new rows, deletes the
+        Standard SQL has no single statement for that (``INSERT OVERWRITE`` is
+        Hive-family only), so the portable form stages the new rows, deletes the
         partition keys they cover, and inserts. Staging (rather than running the
         select twice) is what makes the DELETE and the INSERT agree on the same
         set of keys, and it lets the partition columns be named by the *target's*
@@ -3331,7 +3234,7 @@ class BaseDialect:
         (SQL Server has no ``CREATE TEMPORARY TABLE ... AS`` and no row-value
         ``IN``); BigQuery overrides the packaging, because its temp tables do
         not outlive the job that declared them. Replacing the *mechanism*
-        belongs to the engine rather than here — see ``SupportsNativePersist``,
+        belongs to the engine rather than here: see ``SupportsNativePersist``,
         which lets a connected API perform the write while this stays the
         renderable form and the fallback.
         """
@@ -3366,7 +3269,7 @@ class BaseDialect:
         Spelled out as ``a = b OR (a IS NULL AND b IS NULL)`` rather than
         ``IS NOT DISTINCT FROM``: the long form is universal, and the operator
         form is missing on older SQLite and inconsistent elsewhere. A NULL slice
-        is a real slice — the state format names it ``__NULL__`` — so plain ``=``
+        is a real slice (the state format names it ``__NULL__``), so plain ``=``
         (or a row-value ``IN``, which has the same hole) would leave it behind to
         re-append on every run."""
         return " AND ".join(
@@ -3419,18 +3322,18 @@ class BaseDialect:
         property). Everywhere else the default logs and skips, because emitting
         a partition clause would either be rejected or be actively harmful:
 
-        - **DuckDB, SQLite** — no table partitioning at all. (DuckDB partitions
+        - **DuckDB, SQLite**: no table partitioning at all. (DuckDB partitions
           *files*; that rides on ``Address.partition_columns``, not here.)
-        - **Postgres, MySQL, SQL Server** — declarative partitioning exists but
+        - **Postgres, MySQL, SQL Server**: declarative partitioning exists but
           a partitioned parent is unusable until its child partitions/boundaries
           exist: Postgres rejects an insert with "no partition of relation found
           for row", MySQL RANGE needs explicit ``VALUES LESS THAN``, SQL Server
           needs a partition function and scheme created first. Emitting the
           parent clause alone would turn a working table into one that refuses
           every write. Doing it properly means creating each slice's partition
-          as it is first written — which per-partition state now has the
-          information to drive, but which is a feature, not a render change.
-        - **Snowflake** — no declarative partitioning; ``CLUSTER BY`` is the
+          as it is first written, which per-partition state has the information
+          to drive, but which is a feature, not a render change.
+        - **Snowflake**: no declarative partitioning; ``CLUSTER BY`` is the
           pruning analogue but it is clustering, not partitioning, and automatic
           reclustering bills credits. Not something to opt a user into silently.
 
@@ -3577,8 +3480,8 @@ class BaseDialect:
         columns after the concepts and no longer match the target at all.
 
         ``INSERT INTO t <select>`` carries no column list, here or in
-        ``_persist_insert_prefix`` — the mapping from select to table is
-        positional, and always has been."""
+        ``_persist_insert_prefix``: the mapping from select to table is
+        positional."""
         return self._render_query(query, self._persist_insert_prefix(query, location))
 
     def compile_statements(self, query: PROCESSED_STATEMENT_TYPES) -> list[str]:
@@ -3637,7 +3540,7 @@ class BaseDialect:
         return final
 
     def compile_without_limit(self, query: ProcessedQuery) -> str:
-        """Re-render the query SQL with its output LIMIT removed — structurally
+        """Re-render the query SQL with its output LIMIT removed, structurally
         (clear the output CTE's limit and recompile), never by editing the SQL
         text. The output LIMIT lives on the final CTE (``query.ctes[-1]``, also
         ``query.base``); inner-CTE limits (e.g. a rowset's own limit) are
@@ -3657,7 +3560,7 @@ class BaseDialect:
         self, query: ProcessedQuery, run_sql: Callable[[str], "ResultProtocol"]
     ) -> "tuple[list[dict], int] | None":
         """Per-column stats (non_null / nulls / distinct / min / max) plus the
-        row count over the FULL result — the query with its LIMIT removed — so a
+        row count over the FULL result (the query with its LIMIT removed), so a
         consumer reads true cardinality, not the LIMIT-bounded prefix.
 
         Gated by ``SUPPORTS_RESULT_SUMMARY``; the base implementation is not

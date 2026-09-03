@@ -2,23 +2,19 @@
 
 A ``~`` binding licenses domain extension: unmatched members of that key's
 dimension enter the result once, with everything outside the key's closure
-NULL. Nothing in the plan says WHERE those rows come from, so without this
-election every branch that touches the key builds its own copy of the extent
-(outer-padded joins), and the FINAL assembly then either reunites the copies
-null-safely or reads one through a plain equality that discards it, leaving a
-plan that carries a join whose rows the same plan throws away.
-
-Electing here, before any node is built, makes the routing a decision instead
-of a side effect: one group per span carries the extension members, that
-group's ancestors may pad on the way to it, and every other group is
-extent-free, so its joins pair on solid keys and its rows reach the output
-through the owner.
+NULL. Nothing in the plan says WHERE those rows come from, so the election
+decides it before any node is built: one group per span carries the extension
+members, that group's ancestors may pad on the way to it, and every other group
+is extent-free, so its joins pair on solid keys and its rows reach the output
+through the owner. Without a single owner each branch touching the key pads
+its own copy, and the FINAL assembly must either reunite copies null-safely or
+discard one through a plain equality.
 
 The ranking (most downstream, then primary membership, then joint coverage of
 every span) is the same judgment ``_cover_groups_for_mandatory`` applies to
-already-built nodes, hoisted to where the buckets live. The cover consumes
-this result rather than re-deriving it, since a predicted election that
-diverges from the actual one leaves a contributor dangling at render time.
+already-built nodes. The cover consumes this result rather than re-deriving
+it, since a predicted election that diverges from the actual one leaves a
+contributor dangling at render time.
 """
 
 from __future__ import annotations
@@ -107,8 +103,8 @@ def elect_extent_owners(
 
     # Only a span some group actually delivers can be routed. One nobody
     # exposes (a transitive dimension's key reached purely through a join)
-    # stays unmanaged and keeps the pre-existing per-branch padding, because
-    # suppressing what has no owner deletes the extension rows outright.
+    # stays unmanaged and keeps per-branch padding, because suppressing what
+    # has no owner deletes the extension rows outright.
     ownable: frozenset[str] = frozenset().union(*exposes.values())
     owner_by_span: dict[str, str] = {}
     # A group exposing every ownable span keeps the families together: split

@@ -22,7 +22,7 @@ against the spine is exact.
 
 The consumer's projection is left alone. It already reads a FULL join's key as
 ``coalesce(a.k, b.k)``, and since every spine row matches at least one side
-that coalesce still yields the spine's key value — including when the key
+that coalesce still yields the spine's key value, including when the key
 itself is NULL.
 
 Shapes that can't be expressed this way (a keyless FULL between multi-row
@@ -56,9 +56,9 @@ class UnsupportedFullJoinError(UnresolvableQueryException):
     whose shape the key-spine rewrite cannot express."""
 
 
-# Levers an author can actually pull. Each one removes the *reason* the planner
+# Levers an author can actually pull. Each one removes the reason the planner
 # chose a preserving join, so the query re-plans as INNER/LEFT and never reaches
-# this pass — they are not ways to make the spine work harder.
+# this pass.
 NULL_REJECT_LEVER = (
     "add `where {key} is not null`: with no NULL keys the join narrows and the "
     "ambiguity disappears"
@@ -98,9 +98,8 @@ def _full_joins(cte: CTE) -> list[Join]:
 def _slots(cte: CTE, join: Join) -> list[BuildConcept]:
     """The spine's key columns, taken from the first FULL join's left concepts.
 
-    One left concept bound to two different right concepts (q97 joins both
-    sales channels' item keys through one ``item.sk``) needs two spine columns
-    that would carry the same name, and the arms could not be lined up
+    One left concept bound to two different right concepts needs two spine
+    columns that would carry the same name, and the arms could not be lined up
     positionally. That is a distinct shape, not a key mismatch, so it gets its
     own diagnosis before ``_pairs_by_slot`` sees a duplicated slot list.
     """
@@ -296,7 +295,7 @@ def _branch_cte(
     """A ``SELECT <keys> FROM <node>`` arm of the spine union.
 
     A participant the consumer folded in (``inline_datasource``) has no WITH
-    entry to select from, so the arm reads its raw table directly — the same
+    entry to select from, so the arm reads its raw table directly, the same
     shape a leaf ``DatasourceCTE`` renders.
     """
     grain = BuildGrain.from_concepts(concepts)
@@ -437,7 +436,7 @@ def lower_full_joins(
 ) -> list[CTE | UnionCTE]:
     """Rewrite every FULL JOIN in the working set into a key spine.
 
-    Runs after all other optimization, so the join types it sees are final —
+    Runs after all other optimization, so the join types it sees are final:
     anything the narrowing passes could prove away is already gone.
     """
     output = list(input)

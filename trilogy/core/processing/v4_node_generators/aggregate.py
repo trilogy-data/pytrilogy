@@ -146,9 +146,9 @@ def gen_aggregate(
     """GROUP BY at the outputs' shared grain over already-built parents.
 
     Forces a real GROUP source_type when any output has non-standard
-    grouping (ROLLUP/CUBE/GROUPING_SETS) — the GroupNode's grain-match
+    grouping (ROLLUP/CUBE/GROUPING_SETS); the GroupNode's grain-match
     shortcut would otherwise drop the GROUP BY entirely, losing the
-    subtotal rows the rollup adds (q14)."""
+    subtotal rows the rollup adds."""
     has_non_standard_grouping = any(
         nonstandard_grouping_lineage(c) is not None for c in outputs
     )

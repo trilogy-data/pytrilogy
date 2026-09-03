@@ -33,7 +33,7 @@ class EdgeKind(Enum):
     # Authored join-axis equality between two DIFFERENT lineages (a
     # statement-scoped relation member and its canonical). Rows JOIN across it;
     # it is never a computational dependency, so lineage reach must not follow
-    # it — the sides recombine at a merge, not inside one scan.
+    # it: the sides recombine at a merge, not inside one scan.
     RELATION = "relation"
 
 
@@ -45,13 +45,13 @@ class EdgePhase(Enum):
 
 
 # Edge kinds that express a build-ordering dependency (the source must be built
-# before the consumer). MERGE is excluded — it only feeds the FINAL sink.
+# before the consumer). MERGE is excluded: it only feeds the FINAL sink.
 DEPENDENCY_EDGE_KINDS: frozenset[EdgeKind] = frozenset(
     (EdgeKind.LINEAGE, EdgeKind.CONSTRAINT, EdgeKind.EXISTENCE)
 )
 
-# Derivations that change row shape — a filter cannot be safely pushed below
-# one of these; it must be applied above the barrier instead.
+# Derivations that change row shape. A filter cannot be pushed below one of
+# these; it must be applied above the barrier instead.
 ROW_SHAPE_BARRIER_DERIVATIONS: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.WINDOW,
@@ -62,9 +62,9 @@ ROW_SHAPE_BARRIER_DERIVATIONS: set[Derivation] = {
     Derivation.ROWSET,
 }
 
-# Derivations whose row shape is defined by a grain/by/partition list —
-# grain components can be pulled into the group for free since they are
-# part of the GROUP BY (or PARTITION BY) clause already.
+# Derivations whose row shape is defined by a grain/by/partition list. Grain
+# components can be pulled into the group for free since they are already part
+# of the GROUP BY (or PARTITION BY) clause.
 GROUPING_DERIVATIONS: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.WINDOW,

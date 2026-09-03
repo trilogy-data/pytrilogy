@@ -2,17 +2,15 @@
 
 Each dispatched generator takes the same minimal inputs:
 
-    outputs      — the concepts this group should produce
-    parents      — already-built StrategyNodes for upstream groups
-    environment  — the build environment
-    conditions   — clauses injected at or above this group (optional)
-    history, g   — the re-entry handle, for generators that plan a sub-search
+    outputs      : the concepts this group should produce
+    parents      : already-built StrategyNodes for upstream groups
+    environment  : the build environment
+    conditions   : clauses injected at or above this group (optional)
+    history, g   : the re-entry handle, for generators that plan a sub-search
                    (ROOT's datasource selection, ROWSET/UNION/SUBSELECT)
 
-No sibling/equivalent-optional discovery, no optional-merging, no
-callback-based parent resolution. The topological
-walker hands each generator its actual parents and asks it to project the
-listed outputs — nothing else.
+The topological walker hands each generator its actual parents and asks it to
+project the listed outputs, nothing else.
 
 The nested-select constructs live here too, even though they are not group
 derivations the walker dispatches: `multiselect` and `union_select` are

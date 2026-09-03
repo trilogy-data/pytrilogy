@@ -44,14 +44,10 @@ def link_rowset_outputs_for_connectivity(g: "ReferenceGraph", cg) -> None:
     """Rule 2 alone, with no severing: weld each rowset's co-produced outputs
     through its per-rowset hub on the undirected connectivity copy ``cg``.
 
-    The non-islanding connectivity mode (the pre-discovery gate) keeps every
-    raw edge, but raw edges are not enough: a rowset whose handles wrap
-    genuinely unrelated base models — related only by a scoped join declared
-    INSIDE the rowset's own body (`with b as select s.k, a.total subset join
-    s.k = a.k`) — has no cross-model edge at the outer level, so its own
-    handles split into two components. They are co-produced by one sub-query
-    (`resolve_rowset` plans them together; the inner gate still validates the
-    body's own connectivity), so weld them here."""
+    Raw edges are not enough: a rowset whose outputs wrap unrelated base models,
+    related only by a scoped join declared inside the rowset body, has no
+    cross-model edge at the outer level, so its own outputs would split into
+    two components even though one sub-query produces them together."""
     members_by_rowset: dict[str, list[str]] = {}
     for node, concept in g.concepts.items():
         if concept.derivation != Derivation.ROWSET:
@@ -77,13 +73,10 @@ def island_rowsets_for_connectivity(
     a declared output, and (c) outputs related across rowsets by a scoped-join
     pseudonym.
 
-    Without this, a property keyed on a base concept (e.g. ``store_id.name``)
-    looks falsely reachable from a rowset whose key was *renamed* off that base
-    concept (``select store_id as sk_a``): the global graph connects
-    ``store_id`` to the rowset through that internal derivation, so a genuine
-    scoped-join disconnection (the join group is ``{sk_a, sk_b}``, not
-    ``store_id``) is masked and surfaces as the generic unresolvable error
-    instead of a named subgraph split."""
+    Without this, a property keyed on a base concept looks falsely reachable
+    from a rowset whose key was renamed off that base concept: the global graph
+    connects the base concept to the rowset through the internal derivation,
+    masking a genuine scoped-join disconnection."""
     members_by_rowset: dict[str, list[str]] = {}
     nodes_by_address: dict[str, list[str]] = {}
     rowset_nodes: set[str] = set()
@@ -109,17 +102,11 @@ def island_rowsets_for_connectivity(
         hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
         cg.add_node(hub)
         _add_hub(cg, hub, [m for m in members if m in cg])
-        # A concept DERIVED from a rowset's declared output (a filtered aggregate
-        # `sum(cur.sales ? ...)`, `cur.x * 2`, etc.) legitimately consumes that
-        # output, but islanding severed the edge as a boundary crossing — wrongly
-        # orphaning the consumer (q02 `_virt_filter` over a rowset measure). A
-        # downstream consumer is a `g`-successor of an output; reconnect each
-        # external one to the hub. Only UPSTREAM navigation (predecessors — the
-        # base concepts the rowset was computed from) stays severed, which is the
-        # whole point of islanding. Skip a consumer that merely groups `by` the
-        # output (a grain-only parent): re-welding that edge would bridge two
-        # unrelated models through an aggregate's grouping key — exactly the bridge
-        # `_aggregate_grain_only_parents` drops upstream.
+        # Re-weld external downstream consumers (`g`-successors) of each output;
+        # only upstream navigation into the rowset's base concepts stays severed.
+        # A consumer that merely groups `by` the output (grain-only parent) is
+        # skipped: that edge would bridge unrelated models through an aggregate's
+        # grouping key, the same bridge `_aggregate_grain_only_parents` drops.
         for member in members:
             member_concept = g.concepts.get(member)
             member_addr = member_concept.address if member_concept else None

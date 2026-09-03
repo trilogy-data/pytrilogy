@@ -99,11 +99,10 @@ def non_null_proofs(
 
     Logical-stage analysis: only descends through null-propagating operators,
     not ``IS NOT NULL``. The merge-stage caller can't see how merged join keys
-    will materialize as ``COALESCE(left.k, right.k)`` at SQL time, so it must
-    avoid claiming a shared key non-null on either side individually — which
-    would happen if ``IS NOT NULL`` were honored here. The post-CTE
-    ``DowngradeFullJoinOnGuards`` pass operates on materialized SQL and can
-    safely honor the fuller form.
+    will materialize as ``COALESCE(left.k, right.k)`` at SQL time, so honoring
+    ``IS NOT NULL`` here would claim a shared key non-null on either side
+    individually. The post-CTE ``DowngradeFullJoinOnGuards`` pass operates on
+    materialized SQL and can safely honor the fuller form.
     """
     proofs: set[str] = set()
     for atom in decompose_condition(condition):
@@ -177,11 +176,10 @@ def concept_source_address(concept: BuildConcept) -> str:
         content = concept.lineage.content
         if isinstance(content, BuildConcept):
             return content.address
-    # A pure rename (`combined.k as kk`) is a 1:1 relabel, so for grain purposes
-    # it lives at the source concept's grain. Recurse, since the renamed source
-    # may itself be a rowset/filter output (`combined.k` -> body column): without
-    # this a renamed projection of union/stack outputs looks like extra grain and
-    # forces a spurious GROUP BY that drops UNION ALL duplicate rows.
+    # A pure rename is a 1:1 relabel, so for grain purposes it lives at the
+    # source concept's grain. Recurse, since the renamed source may itself be
+    # a rowset/filter output; otherwise a renamed projection of union outputs
+    # looks like extra grain and forces a GROUP BY that drops UNION ALL rows.
     if (
         concept.derivation == Derivation.BASIC
         and isinstance(concept.lineage, BuildFunction)
@@ -217,11 +215,10 @@ def _grain_coverage_addresses(
                     concept, include_aggregate_by_keys=include_aggregate_by_keys
                 )
             )
-    # Follow each covered address to its pseudonyms. A MULTISELECT align alias
-    # expands to its keys (e.g. `grp` -> `ga`, `gb`), but those keys are often
-    # themselves aliases of the underlying column (`ga`/`gb` -> `g`). Without
-    # this second hop a pregrain carrying the source column looks like extra
-    # grain and forces a spurious group.
+    # Follow each covered address to its pseudonyms: a MULTISELECT align alias
+    # expands to its keys, which are often themselves aliases of the underlying
+    # column. Without this second hop a pregrain carrying the source column
+    # looks like extra grain and forces a spurious group.
     for address in list(addresses):
         equivalent = environment.concepts.get(address)
         if equivalent:
@@ -272,9 +269,8 @@ def _join_right_preserves_cardinality(
         return True
     # FD closure (docs/domain_graph_design.md step 4): grain components the
     # join keys functionally determine admit at most one right row per key
-    # tuple — cardinality is preserved even though the components are not
-    # among the keys (the "join on A can never fan out B" proof that grain
-    # arithmetic alone cannot see through bindings).
+    # tuple, so cardinality is preserved even though the components are not
+    # among the keys.
     graph = environment.domain_graph
     if not graph.fd_edges:
         return False
@@ -748,16 +744,14 @@ def grain_satisfied_by_pregrain(
         return True
     if pregrain.issubset(rowset_source_grain(grain, environment)):
         return True
-    # Expand grain via _concept_coverage_addresses so a MULTISELECT align
-    # identity covers its source keys (the JOIN keys it was derived from).
-    # Without this, a pregrain carrying the source keys looks like extra
-    # grain to a merge node whose grain only references the align alias.
+    # Expand grain via coverage so a MULTISELECT align identity covers its
+    # source keys; otherwise a pregrain carrying them looks like extra grain.
     coverage = _grain_coverage_addresses(grain, environment)
     if pregrain.components.issubset(coverage):
         return True
     # FD closure: a pregrain component the grain functionally determines is
     # constant within each group, so grouping by {grain, component} reduces
-    # to {grain} — the pregrain is satisfied without regrouping.
+    # to {grain} and the pregrain is satisfied without regrouping.
     graph = environment.domain_graph
     if not graph.fd_edges:
         return False

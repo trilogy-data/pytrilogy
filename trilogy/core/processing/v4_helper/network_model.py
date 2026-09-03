@@ -1,7 +1,7 @@
 """The source-network vocabulary: what a candidate, a cover and a cost ARE.
 
 Every other `network_*` module is stated in these terms. This one depends on
-nothing in the search — it holds the labeled network and the answers derivable
+nothing in the search: it holds the labeled network and the answers derivable
 from the labels alone, so the stages above it cannot disagree about what they
 are reasoning over.
 
@@ -21,11 +21,10 @@ from trilogy.core.models.build import BuildDatasource, BuildUnionDatasource
 COVER_LIMIT = 4096
 # Bounds the obligation search's visited states, independent of how many
 # complete covers it has found. A truncated search is reported, never silent.
-# Sized from the corpora (s66): the largest state count any successful tpc_ds /
-# tpc_h query reaches is 826 (q23, median 6), so 10k is a 12x margin — while an
-# UNSOURCEABLE request explores states until this budget stops it, so every
-# increment here is paid in full on the failure path before the fall-through
-# raises UnresolvableQueryException.
+# Sized an order of magnitude above the largest state count a corpus query
+# reaches. An UNSOURCEABLE request explores states until this budget stops it,
+# so every increment here is paid in full on the failure path before the
+# fall-through raises UnresolvableQueryException.
 STATE_LIMIT = 10_000
 
 CONNECTOR_NODE_PREFIX = "connector~"
@@ -78,7 +77,7 @@ class Binding:
     stored: bool
     # Added by the search itself (`_pin_unoffered_probes`), not the graph: the
     # bridge emitter can render it, but `_direct_source`'s graph-scored select
-    # cannot — a single-scan solution leaning on one must stay on the bridge.
+    # cannot, so a single-scan solution leaning on one must stay on the bridge.
     injected: bool = False
 
     @property
@@ -90,7 +89,7 @@ class Binding:
 class SourceCandidate:
     node: str
     # None for a derived-connector candidate (`connector~*`): a merged key with
-    # a non-BASIC origin has no scan of its own — `_derived_connector_nodes`
+    # a non-BASIC origin has no scan of its own; `_derived_connector_nodes`
     # materializes its `alias_origin_lookup` lineage as a subplan.
     datasource: BuildDatasource | BuildUnionDatasource | None
     bindings: dict[str, Binding]
@@ -114,7 +113,7 @@ def _row_complete(candidate: SourceCandidate) -> bool:
     every grain-key binding is FULL, or the request's WHERE implies its
     `complete where` predicate. A row-partial candidate (an enum arm, a
     returns-side table) may TERMINATE a labeling chain it fully binds, but
-    never EXTEND one — a lookup routed through it silently drops the rows it
+    never EXTEND one: a lookup routed through it silently drops the rows it
     lacks."""
     if candidate.condition.partial_is_full:
         return True
@@ -143,7 +142,7 @@ class JoinRequirement:
     materialize the key against its OWN key set. Otherwise that side has no way
     to produce the authored equality and the sides silently pair on whatever
     else they happen to share. This is the search-side statement of what
-    `inject_authored_join_key_terminals` asks the ladder's Steiner walk for."""
+    `inject_authored_join_key_terminals` asks the connector walk for."""
 
     canonical: str
     # Each side's own keys, in equivalence-class terms. A source binding these
@@ -180,8 +179,8 @@ class SourceNetwork:
     # Requested coalescing (`full`/`union` join) axis classes whose request is
     # NOT pinned to one arm, mapped to per-MEMBER carrier candidates (best
     # first). The unified axis is the union of the members' domains, so such a
-    # class is fully bound only by a cover carrying EVERY member's own column —
-    # a single arm's read silently drops the other arms' rows (§0.3 defect 1).
+    # class is fully bound only by a cover carrying EVERY member's own column;
+    # a single arm's read silently drops the other arms' rows.
     axis_families: dict[str, tuple[tuple[str, ...], ...]] = field(default_factory=dict)
     # Partition-arm node -> the union candidate that subsumes it, for arms the
     # request's WHERE does not pin (see `_subsumed_arms`). Input to the search,
@@ -223,8 +222,8 @@ class SourceNetwork:
         """Everything `search_sources` reads, as a hashable value: two networks
         sharing one have the same solution. Lets a caller memo the search across
         the repeated ROOT requests of ONE build (see `V4History.search_cache`).
-        Deliberately structural rather than identity-based — it holds only
-        addresses and node names, never a BuildConcept — so a stale environment
+        Deliberately structural rather than identity-based (it holds only
+        addresses and node names, never a BuildConcept), so a stale environment
         cannot be smuggled through it."""
         return (
             self.terminals,
@@ -252,7 +251,7 @@ class SourceNetwork:
 
     def fans_out(self, node: str, contributed: frozenset[str]) -> bool:
         """This scan holds more rows per contributed value than that value's own
-        grain — a fact table standing in for a dimension. Judged ONLY against
+        grain: a fact table standing in for a dimension. Judged ONLY against
         what the source contributes: any wider yardstick (the rest of the
         solution, or the keys this source is joined on) can be widened by adding
         a source, which would let a solution launder its own fan-out away."""
@@ -267,11 +266,12 @@ class SourceNetwork:
     def joins_functionally(self, left: str, right: str) -> bool:
         """The keys these two share identify one side's rows, so the join is a
         LOOKUP: it can restrict, never multiply. A join covering neither grain is
-        a BLEND — legitimate when two facts are related only through conformed
+        a BLEND: legitimate when two facts are related only through conformed
         dimensions and nothing can co-locate a finer key, a wrong-rows defect
-        when something can (q05's dimension joined on a 3-valued discriminator).
-        Which of the two it is, is a property of the whole cover, not of the
-        pair, so this reports the pair and `_blend_joins` decides."""
+        when something can (a dimension joined on a low-cardinality
+        discriminator). Which of the two it is, is a property of the whole
+        cover, not of the pair, so this reports the pair and `_blend_joins`
+        decides."""
         keys = self.join_keys(left, right)
         if not keys:
             return False
@@ -291,7 +291,7 @@ class SourceNetwork:
 
     def binder_set(self, address: str) -> frozenset[str]:
         # `binders` as a set, for the per-state "is this terminal covered yet"
-        # test — one intersection against the cover instead of a `binds` per
+        # test: one intersection against the cover instead of a `binds` per
         # member.
         cached = self._binder_set_cache.get(address)
         if cached is None:
@@ -339,8 +339,8 @@ class SourceNetwork:
 
     def full_binders(self, address: str) -> frozenset[str]:
         """Candidates binding this address FULLY. The hot loops ask per (cover,
-        source, terminal) — tens of millions of times on a wide request — so
-        this is one membership test against a table sized by the candidate set."""
+        source, terminal), so this is one membership test against a table sized
+        by the candidate set."""
         cached = self._full_binder_cache.get(address)
         if cached is None:
             cached = frozenset(
@@ -356,9 +356,8 @@ class SourceNetwork:
         u -> v means one `v` row per `u` row (`functional_into`).
 
         Every chain question in the search is a walk over this graph, so it is
-        built as adjacency SETS rather than re-asked pairwise. That is the
-        difference between one pass over the V^2 pairs and a pairwise test per
-        walk step — the latter was 77% of all `functional_into` calls."""
+        built as adjacency SETS rather than re-asked pairwise: one pass over the
+        V^2 pairs instead of a pairwise test per walk step."""
         cached = self._adjacency_cache.get(0)
         if cached is None:
             nodes = self.sorted_candidates()
@@ -380,9 +379,10 @@ class SourceNetwork:
         """The two UNDIRECTED pair predicates as adjacency sets, built once:
         index 0 is "shares any binding key" and index 1 is
         `joins_functionally`. The obligation scan asks both per (state,
-        source, candidate) — an unsourceable request walks the full state
-        budget, so a pairwise call per ask is the dominant cost of concluding
-        "no solution" (s66). Symmetric, so each unordered pair is asked once."""
+        source, candidate); an unsourceable request walks the full state
+        budget, so a pairwise call per ask would dominate the cost of
+        concluding "no solution". Symmetric, so each unordered pair is asked
+        once."""
         cached = self._partner_cache.get(0)
         if cached is None:
             nodes = self.sorted_candidates()
@@ -413,13 +413,13 @@ class SourceNetwork:
     def chain_completers(self, address: str) -> frozenset[str]:
         """Candidates that can END a labeling chain for this address: they bind
         it fully, or a lookup chain off their own keys reaches something that
-        does. Cover-independent — which chain is IN the cover is the caller's
-        question — so it is asked once per address, not once per state.
+        does. Cover-independent (which chain is IN the cover is the caller's
+        question), so it is asked once per address, not once per state.
 
         This is the ANCESTOR set of the full binders, so it is walked backwards
         from them once rather than forwards from every candidate. An ancestor is
-        ADMITTED unconditionally — it is the chain's ORIGIN, and the forward
-        walk never gates the origin — but is EXPANDED further only when it is
+        ADMITTED unconditionally (it is the chain's ORIGIN, and the forward
+        walk never gates the origin) but is EXPANDED further only when it is
         row-complete, since expanding it makes it an INTERMEDIATE on a longer
         chain. `_forward_reach` in the tests states the forward form the two
         must agree on."""
@@ -441,11 +441,11 @@ class SourceNetwork:
 
     def functional_into(self, origin: str, target: str) -> bool:
         """One `target` row per `origin` row: the keys the two share cover the
-        TARGET's whole grain — a lookup INTO the target, which can label or
+        TARGET's whole grain, a lookup INTO the target, which can label or
         restrict the origin's rows but never multiply them. DIRECTIONAL, unlike
         `joins_functionally`: the undirected form cannot see the shared-dimension
-        diamond, because `sales -> items <- inventory` relates both facts to the
-        item dimension while pinning neither fact to the other (§0.3).
+        diamond, where two facts each look up the same dimension while neither
+        pins the other.
 
         Unmemoized: `_adjacency` asks each ordered pair exactly once and every
         walk reads the adjacency sets, so a memo here could never hit."""
@@ -472,7 +472,7 @@ class SourceNetwork:
 @dataclass(frozen=True)
 class SolutionCost:
     """Lower is better on every axis. `search_sources` compares LEXICOGRAPHICALLY
-    in declared order, which is a total order — the axes are ranked, not merely
+    in declared order, which is a total order: the axes are ranked, not merely
     incomparable, so no frontier is kept."""
 
     unpaired_join_keys: int
@@ -512,9 +512,8 @@ class SearchResult:
     unreachable: frozenset[str] = frozenset()
     # Terminals no single join-component of the WHOLE candidate pool can cover
     # alongside the rest. A cover's joins are a subgraph of the pool's, so this
-    # is a PROOF no connected cover exists — a considered decline, unlike
-    # `limit`, which is only an exhausted budget (s66: the proof is milliseconds
-    # where the budget walk is seconds).
+    # is a PROOF no connected cover exists: a considered decline, unlike
+    # `limit`, which is only an exhausted budget.
     split: frozenset[str] = frozenset()
     # The budget the enumeration ran out of, if any.
     limit: SearchLimit | None = None
@@ -535,25 +534,25 @@ class ObligationKind(str, Enum):
     """What a pending requirement IS. One vocabulary for every correctness
     invariant:
 
-    - ``COVER``      — a terminal no chosen source binds. Subject: (address,).
-    - ``AXIS``       — a coalescing-axis member arm with no carrier in the
+    - ``COVER``      : a terminal no chosen source binds. Subject: (address,).
+    - ``AXIS``       : a coalescing-axis member arm with no carrier in the
                        cover. Subject: (class representative, member index).
-    - ``PAIRED``     — a declared relation side the cover carries without
+    - ``PAIRED``     : a declared relation side the cover carries without
                        materializing the merged key on it. Subject:
                        (canonical, *side keys).
-    - ``LABELABLE``  — a chosen source whose rows cannot be labeled with a
+    - ``LABELABLE``  : a chosen source whose rows cannot be labeled with a
                        requested terminal through any in-cover functional
                        lookup, though some candidate could supply one.
                        Subject: (source, terminal).
-    - ``COLOCATED``  — a chosen source none of whose in-cover joins covers its
+    - ``COLOCATED``  : a chosen source none of whose in-cover joins covers its
                        grain, when some candidate could put its grain key
                        beside it. Subject: (source,).
-    - ``CONNECTED``  — the cover is in pieces and some candidate bridges them.
+    - ``CONNECTED``  : the cover is in pieces and some candidate bridges them.
                        Subject: the components' minimum members.
 
-    `str` mixin so `Obligation.identity` orders and hashes exactly as the bare
-    strings it replaced did — the enumeration's scarcest-first tiebreak
-    (`min(pending, key=...)`) compares it."""
+    `str` mixin so `Obligation.identity` orders and hashes as a bare string;
+    the enumeration's scarcest-first tiebreak (`min(pending, key=...)`)
+    compares it."""
 
     COVER = "cover"
     AXIS = "axis"
@@ -568,7 +567,7 @@ class Obligation:
     """A requirement of the cover under construction, with the candidate nodes
     that can discharge it (see `ObligationKind` for the kinds and subjects).
 
-    Obligations are monotone — adding a source never re-opens one — and are
+    Obligations are monotone (adding a source never re-opens one) and are
     minted only when at least one satisfier exists: a requirement nothing
     could satisfy is the request's own shape, not a cover defect."""
 

@@ -27,7 +27,7 @@ GeneratorFn = Callable[..., "StrategyNode | None"]
 
 
 # Every group-level derivation the v4 walker can emit has a native generator.
-# MULTISELECT is intentionally absent: it never reaches here — a top-level
+# MULTISELECT is intentionally absent: it never reaches here. A top-level
 # multiselect/union TVF is intercepted in `concept_strategies_v4._search_concepts`
 # (`multiselect.gen_multiselect` / `union_select.gen_union_select`), and a
 # rowset-wrapped one is planned inside `rowset.resolve_rowset`. An unknown
@@ -69,10 +69,10 @@ def build_node(
 
     `preexisting_conditions` means "an ancestor already applied this, don't
     re-emit it" everywhere EXCEPT ROOT, which re-sources from datasources
-    instead of consuming `parents` — there it means the opposite, and gen_root
+    instead of consuming `parents`; there it means the opposite, and gen_root
     must apply it to whatever it re-plans.
 
-    Every group-level derivation is native — an unknown one is a real bug, so
+    Every group-level derivation is native; an unknown one is a real bug, so
     we raise rather than degrade (there is no fallback planner)."""
     fn = _GENERATORS.get(derivation)
     if fn is None:
@@ -82,7 +82,7 @@ def build_node(
         )
     if derivation == Derivation.ROOT:
         # ROOT re-sources from datasources rather than from `parents`, so any
-        # atom an ancestor group applied is absent from the rows it plans —
+        # atom an ancestor group applied is absent from the rows it plans;
         # `gen_root` needs to know about it, not just record it.
         return fn(
             outputs,

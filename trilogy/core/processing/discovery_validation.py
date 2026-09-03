@@ -21,20 +21,12 @@ from trilogy.core.processing.utility import (
 
 
 def _is_scalar_only(node: StrategyNode, condition: BoolExpr | None = None) -> bool:
-    """A node whose visible outputs are all single-row scalars (e.g. a CTE
-    aggregate referenced as a constant). Such nodes are cross-joined into the
-    consumer; their preexisting_conditions reflect the CTE's own WHERE and are
-    independent of the outer query's row-level conditions.
-
-    As with `_is_independent_scope`, the exemption holds only while `condition`
-    does not filter one of this node's own outputs. A scalar that *is* the thing
-    being filtered (e.g. `select sum(cost) as v where v > 1000`) is the query's
-    result, not a cross-joined constant — the predicate must be applied, so the
-    node is not exempt."""
-    # A pure-literal condition (no row arguments, e.g. a constant-folded
-    # `c > 50` -> `1 = 0`) is a query-level filter that must always be applied;
-    # it belongs to no scope's rows, so the overlap check below would vacuously
-    # exempt it. Never exempt such a condition.
+    """A node whose visible outputs are all single-row scalars. Such nodes are
+    cross-joined into the consumer, so their preexisting_conditions are
+    independent of the outer query's row-level conditions. The exemption holds
+    only while `condition` does not filter one of this node's own outputs."""
+    # A pure-literal condition (no row arguments) belongs to no scope's rows and
+    # must always be applied; the overlap check below would vacuously exempt it.
     if condition is not None and not condition.row_arguments:
         return False
     resolved = node.resolve()
@@ -54,14 +46,9 @@ def _is_scalar_only(node: StrategyNode, condition: BoolExpr | None = None) -> bo
 
 def _is_independent_scope(node: StrategyNode, condition: BoolExpr) -> bool:
     """A node whose visible outputs are all rowset-derived is a self-contained
-    subquery — its own SELECT/WHERE scope, materialized as a CTE and joined in.
-    Its preexisting_conditions belong to that inner scope, so it is independent
-    of `condition` (e.g. a rowset filtered to year=2000 joined into a query
-    filtered to year=1999) — *provided* the condition does not constrain a
-    column the rowset exposes. If `condition` filters one of the rowset's own
-    outputs (e.g. q75 narrows `deduped.sales.date.year` per multi-select arm),
-    that's a consumer filter on the rowset's rows and must be applied, not
-    exempted."""
+    subquery scope, so its preexisting_conditions are independent of `condition`
+    unless the condition filters one of the rowset's own outputs; that is a
+    consumer filter on the rowset's rows and must be applied."""
     if not condition.row_arguments:
         return False
     resolved = node.resolve()
@@ -103,9 +90,8 @@ def _stack_applies_condition(stack: list[StrategyNode], condition: BoolExpr) -> 
     """A condition counts as already applied only when at least one node's own
     conditions imply it and every other node either implies it or is exempt.
     Exemptions let a node opt OUT of carrying a condition another node
-    applies; they never satisfy it — at a final (depth-0) scope an all-exempt
-    stack with no applier (e.g. a bare rowset node under a base-model WHERE)
-    must not pass, or the filter is silently dropped."""
+    applies; they never satisfy it, so an all-exempt stack with no applier
+    fails rather than silently dropping the filter."""
     return _stack_exempt_or_implies(stack, condition) and any(
         _node_condition_implies(node, condition) for node in stack
     )
@@ -183,15 +169,11 @@ def validate_concept(
     group_mates: dict[str, set[str]],
     node_deep_addresses: set[str],
 ):
-    # logger.debug(
-    #     f"Validating concept {concept.address} with accept_partial={accept_partial}"
-    # )
     found_map[str(node)].add(concept)
     seen.add(concept.address)
     if concept not in node.partial_concepts:
         found_addresses.add(concept.address)
         non_partial_addresses.add(concept.address)
-        # remove it from our partial tracking
         partial_addresses.discard(concept.address)
     if concept in node.partial_concepts:
         if concept.address in non_partial_addresses:
@@ -203,14 +185,12 @@ def validate_concept(
     for v_address in concept.pseudonyms:
         if v_address in seen:
             continue
-        # A scoped-join key-group member is never satisfied through a
-        # group-mate pseudonym: the join between the sides needs each side's
-        # own column, so counting the mate as found here collapses the join
-        # onto one side (union join between two independent rowsets, q59).
-        # A node whose subtree materializes the mate itself already represents
-        # the join — its coalesced output legitimately covers both members.
-        # The mate still lands in found_map: the authored join relates the two
-        # sides, so the stack is connected once each side sources its own.
+        # A scoped-join key-group member is never satisfied through a group-mate
+        # pseudonym: the join needs each side's own column, so counting the mate
+        # as found would collapse the join onto one side. A node whose subtree
+        # materializes the mate already represents the join, so its coalesced
+        # output covers both. The mate still lands in found_map so the stack is
+        # connected once each side sources its own.
         if (
             v_address in group_mates.get(concept.address, ())
             and v_address not in node_deep_addresses
@@ -222,8 +202,6 @@ def validate_concept(
                 found_map[str(node)].add(mate)
             continue
         if v_address in environment.alias_origin_lookup:
-            # logger.debug(
-            #     f"Found alias origin for {v_address}: {environment.alias_origin_lookup[v_address]} mapped to {environment.concepts[v_address]}")
             v = environment.alias_origin_lookup[v_address]
         else:
             v = environment.concepts[v_address]
@@ -294,7 +272,6 @@ def validate_stack(
         conditions,
         require_condition_applier,
     )
-    # zip in those we know we found
     if not all(c.address in found_addresses for c in concepts) or not conditions_met:
         if not all(c.address in found_addresses for c in concepts):
             return (
@@ -318,7 +295,6 @@ def validate_stack(
             set(),
             partial_addresses,
         )
-    # if we have too many subgraphs, we need to keep searching
     return (
         ValidationResult.DISCONNECTED,
         found_addresses,

@@ -3,15 +3,14 @@
 A pair of key equivalence classes is AMBIGUOUS when no single datasource
 co-locates them and the shortest datasource-hop join paths between them carry
 incomparable connector-key sets (no set is a subset of all others). This is a
-static property of the model's datasource declarations — computable before any
-query materializes — so discovery never detects or arbitrates ambiguity: it is
-raised here, typed, before the source search runs. A request that itself
-carries one alternative's connectors has pinned that path (the forced-join
-idiom) and is not ambiguous; a request carrying EVERY alternative's connectors
-has pinned them all — the routes compose conjunctively (a fact-to-fact blend
-over conformed dimensions) and no silent choice remains.
+static property of the model's datasource declarations, so it is raised here,
+typed, before the source search runs; discovery never arbitrates ambiguity.
+A request that itself carries one alternative's connectors has pinned that
+path (the forced-join idiom); a request carrying EVERY alternative's
+connectors has pinned them all, the routes compose conjunctively (a
+fact-to-fact blend over conformed dimensions) and no silent choice remains.
 
-Two structural rules, both measured against the corpus (2026-07-26):
+Two structural rules:
 - A hop between two datasources joins on ALL their shared key classes, so a
   composite-grain snowflake hop is ONE path, not one path per shared key.
 - Only ``Purpose.KEY`` concepts are path endpoints. A property reached through
@@ -168,9 +167,8 @@ def connector_sets_from(kg: KeyGraph, source: str) -> dict[str, list[frozenset[s
 
 
 def undominated(alternatives: list[frozenset[str]]) -> list[frozenset[str]]:
-    """Clean iff some connector set is a subset of every other — that set IS
-    the resolution; ambiguous
-    otherwise. Longer-than-minimal paths never participate: a strictly longer
+    """Clean iff some connector set is a subset of every other; that set is the
+    resolution. Longer-than-minimal paths never participate: a strictly longer
     route is a dominated plan, not a second meaning."""
     for candidate in alternatives:
         if all(candidate <= other for other in alternatives):
@@ -245,8 +243,8 @@ class AmbiguousModelPair:
 
 
 def sweep_model(environment: BuildEnvironment) -> list[AmbiguousModelPair]:
-    """Every ambiguous key-class pair in the model, query-independent — the
-    model-level form of the standard, for validation tooling."""
+    """Every ambiguous key-class pair in the model, query-independent; for
+    validation tooling."""
     kg = build_key_graph(environment)
     out: list[AmbiguousModelPair] = []
     for source in sorted(kg.by_class):

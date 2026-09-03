@@ -2,7 +2,7 @@
 
 Coverage asks whether SOME source binds an address; the correctness invariants
 ask whether EVERY chosen source can play its role. Stating both kinds as
-obligations lets one search discharge them together — see `ObligationKind` for
+obligations lets one search discharge them together; see `ObligationKind` for
 the kinds and `network_search._enumerate_covers` for the branching.
 """
 
@@ -29,10 +29,9 @@ def _label_chain_state(
     node that can still complete a chain (they bind the terminal fully, or
     reach a full binder through their own lookup chain). First hops off
     `source` alone are NOT a valid satisfier set: a chain intermediate that
-    binds no terminal of its own (tpch q5's supplier on the way to nation)
-    mints no labelable obligation once chosen, so the next hop must come from
-    THIS obligation — or the state strands with every satisfier already in the
-    cover and the enumeration emits nothing."""
+    binds no terminal of its own mints no labelable obligation once chosen, so
+    the next hop must come from THIS obligation, or the state strands with
+    every satisfier already in the cover and the enumeration emits nothing."""
     # Only row-complete walked nodes originate further hops (`_row_complete`):
     # a row-partial intermediate would narrow the labeled population.
     full = network.full_binders(terminal)
@@ -50,7 +49,7 @@ def _label_chain_state(
                 origins.append(node)
                 stack.append(node)
     # "Can this node end a chain for the terminal" is cover-independent and
-    # usually a small set, so the scan iterates it directly — sorted, because
+    # usually a small set, so the scan iterates it directly. Sorted, because
     # the satisfier order decides which covers survive truncation, and a
     # sorted subset filters identically to filtering `sorted_candidates` by
     # membership. "One hop from any walked origin" is one set intersection,
@@ -71,7 +70,7 @@ def pending_obligations(
     """Memoized `compute_pending_obligations`. Pure over the immutable network,
     and the same source set is asked about many times: once per enumeration
     state, then again by `_reduce` for every drop candidate of every surviving
-    cover. The memo is handed out directly — no caller mutates it."""
+    cover. The memo is handed out directly; no caller mutates it."""
     cached = network._obligation_cache.get(chosen)
     if cached is None:
         cached = tuple(compute_pending_obligations(network, chosen))
@@ -86,7 +85,7 @@ def compute_pending_obligations(
 
     This is the quantification asymmetry the obligation model resolves:
     coverage asks whether SOME source binds an address, but the structural
-    invariants ask whether EVERY chosen source can play its role — questions a
+    invariants ask whether EVERY chosen source can play its role, questions a
     coverage-only enumeration cannot branch on, because it stops the moment an
     address is bound. Stating both kinds in one vocabulary lets one search
     discharge them together, with every alternative discharge visible to the
@@ -98,7 +97,7 @@ def compute_pending_obligations(
     conformed dimensions stays legal); a coalescing axis with a carrier-less
     member is owned by the machinery that materializes that member."""
     out: list[Obligation] = []
-    # cover: some source must bind each terminal (partial suffices here — the
+    # cover: some source must bind each terminal (partial suffices here; the
     # upgrade to a full binder is a soft branch in `_enumerate_covers`).
     for address in network.terminals:
         if not network.binder_set(address).isdisjoint(chosen):
@@ -163,7 +162,7 @@ def compute_pending_obligations(
                 if terminal in bound:
                     continue
                 # `source` completes a chain for a terminal it does not bind
-                # exactly when its reach holds a full binder — the precondition
+                # exactly when its reach holds a full binder: the precondition
                 # for minting the obligation at all, and cover-independent.
                 if source not in network.chain_completers(terminal):
                     continue
@@ -202,17 +201,16 @@ def compute_pending_obligations(
                     out.append(
                         Obligation(ObligationKind.COLOCATED, (source,), satisfiers)
                     )
-    # connected: a cover in pieces must be joined up. This was `_connect`'s
-    # greedy first-found fabrication; as an obligation every alternative
-    # bridge enters the cost order, and multi-hop paths (a drill-down chain to
-    # a finer-grain terminal, e.g. launch -> stages -> engines) build hop by
-    # hop through the fixpoint. Deliberately LAST and only when nothing else
-    # is pending: mid-enumeration disconnection is transient (the next
-    # coverage binder may connect the pieces), and branching on it there
-    # reshapes covers that were never broken. Candidates that directly merge
-    # two components are preferred; otherwise any component-adjacent
-    # candidate extends a path. Minted only when a satisfier exists — a truly
-    # unbridgeable split falls to the typed fallbacks.
+    # connected: a cover in pieces must be joined up. As an obligation every
+    # alternative bridge enters the cost order, and multi-hop paths (a
+    # drill-down chain to a finer-grain terminal) build hop by hop through the
+    # fixpoint. Deliberately LAST and only when nothing else is pending:
+    # mid-enumeration disconnection is transient (the next coverage binder may
+    # connect the pieces), and branching on it there reshapes covers that were
+    # never broken. Candidates that directly merge two components are
+    # preferred; otherwise any component-adjacent candidate extends a path.
+    # Minted only when a satisfier exists; a truly unbridgeable split falls to
+    # the typed fallbacks.
     if not out and len(chosen) > 1:
         comps = components(network, chosen)
         if len(comps) > 1:

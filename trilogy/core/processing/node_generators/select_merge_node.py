@@ -240,10 +240,10 @@ def _source_concepts_via_graph(
     allow_intersection: bool = False,
     filter_conditions: BuildWhereClause | None = None,
 ) -> list[StrategyNode]:
-    """Run the pruned-graph → subgraph → SelectNode pipeline for a list of concepts.
+    """Run the pruned-graph, subgraph, SelectNode pipeline for a list of concepts.
 
-    conditions: used for graph pruning (which datasources to keep).
-    filter_conditions: if set, used for WHERE application in SelectNodes instead of conditions.
+    `conditions` drives graph pruning; `filter_conditions`, when set, is what
+    the SelectNodes apply as WHERE instead.
     """
     orig_concepts = list(concepts)
     sourceable_condition_atoms = (
@@ -662,12 +662,11 @@ def gen_select_merge_node(
         f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for normals: {normals}, abstract_props: {abstract_props}, constants: {constants}, conditions: {conditions}"
     )
     # A request that is EXACTLY a coalescing (`full`/`union`) axis is a query
-    # about the unified domain: datasource scoring here would project one
-    # member's table as the axis. Decline it — the discovery loop's ROOT
-    # dispatch assembles the mandatory coalesce of every member side
-    # (gen_coalescing_axis_node) and owns condition application (a presence
-    # probe filter must land post-merge). Any other output in the request
-    # means the author is querying a side; those stay on this path.
+    # about the unified domain; datasource scoring here would project one
+    # member's table as the axis. Decline it so the discovery loop's ROOT
+    # dispatch assembles every member side (gen_coalescing_axis_node) and
+    # applies conditions post-merge. Any other output in the request means
+    # the author is querying a side; those stay on this path.
     if (
         len(normals) == 1
         and not abstract_props
@@ -693,7 +692,6 @@ def gen_select_merge_node(
                 [p], g, environment, depth + 1, accept_partial, conditions
             )
         ]
-        # all found
         if len(abstract_nodes) < len(abstract_props):
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} not all abstract properties could be sourced, cannot generate select node."
@@ -774,12 +772,11 @@ def gen_select_merge_node(
                 conditions,
             )
         if not parents and conditions:
-            # Retry with only "covered" condition atoms (those implied by some datasource's
-            # non_partial_for) for graph pruning. Foreign datasources (e.g. tree_enrichment
-            # when filtering by city='USSFO') are kept via the intersection check since the
-            # condition is guaranteed to be applied by the owning partial datasource.
-            # The original conditions are still passed as filter_conditions so that
-            # per-datasource WHERE clauses (e.g. tree_category='deciduous') are preserved.
+            # Retry pruning with only the condition atoms implied by some
+            # datasource's non_partial_for; the owning partial datasource is
+            # guaranteed to apply them, so foreign datasources survive via the
+            # intersection check. The full conditions still go through as
+            # filter_conditions so per-datasource WHERE clauses are preserved.
             covered = covered_conditions(conditions, environment)
             if covered:
                 parents = _source_concepts_via_graph(
@@ -821,12 +818,10 @@ def gen_select_merge_node(
             _merge_condition_routing(parents, all_concepts, conditions)
         )
 
-        # When the merge's joined grain (e.g. customer_id from agg + dim) is
-        # finer than the outer target's grain (e.g. region) — and the target
-        # is reachable from the merge grain via property-of-key — the merge
-        # needs to SUM-roll additive aggregates up to the target grain.
-        # Mark force_group + rollup_concepts so the renderer emits SUM and
-        # GROUP BY at the merge level.
+        # When the merge's joined grain is finer than the target grain and the
+        # target is reachable from it via property-of-key, the merge must
+        # SUM-roll additive aggregates up: force_group + rollup_concepts make
+        # the renderer emit SUM and GROUP BY at the merge level.
         additive_aggs = [
             c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)
         ]
@@ -858,12 +853,10 @@ def gen_select_merge_node(
                 rollup_at_merge = additive_aggs
                 force_merge_group = True
 
-        # A parent whose own group was deferred past this merge (so a pushed
-        # WHERE could apply after the join) contributes its ungrouped, finer
-        # row grain to the join. Left alone, the merge's grain defaults to that
-        # finer pregrain and the deferred normalization vanishes — an aggregate
-        # with an intermediate input grain (e.g. count(grain(...))) then counts
-        # physical rows. Force the regroup back to the merge's own output grain.
+        # A parent whose group was deferred past this merge contributes its
+        # ungrouped, finer row grain. Left alone, the merge's grain defaults to
+        # that pregrain and the deferred normalization vanishes, so force the
+        # regroup back to the merge's own output grain.
         merge_grain: BuildGrain | None = None
         if any(p.group_deferred for p in parents):
             merge_grain = BuildGrain.from_concepts(normals, environment=environment)

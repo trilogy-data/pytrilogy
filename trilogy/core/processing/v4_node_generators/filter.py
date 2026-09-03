@@ -15,7 +15,7 @@ from .common import parent_outputs_needed
 
 
 def _has_concept_existence(where: BuildWhereClause) -> bool:
-    """True only for a REAL subselect arg (`x in <other column/select>`) — one
+    """True only for a REAL subselect arg (`x in <other column/select>`), one
     whose existence side carries concepts. A literal IN-list (`month in (1,2,3,4)`)
     is also modeled as a subselect comparison but has no existence concepts, so it
     is a plain scalar predicate safe to push into a WHERE."""
@@ -32,7 +32,7 @@ def gen_filter(
     existence_source: bool = False,
 ) -> StrategyNode | None:
     """Apply a row filter over already-built parents. Filter doesn't reshape
-    rows or remove columns — it just selects a subset of rows. So pass
+    rows or remove columns; it just selects a subset of rows. So pass
     through every parent output as well as the filter's own primaries; any
     downstream consumer (e.g. an aggregate that needs a grain key) can then
     reach back through the filter without us having to predict its needs at
@@ -40,7 +40,7 @@ def gen_filter(
 
     An ``existence_source`` filter is a semijoin RHS (`pcid in store_buyers`):
     its only consumer is the IN-subselect, which reads just the set value. Drop
-    the pass-through so the filter's own concept is the sole output — then its
+    the pass-through so the filter's own concept is the sole output; then its
     single predicate pushes into a real WHERE (a pruned sub-query) below, instead
     of a row-preserving CASE over carried scan columns."""
     pass_through: list[BuildConcept] = []
@@ -54,7 +54,7 @@ def gen_filter(
     full_outputs = list(outputs) + pass_through
 
     # A filter concept's own predicate (`filter X where COND`) restricts rows
-    # when the concept is fetched as its own group — push it down from the
+    # when the concept is fetched as its own group: push it down from the
     # value-only `CASE WHEN COND THEN X ELSE NULL` projection into this node's
     # WHERE. (When the filter instead rides alongside a broader dimension whose
     # rows must survive, the planner folds it into a basic projection and never
@@ -62,7 +62,7 @@ def gen_filter(
     #   * the group's filter outputs share a SINGLE distinct predicate. Multiple
     #     distinct predicates mean fused conditional-aggregate columns (e.g.
     #     `price ? channel=STORE`, `price ? channel=WEB`) that each render as
-    #     their own CASE WHEN over the shared scan — AND-ing the mutually
+    #     their own CASE WHEN over the shared scan; AND-ing the mutually
     #     exclusive predicates into one WHERE would null out every row.
     #   * the predicate is a plain scalar with no existence/semijoin arg: a
     #     subselect needs its existence source wired as a side parent (which
@@ -71,11 +71,10 @@ def gen_filter(
     #     concept being filtered) and not the content itself. Surviving rows
     #     still carry valid grain keys, so a key like `product_id` beside
     #     `name ? product_id%2=0` is safe. But a sibling that IS the content
-    #     (selecting raw `order_id` beside `filter order_id where ...`, or
-    #     q61's raw `ext_sales_price` beside `price ? promo`) or one finer than
-    #     the content's grain (`order_id` beside `filter store_id where
-    #     order_id%2=0`) must keep all rows — render those as a CASE WHEN by
-    #     not pushing.
+    #     (selecting raw `order_id` beside `filter order_id where ...`, or a
+    #     raw `price` beside `price ? promo`) or one finer than the content's
+    #     grain (`order_id` beside `filter store_id where order_id%2=0`) must
+    #     keep all rows; render those as a CASE WHEN by not pushing.
     # Then AND the single predicate with any injected query-level condition.
     filter_lineages = [
         o.lineage for o in outputs if isinstance(o.lineage, BuildFilterItem)
@@ -110,23 +109,23 @@ def gen_filter(
     # a precomputed column the predicate is a row filter over the joined stream.
     # Push it referencing that column instead of rendering a
     # `CASE WHEN agg THEN X ELSE NULL` projection, which leaks non-matching rows as
-    # NULL groups. The aggregate need not be at the content's own grain — it may be
+    # NULL groups. The aggregate need not be at the content's own grain; it may be
     # a coarser value bridged in through a fact (`product_name ? count(order) by
     # customer > 1` filters product rows by their customers' counts); applying the
     # predicate as a WHERE before the output dedup is still a correct row filter.
     # Gated: single predicate, no existence/semijoin arg, every referenced concept
     # already a parent output (so we never re-aggregate), and the predicate is
-    # constant across the rows of every non-filter sibling — i.e. the grain the
+    # constant across the rows of every non-filter sibling, i.e. the grain the
     # predicate varies over (`pred_grain`, the union of its row args' grains) is a
     # subset of each sibling's grain. When it is, WHERE and the preserving CASE
     # agree, so pushing to WHERE just drops non-matching rows the dedup would drop
     # anyway (`customer ? count(order) by customer > 1`: pred at customer grain,
     # sibling customer). When the predicate reaches a FINER grain than a sibling
     # (`customer ? count > 1 and product_name = 'Mouse', customer`: pred spans
-    # customer×product, sibling customer) a single customer can have both matching
-    # and non-matching product rows — WHERE would drop the customer entirely, so we
-    # must leave a preserving CASE. A sole filter output (no siblings) always
-    # pushes.
+    # customer x product, sibling customer) a single customer can have both
+    # matching and non-matching product rows; WHERE would drop the customer
+    # entirely, so we must leave a preserving CASE. A sole filter output (no
+    # siblings) always pushes.
     if not intrinsic_atoms and intrinsic_filter_pushdown and len(distinct) == 1:
         where = next(iter(distinct.values()))
         cond = where.conditional

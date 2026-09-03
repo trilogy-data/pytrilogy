@@ -27,12 +27,12 @@ class V4History(History):
     # recursive connector whose own input search re-routes through it).
     connectors_in_progress: set[str] = field(default_factory=set)
     # `SourceNetwork.signature()` -> the search's verdict. Holds no build
-    # information — a SourceSolution is node names, addresses and integers — and
+    # information (a SourceSolution is node names, addresses and integers) and
     # is scoped to one build request, since a fresh V4History is minted per
     # statement and per nested sub-build. The ROOT planner asks the same question
     # several times per query.
     search_cache: dict[tuple, SearchResult] = field(default_factory=dict)
-    # `_network_source` outcomes that hand out NO network objects — "none"
+    # `_network_source` outcomes that hand out NO network objects: "none"
     # (decline to the fall-through planners) and "defer" (a one-scan solution
     # that is `_direct_source`'s job). Keyed on addresses + conditions like
     # `_v4_key`, safe within one history for the same reason `build_history`

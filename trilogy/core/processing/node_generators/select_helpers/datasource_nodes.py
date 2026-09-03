@@ -69,11 +69,9 @@ def finalize_select_node(
 
     node = candidate.node
     # When the concept set was widened with filter-only columns so a pushed
-    # WHERE could be sourced, the source can be finer than the requested grain
-    # (e.g. count(<key>) off a datasource whose grain is below <key>). The
-    # condition is applied on `node`, so its filter columns are already
-    # consumed — collapse back to the requested grain here, *after* the
-    # condition, instead of letting the request fan out.
+    # WHERE could be sourced, the source can be finer than the requested grain.
+    # The condition is applied on `node`, so collapse back to the requested
+    # grain here, after the condition, instead of letting the request fan out.
     if requested_concepts is not None and not defer_group:
         req_addrs = {c.canonical_address for c in requested_concepts}
         output_addrs = {c.canonical_address for c in node.usable_outputs}
@@ -303,10 +301,9 @@ def create_datasource_node(
         or datasource_grain.issubset(c.grain)
         or (c.is_aggregate and c.address in datasource_output_addresses)
         # Same metric, different spelling: an inline alias whose grain is a
-        # property of this table's grain key (`carrier.name` over a
-        # `carrier.code` summary) shares neither address nor canonical with the
-        # bound column. No re-aggregation is involved — the scan is already at
-        # or above the target grain, exactly like the address clause above.
+        # property of this table's grain key shares neither address nor
+        # canonical with the bound column. No re-aggregation is involved; the
+        # scan is already at or above the target grain.
         or (
             c.is_aggregate
             and datasource_grain.issubset(target_grain)
@@ -347,10 +344,10 @@ def create_datasource_node(
             conditions.conditional, datasource.non_partial_for.conditional
         )
     )
-    # A ~ grain key whose universe is pinned to this datasource by a membership-
-    # proving WHERE (a returns-only column proven non-null) is complete for this
-    # result even without a table-level ``complete where`` — so the discovery loop
-    # must not see it come back partial and re-source it from a sibling anchor.
+    # A ~ grain key whose universe is pinned to this datasource by a
+    # membership-proving WHERE is complete for this result even without a
+    # table-level ``complete where``, so the discovery loop must not see it
+    # come back partial and re-source it from a sibling anchor.
     membership_complete = (
         set()
         if partial_is_full
@@ -363,13 +360,11 @@ def create_datasource_node(
         datasource, conditions, injected_conditions, partial_is_full
     )
 
-    # A column the scan's own applied WHERE proves non-null (e.g.
-    # ``store.id IS NOT NULL``) is not nullable in this node's output, so it
-    # must not carry NULLABLE downstream — otherwise the join scorer picks an
-    # OUTER join rendered as ``is not distinct from`` (defeats hash joins).
-    # Gate on routed_conditions: only filters actually pushed into this scan.
-    # Consumers that judge the condition itself must not trust the resulting
-    # absence — see StrategyNode._refine_nullable_for_conditions.
+    # A column the scan's own applied WHERE proves non-null is not nullable in
+    # this node's output and must not carry NULLABLE downstream; otherwise the
+    # join scorer picks a null-safe OUTER join. Gate on routed_conditions: only
+    # filters actually pushed into this scan. See
+    # StrategyNode._refine_nullable_for_conditions for the consumer caveat.
     proven_non_null = (
         condition_proves_non_null(routed_conditions) if routed_conditions else set()
     )
@@ -379,9 +374,8 @@ def create_datasource_node(
 
     for x in all_concepts:
         # A signature-matched aggregate is an input of this scan even though no
-        # column carries its address or canonical — `aggregate_column_for`
-        # resolves it, and without the input entry it has no source_map binding
-        # and renders as an unbound reference.
+        # column carries its address or canonical; without the input entry it
+        # has no source_map binding and renders as an unbound reference.
         if x not in all_inputs and (
             x in canonical_all
             or x.address in rollup_addresses
@@ -418,9 +412,9 @@ def create_datasource_node(
             ]
         ),
         rollup_concepts=rollup_concepts,
-        # a BASIC derivation computed at this scan (`l_key + 1`) is NULL
-        # wherever its nullable argument is — stamp it here or downstream
-        # non-null proofs walk through this node and strip null-safety
+        # a BASIC derivation computed at this scan is NULL wherever its
+        # nullable argument is; stamp it here or downstream non-null proofs
+        # strip null-safety
         nullable_concepts=[
             c
             for c in output_concepts
@@ -499,7 +493,7 @@ def create_union_datasource_candidate(
         force_group = force_group or fg
         if fg:
             group_source_count = max(group_source_count, 1)
-    # Computed over the condition-filtered branches, not the full child list —
+    # Computed over the condition-filtered branches, not the full child list:
     # a dropped branch can't contribute (or heal) partiality.
     intrinsic_addrs = union_unhealed_partial_addresses(child for child, _ in effective)
     union_partials: list[BuildConcept] = (

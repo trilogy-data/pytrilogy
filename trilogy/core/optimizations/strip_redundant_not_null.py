@@ -1,35 +1,25 @@
 """Drop tautological ``X IS NOT NULL`` atoms from a CTE's condition.
 
-Once join types and CTE nullability have settled, ``nullable_concepts`` reflects
-the real join tree: a column that is non-null in its source and not padded by any
-outer join feeding the CTE can never be NULL there, so an ``IS NOT NULL`` on it is
-a tautology — pure noise that only pins the concept into the CTE.
+Runs on the built query tree, where ``nullable_concepts`` reflects the real join
+path: a column non-null at its source and not padded by any outer join feeding the
+CTE can never be NULL there. Before join planning only model nullability is known,
+which would force a global over-conservative guess.
 
-This deliberately runs on the built query tree rather than pre-resolution. Before
-join planning the only signal is model nullability, which forces a global,
-over-conservative guess (a column non-null in its own table can still be padded by
-an outer join two hops away). Here the join path is known.
-
-Absence from ``nullable_concepts`` is NOT sufficient proof on its own: build-time
-refinement (``StrategyNode._refine_nullable_for_conditions`` and the
-``proven_non_null`` gates in the scan/group layers) removes a concept from the
-nullable set when the node's own WHERE null-rejects it, so downstream join
-planning sees post-filter truth. Trusting that refined set to judge the very
-condition that did the proving is circular — it strips the only thing keeping the
-column non-null (q78: an authored ``customer IS NOT NULL`` on a source-nullable
-FK silently vanished). So a drop additionally requires the concept to be
-non-nullable at ground truth — never bound nullable at a base table and never
-outer-join padded anywhere in the CTE's source tree
+Absence from ``nullable_concepts`` is not sufficient on its own: build-time
+refinement removes a concept from the nullable set when the node's own WHERE
+null-rejects it, so judging that very condition by the refined set is circular and
+would strip the only thing keeping the column non-null. A drop additionally
+requires the concept to be non-nullable at ground truth: never bound nullable at a
+base table and never outer-join padded anywhere in the CTE's source tree
 (``_unfiltered_nullable_addresses``).
 
-To stay sound the concept must also be a tracked, non-derived output of the CTE:
+The concept must also be a tracked, non-derived output of the CTE:
 
-- ``Derivation.ROOT``: a derived concept (FILTER/BASIC ``CASE`` …) can be NULL via
+- ``Derivation.ROOT``: a derived concept (FILTER, ``CASE``, ...) can be NULL via
   its own expression, which ``nullable_concepts`` does not record.
 - present in ``output_columns``: only there is ``nullable_concepts`` authoritative.
-  A concept that appears solely inside the condition (e.g. a WHERE-only key that an
-  aggregate dropped from its outputs) is not tracked, so absence from the nullable
-  set says nothing about whether it can be NULL.
+  A concept appearing solely inside the condition is not tracked, so absence from
+  the nullable set says nothing about whether it can be NULL.
 """
 
 from __future__ import annotations
@@ -50,13 +40,10 @@ from trilogy.core.processing.utility import find_nullable_concepts
 
 def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
     """Addresses that could be NULL anywhere in ``source``'s tree absent all
-    WHERE filtering: intrinsic nullability at base-table bindings plus
-    outer-join padding at every level.
-
-    Intermediate ``nullable_concepts`` lists are condition-refined, so they
-    cannot distinguish "never nullable" from "nullable but currently filtered";
-    walking to the ``BuildDatasource`` leaves recovers the unrefined truth.
-    Over-approximate on purpose: a false positive only keeps a redundant guard.
+    WHERE filtering: base-table nullability plus outer-join padding at every
+    level. Intermediate ``nullable_concepts`` lists are condition-refined, so
+    the walk goes to the ``BuildDatasource`` leaves. Over-approximate on
+    purpose: a false positive only keeps a redundant guard.
     """
     out: set[str] = set()
     stack: list[QueryDatasource] = [source]

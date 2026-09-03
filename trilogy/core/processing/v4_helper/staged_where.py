@@ -5,8 +5,8 @@ the rows passing stages 1..N-1. Two places act on that: the group graph
 delivers earlier stages' atoms onto a later stage's computation hosts
 (`condition_placement._staged_precondition_placements`), and ROOT re-applies
 them when it re-sources such a computation standalone
-(`root._staged_precondition_clauses`). Both have to answer the same question —
-which stage computes this cross-row value, and what came before it — so the
+(`root._staged_precondition_clauses`). Both have to answer the same question
+(which stage computes this cross-row value, and what came before it), so the
 rules live here rather than drifting apart in two modules.
 """
 
@@ -24,8 +24,8 @@ def stage_lineage_addresses(clause: BuildWhereClause) -> set[str]:
     """A stage's row-argument addresses plus one level of lineage.
 
     A stage can reference its cross-row computation through a scalar wrapper
-    (`1.3 * avg(x) by k > 5`), and it is the inner anonymous aggregate — not
-    the wrapping concept — that the planner buckets and that ROOT re-sources,
+    (`1.3 * avg(x) by k > 5`), and it is the inner anonymous aggregate, not
+    the wrapping concept, that the planner buckets and that ROOT re-sources,
     so matching has to see through the wrapper.
     """
     addresses = {c.address for c in clause.row_arguments}
@@ -43,7 +43,7 @@ def concept_is_cross_row(concept: BuildConcept) -> bool:
 
 
 def cross_row_stage_args(clause: BuildWhereClause) -> list[BuildConcept]:
-    """The stage's row arguments that compute across rows — the computations
+    """The stage's row arguments that compute across rows: the computations
     whose input population the staged contract bounds."""
     return [c for c in clause.row_arguments if concept_is_cross_row(c)]
 
@@ -70,7 +70,7 @@ def hosting_stage_index(
     scalar stage would answer for `sum(z) by x` and drag that aggregate's own
     gate into the conditions used to re-source it.
 
-    Returns None when no stage computes any of `args` — including when none of
+    Returns None when no stage computes any of `args`, including when none of
     them is cross-row, which is the case for an ordinary row-column re-source
     that needs no stage bound at all.
     """

@@ -8,9 +8,8 @@ Stage 4 assembles the FINAL sink by merging the minimum materialized
 contributors that cover the mandatory outputs, then applies final-only
 filters and output-grain deduping.
 
-No source-concepts callback: parents are explicit, derived from the group
-graph's lineage edges. Generators that haven't been ported to the v4 flat
-style fall back inside `v4_node_generators.dispatch.build_node`."""
+Parents are explicit, derived from the group graph's lineage edges;
+generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -202,15 +201,14 @@ def _group_existence_arg_groups(
     environment: BuildEnvironment,
     gid: str,
 ) -> list[tuple[BuildConcept, ...]]:
-    """The SubselectComparison RHS arg groups this group filters against —
-    sourced from both the WHERE atoms injected here AND the intrinsic where of
-    any FILTER concept the group computes (q08's `zips in substring(...)` lives
-    in `final_zips`'s lineage, not an injected atom).
+    """The SubselectComparison RHS arg groups this group filters against, from
+    both the WHERE atoms injected here and the intrinsic where of any FILTER
+    concept the group computes.
 
-    Each comparison's RHS stays ONE tuple. A composite membership renders
-    against a single subselect source, so the tuple -- not the address -- is
-    the unit of sourcing; flattening it here is what let a pair be fed from
-    two independent dimension groups (a cross product, not co-occurrence)."""
+    Each comparison's RHS stays one tuple: a composite membership renders
+    against a single subselect source, so the tuple, not the address, is the
+    unit of sourcing. Flattening would let a pair be fed from two independent
+    dimension groups (a cross product, not co-occurrence)."""
     out: list[tuple[BuildConcept, ...]] = []
     for atom in _atoms_at(attrs, gid):
         out.extend(atom.existence_arguments)
@@ -227,10 +225,9 @@ def _lineage_existence_arg_groups(
 ) -> list[tuple[BuildConcept, ...]]:
     """Existence arg groups reachable through the lineage of `concepts`.
 
-    A FILTER with a semijoin where (q08 `_virt_filter_zips`) is often inlined
-    into the BASIC concept that wraps it (`final_zips = substring(filter, 1,
-    2)`) rather than built as its own node, so the existence arg lives a few
-    lineage hops down."""
+    A FILTER with a semijoin where is often inlined into the BASIC concept
+    that wraps it rather than built as its own node, so the existence arg can
+    live a few lineage hops down."""
     out: list[tuple[BuildConcept, ...]] = []
     visited: set[str] = set()
     stack = list(concepts)
@@ -242,9 +239,8 @@ def _lineage_existence_arg_groups(
         if isinstance(concept.lineage, BuildFilterItem):
             out.extend(concept.lineage.where.existence_arguments or ())
         # A BASIC concept whose lineage is (or wraps) a membership comparison
-        # (`x in <set>`, e.g. a projected `--x in set as flag`) carries the set
-        # as a direct existence arg; without this its subselect renders against a
-        # dangling CTE (INVALID_REFERENCE_BUG).
+        # (`x in <set>`, e.g. a projected `x in set as flag`) carries the set
+        # as a direct existence arg that needs a feeder too.
         elif isinstance(concept.lineage, BuildConceptArgs):
             out.extend(concept.lineage.existence_arguments or ())
         if concept.lineage is not None:
@@ -261,24 +257,20 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
 
 
 class _CleanFeederCache:
-    """Builds a STANDALONE source for an existence (`IN <subselect>`) arg group,
+    """Builds a standalone source for an existence (`IN <subselect>`) arg group,
     independent of the already-built strategy tree.
 
     When the only built group producing an existence concept is a lineage
-    descendant of its own consumer (a self-referential membership like
-    `week_seq in relevent_week_seq`, whose `relevent_week_seq` filter group reads
-    the membership-conditioned ROOT), wiring that built node as the subselect
-    feeder forms a cycle. `_existence_parents_for` would otherwise `_deep_copy_
-    node` the whole conditioned subtree to break it -- acyclic but catastrophically
-    verbose (q2.1: the deep copy fires per consumer and compounds into a 60k-char
-    re-filter chain). The set Y in `X in Y` is by definition the UNFILTERED set, so
-    re-source it from its own lineage (no outer conditions) once and share the
-    result. Cached per arg group; returns independent copies so each consumer
-    owns its parent pointer.
+    descendant of its own consumer (a self-referential membership whose filter
+    group reads the membership-conditioned ROOT), wiring that built node as the
+    subselect feeder forms a cycle. The set Y in `X in Y` is by definition the
+    unfiltered set, so it is re-sourced from its own lineage (no outer
+    conditions) once and shared. Cached per arg group; returns independent
+    copies so each consumer owns its parent pointer.
 
-    A multi-component group is searched as ONE unit, so the feeder is the
-    tuple's co-occurrence island (the same thing `search_parent(existence_args)`
-    builds on the plain-`where` path) rather than a per-component source."""
+    A multi-component group is searched as one unit, so the feeder is the
+    tuple's co-occurrence island (as `search_parent(existence_args)` builds on
+    the plain-`where` path) rather than a per-component source."""
 
     def __init__(
         self,
@@ -306,7 +298,7 @@ class _CleanFeederCache:
         addresses = {concept.address for concept in group}
         if len(group) == 1:
             # A single-column set can be widened to its keys: the extra columns
-            # only shape the feeder's grain. A tuple must not be widened -- an
+            # only shape the feeder's grain. A tuple must not be widened; an
             # extra column would change which rows the subselect projects.
             addresses |= set(group[0].keys or set())
         search = [
@@ -379,12 +371,10 @@ def _existence_parents_for(
         # `copy()` shallow-shares parents, so a candidate whose subtree
         # contains `skip` would wire `skip -> candidate -> ... -> skip`, a
         # row-stream cycle that recurses forever in `resolve()`. The set in
-        # `X in <candidate>` is the UNFILTERED set, so re-source it
-        # standalone (no outer conditions) and share that acyclic feeder --
-        # far cheaper than deep-copying the whole conditioned subtree per
-        # consumer (q2.1: the deep copy compounds to 60k chars). Fall back
-        # to the deep copy only when no standalone feeder can be built, so
-        # the cycle is still broken (acyclic, just verbose).
+        # `X in <candidate>` is the unfiltered set, so re-source it standalone
+        # (no outer conditions) and share that acyclic feeder. Fall back to a
+        # deep copy of the conditioned subtree only when no standalone feeder
+        # can be built: still acyclic, just verbose.
         is_cyclic = skip is not None and any(
             n is skip for n in _strategy_nodes(source_node)
         )
@@ -437,7 +427,7 @@ def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
 
 
 def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
-    """The concrete datasources scanned in this subtree -- its physical join
+    """The concrete datasources scanned in this subtree: its physical join
     footprint. Used to decide whether a per-consumer ROOT re-slice genuinely
     prunes a join or merely re-derives the same conditioned scan."""
     return {
@@ -473,7 +463,7 @@ def _attach_existence_to_node(
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> None:
     """Wire the SubselectComparison right sides as `existence_concepts` plus
-    extra parents -- the SQL renderer emits them as a subselect lookup against
+    extra parents; the SQL renderer emits them as a subselect lookup against
     the parent CTE rather than joining them into the row stream."""
     if not arg_groups:
         return
@@ -548,12 +538,10 @@ def _feeder_conditions_implied(
     it AND at its ancestors) is also applied in the grouping sibling's subtree.
 
     A redundant fact-rescan feeder can only be dropped in favor of a co-grain
-    grouping sibling if the sibling's rows are filtered at least as much — else
-    dropping the feeder silently widens the row set. q81's feeder carries only the
-    metric's pre-filter (``return_address.state is not null``), which the d1 twin
-    also applies, so it drops. q30.alt's feeder carries the POST-aggregate
-    ``billing_customer.address.state = 'GA'`` (on its parent ROOT scan) that the
-    twin does NOT apply — keep it (dropping selects non-GA customers)."""
+    grouping sibling if the sibling's rows are filtered at least as much;
+    otherwise dropping the feeder silently widens the row set. A feeder whose
+    parent scan carries a post-aggregate condition the sibling does not apply
+    must stay."""
     feeder = _atoms_at(attrs, feeder_gid) + _accumulated_atoms_above(
         group_graph, attrs, feeder_gid
     )
@@ -566,17 +554,15 @@ def _feeder_conditions_implied(
 
 
 def node_nulls_grouping_keys(node: StrategyNode) -> bool:
-    """Whether this node emits ROLLUP/CUBE/GROUPING SETS rows — subtotal rows
+    """Whether this node emits ROLLUP/CUBE/GROUPING SETS rows: subtotal rows
     whose rolled-up key columns are NULL.
 
     The node-level companion to `nulls_grouping_keys`, and a two-sided
-    contract: such a node is passed through the FINAL *without* a dedup
-    (`_group_to_grain_if_required` — a dedup would re-aggregate the subtotals
-    away), and therefore nothing may join back to it on a key that is not
-    unique, because no later dedup will absorb the duplicates. Both halves must
-    ask this one question or they drift apart, which is exactly how a rename
-    came to be read by joining a ROLLUP back to a non-unique dimension column
-    (q18)."""
+    contract: such a node passes through the FINAL without a dedup
+    (`_group_to_grain_if_required`; a dedup would re-aggregate the subtotals
+    away), so nothing may join back to it on a non-unique key, because no
+    later dedup will absorb the duplicates. Both halves must ask this one
+    question or they drift apart."""
     return any(
         nonstandard_grouping_lineage(o) is not None for o in node.output_concepts
     )
@@ -633,7 +619,7 @@ def _parent_nodes_for(
     of concepts this group actually consumes). Pass-through nodes like
     filter re-expose their parent's columns, so root often ends up
     redundant once filter is in the candidate set. Including both creates
-    multi-parent ambiguity for non-merge generators — no JOIN gets
+    multi-parent ambiguity for non-merge generators: no JOIN gets
     emitted and the SQL renderer references the dropped parent by name,
     yielding a binder error."""
     candidates: list[tuple[str, StrategyNode]] = []
@@ -656,7 +642,7 @@ def _parent_nodes_for(
             )
         ):
             continue
-        # Existence-kind edges feed a subselect, not the row stream —
+        # Existence-kind edges feed a subselect, not the row stream;
         # `_attach_existence_sources` wires them as side-channel parents post-
         # build. Including them here would put them in JOIN dedup and
         # mistakenly merge their row stream into this group's FROM.
@@ -681,14 +667,12 @@ def _parent_nodes_for(
             expanded: list[tuple[str, StrategyNode]] = []
             changed = False
             for pgid, node in candidates:
-                # Don't fold a row-preserving group whose output is ALSO produced
+                # Don't fold a row-preserving group whose output is also produced
                 # by another already-built node (a condition-phase twin
-                # materialized as its own CTE). Folding it here re-roots the
-                # aggregate on the grandparent, but the resolver then binds the
-                # folded column to that sibling CTE -- which isn't in the
-                # aggregate's FROM -> dangling reference (test_or_membership: the
-                # `_virt_filter` sum input is co-produced by the `in cat_qual /
-                # web_qual` membership feeder CTE).
+                # materialized as its own CTE). Folding re-roots the aggregate on
+                # the grandparent, but the resolver then binds the folded column
+                # to that sibling CTE, which isn't in the aggregate's FROM: a
+                # dangling reference.
                 pgid_outputs = set(attrs[pgid].primary_members)
                 co_materialized = any(
                     other != pgid
@@ -703,9 +687,9 @@ def _parent_nodes_for(
                     and attrs[pgid].derivation != Derivation.ROOT
                     # Preserve a provider shared by grouping consumers.
                     # Re-rooting only this aggregate forces the other grouping
-                    # branch to retain the projection, then rejoin it (q28's
-                    # bucket_id/filtered_lp). Row-preserving consumers can
-                    # still inline independently and fold later (q50).
+                    # branch to retain the projection, then rejoin it.
+                    # Row-preserving consumers can still inline independently
+                    # and fold later.
                     and not _provider_feeds_other_grouping(
                         group_graph, attrs, pgid, gid
                     )
@@ -717,7 +701,7 @@ def _parent_nodes_for(
                     # spec must stay materialized by its own projection:
                     # folding it re-renders the key inline from its source
                     # columns, and grouping(<key>) then names an expression the
-                    # GROUP BY clause doesn't (q80/q14 invalid-SQL hazard).
+                    # GROUP BY clause doesn't.
                     and not (pgid_outputs & nonstandard_key_addresses)
                     and node.conditions is None
                     and not node.force_group
@@ -767,8 +751,7 @@ def _parent_nodes_for(
         slice_addresses = needed & parent_outputs
         # A scoped-relation member this scan carries for its MATE (the rowset
         # handle the merge joins on) is rendered from the mate's own column, so
-        # the slice has to keep that column even though the consumer never named
-        # it -- `r_filtered.ritem` off the sales scan IS `local.item`.
+        # the slice keeps that column even though the consumer never named it.
         for address in sorted(slice_addresses):
             slice_addresses |= _relation_mates(address, environment) & parent_outputs
         if not slice_addresses or slice_addresses == parent_outputs:
@@ -776,18 +759,15 @@ def _parent_nodes_for(
         # Adopt a narrower rebuild only when it strictly prunes the source set
         # (drops a join the slice no longer spans). Otherwise re-deriving the
         # same conditioned join just to carry fewer columns is pure CTE
-        # duplication -- share the already-built ROOT and let column projection
-        # narrow it (q94: a count(order_number) consumer of a filtered
-        # web_sales-dim join must not re-source the whole join).
-        # ...unless the shared ROOT carries the WRONG SIDE of a relation this
-        # consumer reads from its mate. `count(rs.return_quantity)` under
-        # `union join quantity = rs.return_quantity` needs the rowset's column;
-        # the anchor's `quantity` is the same axis, so the merge above pairs on
-        # it too and the returns join goes from a 2-key match to a 3-key one
-        # that matches nothing. Projection can't shed it -- the two members are
-        # pseudonyms, so the shared CTE exposes the handle's alias off `quantity`
-        # whatever the node's outputs say. Only a scan without the column will
-        # do, and the rebuild is that scan.
+        # duplication: share the already-built ROOT and let column projection
+        # narrow it.
+        # The exception is a shared ROOT carrying the WRONG SIDE of a relation
+        # this consumer reads from its mate: under `union join a = rs.b`, a
+        # consumer of `rs.b` needs the rowset's column, and the anchor's `a` is
+        # the same axis, so the merge pairs on it too and the join gains a key
+        # that matches nothing. Projection can't shed it (the two members are
+        # pseudonyms, so the shared CTE exposes the handle's alias whatever the
+        # outputs say); only a scan without the column will do.
         relation_members = _statement_scoped_relation_members(environment)
         carries_wrong_side = any(
             address in relation_members
@@ -845,14 +825,13 @@ def _parent_nodes_for(
             # a sibling GROUPING contributor (an aggregate/window at this grouping
             # consumer's grain) is a redundant fact re-scan: the consumer reuses
             # the sibling's already-grouped rows, so the feeder only re-supplies
-            # grouping keys the sibling holds (q81's `sparkling` virt-filter
-            # passthrough). A feeder that ALSO feeds raw recompute inputs has
-            # columns the aggregated sibling lacks, so its `provides` is not a
-            # subset and it survives. Drop only when the sibling applies every
-            # row-reducing condition the feeder's subtree does — else the feeder
-            # narrows rows the sibling does not (q30.alt's post-aggregate GA
-            # filter) and `provides` (columns only) wouldn't catch it. Otherwise
-            # require the covering sibling be a lineage descendant.
+            # grouping keys the sibling holds. A feeder that ALSO feeds raw
+            # recompute inputs has columns the aggregated sibling lacks, so its
+            # `provides` is not a subset and it survives. Drop only when the
+            # sibling applies every row-reducing condition the feeder's subtree
+            # does; otherwise the feeder narrows rows the sibling does not and
+            # `provides` (columns only) wouldn't catch it. Otherwise require the
+            # covering sibling be a lineage descendant.
             covers_as_grouping_sibling = (
                 attrs[gid].derivation in GROUPING_DERIVATIONS
                 and attrs[pgid].derivation not in GROUPING_DERIVATIONS
@@ -879,10 +858,9 @@ def _fold_constant_parents(
 ) -> list[StrategyNode]:
     """Fold a constant-only parent into a non-constant sibling instead of
     cross-joining it ON 1=1. A constant is a literal rendered inline, valid in
-    any projection (aggregate/window/select), so append its needed constants to
-    a sibling's outputs and drop the constant scan, so a `'abc' as label`
-    renders straight in the consuming SELECT rather than as its own CTE. Constants not in `needed` (the `by all_rows` grand-total marker) are
-    just dropped."""
+    any projection, so its needed constants are appended to a sibling's outputs
+    and the constant scan is dropped. Constants not in `needed` (the `by
+    all_rows` grand-total marker) are just dropped."""
     if len(parents) <= 1:
         return parents
     targets = [p for p in parents if not _is_constant_only(p)]
@@ -907,7 +885,7 @@ def _is_constant_only(node: StrategyNode) -> bool:
 
 
 def _same_relation(left: StrategyNode, right: StrategyNode) -> bool:
-    """Both nodes resolve to the same QueryDatasource — i.e. they render as one
+    """Both nodes resolve to the same QueryDatasource, i.e. they render as one
     CTE. Resolution is cached on the node and happens anyway downstream."""
     return left.resolve().identifier == right.resolve().identifier
 
@@ -931,15 +909,15 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
     The planner can hand a consumer both a derived node and the very relation
-    that node was built on — e.g. a virt-filter projection plus the row scan it
+    that node was built on, e.g. a virt-filter projection plus the row scan it
     filters. Merging them joins a node back to its own source, and once the
     consumer binds the shared columns to the source side, that source becomes
     load-bearing: a full extra pass over the row-grain relation to re-read
-    columns the derived node already carries (TPC-DS q74, measured 3.7x).
+    columns the derived node already carries.
 
     Sound because the descendant's rows are all built FROM the ancestor, so
-    matching them back on their shared columns is a 1:1 self-lookup — it can
-    neither filter nor fan out. The `<=` guard is what makes that exact: the
+    matching them back on their shared columns is a 1:1 self-lookup that can
+    neither filter nor fan out. The `<=` guard makes that exact: the
     descendant must already expose every column the ancestor would contribute,
     so dropping it removes a join and nothing else."""
     if len(parents) <= 1:
@@ -975,28 +953,19 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     """Absorb a parent into a row-preserving sibling that can render it.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
-    of another parent A's outputs from B's own source — each output is either
-    directly available off B's parents or derivable from columns that are — B
+    of another parent A's outputs from B's own source (each output is either
+    directly available off B's parents or derivable from columns that are), B
     takes A's columns and A is dropped, instead of cross-joining two views of
-    the same scan (q50: a `days_to_return` projection of the base merged back
-    with the base on `1=1`; q62: two projections of one scan, one computing
-    `days_to_ship`, the other `substring(warehouse.name)`, cross-joined). This
-    also collapses the q77 catalog/store/web cross-joins (a grouping-key rename
-    or a coalesce of one aggregate the sibling already sources).
+    the same scan on `1=1`.
 
-    A real row-shape barrier A is NEVER dissolved: its rows are an aggregate,
+    A real row-shape barrier A is never dissolved: its rows are an aggregate,
     window, or row-reducing semijoin, not a row-wise re-derivable projection. A
-    finer-grain sibling can spuriously look able to "render" a GLOBAL aggregate's
-    output by recomputing the aggregate's inner expression (q22:
-    `avg(acctbal ? ...)` → the bare CASE, silently dropping `avg()`). Only a
-    row-PRESERVING contributor is foldable: a SelectNode, a plain (non-grouping)
-    MergeNode such as a multi-table root scan (q09: the root scan folds into the
-    `o_year` projection instead of self-joining on `order_id` and fanning the
-    per-order sum out by lineitem count), or a virt-filter FilterNode — a
-    CASE-WHEN projection with no row-reducing WHERE/semijoin (q62:
-    `sum(filter row_counter where days_to_ship <= 30)`, whose `w_substr`
-    dimension projection otherwise joins back on `warehouse_id` alone and fans
-    out the bucket sums).
+    finer-grain sibling can spuriously look able to "render" a global
+    aggregate's output by recomputing the aggregate's inner expression (the
+    bare CASE, silently dropping the `avg()`). Only a row-preserving
+    contributor is foldable: a SelectNode, a plain (non-grouping) MergeNode
+    such as a multi-table root scan, or a virt-filter FilterNode (a CASE-WHEN
+    projection with no row-reducing WHERE/semijoin).
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -1028,7 +997,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
-            # (a CASE-WHEN virt-filter — no row-reducing WHERE or semijoin).
+            # (a CASE-WHEN virt-filter with no row-reducing WHERE or semijoin).
             if a.force_group or not (
                 isinstance(a, (SelectNode, MergeNode)) or _is_row_preserving_filter(a)
             ):
@@ -1215,11 +1184,10 @@ def _aggregate_inputs_are_row_preserving(
             continue
         for arg in concept.lineage.function.arguments:
             # Only a top-level row-preserving BuildConcept arg lets the aggregate
-            # skip input-grain normalization. Recursing into an inline function
-            # arg (`sum(a - coalesce(b, 0))`) to collect its leaves wrongly
-            # skipped normalization even when the parent rows weren't yet at the
-            # aggregate's input grain -- miscounting (q97) and desyncing a renamed
-            # ROLLUP key from its GROUP BY (q80: invalid SQL).
+            # skip input-grain normalization. Collecting the leaves of an inline
+            # function arg (`sum(a - coalesce(b, 0))`) would skip normalization
+            # even when the parent rows aren't yet at the aggregate's input
+            # grain: miscounts, and a renamed ROLLUP key desyncs from its GROUP BY.
             if not isinstance(arg, BuildConcept):
                 return False
             if (
@@ -1233,19 +1201,15 @@ def _aggregate_inputs_are_row_preserving(
     # All-ROOT inputs are raw scan columns: the parent emits rows at the
     # datasource's natural (line) grain, which is usually FINER than the
     # aggregate's input grain (e.g. `count(order_number)` reads item|order line
-    # rows). Skipping normalization then aggregates the un-deduped rows and
-    # over-counts (q16: 818 vs 233). Force normalization so the inputs are
-    # regrouped to the aggregate's input grain first. A correctness floor until
-    # a true parent-row-grain signal can prove the skip safe (which would keep
-    # q23/q94 compact) -- deferred to the size/shape round.
+    # rows). Skipping normalization would aggregate the un-deduped rows and
+    # over-count, so force it: the inputs are regrouped to the aggregate's
+    # input grain first.
     # A FILTER over a ROOT content is the same case: the filtered copy renders
-    # as a per-row CASE, so the rows still arrive at the scan's line grain
-    # (gcat `count(launch_tag ? ...)` off the stage-grain summary: 1288 vs
-    # 1229). Classify the arg by its CONTENT's derivation. A KEY-purpose
-    # content is one step further: aggregating a key ranges over the key's
-    # distinct domain, but a DERIVED key (BASIC over row columns) is computed
-    # per scan row, so its rows also arrive at line grain (gcat
-    # array_agg(launch_filter) collected one entry per launch, not per code).
+    # as a per-row CASE, so the rows still arrive at the scan's line grain.
+    # Classify the arg by its CONTENT's derivation. A KEY-purpose content is
+    # one step further: aggregating a key ranges over the key's distinct
+    # domain, but a DERIVED key (BASIC over row columns) is computed per scan
+    # row, so its rows also arrive at line grain.
     if all(
         _row_content_derivation(arg) == Derivation.ROOT
         or _row_content(arg).purpose == Purpose.KEY
@@ -1300,7 +1264,7 @@ def _project_basic_aggregate_inputs(
     # own argument (`count_distinct(warehouse)` beside `bool_or(is_returned)`)
     # and leaves it unsourced. Only ONE lineage level, so the raw column behind
     # a projected BASIC (`_ret` under `is_returned`) still stays hidden. Grain
-    # components come from the widened inputs alone -- an aggregate's `by` args
+    # components come from the widened inputs alone: an aggregate's `by` args
     # are also direct arguments, and their key grain is not part of the row
     # stream this group aggregates over. A FILTER argument renders inline as
     # a CASE over its content and WHERE row inputs, so those count as direct.
@@ -1361,7 +1325,7 @@ def _subtree_pinned_addresses(
     survive a union (other arms are unpinned) or null-extension (an outer
     join's non-preserved side), so those pins are dropped. At a join, a
     child's pin counts only when every sibling exposing the same address
-    also pins it non-extended — otherwise the merged column may bind to the
+    also pins it non-extended; otherwise the merged column may bind to the
     unpinned (or NULL-padded) source."""
     seen = seen or set()
     if id(node) in seen:
@@ -1375,7 +1339,7 @@ def _subtree_pinned_addresses(
     if isinstance(node, MergeNode):
         extended: set[str] = set()
         # A RIGHT_OUTER/FULL with an implicit (None) left side extends the
-        # whole accumulated left — treat every child but the named right
+        # whole accumulated left, so treat every child but the named right
         # side as extended (a superset of the true accumulation: safe).
         implicit_left_rights: list[str] = []
         for join in node.resolve().joins:
@@ -1422,20 +1386,18 @@ def _parents_already_at_input_grain(
     """True when the parents already emit one row per aggregate-input-grain key,
     so the input-grain normalization GROUP is a no-op.
 
-    This is the "true parent-row-grain signal" the all-ROOT normalization floor in
-    `_aggregate_inputs_are_row_preserving` defers to: when the SELECT sources its
-    rows from the dimension keyed by the input grain (q10's customer-rooted
-    `count(purchasing_customer.id)` after the buyer-set filters are isolated as
-    their own discovery), the rows are already unique at that grain, so deduping
-    them is pure SQL bloat. Proven by resolving each parent's physical row grain
-    and checking every component is functionally determined by the input-grain
-    keys -- fixing the input grain fixes the row. A finer parent key that the input
-    grain does NOT determine (q16's `item.id` under a per-order count) keeps the
-    normalization, so a fact-line scan is still regrouped before aggregation.
+    When the SELECT sources its rows from the dimension keyed by the input
+    grain, the rows are already unique at that grain, so deduping them is pure
+    SQL bloat. Proven by resolving each parent's physical row grain and
+    checking every component is functionally determined by the input-grain
+    keys: fixing the input grain fixes the row. A finer parent key that the
+    input grain does NOT determine (a per-item key under a per-order count)
+    keeps the normalization, so a fact-line scan is still regrouped before
+    aggregation.
 
     Never fires for non-standard grouping (ROLLUP/CUBE/GROUPING_SETS): those need
     the explicit normalization GROUP so a renamed grouping key stays in sync with
-    its GROUP BY clause (q80 invalid-SQL hazard)."""
+    its GROUP BY clause."""
     if not input_grain:
         return False
     if any(nonstandard_grouping_lineage(c) is not None for c in outputs):
@@ -1456,10 +1418,10 @@ def _parents_already_at_input_grain(
                 environment, keys, component, include_empty_grain=False
             )
         ]
-        # A leftover component the stream pins to a single literal (q23's
-        # `channel = 'STORE'` under the all-channel union model) can't split
-        # any input-grain key group, so the rows are still unique at the
-        # input grain without it.
+        # A leftover component the stream pins to a single literal
+        # (`channel = 'STORE'` under an all-channel union) can't split any
+        # input-grain key group, so the rows are still unique at the input
+        # grain without it.
         if not unresolved or set(unresolved) <= _subtree_pinned_addresses(parent):
             return True
         if (
@@ -1512,7 +1474,7 @@ def _widen_scan_chain(
         # A SelectNode projects ONE stream, so descending a fan-in would change
         # what the widened column means; a MergeNode joins its parents, so any
         # arm that binds the key can supply it. A grain-collapsing parent is
-        # never widened -- that would move its grouping key.
+        # never widened: that would move its grouping key.
         if isinstance(node, SelectNode) and len(node.parents) != 1:
             return False
         if not any(
@@ -1543,7 +1505,7 @@ def _widen_passthrough_group(
         if concept.address in group_outputs:
             continue
         for inner in group.parents:
-            # `force_group` on the inner scan is fine here — the wrapping
+            # `force_group` on the inner scan is fine here: the wrapping
             # GroupNode being widened performs the dedup either way.
             if not _widen_scan_chain(inner, concept):
                 continue
@@ -1562,7 +1524,7 @@ def _relation_licenses_handle(
     """Whether a declared relation lets a non-rowset scan stand in for a rowset
     handle. A scoped join (`subset join rs.k = l_key`) or an authored merge makes
     the handle a substitutable identity of a column the anchor binds; without
-    one, a rowset is opaque — its handle's row lineage alone must not let a scan
+    one, a rowset is opaque: its handle's row lineage alone must not let a scan
     over the same base re-derive it (a bare shared-key read of a renamed rowset
     key is Disconnected, never an implicit join)."""
     if concept.pseudonyms:
@@ -1580,7 +1542,7 @@ def _scoped_relation_member(environment: BuildEnvironment, address: str) -> bool
 def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]:
     """Addresses of the hidden per-rowset alias concepts a rowset body's renamed
     outputs materialize (`select aid as k` stores `local._rs_k`; see
-    ``SemanticState.mangle_rowset_alias``). These are internals of the rowset —
+    ``SemanticState.mangle_rowset_alias``). These are internals of the rowset;
     an un-renamed output's content is the base concept itself and is excluded.
     Their auto-pseudonym back to the authored source is rename plumbing, not a
     declared relation, so it never licenses synthesis on a foreign scan."""
@@ -1604,10 +1566,10 @@ def _carried_handle_is_partial(
     binding when the scan's own member of the licensing relation spans only
     part of the handle's domain: the member is a declared SUBSET side, or the
     relation is coalescing (`union`) so any single arm under-covers the axis.
-    The anchor of a subset relation still carries the handle complete (q35's
-    shape). Without the marking the scan's spelling of the handle reads as a
-    full binding, the boundary dedups away as extraneous, and the readback
-    adopts the scan's own key domain (ROWSET_XDS_RESIDUAL family)."""
+    The anchor of a subset relation still carries the handle complete. Without
+    the marking the scan's spelling of the handle reads as a full binding, the
+    boundary dedups away as extraneous, and the readback adopts the scan's own
+    key domain."""
     if concept.derivation != Derivation.ROWSET:
         return False
     subset_sides = environment.domain_graph.subset_sources()
@@ -1647,6 +1609,63 @@ def _carry_needs_grain_change(concept: BuildConcept) -> bool:
     return False
 
 
+def _join_key_concepts(
+    parents: list[StrategyNode], environment: BuildEnvironment, addresses: set[str]
+) -> list[BuildConcept]:
+    sibling_outputs: dict[str, BuildConcept] = {}
+    for parent in parents:
+        for concept in parent.output_concepts:
+            sibling_outputs.setdefault(concept.address, concept)
+    out: list[BuildConcept] = []
+    for address in sorted(addresses):
+        join_key = sibling_outputs.get(address) or _concept_at(environment, address)
+        if join_key is not None:
+            out.append(join_key)
+    return out
+
+
+def _unprojected_expression_mates(
+    parents: list[StrategyNode], environment: BuildEnvironment
+) -> set[str]:
+    """Scoped-join members that are expressions over a rowset handle, reachable
+    by two or more parents but projected by none. The boundary binding the
+    handle exposes such a member; a projection wrapper over that boundary can
+    render it but does not project it, so the merge has no pairing until it is
+    widened onto whichever parent renders it."""
+    projected = {o.address for parent in parents for o in parent.output_concepts}
+    reach = [
+        {o.address for o in parent.output_concepts} | renderable_addresses(parent)
+        for parent in parents
+    ]
+    mates: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        candidates: dict[str, BuildConcept] = {}
+        for address in group - projected:
+            mate = _concept_at(environment, address)
+            if (
+                mate is not None
+                and mate.derivation == Derivation.BASIC
+                and mate.lineage is not None
+                and any(
+                    arg.derivation == Derivation.ROWSET
+                    for arg in mate.lineage.concept_arguments
+                )
+            ):
+                candidates[address] = mate
+        if not candidates:
+            continue
+        reached = sum(
+            1
+            for available in reach
+            if group & available
+            or any(concept_satisfiable(m, available) for m in candidates.values())
+        )
+        if reached >= 2:
+            mates |= candidates.keys()
+    return mates
+
+
 def _widen_merge_join_keys(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -1654,25 +1673,31 @@ def _widen_merge_join_keys(
 ) -> None:
     if len(parents) <= 1 or not join_key_addresses:
         return
+    _carry_join_keys(
+        parents,
+        _join_key_concepts(parents, environment, set(join_key_addresses)),
+        environment,
+    )
+    mates = _unprojected_expression_mates(parents, environment)
+    if mates:
+        _carry_join_keys(
+            parents, _join_key_concepts(parents, environment, mates), environment
+        )
 
-    sibling_outputs: dict[str, BuildConcept] = {}
-    for parent in parents:
-        for concept in parent.output_concepts:
-            sibling_outputs.setdefault(concept.address, concept)
-    join_key_concepts: list[BuildConcept] = []
-    for address in sorted(join_key_addresses):
-        join_key = sibling_outputs.get(address) or _concept_at(environment, address)
-        if join_key is not None:
-            join_key_concepts.append(join_key)
+
+def _carry_join_keys(
+    parents: list[StrategyNode],
+    join_key_concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> None:
     mangled_contents = _mangled_rowset_content_addresses(environment)
 
     for parent in parents:
         # A pure dedup GroupNode (every output rides through from its parents;
-        # nothing aggregated locally — force_group dedups included) can safely
+        # nothing aggregated locally, force_group dedups included) can safely
         # carry a declared join key: the key joins its parents' row stream, and
-        # the dedup grain widens with it (`quizzical` groups by c_demo,
-        # c_name). Widen the inner scan first, then the group's own
-        # projection.
+        # the dedup grain widens with it. Widen the inner scan first, then the
+        # group's own projection.
         if isinstance(parent, GroupNode):
             inner_available = parent_output_addresses(parent)
             if parent.parents and all(
@@ -1711,10 +1736,10 @@ def _widen_merge_join_keys(
             # alone makes it look satisfiable from any scan over the same base
             # (`agg.period` and `fut.period` both descend from `s.period`), but
             # synthesizing it on ANOTHER rowset's boundary emits a different value
-            # under that address — `subset join fut.period + 53 = agg.period` then
+            # under that address: `subset join fut.period + 53 = agg.period` then
             # joins `agg.period = agg.period` off the fut side and pairs every
             # period with itself. A non-rowset parent (a plain scan the relation
-            # substitutes the handle onto, q35's anchor) is unaffected.
+            # substitutes the handle onto) is unaffected.
             if (
                 parent_rowsets
                 and isinstance(concept.lineage, BuildRowsetItem)
@@ -1722,12 +1747,11 @@ def _widen_merge_join_keys(
             ):
                 continue
             # A non-rowset parent may substitute a handle only when a declared
-            # relation licenses it (q35's anchor under `subset join rs.k =
-            # l_key`); unlicensed, the synthesis silently joins a query that
-            # is disconnected (rowset_generation_matrix islanded).
-            # A renamed output's mangled content (`_rs_k`) is equally internal
-            # — the licensed plan joins the anchor's own column against the
-            # boundary's handle, never a synthesized body-local.
+            # relation licenses it (the anchor under `subset join rs.k = l_key`);
+            # unlicensed, the synthesis silently joins a query that is
+            # disconnected. A renamed output's mangled content (`_rs_k`) is
+            # equally internal: the licensed plan joins the anchor's own column
+            # against the boundary's handle, never a synthesized body-local.
             if not parent_rowsets:
                 if isinstance(
                     concept.lineage, BuildRowsetItem
@@ -1741,7 +1765,7 @@ def _widen_merge_join_keys(
                 continue
             # Carrying a key the parent does not already emit means SYNTHESIZING
             # it from that parent's row inputs. A grain-collapsing derivation
-            # cannot render that way — it needs its own aggregate/window node —
+            # cannot render that way (it needs its own aggregate/window node),
             # so widening a plain scan onto one emits a column nothing can
             # source (`avg(amount) by part` asked of the bare `rows` scan).
             if concept.address not in available and _carry_needs_grain_change(concept):
@@ -1958,11 +1982,11 @@ def _raise_if_rowset_islanded(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
 ) -> None:
-    """A FINAL contributor sharing no join axis with any sibling — no common
-    output address, pseudonym link, or scoped-relation mate — is about to
+    """A FINAL contributor sharing no join axis with any sibling (no common
+    output address, pseudonym link, or scoped-relation mate) is about to
     cross-join ON 1=1. With a rowset boundary involved that is the
     Disconnected case (a rowset is opaque; only a declared join relates it back
-    to its base), not a legitimate scalar cross join — confirm against the
+    to its base), not a legitimate scalar cross join: confirm against the
     shared connectivity check with rowset islanding ON and surface the typed
     subgraph error. Grainless parents (constants, global aggregates) cross-join
     legitimately and stay out of the component analysis."""
@@ -1982,8 +2006,8 @@ def _raise_if_rowset_islanded(
         for o in parent.output_concepts:
             addrs.add(o.address)
             # A mangled body-local's pseudonym back to its authored source
-            # (`_rs_k` ~ `a.aid`) is rename plumbing, not a join axis — the
-            # phantom bridge islanding exists to sever.
+            # (`_rs_k` ~ `a.aid`) is rename plumbing, not a join axis; it is
+            # the phantom bridge islanding exists to sever.
             if o.address not in mangled_contents:
                 addrs.update(o.pseudonyms)
         for canonical, members in environment.scoped_join_key_groups.items():
@@ -2004,14 +2028,13 @@ def _raise_if_rowset_islanded(
         )
 
         # The connectivity check can pass while the components still share no
-        # axis: authored relations that route the components through a THIRD
+        # axis: authored relations can route the components through a THIRD
         # rowset no contributor materializes (`subset join weeks.ws =
-        # cur.src_ws` + `subset join nxt.nxt_ws = weeks.nxt` — the weeks-bridge,
-        # TPC-DS q02 shape). The declarations relate the models, but realizing
-        # them as a join axis requires the bridge rowset's (ws, nxt) pairs as a
-        # merge contributor, which synthesis does not yet build — the merge
-        # would silently cross-join ON 1=1 (cartesian). Detect the bridge and
-        # raise the typed error instead.
+        # cur.src_ws` + `subset join nxt.nxt_ws = weeks.nxt`, a bridge). The
+        # declarations relate the models, but realizing them as a join axis
+        # needs the bridge rowset's (ws, nxt) pairs as a merge contributor,
+        # which synthesis does not build; the merge would silently cross-join
+        # ON 1=1. Detect the bridge and raise the typed error instead.
         def _rowset_of(addr: str) -> str | None:
             concept = environment.concepts.get(addr)
             if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
@@ -2210,24 +2233,21 @@ def _satisfy_parent_projection_contract(
 
     # Pre-grouping a dimension parent to the group grain only makes sense to
     # protect an ALREADY-grouped sibling (an aggregate at the group grain) from
-    # being fanned out by a row-grain detail merge (q81: dims join the aggregate
-    # on store_id). When every parent is a row-grain scan feeding INTO this
-    # aggregate, there is no such sibling — projecting one to the group grain
-    # just strips its finer row-grain join key (order.id) and the merge degrades
-    # to a 1=1 cross product (q10: revenue joins root on order.id, not
-    # customer.id, then the group aggregates).
+    # being fanned out by a row-grain detail merge. When every parent is a
+    # row-grain scan feeding INTO this aggregate, there is no such sibling;
+    # projecting one to the group grain just strips its finer row-grain join
+    # key and the merge degrades to a 1=1 cross product.
     if not any(_contains_shape_barrier(parent) for parent in parents):
         return parents
 
     # Two different questions, two different sets. "What is available TO this
-    # parent" is its own parents' outputs (`parent_output_addresses`) — that is
-    # what `parent_needed` asks, and a leaf scan's empty answer is what keeps
-    # leaf scans out of this projection entirely (q66). "What does a SIBLING
-    # supply to the merge" is that sibling's own projection: a WINDOW sibling
-    # READS `event_time` and emits only `lag(event_time)`, so crediting it with
-    # its inputs made this projection strip `event_time` off the dimension
-    # parent — and the consumer computing `event_time - prior_event_time` then
-    # had no source for it and was dropped from the plan outright.
+    # parent" is its own parents' outputs (`parent_output_addresses`): that is
+    # what `parent_needed` asks, and a leaf scan's empty answer keeps leaf
+    # scans out of this projection entirely. "What does a SIBLING supply to
+    # the merge" is that sibling's own projection: a WINDOW sibling READS
+    # `event_time` and emits only `lag(event_time)`, so crediting it with its
+    # inputs would strip `event_time` off the dimension parent and leave the
+    # consumer computing `event_time - prior_event_time` with no source.
     outputs_by_parent = [parent_output_addresses(parent) for parent in parents]
     own_outputs_by_parent = [
         {output.address for output in parent.usable_outputs} for parent in parents
@@ -2262,11 +2282,9 @@ def _satisfy_parent_projection_contract(
             projected.append(parent)
             continue
         # `parent_needed` is measured off the parent's INPUTS, so a value the
-        # parent computes itself — a BASIC sibling's `revenue`, a date
-        # projection — is invisible to it and the projection below would strip
-        # it, leaving the consuming aggregate with no source for that output
-        # (sibling aggregates where one reads a derived row value: the plan
-        # computed `revenue` in a CTE and then never projected `total_revenue`).
+        # parent computes itself (a BASIC sibling's `revenue`, a date
+        # projection) is invisible to it, and the projection below would strip
+        # it, leaving the consuming aggregate with no source for that output.
         # Carry those through. Restricted to FD-at-grain so the projection's
         # row count is unchanged, and to what no sibling parent already
         # supplies, so this never re-shapes a plain dimension re-join.
@@ -2285,15 +2303,15 @@ def _satisfy_parent_projection_contract(
         )
         # When the dimension's projected grain (fd_needed) shares NO key with the
         # barrier sibling, the post-projection merge has nothing to join on and
-        # cross-joins ON 1=1 — the bridge between the two is a projection-grain key
-        # the sibling outputs but fd_needed dropped (an aggregate's input-grain
-        # key, `ride_date` linking `start_station.id` to the inner `daily_rides`
-        # aggregate). Keep that bridge by grouping to the combined grain — a
-        # per-(dim,key) dedup CTE. Guarded on disjointness so the normal case
-        # — a dimension that already shares its keys with the aggregate — is left
-        # to `_wrap_for_grain` untouched. The bridge may only be DERIVABLE here
-        # (the dimension carries `ride_start_time`, from which `ride_date`
-        # projects), so test satisfiability.
+        # cross-joins ON 1=1: the bridge between the two is a projection-grain
+        # key the sibling outputs but fd_needed dropped (an aggregate's
+        # input-grain key, `ride_date` linking `start_station.id` to the inner
+        # `daily_rides` aggregate). Keep that bridge by grouping to the combined
+        # grain, a per-(dim,key) dedup CTE. Guarded on disjointness so the
+        # normal case (a dimension that already shares its keys with the
+        # aggregate) is left to `_wrap_for_grain` untouched. The bridge may only
+        # be DERIVABLE here (the dimension carries `ride_start_time`, from which
+        # `ride_date` projects), so test satisfiability.
         join_keys = {
             addr
             for addr in projection_grain_components
@@ -2306,10 +2324,10 @@ def _satisfy_parent_projection_contract(
             # The GroupNode reads from `parent`, so its grain may only include
             # concepts the parent actually outputs. `fd_needed` is derived from
             # what is available to the parent (its own parents' outputs) and can
-            # contain an FD attribute the parent drops -- e.g. a row key like
-            # `date.id` that is FD-determined by the row grain but lives only as a
-            # WHERE filter applied at the scan, never as a column here (q76).
-            # Grouping on it would fail input validation; keep only real outputs.
+            # contain an FD attribute the parent drops, e.g. a row key that is
+            # FD-determined by the row grain but lives only as a WHERE filter
+            # applied at the scan, never as a column here. Grouping on it would
+            # fail input validation; keep only real outputs.
             parent_outputs = {o.address for o in parent.usable_outputs}
             grain_concepts = [
                 c
@@ -2335,16 +2353,13 @@ def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[st
     """Topological order across all dependency edge kinds (lineage /
     constraint / existence). Each kind expresses a different dataflow
     relationship downstream, but all of them require the source group to
-    be built before the consumer — a constraint sibling has to be
+    be built before the consumer: a constraint sibling has to be
     JOIN-ready, an existence source has to be subselect-ready.
 
     A cycle means no build order exists, which is always a planner bug.
-    Raising is deliberate: this used to log and return an empty order, and
-    an empty order does not stop the caller — it builds nothing, falls
-    through to whatever partial plan the surrounding retries produce, and
-    returns ROWS. A dependency the planner could not order silently became
-    a dropped filter. Failing loudly turns that class of bug into a report
-    instead of a wrong answer."""
+    Raising is deliberate: an empty order would build nothing, fall through
+    to a partial plan, and return rows, turning an unorderable dependency
+    into a silently dropped filter."""
     dep_graph = dependency_subgraph(group_graph, group_edges)
     try:
         return list(nx.topological_sort(dep_graph))
@@ -2377,13 +2392,13 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     A single contributor computes a merged key under one alias (`unnest_array.a`,
     an `unnest`/struct field carrying the attr-access lineage) but the user may
     write a *different* alias of the same key (`local.a`, the merge origin of the
-    written `wrapper.a`). Sibling aliases don't list each other as pseudonyms —
-    each only knows the canonical origin — so the CTE-layer pseudonym match
+    written `wrapper.a`). Sibling aliases don't list each other as pseudonyms
+    (each only knows the canonical origin), so the CTE-layer pseudonym match
     can't bridge the written `wrapper.a` to the output `unnest_array.a` and the
     column drops from the SELECT. `per_group` resolved each output to the
     canonical concept, which carries the full equivalence class; expose it as a
     *hidden* output (it has no lineage of its own, so it renders via its
-    canonical sibling) — the user-facing alias resolves through it, while hiding
+    canonical sibling): the user-facing alias resolves through it, while hiding
     keeps it out of the grain/GROUP BY/projection. A no-op when an output already
     names the canonical (the user wrote the produced alias directly), so the
     direct-match cases (`unnest_array.a` selected as itself) are untouched."""
@@ -2462,7 +2477,7 @@ def _cover_groups_for_mandatory(
         ]
         # Only fall back to pseudonym coverage (struct fields produced under
         # their derivable origin address) when nothing provides the concept
-        # directly — a plain alias keeps its own contributor.
+        # directly; a plain alias keeps its own contributor.
         if not candidates:
             candidates = [
                 gid
@@ -2498,7 +2513,7 @@ def _add_relation_axis_contributors(
     side present as a contributor: a computed member (`union join rank
     orders.oid order by orders.amt desc = customers.rnk`) is exposed only by
     its own row-shape-barrier group, which covers no mandatory output and so
-    is dropped by the mandatory cover — degrading the merge to a cross join.
+    is dropped by the mandatory cover, degrading the merge to a cross join.
     Add the built group exposing a missing hosted axis member as an axis-only
     contributor (it contributes no mandatory concepts). Edits `per_group` in
     place."""
@@ -2551,17 +2566,17 @@ def _add_partial_completion_contributors(
     COMPLETE rowset-handle mate the chosen contributors don't carry (the
     request itself happened in `_unsourced_relation_mates`). Two triggers:
 
-    - the covering contributor leaves the member PARTIAL — its own binding
+    - the covering contributor leaves the member PARTIAL: its own binding
       spans only its side's domain, and only the mate's boundary carries the
       axis (rowset-anchor `subset join cust = members.mid`); the FINAL merge
       then pairs the sides and `_clear_groupmate_completed_partials` un-marks
       the member.
-    - the member belongs to a COALESCING (`union`/`full`) relation — a
+    - the member belongs to a COALESCING (`union`/`full`) relation: a
       demanded member projects the unified axis, so every side's boundary must
       join the merge even though it covers no mandatory output (bare-member
       projection).
 
-    ROOT mates stay out — a datasource-bound mate completes through the
+    ROOT mates stay out; a datasource-bound mate completes through the
     authoritative-datasource machinery, not a boundary merge. Edits
     `per_group` in place."""
     if not environment.scoped_join_key_groups:
@@ -2589,7 +2604,7 @@ def _add_partial_completion_contributors(
     for canonical, members in environment.scoped_join_key_groups.items():
         relation = {canonical, *members}
         # Coalescing sides are BOTH partial by declaration (neither domain
-        # contains the other) — the coalesce of the sides is what's complete —
+        # contains the other; the coalesce of the sides is what's complete),
         # so the mate boundary qualifies by exposing the member at all. A
         # subset anchor must expose it COMPLETE: a partial carrier can't clear
         # the demanded member's own partial.
@@ -2637,11 +2652,11 @@ def _fold_descendant_contributors(
     A basic group B preserves the row set of the contributor S it was grafted
     onto (by `_route_basics_through_richer_siblings`), so B can pass S's
     columns straight through. Move S's coverage onto B as a passthrough and
-    drop S as a separate contributor — otherwise the FINAL merge re-joins B to
+    drop S as a separate contributor; otherwise the FINAL merge re-joins B to
     S on whatever column they happen to share, which for a rename of a
-    grouping key is the value itself and fans out (q46 `bought_city`). Works
-    for any basic, not just renames: B already resolved against S, we only
-    widen its projection. Edits `per_group` in place.
+    grouping key is the value itself and fans out. Works for any basic, not
+    just renames: B already resolved against S, we only widen its projection.
+    Edits `per_group` in place.
 
     Passthrough = add S's concepts to B's input AND output: `resolve_concept_
     map` sources an output from a parent only when it's also an input
@@ -2728,12 +2743,12 @@ def _promote_final_aliases_to_grouping_contributors(
             break
 
     # A contributor whose EVERY mandatory output is a pure rename satisfiable
-    # off one grouping sibling rides that sibling wholesale, rendering
-    # `I_ITEM_ID as store_sales_item_name` inside the aggregate's own GROUP BY
-    # select. Without this the FINAL joins the rename host back to the
-    # aggregate null-safe on the whole dim tuple just to read the aliases
-    # (q29). Group-level, not per-concept: promoting only some outputs leaves
-    # the contributor (and its join) alive, so nothing is won.
+    # off one grouping sibling rides that sibling wholesale, rendering the
+    # alias inside the aggregate's own GROUP BY select. Otherwise the FINAL
+    # joins the rename host back to the aggregate null-safe on the whole dim
+    # tuple just to read the aliases. Group-level, not per-concept: promoting
+    # only some outputs leaves the contributor (and its join) alive, so
+    # nothing is won.
     for src_gid in list(per_group):
         if attrs[src_gid].derivation in GROUPING_DERIVATIONS:
             continue
@@ -2754,13 +2769,13 @@ def _promote_final_aliases_to_grouping_contributors(
                 continue
             # `attrs[gid].derivation` is the GROUP's classification, and a
             # ROLLUP that also carries its own renamed dimensions classifies
-            # BASIC — so the derivation test alone misses it and the FINAL
+            # BASIC, so the derivation test alone misses it and the FINAL
             # joins the rename host back onto the rollup. That join is not
             # merely redundant: the FINAL will not dedup a grouping-set node
-            # (see `node_nulls_grouping_keys`), and the join is on a dimension
-            # column that is non-unique in its own table (tpc-ds `i_item_id`
-            # is an SCD business key), so every rollup row multiplies. Ask
-            # what the node EMITS, which is the same question the dedup asks.
+            # (see `node_nulls_grouping_keys`), and a join on a dimension
+            # column that is non-unique in its own table (an SCD business key)
+            # multiplies every rollup row. Ask what the node EMITS, which is
+            # the same question the dedup asks.
             if attrs[gid].derivation not in GROUPING_DERIVATIONS and not (
                 has_grouping_output(gid)
             ):
@@ -2806,10 +2821,10 @@ def _projection_root_concepts(
         addresses.update(grain_components)
         # A property's keys identify the row it belongs to (address.city ->
         # address.id), so the dim scan needs them. But a self-grained identifier
-        # (grain == {itself}) may carry keys that are a COARSER parent grain it
-        # was once a grouping key over (catalog_returns' billing_customer.id keyed
-        # by {item.id, order_number}); expanding those drags the fact into an
-        # otherwise pure dimension scan. Skip keys for such identifiers.
+        # (grain == {itself}) may carry keys that are a COARSER parent grain
+        # (a fact's customer id keyed by the fact's line grain); expanding
+        # those drags the fact into an otherwise pure dimension scan. Skip keys
+        # for such identifiers.
         if grain_components != {concept.address}:
             addresses.update(concept.keys or set())
     return [
@@ -2843,9 +2858,9 @@ def _fresh_final_root_projection(
     # plan_source validates a conditioned request as COMPLETE when the plan
     # merely CARRIES the condition's row args (see `_conditions_met`'s
     # found-addresses clause), on the assumption that a later step applies the
-    # WHERE. This re-slice has no such after-step, so an unapplied condition silently
-    # vanishes (a NULL-enrichment row rides the FINAL merge back in). Wrap
-    # unless the plan provably applies it.
+    # WHERE. This re-slice has no such after-step, so an unapplied condition
+    # silently vanishes (a NULL-enrichment row rides the FINAL merge back in).
+    # Wrap unless the plan provably applies it.
     for existing in (node.conditions, node.preexisting_conditions):
         if existing is not None and condition_implies(existing, conditions.conditional):
             return node
@@ -2912,7 +2927,7 @@ def _aggregate_reused_from_twin(
     built: dict[str, StrategyNode],
 ) -> bool:
     """Whether an aggregate value of `gid` is already produced by another built
-    grouping group at the SAME grain — its pre-condition d1 twin. Such a value is
+    grouping group at the SAME grain, its pre-condition d1 twin. Such a value is
     read through (the GroupNode resolves it from the twin parent), not recomputed,
     so its raw inputs need not enter `gid`'s `needed` set. Grain equality gates
     out a coarser re-aggregation (avg-of-sum), which genuinely recomputes."""
@@ -2938,18 +2953,15 @@ def _wrap_for_grain(
     dedup_orthogonal: bool = False,
 ) -> list[StrategyNode]:
     """When a parent feeds a merge edge, its grain may be wider than the
-    natural grain of the concepts the merge actually wants — joining the
+    natural grain of the concepts the merge actually wants; joining the
     parent's wider-grain rows into a per-key aggregate blows up cardinality.
 
     For each natural-grain bucket among `needed_concepts`, emit a GroupNode
     that aggregates `parent_node` to that grain and exposes only those
     concepts plus the grain keys. Buckets whose grain already matches the
-    parent's grain pass through unchanged.
-
-    Originally root-only; generalized because intermediate aggregates can
-    also sit at a wider grain than a specific concept of theirs requires
-    (e.g. a `sum(...) by (a, b)` whose downstream merge only needs grain
-    `{a}` for one column)."""
+    parent's grain pass through unchanged. Applies to intermediate aggregates
+    as well as roots (a `sum(...) by (a, b)` whose downstream merge only needs
+    grain `{a}` for one column)."""
     if not needed_concepts:
         return [parent_node]
 
@@ -2962,7 +2974,7 @@ def _wrap_for_grain(
     # whole at its row grain; the FINAL dedup groups it down to the output grain.
     # UNLESS the caller says that dedup never runs (`dedup_orthogonal`: a
     # ROLLUP/CUBE/GROUPING SETS sibling makes the FINAL skip it, since a dedup
-    # would re-aggregate the subtotal rows) — then collapse to distinct rows of
+    # would re-aggregate the subtotal rows); then collapse to distinct rows of
     # the needed projection + join keys HERE, one GroupNode so the join keys
     # stay beside the orthogonal dims (a leaf dim outside the grouping key list
     # must join back per distinct pair, not per source row).
@@ -3001,7 +3013,7 @@ def _wrap_for_grain(
     # Each concept's natural grain is the key it functionally depends on
     # (e.g. text_id is a property of customer.id, so its grain is
     # {customer.id}). `BuildGrain.from_concepts([c])` is the wrong helper
-    # here — that asks "what grain do these concepts collectively require"
+    # here: that asks "what grain do these concepts collectively require",
     # which can include the concept itself as a self-key.
     parent_outputs = {o.address for o in parent_node.usable_outputs}
     by_grain: dict[frozenset[str], list[BuildConcept]] = defaultdict(list)
@@ -3011,27 +3023,23 @@ def _wrap_for_grain(
         )
         # A dimension reached *through* the merge grain key (its `keys` are the
         # merge grain) is functionally determined by it and already lives in
-        # this parent at that grain — e.g. `order.customer.id` (keys={order.id})
+        # this parent at that grain, e.g. `order.customer.id` (keys={order.id})
         # selected next to `sum(...) by order.id`. Deduping it to its own
         # key-grain ({order.customer.id}) drops `order.id`, so the FINAL merge
         # loses its join key and degrades to `ON 1=1` (fan-out). Project it at
-        # the merge grain instead, keeping the join key. `from_concepts` folds
-        # the FK key hierarchy, so reducing the concept grain together with the
-        # merge grain collapses to just the merge grain iff it's determined by
-        # it (transitively, e.g. nation.id -> customer.id). Only the part of
-        # the merge grain this parent can SUPPLY participates: a parent that
+        # the merge grain instead, keeping the join key. Only the part of the
+        # merge grain this parent can SUPPLY participates: a parent that
         # carries `customer_sk` but not the sibling aggregate's `state` still
-        # projects its FD dims at {customer_sk} — demanding the full axis here
-        # (q30) shattered the scan into self-grain buckets with no join key.
+        # projects its FD dims at {customer_sk}; demanding the full axis would
+        # shatter the scan into self-grain buckets with no join key.
         #
         # With no merge grain to supply (a pure projection: no aggregate, no
         # rowset, so `_final_merge_grain` has nothing to declare) fall back to
         # the parent's own grain, then to the concept's own keys. A dimension
         # this parent's rows determine must ride that identity rather than
-        # dedup to its own key-grain: `city`/`usbos_source` (both keys={tree_id})
-        # bound by one grain(tree_id) source otherwise became two keyless
-        # GroupNodes and the merge paired every tree with every enum value
-        # (boston_multi_enum).
+        # dedup to its own key-grain, or two properties of one key bound by a
+        # single key-grain source become two keyless GroupNodes and the merge
+        # pairs every key with every value.
         axis = (merge_grain_components or parent_grain_components) & parent_outputs
         if not axis:
             axis = frozenset(concept.keys or ()) & parent_outputs
@@ -3042,7 +3050,7 @@ def _wrap_for_grain(
             # determined by that": it walks grain, keys and equivalence
             # classes transitively (nation.id -> customer.id), which neither a
             # raw `keys` subset test nor `BuildGrain.from_concepts` does on its
-            # own — `from_concepts` folds the property hierarchy only, so an
+            # own; `from_concepts` folds the property hierarchy only, so an
             # enum declared `key city` that a source binds at grain(tree_id)
             # never folds into it.
             and build_fd_determines(
@@ -3087,11 +3095,11 @@ def _filter_arg_parents(
     built: dict[str, StrategyNode],
     missing_addrs: set[str],
 ) -> tuple[list[StrategyNode], list[BuildConcept]]:
-    """Built groups (most-downstream) producing each `missing_addr` — a
-    FINAL-deferred filter's row-arg that isn't a user output (q11's global
-    `germany_total_value`, compared against a per-id aggregate). Returned as
-    cross-join parents plus the concepts they supply, so the FINAL filter node
-    can pull them in as hidden inputs."""
+    """Built groups (most-downstream) producing each `missing_addr`: a
+    FINAL-deferred filter's row-arg that isn't a user output (a global
+    aggregate compared against a per-key aggregate). Returned as cross-join
+    parents plus the concepts they supply, so the FINAL filter node can pull
+    them in as hidden inputs."""
     nodes: list[StrategyNode] = []
     concepts: list[BuildConcept] = []
     seen: set[str] = set()
@@ -3209,18 +3217,16 @@ def _group_to_grain_if_required(
 
     A row-preserving contributor (a ROOT scan or plain projection) whose source
     grain is finer than the selected concepts' grain must be grouped down to
-    that grain — otherwise duplicate rows at the coarser grain survive into the
-    output (and inflate any downstream aggregate that reads them, e.g. q75's
-    `deduped` rowset feeding two `sum`s) — the dedup the FINAL assembly
-    otherwise skips for the single-contributor case.
+    that grain; otherwise duplicate rows at the coarser grain survive into the
+    output and inflate any downstream aggregate that reads them. This is the
+    dedup the FINAL assembly otherwise skips for the single-contributor case.
 
     The group-required decision is made against the user-requested concepts
-    only, but the GroupNode keeps any
-    hidden grain keys the node exposed for sibling joins — grouping by them
-    alongside the requested columns preserves those keys (and the join handle)
-    without changing the dedup grain. Aggregates/windows already sit at their
-    own grain and are left untouched; a MergeNode resolves its own grouping via
-    `force_group`."""
+    only, but the GroupNode keeps any hidden grain keys the node exposed for
+    sibling joins: grouping by them alongside the requested columns preserves
+    those keys (and the join handle) without changing the dedup grain.
+    Aggregates/windows already sit at their own grain and are left untouched;
+    a MergeNode resolves its own grouping via `force_group`."""
     from trilogy.core.processing.discovery_utility import check_if_group_required
 
     if not final_contract.deduplicate_to_grain:
@@ -3236,8 +3242,8 @@ def _group_to_grain_if_required(
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
     # to the requested grain re-aggregates them away (and a grouping()-derived
     # dim can't be re-grouped outside its grouping set). Flat passthrough.
-    # Skipping the dedup here is what obliges the FINAL not to
-    # join such a node on a non-unique key — same predicate, both sides.
+    # Skipping the dedup here is what obliges the FINAL not to join such a
+    # node on a non-unique key: same predicate, both sides.
     if node_nulls_grouping_keys(node):
         return node
     if (
@@ -3264,9 +3270,8 @@ def _group_to_grain_if_required(
         ]
     if isinstance(node, MergeNode):
         # Narrow to the requested grain *before* force-grouping: a MergeNode
-        # exposes its join/filter columns (q82's date, warehouse, quantity,
-        # manufacturer) as outputs, so force_group alone would GROUP BY the full
-        # merge grain and dedup nothing.
+        # exposes its join/filter columns as outputs, so force_group alone
+        # would GROUP BY the full merge grain and dedup nothing.
         node.force_group = True
         node.set_output_concepts(targets, rebuild=False, change_visibility=False)
         node.rebuild_cache()
@@ -3275,7 +3280,7 @@ def _group_to_grain_if_required(
     # coarser grain is a precomputed value at the finer grain (a
     # materialized-root rollup from a finer summary table), so re-aggregate it
     # with SUM rather than dedup it. Exact-grain materialized aggregates never
-    # reach here — their scan already matches the target grain, so no group is
+    # reach here: their scan already matches the target grain, so no group is
     # required.
     rollup = [o for o in targets if o.is_aggregate and _is_additive_aggregate(o)]
     return GroupNode(
@@ -3315,9 +3320,9 @@ def _subtree_applies_conditions(node: StrategyNode, where: BuildWhereClause) -> 
 
     A FINAL-deferred atom can be double-placed at a lower host (the aggregate
     group's pre-filter wrapper). Re-applying it on a sole contributor is at
-    best redundant; for a ROLLUP contributor it is destructive — the feeder
+    best redundant; for a ROLLUP contributor it is destructive: the feeder
     re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
-    subtotal/total rows drop (union_reproject rollup cell)."""
+    subtotal/total rows drop."""
     stack: list[StrategyNode] = [node]
     while stack:
         current = stack.pop()
@@ -3367,17 +3372,16 @@ def _clear_groupmate_completed_partials(
     """Un-mark a scoped-join key the merge itself completes.
 
     A subset-side member (`subset join a.store = b.store`, a ⊆ b) is partial on
-    its own contributor — it spans only the subset domain — but this merge pairs
+    its own contributor (it spans only the subset domain), but this merge pairs
     it with its complete group-mate via the authored equality, so the merged
     relation spans the anchor's domain and the key renders as the coalesced
-    group axis. Leaving it partial trips the
-    final no-complete-source guard for a value that is in fact complete here.
+    group axis. Leaving it partial trips the final no-complete-source guard
+    for a value that is in fact complete here.
 
     A relation whose anchor members are ABSENT from the plan entirely (the
     query never references the anchor side, so it was never sourced) is pure
     domain metadata: the subset side's own domain IS the output domain, and
-    its partial clears too (collapsing to the subset side alone —
-    union_reproject rowset-LHS cells)."""
+    its partial clears too (collapsing to the subset side alone)."""
     if not node.partial_concepts or not environment.scoped_join_key_groups:
         return
     complete_outputs: set[str] = set()
@@ -3404,7 +3408,8 @@ def _clear_groupmate_completed_partials(
             keep.append(concept)
             continue
         if concept.derivation == Derivation.ROWSET:
-            # The boundary-marked subset member this pass was written for.
+            # A boundary-marked subset member clears through a complete mate,
+            # or when no mate is in the plan at all.
             if mates & complete_outputs or not mates & all_outputs:
                 continue
             keep.append(concept)
@@ -3413,10 +3418,9 @@ def _clear_groupmate_completed_partials(
         # partial on its own contributor but complete through the relation when
         # its mate is a ROWSET handle carrying the anchor's whole domain: the
         # key renders as the coalesced axis, exactly as for a rowset-handle
-        # member (q54 filtered/unfiltered-anchor cells).
-        # Without a complete ROWSET mate it must keep tripping the guard —
-        # that is the deliberate author-facing error for a member whose only
-        # binding is its own scoped declaration (union-reproject clean-error).
+        # member. Without a complete ROWSET mate it must keep tripping the
+        # guard; that is the deliberate author-facing error for a member whose
+        # only binding is its own scoped declaration.
         if mates & complete_outputs & rowset_addresses:
             continue
         keep.append(concept)
@@ -3439,13 +3443,12 @@ def _assemble_final_node(
     that together cover `mandatory_list`. When a single group already covers
     every mandatory concept, return it as-is. Otherwise wrap the contributing
     groups in a MergeNode whose auto-join logic links them on shared output
-    concepts — this is what the FINAL sink in the group graph was reserved
-    for, instead of just picking one leaf and dropping the rest.
+    concepts.
 
-    For ROOT contributions specifically, project the root scan down to the
-    needed concepts' natural grain via `_wrap_root_for_grain` so the merge
-    join doesn't blow up cardinality (e.g. `text_id` at customer grain
-    instead of one row per store_return)."""
+    ROOT contributions are projected down to the needed concepts' natural
+    grain via `_wrap_for_grain` so the merge join doesn't blow up cardinality
+    (a customer property at customer grain instead of one row per fact
+    line)."""
     if not built:
         return None
     # A cross-arm post-merge filter (e.g. `cnt_00 <= cnt_99`) that no pre-final
@@ -3454,9 +3457,9 @@ def _assemble_final_node(
     final_conditions = _wrap_atoms(attrs[FINAL_NODE_ID].condition_atoms)
     final_contract = _required_final_contract(attrs)
     mandatory_addresses = {c.address for c in mandatory_list}
-    # Row-args a FINAL-deferred filter needs that aren't user outputs (q11:
-    # global `germany_total_value`). Their producing groups get cross-joined in
-    # as hidden inputs below, else the WHERE dangles (INVALID_REFERENCE).
+    # Row-args a FINAL-deferred filter needs that aren't user outputs (a global
+    # aggregate compared against a per-key one). Their producing groups get
+    # cross-joined in as hidden inputs below, else the WHERE dangles.
     filter_only_addrs: set[str] = set()
     for atom in attrs[FINAL_NODE_ID].condition_atoms:
         filter_only_addrs |= {a.address for a in atom.row_arguments}
@@ -3466,8 +3469,8 @@ def _assemble_final_node(
         if final_conditions is None:
             return node
         # Project only the user-requested columns. The merge below may expose
-        # extra align inputs (item_sk_99/item_sk_00 folded into the align key)
-        # that aren't mandatory and don't render at this layer.
+        # extra align inputs (per-arm keys folded into the align key) that
+        # aren't mandatory and don't render at this layer.
         keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
         avail = {o.address for o in node.output_concepts}
         arg_nodes, arg_concepts = _filter_arg_parents(
@@ -3480,10 +3483,9 @@ def _assemble_final_node(
             if concept.address in row_arg_addrs
         ]
         # A membership (`x in <set>`) deferred onto FINAL needs its subselect
-        # feeder wired here -- `_attach_existence_sources` ran before assembly
-        # and only saw the built groups, never this FINAL node, so without this
-        # the IN-RHS concept renders against a dangling CTE (Missing source map
-        # entry for `<set>`).
+        # feeder wired here: `_attach_existence_sources` runs before assembly
+        # and only sees the built groups, never this FINAL node, so the IN-RHS
+        # concept would otherwise render against a dangling CTE.
         ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
         ex_concepts = _flatten_arg_groups(ex_groups)
         ex_parents = (
@@ -3495,9 +3497,9 @@ def _assemble_final_node(
         )
         # A feeder that participates in a scoped relation must join back on
         # the relation axis, not cross-join: widen the contributor (and the
-        # feeder) with the authored members each side can render — a leaf
-        # scan picks up the mate (`c_demo`) it binds, the boundary its member
-        # handle. Feeders with no relation stay hidden cross-join inputs.
+        # feeder) with the authored members each side can render: a leaf
+        # scan picks up the mate it binds, the boundary its member handle.
+        # Feeders with no relation stay hidden cross-join inputs.
         if arg_nodes and environment.scoped_join_key_groups:
             relation_keys: set[str] = set()
             for feeder in arg_nodes:
@@ -3582,7 +3584,7 @@ def _assemble_final_node(
         # A FINAL-deferred presence-probe filter joins its feeder back on the
         # probe's key group. The normal path hides non-mandatory grain keys and
         # dedups to the output grain FIRST, which strips the join key and
-        # degrades the feeder join to 1=1 — apply the condition over the raw
+        # degrades the feeder join to 1=1; apply the condition over the raw
         # contributor (keys intact), then dedup the filtered rows. Same path
         # for a feeder that participates in a scoped relation with this
         # contributor (`where return_demos.r_ticket is not null` over a
@@ -3657,16 +3659,16 @@ def _assemble_final_node(
         # for sibling JOINs (see `_compute_concept_sets`). At the user-
         # facing FINAL projection those keys aren't part of mandatory and
         # would otherwise leak into the SELECT. Mask them with
-        # hidden_concepts — only valid at the FINAL layer, since hiding
+        # hidden_concepts; only valid at the FINAL layer, since hiding
         # them at an intermediate group blocks downstream consumers from
         # using them as JOIN keys (MergeNode validates non-hidden parent
         # outputs only).
-        # A basic riding a window-over-aggregate (q36 `i_category`/`i_class`
-        # over a ROLLUP-then-rank) passes the aggregate's grain keys through as
+        # A basic riding a window-over-aggregate (dimensions over a
+        # ROLLUP-then-rank) passes the aggregate's grain keys through as
         # row-identity / partition columns. Those aren't this basic's declared
-        # grain, so add every grouping ancestor's grain to the hide candidates —
-        # otherwise the carried keys (e.g. bare `ss.item.category`) leak into the
-        # FINAL projection alongside their mandatory rename.
+        # grain, so add every grouping ancestor's grain to the hide candidates;
+        # otherwise the carried keys leak into the FINAL projection alongside
+        # their mandatory rename.
         _hide_final_only_grain_keys(
             group_graph,
             attrs,
@@ -3691,7 +3693,7 @@ def _assemble_final_node(
         if conditioned is final_node:
             return conditioned
         # Applying a FINAL-deferred condition can wrap the contributor in a node
-        # that reads it at a finer grain than the output — a membership
+        # that reads it at a finer grain than the output: a membership
         # (`cust_id in <set>`) filters a contributor that carries an extra grain
         # key (`channel`) only so the IN-set subselect can read it, so the
         # filtered rows still duplicate at the output grain. Re-dedup the
@@ -3703,18 +3705,17 @@ def _assemble_final_node(
     # Only root scans get the grain projection: their grain is the row-level
     # source-table grain (often much wider than what a downstream merge
     # wants), and a SELECT DISTINCT-style projection is always safe.
-    # Wrapping intermediate aggregates is *not* safe — adding a GroupNode
-    # over a `sum(x)` node would re-aggregate the partial sums (OK for SUM,
-    # wrong for AVG/STDDEV), and intermediate aggregates often don't even
-    # expose the requested grain key (their GROUP BY is their grain, not the
-    # downstream's). Q17 surfaced both pathologies when this was generalized.
+    # Wrapping intermediate aggregates is *not* safe: a GroupNode over a
+    # `sum(x)` node would re-aggregate the partial sums (OK for SUM, wrong
+    # for AVG/STDDEV), and intermediate aggregates often don't even expose
+    # the requested grain key (their GROUP BY is their grain, not the
+    # downstream's).
     # Merge grain is defined by the grouping (aggregate/window) contributors;
     # compute it up front so root-scan wrapping can project an FD dimension at
     # this grain (keeping the join key) instead of its own key-grain. A ROWSET
-    # boundary is a fixed-grain barrier too -- its select grain is the key set a
-    # merging dimension must join on (q46: the `bought` rowset's grain carries
-    # `customer.id`, so the customer-address scan rides it instead of deduping to
-    # its own `address.id` grain and cross-joining ON 1=1).
+    # boundary is a fixed-grain barrier too: its select grain is the key set a
+    # merging dimension must join on, so a dimension scan rides it instead of
+    # deduping to its own key grain and cross-joining ON 1=1.
     contracts_by_gid = _final_contributor_contracts(final_contract, contributing)
     final_merge_grain = frozenset().union(
         *(contract.projection_grain for contract in contracts_by_gid.values())
@@ -3736,11 +3737,11 @@ def _assemble_final_node(
         if is_root:
             # `final_merge_grain` is the union of what contributors ADVERTISE
             # (their projection grain), which a non-grouping contributor leaves
-            # empty — so a ROOT sibling's join key was filtered away and the
-            # merge cross-joined ON 1=1. A sibling's own grain is a stronger
-            # guarantee than its advertisement: a group at user grain emits the
-            # user key whether or not it projects it. Preserve the merge keys
-            # some sibling's grain vouches for.
+            # empty, so a ROOT sibling's join key would be filtered away and
+            # the merge would cross-join ON 1=1. A sibling's own grain is a
+            # stronger guarantee than its advertisement: a group at user grain
+            # emits the user key whether or not it projects it. Preserve the
+            # merge keys some sibling's grain vouches for.
             sibling_grain = {
                 address
                 for other in contributing
@@ -3757,10 +3758,10 @@ def _assemble_final_node(
             # A ROOT that already carries a merge key among its own concepts
             # joins its siblings on that key alone. Preserving the OTHER merge
             # keys forces the re-source below to drag in whatever fact table
-            # carries them (a pure `users` dim scan came back as
-            # `order_items JOIN users` deduped to the full output grain), and
-            # the merge then stitches on every key null-safely — which, under
-            # `~` partials, pairs join-manufactured NULLs with each other.
+            # carries them (a pure dim scan becomes a fact-dim join deduped to
+            # the full output grain), and the merge then stitches on every key
+            # null-safely, which under `~` partials pairs join-manufactured
+            # NULLs with each other.
             # Foreign keys stay preserved only for the carrier-less case the
             # widen exists for: no own key means no join path, and the merge
             # would cross-join ON 1=1.
@@ -3781,13 +3782,13 @@ def _assemble_final_node(
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
             # Carry the merge grain's join KEYS onto the root scan, but never a
-            # rowset's own handle outputs (`even_orders.order_id`) -- a root that
-            # can derive those (it shares the rowset's base key) would absorb the
-            # whole rowset and drop its internal filter (rowset_outer_addition).
-            # Those handles aren't join keys; the rowset stays a separate merge
-            # contributor. A renamed output's mangled content (`_rs_k`) is a
-            # rowset internal the same way — carrying it silently joins a
-            # disconnected query, unless a declared relation licenses it.
+            # rowset's own handle outputs: a root that can derive those (it
+            # shares the rowset's base key) would absorb the whole rowset and
+            # drop its internal filter. Those handles aren't join keys; the
+            # rowset stays a separate merge contributor. A renamed output's
+            # mangled content (`_rs_k`) is a rowset internal the same way;
+            # carrying it silently joins a disconnected query, unless a
+            # declared relation licenses it.
             group_concepts.extend(
                 c
                 for address in sorted(preserve_keys)
@@ -3800,17 +3801,16 @@ def _assemble_final_node(
                 )
             )
         if is_root:
-            # A filter-only WHERE arg the SELECT never projects (q30.alt's
-            # `billing_customer.address.state = 'GA'`, FD by this dim bucket's
-            # key) is not in `group_concepts`, so `_root_atoms_satisfiable_from`
-            # would drop its atom and the fresh re-source would lose the WHERE.
-            # When such an arg was peeled INTO this bucket (a primary member),
-            # add it to the projection so plan_source sources the dim table and
-            # applies the filter (`wakeful` = `customer ⋈ customer_address
-            # WHERE state = 'GA'`). It isn't mandatory, so the FINAL merge
-            # selects only the outputs and never leaks it. Restricted to bucket
-            # members so a global-aggregate/cross-arm filter arg (handled as a
-            # hidden cross-join input via `_filter_arg_parents`) is untouched.
+            # A filter-only WHERE arg the SELECT never projects (a dim attribute
+            # FD by this dim bucket's key) is not in `group_concepts`, so
+            # `_root_atoms_satisfiable_from` would drop its atom and the fresh
+            # re-source would lose the WHERE. When such an arg was peeled INTO
+            # this bucket (a primary member), add it to the projection so
+            # plan_source sources the dim table and applies the filter. It
+            # isn't mandatory, so the FINAL merge selects only the outputs and
+            # never leaks it. Restricted to bucket members so a
+            # global-aggregate/cross-arm filter arg (handled as a hidden
+            # cross-join input via `_filter_arg_parents`) is untouched.
             bucket_members = _members_of(attrs, gid)
             seen_group_addrs = {c.address for c in group_concepts}
             filter_only_concepts = [
@@ -3833,9 +3833,9 @@ def _assemble_final_node(
                 environment,
                 graph,
                 history,
-                # The fresh re-source must keep the root group's own WHERE
-                # (e.g. `x = 1`); dropping it silently widened the scan and the
-                # constant sibling's `1=1` merge returned the unfiltered rows.
+                # The fresh re-source must keep the root group's own WHERE;
+                # without it the scan widens and a constant sibling's `1=1`
+                # merge returns the unfiltered rows.
                 conditions=root_conditions,
             )
             if fresh is not None:
@@ -3862,14 +3862,14 @@ def _assemble_final_node(
         else:
             parents.append(node)
 
-    # Sibling contributors that descend from a common richer parent (e.g. q77
-    # catalog: `u_id_c` renames the aggregate's grouping key while
-    # `u_sales_c`/`u_profit_c` derive from that same aggregate) expose no shared
-    # output key — their declared grain is the lying source-row grain — so the
-    # merge would cross-join them ON 1=1. Fold any contributor whose outputs a
-    # row-preserving sibling already renders off its own parents, collapsing the
-    # columns into one projection instead of joining (same passthrough logic the
-    # per-group `_pre_merge_parents` uses).
+    # Sibling contributors that descend from a common richer parent (one
+    # renames the aggregate's grouping key while others derive from that same
+    # aggregate) expose no shared output key (their declared grain is the
+    # source-row grain), so the merge would cross-join them ON 1=1. Fold any
+    # contributor whose outputs a row-preserving sibling already renders off
+    # its own parents, collapsing the columns into one projection instead of
+    # joining (same passthrough logic the per-group `_pre_merge_parents`
+    # uses).
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
     parents = _fold_constant_parents(parents, final_needed)
     parents = _satisfy_parent_projection_contract(
@@ -3894,10 +3894,10 @@ def _assemble_final_node(
         for o in p.output_concepts:
             available.add(o.address)
     # A mandatory concept a parent computes only under a pseudonym alias (`merge
-    # derived_measure into measure` — the parent outputs the derivation, the user
+    # derived_measure into measure`: the parent outputs the derivation, the user
     # wrote the merge target) is covered but not address-available. It must ride
     # as an OUTPUT (resolve_concept_map's targets loop maps it to the parent via
-    # the pseudonym) but never as an INPUT — an inherited input is skipped by
+    # the pseudonym) but never as an INPUT; an inherited input is skipped by
     # that loop and the column would dangle. The sole-contributor path solves
     # the same gap with _bridge_pseudonyms; this is the merge-path equivalent.
     pseudonym_only = {
@@ -3923,7 +3923,7 @@ def _assemble_final_node(
     )
     # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
     # beside a boundary outputting rs.sa) must ride the merge as a hidden
-    # input — otherwise the merge's WHERE references a column it never
+    # input; otherwise the merge's WHERE references a column it never
     # carried and join resolution re-joins the producer as a second,
     # PRE-filtered sibling (a preserving relation then re-admits the
     # filtered rows).
@@ -3964,8 +3964,8 @@ def _assemble_final_node(
     } - mandatory_addresses
     # A non-grouping dimension contributor only supplies FD attributes; if it
     # sits at a finer (row-level) grain it must not widen the merge grain, or it
-    # fans the aggregate out (e.g. q81: customer-dims joined through
-    # catalog_returns lands at returns grain). Pinning the grain lets the merge's
+    # fans the aggregate out (customer dims joined through a returns fact land
+    # at returns grain). Pinning the grain lets the merge's
     # force_group collapse back to the aggregate grain. Left None when there is
     # no grouping contributor, so plain row merges keep their current behavior.
     merge_grain = (
@@ -3975,8 +3975,8 @@ def _assemble_final_node(
     )
     # The request atoms already applied inside contributing groups: the final
     # merge must know them so its join typing never null-extends the branch
-    # that carries one — a row-preserving join there resurrects rows the
-    # request WHERE rejected (q30: the `state = 'GA'` customer branch).
+    # that carries one; a row-preserving join there resurrects rows the
+    # request WHERE rejected.
     applied_atoms = _wrap_atoms(
         [atom for group in attrs.values() for atom in group.condition_atoms]
     )
@@ -3997,7 +3997,7 @@ def _assemble_final_node(
     )
     _clear_groupmate_completed_partials(merged, environment)
     # A hidden axis mate rides sides kept at their own finer row grain, and the
-    # merge's claimed grain predates that fan — grain-satisfaction checks
+    # merge's claimed grain predates that fan, so grain-satisfaction checks
     # (including MergeNode's own rowset-output carve-out) wave the dedup
     # through, same trap as the probe-feeder branch above. Collapse explicitly
     # to the coalesced axis.
@@ -4015,12 +4015,12 @@ def _assemble_final_node(
             force_group=True,
         )
     # Dedup the assembled merge to the requested output grain (as the
-    # single-contributor path above does). A contributor
-    # left whole at a finer row grain — e.g. a root scan kept at {store,wh,product}
-    # to preserve a join key — otherwise leaks duplicate rows when its internal
-    # keys (wh) drop out of the output grain (store_by_warehouse, product).
-    # No-op when the merge already sits at the mandatory grain (the common
-    # aggregate+dim case force_groups to merge_grain == output grain).
+    # single-contributor path above does). A contributor left whole at a
+    # finer row grain (a root scan kept at {store, wh, product} to preserve a
+    # join key) otherwise leaks duplicate rows when its internal keys drop
+    # out of the output grain. No-op when the merge already sits at the
+    # mandatory grain (the common aggregate+dim case force_groups to
+    # merge_grain == output grain).
     return _group_to_grain_if_required(
         merged,
         mandatory_list,
@@ -4089,11 +4089,9 @@ def build_strategy_node(
         if derivation == Derivation.ROWSET:
             # A boundary group's outputs can carry ANOTHER rowset's handles
             # (a deferred WHERE's args exposed through a scoped relation).
-            # `resolve_rowset` plans the rowset of the first handle it sees —
+            # `resolve_rowset` plans the rowset of the first handle it sees, so
             # order this group's OWN handles (its primary members) first so a
-            # foreign condition-arg handle can't hijack the boundary
-            # (union_reproject filtered cell: the nov_data group planned the
-            # cross_channel body and dropped the measure).
+            # foreign condition-arg handle can't hijack the boundary.
             primary = set(a.primary_members)
             select_addrs = (
                 *(addr for addr in select_addrs if addr in primary),
@@ -4123,9 +4121,9 @@ def build_strategy_node(
         atoms = _atoms_at(attrs, gid)
         # Conjunction-coverage siblings only bind when this group recomputes
         # its aggregate over rows; a fully twin-reused value is read through,
-        # so its input population is not this group's to filter — and keeping
+        # so its input population is not this group's to filter, and keeping
         # the atom would resurrect the redundant fact-rescan parent through
-        # its `needed` args (q30.alt second web_returns).
+        # its `needed` args.
         if a.conjunction_atoms and twin_reused and all(twin_reused.values()):
             atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
         injected = _wrap_atoms(atoms)
@@ -4135,7 +4133,7 @@ def build_strategy_node(
         # provides. Includes the output addresses themselves, the lineage
         # args of *primary* outputs (the columns this group actually
         # computes), and the inputs of any conditions applied at this
-        # group. Passthroughs' lineage is intentionally NOT walked — a
+        # group. Passthroughs' lineage is intentionally NOT walked: a
         # passthrough output like `sum_sales` rides through this group
         # from an aggregate parent; if we walked its lineage we'd add
         # `sales_price` to `needed`, which ROOT provides but the aggregate
@@ -4148,19 +4146,19 @@ def build_strategy_node(
                 if derivation in _AGGREGATING_DERIVATIONS:
                     # A post-condition aggregate that REUSES a same-grain twin
                     # (its pre-condition d1 sibling already materialized this
-                    # value) reads the value through, not recompute — so its raw
-                    # recompute inputs (the input-grain keys, measure columns)
-                    # don't belong in `needed`. Pulling them keeps a redundant
-                    # fact-rescan ROOT parent alive that only re-supplies grouping
-                    # keys the twin already carries (q81 sparkling, q30.alt second
-                    # web_returns). Treat it like a passthrough: skip its lineage.
+                    # value) reads the value through rather than recomputing,
+                    # so its raw recompute inputs (the input-grain keys, measure
+                    # columns) don't belong in `needed`. Pulling them keeps a
+                    # redundant fact-rescan ROOT parent alive that only
+                    # re-supplies grouping keys the twin already carries. Treat
+                    # it like a passthrough: skip its lineage.
                     if not twin_reused.get(c.address, False):
                         _add_aggregate_needed_concepts(needed, c)
                 else:
                     # Recurse through args that are THEMSELVES primary members
                     # of this group (intermediates computed here, e.g. a window
                     # output exposed through a wrapping BASIC): their inputs
-                    # must come from parents, so they belong in `needed` — else
+                    # must come from parents, so they belong in `needed`; else
                     # a parent supplying only those deep inputs reads as
                     # redundant and dedup can drop every candidate (the
                     # lead-over-derived-partition-key shape). Non-primary args
@@ -4181,11 +4179,11 @@ def build_strategy_node(
         # Honor the group-planning contract's declared join keys: a bridge key
         # (e.g. `order` linking a window-derived dimension to the fact scan) is
         # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
-        # would slice it off the root scan -- leaving the merge with no shared
-        # key (ON 1=1). Pull in only the EXTRA bridge keys -- those not already in
-        # the group's grain/outputs -- so a grouping key (e.g. a `by rollup`
+        # would slice it off the root scan, leaving the merge with no shared
+        # key (ON 1=1). Pull in only the EXTRA bridge keys (those not already in
+        # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
         # dimension) is never re-added to `needed` and forced into the SELECT
-        # outside its GROUP BY (aligned-multi-select).
+        # outside its GROUP BY.
         needed |= (
             set(_input_contract_join_keys(a))
             - set(a.grain_components)
@@ -4216,13 +4214,11 @@ def build_strategy_node(
         # d1 aggregate feeding a HAVING-style filter on this root) is real
         # row-flow at SQL time (INNER JOIN to apply the filter) but doesn't
         # supply the root's primary scan columns. Pruning by parent outputs
-        # there strips every requested column and the root never builds —
-        # leaving the consumer with `INVALID_REFERENCE_BUG` against the
-        # missing concepts (q11). A ROWSET boundary likewise sources from its
-        # own recursively-planned inner select (`gen_rowset` ignores parents);
-        # pruning it by a constraint-edge sibling silently dropped a handle the
-        # sibling happened not to pseudonym-cover (subset anchor null test:
-        # `a.amt` vanished from the SELECT).
+        # there would strip every requested column and the root would never
+        # build. A ROWSET boundary likewise sources from its own
+        # recursively-planned inner select (`gen_rowset` ignores parents);
+        # pruning it by a constraint-edge sibling would drop any handle the
+        # sibling happens not to pseudonym-cover.
         if derivation not in (
             Derivation.ROOT,
             Derivation.UNION,
@@ -4234,23 +4230,22 @@ def build_strategy_node(
                 continue
         # For aggregating derivations, peel `injected` off into a pre-filter
         # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
-        # non-scalar-condition path (group_node.py:199) reacts to a
-        # condition that references an aggregate concept (like our
-        # `cp > 1.2 * avg`) by appending the condition's row args to the
-        # group's outputs — which then leak into the GROUP BY and shrink
-        # every row to a unique (state, cp, avg) bucket. Wrapping in a
-        # SelectNode does the WHERE first; the GroupNode then aggregates
+        # non-scalar-condition path reacts to a condition that references an
+        # aggregate concept (`cp > 1.2 * avg`) by appending the condition's
+        # row args to the group's outputs, which then leak into the GROUP BY
+        # and shrink every row to a unique (state, cp, avg) bucket. Wrapping
+        # in a SelectNode does the WHERE first; the GroupNode then aggregates
         # the filtered rows with a clean GROUP BY at the intended grain.
         condition_for_generator = injected
         # Track whichever node ultimately owns the injected conditions. The
         # SubselectComparison (IN <subselect>) renderer reads existence
-        # sources off the CTE that emits the WHERE — if we attach the
-        # existence parent to a different node, the IN's right-hand side
-        # has no source CTE and we emit INVALID_REFERENCE_BUG.
+        # sources off the CTE that emits the WHERE; attaching the existence
+        # parent to a different node leaves the IN's right-hand side with no
+        # source CTE.
         # WINDOW gets the same peel: WindowNode has no `conditions` slot (its
         # generator folds them into `preexisting_conditions`, silently dropping
         # the filter), and WHERE-before-window is exactly the required
-        # semantics — the window computes over the filtered rows.
+        # semantics: the window computes over the filtered rows.
         condition_host_node: StrategyNode | None = None
         if (
             injected is not None
@@ -4306,7 +4301,7 @@ def build_strategy_node(
                     normalize_parent_output_by_addr.setdefault(output.address, output)
             # A parent may carry a needed address only under a pseudonym twin
             # (`count(actor)` over a boundary that emits `stages.event_id`, the
-            # global-merge alias) — dropping it here would dedup the input
+            # global-merge alias); dropping it here would dedup the input
             # stream at the wrong grain before the aggregate reads it.
             normalize_concepts: list[BuildConcept] = []
             matched_addrs: set[str] = set()
@@ -4327,8 +4322,7 @@ def build_strategy_node(
                     # aggregate itself) must be computed BELOW the dedup:
                     # re-deriving it above the normalization GROUP both
                     # evaluates the filter on already-deduped rows and strands
-                    # the virtual's row inputs outside the projection (gcat
-                    # parenthetical: missing source for `_launch_code`). Widen
+                    # the virtual's row inputs outside the projection. Widen
                     # the parent that can render it.
                     candidate = _concept_at(environment, addr)
                     if candidate is not None:
@@ -4394,7 +4388,7 @@ def build_strategy_node(
         node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
-        # ignorant of existence handling — the host node just learns it
+        # ignorant of existence handling; the host node just learns it
         # has extra side-channel parents whose concepts render as
         # subselects rather than joins.
         #
@@ -4429,13 +4423,12 @@ def build_strategy_node(
         final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):
             # A parent-less, datasource-less node that outputs a ROOT concept (a
-            # base column that must come from a datasource) has no source for it —
-            # the renderer would emit `INVALID_REFERENCE_BUG`. This is an
-            # unresolvable query (e.g. a projection / aggregate over concepts from
-            # two unconnected namespaces); fail so it raises
+            # base column that must come from a datasource) has no source for
+            # it. This is an unresolvable query (e.g. a projection / aggregate
+            # over concepts from two unconnected namespaces); fail so it raises
             # UnresolvableQueryException rather than invalid SQL.
-            # Unnest-of-literal / constant leaves output only derived concepts and
-            # are left alone.
+            # Unnest-of-literal / constant leaves output only derived concepts
+            # and are left alone.
             return None
         for node in _strategy_nodes(final):
             _attach_existence_to_node(
@@ -4451,9 +4444,9 @@ def _has_unsourced_leaf(final: StrategyNode) -> bool:
         # A leaf with neither parents nor a datasource can only render what
         # literals alone produce. A ROOT output is the obvious violation, but so
         # is an aggregate over one (`sum(amt)` beside a WHERE that pruned the
-        # scan away): its measure has no source either, and reading only the
-        # derivation missed it because the aggregate is not itself ROOT.
-        # Unnest-of-literal / constant leaves stay legal.
+        # scan away): its measure has no source either, even though the
+        # aggregate is not itself ROOT. Unnest-of-literal / constant leaves
+        # stay legal.
         if any(not literal_producible(concept) for concept in node.output_concepts):
             return True
     return False

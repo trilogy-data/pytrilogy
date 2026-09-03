@@ -1,7 +1,6 @@
 """v4-native source network search.
 
-One labeled search over the datasource/concept network, replacing the
-FULL -> PARTIAL_UNSCOPED -> PARTIAL_SCOPED attempt ladder. Partiality and
+One labeled search over the datasource/concept network. Partiality and
 condition fit are EDGE LABELS the single search reasons about, not global modes
 chosen before searching, so no phase can commit to a source through an edge a
 later phase discards.
@@ -9,14 +8,14 @@ later phase discards.
 Model: sourcing a request is weighted set cover with join connectivity, solved
 as an OBLIGATION-DRIVEN search. Coverage ("some source binds this terminal") is
 only one obligation kind; the correctness invariants quantify per source and
-per relation, so choosing a source can create further obligations — its rows
+per relation, so choosing a source can create further obligations: its rows
 must be labelable with every requested value that some in-cover lookup could
 supply, a declared relation whose side it carries must be materialized on that
 side, its grain must be co-locatable when only non-functional joins reach it,
 and a coalescing axis it binds is only complete once every member arm has a
 carrier. The search branches on each pending obligation's satisfiers until none
 remain, so every way of discharging a requirement is a candidate solution and
-the cost order — not greedy repair order — picks among them. Obligations are
+the cost order, not greedy repair order, picks among them. Obligations are
 monotone (adding a source never un-discharges one) and only minted when a
 satisfier exists (a requirement nothing could satisfy is the request itself,
 not a defect), which is what keeps a fact-to-fact blend with no finer key
@@ -24,7 +23,7 @@ legal. Ambiguity is not this search's concern: incomparable model join paths
 are a typed error raised by `model_ambiguity.validate_relation_paths` before
 any search runs, so the search always picks the cost-order winner.
 
-This file is stages B and C — enumerate, reduce, cost, choose. The vocabulary
+This file is stages B and C: enumerate, reduce, cost, choose. The vocabulary
 is `network_model`, the labeling is `network_build` (the only module that reads
 build models), the shared structure questions are `network_topology`, and the
 requirements are `network_obligations`.
@@ -67,7 +66,7 @@ def _enumerate_covers(
     """The enumeration walk, run in Rust (`network_search.rs` in the parser
     crate): the per-state machinery is bitset arithmetic there, while the
     network's labels cross the boundary once per search as plain strings and
-    bools. `_enumerate_covers_py` is the executable spec the port is held to —
+    bools. `_enumerate_covers_py` is the executable spec the port is held to:
     semantics live in its docstring, and the parity test in
     `test_v4_network_search.py` pins the two together. The budget globals are
     read at call time so test monkeypatching keeps working."""
@@ -113,7 +112,7 @@ def _enumerate_covers_py(
     """One pass, obligation-driven: branch on the scarcest pending obligation's
     satisfiers until none remain, then emit the cover. Coverage and the
     structural invariants are discharged by the same machinery, so every
-    alternative discharge — which carrier, which side hop, which co-locator —
+    alternative discharge (which carrier, which side hop, which co-locator)
     becomes a distinct emitted cover for the cost order to judge.
 
     A terminal covered only partially is a discharged obligation (the cover is
@@ -126,13 +125,11 @@ def _enumerate_covers_py(
     The walk is LEVEL-ORDER over state size, with in-walk dominance: a state
     containing an already-emitted cover with an identical binding profile is a
     tower `_reduce` would only strip back down, so it is not expanded. Level
-    order is what arms the prune — every k-source cover is emitted before any
-    (k+1)-source state pops, so a dominated state always sees its dominator
-    (s66: q23's walk was 97% labelable-chain alternatives, emitting 534 covers
-    of 2..11 sources for a handful of distinct minimal answers). Profile
-    inequality keeps every upgrade path alive: a soft-branch state binds a
-    terminal MORE fully than the cover it extends, so it never reads as
-    dominated by it."""
+    order is what arms the prune: every k-source cover is emitted before any
+    (k+1)-source state pops, so a dominated state always sees its dominator.
+    Profile inequality keeps every upgrade path alive: a soft-branch state
+    binds a terminal MORE fully than the cover it extends, so it never reads
+    as dominated by it."""
     targets = list(network.terminals)
     covers: list[frozenset[str]] = []
     emitted: list[tuple[frozenset[str], dict[str, int]]] = []
@@ -183,7 +180,7 @@ def _enumerate_covers_py(
 def _bound_level(network: SourceNetwork, sources: frozenset[str], address: str) -> int:
     """How well this cover binds one address: 2 fully, 1 partially, 0 not at
     all. A family-required coalescing axis is full only once EVERY member arm
-    has a carrier (`axis_complete`) — never off one arm's scan, which would
+    has a carrier (`axis_complete`), never off one arm's scan, which would
     silently drop the other arms' rows."""
     if address in network.axis_families:
         if network.axis_complete(sources, address):
@@ -217,18 +214,18 @@ def _reduce(
 ) -> frozenset[str]:
     """Drop every source the rest of the cover makes redundant. A source that
     binds nothing the others do not already bind, and is not holding the cover
-    together, contributes only its join — which can restrict rows (an inner join
+    together, contributes only its join, which can restrict rows (an inner join
     onto a narrower population) or fan them out. That is a wrong-rows change, not
     a costlier plan, so a non-minimal cover is INVALID rather than dominated.
 
     "Binds nothing the others do not" is a claim about VALUES, and a source can
-    be load-bearing without providing one — as the only carrier materializing a
+    be load-bearing without providing one: as the only carrier materializing a
     declared key on its side, or the only lookup labeling another source's
     rows. A drop is therefore refused when the remainder answers the request
-    differently (binding profile), disconnects, OPENS an obligation — the same
-    invariants the search built the cover to satisfy, and the full cover has
-    none open, since `_enumerate_covers` only emits a state once its pending
-    set is empty — or trades a functional join for a blend nothing can repair."""
+    differently (binding profile), disconnects, OPENS an obligation (the same
+    invariants the search built the cover to satisfy; the full cover has none
+    open, since `_enumerate_covers` only emits a state once its pending set is
+    empty), or trades a functional join for a blend nothing can repair."""
     profile = _binding_profile(network, sources, targets)
     blends = blend_joins(network, sources)
     current = set(sources)
@@ -259,7 +256,7 @@ def _assign(
 ) -> dict[str, frozenset[str]]:
     """Give each terminal to a source that binds it: a full binding first, then
     one that reads it at its own grain rather than fanning it out, then a stable
-    name — the provider choice must not depend on iteration order, and the
+    name: the provider choice must not depend on iteration order, and the
     solution's cost must not depend on an arbitrary provider pick."""
     assignments: dict[str, set[str]] = {node: set() for node in sources}
     for address in targets:
@@ -295,8 +292,8 @@ def _solution_for(
         join_keys[(left, right)] = keys
         connectors |= keys - target_set
         for key in keys:
-            # A link key is never a stored column on either side — it is reached
-            # through a connector subplan — so it always counts as a derived join.
+            # A link key is never a stored column on either side (it is reached
+            # through a connector subplan), so it always counts as a derived join.
             if not all(
                 _stored_key(network.candidates[node], key) for node in (left, right)
             ):
@@ -351,9 +348,9 @@ def _split_terminals(network: SourceNetwork, targets: list[str]) -> frozenset[st
     join-component (`search_sources` discards the rest), and a cover's joins
     are a subgraph of the candidate pool's, so when no single component of the
     WHOLE pool holds a binder for every terminal, no connected cover exists.
-    Returned as the best component's missing terminals — the two-alias
-    unmergeable-facts request (tpc-ds q64's nested membership) is decided here
-    in one union-find pass instead of a full state-budget walk (s66).
+    Returned as the best component's missing terminals, so a request over two
+    unmergeable fact aliases is decided in one union-find pass instead of a
+    full state-budget walk.
 
     A certificate, not a heuristic: empty means only that this proof does not
     apply, never that a solution exists."""
@@ -377,15 +374,14 @@ def _split_terminals(network: SourceNetwork, targets: list[str]) -> frozenset[st
 def _seed_cover(network: SourceNetwork, targets: list[str]) -> frozenset[str] | None:
     """Top-down fallback: reduce a terminal-covering pool component straight
     to a minimal cover, without walking. Consulted only when the walk found
-    nothing — a truncated budget stops being a dead end — and never competes
-    with the walk's own solutions: gated s66, letting it compete changed four
-    corpus plans, all larger, because a top-down reduction is one drop-order
-    local minimum, not the cost-order winner.
+    nothing (so a truncated budget is not a dead end) and never competing with
+    the walk's own solutions: a top-down reduction is one drop-order local
+    minimum, not the cost-order winner.
 
     Validated by the walk's own emit standard (no pending obligations, one
-    component): obligations are INVISIBLE at the top of the lattice —
-    satisfiers are defined as additions, and with everything chosen there is
-    nothing to add — so an unvalidated reduction can keep a stranded
+    component): obligations are INVISIBLE at the top of the lattice
+    (satisfiers are defined as additions, and with everything chosen there is
+    nothing to add), so an unvalidated reduction can keep a stranded
     labelable the walk would never emit. `pending_obligations` on the reduced
     set sees the frontier again and catches exactly that."""
     pool = components(network, frozenset(network.candidates))
@@ -404,7 +400,7 @@ def _seed_cover(network: SourceNetwork, targets: list[str]) -> frozenset[str] | 
 def search_sources(network: SourceNetwork) -> SearchResult:
     """Stages B + C: discharge obligations, connect, reduce, take the
     cost-order winner. The lexicographic minimum is always non-dominated, so
-    no frontier is kept — incomparable MODEL paths were rejected before the
+    no frontier is kept; incomparable MODEL paths were rejected before the
     search by `model_ambiguity.validate_relation_paths`."""
     targets = list(network.terminals)
     unreachable = frozenset(a for a in targets if not network.binders(a))
@@ -417,11 +413,11 @@ def search_sources(network: SourceNetwork) -> SearchResult:
     solutions: list[SourceSolution] = []
     seen: set[tuple[str, ...]] = set()
     # (reduced solution, its profile): a later cover that CONTAINS a reduced
-    # solution and answers the request identically only re-derives it — the
-    # extra sources are exactly what `_reduce` exists to strip — so it is
+    # solution and answers the request identically only re-derives it (the
+    # extra sources are exactly what `_reduce` exists to strip), so it is
     # skipped before paying the reduction. The enumeration emits every
     # alternative discharge, which on a wide join graph is mostly supersets of
-    # the same few minimal covers (q23: 1162 covers, a handful of solutions).
+    # the same few minimal covers.
     reduced: list[tuple[frozenset[str], dict[str, int]]] = []
     for cover in covers:
         if not is_connected(network, cover):
@@ -440,14 +436,13 @@ def search_sources(network: SourceNetwork) -> SearchResult:
         reduced.append((connected, _binding_profile(network, connected, targets)))
         solutions.append(_solution_for(network, connected, targets))
     if not solutions:
-        # Lazily probe top-down only when the walk came up empty (typically:
-        # budget truncation) — a validated seed is a concrete answer where
-        # the exhausted fall-through can only guess. Lazy on purpose: probing
-        # up front costs a full-component `_reduce` per search, which is more
-        # than the walk it would prune on every healthy request (s66: +0.2s
-        # on q23 for −0.05s of walk). Reported as truncated when the budget
-        # was hit, so `_report_truncation` still says the solution may not be
-        # cost-minimal.
+        # Probe top-down only when the walk came up empty (typically budget
+        # truncation): a validated seed is a concrete answer where the
+        # exhausted fall-through can only guess. Lazy on purpose: probing up
+        # front costs a full-component `_reduce` per search, more than the
+        # walk it would prune on a healthy request. Reported as truncated when
+        # the budget was hit, so `_report_truncation` still says the solution
+        # may not be cost-minimal.
         seed = _seed_cover(network, targets)
         if seed is not None:
             return SearchResult(

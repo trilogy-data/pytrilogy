@@ -49,12 +49,10 @@ from trilogy.core.processing.join_resolution import (
 
 
 def _source_address(concept: BuildConcept) -> str:
-    """Resolve ``concept`` to a stable underlying address.
-
-    ``canonical_address`` already collapses pseudonym / merge / synonym
-    relationships into a single key — concepts that share a canonical
-    address represent the same logical column even when their local
-    address (the alias the consumer references) differs.
+    """Resolve ``concept`` to a stable underlying address: ``canonical_address``
+    collapses pseudonym / merge / synonym relationships into a single key, so
+    concepts sharing one represent the same logical column even when their
+    local alias differs.
     """
     return concept.canonical_address
 
@@ -70,10 +68,9 @@ def _key_addresses(concept: BuildConcept) -> set[str]:
 def _row_limited(
     side_cte: CTE | UnionCTE, _visited: frozenset[str] = frozenset()
 ) -> bool:
-    """A row LIMIT anywhere in the side's chain truncates its row population
-    (a rowset body `limit N`), so no value-completeness claim survives it —
-    the values beyond the limit are silently absent. Conservative by design:
-    a limit on a sibling branch preserved through outer joins could in
+    """A row LIMIT anywhere in the side's chain truncates its row population,
+    so no value-completeness claim survives it. Conservative by design: a
+    limit on a sibling branch preserved through outer joins could in
     principle keep another provider complete, but the FULL it leaves behind
     is the correct price for a truncating construct."""
     if not isinstance(side_cte, CTE):
@@ -87,12 +84,11 @@ def _row_limited(
 
 
 def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
-    """A direct, unfiltered scan of a single datasource. Such a side carries
-    its bindings' full value sets — the datasource IS the source of the
-    concept's values (a partial binding is rejected by the caller like any
+    """A direct, unfiltered scan of a single datasource carries its bindings'
+    full value sets (a partial binding is rejected by the caller like any
     other partial). Only consulted for EQUAL-declared keys: for undeclared
-    keys a non-partial binding is a weaker claim than an author declaration
-    (fact FKs are routinely complete-in-schema but value-subsets in data)."""
+    keys a non-partial binding is a weaker claim than an author declaration,
+    since fact FKs are routinely complete-in-schema but value-subsets in data."""
     if not isinstance(side_cte, CTE):
         return False
     if side_cte.condition is not None or side_cte.limit is not None:
@@ -111,26 +107,17 @@ def _complete_distinct(
     allow_scan_evidence: bool = False,
 ) -> bool:
     """True when ``side_cte`` projects every distinct value of ``concept``
-    *for the concept's full value space*.
+    for the concept's full value space:
 
-    Two conditions:
-
-    1. The concept lives on a GROUP BY grain key here (``group_to_grain``
-       with the concept in the grain). Cardinality at the grain means no
-       two source rows collapse to one — the side carries exactly the
-       source's distinct values modulo the accumulated filter.
-    2. The side does NOT mark the concept as *partial*. A partial concept
-       is a subset projection — distinct *within* that subset, but not the
-       full concept value space. Partial-ness arrives via any of several
-       upstream mechanisms (a partial datasource binding, a ``MERGE``
-       alignment, a ``Modifier.PARTIAL`` column assignment, …); the
-       ``partial_concepts`` field on the CTE propagates that signal
-       uniformly, and we read it without caring which mechanism set it.
-       Two partial sides may individually be GROUP BY-distinct but their
-       subsets don't coincide — never a basis for upgrading an outer join.
-       Stamps close over the pseudonym/canonical group here: for the
-       EQUIVALENCE claim (both sides carry one identical value set), a
-       relation-induced stamp anywhere in the group is disqualifying.
+    1. The concept lives on a GROUP BY grain key here, so the side carries
+       exactly the source's distinct values modulo the accumulated filter.
+    2. The side does not mark the concept partial. A partial concept is a
+       subset projection, distinct within that subset but not the full value
+       space; ``partial_concepts`` propagates that signal uniformly whatever
+       upstream mechanism set it. Stamps close over the pseudonym/canonical
+       group here: for the equivalence claim (both sides carry one identical
+       value set), a relation-induced stamp anywhere in the group is
+       disqualifying.
     """
     if not isinstance(side_cte, CTE):
         return False
@@ -154,26 +141,20 @@ def _own_coverage_partial(
     concept: BuildConcept, side_cte: CTE, graph: DomainGraph
 ) -> bool:
     """An exact-address partial stamp that speaks to the side's own coverage
-    of ``concept`` — the veto for the DIRECTIONAL (value-completeness) claim.
+    of ``concept``: the veto for the directional (value-completeness) claim.
 
-    The pseudonym closure is wrong twice over here: a scoped join
+    The pseudonym closure is wrong here twice over: a scoped join
     pseudonym-links the two sides' key concepts (smearing the subset side's
-    stamp onto the superset side), and a relation-induced stamp — a declared
-    subset endpoint, stamped by the scoped-join build on the member's own
-    rendering — speaks to the RELATION, not to the side's coverage of its own
-    concept; an authoritative scan carries all of its concept's values
-    regardless of what relations were declared over it. Only an exact-address
-    stamp from outside the graph's declared subset endpoints (e.g. an
-    authored `~` binding) blocks.
+    stamp onto the superset side), and a relation-induced stamp at a declared
+    subset endpoint speaks to the relation, not to the side's coverage of its
+    own concept. Only an exact-address stamp from outside the graph's declared
+    subset endpoints (an authored `~` binding) blocks.
 
-    Exact-address audit (2026-07-03): a genuine `~` stamp cannot hide at a
-    pseudonym address of the key. Build substitution re-addresses partial
-    stamps onto the RENDERED pair address (a merged member bound `~` stamps
-    the pair's own address, pseudonyms in tow), and a `~`-bound alias column
-    never serves as the key's provider (the unresolvable-source gate demands
-    a complete source). Closing this check over the pseudonym group would
-    instead FALSE-VETO a scan that binds the key completely alongside a `~`
-    projection of a merged sibling — its own coverage is complete."""
+    A genuine `~` stamp cannot hide at a pseudonym address of the key: build
+    substitution re-addresses partial stamps onto the rendered pair address,
+    and a `~`-bound alias column never serves as the key's provider. Closing
+    over the pseudonym group would instead false-veto a scan that binds the
+    key completely alongside a `~` projection of a merged sibling."""
     subset_endpoints = graph.subset_sources()
     return any(
         p.address == concept.address and p.address not in subset_endpoints
@@ -188,25 +169,22 @@ def _rowset_definition_boundary(
     ROWSET-derived key output here whose parent CTEs do not carry it under its
     own address.
 
-    A rowset boundary is OPAQUE: the output is a renamed, freshly-named concept
-    whose value set is whatever the body produces. The body WHERE/HAVING
-    *defines* that domain rather than restricting a pre-existing one, so at the
-    rename boundary the side carries every value of the concept by construction
-    — a `subset`/`left` join declaring `a ⊆ rs.k` narrows to the directional
-    (member-dropping) LEFT exactly as it would against a plain datasource, and
-    "keep both sides" is spelled with the explicit `union`/`full` join.
+    A rowset boundary is opaque: the output is a freshly-named concept whose
+    value set is whatever the body produces. The body WHERE/HAVING defines
+    that domain rather than restricting a pre-existing one, so at the rename
+    boundary the side carries every value of the concept by construction; a
+    `subset` join declaring `a ⊆ rs.k` narrows to the member-dropping LEFT
+    exactly as against a plain datasource.
 
-    An EXTERNAL filter on the rowset OUTPUT lands in a CTE above this boundary
+    An external filter on the rowset output lands in a CTE above this boundary
     whose parent still carries the key, so it fails the parent-exclusion test
-    and is not mistaken for definitional — falling through to the normal
-    ``_complete_values`` / filter-free checks. Matching is on the concept's OWN
-    address (not the ``_key_addresses`` pseudonym closure): a scoped-join merge
-    pseudonym-links the two join sides' keys, and using that closure would let
-    the OTHER side's address leak into the parent-exclusion test. A
-    boundary CTE with the body's scans INLINED (no parent CTEs at all) is the
-    same boundary — nothing above it can have been folded in unless it filters
-    the rowset's OWN outputs, which the body's WHERE never names (it is written
-    pre-rename), so that is the test there."""
+    and falls through to the normal ``_complete_values`` / filter-free checks.
+    Matching is on the concept's own address, not the pseudonym closure: a
+    scoped-join merge pseudonym-links the two sides' keys, and the closure
+    would let the other side's address leak into the parent-exclusion test. A
+    boundary CTE with the body's scans inlined (no parent CTEs) is the same
+    boundary; nothing above it can have been folded in unless it filters the
+    rowset's own outputs, which the body's pre-rename WHERE never names."""
     if not isinstance(side_cte, CTE):
         return False
     if concept.derivation != Derivation.ROWSET:
@@ -226,7 +204,7 @@ def _rowset_definition_boundary(
 
 def _filters_own_rowset_outputs(concept: BuildConcept, side_cte: CTE) -> bool:
     """A condition on this CTE references one of the rowset's own output
-    handles — an EXTERNAL filter on the materialized rows folded in, not the
+    handles: an external filter on the materialized rows folded in, not the
     body's definitional WHERE."""
     lineage = concept.lineage
     if not isinstance(lineage, BuildRowsetItem):
@@ -242,22 +220,14 @@ def _accumulate_filter(
     side_cte: CTE | UnionCTE,
     _visited: frozenset[str] = frozenset(),
 ) -> BoolExpr | None:
-    """AND of every condition applied along ``side_cte``'s parent chain.
-
-    Walks consumer → producer (allowed direction). Returns ``None`` when no
-    condition appears anywhere in the chain. Cycle-safe via ``_visited``.
-
-    The filter represents the row population that produces this side's
-    rows. For a sibling-rollup case, two sides share the same chain of
-    filters; for an independent aggregation (a HAVING-bounded subset, a
-    year-restricted slice), the chains diverge and the resulting filter
-    expressions won't mutually imply each other.
+    """AND of every condition applied along ``side_cte``'s parent chain, or
+    ``None`` when the chain carries none. Sibling rollups share one chain of
+    filters; independent aggregations diverge and their filters do not
+    mutually imply.
     """
     if not isinstance(side_cte, CTE):
-        # A ``UnionCTE`` produces UNION ALL of its branches — its row
-        # population mixes per-branch filters that don't AND together
-        # cleanly. Treat as opaque so the equivalence test conservatively
-        # fails and we don't upgrade.
+        # A UnionCTE's row population mixes per-branch filters that do not
+        # AND together; treat it as opaque so the equivalence test fails.
         return None
     if side_cte.name in _visited:
         return None
@@ -273,11 +243,9 @@ def _accumulate_filter(
 
 
 def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
-    """Both filters cover exactly the same surviving rows.
-
-    Uses ``condition_implies`` in both directions — atom-set containment
-    handles BETWEEN, IN, SubselectComparison, etc. uniformly. Two ``None``
-    filters are trivially equivalent; a one-sided ``None`` is not.
+    """Both filters cover exactly the same surviving rows (mutual
+    ``condition_implies``). Two ``None`` filters are trivially equivalent; a
+    one-sided ``None`` is not.
     """
     if a is None and b is None:
         return True
@@ -288,11 +256,11 @@ def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
 
 def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
     """Whether ``member``'s columns can be NULL-extended in the rows entering
-    ``target`` — an earlier outer join in this CTE's FROM chain preserved rows
+    ``target``: an earlier outer join in this CTE's FROM chain preserved rows
     where ``member`` has no partner. ``member``'s key is NULL on those rows, a
     plain-equality join never matches them, and ``target``'s preservation is
-    load-bearing for exactly those rows: narrowing would drop them even though
-    the member's own row population fully matches."""
+    load-bearing for exactly those rows even though the member's own row
+    population fully matches."""
     extended: set[str] = set()
     joined: set[str] = set()
     for j in cte.joins or []:
@@ -317,8 +285,8 @@ def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
 
 
 def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
-    """True when ``side_cte`` can emit NULL for ``concept`` — e.g. a ROLLUP/CUBE/
-    GROUPING SETS grouping key carries NULL at its subtotal/grand-total rows."""
+    """True when ``side_cte`` can emit NULL for ``concept`` (a ROLLUP/CUBE/
+    GROUPING SETS key carries NULL at its subtotal rows)."""
     if not isinstance(side_cte, CTE):
         return False
     keys = _key_addresses(concept)
@@ -334,11 +302,11 @@ def _identity(address: str) -> str:
 
 def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
     """A side whose key can be NULL via outer-join padding carries the join
-    IMAGE of the key — the values its own preserved rows happened to match,
-    a subset of the value space — so the two sides' key sets only provably
-    coincide when the padding shares provenance (one upstream source padded
-    both images). Value NULLs (a `?` column, a ROLLUP grouping key) don't
-    subset the non-null values and stay with the null-safe machinery."""
+    image of the key (the values its preserved rows happened to match, a
+    subset of the value space), so the two sides' key sets only provably
+    coincide when the padding shares provenance. Value NULLs (a `?` column, a
+    ROLLUP grouping key) do not subset the non-null values and stay with the
+    null-safe machinery."""
     padded = False
     for concept, side in ((pair.left, pair.cte), (pair.right, right_cte)):
         if (
@@ -390,37 +358,35 @@ def _complete_values(
     side_cte: CTE | UnionCTE,
     graph: DomainGraph,
 ) -> bool:
-    """The side carries every value of the concept's domain — the superset
+    """The side carries every value of the concept's domain: the superset
     test for directional narrowing. Weaker than ``_complete_distinct``:
     duplicates are allowed (fan-out is a property of the data, not of the
-    join type narrowing picks), and a derived concept's domain is the image
-    of its inputs' domains, so completeness transfers through BASIC/ROWSET
-    lineage — but never through a FILTER, which restricts values. Only
-    ``_own_coverage_partial`` stamps veto the claim — relation-induced
-    stamps speak to the relation, not the side's coverage. A row LIMIT
-    anywhere in the chain vetoes unconditionally (``_row_limited``)."""
+    join type), and a derived concept's domain is the image of its inputs'
+    domains, so completeness transfers through BASIC/ROWSET lineage but never
+    through a FILTER. Only ``_own_coverage_partial`` stamps veto the claim; a
+    row LIMIT anywhere in the chain vetoes unconditionally."""
     if not isinstance(side_cte, CTE):
         return False
     if _row_limited(side_cte):
         return False
     keys = _key_addresses(concept)
     if not _own_coverage_partial(concept, side_cte, graph):
-        # scan evidence is trusted here: this path is only reachable from
-        # declaration-gated callers, so scan trust is declaration-gated too
+        # Scan evidence is trusted here because every caller of this path is
+        # declaration-gated.
         if side_cte.group_to_grain or _authoritative_scan(side_cte):
             grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
             if grain_addrs & keys:
                 return True
-        # a non-partial binding on an authoritative scan carries the concept's
-        # full value set even OFF the grain — grain membership only matters
-        # for distinctness, which value completeness does not need
+        # A non-partial binding on an authoritative scan carries the full
+        # value set even off the grain; grain membership only matters for
+        # distinctness, which value completeness does not need.
         if _authoritative_scan(side_cte) and any(
             concept.address == c.address for c in side_cte.output_columns
         ):
             return True
-    # a pure 1:1 passthrough (a rowset translation wrapper: no grouping, no
-    # joins, no condition, one parent) preserves its parent's row set, so
-    # completeness carries through the projection rename
+    # A pure 1:1 passthrough (no grouping, joins, or condition, one parent)
+    # preserves its parent's row set, so completeness carries through the
+    # projection rename.
     if (
         side_cte.condition is None
         and not side_cte.joins
@@ -433,10 +399,10 @@ def _complete_values(
                 parent_concept, parent, graph
             ):
                 return True
-        # a rowset translation renames the key with NO shared address across
-        # the boundary; the wrapper's grain IS the renamed parent grain, so
+        # A rowset translation renames the key with no shared address across
+        # the boundary; the wrapper's grain is the renamed parent grain, so
         # grain membership at matching arity carries the parent's grain
-        # completeness through the rename
+        # completeness through the rename.
         grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
         parent_grain = set(parent.grain.components) if parent.grain else set()
         if (
@@ -459,12 +425,12 @@ def _complete_values(
 
 def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
     """The origin domain nodes this side carries for a canonical key group:
-    the authored addresses of substituted column bindings (threaded forward
-    from the build — ``BuildColumnAssignment.origin_address``) whose bound
-    concept renders in ``group``, collected across the side's source tree and
-    parent chain. Per-COLUMN stamps discriminate where physical datasource
-    identity cannot (one table binding several relation endpoints, shared-base
-    self-joins reading distinct columns)."""
+    the authored addresses of substituted column bindings
+    (``BuildColumnAssignment.origin_address``) whose bound concept renders in
+    ``group``, collected across the side's source tree and parent chain.
+    Per-column stamps discriminate where physical datasource identity cannot
+    (one table binding several relation endpoints, shared-base self-joins
+    reading distinct columns)."""
     out: set[str] = set()
 
     def walk_source(source) -> None:
@@ -493,9 +459,9 @@ def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
 
 
 def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
-    """The side marks the key partial — a SUBSET domain declaration (a `~`
-    binding, `merge a into ~b`, or a scoped subset/left join) propagated up
-    the CTE chain via ``partial_concepts``."""
+    """The side marks the key partial: a subset domain declaration (a `~`
+    binding, `merge a into ~b`, or a scoped subset join) propagated up the
+    CTE chain via ``partial_concepts``."""
     if not isinstance(side_cte, CTE):
         return False
     keys = _key_addresses(concept)
@@ -509,24 +475,21 @@ def _proven_subset_of(
     graph: DomainGraph, sub_concept: BuildConcept, sup_concept: BuildConcept
 ) -> bool:
     """The graph proves the sub side's concept a subset of the sup side's: a
-    directed ⊑ path over declared AND structural edges (rowset/filter lineage
-    mints the latter; traversal handles chained relations and unconditioned ≡
-    hops natively). Deliberately ignores ∦ declarations — an authored ∦ can be
-    conservatively wrong in one direction, and a proven ⊑ path makes the
-    narrowing row-identical (rule B). The sub side keys on its OWN exact
-    address — the two relation endpoints are distinct concepts, one per side,
-    so the plain address is side-specific — while the sup side matches through
-    its pseudonym/canonical closure, since rendering may have re-addressed
-    it.
+    directed subset path over declared and structural edges (rowset/filter
+    lineage mints the latter). Deliberately ignores incomparable declarations:
+    an authored one can be conservatively wrong in one direction, and a proven
+    subset path makes the narrowing row-identical (rule B). The sub side keys
+    on its own exact address (the two relation endpoints are distinct
+    concepts, one per side) while the sup side matches through its
+    pseudonym/canonical closure, since rendering may have re-addressed it.
 
-    That closure is NOT a free stand-in for the sup side: a scoped ∦ merge
-    collapses every member of a chained group (`a = b = c`) onto one canonical,
-    so the sup side's pseudonyms include its own ∦ SIBLINGS — independent
-    populations the declaration says are incomparable. Proving `sub ⊑ sibling`
-    says nothing about `sub ⊑ sup` (with the sub side's own alias as that
-    sibling it is outright vacuous), and rule-B narrowing on it drops the rows
-    present on only one side. Siblings are excluded; sup's own address stays,
-    so a genuine ⊑ path through the ∦ still narrows."""
+    That closure is not a free stand-in for the sup side: a scoped
+    incomparable merge collapses every member of a chained group onto one
+    canonical, so the sup side's pseudonyms include its own siblings,
+    independent populations the declaration says are incomparable. Proving
+    `sub ⊑ sibling` says nothing about `sub ⊑ sup`, and rule-B narrowing on
+    it drops rows present on only one side. Siblings are excluded; sup's own
+    address stays, so a genuine subset path through the merge still narrows."""
     if sub_concept.address == sup_concept.address:
         return False
     group = graph.join_key_groups().get(graph.canonical(sup_concept.address), set())
@@ -546,16 +509,13 @@ def _genuine_partial_stamp(
     graph: DomainGraph,
 ) -> bool:
     """A coverage-speaking partial stamp on the sub side that the sup side
-    lacks. Stamps at declared-relation subset endpoints speak to the RELATION
+    lacks. Stamps at declared-relation subset endpoints speak to the relation
     and smear symmetrically across a canonical group, and a stamp on a ROWSET
-    handle is the planner's own relation-driven marking (a carried boundary
-    re-exposure the scan under-covers — `_carried_handle_is_partial`), never
-    an authored fact; any other stamp is an authored coverage fact (a `~`
-    binding: projection ⊑ concept — including one respelled onto a declared
-    anchor by canonical substitution), so its one-sided presence proves the
-    subset direction — the author declared BOTH sides' relations to the
-    domain (`~` on the sub, a complete binding on the sup, verified by
-    ``_complete_values`` after)."""
+    handle is the planner's own relation-driven marking, never an authored
+    fact. Any other stamp is an authored coverage fact (a `~` binding), so its
+    one-sided presence proves the subset direction: the author declared both
+    sides' relations to the domain (`~` on the sub, a complete binding on the
+    sup, verified by ``_complete_values`` after)."""
     keys = _key_addresses(sub_concept)
     subset_endpoints = graph.subset_sources()
     genuine = {
@@ -588,21 +548,21 @@ def _pair_side_fully_matches(
     """Every row of the subset side finds a partner on the superset side, so a
     join preserving the subset side's unmatched rows preserves nothing.
 
-    Requires SUBSET evidence on the sub side (a lying declaration is an
-    author error — narrowing then drops the violating rows, the ruled
-    semantics), plus proof the superset side carries the key's full domain
-    HERE: complete-distinct with scan evidence trusted because the author
-    declared the relation, and a filter-free chain — a *filtered* superset
-    side never proves subset-match, since a filter on another column can drop
-    domain values asymmetrically.
+    Requires subset evidence on the sub side (a lying declaration is an
+    author error; narrowing then drops the violating rows), plus proof the
+    superset side carries the key's full domain here: complete values, with
+    scan evidence trusted because the author declared the relation, and a
+    filter-free chain, since a filter on another column can drop domain
+    values asymmetrically.
 
-    The evidence arrives one of two ways: a ⊑ path in the domain graph
-    (``_proven_subset_of`` — distinct endpoint concepts, one per side), or a
+    The evidence arrives one of two ways: a subset path in the domain graph
+    (``_proven_subset_of``, distinct endpoint concepts, one per side), or a
     ``partial_concepts`` stamp on the sub side, where both endpoints name one
     concept and must share a source address. ``graph_proof_only`` restricts
-    to the former: rule-B narrowing through an authored ∦ veto trusts only a
-    proven ⊑ path, never the stamp heuristics — ∦ collapses two genuinely
-    distinct populations onto one address, exactly what stamps can't see."""
+    to the former: rule-B narrowing through an authored incomparable veto
+    trusts only a proven path, never the stamp heuristics, because that veto
+    collapses two genuinely distinct populations onto one address, exactly
+    what stamps cannot see."""
     declared = _proven_subset_of(domain_graph, sub_concept, sup_concept)
     if not declared:
         if graph_proof_only:
@@ -611,15 +571,12 @@ def _pair_side_fully_matches(
             return False
         if not _declared_partial(sub_concept, sub_cte):
             return False
-        # SAME-address pair: relation-induced partial stamps land symmetrically
-        # when several relations share one canonical group, so those stamps
-        # alone cannot say which side is the subset HERE. A GENUINE coverage
-        # stamp (a `~` binding, not a relation endpoint) present only on the
-        # sub side settles the direction; otherwise this pair is the rendering
-        # of a relation whose subset member got substituted onto the pair
-        # address — arbitrate by the ORIGIN DOMAIN NODES threaded forward from
-        # the build: the subset side carries a declared-subset origin of this
-        # group that the superset side does not.
+        # Same-address pair: relation-induced partial stamps land symmetrically
+        # when several relations share one canonical group, so they cannot
+        # say which side is the subset here. A genuine coverage stamp (a `~`
+        # binding) present only on the sub side settles the direction;
+        # otherwise arbitrate by origin domain nodes: the subset side carries
+        # a declared-subset origin of this group that the superset side lacks.
         if sub_concept.address == sup_concept.address and not (
             isinstance(sub_cte, CTE)
             and _genuine_partial_stamp(sub_concept, sub_cte, sup_cte, domain_graph)
@@ -639,19 +596,16 @@ def _pair_side_fully_matches(
             ):
                 return False
     # A ROWSET superset anchor at its own rename boundary is complete by
-    # construction (opaque boundary — the body filter DEFINES the domain), so
-    # the author-declared subset side fully matches it. An external filter on
-    # the rowset output fails the boundary test and falls through below.
+    # construction (the body filter defines the domain), so the declared
+    # subset side fully matches it. An external filter on the rowset output
+    # fails the boundary test and falls through below.
     #
-    # Gated on a STRICT directional subset between the two OWN addresses
-    # (`relation(...) is SUBSET`): a scoped-join merge collapses every
-    # anchor-joined key onto one canonical, so two INDEPENDENT rowsets joined to
-    # a common anchor land in each other's pseudonym closure — `_proven_subset_of`
-    # (which walks that closure) would then falsely read one sibling as the
-    # superset of the other and narrow them against each other (INNER on their
-    # intersection, corrupting a preserved anchor row). The own-address relation
-    # is UNKNOWN for such siblings and SUBSET only toward the genuine anchor, so
-    # the boundary completeness applies to the real superset alone.
+    # Gated on a strict directional subset between the two own addresses: a
+    # scoped-join merge collapses every anchor-joined key onto one canonical,
+    # so two independent rowsets joined to a common anchor land in each
+    # other's pseudonym closure and `_proven_subset_of` would falsely read one
+    # sibling as the superset of the other. The own-address relation is
+    # UNKNOWN for such siblings and SUBSET only toward the genuine anchor.
     if (
         _rowset_definition_boundary(sup_concept, sup_cte)
         and domain_graph.relation(sub_concept.address, sup_concept.address)
@@ -797,47 +751,35 @@ def _relative_key_subset(
 
 
 class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
-    """Upgrade FULL/LEFT/RIGHT OUTER → INNER when each join key pair has
-    identical conceptual value sets on both sides.
+    """Upgrade FULL/LEFT/RIGHT OUTER to INNER when each join key pair has
+    identical conceptual value sets on both sides, or narrow directionally
+    when one side is a proven subset (see module docstring).
 
-    See module docstring for the descriptor model. Catches:
+    Catches twin rollups (one or both sides GROUP BY rollups of a shared
+    filtered source, joined back on the rollup key) and sibling aggregations
+    whose effective WHERE chains mutually imply. Skips cross-source joins
+    (source addresses differ), sides carrying an extra WHERE (filters fail
+    mutual implication), and sides without ``group_to_grain`` (cardinality
+    unknown).
 
-    - The "twin rollup" pattern (TPC-DS q98, q12, q20, q63, q89, q98 ...)
-      where one or both sides are GROUP BY rollups of a shared filtered
-      source, joined back on the rollup key.
-    - Sibling aggregations whose effective WHERE chains mutually imply.
-
-    Skips:
-
-    - Cross-source joins (e.g. ``store_sales`` ↔ ``catalog_sales``):
-      source addresses differ, equivalence fails.
-    - Year-over-year / channel comparisons where one side carries an extra
-      WHERE: filters fail mutual implication.
-    - Sides without ``group_to_grain``: cardinality unknown, can't claim
-      the side carries every distinct value.
-    - Query-scoped FULL/UNION joins (``full_join_keys``): the two sides
-      are independent populations with potentially disjoint key sets, and FULL
-      deliberately keeps its key complete (registry-driven, not partial), so
-      the complete-distinct test can't see the disjointness. The scoped merge
-      collapses both keys onto one canonical address, which would otherwise
-      fool the source-address / complete-distinct test into treating two
-      distinct populations as the same value space. (LEFT/merge joins carry the
-      partial flag and need no protection — the test fails naturally.)
-      Rule B exception: an authored ∦ can be conservatively wrong in one
-      direction. When the graph PROVES a subset direction — a structural ⊑
-      path (rowset/filter lineage) into a complete, filter-free superset
-      side — the preservation of the sub side is a no-op and the vetoed
-      join still narrows DIRECTIONALLY (``_narrow_directionally`` with
-      ``graph_proof_only``, never the equivalence upgrade, never the stamp
-      heuristics). The ∦ stays declared; unproven pairs keep the veto.
+    Query-scoped FULL/UNION joins (``full_join_keys``) join two independent
+    populations with potentially disjoint key sets, and FULL deliberately
+    keeps its key complete rather than partial, so the complete-distinct test
+    cannot see the disjointness through the canonical collapse. Rule B
+    exception: an authored incomparable declaration can be conservatively
+    wrong in one direction. When the graph proves a subset direction (a
+    structural path into a complete, filter-free superset side), the vetoed
+    join still narrows directionally (``graph_proof_only``, never the
+    equivalence upgrade or the stamp heuristics); unproven pairs keep the
+    veto.
 
     ``equal_join_keys`` releases that veto for keys whose FULL relation is an
-    EQUAL domain DECLARATION (non-partial `merge a into b` — mutual subset,
+    EQUAL domain declaration (non-partial `merge a into b`,
     docs/subset_union_join_design.md): the canonical collapse then genuinely
     names one value space, so the standard completeness tests apply and the
     join may narrow to INNER. Populated only when
-    ``CONFIG.optimizations.narrow_equal_domain_joins`` is on — narrowing
-    trusts the declaration; data violating it loses the violating rows.
+    ``CONFIG.optimizations.narrow_equal_domain_joins`` is on; narrowing
+    trusts the declaration, and data violating it loses the violating rows.
     """
 
     def __init__(
@@ -845,30 +787,24 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         domain_graph: DomainGraph | None = None,
         narrow_equal_domain_joins: bool = True,
     ) -> None:
-        # The statement's declared-edge domain graph (plus author binding
-        # facts) — the one source of truth for what relations were authored
-        # (docs/domain_graph_design.md). The derived views below are the
-        # legacy registry shapes the pass still consumes internally; they
-        # dissolve as the predicates migrate to direct graph queries.
+        # The statement's declared-edge domain graph is the one source of
+        # truth for authored relations (docs/domain_graph_design.md); the
+        # views below are derived from it.
         graph = domain_graph or DomainGraph()
         self.domain_graph = graph
-        # Canonical addresses of EQUAL-declared keys (non-partial `merge a
-        # into b` — mutual subset): the canonical collapse genuinely names one
-        # value space, so the completeness tests below legitimately arbitrate
-        # and the join may narrow to INNER. Narrowing trusts the declaration;
-        # data violating it loses the violating rows.
+        # Canonical addresses of EQUAL-declared keys (see class docstring).
         self.equal_join_keys = (
             graph.equal_narrowable_keys() if narrow_equal_domain_joins else set()
         )
-        # Canonical addresses of ∦-declared (query-scoped FULL/UNION) keys;
-        # joins on these must never be upgraded to INNER (FULL's key stays
-        # complete, so the partial-driven checks can't protect it).
+        # Canonical addresses of query-scoped FULL/UNION keys; joins on these
+        # must never upgrade to INNER (FULL's key stays complete, so the
+        # partial-driven checks cannot protect it).
         self.full_join_keys = graph.outer_relation_keys() - self.equal_join_keys
-        # subset side (exact, side-specific address) → superset counterpart
+        # Subset side (exact, side-specific address) -> superset counterpart
         # for every SUBSET-declared relation; feeds directional narrowing.
         self.subset_join_map = graph.subset_join_map()
-        # full member → canonical-group-root map for scoped relations; maps a
-        # rendered same-address pair back to its relation group.
+        # Full member -> canonical-group-root map for scoped relations; maps
+        # a rendered same-address pair back to its relation group.
         self.scoped_canonical = dict(graph.canonical_map())
 
     def optimize(
@@ -890,12 +826,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 or _key_addresses(pair.right) & self.full_join_keys
                 for pair in join.joinkey_pairs
             ):
-                # Rule B: an authored ∦ vetoes the equivalence upgrade and the
-                # stamp heuristics, but the graph can PROVE a subset direction
-                # (structural ⊑ lineage against a complete superset side) —
-                # then dropping the sub side's preservation is row-identical
-                # and directional narrowing applies. The ∦ stays declared;
-                # unproven pairs keep the veto.
+                # Rule B: the veto blocks the equivalence upgrade and the
+                # stamp heuristics, but a graph-proven subset direction still
+                # narrows directionally; unproven pairs keep the veto.
                 if self._narrow_directionally(
                     cte, join, right_cte, graph_proof_only=True
                 ):
@@ -928,15 +861,13 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 pair.right,
                 right_cte,
                 # Authoritative-scan completeness is only trusted for keys
-                # the author DECLARED equal-domain; see _authoritative_scan.
+                # the author declared equal-domain; see _authoritative_scan.
                 allow_scan_evidence=equal_declared,
             ):
                 return True
-            # An EQUAL declaration is itself the cross-concept bridge (the
-            # merge collapses two concepts into one value space), so the
-            # renamed-grain evidence of the directional machinery applies:
-            # both sides carrying every value + equivalent filters is exactly
-            # the no-unmatched-rows proof.
+            # An EQUAL declaration collapses two concepts into one value
+            # space, so both sides carrying every value plus equivalent
+            # filters is exactly the no-unmatched-rows proof.
             if not equal_declared:
                 return False
             graph = self.domain_graph
@@ -951,30 +882,25 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
 
         if not all(pair_equal(pair) for pair in join.joinkey_pairs):
             return False
-        # A chain member null-extended by an EARLIER outer join carries rows
+        # A chain member null-extended by an earlier outer join carries rows
         # where its key is absent; equality never matches them, so this join's
-        # preservation is load-bearing for those rows regardless of the two
-        # sides' own value-set equivalence.
+        # preservation is load-bearing regardless of value-set equivalence.
         if any(
             _null_extended_before(cte, join, pair.cte.name)
             for pair in join.joinkey_pairs
         ):
             return False
-        # A key that is nullable on a side but joined with plain ``=`` (the
-        # pair carries no NULLABLE modifier) carries NULL rows the equality
-        # never matches — e.g. a ROLLUP subtotal/grand-total key. Upgrading
-        # to INNER would silently drop them, so leave the OUTER join. (A
-        # null-safe pair, the twin-rollup case, matches NULLs and is safe.)
-        # For an EQUAL-DECLARED key both sides name one value space, so the
-        # right response is to null-safe the pair — NULL is a valid member
-        # and the NULL groups pair — rather than refuse the upgrade.
+        # A key nullable on a side but joined with plain ``=`` carries NULL
+        # rows the equality never matches (a ROLLUP subtotal key); INNER
+        # would silently drop them. A null-safe pair matches NULLs and is
+        # safe. For an EQUAL-declared key both sides name one value space, so
+        # the pair is made null-safe rather than refusing the upgrade.
         for pair in join.joinkey_pairs:
             # Null-safety pairs the NULL groups but says nothing about the
-            # non-null values: a join-padded side carries a key IMAGE that
+            # non-null values: a join-padded side carries a key image that
             # subsets the value space, so unless the padding shares
-            # provenance across the sides the equivalence claim is unsound.
-            # An EQUAL declaration overrides — it names one value space, and
-            # narrowing trusts the declaration over the padded image.
+            # provenance the equivalence claim is unsound. An EQUAL
+            # declaration names one value space and overrides.
             if not self._pair_equal_declared(pair) and _unshared_join_padding(
                 pair, right_cte
             ):
@@ -1004,23 +930,22 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         right_cte: CTE | UnionCTE,
         graph_proof_only: bool = False,
     ) -> bool:
-        """SUBSET-driven narrowing: preservation of a side that provably has no
+        """Subset-driven narrowing: preservation of a side that provably has no
         unmatched rows is a no-op, so drop it.
 
         A side needs preservation only for (a) key values missing from the
-        other side — none when it is subset-DECLARED against a proven-complete
-        superset side (``_pair_side_fully_matches``) — or (b) NULL-key rows
-        with no null-safe partner — none when the pair is null-safe or the
+        other side, none when it is subset-declared against a proven-complete
+        superset side (``_pair_side_fully_matches``), or (b) NULL-key rows
+        with no null-safe partner, none when the pair is null-safe or the
         side proves non-null. FULL narrows to the directional join preserving
         the superset side; a directional join whose preserved side fully
         matches narrows to INNER.
 
-        The sub side's full-match claim is about ITS OWN rows; when the sub
-        side is a chain member that an EARLIER outer join in this CTE's FROM
-        chain null-extended, the chain carries rows where the sub side is
-        absent — a plain-equality join never matches them, so the target
-        join's preservation is load-bearing for exactly those rows and must
-        stay (``_null_extended_before``)."""
+        The sub side's full-match claim is about its own rows; when an
+        earlier outer join in this CTE's FROM chain null-extended it, the
+        chain carries rows where the sub side is absent, and the target
+        join's preservation is load-bearing for exactly those rows
+        (``_null_extended_before``)."""
         assert join.joinkey_pairs
 
         def relative_right(pair) -> bool:

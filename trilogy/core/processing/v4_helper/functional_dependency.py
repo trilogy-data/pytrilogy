@@ -37,7 +37,7 @@ def concept_attr_fd_closure(
                 changed = True
                 continue
             # Declared keys are an FD even when the concept carries no grain,
-            # mirroring build_fd_closure — unless they only determine the value
+            # mirroring build_fd_closure, unless they only determine the value
             # conditionally, which is not an FD at all (see
             # `ConceptAttrs.keys_are_conditional_fd`).
             if (attrs.grain_components and attrs.grain_components <= closure) or (
@@ -78,11 +78,10 @@ def _build_fd_concepts(environment: BuildEnvironment) -> Iterator[BuildConcept]:
 class _FDFacts:
     """The FD-relevant attributes of one environment, as plain data.
 
-    `build_fd_closure` is a fixpoint over a set of addresses, but every
-    attribute it tests is immutable for the life of the environment. Reading
-    them off the BuildConcepts inside the loop re-derived them once per
-    ITERATION, and two of them allocate per read: `equivalent_addresses` builds
-    `{address, *pseudonyms}` fresh, and the keys set was rebuilt per row."""
+    `build_fd_closure` is a fixpoint over a set of addresses, and every
+    attribute it tests is immutable for the life of the environment, so they
+    are read off the BuildConcepts once rather than per iteration
+    (`equivalent_addresses` and the keys set both allocate per read)."""
 
     # (environment key, concept address, equivalent addresses). The key can
     # differ from the concept's own address, and the closure carries both.
@@ -120,11 +119,11 @@ class _FDFacts:
 
 
 # id(environment) -> (weak handle, table). A BuildEnvironment's concepts and
-# datasources are fixed when `BuildEnvironment` is constructed — every later
-# write in the codebase is to the ReferenceGraph, the authored Environment or a
-# StrategyNode — so a table can never go stale, only be discarded with its
-# environment. The weak handle makes the identity check exact: a recycled id
-# cannot false-hit, because a dead referent is never the live environment.
+# datasources are fixed at construction (later writes go to the ReferenceGraph,
+# the authored Environment or a StrategyNode), so a table can never go stale,
+# only be discarded with its environment. The weak handle makes the identity
+# check exact: a recycled id cannot false-hit, because a dead referent is never
+# the live environment.
 _FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _FDFacts]] = {}
 
 
@@ -203,7 +202,7 @@ def build_fd_closure(
                 changed = True
                 continue
             # Declared keys are an FD even when the concept carries no grain
-            # (q28 filter virtuals: keys={lp_avg}, empty grain).
+            # (a filter virtual with keys and an empty grain).
             if (bool(grain) and grain <= closure) or (bool(keys) and keys <= closure):
                 closure.add(address)
                 changed = True

@@ -5,7 +5,7 @@ its members' domains. A cover that reads such an axis off ONE arm silently
 drops the other arms' rows, and a probe read off the wrong side answers "did
 this side match?" with the other side's row. So membership has to be pinned
 per member (the probes) and completeness has to be a property of the whole
-cover (the families) — neither is discoverable by cover enumeration, which
+cover (the families); neither is discoverable by cover enumeration, which
 stops branching the moment one arm binds the class.
 """
 
@@ -37,13 +37,13 @@ def probe_owners(
 ) -> dict[str, frozenset[str]]:
     """A presence probe is pinned to the datasource carrying ITS OWN member.
 
-    Build-time canonical substitution rewrote the probe's lineage argument to the
-    key group's canonical, which every member's datasource binds identically — so
-    the reference graph offers the probe off BOTH sides, and reading it off the
-    wrong one answers "did this side match?" with the other side's row. That is
-    exactly the collapse the probe exists to prevent. `_datasource_renders_probe`
-    resolves and pins the same carrier, so the search must select for it or the
-    two disagree about which scan the probe rides."""
+    Build-time canonical substitution rewrites the probe's lineage argument to
+    the key group's canonical, which every member's datasource binds
+    identically, so the reference graph offers the probe off BOTH sides, and
+    reading it off the wrong one answers "did this side match?" with the other
+    side's row. `_datasource_renders_probe` resolves and pins the same carrier,
+    so the search must select for it or the two disagree about which scan the
+    probe rides."""
     out: dict[str, frozenset[str]] = {}
     for address in addresses:
         if not is_presence_probe(address):
@@ -57,16 +57,14 @@ def probe_owners(
         carrier_ids = {c.identifier for c in carriers[:1]}
         pinned = carrier_ids & offered_by.get(address, set())
         if not pinned:
-            # This graph does not offer the probe off its carrier — q84, where
-            # the carrier is `store_returns` but only the customer dimensions
-            # have an edge to the probe node. Those offers are the COMPLEMENT
-            # side: the dimension spans the member's whole domain, so a probe
-            # read there is a tautology and its filter a silent no-op (q84's
-            # extra row). When the carrier is in this graph, restrict to it
-            # anyway — `pin_unoffered_probes` supplies the binding the graph
-            # lacks. Only when the carrier is not here at all is there truly
-            # nothing to pin to; then leave the graph's own binders rather
-            # than make the probe unsourceable and lose its filter.
+            # The graph offers the probe only off the COMPLEMENT side (a
+            # dimension spanning the member's whole domain), where a probe
+            # read is a tautology and its filter a silent no-op. When the
+            # carrier is in this graph, restrict to it anyway;
+            # `pin_unoffered_probes` supplies the binding the graph lacks.
+            # Only when the carrier is absent is there nothing to pin to; then
+            # leave the graph's own binders rather than make the probe
+            # unsourceable and lose its filter.
             if carrier_ids & datasource_ids:
                 out[address] = frozenset(carrier_ids)
             continue
@@ -81,7 +79,7 @@ def pin_unoffered_probes(
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
     """Bind a requested presence probe the graph offers off NO candidate to its
-    carrier — the datasource physically carrying the member's authored column,
+    carrier: the datasource physically carrying the member's authored column,
     the same one `_datasource_renders_probe` pins.
 
     The carrier computes the probe inline (a single-arg COALESCE over a column
@@ -89,8 +87,7 @@ def pin_unoffered_probes(
     edge. Without it the probe is unreachable, the search declines, and the
     probe's filter silently drops (reads as "no restriction"). Only the
     no-binder case is touched: when the graph offers the probe anywhere,
-    `probe_owners` already arbitrates who may carry it (q84 keeps its graph
-    binders on purpose).
+    `probe_owners` already arbitrates who may carry it.
 
     Returns a NEW table rather than mutating in place: the injected bindings
     must be visible to every later stage-A step, and returning them makes that
@@ -113,7 +110,7 @@ def pin_unoffered_probes(
         # Each argument admits any spelling of its equivalence class: the
         # argument is the key group's CANONICAL (an unnest spine, a rowset
         # output), while the carrier binds the authored member under a
-        # `_virt_merge_*` canonical — one class, several addresses.
+        # `_virt_merge_*` canonical: one class, several addresses.
         arguments: list[frozenset[str]] = []
         for argument in (
             concept.lineage.concept_arguments
@@ -162,7 +159,7 @@ def _axis_arm_pinned(
     Grain EQUALITY, not subset: a dimension attribute keyed by one component of
     a composite fact grain is axis enrichment, not arm content. Condition
     columns (and their grain keys) never pin: a filter restricts the axis
-    population, it does not redefine the rows as one arm's — a side-pinned
+    population, it does not redefine the rows as one arm's; a side-pinned
     presence probe's own row key must not turn an axis anti-join into a
     single-arm read."""
     for address in terminals:
@@ -195,8 +192,8 @@ def axis_families(
     union of the members' domains: its value is the COALESCE of every member's
     own column, so no single arm's scan can bind it fully, and a cover reading
     it off one arm silently drops the other arms' rows. Cover enumeration can
-    never discover this on its own — it stops branching the moment one arm
-    binds the class — so the family is recorded here as a requirement shape and
+    never discover this on its own (it stops branching the moment one arm
+    binds the class), so the family is recorded here as a requirement shape and
     the `axis` obligation asks for the missing arms explicitly.
 
     A group with a member no candidate carries (a rowset member) is left out:

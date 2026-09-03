@@ -75,8 +75,7 @@ def _output_rowset_body_condition_addresses(
 ) -> set[str]:
     """Row-arg addresses of the WHERE/HAVING clauses inside every rowset body
     reachable from the mandatory outputs. An outer WHERE over one of these is a
-    restatement the rowset scope already consumes (q44: outer `store.sk = 1`
-    over two rowsets whose bodies filter `store.sk = 1`) — not a missing join."""
+    restatement the rowset scope already consumes, not a missing join."""
     addrs: set[str] = set()
     seen: set[str] = set()
     stack = list(mandatory_list)
@@ -155,9 +154,9 @@ def _candidate_groups(
         for gid in group_members
         if gid not in d1_root_ids
         # A RECURSIVE group never hosts a row atom: filtering the edge set
-        # changes reachability (a 2024 post's parent chain crosses years), so
-        # the WHERE belongs above the recursion, at the final select.
-        # Excluding it here lets the atom fall through to FINAL.
+        # changes reachability, so the WHERE belongs above the recursion, at
+        # the final select. Excluding it here lets the atom fall through to
+        # FINAL.
         and not (
             buckets.get(gid) is not None
             and buckets[gid].derivation == Derivation.RECURSIVE
@@ -167,12 +166,11 @@ def _candidate_groups(
     ]
     if not candidates:
         # No single group (with its ancestors) covers every input, but each
-        # input may still be produced by SOME group — e.g. a rowset output
-        # compared against a bare aggregate co-grained over that same rowset
-        # (`sct.total_spent > 0.5 * max_total`): the branches only reconverge
-        # at FINAL, so return empty and let the caller route the atom there.
-        # Raise only for an input no group produces at all — that predicate
-        # would otherwise be silently dropped.
+        # input may still be produced by SOME group (a rowset output compared
+        # against a bare aggregate co-grained over that same rowset): the
+        # branches only reconverge at FINAL, so return empty and let the
+        # caller route the atom there. Raise only for an input no group
+        # produces at all; that predicate would otherwise be silently dropped.
         produced = set().union(*group_members.values()) if group_members else set()
         missing = row_inputs - produced
         if missing:
@@ -206,7 +204,7 @@ def _nested_scope_chain(
     nested_ids: set[str],
     lineage_ancestors_graph: nx.DiGraph,
 ) -> list[str]:
-    """The nested groups on `gid`'s own lineage chain — the ones that feed it or
+    """The nested groups on `gid`'s own lineage chain: the ones that feed it or
     carry its value out.
 
     NOT the connected component of the nested subgraph: sibling scopes share the
@@ -234,7 +232,7 @@ def _nested_scope_swallows_atom(
     A d1 scope is reached through the WHERE, so its groups sit lineage-UPSTREAM
     of the statement's own rows and `_upstream_most` elects them over a ROOT
     that could host the atom just as well. Filtering inside the scope restricts
-    that scope's VALUE, not the output population — harmless exactly when the
+    that scope's VALUE, not the output population: harmless exactly when the
     scope's value re-enters the outer plan keyed BY the atom's own concepts, and
     a silent drop when it does not, because the scope's value is read back
     through a join on its GRAIN. An atom within that grain selects which groups
@@ -242,37 +240,19 @@ def _nested_scope_swallows_atom(
     group's value, which is both invisible to the outer rows AND the population
     narrowing the flat-WHERE dual-scope split forbids (conjuncts must not filter
     each other). Grain exposure is asked of the host's whole nested CHAIN, not
-    the host alone — the scope's aggregate is what carries the value out, and
+    the host alone: the scope's aggregate is what carries the value out, and
     the filter feeding it sits at a finer grain of its own.
-
-    tpch q02: `min(supply_cost ? region = 'EUROPE')` is grouped by part id, so
-    `region = 'EUROPE'` placed on that filter vanished from the plan entirely —
-    SQL byte-identical with the atom deleted, and a non-European supplier tying
-    the European minimum comes back in the results. `where val < 8 and sum(val)
-    by cat > 10 select id` is the same shape without a filter scope: `val` is
-    not the gate's `cat` grain, so the row gate was hosted on the gate's own
-    population and no row was ever dropped.
 
     Only once EVERY elected host is nested. A nested host elected ALONGSIDE an
     outer one already reaches the outer rows through that outer copy, and
-    pulling the scope out from under it re-runs `_upstream_most` over a
-    different pool and re-elects a different group entirely (q04's `year in
-    (first, second)` is hosted at both ROOT and its filter scope; dropping the
-    scope moved it to neither, onto a customer-grain BASIC group that cannot
-    source `sale_date.year`). tpcds q30/q30-alt/q81 pass the grain test
-    outright: their `avg(... ? year = Y and state is not null)` is grouped BY
-    state and joined back on state, so the scope's `is not null` reaches the
-    outer rows and the placement is correct (moving it out costs a second
-    `web_returns` scan).
+    pulling the scope out from under it would re-run `_upstream_most` over a
+    different pool and elect a different group entirely.
 
     But then SOME, not ALL: sibling scopes share one materialized ROOT_D1
     feeder, so an atom hosted on any one of them is pushed into that feeder and
-    narrows every sibling's population too. `where val < 8 and sum(id) by val >
-    0 and sum(val) by cat > 10 select id` elects `val < 8` at both gates'
-    scopes; the `by val` scope keys its value by `val` and could carry it, but
-    keeping it there still filtered the shared feeder and left `sum(val) by cat`
-    summing 5 per cat instead of 13/5 — an empty result. One swallower
-    disqualifies the whole nested pool."""
+    narrows every sibling's population too, even when that one scope keys its
+    value by the atom's concept and could carry it. One swallower disqualifies
+    the whole nested pool."""
     if not chosen_groups or not all(gid in nested_ids for gid in chosen_groups):
         return False
     return any(
@@ -350,17 +330,17 @@ def _post_aggregation_producers(
     a `by *` aggregate output (grain = the abstract all_rows marker, or no
     grain at all), or a derived concept (e.g. a bool BASIC wrapping one) whose
     producer sits lineage-downstream of such an aggregate. An atom referencing
-    a global value is a 0/1-row gate — it may only be hosted at the value's
+    a global value is a 0/1-row gate: it may only be hosted at the value's
     producer (HAVING) or downstream of it; an upstream scan carrying the
     address as a computable member re-renders the aggregate inline at the
     HOSTING group's grain, silently turning the global gate into a per-grain
     HAVING. Deliberately untouched: a GRAINED aggregate value (its keyed
-    consumers are legitimate join hosts — `web_total > store_total` joins both
+    consumers are legitimate join hosts; `web_total > store_total` joins both
     aggregate CTEs on the shared grain) and a MIXED atom pairing a global
-    value with row-level inputs (`account_balance > avg_bal by *`, TPC-H q22
-    — there the host is the row group with the global CTE cross-joined in, so
-    pinning to the producer chain strands the row side). Pin only when EVERY
-    row input is a global post-aggregation value."""
+    value with row-level inputs (`account_balance > avg_bal by *`, where the
+    host is the row group with the global CTE cross-joined in, so pinning to
+    the producer chain strands the row side). Pin only when EVERY row input is
+    a global post-aggregation value."""
     all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     lineage_only = lineage_subgraph(group_graph, group_edges)
 
@@ -447,25 +427,25 @@ def _uncovered_exposing_output_contributor(
     mandatory_addrs: set[str],
 ) -> bool:
     """Whether some select-phase group producing a mandatory output sits outside
-    the chosen hosts' downstream cover AND can expose every atom input — i.e. an
+    the chosen hosts' downstream cover AND can expose every atom input, i.e. an
     unfiltered projection of the same row universe re-enters the FINAL merge.
 
     Hosting an atom at its upstream-most candidate filters that branch, but a
-    sibling output projection (`vehicle_label` beside a name-grain window) joins
-    FINAL on a coarser key and fans the filtered rows back out to the unfiltered
-    universe, so the WHERE is re-applied on the final select. Only trip when the
-    uncovered group can expose the inputs (else the FINAL WHERE would reference
-    an unsourced concept; an uncovered contributor keyed 1:1 by row identity is
-    pinned by the join and needs no re-filter — its groups can't expose derived
-    condition inputs and skip here). Condition-phase (d1) groups are skipped as
-    contributors: they feed the WHERE side channel, never a mandatory output, so
-    they cannot be the unfiltered projection that re-fans the universe. (They DO
-    receive row atoms — see `_nested_scope_swallows_atom` — just not as outputs.)
+    sibling output projection (a row-grain label beside a coarser-grain window)
+    joins FINAL on a coarser key and fans the filtered rows back out to the
+    unfiltered universe, so the WHERE is re-applied on the final select. Only
+    trip when the uncovered group can expose the inputs (else the FINAL WHERE
+    would reference an unsourced concept; an uncovered contributor keyed 1:1 by
+    row identity is pinned by the join and needs no re-filter, and its groups
+    can't expose derived condition inputs, so it skips here). Condition-phase
+    (d1) groups are skipped as contributors: they feed the WHERE side channel,
+    never a mandatory output, so they cannot be the unfiltered projection that
+    re-fans the universe. (They DO receive row atoms, see
+    `_nested_scope_swallows_atom`, just not as outputs.)
 
     Skipped entirely under non-standard grouping (ROLLUP/CUBE/GROUPING SETS):
     those groups NULL-inject rolled-up dims on subtotal rows, and a WHERE
-    re-applied above the merge would drop every subtotal (q05 lost its rollup
-    totals)."""
+    re-applied above the merge would drop every subtotal."""
     if any(b.nulls_grouping_keys for b in buckets.values()):
         return False
     covered: set[str] = set(chosen_groups)
@@ -497,11 +477,11 @@ def _preserved_final_branch(
     while other select-phase contributors also enter it. The FINAL join against
     such a filtered branch renders row-preserving whenever its axis is nullable
     or partial (the enrichment contract), which re-admits the rows the WHERE
-    excluded as NULL-extended pads (q81: `current_address.state = 'GA'` hosted
-    on the split customer-dim cluster, LEFT-joined back to the qualifying
-    aggregate). The WHERE — not the join — owns row dropping, so the atom is
-    re-asserted at FINAL; the re-check is idempotent when the join is already
-    row-identical (the predicate is restated at its merge in the same shape).
+    excluded as NULL-extended pads (a dimension filter hosted on a split
+    dimension cluster, LEFT-joined back to the qualifying aggregate). The
+    WHERE, not the join, owns row dropping, so the atom is re-asserted at
+    FINAL; the re-check is idempotent when the join is already row-identical
+    (the predicate is restated at its merge in the same shape).
     Gated on the inputs being FINAL-visible mandatory outputs so the copy never
     drags feeder scans in above the merge, and skipped under non-standard
     grouping for the same subtotal-NULL reason as
@@ -534,7 +514,7 @@ def _grouping_barrier_host(
     A GROUP BY candidate downstream of EVERY dropped boundary host has the
     completion merge as its own input, so the coalesced axis is a real column
     there. Above it the axis is gone: a grouping group can only emit a column
-    it groups by, and this one's grain excludes the inputs — routing to FINAL
+    it groups by, and this one's grain excludes the inputs, so routing to FINAL
     makes FINAL demand an un-grouped column and the binder rejects the CTE
     (`by rollup` + a multi-key `subset join`).
 
@@ -545,7 +525,7 @@ def _grouping_barrier_host(
     ``dropped_hosts`` may be empty: an atom spanning two probe producers (`w.wk
     is not null or c.ck is not null`) is hostable at neither boundary alone, so
     nothing gets dropped and the only candidate left is the GROUP BY where both
-    probes reconverge as raw columns. That group is still the right host — the
+    probes reconverge as raw columns. That group is still the right host: the
     `all(...)` below is vacuously true, and the GROUP BY / grain checks carry
     the decision on their own."""
     for gid in candidates:
@@ -597,12 +577,10 @@ def _conjunction_recompute_placements(
         if placement.reason is not PlacementReason.UPSTREAM_MOST:
             continue
         atom = placement.atom
-        # `existence_arguments` is truthy for a LITERAL membership too —
-        # `cntrycode in ('13','17','31')` yields `[()]` (one empty group). A
-        # veto keyed on the raw list kept q22's IN atom off the aggregate
-        # recompute host, which then aggregated rows the conjunction excludes.
-        # Only an atom with an actual existence CONCEPT (a feeder to wire)
-        # stays home.
+        # `existence_arguments` is truthy for a LITERAL membership too (`x in
+        # ('a','b')` yields `[()]`, one empty group), so test the groups, not
+        # the list: only an atom with an actual existence CONCEPT (a feeder to
+        # wire) stays home.
         if any(atom.existence_arguments):
             continue
         row_inputs = {c.address for c in atom.row_arguments}
@@ -708,7 +686,7 @@ def _staged_precondition_placements(
     conjuncts do not filter each other); a staged chain declares the opposite
     for cross-stage pairs: stage N's computations see only rows passing stages
     1..N-1. The atom lands on the computation's ROOT_D1 feeder scan(s) when it
-    has them — ROOT re-planning then sources the atom's columns (and can admit
+    has them; ROOT re-planning then sources the atom's columns (and can admit
     a `complete where`-matching datasource) and anything downstream of the scan
     (including a window) computes over the filtered rows. A host with no
     ROOT_D1 feeder (e.g. fed by a rowset boundary) takes the atom directly and
@@ -719,7 +697,7 @@ def _staged_precondition_placements(
     CROSS-ROW earlier atom travels too: the host's stage plans under a
     stage-qualified condition label, so its feeder is private to the stage,
     and the feeder's ROOT re-plan applies an aggregate/window condition the
-    same way a flat `where sum(z) by x > 5 select id` does — the gate
+    same way a flat `where sum(z) by x > 5 select id` does, with the gate
     re-sourced standalone and semi-joined back on its grain. What a cross-row
     atom CANNOT do is ride a direct host with no feeder: the host's input has
     no per-row gate value to compare, so that is a typed error rather than a
@@ -806,12 +784,11 @@ def plan_condition_placements(
     # A GLOBAL merge whose collapsed member keeps a row-shape computed origin
     # (`merge recursive_parent into root_parent.id`) null-extends exactly like
     # a statement relation, so a side's WHERE defers past the completion merge
-    # (adhoc03: pre-filtering `root_parent.type = 'story'` re-admits filtered
-    # parents null-extended through the coalesce). ONLY in a row-level
-    # statement: with a grouping contributor in the graph the completion merge
-    # sits BELOW the aggregate, and a FINAL-deferred side WHERE would filter
-    # aggregated rows instead of input rows (recursive-enrichment
-    # `where parent.label = 'A' select count(id)` over-counted).
+    # (pre-filtering the side re-admits the filtered rows null-extended
+    # through the coalesce). ONLY in a row-level statement: with a grouping
+    # contributor in the graph the completion merge sits BELOW the aggregate,
+    # and a FINAL-deferred side WHERE would filter aggregated rows instead of
+    # input rows.
     if not any(b.derivation in GROUPING_DERIVATIONS for b in buckets.values()):
         statement_relation_addresses = (
             statement_relation_addresses | computed_origin_relation_members(environment)
@@ -842,9 +819,9 @@ def plan_condition_placements(
     }
     # Addresses a group can pair a relation on beyond its listed members: the
     # KEYS of its members (a group hosting only `a.aw` still joins on a.aw's
-    # key `a.aid` — assembly carries it). `group_relatable` additionally folds
+    # key `a.aid`; assembly carries it). `group_relatable` additionally folds
     # in member pseudonyms (a collapsed scoped-join mate answers under the
-    # canonical address) — safe for LOCATING a relation mate, but NOT for a
+    # canonical address), safe for LOCATING a relation mate, but NOT for a
     # group's own relation-side identity: a boundary key's pseudonym IS the
     # other side, and counting it would swallow the whole relation (empty
     # mates) and misclassify the boundary as self-contained.
@@ -883,7 +860,7 @@ def plan_condition_placements(
 
     def _group_in_active_relation(gid: str) -> bool:
         """True when ``gid`` is one SIDE of a scoped relation whose mate lives
-        in a DIFFERENT group of THIS graph — i.e. the completion merge that
+        in a DIFFERENT group of THIS graph, i.e. the completion merge that
         null-extends this group's rows happens above it in this query. A WHERE
         atom over such a group's outputs is a post-join predicate: hosting it
         at the group pre-filters one side of a preserving relation (an `is not
@@ -892,15 +869,15 @@ def plan_condition_placements(
         anchor re-admits the filtered rows NULL-extended). A group whose
         relation mate is outside this scope (a nested arm reading one rowset)
         or INSIDE itself (a single ROOT scan covering the whole join) keeps
-        local hosting — its own SELECT applies the WHERE post-join."""
+        local hosting; its own SELECT applies the WHERE post-join."""
         b = buckets.get(gid)
         if b is None:
             return False
         # A non-ROWSET group only defers when its rows flow STRAIGHT to the
-        # FINAL merge — that merge is then the relation's completion merge and
+        # FINAL merge; that merge is then the relation's completion merge and
         # the atom is genuinely post-join. A group feeding any intermediate
-        # consumer (q72: the inv scan feeding a joined aggregation) must keep
-        # local hosting: its atoms are pre-aggregation predicates, and a
+        # consumer (a scan feeding a joined aggregation) must keep local
+        # hosting: its atoms are pre-aggregation predicates, and a
         # FINAL-deferred copy would filter aggregated rows instead of input
         # rows.
         if b.derivation != Derivation.ROWSET and any(
@@ -911,10 +888,10 @@ def plan_condition_placements(
         # than its own member list, but always names the boundary's grain; a
         # plain group participates through a member's key (`a.aw` keyed by
         # relation member `a.aid`). Own-side identity deliberately excludes
-        # pseudonyms — see `group_own_keys` — and for a ROWSET boundary also
+        # pseudonyms (see `group_own_keys`) and for a ROWSET boundary also
         # excludes member KEYS: a handle's key resolves through the OUTER
         # scoped join's canonical (the mate's address), which would swallow
-        # the relation and un-flag the boundary (q64 second-fact join hoist).
+        # the relation and un-flag the boundary.
         if b.derivation == Derivation.ROWSET:
             own_rowset = b.discriminator.removeprefix("rowset:")
 
@@ -941,10 +918,9 @@ def plan_condition_placements(
             # canonicalization relabels a collapsed handle to the OTHER side's
             # address, and that foreign canonical rides this boundary's GRAIN as
             # the axis handle. Counting it as a key swallows the relation (empty
-            # mates) the same way a pseudonym would — the boundary reads as
+            # mates) the same way a pseudonym would: the boundary reads as
             # self-contained and hosts a post-join predicate locally, narrowing
-            # one side of a preserving relation (cross-rowset membership: the
-            # statement not-null fused with the projection filter's stream).
+            # one side of a preserving relation.
             keys = {
                 addr
                 for addr in members & scoped_join_member_addresses
@@ -963,7 +939,7 @@ def plan_condition_placements(
             # A non-ROWSET group only counts as a preserved SIDE of a
             # STATEMENT-scoped join: a global `merge` is an identity
             # declaration (INNER pairing, no null-extension), so pre-filtering
-            # a scan that shares a merged key is sound — and required, or a
+            # a scan that shares a merged key is sound, and required, or a
             # rowset body's own WHERE floats above its aggregate. Rowset
             # boundaries keep the wider criterion (cross-rowset `merge X.a
             # into Y.b` completion merges are global-scoped yet preserving).
@@ -975,11 +951,10 @@ def plan_condition_placements(
         mates -= keys
         if not mates:
             return False
-        # A ROOT mate (`c_demo`) is often not itself a member of any group —
-        # the pairing scan carries it as an FD attribute of a member's key
-        # (customers hosts c_name keyed by c_id; c_demo's key is c_id). Let a
-        # ROWSET boundary locate such a mate through the mate's keys; an
-        # undemanded mate has no ConceptAttrs, so fall back to the environment.
+        # A ROOT mate is often not itself a member of any group: the pairing
+        # scan carries it as an FD attribute of a member's key. Let a ROWSET
+        # boundary locate such a mate through the mate's keys; an undemanded
+        # mate has no ConceptAttrs, so fall back to the environment.
         if b.derivation == Derivation.ROWSET:
             for mate in list(mates):
                 mate_attrs = attrs_by_address.get(mate)
@@ -1008,14 +983,13 @@ def plan_condition_placements(
 
     # Rowset boundaries whose rows flow STRAIGHT to the FINAL merge. When two or
     # more such boundaries merge there, that merge is a cross-rowset completion
-    # join that can null-extend a side — the offset/derived-key subset join
-    # (`subset join b.oid + 1 = a.oid`) is the motivating case: its endpoint is a
-    # derived expression, so it registers no scoped-join axis and
-    # `_group_in_active_relation` cannot see it. A WHERE over such a boundary's
-    # output is a post-merge predicate the same way (hosting `b.amt is not null`
-    # inside b's boundary filters nothing pre-join, then the LEFT completion
-    # re-admits the row null-extended). Route it to FINAL — always correct, a
-    # no-op when the merge is INNER.
+    # join that can null-extend a side. A derived-key subset join (`subset join
+    # b.oid + 1 = a.oid`) registers no scoped-join axis, so
+    # `_group_in_active_relation` cannot see it, yet a WHERE over such a
+    # boundary's output is a post-merge predicate the same way (hosting `b.amt
+    # is not null` inside b's boundary filters nothing pre-join, then the LEFT
+    # completion re-admits the row null-extended). Route it to FINAL: always
+    # correct, a no-op when the merge is INNER.
     rowset_final_groups = {
         gid
         for gid, b in buckets.items()
@@ -1042,13 +1016,13 @@ def plan_condition_placements(
             # A presence probe's null test is only meaningful ABOVE the merge
             # that null-extends it: hosting it at the member's own rowset
             # boundary reads the probe one-sided (never NULL for `is not
-            # null`, all-NULL for `is null` — the anti-join filters the wrong
+            # null`, all-NULL for `is null`, so the anti-join filters the wrong
             # side). Drop boundary hosts; the atom lands at FINAL (or a ROOT
             # group, whose plan itself contains the completion merge). The
             # same applies to a scoped-join KEY-GROUP MEMBER itself: a member
             # reference reads as the coalesced group axis, which only exists
             # post-merge (`WHERE coalesce(b_store, a_store) is not null`
-            # renders at the final select) — filtering one boundary by its own
+            # renders at the final select); filtering one boundary by its own
             # key both no-ops locally and perturbs the anchor-LEFT join shape.
             active_relation_hosts = {
                 gid
@@ -1056,11 +1030,11 @@ def plan_condition_placements(
                 if _group_in_active_relation(gid) or _rowset_boundary_deferred(gid)
             }
             # A flagged NON-rowset host (a FINAL contributor that is one side
-            # of an active preserving relation — the aligns read-back's
+            # of an active preserving relation, such as the aligns read-back's
             # enrichment scan) leaves the pool quietly: any surviving upstream
             # host still wins (its SELECT applies the WHERE pre-merge within
-            # the pipeline, q72), and when nothing survives the tail routes
-            # the atom to FINAL.
+            # the pipeline), and when nothing survives the tail routes the
+            # atom to FINAL.
             relation_candidates = list(candidates)
             candidates = [
                 gid
@@ -1084,14 +1058,14 @@ def plan_condition_placements(
                 # A member of a scoped join whose producer is a ROWSET
                 # boundary reads as the coalesced axis above the completion
                 # merge; once a boundary host is off the table the surviving
-                # candidates are downstream derivations of the OTHER side
-                # (the `fut_period.wk + 53` derived-key group), which can
-                # neither see the axis nor be pushed past their own boundary.
-                # Route straight to FINAL. Same for a probe whose only hosts
-                # are condition-only side branches (the mixed
+                # candidates are downstream derivations of the OTHER side (a
+                # derived-key group over the mate), which can neither see the
+                # axis nor be pushed past their own boundary. Route straight
+                # to FINAL. Same for a probe whose only hosts are
+                # condition-only side branches (the mixed
                 # root-member-vs-rowset-anchor shape): applying the atom there
                 # filters a group FINAL never merges, silently dropping the
-                # WHERE — FINAL pulls the probe's producer in as a keyed side
+                # WHERE; FINAL pulls the probe's producer in as a keyed side
                 # input instead.
                 dropped_rowset_host = len(non_rowset_candidates) != len(candidates)
                 dropped_hosts = [
@@ -1102,7 +1076,7 @@ def plan_condition_placements(
                 # to reach FINAL is where the coalesced axis last exists as a
                 # raw column: routing past it makes FINAL demand the axis from
                 # an aggregate that cannot group by it (`by rollup` + a
-                # multi-key `subset join` — the axis columns come out ungrouped
+                # multi-key `subset join`: the axis columns come out ungrouped
                 # and the binder rejects them). Host it there instead, a
                 # pre-aggregation WHERE above the completion merge.
                 barrier = _grouping_barrier_host(
@@ -1111,14 +1085,13 @@ def plan_condition_placements(
                 # An atom spanning two boundaries (`w.wk is not null or c.ck is
                 # not null`) is hostable at neither one, so every candidate can
                 # leave as an active-relation host and the pool empties. Falling
-                # through then lands it at FINAL — but FINAL is only "above
+                # through then lands it at FINAL, but FINAL is only "above
                 # every barrier" for a ROW-shaped output. With an aggregate
                 # below, a WHERE hosted above it filters post-aggregation AND
                 # forces the aggregate to carry row keys it cannot group by,
                 # collapsing it to the per-row grain-match formula (`count(x)`
                 # -> `CASE WHEN x IS NOT NULL THEN 1 ELSE 0`) and silently
-                # under-counting (q35 `store AND (web OR catalog)` beside
-                # `count(cust_id)`). The barrier group is where both probes
+                # under-counting. The barrier group is where both probes
                 # still exist as raw columns, pre-aggregation: host there.
                 if (dropped_rowset_host or not candidates) and barrier is not None:
                     placements.append(
@@ -1144,7 +1117,7 @@ def plan_condition_placements(
             # predicate: it may only be hosted at that aggregate's producer
             # group (HAVING) or downstream of it. An upstream scan can carry
             # the address as a computable member, but hosting there re-renders
-            # the aggregate inline at the HOSTING group's grain — a `by *`
+            # the aggregate inline at the HOSTING group's grain, so a `by *`
             # global gate silently becomes a per-output-grain HAVING.
             producer_gids = _post_aggregation_producers(
                 row_inputs, buckets, group_graph, group_edges
@@ -1177,11 +1150,10 @@ def plan_condition_placements(
             ]
             # A self-contained membership whose ONLY hosts are membership-set
             # producers (output and set share one scan, so the set's producer is
-            # the sole candidate) has nowhere neutral to land -- placing it on a
+            # the sole candidate) has nowhere neutral to land: placing it on a
             # producer is self-referential. Route to FINAL, where each set is a
-            # subselect feeder. Memberships with a real consumer candidate (the
-            # common TPC-DS `x in <set>` over a separate output aggregate) are
-            # untouched.
+            # subselect feeder. Memberships with a real consumer candidate (`x
+            # in <set>` over a separate output aggregate) are untouched.
             if (
                 atom.existence_arguments
                 and restricted
@@ -1198,7 +1170,7 @@ def plan_condition_placements(
             # A gate whose row inputs are only producible by groups disconnected
             # from the mandatory outputs (e.g. `where x = 1` beside a rootless
             # `unnest([...])`/constant output) has no covering contributor to host
-            # it -- its own root group is pruned from FINAL assembly, silently
+            # it: its own root group is pruned from FINAL assembly, silently
             # dropping the filter. Route it to FINAL, which cross-joins the gate's
             # scan (the FINAL merge dedups to the output grain, so the gate acts as
             # a 0/1-row EXISTS gate). Restricted to rootless outputs: a disconnected
@@ -1219,17 +1191,16 @@ def plan_condition_placements(
                 )
                 continue
             # A row atom whose EVERY candidate host lies outside the main
-            # lineage (with real datasource outputs — the rootless case became
+            # lineage (with real datasource outputs; the rootless case became
             # a FINAL EXISTS gate above) has no host FINAL assembly will keep:
             # the condition-only group covers no mandatory output, so it is
             # pruned and the WHERE silently vanishes (`where year = 2001` over
             # rowset outputs that never expose year). No join relates the
-            # gate's rows to the outputs — rowset islanding diagnoses the same
-            # shape as disconnected; raise the same typed error. EXEMPT an
-            # atom the output rowsets' own bodies already filter on (q44's
-            # outer `store.sk = 1` restates both rowsets' WHERE): that scope
+            # gate's rows to the outputs; rowset islanding diagnoses the same
+            # shape as disconnected, so raise the same typed error. EXEMPT an
+            # atom the output rowsets' own bodies already filter on: that scope
             # consumes the concept, so this is a redundant restatement, not a
-            # missing join — placement proceeds and the drop is harmless.
+            # missing join, and placement proceeds with a harmless drop.
             if (
                 mandatory_list
                 and candidates

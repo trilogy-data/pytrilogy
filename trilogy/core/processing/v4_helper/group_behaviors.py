@@ -6,10 +6,10 @@ sets?"
 
 Two pure functions per derivation:
 
-- ``native_grain(bucket, concept_graph) -> frozenset[str]`` — the grain at
+- ``native_grain(bucket, concept_graph) -> frozenset[str]``: the grain at
   which this group's output rows live. Drives the grain-compatibility
   check applied when deciding which upstream columns can ride through.
-- ``can_preserve(concept_graph, native_grain, address) -> bool`` — given
+- ``can_preserve(concept_graph, native_grain, address) -> bool``: given
   a candidate column from a parent's capability, can we carry it through
   our SELECT without breaking row shape?
 
@@ -36,7 +36,7 @@ from .models import ConceptAttrs, GroupBucket
 
 # Behaviors read node state from `concept_attrs` (the typed side dict keyed by
 # concept-graph node id) and walk lineage edges via `concept_graph` + its typed
-# `concept_edges` side map — the graph itself carries only topology.
+# `concept_edges` side map; the graph itself carries only topology.
 NativeGrainFn = Callable[
     [GroupBucket, nx.DiGraph, EdgeMap, dict[str, ConceptAttrs]], frozenset[str]
 ]
@@ -112,20 +112,13 @@ def native_grain_basic_inherited(
     """BASIC's effective grain is the union of its primaries' lineage
     parents' grains.
 
-    Why not ``bucket.grain_components``? The trilogy compiler reports
-    ``concept.grain`` for a BASIC by walking back through its lineage to
-    the underlying source row identity — but when the BASIC's lineage
-    sits on top of aggregate or window outputs, those outputs have
-    already collapsed the source rows to a narrower grain. The BASIC's
-    actual SQL row stream lives at the narrower grain, not the source
-    grain.
-
-    Example (TPC-DS q02): ``round(sum(price) by week_seq / lead(...) over
-    (... by week_seq), 2)`` has ``concept.grain`` reporting the source
-    row grain (item.id, order_id, sales_channel), but the round() runs
-    per-week (the aggregates' grain). Treating week_seq as
-    grain-incompatible would block the BASIC from carrying it forward
-    as a merge join key.
+    ``concept.grain`` for a BASIC walks back through its lineage to the
+    source row identity, but when the lineage sits on top of aggregate or
+    window outputs those outputs have already collapsed the rows to a
+    narrower grain, and that is the grain the BASIC's SQL row stream lives
+    at. A scalar over two aggregates keyed by the same column runs per key,
+    and that key must stay grain-compatible so it can ride through as a
+    merge join key.
 
     Fall back to the declared grain when no lineage parents are present
     (e.g. a constant-folded BASIC)."""
@@ -153,13 +146,10 @@ def can_preserve_grain_subset(
     grain is a subset of ``native_grain``, OR it has no grain (constant /
     scalar).
 
-    Subset is a syntactic approximation of functional dependency. We
-    don't walk FK closures, so this is coarser than necessary — a column
-    with declared grain {date.id} can't ride through a group at grain
-    {item.id, order_id, sales_channel} even if every sales row has a
-    unique date.id. The safety property holds: a blocked column just
-    doesn't ride this group's CTE; if it's reachable through a different
-    parent path, it'll still land where it's needed."""
+    Subset is a syntactic approximation of functional dependency (no FK
+    closure walk), so it is coarser than necessary, but safe: a blocked
+    column just doesn't ride this group's CTE, and if it is reachable
+    through a different parent path it still lands where it is needed."""
     return concept_attr_fd_determines(concept_attrs, native_grain, address)
 
 
@@ -199,16 +189,15 @@ def can_preserve_grouping(
     Like the subset rule, but with two adjustments for columns that aren't
     grain-subset-determined:
     - a *rename of grain keys* (every lineage parent is a grain key) rides
-      through — it IS a group key under another name, and the SELECT renders it
-      from the (grouped) key (q05 `s_channel`←`channel_label`,
-      `s_id`←`sales_id_label` over a ROLLUP);
-    - a bare empty-grain column rides through only if it's a true CONSTANT — a
+      through: it IS a group key under another name, and the SELECT renders it
+      from the (grouped) key;
+    - a bare empty-grain column rides through only if it's a true CONSTANT. A
       row-varying empty-grain value (a CASE that isn't a key rename) would land
       in the SELECT with no GROUP BY entry, which is invalid SQL."""
     node = _attrs_for_address(concept_attrs, address)
     if node is None:
         return False
-    # Nothing is proven through an empty-grain FILTER virtual's keys — the
+    # Nothing is proven through an empty-grain FILTER virtual's keys; the
     # closure itself enforces that (`ConceptAttrs.keys_are_conditional_fd`), so
     # such a virtual reaches the lineage-parents rule below instead.
     closure = concept_attr_fd_closure(
@@ -264,10 +253,10 @@ GROUP_BEHAVIORS: dict[Derivation, Behavior] = {
         can_preserve=can_preserve_grain_subset,
     ),
     # UNNEST expands each source row into one row per element; every source-row
-    # column rides through unchanged (all companions are carried). Judge preservation against the SOURCE row grain — the
-    # declared grain is the element value, which FD-determines nothing, so the
-    # default behavior would strip the source keys and leave a sibling merge
-    # with no axis (count-over-unnest beside a dim join cross-joins ON 1=1).
+    # column rides through unchanged. Preservation is judged against the SOURCE
+    # row grain: the declared grain is the element value, which FD-determines
+    # nothing, so the default behavior would strip the source keys and leave a
+    # sibling merge with no axis.
     Derivation.UNNEST: Behavior(
         native_grain=native_grain_filter_inputs,
         can_preserve=can_preserve_grain_subset,

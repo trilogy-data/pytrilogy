@@ -30,7 +30,7 @@ class UnnestNode(StrategyNode):
         self.unnest_concepts = unnest_concepts
 
     def _resolve(self) -> QueryDatasource:
-        """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
+        """Attach the UNNEST join and route the unnested concepts through it."""
         base = super()._resolve()
         lineage = self.unnest_concepts[0].lineage
         assert isinstance(lineage, BuildFunction)

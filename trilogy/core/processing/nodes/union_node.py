@@ -34,16 +34,12 @@ class UnionNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
             preexisting_conditions=preexisting_conditions,
-            # A union's grain is always its stacked output columns; expose it at
-            # construction so callers don't set-then-rebuild after the fact.
+            # A union's grain is always its stacked output columns.
             grain=grain
             or BuildGrain.from_concepts(output_concepts, environment=environment),
         )
-        # Intrinsic column-level partials (``~col`` inside a ``partial
-        # datasource``) survive a covering UNION; the caller in
-        # ``create_union_datasource_candidate`` filters out non-intrinsic stamps
-        # before
-        # passing them in. Anything else is a usage error.
+        # partial_concepts carries only intrinsic column-level partials (``~col``
+        # inside a ``partial datasource``); those survive a covering UNION.
         self.set_operator = set_operator
 
     def add_output_concepts(self, concepts, rebuild=True, unhide=True):

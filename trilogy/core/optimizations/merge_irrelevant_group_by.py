@@ -25,8 +25,8 @@ from trilogy.core.processing.grain_utility import (
     stacks_duplicate_rows,
 )
 
-# Child must have no aggregates or other unsafe derivations - it must be
-# pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
+# The child must be pure scalar transforms so its GROUP BY is vacuous
+# relative to the parent.
 CHILD_INELIGIBLE_DERIVATIONS = SENSITIVE_DERIVATIONS | {Derivation.AGGREGATE}
 
 
@@ -48,12 +48,12 @@ def _drops_dedup_measure(cte: CTE, parent: CTE) -> bool:
     """True when a child aggregate would coarsen past a non-aggregate parent's
     GROUP BY that deduplicates on the very measure being aggregated.
 
-    A non-aggregate parent GROUP BY is normally a vacuous DISTINCT (keyed by real
-    keys) and safe to fold a child into. But when the parent's grain folds in a
-    non-key measure (a `select <measure>`-grain rowset / UNION-DISTINCT dedup) and
-    the child sums that measure, dropping the parent's group double-counts the rows
-    the dedup collapsed. Counting a parent-grain *key* stays safe (count-distinct of
-    an already-unique key), so only non-key grain components trip this."""
+    A non-aggregate parent GROUP BY keyed by real keys is a vacuous DISTINCT
+    and safe to fold into. When the parent's grain folds in a non-key measure
+    and the child aggregates that measure, dropping the parent's group
+    double-counts the rows the dedup collapsed. Aggregating a parent-grain key
+    stays safe (the key is already unique), so only non-key grain components
+    trip this."""
     parent_grain = set(parent.grain.components)
     for column in cte.output_columns:
         for arg in _aggregate_inputs(column):
@@ -165,20 +165,19 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             return False, None
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             return False, None
-        # a limited PARENT is an opaque boundary (fusing the child's group into
-        # it would re-aggregate below the limit); a limited CHILD is fine — its
+        # A limited parent is an opaque boundary (fusing the child's group into
+        # it would re-aggregate below the limit); a limited child is fine, its
         # limit transfers to the merged CTE below.
         if parent.limit is not None:
             return False, None
         if not is_grouped_cte(parent):
             return False, None
 
-        # Parent must only be used by this CTE
         if not is_sole_consumer(cte, parent, inverse_map):
             self.debug(f"Parent {parent.name} has multiple children, skipping")
             return False, None
 
-        # An existence subselect must read FROM a CTE other than its host —
+        # An existence subselect must read from a CTE other than its host;
         # merging either side of an existence link makes the exists()
         # reference the CTE it renders in (or a dropped name).
         if any(
@@ -194,7 +193,6 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             )
             return False, None
 
-        # Child must be pure scalar transforms - no aggregates, windows, etc.
         identity_aggregate_fold = _identity_group_single_use_aggregate(cte, parent)
         for concept in cte.output_columns:
             if _is_child_ineligible(concept, cte, parent) and not (
@@ -209,18 +207,15 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             if concept.derivation == Derivation.AGGREGATE:
                 parent_has_aggregate = True
 
-        # A child aggregate over a non-aggregate parent whose GROUP BY folds in the
-        # measure being aggregated (a DISTINCT-grain rowset dedup) must NOT fuse —
-        # dropping the parent's group double-counts the rows the dedup collapsed.
         if not parent_has_aggregate and _drops_dedup_measure(cte, parent):
             self.debug(
                 f"CTE {cte.name} aggregates a measure {parent.name} deduplicates on, skipping"
             )
             return False, None
 
-        # When the parent computes aggregates, its GROUP BY grain matters; only
-        # safe to merge when the child preserves (or refines) that grain.
-        # Compare via equivalent_addresses so aliased keys are recognized as equal.
+        # When the parent computes aggregates its GROUP BY grain matters: the
+        # child must preserve it. Compare via equivalent_addresses so aliased
+        # keys count as equal.
         if parent_has_aggregate:
             child_grain_addresses: set[str] = set()
             for column in cte.output_columns:
@@ -231,8 +226,8 @@ class MergeIrrelevantGroupBy(OptimizationRule):
                     return False, None
 
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
-        # Ensure any new derived columns from child exist in parent's source_map
-        # (empty list means renderer uses concept lineage to compute the expression).
+        # An empty source_map entry makes the renderer compute the expression
+        # from concept lineage.
         parent_output_addresses = {x.address for x in parent.output_columns}
         for x in cte.output_columns:
             if x.address not in parent_output_addresses:
@@ -240,9 +235,9 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             if x.address not in parent.source_map:
                 parent.source_map[x.address] = []
 
-        # Carry the child's existence references and nullability — dropping
-        # them strands memberships (INVALID_REFERENCE) and lets null-safe
-        # joins be falsely downgraded, same contract as CollapseSingleParent.
+        # Carry the child's existence references and nullability: dropping
+        # them strands memberships and lets null-safe joins be falsely
+        # downgraded (same contract as CollapseSingleParent).
         for address, sources in cte.existence_source_map.items():
             if address not in parent.existence_source_map:
                 parent.existence_source_map[address] = sources
@@ -251,17 +246,16 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             if column.address not in nullable_addresses:
                 parent.nullable_concepts.append(column)
 
-        # Replace parent's output with child's (coarser) output and grain.
-        # Child's output_columns already contains the hidden group-by keys
-        # (e.g. customer_id, item_id) so GROUP BY is preserved correctly.
+        # The child's output_columns already carry the hidden group-by keys,
+        # so the GROUP BY survives the swap.
         cte_output_addresses = {x.address for x in cte.output_columns}
         parent.output_columns = [
             x for x in parent.output_columns if x.address in cte_output_addresses
         ]
         parent.grain = cte.grain
         parent.hidden_concepts = parent.hidden_concepts.union(cte.hidden_concepts)
-        # LIMIT is the last logical operation of a SELECT — the child's limit
-        # (and its ORDER BY) carries onto the merged CTE unchanged
+        # LIMIT is the last logical operation of a SELECT, so the child's limit
+        # and ORDER BY carry onto the merged CTE unchanged.
         if cte.limit is not None:
             parent.limit = cte.limit
             parent.order_by = cte.order_by

@@ -3,7 +3,7 @@ the reference graph.
 
 The ONLY module in the network search that reads build models. Everything above
 it reasons over addresses, node names and set relations alone, which is what
-makes "the search is pure — it selects sources and reports why, but builds no
+makes "the search is pure: it selects sources and reports why, but builds no
 StrategyNodes" a structural property rather than a promise.
 
 No QUALITATIVE pruning here: a datasource the conditions disqualify is labeled
@@ -11,7 +11,7 @@ SENSITIVE, not removed, so the search can explain itself. Join-REACHABILITY is
 the one exception (`_relevant_nodes`): a datasource no chain of shared bindings
 connects to any requested address can appear in no cover, no obligation and no
 explanation, and labeling a wide environment's every scan costs more than the
-search it feeds (s66: 168 candidates labeled for a 3-terminal request).
+search it feeds.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def _equivalence_map(
     `environment.concepts` alone cannot see a derived merge key's twins: after
     `merge ka into kb` both real addresses carry the surviving side's lineage,
     while each side's own variant lives in the graph under its canonical
-    (`_virt_*`) address — the a-side's under `alias_origin_lookup`'s entry. The
+    (`_virt_*`) address, the a-side's under `alias_origin_lookup`'s entry. The
     graph's pseudonym edges relate those canonical nodes, so they are passed in
     as extra union pairs; without them the two scans' bindings share no class
     and the sources disconnect."""
@@ -86,11 +86,11 @@ def _equivalence_map(
         if concept is None:
             continue
         # A concept's own canonical (`_virt_*`) address is the SAME concept in
-        # the graph's spelling — a request asks for `ss.is_returned` while the
-        # scan's edge emits `ss._virt_comp_*` (q84's terminal that nothing
-        # bound). Presence probes are the deliberate exception: the
-        # `_virt_presence_*` identity pins side membership and must never
-        # collapse onto the `_virt_func_*` class every member binds.
+        # the graph's spelling: a request asks for the authored address while
+        # the scan's edge emits its `_virt_comp_*` form. Presence probes are
+        # the deliberate exception: the `_virt_presence_*` identity pins side
+        # membership and must never collapse onto the `_virt_func_*` class
+        # every member binds.
         canonical = concept.canonical_address
         if (
             canonical
@@ -139,7 +139,7 @@ def _condition_fit(
 
 
 def _emitted_addresses(graph: ReferenceGraph, node: str) -> set[str]:
-    """Every address the scan can produce — stored columns plus values it can
+    """Every address the scan can produce: stored columns plus values it can
     derive inline from complete columns (the graph already carries both as
     datasource edges)."""
     return {
@@ -231,11 +231,10 @@ def _grain_classes(
     components = set(datasource.grain.components)
     if not components:
         # A datasource with no DECLARED grain still has a row identity when it
-        # binds KEY concepts — infer it, so the directed lookup test
+        # binds KEY concepts; infer it, so the directed lookup test
         # (`functional_into`) can judge chains INTO it instead of refusing.
-        # Strictly more conservative than the empty grain it replaces: the
-        # undirected `joins_functionally` already treats an empty grain as
-        # trivially covered by ANY shared key.
+        # Strictly more conservative than an empty grain, which the undirected
+        # `joins_functionally` treats as trivially covered by ANY shared key.
         components = {
             column.concept.address
             for column in datasource.columns
@@ -269,7 +268,7 @@ def _union_candidates(
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
     """A partition family read as one source. Each arm binds the discriminator
-    only for its own partition, so only the union binds it fully — without this
+    only for its own partition, so only the union binds it fully; without this
     candidate the search would answer a whole-population request from one arm."""
     datasources = [
         datasource
@@ -313,13 +312,13 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
 
     A union candidate is the same family of columns over the whole partition
     population; an arm is one partition and is row-partial for the family's
-    grain. So anywhere an arm can serve — as a coverer, a labeling hop, a
-    co-locator — the union serves at least as well, without carrying the arm's
+    grain. So anywhere an arm can serve (as a coverer, a labeling hop, a
+    co-locator) the union serves at least as well, without carrying the arm's
     partiality into the cover.
 
     Excluded: an arm the request's WHERE implies exactly (`IMPLIED_EXACT`). The
     predicate has already narrowed the request to that arm's own rows, so the
-    union is strictly worse there — it re-reads the partitions the filter
+    union is strictly worse there: it re-reads the partitions the filter
     removes. Matching on identifiers, not identity, because the union's children
     are the environment's datasources while the candidates are the graph's."""
     by_identifier: dict[str, str] = {}
@@ -340,7 +339,7 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
 
 def _terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     """Single-row / abstract-grain concepts join by cross product, never by a
-    key, so they must not drive connectivity — sourcing them is a cross join the
+    key, so they must not drive connectivity: sourcing them is a cross join the
     caller adds. Internal addresses are never terminals."""
     return sorted(
         {
@@ -359,12 +358,12 @@ def _decomposable(
     equivalence: dict[str, str],
     seen: frozenset[str] = frozenset(),
 ) -> bool:
-    """No source emits this address — but if it is an expression over terminals
+    """No source emits this address, but if it is an expression over terminals
     the search is ALREADY sourcing, it is computed inline once they are joined,
     so it is not itself a sourcing requirement. The parents must be requested,
     not merely bindable: dropping a derived terminal whose parent nothing asks
     for would lose the requirement instead of relocating it. Only BASIC lineage
-    qualifies — an aggregate, a window, a filter or a rowset output is its own
+    qualifies; an aggregate, a window, a filter or a rowset output is its own
     opaque unit and anchors a join."""
     if address in sourced:
         return True
@@ -373,7 +372,7 @@ def _decomposable(
     if is_presence_probe(address):
         # A presence probe is a deliberately opaque single-arg COALESCE over a
         # coalescing key-group member, and build-time canonical substitution
-        # rewrote that argument to the group canonical — which EVERY member's
+        # rewrites that argument to the group canonical, which EVERY member's
         # datasource binds identically. So its lineage always looks decomposable
         # and inlining it computes "did this side match?" off whichever source
         # won, which is the exact collapse the probe exists to prevent. It is
@@ -399,15 +398,14 @@ def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
 
     A connector exists to RELATE two sides, so it has to offer an address other
     than the merged key it provides. Nearly every non-BASIC derivation already
-    does — an aggregate's grain is its `by`, a window's is its partition — and
+    does (an aggregate's grain is its `by`, a window's is its partition) and
     for those this is empty. The row-multiplying family is the exception: parse
     deliberately gives `unnest`/`date_spine` no grain at all (row identity is
     the input's grain times the element, which no Grain can spell), so the
     concept falls back to self-grain and the merge then rewrites that onto the
     merged class. Such a grain says only "I am the merged key": the two sides
     share no binding, the cover disconnects, and the plan degrades to a cross
-    join (`ecoregion_info` RIGHT JOIN `trees` on 1=1, every tree paired with
-    every ecoregion).
+    join.
 
     `keys` is where parse put the input axis, and it survives the canonical
     rewrite the grain did not. Empty for a keyless spine (`unnest([1,2,3])`),
@@ -425,13 +423,12 @@ def _connector_candidates(
     non-BASIC (recursive / aggregate / window) origin in `alias_origin_lookup`,
     while `environment.concepts` holds a demoted lineage-less twin.
 
-    No scan emits such a key (only BASIC lineage computes inline), so the two
-    sides it relates share no binding and the cover disconnects — the one
-    capability the ladder's Steiner walk had (it traversed lineage edges) that
-    datasource↔concept bindings lack. The connector's subplan is real, though:
+    No scan emits such a key (only BASIC lineage computes inline), so on
+    datasource/concept bindings alone the two sides it relates share no
+    binding and the cover disconnects. The connector's subplan is real, though:
     `_derived_connector_nodes` materializes the origin carrying the merged key
     AND its own grain keys, and joins on them. This candidate binds exactly
-    that contract — the key's equivalence class plus the origin's grain keys —
+    that contract (the key's equivalence class plus the origin's grain keys),
     so the `connected` obligation can select the connector instead of giving
     up, and the emitter already knows how to render the choice."""
     out: dict[str, SourceCandidate] = {}
@@ -472,8 +469,8 @@ def _join_requirements(
     equivalence: dict[str, str],
 ) -> tuple[JoinRequirement, ...]:
     """The declared relations this request actually traverses, in the search's
-    address space. Same source of truth as the ladder's terminal injection, so
-    the two agree on which relations need discovery help at all."""
+    address space. Same source of truth as `inject_authored_join_key_terminals`,
+    so the two agree on which relations need discovery help at all."""
     out: list[JoinRequirement] = []
     for pair in relevant_authored_join_pairs(terminals, environment):
         canonical = equivalence.get(pair.canonical.address, pair.canonical.address)
@@ -517,14 +514,14 @@ def _relevant_nodes(
     extra_sets: list[frozenset[str]],
 ) -> set[str]:
     """Datasource nodes some cover could contain: the join-components of the
-    pool touching a requested address, over CANONICAL emitted addresses —
-    computed before labeling, because a candidate's binding keys are exactly
+    pool touching a requested address, over CANONICAL emitted addresses.
+    Computed before labeling, because a candidate's binding keys are exactly
     its canonicalized emitted addresses (minus probe-ownership removals), so
     address-reachability over this bipartite graph over-approximates every
     join any cover could make. `extra_sets` carries the union/connector
-    candidates' binding keys — a derived connector can bridge scans that share
-    no address. Presence-probe carriers are seeded by node: their binding is
-    INJECTED by `pin_unoffered_probes`, never emitted by the graph."""
+    candidates' binding keys, since a derived connector can bridge scans that
+    share no address. Presence-probe carriers are seeded by node: their binding
+    is INJECTED by `pin_unoffered_probes`, never emitted by the graph."""
     canonical: dict[str, set[str]] = {
         node: {equivalence.get(a, a) for a in emitted}
         for node, emitted in emitted_by_node.items()

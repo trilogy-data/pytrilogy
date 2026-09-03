@@ -11,6 +11,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
@@ -91,13 +92,11 @@ def deduplicate_nodes(
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
-        # Hidden concepts are excluded by ``resolve_concept_map`` for
-        # QueryDatasources, so a parent that hides a concept does not
-        # actually supply it downstream — don't let it shadow another
-        # parent that exposes the same concept publicly.
+        # A parent that hides a concept does not supply it downstream, so it
+        # must not shadow another parent that exposes the same concept.
         hidden = set(v.hidden_concepts) if isinstance(v, QueryDatasource) else set()
         unique_outputs = [
-            # the concept may be a in a different environment for a rowset.
+            # a rowset's concept may live in a different environment
             (environment.concepts.get(x.address) or x).address
             for x in v.output_concepts
             if x not in v.partial_concepts and x.address not in hidden
@@ -115,8 +114,8 @@ def deduplicate_nodes(
                 and not merged[k1].partial_concepts
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
-                # a row-limited source is a proper row subset — never
-                # interchangeable with (or replaceable by) a superset source
+                # a row-limited source is a proper row subset, never
+                # interchangeable with a superset source
                 and getattr(merged[k1], "limit", None) is None
                 and getattr(merged[k2], "limit", None) is None
             ):
@@ -142,14 +141,12 @@ def deduplicate_nodes_and_joins(
     logging_prefix: str,
     environment: BuildEnvironment,
 ) -> tuple[list[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
-    # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
         duplicates = False
         duplicates, merged, removed = deduplicate_nodes(
             merged, logging_prefix, environment=environment
         )
-        # filter out any removed joins
         if joins is not None:
             joins = [
                 j
@@ -211,7 +208,7 @@ class MergeNode(StrategyNode):
         self.node_joins: list[NodeJoin] | None = node_joins
         # A deliberately-assembled multi-side merge (coalescing axis, presence
         # probe): every parent is a distinct SIDE of a declared relation, so
-        # the single-parent/duplicate collapse shortcuts must not fire — same
+        # the single-parent/duplicate collapse shortcuts must not fire; same
         # addresses across sides are different domains, not redundancy.
         self.preserve_parents = preserve_parents
         # An assembly stitch between sibling contributors: extension-family
@@ -219,13 +216,11 @@ class MergeNode(StrategyNode):
         # host basis and preserves only the span owner. Mid-plan merges keep
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
-        # `~` spans this merge must NOT extend: the statement elected another
-        # group to carry those extension members (see
-        # v4_helper/extent_ownership.py), so padding them here manufactures a
-        # second copy the FINAL assembly can only reunite or discard. Pairing
-        # on the key stays sound: the members are simply the ones the fact
-        # actually binds. Captured from the environment at construction so a
-        # merge assembled deep inside a generator inherits its group's routing.
+        # `~` spans this merge must NOT extend: another group owns those
+        # extension members (v4_helper/extent_ownership.py), so padding here
+        # would manufacture a second copy. Captured from the environment at
+        # construction so a merge built deep inside a generator inherits its
+        # group's routing.
         self.extent_free_spans = (
             environment.extent_free_spans
             if extent_free_spans is None
@@ -248,8 +243,8 @@ class MergeNode(StrategyNode):
             if left.identifier == right.identifier:
                 raise SyntaxError(f"Cannot join node {left.identifier} to itself")
             # generator-authored joins carry no null-safety analysis; compute it
-            # here like inferred joins do (get_modifiers), else a nullable join
-            # key silently drops its NULL matches through the plain equality
+            # here as inferred joins do, else a nullable join key drops its NULL
+            # matches through the plain equality
             modifiers = list(join.modifiers)
             if (
                 Modifier.NULLABLE not in modifiers
@@ -301,7 +296,6 @@ class MergeNode(StrategyNode):
         grain: BuildGrain,
         environment: BuildEnvironment,
     ) -> list[BaseJoin | UnnestJoin]:
-        # only finally, join between them for unique values
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
             key=lambda x: (-len(x.grain.components), x.identifier),
@@ -320,12 +314,11 @@ class MergeNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {grain!s}"
                 )
-                # The host side is the one licensed to carry extension rows:
-                # when this node emits `~`-licensed keys, the side covering
-                # ALL of them owns every extension family, and a feeder
-                # exposing only the stitch key is not a host even though it
-                # covers the merge grain (its padding is join manufacture).
-                # With no licensed keys in play, grain coverage decides.
+                # The host side carries extension rows: when this node emits
+                # `~`-licensed keys, the side covering ALL of them owns every
+                # extension family; a feeder exposing only the stitch key is not
+                # a host even when it covers the merge grain. With no licensed
+                # keys in play, grain coverage decides.
                 host_grain: set[str] | None = None
                 if self.host_stitch:
                     licensed = {
@@ -399,15 +392,12 @@ class MergeNode(StrategyNode):
             return JoinProofs(
                 proofs=proofs, side_proofs=side_proofs, or_groups=or_groups
             )
-        # A query-level filter (e.g. a HAVING like ``customer_state > scaled``)
-        # is sometimes pushed into the single branch that exposes its columns
-        # rather than kept on this merge. It still constrains the FINAL output:
-        # any output concept it proves non-null must not be re-nulled by an
-        # outer join. That only holds when no branch supplies the column
-        # completely: with one branch COMPLETE and another PARTIAL on it (a
-        # rowset's `where order_id...` over its base key outer-joined back to
-        # the unfiltered base) the merge legitimately spans rows outside the
-        # filter, so the outer join must keep them.
+        # A query-level filter pushed into the single branch that exposes its
+        # columns still constrains the FINAL output: any output concept it
+        # proves non-null must not be re-nulled by an outer join. That holds
+        # only when no other branch supplies the column completely; with one
+        # branch COMPLETE and another PARTIAL on it, the merge legitimately
+        # spans rows outside the filter and the outer join must keep them.
         output_addresses = {c.address for c in self.output_concepts}
         branch_proofs: set[str] = set()
         complete_addresses: set[str] = set()
@@ -423,10 +413,9 @@ class MergeNode(StrategyNode):
         branch_proofs -= complete_addresses & partial_addresses
         # A branch carrying an atom of this merge's PRE-APPLIED request WHERE
         # (preexisting_conditions the merge itself does not re-render) is the
-        # population: every final row must have a match there (q30: the
-        # `state = 'GA'` branch outer-joined once its key's honest nullability
-        # stopped the INNER typing). Branch-local filters (a rowset's internal
-        # WHERE) are not request atoms and keep their deliberate preservation.
+        # population: every final row must have a match there. Branch-local
+        # filters (a rowset's internal WHERE) are not request atoms and keep
+        # their deliberate preservation.
         filtered_ids: set[str] = set()
         if self.preexisting_conditions is not None:
             rendered = (
@@ -475,24 +464,21 @@ class MergeNode(StrategyNode):
             else:
                 merged[source.identifier] = source
 
-        # it's possible that we have more sources than we need — unless every
-        # parent is a deliberate side of a coalescing relation (same addresses
-        # across sides are different domains, not redundancy)
+        # drop redundant sources, unless every parent is a deliberate side of a
+        # coalescing relation
         if not self.preserve_parents:
             final_joins, merged = deduplicate_nodes_and_joins(
                 final_joins, merged, self.logging_prefix, self.environment
             )
-        # early exit if we can just return the parent
         final_datasets: list[QueryDatasource | BuildDatasource] = sorted(
             merged.values(), key=lambda source: source.identifier
         )
 
         merge_output_addresses = {c.address for c in self.output_concepts}
         existence_addr_set = {c.address for c in self.existence_concepts}
-        # The coalescing (union/full) key members of this build. A semijoin
-        # feeder (a HAVING-membership existence source) is keyed on one of these
-        # when its probe filters the coalesced key itself; that key on the feeder
-        # is then incidental (the genuine union sides carry it), see below.
+        # Coalescing (union/full) key members. A semijoin feeder keyed on one of
+        # these because its probe filters the coalesced key carries that key
+        # only incidentally; the genuine union sides supply it (see below).
         coalescing_members = self.environment.domain_graph.coalescing_relation_members()
         existence_key_by_addr: dict[str, set[str]] = {
             c.address: {k for k in (c.keys or set()) if k in coalescing_members}
@@ -504,22 +490,16 @@ class MergeNode(StrategyNode):
             provided_existence = out_addrs & existence_addr_set
             if not provided_existence:
                 return False
-            # Existence-only if every concept it provides that this merge
-            # actually emits as a row output is an existence concept. A source's
-            # incidental extra columns (e.g. a membership rowset's other
-            # measures) are unused here and must not promote it to a joined row
-            # source — doing so leaves it dangling in the FROM (it has no join
-            # key, only a subselect) yet feeding the SELECT list.
+            # Existence-only if every concept it provides that this merge emits
+            # as a row output is an existence concept. Incidental extra columns
+            # must not promote it to a joined row source: it has no join key,
+            # only a subselect, and would dangle in the FROM.
             #
-            # A coalescing key member the feeder exposes only because it is the
-            # KEY of its OWN semijoin probe (a HAVING `... is not null` over the
-            # coalesced key) is likewise incidental: the genuine union sides
-            # carry the coalesced key and the feeder reaches its rows through the
-            # EXISTS subselect, not a row join. Promoting it to a row source pairs
-            # a key column the side never projects under the group canonical — a
-            # dangling merge column. (A feeder exposing OTHER coalescing keys, not
-            # its probe key, is a real bridge row source and stays a join
-            # candidate: q04's chained union join over per-customer rowsets.)
+            # A coalescing key the feeder exposes only as the KEY of its own
+            # semijoin probe is likewise incidental: the feeder reaches its rows
+            # through the EXISTS subselect, not a row join. A feeder exposing
+            # OTHER coalescing keys is a real bridge row source and stays a
+            # join candidate.
             probe_keys: set[str] = set()
             for addr in provided_existence:
                 probe_keys |= existence_key_by_addr.get(addr, set())
@@ -530,14 +510,11 @@ class MergeNode(StrategyNode):
             )
 
         existence_final = [x for x in final_datasets if _is_existence_only(x)]
-        # ``force_group is True`` means this merge exists to regroup its (finer)
-        # parent to the output grain — a deliberate regroup requested upstream
-        # (e.g. group_if_required_v2 collapsing a fan-out enrichment back to the
-        # aggregate grain). Returning a parent that merely covers the output
-        # *columns* would silently drop that group, so skip the short-circuits.
-        # ``preserve_parents`` marks a deliberate multi-side assembly (each
-        # parent a distinct side of a coalescing relation) — a covering parent
-        # is one side's domain, never "good enough" for the unified axis.
+        # ``force_group is True`` means this merge exists to regroup its finer
+        # parent to the output grain; returning a parent that merely covers the
+        # output columns would drop that group. ``preserve_parents`` marks a
+        # multi-side assembly where a covering parent is one side's domain,
+        # never good enough for the unified axis. Both skip the short-circuits.
         can_drop_merge = self.force_group is not True and not self.preserve_parents
         if can_drop_merge and len(merged.keys()) == 1:
             final: QueryDatasource | BuildDatasource = next(iter(merged.values()))
@@ -552,11 +529,9 @@ class MergeNode(StrategyNode):
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
                     " outputs as this merge node, dropping merge node "
                 )
-                # push up any conditions we need
                 final.ordering = self.ordering
                 return final
 
-        # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets if can_drop_merge else []:
             if any(
                 other.identifier != dataset.identifier and _has_applied_condition(other)
@@ -582,9 +557,8 @@ class MergeNode(StrategyNode):
                 dataset.ordering = self.ordering
                 return dataset
 
-        # Accumulate grain components from non-existence sources directly; we
-        # rebuild via from_concepts below, which drops where_clauses anyway,
-        # so a per-source BuildGrain accumulator would be wasted work.
+        # Grain components from non-existence sources; rebuilt via from_concepts
+        # below, which drops where_clauses anyway.
         raw_pregrain_components: set[str] = set()
         for source in final_datasets:
             if all(
@@ -620,18 +594,17 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
         narrow_join_types(joins, join_proofs, final_datasets)
-        # Compute per-datasource NULL-ability based on the resolved join graph.
-        # Used to (a) order ``final_datasets`` so the preserved side wins
-        # ``resolve_concept_map``'s first-pass for shared concepts and
-        # (b) prune NULL-able-side ``ConceptPair`` entries from JOIN ON when
-        # a preserved alternative exists. Both reduce redundant ``coalesce``.
+        # Per-datasource NULL-ability from the resolved join graph: orders
+        # ``final_datasets`` so the preserved side wins ``resolve_concept_map``'s
+        # first pass, and prunes NULL-able-side pairs from JOIN ON when a
+        # preserved alternative exists. Both reduce redundant ``coalesce``.
         null_status = compute_outer_null_status(joins)
         prune_outer_join_pairs(joins, null_status)
         narrow_directional_join_types(joins, join_proofs, final_datasets)
         narrow_keyless_joins(joins)
-        # ``full_join_concepts`` covers FULL JOINs only — both sides may be
-        # NULL, so source_map needs every input that supplies the address. For
-        # LEFT/RIGHT OUTER the preserved-side ordering above is sufficient.
+        # FULL JOINs only: both sides may be NULL, so source_map needs every
+        # input supplying the address. For LEFT/RIGHT the preserved-side
+        # ordering above suffices.
         full_join_concepts = []
         for join in joins:
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
@@ -655,13 +628,10 @@ class MergeNode(StrategyNode):
         )
 
         if self.force_group is True:
-            # A node already producing rowset outputs at a grain its parents
-            # satisfy must not regroup. TVF_UNION counts too: a UNION ALL stack
-            # defines its own (no-dedup) row semantics, so a MergeNode wrapping it
-            # at the stack grain must never collapse duplicate rows. (Formerly the
-            # rowset generator masked this by renaming the body's outputs to
-            # ROWSET-derived concepts in place; the wrapper path keeps the body's
-            # TVF_UNION outputs, so recognize them here.)
+            # A node producing rowset outputs at a grain its parents satisfy
+            # must not regroup. TVF_UNION counts too: a UNION ALL stack defines
+            # its own no-dedup row semantics, so a wrapper at the stack grain
+            # must never collapse duplicate rows.
             rowset_output = any(
                 concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
                 for concept in self.output_concepts
@@ -699,17 +669,21 @@ class MergeNode(StrategyNode):
             self.rollup_concepts,
         ):
             force_group = False
+        # Rows passed through from a ROLLUP/CUBE/GROUPING SETS parent are already
+        # final-shape: a regroup would re-aggregate the subtotal rows away.
+        if force_group and any(
+            nonstandard_grouping_lineage(c) is not None for c in self.output_concepts
+        ):
+            force_group = False
 
         qd_joins: list[BaseJoin | UnnestJoin] = [*joins]
 
-        # Preserved sides first — first-wins inside ``resolve_concept_map``
-        # naturally picks the always-non-NULL source when multiple datasources
-        # supply the same concept. Existence-only sources sort LAST: their
-        # columns are reachable only through a subselect (no join), so a row
-        # source_map entry pointing at one renders an unresolvable FROM alias
-        # whenever a genuinely-joined parent also supplies the concept. Ordering
-        # them last lets the joined parent win while still leaving the existence
-        # source as the fallback provider when nothing else supplies it.
+        # Preserved sides first: first-wins inside ``resolve_concept_map`` then
+        # picks the non-NULL source for a shared concept. Existence-only sources
+        # sort LAST: their columns are reachable only through a subselect, so a
+        # row source_map entry pointing at one renders an unresolvable FROM
+        # alias whenever a joined parent also supplies the concept; last keeps
+        # them as the fallback provider only.
         ordered_datasets = sorted(
             final_datasets,
             key=lambda ds: (
@@ -730,14 +704,12 @@ class MergeNode(StrategyNode):
             final_datasets, self.existence_concepts
         )
         # Scoped OUTER joins can bind different physical key addresses for one
-        # merged key. A chain of joins (e.g. `a.k=b.k`, `c.k=b.k`) makes those
-        # addresses one equivalence class; the merged key on any output row is
-        # the coalesce of every present member, so each member must render from
-        # the union of all class sources — a pairwise merge would leave a 3-way
-        # class only partly coalesced (`a.k` never learning `c`'s source). Build
-        # the classes by union-find over every OUTER-join pair, then point every
-        # member's source_map at the class-wide source union. (Same-address keys
-        # are already handled by normal shared-column resolution.)
+        # merged key. A chain of joins (`a.k=b.k`, `c.k=b.k`) makes those
+        # addresses one equivalence class; the merged key on any row is the
+        # coalesce of every present member, so each member must render from the
+        # union of all class sources (a pairwise merge leaves a 3-way class only
+        # partly coalesced). Same-address keys are handled by normal
+        # shared-column resolution.
         outer_pairs: list[tuple[str, str]] = [
             (pair.left.address, pair.right.address)
             for join in joins
@@ -747,11 +719,10 @@ class MergeNode(StrategyNode):
             for pair in join.concept_pairs or []
             if pair.left.address != pair.right.address
         ]
-        # An authored coalescing (union/full) key group is one merged key
-        # wherever its members co-appear, but a chained group (a=b=c) can reach
-        # this node with one pairing already fused a level down — this node's
-        # own joins only name (b,c), so (a) never learns c's source. Seed the
-        # classes with the authored groups' co-present members.
+        # A chained authored group (a=b=c) can reach this node with one pairing
+        # already fused a level down, so this node's joins name only (b,c) and
+        # (a) never learns c's source. Seed the classes with the authored
+        # groups' co-present members.
         if outer_pairs:
             present = set(source_map.keys())
             for (
@@ -802,10 +773,9 @@ class MergeNode(StrategyNode):
             existence_source_map=node_existence_source_map,
             joins=qd_joins,
             grain=grain,
-            # union the join-analysis nullables (null-extended outer sides,
-            # nullable source columns) with node-level nullables — the latter
-            # carry inferred nullability for concepts COMPUTED at this node
-            # (e.g. a derived join key over a nullable column)
+            # node-level nullables carry inferred nullability for concepts
+            # COMPUTED at this node (e.g. a derived join key over a nullable
+            # column) that join analysis cannot see
             nullable_concepts=[
                 x
                 for x in final_output_concepts
@@ -831,14 +801,13 @@ class MergeNode(StrategyNode):
         sources: list[QueryDatasource | BuildDatasource],
         outputs: list[BuildConcept],
     ) -> list[BuildConcept]:
-        """Span keys this merge now covers only PARTIALLY.
+        """Span keys this merge covers only PARTIALLY.
 
         Declining to extend a span (docs/extent_ownership.md) means the key
-        column here holds just the members the facts below actually bound: the
-        dimension's unmatched ones belong to the elected owner. Saying so is
-        what makes the assembly above preserve the owner's rows instead of
-        INNER-joining them away against a branch that no longer pads itself to
-        the full domain."""
+        column holds just the members the facts below bound; the unmatched
+        members belong to the elected owner. Marking them partial makes the
+        assembly above preserve the owner's rows instead of INNER-joining them
+        away."""
         if not self.extent_free_spans:
             return []
         return [
@@ -879,10 +848,8 @@ class MergeNode(StrategyNode):
 class MultiSelectMergeNode(MergeNode):
     """The outer FULL JOIN of a multiselect's aligned arms.
 
-    A distinct type so the regroup pass (``group_if_required_v2``) can recognize
-    it unambiguously: this node is always already at the align-key grain and must
-    never be regrouped, even when hidden derive-arg columns inflate the joined
-    pregrain past that grain (forcing a GROUP BY would omit the raw aggregate
-    projections and produce invalid SQL). Inherits all behavior — the subclass
-    is purely a marker — and ``copy()`` preserves it via ``type(self)``.
+    A marker type so the regroup pass never regroups it: the node is always at
+    the align-key grain, even when hidden derive-arg columns inflate the joined
+    pregrain past it, and a forced GROUP BY would omit the raw aggregate
+    projections. ``copy()`` preserves the type via ``type(self)``.
     """
