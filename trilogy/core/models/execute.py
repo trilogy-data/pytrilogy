@@ -113,6 +113,17 @@ class SemiJoinFilter:
         )
 
 
+@dataclass(frozen=True)
+class ConditionPlacement:
+    """Where a CTE's condition renders: atoms over the rows it reads go to
+    WHERE, atoms over values it aggregates to HAVING, atoms over window
+    functions it emits to QUALIFY."""
+
+    where: BoolExpr | None = None
+    having: BoolExpr | None = None
+    qualify: BoolExpr | None = None
+
+
 @dataclass
 class CTE:
     name: str
@@ -120,7 +131,6 @@ class CTE:
     output_columns: list[BuildConcept]
     source_map: dict[str, list[str]]
     grain: BuildGrain
-    base: bool = False
     group_to_grain: bool = False
     existence_source_map: dict[str, list[str]] = field(default_factory=dict)
     # Generated semi-join restrictions (see SemiJoinFilter). Deliberately not
@@ -323,9 +333,6 @@ class CTE:
         )
         self.joins = coalesce_duplicate_joins(
             unique(self.joins + other.joins, "unique_id")
-        )
-        self.partial_concepts = unique(
-            self.partial_concepts + other.partial_concepts, "address"
         )
         self.rollup_concepts = unique(
             self.rollup_concepts + other.rollup_concepts, "address"
@@ -590,6 +597,87 @@ class CTE:
         )
 
     @property
+    def condition_placement(self) -> ConditionPlacement:
+        from trilogy.core.processing.condition_utility import (
+            contains_window,
+            decompose_condition,
+            is_scalar_condition,
+            references_any_concept,
+        )
+
+        if not self.condition:
+            return ConditionPlacement()
+        materialized = {
+            address for address, sources in self.source_map.items() if sources
+        }
+        # Rollup carriers render as SUM(input) here, so an atom reading one is
+        # aggregated even though its input column is materialized.
+        aggregated = (
+            {concept.address for concept in self.rollup_concepts}
+            if self.group_to_grain
+            else set()
+        )
+        where: BoolExpr | None = None
+        having: BoolExpr | None = None
+        qualify: BoolExpr | None = None
+        for atom in decompose_condition(self.condition):
+            if contains_window(atom, materialized=materialized):
+                qualify = qualify + atom if qualify else atom
+            elif self.group_to_grain and (
+                not is_scalar_condition(atom, materialized=materialized)
+                or references_any_concept(atom, aggregated)
+            ):
+                having = having + atom if having else atom
+            else:
+                where = where + atom if where else atom
+        if having is None and qualify is None:
+            return ConditionPlacement(where=self.condition)
+        return ConditionPlacement(where=where, having=having, qualify=qualify)
+
+    def render_binding(
+        self, concept: BuildConcept, seen: frozenset[str] = frozenset()
+    ) -> tuple[str, ...]:
+        """What ``concept`` renders as in this CTE: the parent column it reads,
+        or the expression it computes. Aliases, ``group(x, ...)``, rowset items
+        and aligned multiselect columns render as their content, so they bind
+        to it; an unbound column renders through a pseudonym or canonical
+        sibling this CTE does bind."""
+        seen = seen | {concept.address}
+        # Members of one outer-join key class render as one coalesce.
+        key_class = self.outer_join_key_class(concept.address)
+        if len(key_class) > 1:
+            return ("key_class", *sorted(member.address for member in key_class))
+        sources = self.source_map.get(concept.address, [])
+        if sources:
+            return ("source", *sorted(sources), str(self.get_alias(concept)))
+        lineage = concept.lineage
+        if isinstance(lineage, BuildRowsetItem):
+            return self.render_binding(lineage.content, seen)
+        if (
+            isinstance(lineage, BuildFunction)
+            and lineage.operator in (FunctionType.ALIAS, FunctionType.GROUP)
+            and isinstance(lineage.arguments[0], BuildConcept)
+        ):
+            return self.render_binding(lineage.arguments[0], seen)
+        if isinstance(lineage, BuildMultiSelectLineage):
+            try:
+                return self.render_binding(lineage.find_source(concept, self), seen)
+            except UnionOutputResolutionError:
+                return ("address", concept.address)
+        if lineage is not None:
+            return ("expression", str(lineage))
+        for other in self.output_columns:
+            if other.address in seen or not self.source_map.get(other.address, []):
+                continue
+            if (
+                other.address in concept.pseudonyms
+                or concept.address in other.pseudonyms
+                or other.canonical_address == concept.canonical_address
+            ):
+                return self.render_binding(other, seen)
+        return ("address", concept.address)
+
+    @property
     def group_concepts(self) -> list[BuildConcept]:
         from trilogy.core.processing.condition_utility import condition_implies
 
@@ -706,22 +794,24 @@ class CTE:
                 return bool(has_local_aggregate(c))
             return c.purpose == Purpose.METRIC
 
-        return (
-            unique(
-                [
-                    c
-                    for c in self.output_columns
-                    if not check_is_not_in_group(c)
-                    and not (
-                        c.address in self.hidden_concepts
-                        and c.derivation == Derivation.MULTISELECT
-                    )
-                ],
-                "address",
-            )
-            if self.group_to_grain
-            else []
-        )
+        if not self.group_to_grain:
+            return []
+        # Two keys that render as one column or expression are one key
+        # (distinct aliases over the same column).
+        keys: list[BuildConcept] = []
+        bindings: set[tuple[str, ...]] = set()
+        for c in unique(self.output_columns, "address"):
+            if check_is_not_in_group(c) or (
+                c.address in self.hidden_concepts
+                and c.derivation == Derivation.MULTISELECT
+            ):
+                continue
+            binding = self.render_binding(c)
+            if binding in bindings:
+                continue
+            bindings.add(binding)
+            keys.append(c)
+        return keys
 
     @property
     def render_from_clause(self) -> bool:
@@ -738,10 +828,6 @@ class CTE:
             return False
         base = self.source.base_datasource
         return not (isinstance(base, BuildDatasource) and base.name == CONSTANT_DATASET)
-
-    @property
-    def sourced_concepts(self) -> list[BuildConcept]:
-        return [c for c in self.output_columns if c.address in self.source_map]
 
     @property
     def inlined_alias_map(self) -> dict[str, str]:
@@ -787,30 +873,12 @@ class CTE:
             )
         return bindings
 
-    def source_key_for(
-        self,
-        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
-    ) -> str:
+    def source_key_for(self, source: str | CTE | UnionCTE) -> str:
         if isinstance(source, str):
             return self.resolve_render_alias(source)
         if isinstance(source, DatasourceCTE) and self.renders_inline(source):
             return self.resolve_render_alias(source.name)
-        if isinstance(source, (CTE, UnionCTE)):
-            return source.name
-        if isinstance(source, BuildDatasource):
-            for binding in self.source_bindings(include_inlined=True):
-                if binding.datasource is source:
-                    return binding.key
-                if (
-                    binding.datasource is not None
-                    and binding.datasource.identifier == source.identifier
-                ):
-                    return binding.key
-            return source.safe_identifier
-        for binding in self.source_bindings(include_inlined=True):
-            if binding.datasource is source:
-                return binding.key
-        return source.safe_identifier
+        return source.name
 
     def dependency_nodes(
         self,
@@ -946,7 +1014,6 @@ class UnnestJoin:
     concepts: list[BuildConcept]
     parent: BuildFunction
     alias: str = "unnest"
-    rendering_required: bool = True
 
     def __hash__(self):
         return self.safe_identifier.__hash__()
@@ -1116,6 +1183,12 @@ class QueryDatasource:
     # parent QDS being lifted up). Left as None for joins/merges/unions where
     # no single source is "the base".
     base_datasource: BuildDatasource | QueryDatasource | None = None
+    # `~` spans this scan was built NOT to extend (see
+    # v4_helper/extent_ownership.py). Identity, like `limit`: the same sources
+    # joined preserving a dimension's unmatched members and joined discarding
+    # them are different relations, and merging the two under one CTE name
+    # concatenates their join lists.
+    extent_free_spans: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:
@@ -1359,6 +1432,12 @@ class QueryDatasource:
             rollup_concepts=unique(
                 self.rollup_concepts + other.rollup_concepts, "address"
             ),
+            # Join-analysis null-extension (outer-join padding) is stamped here at
+            # resolve time and cannot be re-derived from the concepts, so a merged
+            # copy that dropped it would silently render null-rejecting join keys.
+            nullable_concepts=unique(
+                self.nullable_concepts + other.nullable_concepts, "address"
+            ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,
@@ -1437,6 +1516,18 @@ class QueryDatasource:
             unnested = "_unnest_" + "_".join(
                 sorted(c.address.replace(".", "_") for c in self.join_derived_concepts)
             )
+        # Extent routing is identity for the same reason a limit is, but only
+        # where it can bite: a span nothing here binds `~` joins the same way
+        # either way, so folding it in would rename CTEs for no reason.
+        extent_free = ""
+        if self.extent_free_spans:
+            live_spans = self.extent_free_spans & {
+                c.address for d in self.datasources for c in d.partial_concepts
+            }
+            if live_spans:
+                extent_free = "_extent_free_" + "_".join(
+                    sorted(a.replace(".", "_") for a in live_spans)
+                )
         return (
             "_join_".join(sorted(d.identifier for d in self.datasources))
             + group
@@ -1444,27 +1535,19 @@ class QueryDatasource:
             + (f"_filtered_by_{filters}" if filters else "")
             + limited
             + unnested
+            + extent_free
         )
 
-    def get_alias(
-        self,
-        concept: BuildConcept,
-        use_raw_name: bool = False,
-        force_alias: bool = False,
-        source: str | None = None,
-    ):
+    def get_alias(self, concept: BuildConcept, source: str | None = None):
         for x in self.datasources:
-            # query datasources should be referenced by their alias, always
-            force_alias = isinstance(x, QueryDatasource)
-            use_raw_name = isinstance(x, BuildDatasource) and not force_alias
             if source and x.safe_identifier != source:
                 continue
+            scoped = concept.with_grain(self.grain)
             try:
-                return x.get_alias(
-                    concept.with_grain(self.grain),
-                    use_raw_name,
-                    force_alias=force_alias,
-                )
+                # query datasources are referenced by their alias, always
+                if isinstance(x, QueryDatasource):
+                    return x.get_alias(scoped)
+                return x.get_alias(scoped, use_raw_name=True, force_alias=False)
             except ValueError:
                 continue
         existing = [c.with_grain(self.grain) for c in self.output_concepts]
@@ -1699,7 +1782,11 @@ class DatasourceCTE(CTE):
                 and _datasource_column_for_concept(self.datasource, output) is None
             ):
                 return output.lineage
-        assert alias is not None  # concept is an output of this datasource
+        assert alias is not None, (
+            f"Inlined datasource {self.datasource.name} cannot render "
+            f"{concept.address}: it is not one of its columns "
+            f"({[c.alias for c in self.datasource.columns]})"
+        )
         return alias
 
 
@@ -1755,11 +1842,8 @@ class UnionCTE:
         raise NotImplementedError
 
     @property
-    def inlined_alias_map(self) -> dict[str, str]:
-        return {}
-
-    def resolve_render_alias(self, source: str) -> str:
-        return source
+    def condition_placement(self) -> ConditionPlacement:
+        return ConditionPlacement()
 
     def source_bindings(self, include_branches: bool = True) -> list[SourceBinding]:
         bindings = [
@@ -1798,18 +1882,10 @@ class UnionCTE:
             if binding.node is not None
         ]
 
-    def source_key_for(
-        self,
-        source: str | CTE | UnionCTE | BuildDatasource | QueryDatasource,
-    ) -> str:
+    def source_key_for(self, source: str | CTE | UnionCTE) -> str:
         if isinstance(source, str):
             return source
-        if isinstance(source, (CTE, UnionCTE)):
-            return source.name
-        for binding in self.source_bindings(include_branches=True):
-            if binding.datasource is source:
-                return binding.key
-        return source.safe_identifier
+        return source.name
 
     def add_dependency(self, parent: CTE | UnionCTE) -> None:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
@@ -1894,7 +1970,6 @@ class Join:
     jointype: JoinType
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: list[CTEConceptPair] | None = None
-    quote: str | None = None
     condition: BoolExpr | None = None
     modifiers: list[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
@@ -1931,24 +2006,23 @@ class Join:
         """Alias token a consumer references ``node``'s columns by."""
         return self._resolve_alias(consumer, node)
 
-    def reference_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
+    def reference_for(
+        self, consumer: CTE | UnionCTE, node: CTE | UnionCTE, quote_character: str
+    ) -> str:
         """FROM/JOIN source text for ``node`` as seen from ``consumer``.
 
         A normal CTE is referenced by name; an inlined ``DatasourceCTE``
         renders its raw table directly under the resolved alias."""
         node = self.authoritative(consumer, node)
-        alias = self._resolve_alias(consumer, node)
-        q = self.quote or ""
+        q = quote_character
+        alias = f"{q}{self._resolve_alias(consumer, node)}{q}"
         if (
             isinstance(consumer, CTE)
             and isinstance(node, DatasourceCTE)
             and consumer.renders_inline(node)
         ):
-            location = node.datasource.safe_location
-            if self.quote:
-                location = safe_quote(location, self.quote)
-            return f"{location} as {q}{alias}{q}"
-        return f"{q}{alias}{q}"
+            return f"{safe_quote(node.datasource.safe_location, q)} as {alias}"
+        return alias
 
     @property
     def right_name(self) -> str:

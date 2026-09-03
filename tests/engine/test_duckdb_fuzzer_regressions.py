@@ -112,6 +112,16 @@ union all
 select 4 as id, null as k, 800 as value''';
 """
 
+VISITS = """
+key visit_id int;
+property visit_id.visit_amount int;
+datasource visits (id: visit_id, gid: ?group_id, amount: visit_amount)
+grain (visit_id)
+query '''select 1 as id, null as gid, 0 as amount
+union all
+select 2 as id, 1 as gid, 4 as amount''';
+"""
+
 SALES_RETURNS = """
 key sale_id int;
 property sale_id.sale_amount int;
@@ -301,6 +311,28 @@ order by combined.gid asc nulls last;
 """,
     )
     assert rows == [(2, 3), (3, 10), (4, 12)]
+
+
+def test_union_arm_partition_with_optional_fk_sibling():
+    # An optional (`?`) binder for the arm's key buckets the arm's two outputs
+    # into different domains, so each consumer regroups the shared scan to its
+    # own single column. Those two groups have no key to pair on: the passthrough
+    # over the scan must be elided as the scan is built, before the consumers
+    # take their copies of it.
+    rows = run(
+        GROUPS_EVENTS + VISITS,
+        """
+with combined as union(
+    (where event_active select group_id as gid, event_amount as value),
+    (where not event_active select group_id as gid, event_amount as value)
+) -> (gid, value);
+
+select combined.gid, sum(combined.value) as total
+having sum(combined.value) > 2
+order by combined.gid asc nulls last;
+""",
+    )
+    assert rows == [(2, 6), (3, 10), (4, 12)]
 
 
 def test_renamed_key_and_property_share_scan():

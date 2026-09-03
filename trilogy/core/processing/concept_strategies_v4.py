@@ -342,7 +342,6 @@ def _materialized_root_addresses(
 def _build_from_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
-    depth: int,
     g: ReferenceGraph,
     history: V4History,
     conditions: list[BuildWhereClause],
@@ -375,20 +374,26 @@ def _build_from_graph(
         mandatory_list,
         datasource_columns,
         environment=environment,
-        return_merged_graph=True,
         staged_conditions=staged_conditions,
     )
-    strategy_node = build_strategy_node(
-        group_graph,
-        group_edges,
-        group_attrs,
-        mandatory_list,
-        environment,
-        g,
-        history,
-        complete_partials=complete_partials,
-        staged_conditions=staged_conditions,
-    )
+    # `build_strategy_node` scopes each group's extent routing on the shared
+    # environment; a rowset body planned mid-build recurses through here, so
+    # restore whatever the outer plan had rather than leaving it cleared.
+    outer_extent_free = environment.extent_free_spans
+    try:
+        strategy_node = build_strategy_node(
+            group_graph,
+            group_edges,
+            group_attrs,
+            mandatory_list,
+            environment,
+            g,
+            history,
+            complete_partials=complete_partials,
+            staged_conditions=staged_conditions,
+        )
+    finally:
+        environment.extent_free_spans = outer_extent_free
     return BuildInfo(
         concept_graph=concept_graph,
         merged_group_graph=merged_group_graph,
@@ -485,7 +490,6 @@ def _search_concepts(
     info = _build_from_graph(
         mandatory_list,
         environment,
-        depth,
         g,
         history,
         conditions,
@@ -497,7 +501,6 @@ def _search_concepts(
         info = _build_from_graph(
             mandatory_list,
             environment,
-            depth,
             g,
             history,
             conditions,

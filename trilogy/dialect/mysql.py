@@ -1,8 +1,6 @@
 from collections.abc import Callable
 from typing import Any, ClassVar
 
-from jinja2 import Template
-
 from trilogy.core.enums import (
     ComparisonOperator,
     CreateMode,
@@ -15,7 +13,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.execute import CreateTableInfo
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn
 
 
 def date_truncate(expr: str, part: str) -> str:
@@ -113,11 +111,6 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_DATETIME: lambda x, types: "CURRENT_TIMESTAMP()",
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
-}
-
 DATATYPE_MAP = {
     DataType.STRING: "TEXT",
     DataType.BYTES: "BLOB",
@@ -132,53 +125,17 @@ DATATYPE_MAP = {
     DataType.TIMESTAMP: "TIMESTAMP",
 }
 
-MYSQL_SQL_TEMPLATE = Template("""{%- if output %}
-{{output}}
-{% endif %}{%- if ctes %}
-WITH {% if recursive %}RECURSIVE {% endif %}{% for cte in ctes %}
-{{cte.name}} AS (
-{{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{%- else -%}
-SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{%- for join in joins %}
-    {{ join }}{% endfor %}{% endif %}
-{%- if where %}
-WHERE
-    {{ where }}
-{% endif -%}{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-    {{ having }}
-{% endif %}{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %}{% endif %}
-""")
-
 
 class MySQLDialect(BaseDialect):
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
         **DATATYPE_MAP,
     }
     QUOTE_CHARACTER = "`"
-    SQL_TEMPLATE = MYSQL_SQL_TEMPLATE
     SUPPORTS_ALIAS_IN_HAVING = True
     SUPPORTS_FULL_JOIN = False
     SUPPORTS_ARRAYS = False

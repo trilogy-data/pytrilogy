@@ -34,13 +34,15 @@ from trilogy.core.optimizations.join_upgrade import (
     _accumulated_left_addresses,
     _blocked_partials,
     _cte_addresses,
-    _gather_proofs,
-    _partial_addresses,
-    _proves_non_null,
     _seed_addresses,
     _source_datasources,
 )
-from trilogy.core.processing.condition_utility import concepts_implied_non_null
+from trilogy.core.processing.condition_utility import (
+    _join_atom_proves_non_null,
+    concepts_implied_non_null,
+    gather_non_null_proofs,
+    partial_addresses,
+)
 
 
 def _persist_setup(executor):
@@ -276,16 +278,16 @@ def test_flag_is_true_lineage_proofs():
     flag = build_env.concepts["local.flag"]
     ret = build_env.concepts["local.ret"]
 
-    assert ret.address in _proves_non_null(
+    assert ret.address in _join_atom_proves_non_null(
         BuildComparison(left=flag, right=True, operator=ComparisonOperator.IS)
     )
-    assert ret.address in _proves_non_null(
+    assert ret.address in _join_atom_proves_non_null(
         BuildComparison(left=True, right=flag, operator=ComparisonOperator.EQ)
     )
-    assert ret.address not in _proves_non_null(
+    assert ret.address not in _join_atom_proves_non_null(
         BuildComparison(left=flag, right=False, operator=ComparisonOperator.IS)
     )
-    assert ret.address not in _proves_non_null(
+    assert ret.address not in _join_atom_proves_non_null(
         BuildComparison(left=flag, right=False, operator=ComparisonOperator.EQ)
     )
 
@@ -315,7 +317,7 @@ def test_proves_non_null_helpers():
     y = build_env.concepts["local.y"]
 
     # x IS NOT NULL → {x.address}
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(
             left=x, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
         )
@@ -323,7 +325,7 @@ def test_proves_non_null_helpers():
 
     # x IS NULL → empty (we want non-nulls, not nulls)
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=x, right=MagicConstants.NULL, operator=ComparisonOperator.IS
             )
@@ -332,12 +334,12 @@ def test_proves_non_null_helpers():
     )
 
     # x = 1 → {x.address}; literal side ignored
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ)
     ) == {x.address}
 
     # x = y → both
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=x, right=y, operator=ComparisonOperator.EQ)
     ) == {x.address, y.address}
 
@@ -349,7 +351,7 @@ def test_proves_non_null_helpers():
         output_purpose=Purpose.PROPERTY,
         arg_count=2,
     )
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=x, right=multiply, operator=ComparisonOperator.GT)
     ) == {x.address, y.address}
 
@@ -362,7 +364,7 @@ def test_proves_non_null_helpers():
         arg_count=2,
     )
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce,
                 right=MagicConstants.NULL,
@@ -376,7 +378,7 @@ def test_proves_non_null_helpers():
     assert concepts_implied_non_null(coalesce) == set()
     assert concepts_implied_non_null(multiply) == {y.address}
 
-    # _gather_proofs walks AND-decomposed atoms
+    # gather_non_null_proofs walks AND-decomposed atoms
     cond = BuildConditional(
         left=BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ),
         right=BuildComparison(
@@ -384,10 +386,10 @@ def test_proves_non_null_helpers():
         ),
         operator=BooleanOperator.AND,
     )
-    assert _gather_proofs(cond) == {x.address, y.address}
+    assert gather_non_null_proofs(cond) == {x.address, y.address}
 
     # NULL IS NOT x → mirror form, same result as x IS NOT NULL
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(
             left=MagicConstants.NULL, right=x, operator=ComparisonOperator.IS_NOT
         )
@@ -395,7 +397,7 @@ def test_proves_non_null_helpers():
 
     # x IS NOT y (neither side a NULL literal) → empty
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(left=x, right=y, operator=ComparisonOperator.IS_NOT)
         )
         == set()
@@ -416,7 +418,7 @@ def test_proves_non_null_helpers():
     # Operators outside IS/IS_NOT/NULL_PROPAGATING_OPS (e.g. ELSE) fall through
     # to the empty-set guard.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(left=x, right=y, operator=ComparisonOperator.ELSE)
         )
         == set()
@@ -425,8 +427,10 @@ def test_proves_non_null_helpers():
     # BETWEEN proves every concept inside left/low/high non-null.
     from trilogy.core.models.build import BuildBetween
 
-    assert _proves_non_null(BuildBetween(left=x, low=1, high=10)) == {x.address}
-    assert _proves_non_null(BuildBetween(left=x, low=y, high=10)) == {
+    assert _join_atom_proves_non_null(BuildBetween(left=x, low=1, high=10)) == {
+        x.address
+    }
+    assert _join_atom_proves_non_null(BuildBetween(left=x, low=y, high=10)) == {
         x.address,
         y.address,
     }
@@ -446,15 +450,15 @@ def test_proves_non_null_comparison_shaped_like():
 
     like = BuildComparison(left=s, right="Unknown%", operator=ComparisonOperator.LIKE)
 
-    assert _proves_non_null(like) == {s.address}
-    assert _gather_proofs(like) == {s.address}
+    assert _join_atom_proves_non_null(like) == {s.address}
+    assert gather_non_null_proofs(like) == {s.address}
 
     cond = BuildConditional(
         left=like,
         right=BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
-    assert _gather_proofs(cond) == {s.address, x.address}
+    assert gather_non_null_proofs(cond) == {s.address, x.address}
 
 
 def test_proves_non_null_coalesce_default_rejection():
@@ -481,13 +485,13 @@ def test_proves_non_null_coalesce_default_rejection():
         )
 
     # coalesce(x, 0) > 0 — 0 > 0 is FALSE, so x must be non-null.
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=coalesce(x, 0), right=0, operator=ComparisonOperator.GT)
     ) == {x.address}
 
     # coalesce(x, 0) >= 0 — 0 >= 0 is TRUE, so x-null rows survive: no proof.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0), right=0, operator=ComparisonOperator.GTE
             )
@@ -497,7 +501,7 @@ def test_proves_non_null_coalesce_default_rejection():
 
     # coalesce(x, 100) > 0 — 100 > 0 is TRUE, so x-null rows survive: no proof.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 100), right=0, operator=ComparisonOperator.GT
             )
@@ -509,7 +513,7 @@ def test_proves_non_null_coalesce_default_rejection():
     # non-null default) — must NOT claim x non-null. This goes through the
     # IS_NOT branch, not the null-propagating one, so it stays opaque.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0),
                 right=MagicConstants.NULL,
@@ -521,7 +525,7 @@ def test_proves_non_null_coalesce_default_rejection():
 
     # coalesce(x, y) > 0 — non-literal default; can't fold, no proof.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, y), right=0, operator=ComparisonOperator.GT
             )
@@ -530,12 +534,12 @@ def test_proves_non_null_coalesce_default_rejection():
     )
 
     # Mirror form: 0 < coalesce(x, 0) — same proof via the flipped operator.
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=0, right=coalesce(x, 0), operator=ComparisonOperator.LT)
     ) == {x.address}
 
     # Multiple defaults, all literals, all failing: still proves PRIMARY.
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(
             left=coalesce(x, 0, -1), right=0, operator=ComparisonOperator.GT
         )
@@ -543,7 +547,7 @@ def test_proves_non_null_coalesce_default_rejection():
 
     # Multiple defaults, one of them satisfies the comparison → no proof.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0, 5), right=0, operator=ComparisonOperator.GT
             )
@@ -552,13 +556,13 @@ def test_proves_non_null_coalesce_default_rejection():
     )
 
     # Equality: coalesce(x, 0) = 5 — 0 = 5 is FALSE, so proves x non-null.
-    assert _proves_non_null(
+    assert _join_atom_proves_non_null(
         BuildComparison(left=coalesce(x, 0), right=5, operator=ComparisonOperator.EQ)
     ) == {x.address}
 
     # Equality where default matches: coalesce(x, 5) = 5 — 5 = 5 TRUE, no proof.
     assert (
-        _proves_non_null(
+        _join_atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 5), right=5, operator=ComparisonOperator.EQ
             )
@@ -1085,11 +1089,11 @@ def test_partial_addresses_per_source_type():
         namespace="test",
         grain=BuildGrain(),
     )
-    assert _partial_addresses(bd) == set()
+    assert partial_addresses(bd) == set()
 
     cte = _build_cte("c", [key, other])
     cte.partial_concepts = [other]
-    assert _partial_addresses(cte) == {other.address}
+    assert partial_addresses(cte) == {other.address}
 
     qds = QueryDatasource(
         input_concepts=[key],
@@ -1100,7 +1104,7 @@ def test_partial_addresses_per_source_type():
         joins=[],
         partial_concepts=[key],
     )
-    assert _partial_addresses(qds) == {key.address}
+    assert partial_addresses(qds) == {key.address}
 
 
 def _join_producer(base, agg, key, measure):

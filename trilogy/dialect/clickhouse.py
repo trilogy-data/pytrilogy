@@ -1,11 +1,9 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from jinja2 import Template
-
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
+from trilogy.dialect.base import BaseDialect
 
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
@@ -109,7 +107,6 @@ FUNCTION_MAP = {
     FunctionType.DATETIME_LITERAL: lambda x, types: f"toDateTime64('{x}', 3)",
     # arrays
     FunctionType.UNNEST: lambda x, types: f"arrayJoin({x[0]})",
-    FunctionType.ARRAY: lambda x, types: f"[{', '.join(x)}]",
     FunctionType.ARRAY_SUM: lambda x, types: f"arraySum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"arrayDistinct({x[0]})",
     FunctionType.ARRAY_SORT: lambda x, types: f"arraySort({x[0]})",
@@ -124,11 +121,6 @@ FUNCTION_MAP = {
     # struct: CH named tuples require an explicit Tuple(name type, ...) cast for
     # attribute access by name. Types come from trilogy via the types arg.
     FunctionType.STRUCT: _ch_struct,
-}
-
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 
@@ -180,42 +172,10 @@ DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
 }
 
 
-CLICKHOUSE_SQL_TEMPLATE = Template("""{%- if ctes %}
-WITH {% if recursive %}RECURSIVE {% endif %}{% for cte in ctes %}
-{{cte.name}} as (
-{{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{% else -%}
-SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
-    {{ join }}{% endfor %}{% endif %}{% if where %}
-WHERE
-    {{ where }}{% endif %}{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-    {{ having }}{% endif %}{% if qualify %}
-QUALIFY
-    {{ qualify }}{% endif %}{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %}{% endif %}
-""")
-
-
 class ClickhouseDialect(BaseDialect):
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
-    }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
     }
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
@@ -226,7 +186,6 @@ class ClickhouseDialect(BaseDialect):
         **DB_COLUMN_TYPE_MAP,
     }
     QUOTE_CHARACTER = "`"
-    SQL_TEMPLATE = CLICKHOUSE_SQL_TEMPLATE
     SUPPORTS_QUALIFY = True
     # CH doesn't accept arrayJoin as a FROM-clause table function; DIRECT mode
     # emits `SELECT arrayJoin(...) AS alias` with no FROM, which CH supports.

@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 804
+gen_length = 764
 preql_size = 266
 comp_size = 328
 generated_sql = """
@@ -14,7 +14,7 @@ FROM
     \"memory\".\"part\" as \"part_part\"
     INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
 WHERE
-    \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" = 'MED BOX' and \"lineitem\".\"l_orderkey\" is not null
+    \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" = 'MED BOX'
 ),
 cheerful as (
 SELECT

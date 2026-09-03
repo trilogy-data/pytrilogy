@@ -1,6 +1,7 @@
 from collections import OrderedDict, defaultdict
 from dataclasses import replace
 from math import ceil
+from typing import Any
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
@@ -9,6 +10,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
     Derivation,
+    FunctionClass,
     FunctionType,
     JoinType,
     SourceType,
@@ -34,12 +36,16 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
+    BuildOrderBy,
+    BuildOrderItem,
     BuildParamaterizedConceptReference,
+    BuildParenthetical,
     BuildRowsetItem,
     BuildSelectLineage,
     BuildWhereClause,
@@ -47,7 +53,7 @@ from trilogy.core.models.build import (
     get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
@@ -73,7 +79,9 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
+    raise_if_where_population_split,
 )
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     describe_incomplete_partitions,
 )
@@ -235,12 +243,6 @@ def generate_source_map(
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
         for _ in unnest:
             source_map[qdk] = []
-        if (
-            qdk not in source_map
-            and len(qdv) == 1
-            and isinstance(next(iter(qdv)), UnnestJoin)
-        ):
-            source_map[qdk] = []
         basic = [x for x in qdv if isinstance(x, BuildDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
@@ -354,19 +356,18 @@ def resolve_cte_base_name_and_alias_v2(
         return base.address, base.safe_identifier
 
     joins: list[Join] = [join for join in raw_joins if isinstance(join, Join)]
-    if joins and len(joins) > 0:
+    if joins:
         candidates = [x.left_cte.name for x in joins if x.left_cte]
         for join in joins:
             if join.joinkey_pairs:
                 candidates += [x.cte.name for x in join.joinkey_pairs if x.cte]
         disallowed = [x.right_cte.name for x in joins]
-        try:
-            cte = next(y for y in candidates if y not in disallowed)
-            return cte, cte
-        except IndexError:
+        cte = next((y for y in candidates if y not in disallowed), None)
+        if cte is None:
             raise SyntaxError(
                 f"Invalid join configuration {candidates} {disallowed} for {name}",
             )
+        return cte, cte
     counts: dict[str, int] = defaultdict(lambda: 0)
     output_addresses = [x.address for x in source.output_concepts]
     input_address = [x.address for x in source.input_concepts]
@@ -377,8 +378,6 @@ def resolve_cte_base_name_and_alias_v2(
 
             if k in input_address:
                 counts[vx] = counts[vx] + 1
-
-            counts[vx] = counts[vx]
     if counts:
         return max(counts, key=counts.get), max(counts, key=counts.get)  # type: ignore
     return None, None
@@ -509,8 +508,6 @@ def datasource_to_cte(
         limit=query_datasource.limit,
         **extra_kwargs,
     )
-    if cte.grain != query_datasource.grain:
-        raise ValueError("Grain was corrupted in CTE generation")
     if CONFIG.validate_missing:
         mapped_canonical = {
             c.canonical_address
@@ -626,6 +623,125 @@ def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     return None
 
 
+def _demand_order_by_leaves(ds: StrategyNode, order_by: BuildOrderBy) -> None:
+    """A plain ORDER BY arg that is only an alias-source of a projected derived
+    output (`order by channel` with `lower(channel) as chan` projected) must be
+    in the final node's source map, and the contract-projected FINAL slices such
+    columns off. Carry them from the parents as inputs only: an output would
+    enter the final GROUP BY and change the dedup grain."""
+    if not ds.parents:
+        return
+    known = {c.address for c in ds.output_concepts} | {
+        c.address for c in ds.input_concepts
+    }
+    parent_outputs = {
+        c.address for parent in ds.parents for c in parent.output_concepts
+    }
+    carry = unique(
+        [
+            c
+            for item in order_by.items
+            for c in item.concept_arguments
+            if c.address not in known and c.address in parent_outputs
+        ],
+        "address",
+    )
+    if not carry:
+        return
+    # The parent must expose the column PLAINLY: `resolve_concept_map` skips a
+    # parent output the parent itself hides, so a FINAL-hidden carry key never
+    # reaches the final node's source map.
+    carry_addrs = {c.address for c in carry}
+    for parent in ds.parents:
+        parent_hidden = set(parent.hidden_concepts or set())
+        unhide = carry_addrs & parent_hidden
+        if unhide and {c.address for c in parent.output_concepts} & unhide:
+            parent.hidden_concepts = parent_hidden - unhide
+            parent.rebuild_cache()
+    ds.input_concepts.extend(carry)
+
+
+def _scalar_order_leaves(
+    expr: Any, outputs: set[str], source_map: dict[str, Any]
+) -> list[BuildConcept] | None:
+    """Leaf concepts of a purely scalar ORDER BY expression as the final node
+    renders it. A concept the node outputs is a group key or aggregate and ends
+    the walk; one it neither outputs nor sources re-renders from its lineage.
+    None when the expression holds an aggregate, window or other compound node,
+    which already evaluates in group scope."""
+    leaves: list[BuildConcept] = []
+    stack: list[Any] = [expr]
+    seen: set[str] = set()
+    while stack:
+        node = stack.pop()
+        if isinstance(node, BuildConcept):
+            if (
+                node.address not in outputs
+                and node.lineage is not None
+                and not source_map.get(node.address)
+                and node.address not in seen
+            ):
+                seen.add(node.address)
+                stack.append(node.lineage)
+                continue
+            leaves.append(node)
+        elif isinstance(node, BuildParenthetical):
+            stack.append(node.content)
+        elif isinstance(node, BuildFunction):
+            if node.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                return None
+            stack.extend(node.arguments)
+        elif isinstance(node, BuildConceptArgs):
+            return None
+    return leaves
+
+
+def _group_safe_ordering(
+    final: QueryDatasource, order_by: BuildOrderBy
+) -> BuildOrderBy:
+    """A grouped final node may only order by its group keys and aggregates. A
+    scalar order expression over a leaf the node reads but does not output
+    (`order by channel` with only `lower(channel) as chan` projected) is
+    wrapped in min(): a no-op for a leaf the group determines, otherwise each
+    group orders by its minimum member. The renderer collapses min(x) to x when
+    the node ends up ungrouped.
+
+    An ungrouped wrap over one grouped parent (the HAVING select) orders in
+    that parent's scope: its outputs are group-safe, and any other leaf is
+    only reachable once the wrap folds into the group, so it is wrapped the
+    same way."""
+    outputs = {c.address for c in final.output_concepts}
+    safe = set(outputs)
+    if not final.group_required:
+        parent = final.datasources[0] if len(final.datasources) == 1 else None
+        if not isinstance(parent, QueryDatasource) or not parent.group_required:
+            return order_by
+        safe |= {c.address for c in parent.output_concepts}
+    items: list[BuildOrderItem] = []
+    for item in order_by.items:
+        leaves = _scalar_order_leaves(item.expr, outputs, final.source_map)
+        if (
+            leaves is None
+            or all(c.address in safe for c in leaves)
+            or not isinstance(
+                item.expr, (BuildConcept, BuildFunction, BuildParenthetical)
+            )
+        ):
+            items.append(item)
+            continue
+        items.append(
+            BuildOrderItem(
+                expr=BuildFunction(
+                    operator=FunctionType.MIN,
+                    arguments=[item.expr],
+                    output_data_type=arg_to_datatype(item.expr),
+                ),
+                order=item.order,
+            )
+        )
+    return BuildOrderBy(items=items)
+
+
 def _raise_if_disconnected(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -667,6 +783,27 @@ def _raise_if_disconnected(
         )
 
 
+def _having_presence_probes(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+    build_environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Presence probes the HAVING clause tests that the SELECT does not already
+    project."""
+    if not build_statement.having_clause:
+        return []
+    projected = {c.address for c in build_statement.output_components}
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    for arg in build_statement.having_clause.concept_arguments:
+        if not is_presence_probe(arg.address):
+            continue
+        if arg.address in projected or arg.address in seen:
+            continue
+        seen.add(arg.address)
+        out.append(build_environment.concepts.get(arg.address, arg) or arg)
+    return out
+
+
 def _plan_query_node(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -679,7 +816,8 @@ def _plan_query_node(
     the statement's HAVING, ORDER BY and hidden components.
 
     The planner returns a fully-grouped FINAL node that may have promoted grain
-    keys to hidden — so hidden_concepts are merged, not overwritten."""
+    keys to hidden, so the statement's hidden components are merged into the
+    node's own hidden set rather than replacing it."""
     # Pre-check connectivity: a WHERE on an unrelated model would otherwise be
     # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
@@ -695,8 +833,16 @@ def _plan_query_node(
         base_environment=history.base_environment,
         build_caches=history.build_caches,
     )
+    # A presence probe in the HAVING must be MATERIALIZED below the merge, on
+    # its own member's side. The HAVING wrap sits above the merge, where the
+    # member reads as the group's mandatory coalesce, so re-deriving the probe
+    # inline there is self-defeating (it can never be NULL). Demanding it as a
+    # hidden output pins it to the member's own boundary and carries it through
+    # the join un-fused. The WHERE path gets this free -- its condition args
+    # already enter the concept graph.
+    having_probes = _having_presence_probes(build_statement, build_environment)
     info = search_concepts_v4(
-        mandatory_list=list(build_statement.output_components),
+        mandatory_list=list(build_statement.output_components) + having_probes,
         history=v4_history,
         environment=build_environment,
         depth=0,
@@ -706,11 +852,6 @@ def _plan_query_node(
     )
     ds = info.strategy_node
     if ds is None:
-        # When the requested concepts span unconnected models, surface the typed
-        # subgraph error rather than an opaque "could not resolve" dump. Caught
-        # by the up-front pre-check for top-level selects; this also covers
-        # nested dead-ends.
-        _raise_if_disconnected(build_statement, build_environment, graph, conditions)
         # FILTER outputs hide their condition concepts; re-check reachability with
         # them surfaced so a filter whose condition can't be related to the value it
         # filters reports the standard disconnected-subgraphs error.
@@ -719,6 +860,20 @@ def _plan_query_node(
             build_environment,
             graph,
             extra_required=list(conditions.row_arguments) if conditions else None,
+        )
+        # Single-row outputs are skipped as crossjoinable by the checks above, so
+        # a WHERE that can reach only one of several scalar-aggregate islands
+        # slips past both. Name that split rather than dumping the output list.
+        raise_if_where_population_split(
+            list(build_statement.output_components),
+            conditions,
+            build_environment,
+            graph,
+            line_number=(
+                build_statement.meta.line_number
+                if isinstance(build_statement, BuildSelectLineage)
+                else None
+            ),
         )
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>"
@@ -768,44 +923,13 @@ def _plan_query_node(
             v4_history,
             conditions=build_statement.where_clause,
         )
-    # A plain ORDER BY arg that is only an alias-source of a projected derived
-    # output (`order by channel` with `lower(channel) as chan` projected) must
-    # be resolvable from the final node's source map: the renderer references
-    # it against the final CTE's source and aggregate-wraps it (`MIN(channel)`)
-    # when the final is grouped — and the contract-projected FINAL slices such
-    # columns off. Carry them as inputs only — never outputs, which would put it in
-    # the final GROUP BY and change the dedup grain.
-    if build_statement.order_by and ds.parents:
-        output_addrs = {c.address for c in ds.output_concepts}
-        input_addrs = {c.address for c in ds.input_concepts}
-        parent_outputs = {
-            c.address for parent in ds.parents for c in parent.output_concepts
-        }
-        order_by_carry = [
-            c
-            for item in build_statement.order_by.items
-            for c in item.concept_arguments
-            if c.address not in output_addrs
-            and c.address not in input_addrs
-            and c.address in parent_outputs
-        ]
-        if order_by_carry:
-            # The parent must expose the column PLAINLY: `resolve_concept_map`
-            # skips a parent output the parent itself hides, so a FINAL-hidden
-            # carry key never reaches the final node's source map.
-            for parent in ds.parents:
-                parent_hidden = set(parent.hidden_concepts or set())
-                unhide = {
-                    c.address for c in order_by_carry if c.address in parent_hidden
-                }
-                if unhide and {c.address for c in parent.output_concepts} & unhide:
-                    parent.hidden_concepts = parent_hidden - unhide
-                    parent.rebuild_cache()
-            ds.input_concepts.extend(unique(order_by_carry, "address"))
+    if build_statement.order_by:
+        _demand_order_by_leaves(ds, build_statement.order_by)
     ds.hidden_concepts = set(ds.hidden_concepts or set()) | set(
         build_statement.hidden_components
     )
-    ds.ordering = build_statement.order_by
+    if build_statement.order_by:
+        ds.ordering = _group_safe_ordering(ds.rebuild_cache(), build_statement.order_by)
     ds.rebuild_cache()
     requested = {
         c.address
@@ -1091,83 +1215,6 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
-
-
-def _expose_downstream_referenced_columns(
-    ctes: list[CTE | UnionCTE], root_cte: CTE | UnionCTE
-) -> None:
-    """A CTE renders ``output_columns - hidden_concepts``. When a consumer
-    actually renders a column (a non-hidden output) that resolves to a producer
-    column the producer hid — with no visible pseudonym-equivalent on that
-    producer to render instead — the producer never projects it and the SQL
-    references a missing column (a hard BinderException). This bites a grouped
-    metric carried only into a filter CTE's GROUP BY, then re-projected
-    downstream past a property join (q23). Un-hide exactly those producer
-    columns, propagating to a fixpoint (un-hiding a column makes its own
-    upstream references live too).
-
-    Restricted to *rendered* references (non-hidden consumer outputs): a column
-    that merely rides through hidden-everywhere ``source_map`` metadata is never
-    emitted, so un-hiding it would wrongly force it into a grouped SELECT."""
-    producers: dict[str, CTE | UnionCTE] = {
-        c.name: c for c in ctes if not isinstance(c, DatasourceCTE)
-    }
-
-    def _has_visible_equiv(producer: CTE | UnionCTE, address: str) -> bool:
-        target = next(
-            (o for o in producer.output_columns if o.address == address), None
-        )
-        if target is None:
-            return True  # not its own column — resolves via pseudonym/inline
-        klass = set(target.pseudonyms) | {address}
-        return any(
-            o.address in klass and o.address not in producer.hidden_concepts
-            for o in producer.output_columns
-        )
-
-    changed = True
-    while changed:
-        changed = False
-        for consumer in (*ctes, root_cte):
-            for col in consumer.output_columns:
-                if col.address in consumer.hidden_concepts:
-                    continue
-                raw = consumer.source_map.get(col.address, [])
-                tokens = [raw] if isinstance(raw, str) else list(raw)
-                for token in tokens:
-                    producer = producers.get(token)
-                    if (
-                        producer is None
-                        or col.address not in producer.hidden_concepts
-                        or _has_visible_equiv(producer, col.address)
-                    ):
-                        continue
-                    producer.hidden_concepts = set(producer.hidden_concepts) - {
-                        col.address
-                    }
-                    changed = True
-
-
-def _collect_unreachable_union_arms(
-    ctes: list[CTE | UnionCTE],
-) -> list[CTE | UnionCTE]:
-    """A union's arms live in ``internal_ctes``, not ``parent_ctes``, so
-    ``flatten_ctes`` only reaches an arm when something else references it (a
-    join, a shared base). An arm reachable ONLY through its union — e.g. a rename
-    projection sitting above a grouped arm — is otherwise never emitted, leaving
-    the union pointing at an undefined CTE. Add exactly those, by name (a
-    distinct same-named instance is already covered)."""
-    reachable = {c.name for c in ctes}
-    extra: list[CTE | UnionCTE] = []
-    for cte in ctes:
-        if not isinstance(cte, UnionCTE):
-            continue
-        for arm in cte.internal_ctes:
-            for node in flatten_ctes(arm):
-                if node.name not in reachable:
-                    reachable.add(node.name)
-                    extra.append(node)
-    return extra
 
 
 def process_auto(
@@ -1457,7 +1504,6 @@ def process_query(
     for hook in hooks:
         hook.process_root_cte(root_cte)
     flattened = flatten_ctes(root_cte)
-    flattened = _collect_unreachable_union_arms(flattened) + flattened
     raw_ctes: list[CTE | UnionCTE] = list(reversed(flattened))
     seen = {}
     # we can have duplicate CTEs at this point
@@ -1473,7 +1519,6 @@ def process_query(
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
 
     root_cte.limit = statement.limit
-    root_cte.hidden_concepts = statement.hidden_components
 
     join_clauses = (
         statement.join_clauses if isinstance(statement, SelectStatement) else []
@@ -1522,7 +1567,6 @@ def process_query(
         domain_graph=domain_graph,
         supports_full_join=supports_full_join,
     )
-    _expose_downstream_referenced_columns(final_ctes, root_cte)
     # Observational only — a diagnostics failure must never block the query.
     derived_value_scopes: list[DerivedValueScope] = []
     if build_lineage_sink:

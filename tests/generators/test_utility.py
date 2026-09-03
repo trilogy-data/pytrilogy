@@ -31,7 +31,10 @@ def test_resolve_join_order_v2():
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
-    # complete (docs/subset_union_join_design.md).
+    # complete (docs/subset_union_join_design.md). A FULL keys on EVERY left
+    # provider (coalesced in the ON): after the earlier preserving joins a
+    # row can carry the key on either side alone, and a single-provider ON
+    # would fail to pair it and split its group across output rows.
     assert output == [
         JoinOrderOutput(
             right="ds~orders",
@@ -46,7 +49,10 @@ def test_resolve_join_order_v2():
         JoinOrderOutput(
             right="ds~customer_address",
             type=JoinType.FULL,
-            keys={"ds~customer": {"c~customer_id"}},
+            keys={
+                "ds~customer": {"c~customer_id"},
+                "ds~orders": {"c~customer_id"},
+            },
         ),
     ]
 

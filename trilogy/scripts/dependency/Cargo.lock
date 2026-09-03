@@ -535,7 +535,7 @@ dependencies = [
 
 [[package]]
 name = "trilogy-parser"
-version = "0.3.336"
+version = "0.3.341"
 dependencies = [
  "clap",
  "pathdiff",

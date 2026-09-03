@@ -1,13 +1,10 @@
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.author import Concept
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 
-from .base_node import NodeJoin, StrategyNode, WhereSafetyNode
+from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode, MultiSelectMergeNode
@@ -44,14 +41,7 @@ class BuildCaches:
 @dataclass
 class History:
     base_environment: Environment
-    local_base_concepts: dict[str, Concept] = field(default_factory=dict)
-    history: dict[str, StrategyNode | None] = field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = field(default_factory=dict)
-    rowset_history: dict[str, StrategyNode | None] = field(default_factory=dict)
-    started: dict[str, int] = field(default_factory=dict)
-    # Root sets whose merge expansion is mid-flight; balanced add/discard (see
-    # merge_in_progress) so it only blocks nested re-entry, unlike `started`.
-    merge_in_progress_keys: set[str] = field(default_factory=set)
     # Coalescing axes whose all-member assembly is mid-flight: sourcing a
     # member SIDE re-enters discovery for that member, which must resolve the
     # side alone rather than re-assembling the axis (balanced add/discard).
@@ -73,113 +63,6 @@ class History:
         if conditions:
             return "-".join(base) + str(accept_partial) + str(conditions)
         return "-".join(base) + str(accept_partial)
-
-    def search_to_history(
-        self,
-        search: list[BuildConcept],
-        accept_partial: bool,
-        output: StrategyNode | None,
-        conditions: BuildWhereClause | None = None,
-    ):
-        self.history[
-            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
-        ] = output
-        self.log_end(
-            search,
-            accept_partial=accept_partial,
-            conditions=conditions,
-        )
-
-    def get_history(
-        self,
-        search: list[BuildConcept],
-        conditions: BuildWhereClause | None = None,
-        accept_partial: bool = False,
-        parent_key: str = "",
-    ) -> StrategyNode | None | bool:
-        key = self._concepts_to_lookup(
-            search,
-            accept_partial,
-            conditions,
-        )
-        if parent_key and parent_key == key:
-            raise ValueError(
-                f"Parent key {parent_key} is the same as the current key {key}"
-            )
-        if key in self.history:
-            node = self.history[key]
-            if node:
-                return node.copy()
-            return node
-        return False
-
-    def log_start(
-        self,
-        search: list[BuildConcept],
-        accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
-    ):
-        key = self._concepts_to_lookup(
-            search,
-            accept_partial=accept_partial,
-            conditions=conditions,
-        )
-        if key in self.started:
-            self.started[key] += 1
-        else:
-            self.started[key] = 1
-        if self.started[key] > 5:
-            raise UnresolvableQueryException(
-                f"Was unable to resolve datasources to serve this query from model; unresolvable set was {search}. You may be querying unrelated concepts."
-            )
-
-    def log_end(
-        self,
-        search: list[BuildConcept],
-        accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
-    ):
-        key = self._concepts_to_lookup(
-            search,
-            accept_partial=accept_partial,
-            conditions=conditions,
-        )
-        if key in self.started:
-            del self.started[key]
-
-    def check_started(
-        self,
-        search: list[BuildConcept],
-        accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
-    ):
-        return (
-            self._concepts_to_lookup(
-                search,
-                accept_partial,
-                conditions=conditions,
-            )
-            in self.started
-        )
-
-    @contextmanager
-    def merge_in_progress(
-        self,
-        search: list[BuildConcept],
-        accept_partial: bool = False,
-        conditions: BuildWhereClause | None = None,
-    ):
-        """Mark a root set's merge expansion in-flight; yields True if it was
-        already in-flight (caller should skip to break the recursion)."""
-        key = self._concepts_to_lookup(search, accept_partial, conditions=conditions)
-        if key in self.merge_in_progress_keys:
-            yield True
-            return
-        self.merge_in_progress_keys.add(key)
-        try:
-            yield False
-        finally:
-            self.merge_in_progress_keys.discard(key)
 
     def gen_select_node(
         self,
@@ -235,6 +118,5 @@ __all__ = [
     "SubselectNode",
     "UnionNode",
     "UnnestNode",
-    "WhereSafetyNode",
     "WindowNode",
 ]

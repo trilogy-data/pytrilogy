@@ -1,40 +1,29 @@
-"""Upgrade outer joins whose key value sets are conceptually identical.
+"""Narrow outer joins whose preserved side provably has no unmatched rows.
 
-A FULL/LEFT/RIGHT OUTER join preserves unmatched rows from one or both sides.
-When both sides of every join key pair produce *the same set of key values*,
-no rows are ever unmatched — the OUTER form behaves like an INNER, just with
-a slower execution plan (FULL can't be hash-joined; LEFT/RIGHT carry NULL-
-padding bookkeeping the engine doesn't need). Recognise that and upgrade.
+Two proofs, both concept-level (no CTE identity, no physical addresses, so
+the rule is stable under inlining, renaming, hoisting and repartitioning):
 
-The decision is concept-level — no CTE identity, no physical addresses:
+* Directional narrowing (``_narrow_directionally``), the workhorse: a side
+  needs preservation only for key values the other side lacks, or for
+  NULL-key rows with no null-safe partner. When the domain graph proves one
+  side a subset of a complete, filter-free superset side (a declared ``?``
+  relation, a rowset/filter lineage path, or a ``_relative_key_subset``
+  proof), preserving the subset side is a no-op: FULL narrows to the
+  directional join preserving the superset side, and a directional join
+  whose preserved side fully matches narrows to INNER.
 
-  For each join key pair we compute a ``KeySetDescriptor``:
+* Equivalence upgrade (``_upgrade_to_inner``), the narrow case: every join
+  key pair carries the same value set on both sides, so no row is ever
+  unmatched and the OUTER is an INNER. A pair matches when both sides are
+  ``complete_distinct`` (the key is on a GROUP BY grain and not partial on
+  that side), resolve to the same source address, and their accumulated
+  parent-chain filters mutually imply. Under an EQUAL declaration
+  (``equal_join_keys``) the weaker ``_complete_values`` test is accepted
+  instead of distinctness.
 
-    * ``source_address`` — the underlying concept the side projects, after
-      pseudonym / merge / equivalence resolution. ``canonical_address``
-      already collapses these.
-    * ``filter`` — the AND of every condition applied to the row population
-      that produces this concept, walking up the side's parent chain.
-    * ``complete_distinct`` — True iff the side projects every distinct
-      value of the *full* concept value space: the concept lives on a
-      ``GROUP BY`` grain AND is not marked partial on the side. A partial
-      concept represents a subset projection — distinct *within* that
-      subset, but not the full concept value space. Partial-ness can be
-      stamped by a number of upstream mechanisms (a datasource that's
-      partial for a column, a ``MERGE`` aligning a narrow alias into a
-      shared concept, ``Modifier.PARTIAL`` on a column assignment, etc.);
-      this rule treats them uniformly via the ``partial_concepts`` field
-      that propagates up the CTE chain.
-
-  Two descriptors match when source addresses agree, both sides are
-  ``complete_distinct``, and the accumulated filters are mutually implied
-  via ``condition_implies``. When every pair matches, both sides cover
-  exactly the same key tuples — the OUTER preserves no rows an INNER
-  would lose.
-
-The comparison never references CTE identity or physical datasource
-addresses, so the rule is stable under optimizer rewrites that inline,
-rename, hoist, or repartition intermediate CTEs.
+Completeness evidence is always gated by declaration: scan coverage and
+grain membership only count for keys the author declared complete, and a
+row LIMIT or a FILTER anywhere in a side's chain vetoes the claim.
 """
 
 from __future__ import annotations
@@ -52,8 +41,11 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
 )
-
-_OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
+from trilogy.core.processing.join_resolution import (
+    OUTER_JOIN_TYPES,
+    _padding_sources,
+    nulls_are_values,
+)
 
 
 def _source_address(concept: BuildConcept) -> str:
@@ -336,6 +328,41 @@ def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     return bool(nullable_addrs & keys)
 
 
+def _identity(address: str) -> str:
+    return address
+
+
+def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
+    """A side whose key can be NULL via outer-join padding carries the join
+    IMAGE of the key — the values its own preserved rows happened to match,
+    a subset of the value space — so the two sides' key sets only provably
+    coincide when the padding shares provenance (one upstream source padded
+    both images). Value NULLs (a `?` column, a ROLLUP grouping key) don't
+    subset the non-null values and stay with the null-safe machinery."""
+    padded = False
+    for concept, side in ((pair.left, pair.cte), (pair.right, right_cte)):
+        if (
+            isinstance(side, CTE)
+            and _key_nullable(concept, side)
+            and not nulls_are_values(concept, side.source)
+        ):
+            padded = True
+    if not padded:
+        return False
+    keys = _key_addresses(pair.left) | _key_addresses(pair.right)
+    left_pad = (
+        _padding_sources(pair.cte.source, keys, _identity)
+        if isinstance(pair.cte, CTE)
+        else set()
+    )
+    right_pad = (
+        _padding_sources(right_cte.source, keys, _identity)
+        if isinstance(right_cte, CTE)
+        else set()
+    )
+    return not (left_pad & right_pad)
+
+
 def _pair_key_sets_equivalent(
     left_concept: BuildConcept,
     left_cte: CTE | UnionCTE,
@@ -391,8 +418,6 @@ def _complete_values(
             concept.address == c.address for c in side_cte.output_columns
         ):
             return True
-    if _complete_via_preserved_base(concept, side_cte, graph):
-        return True
     # a pure 1:1 passthrough (a rowset translation wrapper: no grouping, no
     # joins, no condition, one parent) preserves its parent's row set, so
     # completeness carries through the projection rename
@@ -430,91 +455,6 @@ def _complete_values(
             _complete_values(arg, side_cte, graph) for arg in args
         )
     return False
-
-
-def _equal_intersection_complete(
-    concept: BuildConcept,
-    side_cte: CTE | UnionCTE,
-    graph: DomainGraph,
-) -> bool:
-    """EQUAL-trust evidence only: under an EQUAL declaration all group members
-    name ONE value space, so an unfiltered all-INNER zip of complete parents
-    joined on this key group stays complete BY DECLARATION — the rows the
-    intersection drops are exactly the ones the declaration says don't exist.
-    Never used on the proof-based (subset-directional) path."""
-    if (
-        not isinstance(side_cte, CTE)
-        or side_cte.condition is not None
-        or side_cte.limit is not None
-    ):
-        return False
-    raw_joins = side_cte.joins or []
-    joins = [j for j in raw_joins if isinstance(j, Join)]
-    if not joins or len(joins) != len(raw_joins):
-        return False
-    if any(j.jointype != JoinType.INNER for j in joins):
-        return False
-    keys = _key_addresses(concept)
-    for j in joins:
-        for p in j.joinkey_pairs or []:
-            if not (_key_addresses(p.left) & keys and _key_addresses(p.right) & keys):
-                return False
-    parents = [p for p in side_cte.parent_ctes if isinstance(p, CTE)]
-    if not parents:
-        return False
-    for parent in parents:
-        if not any(
-            _key_addresses(out) & keys
-            and (
-                _complete_values(out, parent, graph)
-                or _equal_intersection_complete(out, parent, graph)
-            )
-            for out in parent.output_columns
-        ):
-            return False
-    return True
-
-
-def _complete_via_preserved_base(
-    concept: BuildConcept,
-    side_cte: CTE | UnionCTE,
-    graph: DomainGraph,
-) -> bool:
-    """A join CTE carries a key's full value set when the key is provided by
-    an authoritative scan the CTE's joins only PRESERVE — LEFT_OUTER/FULL
-    null-extend the other side, never dropping the provider's rows. Covers
-    relation CTEs whose scans are inlined (no parent CTEs to recurse into) —
-    e.g. the narrowed subset relation itself, read back at a coarser level.
-
-    A provider on the RIGHT side of a LEFT_OUTER join does not qualify: that
-    side's unmatched rows drop, so its value set is filtered by the join."""
-    if not isinstance(side_cte, CTE):
-        return False
-    if side_cte.condition is not None:
-        return False
-    raw_joins = side_cte.joins or []
-    joins = [j for j in raw_joins if isinstance(j, Join)]
-    if not joins or len(joins) != len(raw_joins):
-        return False
-    if any(j.jointype not in (JoinType.LEFT_OUTER, JoinType.FULL) for j in joins):
-        return False
-    if _own_coverage_partial(concept, side_cte, graph):
-        return False
-    dropped_ids: set[str] = set()
-    for j in joins:
-        if j.jointype != JoinType.LEFT_OUTER or j.right_cte is None:
-            continue
-        dropped_ids.add(j.right_cte.name)
-        for ds in getattr(j.right_cte.source, "datasources", []) or []:
-            dropped_ids |= {ds.identifier, ds.safe_identifier}
-    scan_ids = {
-        ident
-        for ds in side_cte.source.datasources
-        if isinstance(ds, BuildDatasource)
-        for ident in (ds.identifier, ds.safe_identifier)
-    }
-    providers = set(side_cte.source_map.get(concept.address, []) or [])
-    return bool((providers - dropped_ids) & scan_ids)
 
 
 def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
@@ -940,7 +880,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         for join in cte.joins or []:
             if not isinstance(join, Join):
                 continue
-            if join.jointype not in _OUTER_JOIN_TYPES:
+            if join.jointype not in OUTER_JOIN_TYPES:
                 continue
             if not join.joinkey_pairs:
                 continue
@@ -1001,14 +941,8 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 return False
             graph = self.domain_graph
             return (
-                (
-                    _complete_values(pair.left, pair.cte, graph)
-                    or _equal_intersection_complete(pair.left, pair.cte, graph)
-                )
-                and (
-                    _complete_values(pair.right, right_cte, graph)
-                    or _equal_intersection_complete(pair.right, right_cte, graph)
-                )
+                _complete_values(pair.left, pair.cte, graph)
+                and _complete_values(pair.right, right_cte, graph)
                 and _filters_equivalent(
                     _accumulate_filter(pair.cte),
                     _accumulate_filter(right_cte),
@@ -1035,6 +969,16 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # right response is to null-safe the pair — NULL is a valid member
         # and the NULL groups pair — rather than refuse the upgrade.
         for pair in join.joinkey_pairs:
+            # Null-safety pairs the NULL groups but says nothing about the
+            # non-null values: a join-padded side carries a key IMAGE that
+            # subsets the value space, so unless the padding shares
+            # provenance across the sides the equivalence claim is unsound.
+            # An EQUAL declaration overrides — it names one value space, and
+            # narrowing trusts the declaration over the padded image.
+            if not self._pair_equal_declared(pair) and _unshared_join_padding(
+                pair, right_cte
+            ):
+                return False
             if pair.is_nullable:
                 continue
             if _key_nullable(pair.left, pair.cte) or _key_nullable(

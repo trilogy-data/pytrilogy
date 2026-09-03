@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 3907
+gen_length = 3812
 preql_size = 1397
 comp_size = 1999
 generated_sql = """
@@ -37,7 +37,7 @@ FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and (\"cheerful\".\"sales_channel\" is not null and \"cheerful\".\"sales_channel\" in ('WEB','STORE'))
+    \"sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
 uneven as (
 SELECT

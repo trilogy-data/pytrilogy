@@ -1,5 +1,4 @@
 from trilogy import Dialects
-from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment
 
 MODEL = """
@@ -33,40 +32,38 @@ def test_grand_total_cartesian_narrows_to_inner():
     ]
 
 
-def test_narrowing_preserves_rows_versus_full_join():
+def test_planner_narrows_before_the_optimizer():
+    # The planner emits the narrowed type itself, so the optimizer rule has
+    # nothing left to do: the SQL is identical with the rule switched off.
     executor = _executor()
     query = "select sum(amt) as total_amt, sum(qty) as total_qty;"
+    narrowed_sql = executor.generate_sql(query)[-1]
     narrowed = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
 
-    original = CONFIG.optimizations.narrow_keyless_full_joins
-    CONFIG.optimizations.narrow_keyless_full_joins = False
-    try:
-        full_sql = executor.generate_sql(query)[-1]
-        assert "FULL JOIN" in full_sql, full_sql
-        unnarrowed = [tuple(r) for r in executor.execute_raw_sql(full_sql).fetchall()]
-    finally:
-        CONFIG.optimizations.narrow_keyless_full_joins = original
-
+    assert "FULL JOIN" not in narrowed_sql, narrowed_sql
+    full_sql = narrowed_sql.replace("INNER JOIN", "FULL JOIN")
+    unnarrowed = [tuple(r) for r in executor.execute_raw_sql(full_sql).fetchall()]
     assert narrowed == unnarrowed
 
 
-def test_having_on_aggregate_is_not_narrowed():
-    # A HAVING can delete the single aggregate row, so that side may emit zero
-    # rows and a cartesian INNER would drop the other side entirely.
+def test_having_on_aggregate_keeps_row_semantics():
+    # The planner joins the two grand totals INNER before the HAVING is pushed
+    # into one side's CTE; INNER commutes with that pushdown (a FULL would
+    # resurrect the other side's row with a NULL), so the filtered row and
+    # only the filtered row survives, with or without the optimizer rule.
     executor = _executor()
-    query = (
+    failing = (
         "select sum(amt) as total_amt, sum(qty) as total_qty having total_qty > 1000;"
     )
-    sql = executor.generate_sql(query)[-1]
-
-    assert "INNER JOIN" not in sql, sql
-
-    original = CONFIG.optimizations.narrow_keyless_full_joins
-    CONFIG.optimizations.narrow_keyless_full_joins = False
-    try:
-        assert executor.generate_sql(query)[-1] == sql
-    finally:
-        CONFIG.optimizations.narrow_keyless_full_joins = original
+    passing = (
+        "select sum(amt) as total_amt, sum(qty) as total_qty having total_qty > 10;"
+    )
+    sql = executor.generate_sql(failing)[-1]
+    assert "FULL JOIN" not in sql, sql
+    assert executor.execute_text(failing)[0].fetchall() == []
+    assert [tuple(r) for r in executor.execute_text(passing)[0].fetchall()] == [
+        (30.0, 15)
+    ]
 
 
 def test_keyed_full_join_is_untouched():

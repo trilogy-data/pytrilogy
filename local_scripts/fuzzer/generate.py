@@ -3228,6 +3228,203 @@ from events e
     ]
 
 
+def _padding_provenance_cases(seed: SeedData) -> list[FuzzCase]:
+    """`visits.gid` is a NULLABLE fk, so the dim join pads `group_name` for the
+    group-less rows and every case here re-joins on that padded column.
+
+    Whether the two sides may pair on a NULL depends on where the padding came
+    from. Both sides reading the SAME padded scan pair (the NULLs are one
+    scan's rows arriving twice); sides padded by DIFFERENT joins must not (the
+    NULLs are unrelated rows, and pairing them cross-products). Getting the
+    first wrong deletes the padded rows silently, which is why the oracles
+    project the padded group rather than filtering it away."""
+    cases = []
+
+    shared_body = """
+auto slot_total <- sum(visit_amount) by group_name, visit_slot;
+auto group_avg <- avg(slot_total) by group_name;
+select
+    group_name,
+    visit_slot,
+    slot_total,
+    group_avg
+order by group_name asc nulls first, visit_slot asc;
+"""
+    shared_oracle = """
+, padded as (
+    select g.name as group_name, v.slot as visit_slot, sum(v.amount) as slot_total
+    from visits v
+    left join groups g on v.gid = g.gid
+    group by 1, 2
+),
+per_group as (
+    select group_name, avg(slot_total) as group_avg
+    from padded
+    group by 1
+)
+select p.group_name, p.visit_slot, p.slot_total, a.group_avg
+from padded p
+join per_group a on p.group_name is not distinct from a.group_name
+order by p.group_name asc nulls first, p.visit_slot asc
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "shared_scan_merge",
+            "Aggregate over a padded scan re-joined to that same scan: the "
+            "group-less rows must survive, so the merge key pairs NULLs.",
+            ("nullable", "join", "aggregate", "padding"),
+            shared_body,
+            shared_oracle,
+        )
+    )
+
+    count_body = """
+select
+    count(visit_id) as visit_count,
+    sum(visit_amount) as total
+where group_name is null;
+"""
+    count_oracle = """
+select count(v.id), sum(v.amount)
+from visits v
+left join groups g on v.gid = g.gid
+where g.name is null
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "padded_group_is_addressable",
+            "The padded group is a real group: filtering to it returns the "
+            "group-less rows rather than nothing.",
+            ("nullable", "join", "aggregate", "padding", "where"),
+            count_body,
+            count_oracle,
+        )
+    )
+
+    two_aggregate_body = """
+auto slot_total <- sum(visit_amount) by group_name, visit_slot;
+auto group_visits <- count(visit_id) by group_name;
+select
+    group_name,
+    visit_slot,
+    slot_total,
+    group_visits
+order by group_name asc nulls first, visit_slot asc;
+"""
+    two_aggregate_oracle = """
+, padded as (
+    select
+        g.name as group_name,
+        v.slot as visit_slot,
+        v.id as visit_id,
+        v.amount as visit_amount
+    from visits v
+    left join groups g on v.gid = g.gid
+),
+slots as (
+    select group_name, visit_slot, sum(visit_amount) as slot_total
+    from padded
+    group by 1, 2
+),
+per_group as (
+    select group_name, count(visit_id) as group_visits
+    from padded
+    group by 1
+)
+select s.group_name, s.visit_slot, s.slot_total, c.group_visits
+from slots s
+join per_group c on s.group_name is not distinct from c.group_name
+order by s.group_name asc nulls first, s.visit_slot asc
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "two_aggregates_over_one_padded_scan",
+            "Two aggregates at different grains over the same padded scan: "
+            "both padded groups are the same rows, so neither side loses them.",
+            ("nullable", "join", "aggregate", "padding"),
+            two_aggregate_body,
+            two_aggregate_oracle,
+        )
+    )
+
+    value_null_body = """
+select
+    nullable_name,
+    sum(visit_amount) as visit_total,
+    count(visit_id) as visit_count
+order by nullable_name asc nulls first;
+"""
+    value_null_oracle = """
+select g.nullable_name, sum(v.amount), count(v.id)
+from visits v
+left join groups g on v.gid = g.gid
+group by 1
+order by 1 asc nulls first
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "value_null_over_padded_join",
+            "A VALUE-nullable dim attribute read across the padding join: its "
+            "own NULLs and the padded NULLs land in one group.",
+            ("nullable", "join", "aggregate", "padding"),
+            value_null_body,
+            value_null_oracle,
+        )
+    )
+
+    padded_unpadded_body = """
+select
+    group_name,
+    sum(visit_amount) as visit_total,
+    sum(event_amount) as event_total
+order by group_name asc nulls first;
+"""
+    padded_unpadded_oracle = """
+, visit_side as (
+    select g.name as group_name, sum(v.amount) as visit_total
+    from visits v
+    left join groups g on v.gid = g.gid
+    group by 1
+),
+event_side as (
+    select g.name as group_name, sum(e.amount) as event_total
+    from events e
+    join groups g on e.gid = g.gid
+    group by 1
+)
+select
+    coalesce(v.group_name, e.group_name) as group_name,
+    v.visit_total,
+    e.event_total
+from visit_side v
+full outer join event_side e on v.group_name = e.group_name
+order by 1 asc nulls first
+"""
+    cases.append(
+        _case(
+            seed,
+            "padding_provenance",
+            "padded_and_unpadded_sides",
+            "A padded fact aggregate merged with an unpadded one at the dim "
+            "grain: the `?` fk weakens the visits domain claim, so the merge "
+            "preserves BOTH member sets padded, and the padded group never "
+            "pairs with a value on the unpadded side.",
+            ("nullable", "join", "aggregate", "padding"),
+            padded_unpadded_body,
+            padded_unpadded_oracle,
+        )
+    )
+    return cases
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -3254,6 +3451,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _chasm_cases,
         _distinct_count_cases,
         _composite_membership_cases,
+        _padding_provenance_cases,
     )
     for seed in seeds:
         for builder in builders:

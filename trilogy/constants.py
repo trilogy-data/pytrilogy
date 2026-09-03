@@ -52,7 +52,6 @@ class Optimizations:
     predicate_pushdown: bool = True
     datasource_inlining: bool = True
     constant_inline_cutoff: int = 10
-    direct_return: bool = True
     hide_unused_concepts: bool = True
     merge_aggregate: bool = True
     merge_irrelevant_group_by: bool = True
@@ -69,7 +68,6 @@ class Optimizations:
     # the violating rows is the ruled semantics. Query-scoped `full join` /
     # `union join` keys never narrow regardless.
     narrow_equal_domain_joins: bool = True
-    narrow_keyless_full_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     join_hoist: bool = True

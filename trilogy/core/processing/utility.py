@@ -303,9 +303,3 @@ def sort_select_output_processed(
     }
     cte.output_columns = new_output
     return cte
-
-
-def sort_select_output(
-    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
-) -> CTE | UnionCTE:
-    return sort_select_output_processed(cte, query)

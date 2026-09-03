@@ -4,7 +4,13 @@ on the fact FKs, and the full-key select over three cross-table aggregates
 `~user_id`). Locks the union-of-branches contract end to end on mocked data:
 every fact row exactly once, one extension row per unmatched member per `~`
 side, extension families never cross-paired, and no null-safe join stitches
-in the rendered SQL."""
+anywhere in the rendered statement.
+
+Both `~` spans are elected to the dimension bucket before any node is built
+(docs/extent_ownership.md), so the metric branch is extent-free: it joins on
+solid keys, manufactures no second copy of either extension family, and there
+is no stitch for a later pass to unpick. The row comparison runs over data with
+live unmatched members on both `~` sides."""
 
 from tests.modeling._row_compare import rows_match
 from trilogy import Dialects, Executor

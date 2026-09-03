@@ -157,7 +157,7 @@ def test_provider_name():
         build_env.concepts["provider.id"],
         build_env.concepts["holdings.symbol.sector"],
     ]
-    _complete, _found_c, missing_c, partial, _virtual = validate_stack(
+    _complete, _found_c, missing_c, partial = validate_stack(
         concepts=test_concepts,
         stack=[
             StrategyNode(

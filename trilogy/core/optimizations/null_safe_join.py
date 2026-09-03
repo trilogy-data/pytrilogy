@@ -32,14 +32,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import equivalent_addresses
 from trilogy.core.processing.condition_utility import condition_proves_non_null
-
-
-def _equivalent_addrs(concepts: list[BuildConcept]) -> set[str]:
-    out: set[str] = set()
-    for c in concepts:
-        out |= c.equivalent_addresses
-    return out
 
 
 def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
@@ -57,18 +51,18 @@ def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
         if not isinstance(join, Join) or join.jointype == JoinType.INNER:
             continue
         if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
-            right_outputs = _equivalent_addrs(list(join.right_cte.output_columns))
+            right_outputs = equivalent_addresses(list(join.right_cte.output_columns))
             if not addrs.isdisjoint(right_outputs):
                 return True
         if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
             if join.left_cte is not None:
-                left_outputs = _equivalent_addrs(list(join.left_cte.output_columns))
+                left_outputs = equivalent_addresses(list(join.left_cte.output_columns))
                 if not addrs.isdisjoint(left_outputs):
                     return True
             for pair in join.joinkey_pairs or []:
                 if pair.cte is None:
                     continue
-                pair_outputs = _equivalent_addrs(list(pair.cte.output_columns))
+                pair_outputs = equivalent_addresses(list(pair.cte.output_columns))
                 if not addrs.isdisjoint(pair_outputs):
                     return True
     return False
@@ -125,7 +119,7 @@ def _rollup_injects_null(cte: CTE, addrs: set[str]) -> bool:
     )
     if not has_rollup:
         return False
-    return not addrs.isdisjoint(_equivalent_addrs(list(cte.nullable_concepts)))
+    return not addrs.isdisjoint(equivalent_addresses(list(cte.nullable_concepts)))
 
 
 def proven_non_null(
@@ -159,10 +153,10 @@ def proven_non_null(
         return all(proven_non_null(concept, branch, _visited) for branch in branches)
     if not isinstance(cte, CTE):
         return False
-    output = _equivalent_addrs(list(cte.output_columns))
+    output = equivalent_addresses(list(cte.output_columns))
     if concept.equivalent_addresses.isdisjoint(output):
         return False
-    nullable = _equivalent_addrs(list(cte.nullable_concepts))
+    nullable = equivalent_addresses(list(cte.nullable_concepts))
     if concept.equivalent_addresses.isdisjoint(nullable):
         return True
     if cte.condition is not None:
@@ -182,7 +176,7 @@ def proven_non_null(
         parent
         for parent in cte.parent_ctes
         if not concept.equivalent_addresses.isdisjoint(
-            _equivalent_addrs(list(parent.output_columns))
+            equivalent_addresses(list(parent.output_columns))
         )
     ]
     if not contributing:

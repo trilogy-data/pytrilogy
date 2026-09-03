@@ -118,7 +118,6 @@ def _pinned_member_node(
     node, force_group = create_datasource_node(
         candidates[0],
         [key],
-        accept_partial=True,
         environment=environment,
         depth=depth + 1,
         conditions=None,

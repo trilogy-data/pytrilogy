@@ -673,7 +673,16 @@ limit 1500;
 
 
 def test_aggregate_optimization(gcat_env: Executor):
+    """Every column comes off the summary table, so the plan is a single scan.
 
+    This datasource binds `org.state_code`/`org.hex` but not their grain key
+    `org.code`, which used to make the key a search terminal and pull in
+    `launch_info` + `organizations` purely to bind it -- a bridge chain nothing
+    read. `_concepts_with_grain_keys` now treats a grain key as an affordance
+    when one datasource covers the whole request, so the join is never built.
+    No optimizer rule deletes an unread join any more, so this reads the
+    planner's own output.
+    """
     queries = gcat_env.parse_text("""
     import fuel_dashboard;
     datasource fuel_aggregates (
@@ -707,16 +716,10 @@ ORDER BY
 LIMIT 10
 ;
 """)
-    query = gcat_env.generate_sql(queries[-1])
+    query = gcat_env.generate_sql(queries[-1])[0]
 
-    assert (
-        'LEFT OUTER JOIN "launch_info" as "launch_info" on "fuel_aggregates"."launch_tag" = "launch_info"."Launch_Tag"'
-        in query[0]
-    ), query[0]
-
-    # results = gcat_env.execute_query(queries[-1])
-    # q2 = results.fetchall()[0]["fuel_launches"]
-    # assert q1 == q2, (q1, q2)
+    assert '"fuel_dashboard_agg" as "fuel_aggregates"' in query, query
+    assert "JOIN" not in query, query
 
 
 def test_no_duplicates(gcat_env: Executor):

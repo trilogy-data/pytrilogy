@@ -5,7 +5,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -92,23 +92,15 @@ def date_truncate(expr: str, part: str) -> str:
 
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda args, types: f"count({args[0]})",
-    FunctionType.SUM: lambda args, types: f"sum({args[0]})",
-    FunctionType.AVG: lambda args, types: f"avg({args[0]})",
-    FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     # concat() skips NULLs (coalesce-wrapped for pre-3.44 sqlite); || propagates
     FunctionType.CONCAT: lambda args, types: (
         "(" + " || ".join([f"coalesce({a}, '')" for a in args]) + ")"
     ),
-    FunctionType.CONCAT_STRICT: lambda args, types: f"({' || '.join(args)})",
-    FunctionType.CONCAT_WS: lambda args, types: f"concat_ws({', '.join(args)})",
     FunctionType.CONTAINS: lambda args, types: f"(instr(lower({args[0]}), lower({args[1]})) > 0)",
     FunctionType.BOOL_OR: lambda args, types: f"max(CAST({args[0]} as integer))",
     FunctionType.BOOL_AND: lambda args, types: f"min(CAST({args[0]} as integer))",
     FunctionType.CURRENT_DATE: lambda x, types: "date('now')",
     FunctionType.CURRENT_DATETIME: lambda x, types: "datetime('now')",
-    FunctionType.DATE: lambda x, types: f"date({x[0]})",
-    FunctionType.DATETIME: lambda x, types: f"datetime({x[0]})",
     FunctionType.TIMESTAMP: lambda x, types: f"datetime({x[0]})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date('{x}')",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime('{x}')",
@@ -157,43 +149,6 @@ FUNCTION_MAP = {
     FunctionType.RANDOM: lambda x, types: f"(abs(random()) % {x[0]})",
 }
 
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
-}
-
-SQLITE_SQL_TEMPLATE = Template("""{%- if output %}
-{{output}}
-{% endif %}{%- if ctes %}
-WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
-{{cte.name}} as (
-{{cte.statement}}){% if not loop.last %},{% else %}
-{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{%- else -%}
-SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{%- for join in joins %}
-    {{ join }}{% endfor %}{% endif %}
-{%- if where %}
-WHERE
-    {{ where }}
-{% endif -%}{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-    {{ having }}
-{% endif %}{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT ({{ limit }}){% endif %}{% endif %}
-""")
-
 SQLITE_CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE TABLE {% if create_mode == "create_if_not_exists" %}IF NOT EXISTS {% endif %}{{ name }} (
 {%- for column in columns %}
@@ -220,16 +175,12 @@ class SQLiteDialect(BaseDialect):
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
         **DATATYPE_MAP,
     }
     QUOTE_CHARACTER = '"'
-    SQL_TEMPLATE = SQLITE_SQL_TEMPLATE
+    LIMIT_PARENTHESIZED = True
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE
     SUPPORTS_ARRAYS = False
     TABLE_NOT_FOUND_PATTERN = "no such table"

@@ -1,5 +1,5 @@
 query_id = "87"
-gen_length = 4368
+gen_length = 4193
 preql_size = 1105
 comp_size = 1163
 generated_sql = """
@@ -27,7 +27,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_sale_date_date\" on \"sparkling\".\"web_sales_sale_date_sk\" = \"web_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"web_sales_billing_customer_customers\" on \"sparkling\".\"web_sales_billing_customer_sk\" = \"web_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"web_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"sparkling\".\"web_sales_billing_customer_sk\" is not null
+    \"web_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 
 GROUP BY
     1,
@@ -55,7 +55,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_sale_date_date\" on \"abundant\".\"catalog_sales_sale_date_sk\" = \"catalog_sales_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"catalog_sales_billing_customer_customers\" on \"abundant\".\"catalog_sales_billing_customer_sk\" = \"catalog_sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    \"catalog_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"abundant\".\"catalog_sales_billing_customer_sk\" is not null
+    \"catalog_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 
 GROUP BY
     1,
@@ -83,7 +83,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"wakeful\".\"store_sales_customer_sk\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"wakeful\".\"store_sales_sale_date_sk\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"wakeful\".\"store_sales_customer_sk\" is not null
+    \"store_sales_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 
 GROUP BY
     1,

@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from trilogy.io.contract import SourceRequest
     from trilogy.staging import StagingConfig
 
-from jinja2 import Template
 
 from trilogy.core.enums import (
     AddressType,
@@ -28,7 +27,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect
+from trilogy.dialect.base import BaseDialect
 from trilogy.utility import safe_open
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
@@ -110,10 +109,6 @@ def date_part(args, types):
     return f"date_part('{map_date_part_specifier(args[1])}', {args[0]})"
 
 
-def zip_vals(data):
-    return list(zip(data[::2], data[1::2]))
-
-
 def generate_simple_case(args):
     output_args = []
     for arg in args[1:]:
@@ -130,16 +125,11 @@ def render_geo_transform(args: list[str]) -> str:
 
 FUNCTION_MAP = {
     FunctionType.CAST: handle_cast,
-    FunctionType.COUNT: lambda args, types: f"count({args[0]})",
-    FunctionType.SUM: lambda args, types: f"sum({args[0]})",
-    FunctionType.AVG: lambda args, types: f"avg({args[0]})",
-    FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     FunctionType.LOG: lambda args, types: render_log(args),
     FunctionType.SPLIT: lambda args, types: (
         f"STRING_SPLIT({','.join([f''' {a!s} ''' for a in args])})"
     ),
     ## Duckdb indexes from 1, not 0
-    FunctionType.INDEX_ACCESS: lambda args, types: (f"{args[0]}[{args[1]}]"),
     ## Duckdb uses list for array
     FunctionType.ARRAY_DISTINCT: lambda args, types: f"list_distinct({args[0]})",
     FunctionType.ARRAY_SUM: lambda args, types: f"list_sum({args[0]})",
@@ -147,7 +137,6 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_TRANSFORM: lambda args, types: (
         f"list_transform({args[0]}, {args[1]} -> {args[2]})"
     ),
-    FunctionType.ARRAY_AGG: lambda args, types: f"array_agg({args[0]})",
     # datetime is aliased,
     FunctionType.CURRENT_DATETIME: lambda x, types: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATETIME: lambda x, types: f"cast({x[0]} as datetime)",
@@ -162,10 +151,7 @@ FUNCTION_MAP = {
     # joins with a separator skipping NULLs — the reference semantics for all
     # dialects
     FunctionType.CONCAT: lambda x, types: f"CONCAT({', '.join(x)})",
-    FunctionType.CONCAT_STRICT: lambda x, types: f"({' || '.join(x)})",
     FunctionType.CONCAT_WS: lambda x, types: f"CONCAT_WS({', '.join(x)})",
-    FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
-    FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
     FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})+1",
     # string
     FunctionType.CONTAINS: lambda x, types: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
@@ -173,20 +159,9 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
     FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
-    FunctionType.GEO_FROM_TEXT: lambda x, types: f"ST_GeomFromText({x[0]})",
     FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]}, {x[1]})",
-    FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",
-    FunctionType.GEO_Y: lambda x, types: f"ST_Y({x[0]})",
-    FunctionType.GEO_CENTROID: lambda x, types: f"ST_Centroid({x[0]})",
     FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
-}
-
-# if an aggregate function is called on a source that is at the same grain as the aggregate
-# we may return a static value
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
 }
 
 DATATYPE_MAP: dict[DataType, str] = {}
@@ -327,43 +302,6 @@ def check_gcs_write_credentials() -> None:
         )
 
 
-DUCKDB_TEMPLATE = Template("""{%- if output %}
-{{output}}
-{% endif %}{%- if ctes %}
-WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
-{{cte.name}} as (
-{{cte.statement}}){% if not loop.last %},{% else %}
-{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}
-{{full_select}}
-{%- else -%}{%- if comment -%}
--- {{ comment }}
-{%- endif %}SELECT
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{%- for join in joins %}
-    {{ join }}{% endfor %}{% endif %}
-{%- if where %}
-WHERE
-    {{ where }}
-{% endif -%}{%- if group_by %}
-GROUP BY
-{%- for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
-HAVING
-    {{ having }}
-{% endif %}{% if qualify %}
-QUALIFY
-    {{ qualify }}
-{% endif %}{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if limit is not none %}
-LIMIT ({{ limit }}){% endif %}{% endif %}
-""")
-
 # Fixed seed for reservoir sampling during ingest introspection, so detected
 # grain (and the generated .preql) is reproducible across runs.
 DUCKDB_SAMPLE_SEED = 42
@@ -374,16 +312,12 @@ class DuckDBDialect(BaseDialect):
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,
         **DATATYPE_MAP,
     }
     QUOTE_CHARACTER = '"'
-    SQL_TEMPLATE = DUCKDB_TEMPLATE
+    LIMIT_PARENTHESIZED = True
     SUPPORTS_QUALIFY = True
     UNNEST_MODE = UnnestMode.DIRECT
     GROUP_MODE = GroupMode.BY_INDEX

@@ -1,12 +1,12 @@
-"""Rowset islanding — one invariant, two graph shapes.
+"""Rowset islanding on the undirected connectivity graph.
 
 A rowset is a materialized result: from outside it you can reach only its
-declared outputs, through an explicit scoped join/merge — you cannot navigate
+declared outputs, through an explicit scoped join/merge; you cannot navigate
 INTO its derivation to recover the base concepts it was computed from. The raw
 reference graph does not honor that: a rowset output links to the internal
 concepts behind its select, and through a shared base those internals reach the
-OTHER rowset's internals — a phantom cross-rowset bridge that competes with the
-real join key. Both reshapes below enforce the same two rules:
+OTHER rowset's internals, a phantom cross-rowset bridge that competes with the
+real join key. Two rules enforce the boundary:
 
 1. SEVER navigation across the rowset boundary, so internals stop acting as
    join paths.
@@ -16,84 +16,28 @@ real join key. Both reshapes below enforce the same two rules:
    from each other). Each rowset gets its OWN hub, so distinct rowsets relate
    only through explicit scoped-join/pseudonym edges, never through a hub.
 
-The two entry points apply those rules to different graphs and therefore sever
-at different granularities:
-
-* ``island_rowsets_for_weak_merge`` mutates the weak-merge search graph, whose
-  concept nodes key on CANONICAL address with one instance per grain. It severs
-  exactly the output<->content edges (the alias link a rowset output keeps to
-  the concept it renamed), leaving downstream consumers attached — the search
-  needs them reachable directly.
-* ``island_rowsets_for_connectivity`` mutates the undirected connectivity copy
-  used by ``disconnected_components``. It severs EVERY boundary-crossing edge,
-  then re-welds the legitimate external links: downstream consumers of a
-  declared output (minus aggregate grain-only ``by`` consumers, which would
-  bridge unrelated models) and cross-rowset scoped-join pseudonym edges.
+``island_rowsets_for_connectivity`` mutates the undirected connectivity copy
+used by ``disconnected_components``. It severs EVERY boundary-crossing edge,
+then re-welds the legitimate external links: downstream consumers of a
+declared output (minus aggregate grain-only ``by`` consumers, which would
+bridge unrelated models) and cross-rowset scoped-join pseudonym edges.
+``link_rowset_outputs_for_connectivity`` applies rule 2 alone.
 """
 
 from typing import TYPE_CHECKING
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept, BuildRowsetItem
+from trilogy.core.models.build import BuildRowsetItem
 
 if TYPE_CHECKING:
     from trilogy.core.graph_models import ReferenceGraph
 
-ROWSET_HUB_PREFIX = "rowset_hub~"
 ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 
 
-def extract_address(node: str) -> str:
-    return node.split("~")[1].split("@")[0]
-
-
-def _add_hub(graph, hub: str, members: list[str], bidirectional: bool) -> None:
+def _add_hub(graph, hub: str, members: list[str]) -> None:
     for member in members:
         graph.add_edge(hub, member)
-        if bidirectional:
-            graph.add_edge(member, hub)
-
-
-def island_rowsets_for_weak_merge(
-    g: "ReferenceGraph", requested_concepts: list[BuildConcept]
-) -> None:
-    """Apply the islanding invariant to the weak-merge search graph.
-
-    Severs output<->content alias edges across ALL grain instances (matching by
-    CANONICAL address — graph nodes key on ``canonical_address``, not the
-    friendly ``address``; the default-grain-only lineage prune misses the other
-    instances). Downstream consumers of an output (e.g. the derived join key
-    `a.grp + 1`) are NOT severed — something downstream of a rowset
-    legitimately links back to it. Hubs are named without a ``c~``/``ds~``
-    prefix so concept/datasource extraction skips them — pure connectivity
-    glue."""
-    nodes_by_canon: dict[str, list[str]] = {}
-    for node in g.nodes:
-        if str(node).startswith("c~"):
-            nodes_by_canon.setdefault(extract_address(node), []).append(node)
-
-    canon_by_rowset: dict[str, set[str]] = {}
-    to_remove: list[tuple[str, str]] = []
-    for concept in g.concepts.values():
-        if not isinstance(concept.lineage, BuildRowsetItem):
-            continue
-        canon_by_rowset.setdefault(concept.lineage.rowset.name, set()).add(
-            concept.canonical_address
-        )
-        content_canon = concept.lineage.content.canonical_address
-        for out_node in nodes_by_canon.get(concept.canonical_address, []):
-            for content_node in nodes_by_canon.get(content_canon, []):
-                to_remove.append((content_node, out_node))
-                to_remove.append((out_node, content_node))
-    g.remove_edges_from([e for e in to_remove if e in g.edges])
-
-    for name, canon_addrs in canon_by_rowset.items():
-        members = [
-            node for addr in canon_addrs for node in nodes_by_canon.get(addr, [])
-        ]
-        if len(members) < 2:
-            continue
-        _add_hub(g, f"{ROWSET_HUB_PREFIX}{name}", members, bidirectional=True)
 
 
 def link_rowset_outputs_for_connectivity(g: "ReferenceGraph", cg) -> None:
@@ -120,7 +64,7 @@ def link_rowset_outputs_for_connectivity(g: "ReferenceGraph", cg) -> None:
             continue
         hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
         cg.add_node(hub)
-        _add_hub(cg, hub, present, bidirectional=False)
+        _add_hub(cg, hub, present)
 
 
 def island_rowsets_for_connectivity(
@@ -164,7 +108,7 @@ def island_rowsets_for_connectivity(
     for name, members in members_by_rowset.items():
         hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
         cg.add_node(hub)
-        _add_hub(cg, hub, [m for m in members if m in cg], bidirectional=False)
+        _add_hub(cg, hub, [m for m in members if m in cg])
         # A concept DERIVED from a rowset's declared output (a filtered aggregate
         # `sum(cur.sales ? ...)`, `cur.x * 2`, etc.) legitimately consumes that
         # output, but islanding severed the edge as a boundary crossing — wrongly

@@ -1,65 +1,21 @@
 from collections.abc import Callable
 from typing import ClassVar
 
-from jinja2 import Template
-
 from trilogy.core.enums import FunctionType
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.dialect.base import AGGREGATE_GRAIN_MATCH_MAP, BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.utility import string_to_hash
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda args, types: f"count({args[0]})",
-    FunctionType.SUM: lambda args, types: f"sum({args[0]})",
-    FunctionType.AVG: lambda args, types: f"avg({args[0]})",
-    FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
     # CONCAT skips NULLs natively; `+` propagates (CONCAT_NULL_YIELDS_NULL ON)
     FunctionType.CONCAT: lambda args, types: f"CONCAT({', '.join(args)})",
     FunctionType.CONCAT_STRICT: lambda args, types: f"({' + '.join(args)})",
     FunctionType.CONCAT_WS: lambda args, types: f"CONCAT_WS({', '.join(args)})",
 }
-
-# if an aggregate function is called on a source that is at the same grain as the aggregate
-# we may return a static value
-FUNCTION_GRAIN_MATCH_MAP = {
-    **FUNCTION_MAP,
-    **AGGREGATE_GRAIN_MATCH_MAP,
-}
-
-TSQL_TEMPLATE = Template("""{%- if ctes %}
-WITH {% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}{{full_select}}
-{%- else -%}{%- if comment %}
--- {{ comment }}{%- endif -%}
-SELECT
-{%- if limit is not none %}
-TOP {{ limit }}{% endif %}
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{% for join in joins %}
-{{ join }}
-{% endfor %}{% endif %}
-{% if where %}WHERE
-    {{ where }}
-{% endif %}
-{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}{% if having %}
-HAVING
-\t{{ having }}{% endif %}
-{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}{% endif %}
-""")
 
 MAX_IDENTIFIER_LENGTH = 128
 
@@ -69,12 +25,9 @@ class SqlServerDialect(BaseDialect):
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
     }
-    FUNCTION_GRAIN_MATCH_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
-        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
-        **FUNCTION_GRAIN_MATCH_MAP,
-    }
     QUOTE_CHARACTER = '"'
-    SQL_TEMPLATE = TSQL_TEMPLATE
+    LIMIT_STYLE = "TOP"
+    RECURSIVE_KEYWORD = ""
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_ARRAYS = False
     # Msg 208: `Invalid object name 'dbo.orders'.`

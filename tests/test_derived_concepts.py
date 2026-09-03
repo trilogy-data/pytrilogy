@@ -121,8 +121,10 @@ def test_where_aggregate_matching_select_output_executes():
 
 
 def test_scalar_select_where_aggregate_still_rejected():
-    # A SCALAR select (no grouping key) keeps the clean redirect to HAVING: there is
-    # no grain to anchor the WHERE aggregate and the planner drops sibling filters.
+    # A SCALAR select (no grouping key) is rejected because the alias would name
+    # both the filtered projection and the unfiltered gate. The message must offer
+    # BOTH readings, not just HAVING: `having` gates the filtered value, `by *`
+    # the unfiltered one, and only the latter matches WHERE-aggregate semantics.
     from trilogy import parse
 
     for query in (
@@ -135,7 +137,8 @@ def test_scalar_select_where_aggregate_still_rejected():
         except Exception as e:
             raised = e
         assert raised is not None, f"expected rejection for: {query}"
-        assert "HAVING" in str(raised), str(raised)
+        assert "having v > ..." in str(raised), str(raised)
+        assert "sum(local.z) by * > ..." in str(raised), str(raised)
 
 
 _SCALAR_FILTER_SCHEMA = """key x int;
@@ -149,25 +152,40 @@ auto grand_total <- sum(cost) by *;
 """
 
 
+def _scalar_rows(query: str) -> list[tuple]:
+    from trilogy import Dialects
+
+    return [
+        tuple(r)
+        for r in Dialects.DUCK_DB.default_executor()
+        .execute_text(_SCALAR_FILTER_SCHEMA + query)[-1]
+        .fetchall()
+    ]
+
+
 def test_where_filter_on_scalar_output_value_is_applied():
     # Regression: a WHERE predicate on a single-row scalar that IS the query output
     # (`where grand_total > N select grand_total`) was silently dropped — the scalar
     # node was treated as a cross-joined constant whose conditions are independent.
     # `_is_scalar_only` now declines the exemption when the predicate filters the
     # node's own output, so the gate actually filters.
-    from trilogy import Dialects
-
-    def rows(query):
-        return [
-            tuple(r)
-            for r in Dialects.DUCK_DB.default_executor()
-            .execute_text(_SCALAR_FILTER_SCHEMA + query)[-1]
-            .fetchall()
-        ]
-
     # grand_total is 2160; a passing gate yields it, a failing gate yields no rows.
-    assert rows("where grand_total > 1000 select grand_total;") == [(2160.0,)]
-    assert rows("where grand_total > 5000 select grand_total;") == []
+    assert _scalar_rows("where grand_total > 1000 select grand_total;") == [(2160.0,)]
+    assert _scalar_rows("where grand_total > 5000 select grand_total;") == []
+
+
+def test_scalar_where_aggregate_error_suggestions_execute():
+    """Both spellings the rejection message offers must actually run, and gate on
+    different universes: `having` on the filtered total, `by *` on the whole table.
+    """
+    # cost 100/50/2000/10 over x 1..4: whole table 2160, x > 1 filtered 2060.
+    assert _scalar_rows("select sum(cost) -> v where x > 1 having v > 1000;") == [
+        (2060.0,)
+    ]
+    assert _scalar_rows("select sum(cost) -> v where x > 1 having v > 2100;") == []
+    assert _scalar_rows(
+        "select sum(cost) -> v where x > 1 and sum(local.cost) by * > 2100;"
+    ) == [(2060.0,)]
 
 
 def test_filtering_having_on_unincluded_value(test_environment):

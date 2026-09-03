@@ -145,5 +145,8 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
 
 
 def test_three(engine):
+    # Sized just above the single-scan plan (~923). The point of the aggregate
+    # tier is that the summary table collapses the joins, so anything that
+    # re-expands them belongs here as a failure, not as a passing 3.5k plan.
     query = run_query(engine, 3)
-    assert len(query) < 7000, query
+    assert len(query) < 1500, query

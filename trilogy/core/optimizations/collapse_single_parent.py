@@ -20,22 +20,21 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    SENSITIVE_DERIVATIONS,
     consumed_parent_column,
+    is_grouped_cte,
     is_sole_consumer,
     rebind_rename_to_consumed,
     rename_reference,
     repoint_consumers,
 )
-from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.condition_utility import (
+    gather_windows,
+    merge_conditions_and_dedup,
+)
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
-
-UNSAFE_DERIVATIONS = {
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-    Derivation.RECURSIVE,
-}
 
 
 class MergeMode(Enum):
@@ -50,17 +49,20 @@ class MergeMode(Enum):
     PASSTHROUGH = "passthrough"
 
 
-def is_passthrough_projection(cte: CTE) -> bool:
-    if cte.group_to_grain or cte.joins or cte.condition is not None:
+_NON_PROJECTION_SOURCE_TYPES = (
+    SourceType.GROUP,
+    SourceType.WINDOW,
+    SourceType.UNNEST,
+    SourceType.RECURSIVE,
+    SourceType.SUBSELECT,
+    SourceType.UNION,
+)
+
+
+def is_projection_shape(cte: CTE) -> bool:
+    if cte.group_to_grain or cte.joins:
         return False
-    if cte.source.source_type in (
-        SourceType.GROUP,
-        SourceType.WINDOW,
-        SourceType.UNNEST,
-        SourceType.RECURSIVE,
-        SourceType.SUBSELECT,
-        SourceType.UNION,
-    ):
+    if cte.source.source_type in _NON_PROJECTION_SOURCE_TYPES:
         return False
     # A column with a non-empty source_map entry is pulled from upstream as a
     # plain column — safe to pass through whatever its derivation. Only a
@@ -70,7 +72,7 @@ def is_passthrough_projection(cte: CTE) -> bool:
     return all(
         bool(cte.source_map.get(concept.address))
         or (
-            concept.derivation not in UNSAFE_DERIVATIONS
+            concept.derivation not in SENSITIVE_DERIVATIONS
             and concept.derivation != Derivation.AGGREGATE
             and not isinstance(
                 concept.lineage, (BuildAggregateWrapper, BuildWindowItem)
@@ -78,6 +80,39 @@ def is_passthrough_projection(cte: CTE) -> bool:
         )
         for concept in cte.output_columns
     )
+
+
+def is_passthrough_projection(cte: CTE) -> bool:
+    return cte.condition is None and is_projection_shape(cte)
+
+
+def computes_sensitive_derivation(cte: CTE) -> bool:
+    """A window/unnest/recursive value rendered by this CTE itself (not pulled
+    from upstream), including a window nested inside arithmetic. A WHERE
+    folded in from a child would then apply before that derivation instead of
+    over its output."""
+    materialized = {addr for addr, sources in cte.source_map.items() if sources}
+    for column in cte.output_columns:
+        if column.address in materialized:
+            continue
+        if column.derivation in SENSITIVE_DERIVATIONS:
+            return True
+        if gather_windows(column.lineage, materialized):
+            return True
+    return False
+
+
+def is_filtered_projection(cte: CTE, parent: CTE) -> bool:
+    """A WHERE (plus ORDER BY/LIMIT) over a subset of the parent's own
+    columns. Folded, the predicate evaluates in the parent's scope, where the
+    renderer classifies each atom as WHERE, HAVING, or QUALIFY by what it
+    references, so the rows it keeps are the same."""
+    if cte.condition is None or not is_projection_shape(cte):
+        return False
+    if computes_sensitive_derivation(parent):
+        return False
+    parent_outputs = parent.output_lcl
+    return all(column.address in parent_outputs for column in cte.output_columns)
 
 
 def renders_off_parent_output(
@@ -113,7 +148,7 @@ def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
 def has_unsafe_derivations(cte: CTE) -> bool:
     """Check if a CTE derives any concepts that can't be merged into an aggregate."""
     for concept in cte.output_columns:
-        if concept.derivation in UNSAFE_DERIVATIONS:
+        if concept.derivation in SENSITIVE_DERIVATIONS:
             return True
         if isinstance(concept.lineage, BuildWindowItem):
             return True
@@ -151,7 +186,7 @@ def unbound_rowset_blocks_merge(
     merge_mode: MergeMode,
     domain_graph: "DomainGraph | None",
 ) -> bool:
-    if merge_mode == MergeMode.PASSTHROUGH and parent_is_group(parent):
+    if merge_mode == MergeMode.PASSTHROUGH and is_grouped_cte(parent):
         return False
     if merge_mode in (MergeMode.PASSTHROUGH, MergeMode.BASIC):
         # An identity fold: every child output address is one the parent
@@ -180,7 +215,7 @@ def grouped_unbound_passthrough_should_wait(
         return False
     parent = parents[0]
     return (
-        parent_is_group(parent)
+        is_grouped_cte(parent)
         and get_merge_mode(parent) == MergeMode.AGGREGATE
         and bool(parent.dependency_nodes())
         and (
@@ -197,7 +232,7 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
         return MergeMode.WINDOW
     if has_basic_derivation(cte):
         return MergeMode.BASIC
-    if is_passthrough_projection(cte):
+    if is_projection_shape(cte):
         return MergeMode.PASSTHROUGH
     return None
 
@@ -265,10 +300,6 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
     )
 
 
-def parent_is_group(parent: CTE) -> bool:
-    return parent.group_to_grain or parent.source.source_type == SourceType.GROUP
-
-
 def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
     """Gate the BASIC-into-GROUP fold to the provably row-preserving subset.
 
@@ -293,7 +324,7 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
         if column.address in parent_outputs:
             continue  # passthrough of a parent grain key / aggregate -- safe
         if (
-            column.derivation in UNSAFE_DERIVATIONS
+            column.derivation in SENSITIVE_DERIVATIONS
             or column.derivation == Derivation.AGGREGATE
         ):
             return False
@@ -304,8 +335,6 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
 
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.WINDOW and cte.condition is not None:
-        return True
-    if merge_mode == MergeMode.BASIC and cte.condition is not None:
         return True
     if merge_mode == MergeMode.AGGREGATE:
         return any(
@@ -347,11 +376,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
 
-    # AND-combine the child's WHERE into the parent — for AGGREGATE merges the
+    # AND-combine the child's WHERE into the parent: for AGGREGATE merges the
     # child sits BELOW the aggregate (its condition is the pre-aggregation
     # WHERE), and the parent becomes the aggregate after the merge, so its
-    # WHERE has to carry the predicate forward. (WINDOW/BASIC modes are blocked
-    # upstream by `child_has_merge_blockers` when the child has a condition.)
+    # WHERE has to carry the predicate forward. WINDOW merges are blocked
+    # upstream by `child_has_merge_blockers` when the child has a condition; a
+    # conditioned BASIC child arrives through the filtered-projection branch.
     # Dedup on AND-atoms so a chain of merges (or a predicate already carried
     # by the parent) can't re-stamp it into `H AND H AND H` — q31's HAVING.
     if cte.condition is not None:
@@ -448,7 +478,6 @@ class CollapseSingleParent(OptimizationRule):
         passthrough_only: bool = False,
     ) -> None:
         super().__init__()
-        self.completed: set[str] = set()
         self.domain_graph = domain_graph
         # A bare passthrough (single parent, no local compute/WHERE/regroup) is
         # pure noise regardless of aggregate merging, so it is collapsed even
@@ -463,9 +492,6 @@ class CollapseSingleParent(OptimizationRule):
         if isinstance(cte, (UnionCTE, RecursiveCTE)):
             return False, None
 
-        if cte.name in self.completed:
-            return False, None
-
         if cte.joins:
             return False, None
 
@@ -473,7 +499,9 @@ class CollapseSingleParent(OptimizationRule):
         if merge_mode is None:
             return False, None
 
-        if self.passthrough_only and merge_mode != MergeMode.PASSTHROUGH:
+        if self.passthrough_only and (
+            merge_mode != MergeMode.PASSTHROUGH or cte.condition is not None
+        ):
             return False, None
 
         if child_has_merge_blockers(cte, merge_mode):
@@ -498,6 +526,22 @@ class CollapseSingleParent(OptimizationRule):
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
+        # A row-shape child with a WHERE folds only when it is the statement's
+        # final projection (no consumer) over a subset of the parent's own
+        # columns: the predicate moves into the parent's scope unchanged. A
+        # consumed filter is predicate pushdown's job, whose guards cover
+        # null-extension and union parents; a BASIC child computing its own
+        # columns under a WHERE stays.
+        filtered_projection = False
+        if cte.condition is not None and merge_mode in (
+            MergeMode.BASIC,
+            MergeMode.PASSTHROUGH,
+        ):
+            if inverse_map.get(cte.name) or not is_filtered_projection(cte, parent):
+                self.debug(f"CTE {cte.name} is a consumed or local filter, skipping")
+                return False, None
+            merge_mode = MergeMode.PASSTHROUGH
+            filtered_projection = True
         # A row LIMIT on the PARENT is an opaque boundary: folding the child's
         # shape into it moves work below the limit (pre-limit rows change).
         # A limited CHILD is fine — LIMIT evaluates last in the merged SELECT
@@ -512,7 +556,7 @@ class CollapseSingleParent(OptimizationRule):
             return False, None
         if (
             merge_mode == MergeMode.BASIC
-            and parent_is_group(parent)
+            and is_grouped_cte(parent)
             and not basic_fold_into_group_is_safe(parent, cte)
         ):
             self.debug(
@@ -531,7 +575,11 @@ class CollapseSingleParent(OptimizationRule):
                 f"{parent.name}, skipping"
             )
             return False, None
-        if destroys_subset_anchor_boundary(cte, parent, self.domain_graph):
+        # The boundary only matters to a consumer that joins this CTE as a
+        # side; an unconsumed CTE (the statement root) has none.
+        if inverse_map.get(cte.name) and destroys_subset_anchor_boundary(
+            cte, parent, self.domain_graph
+        ):
             self.debug(
                 f"CTE {cte.name} is a subset-narrowing rowset boundary its "
                 f"parent {parent.name} cannot preserve, skipping"
@@ -585,7 +633,10 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
 
-        if has_unsafe_derivations(parent):
+        # A filtered projection only needs the parent's LOCAL window/unnest
+        # columns ruled out (done in `is_filtered_projection`): its WHERE
+        # cannot disturb a window the parent merely carries from upstream.
+        if not filtered_projection and has_unsafe_derivations(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
 

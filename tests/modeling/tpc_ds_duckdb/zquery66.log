@@ -1,5 +1,5 @@
 query_id = "66"
-gen_length = 20469
+gen_length = 20313
 preql_size = 3175
 comp_size = 7431
 generated_sql = """
@@ -95,10 +95,7 @@ SELECT
     sum(\"cheerful\".\"sales_sales_price\" * CASE WHEN \"cheerful\".\"sales_channel\" = 'CATALOG' and \"sales_sale_date_date\".\"D_MOY\" = 9 THEN \"cheerful\".\"sales_quantity\" ELSE NULL END) as \"_virt_agg_sum_2489549651573387\"
 FROM
     \"cheerful\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    (\"cheerful\".\"sales_channel\" is not null and \"cheerful\".\"sales_channel\" in ('WEB','CATALOG')) and \"cheerful\".\"sales_warehouse_sk\" is not null
-
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 GROUP BY
     1,
     2)

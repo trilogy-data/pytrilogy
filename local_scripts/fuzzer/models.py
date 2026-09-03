@@ -35,6 +35,7 @@ class SeedData:
     union_facts: TableData
     sales: TableData
     returns: TableData
+    visits: TableData
 
     @property
     def tables(self) -> tuple[TableData, ...]:
@@ -46,6 +47,7 @@ class SeedData:
             self.union_facts,
             self.sales,
             self.returns,
+            self.visits,
         )
 
     def oracle_ctes(self) -> str:
@@ -119,6 +121,18 @@ property return_id.return_amount int;
 datasource returns (id: return_id, gid: ~group_id, amount: return_amount)
 grain (return_id)
 query '''{sources["returns"]}''';
+
+key visit_id int;
+property visit_id.visit_amount int;
+property visit_id.visit_slot int;
+datasource visits (
+    id: visit_id,
+    gid: ?group_id,
+    amount: visit_amount,
+    slot: visit_slot
+)
+grain (visit_id)
+query '''{sources["visits"]}''';
 
 """
 
@@ -204,6 +218,18 @@ SEEDS: tuple[SeedData, ...] = (
             ("id", "gid", "amount"),
             ((1, 1, 1), (2, 1, 2), (3, 1, 4), (4, 2, 8), (5, 4, 16)),
         ),
+        visits=TableData(
+            "visits",
+            ("id", "gid", "amount", "slot"),
+            (
+                (1, 1, 5, 1),
+                (2, 1, 7, 2),
+                (3, None, 11, 1),
+                (4, None, 13, 2),
+                (5, 2, 17, 1),
+                (6, 3, 19, 2),
+            ),
+        ),
     ),
     SeedData(
         name="dense",
@@ -265,6 +291,17 @@ SEEDS: tuple[SeedData, ...] = (
             "returns",
             ("id", "gid", "amount"),
             ((1, 1, 17), (2, 2, 19), (3, 2, 23), (4, 3, 29)),
+        ),
+        visits=TableData(
+            "visits",
+            ("id", "gid", "amount", "slot"),
+            (
+                (1, None, 0, 1),
+                (2, None, -3, 2),
+                (3, 1, 4, 1),
+                (4, 1, 4, 2),
+                (5, 2, 9, 1),
+            ),
         ),
     ),
 )

@@ -146,6 +146,13 @@ class BuildEnvironment:
     # referenced only in a condition is population-scope (d1) demand, not a
     # row-stream contributor. Set by `get_query_node`.
     statement_output_addresses: set[str] | None = None
+    # Build-loop scope: the `~` spans the group currently being built may NOT
+    # extend, because another group was elected to carry those extension rows
+    # (v4_helper/extent_ownership.py). Every merge constructed while this is set
+    # captures it, so the decision is fixed before the node ever resolves:
+    # re-deciding after resolution would leave the padding's nullable marks
+    # behind. `build_strategy_node` sets and clears it around each group.
+    extent_free_spans: frozenset[str] = frozenset()
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

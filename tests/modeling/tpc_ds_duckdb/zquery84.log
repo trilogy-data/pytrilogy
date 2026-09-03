@@ -1,5 +1,5 @@
 query_id = "84"
-gen_length = 2331
+gen_length = 2297
 preql_size = 676
 comp_size = 606
 generated_sql = """
@@ -29,7 +29,7 @@ FROM
     INNER JOIN \"memory\".\"household_demographics\" as \"customer_current_household_demographics_household_demographics\" on \"customer_customers\".\"C_CURRENT_HDEMO_SK\" = \"customer_current_household_demographics_household_demographics\".\"HD_DEMO_SK\"
     INNER JOIN \"memory\".\"income_band\" as \"customer_current_household_demographics_income_band_income_band\" on \"customer_current_household_demographics_household_demographics\".\"HD_INCOME_BAND_SK\" = \"customer_current_household_demographics_income_band_income_band\".\"IB_INCOME_BAND_SK\"
 WHERE
-    \"customer_current_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"thoughtful\".\"_virt_presence_5269535758143238\" is not null and \"customer_current_household_demographics_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_current_household_demographics_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000 and \"thoughtful\".\"ss_is_returned\"
+    \"customer_current_address_customer_address\".\"CA_CITY\" = 'Edgewood' and \"thoughtful\".\"_virt_presence_5269535758143238\" is not null and \"customer_current_household_demographics_income_band_income_band\".\"IB_LOWER_BOUND\" >= 38128 and \"customer_current_household_demographics_income_band_income_band\".\"IB_UPPER_BOUND\" <= 38128 + 50000
 
 ORDER BY 
     \"customer_customers\".\"C_CUSTOMER_ID\" asc nulls first

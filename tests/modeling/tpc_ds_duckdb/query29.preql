@@ -1,43 +1,53 @@
 import store_sales as store_sales;
 import catalog_sales as catalog_sales;
 
-# query has weird distinct
-# forcedupe through a rowset
-rowset correlated <- where
-    store_sales.sale_date.month_of_year = 9
-    and store_sales.sale_date.year = 1999
-    and store_sales.return_date.month_of_year between 9 and 12
-    and store_sales.return_date.year = 1999
-    and catalog_sales.sale_date.year in (1999, 2000, 2001)
-    and catalog_sales.quantity > 0
-    and store_sales.is_returned
-    and store_sales.customer.sk = store_sales.return_customer.sk
+# Catalog demand for an item from the customer it was billed to, over the three
+# qualifying years. Summing the catalog side per (billing customer, item) before
+# it meets the store side is what keeps a customer's second catalog order from
+# re-counting that customer's store quantities.
+rowset catalog_customer_item <- where
+    catalog_sales.sale_date.year in (1999, 2000, 2001)
 select
-    store_sales.ticket_number,
-    store_sales.item.sk,
-    catalog_sales.order_number,
-    store_sales.item.id,
-    store_sales.item.desc,
-    store_sales.store.id,
-    store_sales.store.name,
-    store_sales.quantity,
-    store_sales.return_quantity,
-    catalog_sales.quantity,
+    catalog_sales.billing_customer.sk as cat_customer_sk,
+    catalog_sales.item.sk as cat_item_sk,
+    sum(catalog_sales.quantity) as cat_quantity,
 ;
 
-subset join catalog_sales.billing_customer.sk = store_sales.return_customer.sk
-subset join catalog_sales.item.sk = store_sales.item.sk
+# Resolve purchases to (reported group, customer, item) before rolling up.
+# catalog_customer_item holds one row per (customer, item), so max() reads that
+# pair's quantity once here and the outer sum counts it once per group.
+rowset per_pair <- where
+    store_sales.sale_date.month_of_year = 9
+    and store_sales.sale_date.year = 1999
+    and store_sales.is_returned
+    and store_sales.return_date.month_of_year between 9 and 12
+    and store_sales.return_date.year = 1999
+    and store_sales.customer.sk = store_sales.return_customer.sk
+    # only purchases the customer also ordered from the catalog qualify, so this
+    # belongs on the purchase rather than on the reported group
+    and catalog_customer_item.cat_quantity > 0
 select
-    correlated.store_sales.item.id as store_sales_item_name,
-    correlated.store_sales.item.desc as store_sales_item_desc,
-    correlated.store_sales.store.id as store_sales_store_text_id,
-    correlated.store_sales.store.name as store_name,
-    sum(correlated.store_sales.quantity) as store_sales_quantity,
-    sum(correlated.store_sales.return_quantity) as store_returns_quantity,
-    sum(correlated.catalog_sales.quantity) as catalog_sales_quantity,
-having
-    catalog_sales_quantity > 0
+    store_sales.item.id as item_id,
+    store_sales.item.desc as item_desc,
+    store_sales.store.id as store_text_id,
+    store_sales.store.name as store_name,
+    store_sales.customer.sk as customer_sk,
+    store_sales.item.sk as item_sk,
+    sum(store_sales.quantity) as sq,
+    sum(store_sales.return_quantity) as srq,
+    max(catalog_customer_item.cat_quantity) as cq,
+subset join catalog_customer_item.cat_customer_sk = store_sales.customer.sk
+subset join catalog_customer_item.cat_item_sk = store_sales.item.sk
+;
 
+select
+    per_pair.item_id as store_sales_item_name,
+    per_pair.item_desc as store_sales_item_desc,
+    per_pair.store_text_id as store_sales_store_text_id,
+    per_pair.store_name as store_name,
+    sum(per_pair.sq) as store_sales_quantity,
+    sum(per_pair.srq) as store_returns_quantity,
+    sum(per_pair.cq) as catalog_sales_quantity,
 order by
     store_sales_item_name asc,
     store_sales_item_desc asc,

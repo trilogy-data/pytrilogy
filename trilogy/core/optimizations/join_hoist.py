@@ -55,19 +55,18 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
-from trilogy.core.optimizations.join_upgrade import (
-    UpgradeJoinOnGuards,
-    _gather_proofs,
-)
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
-    add_parent_cte,
     append_condition,
     condition_contains_atom,
+    is_grouped_cte,
     render_cte_used_map,
     strip_condition_atom,
 )
-from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import (
+    gather_non_null_proofs,
+    is_scalar_condition,
+)
 
 HOISTABLE_JOIN_TYPES = {JoinType.INNER, JoinType.LEFT_OUTER}
 
@@ -87,21 +86,6 @@ def _datasource_matches(
     if right_base is not None and right_base is left:
         return True
     return left_base is not None and left_base is right_base
-
-
-def _is_grouped_cte(cte: CTE) -> bool:
-    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
-
-
-def _is_child_of(candidate, condition) -> bool:
-    """Value-based: True if `candidate` appears anywhere in an AND-tree of
-    `condition`. Siblings carry structurally identical but referentially
-    distinct copies of the same predicate, so we compare by ``==``."""
-    return condition_contains_atom(candidate, condition)
-
-
-def _strip_candidate(condition, candidate):
-    return strip_condition_atom(condition, candidate)
 
 
 class JoinHoist(OptimizationRule):
@@ -168,7 +152,7 @@ class JoinHoist(OptimizationRule):
         original_condition = cte.condition
         stripped_condition = original_condition
         for cand in exclude_candidates:
-            stripped_condition = _strip_candidate(stripped_condition, cand)
+            stripped_condition = strip_condition_atom(stripped_condition, cand)
         cte.condition = stripped_condition
         try:
             used_map = render_cte_used_map(cte)
@@ -215,7 +199,7 @@ class JoinHoist(OptimizationRule):
         siblings = inverse_map.get(parent_cte.name, [])
         if not siblings:
             return None
-        if not _is_grouped_cte(parent_cte):
+        if not is_grouped_cte(parent_cte):
             return None
         candidates = [
             c
@@ -282,7 +266,7 @@ class JoinHoist(OptimizationRule):
                 if not cand_args.issubset(filter_concepts | materialized):
                     bail = True
                     break
-                already_on_parent = _is_child_of(cand, parent_cte.condition)
+                already_on_parent = condition_contains_atom(cand, parent_cte.condition)
                 if already_on_parent:
                     to_strip_only.append(cand)
                     continue
@@ -290,8 +274,8 @@ class JoinHoist(OptimizationRule):
                 # siblings — either on each sibling's condition, or already
                 # pushed up to parent
                 if not all(
-                    _is_child_of(cand, s.condition)
-                    or _is_child_of(cand, parent_cte.condition)
+                    condition_contains_atom(cand, s.condition)
+                    or condition_contains_atom(cand, parent_cte.condition)
                     for s in siblings
                 ):
                     bail = True
@@ -316,24 +300,6 @@ class JoinHoist(OptimizationRule):
             return None
         return plan or None
 
-    def _lock_in_guarded_upgrades(
-        self,
-        cte: CTE,
-        inverse_map: dict[str, list[CTE | UnionCTE]],
-    ) -> None:
-        """Realize guard-enabled join upgrades on ``cte`` before its guards are
-        hoisted away.
-
-        Hoisting a dim join up to the shared parent strips the filter predicate
-        from ``cte``. That predicate may be the only thing letting
-        UpgradeJoinOnGuards downgrade an OUTER join in ``cte`` (classically a
-        filter-only RIGHT_OUTER to the very parent the dim is hoisted into,
-        which contributes no output columns and only restricts rows). Once the
-        guard is gone UpgradeJoinOnGuards bails (no condition) and the
-        conservative OUTER join sticks. Apply that upgrade now, while the guard
-        is still present, so the hoist can't silently regress the join."""
-        UpgradeJoinOnGuards().optimize(cte, inverse_map)
-
     def _parent_already_joins_dim(
         self, parent_cte: CTE, dim_qds: QueryDatasource | BuildDatasource
     ) -> bool:
@@ -349,7 +315,7 @@ class JoinHoist(OptimizationRule):
         if join.jointype != JoinType.LEFT_OUTER:
             return None
         right_addresses = {c.address for c in join.right_cte.output_columns}
-        forced = {addr for cand in bundled for addr in _gather_proofs(cand)}
+        forced = {addr for cand in bundled for addr in gather_non_null_proofs(cand)}
         if forced & right_addresses:
             return JoinType.INNER
         return None
@@ -462,7 +428,7 @@ class JoinHoist(OptimizationRule):
                 assert isinstance(dim_cte, DatasourceCTE)
                 dim_source_key = parent_cte.add_inlined_datasource(dim_cte)
             else:
-                add_parent_cte(parent_cte, dim_cte)
+                parent_cte.add_dependency(dim_cte)
                 dim_source_key = parent_cte.source_key_for(dim_cte)
             for c in dim_cte.output_columns:
                 parent_cte.source_map.setdefault(c.address, [])
@@ -607,18 +573,10 @@ class JoinHoist(OptimizationRule):
             return False, None
 
         actions = False
-        locked_in_upgrades = False
         for parent_cte in candidate_parents:
             plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
             if not plan:
                 continue
-            if not locked_in_upgrades:
-                self._lock_in_guarded_upgrades(cte, inverse_map)
-                locked_in_upgrades = True
-                # join types may have tightened; recompute against current state
-                plan = self._join_hoist_plan(cte, parent_cte, inverse_map)
-                if not plan:
-                    continue
             for join, to_push, to_strip_only, join_type in plan:
                 if not self._hoist_join(cte, parent_cte, join, join_type):
                     continue
@@ -630,9 +588,9 @@ class JoinHoist(OptimizationRule):
                             cand,
                         ),
                     )
-                    cte.condition = _strip_candidate(cte.condition, cand)
+                    cte.condition = strip_condition_atom(cte.condition, cand)
                 for cand in to_strip_only:
-                    cte.condition = _strip_candidate(cte.condition, cand)
+                    cte.condition = strip_condition_atom(cte.condition, cand)
                 self.log(
                     f"Hoisted join {join.right_cte.name} from {cte.name} to "
                     f"{parent_cte.name}: pushed {len(to_push)}, "

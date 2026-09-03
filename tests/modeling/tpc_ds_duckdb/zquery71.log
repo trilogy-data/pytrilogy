@@ -1,5 +1,5 @@
 query_id = "71"
-gen_length = 3615
+gen_length = 3610
 preql_size = 562
 comp_size = 1399
 generated_sql = """
@@ -53,7 +53,7 @@ SELECT
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-    LEFT OUTER JOIN \"memory\".\"time_dim\" as \"sales_sale_time_time\" on \"cheerful\".\"sales_sale_time_sk\" = \"sales_sale_time_time\".\"T_TIME_SK\"
+    INNER JOIN \"memory\".\"time_dim\" as \"sales_sale_time_time\" on \"cheerful\".\"sales_sale_time_sk\" = \"sales_sale_time_time\".\"T_TIME_SK\"
 GROUP BY
     1,
     2,

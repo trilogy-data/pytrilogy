@@ -289,3 +289,67 @@ def test_rollup_padded_axis_excluded() -> None:
         JoinOrderOutput(right="ds~dims", type=JoinType.FULL, keys={}, left="ds~rollup")
     ]
     _check(joins, sources, rollup_padded=frozenset({"local.cat"}))
+
+
+def _projection_of(
+    base: BuildDatasource, grain_addresses: set[str], outputs: list[BuildConcept]
+) -> QueryDatasource:
+    return QueryDatasource(
+        input_concepts=outputs,
+        output_concepts=outputs,
+        datasources=[base],
+        source_map={c.address: {base} for c in outputs},
+        grain=BuildGrain(components=frozenset(grain_addresses)),
+        joins=[],
+    )
+
+
+def _arm_scan() -> BuildDatasource:
+    columns = [_concept("gid"), _concept("value", purpose=Purpose.PROPERTY)]
+    return BuildDatasource(
+        name="arm_scan",
+        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in columns],
+        address="arm_scan",
+        grain=BuildGrain(),
+    )
+
+
+def test_keyless_join_between_projections_of_one_relation_raises() -> None:
+    """Union-TVF arm shape: the arm's key and its value close over different
+    domains, so the axis test sees nothing, but both sides project the SAME
+    scan and therefore hold the same rows."""
+    base = _arm_scan()
+    sources = {
+        "ds~gid": _projection_of(base, {"local.gid"}, [_concept("gid")]),
+        "ds~value": _projection_of(
+            base, {"local.value"}, [_concept("value", purpose=Purpose.PROPERTY)]
+        ),
+    }
+    joins = [
+        JoinOrderOutput(right="ds~value", type=JoinType.INNER, keys={}, left="ds~gid")
+    ]
+    with pytest.raises(UnresolvableQueryException, match="one source relation"):
+        _check(joins, sources)
+
+
+def test_aggregates_over_one_relation_still_cross_join() -> None:
+    """The authored fan-out survives the shared-relation trigger: two
+    aggregates at different grains over one scan are not two views of the same
+    rows."""
+    base = _arm_scan()
+    sources = {
+        "ds~by_gid": _projection_of(
+            base,
+            {"local.gid"},
+            [_concept("gid"), _concept("by_gid", purpose=Purpose.METRIC)],
+        ),
+        "ds~by_value": _projection_of(
+            base, {"local.iid"}, [_concept("by_value", purpose=Purpose.METRIC)]
+        ),
+    }
+    joins = [
+        JoinOrderOutput(
+            right="ds~by_value", type=JoinType.FULL, keys={}, left="ds~by_gid"
+        )
+    ]
+    _check(joins, sources)

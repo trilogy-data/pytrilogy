@@ -69,6 +69,27 @@ def _rename_fold_plan(
     return plan
 
 
+def _join_key_demand(cte: CTE, parent_name: str) -> set[str]:
+    """Addresses the consumer renders from ``parent_name`` as a join key.
+
+    Join legs resolve their column through ``CTEConceptPair.cte`` /
+    ``Join.right_cte``, never through ``source_map``, so a key can be demanded
+    from a parent the source_map does not attribute it to. The grand-total
+    ``__preql_internal.all_rows`` broadcast marker is the common case: it is a
+    synthesized constant, so it carries an empty (or other-parent) source list
+    while the dim scan is its only producer on the left leg."""
+    demand: set[str] = set()
+    for join in cte.joins:
+        if not isinstance(join, Join):
+            continue
+        for pair in join.joinkey_pairs or []:
+            if pair.cte is not None and pair.cte.name == parent_name:
+                demand.add(pair.left.address)
+            if join.right_cte.name == parent_name:
+                demand.add(pair.right.address)
+    return demand
+
+
 class InlineDatasource(OptimizationRule):
     def __init__(self):
         super().__init__()
@@ -146,6 +167,13 @@ class InlineDatasource(OptimizationRule):
             if len(inverse_map.get(parent_cte.name, [])) <= 1:
                 for x in root.output_concepts:
                     root_outputs |= x.pseudonyms
+            join_demand = _join_key_demand(cte, parent_cte.name) - root_outputs
+            if join_demand:
+                self.log(
+                    f"Cannot inline: join keys {join_demand} read from "
+                    f"{parent_cte.name} are not columns of the raw datasource"
+                )
+                continue
             inherited = {
                 x for x, v in cte.source_map.items() if v and parent_cte.name in v
             }
@@ -175,12 +203,18 @@ class InlineDatasource(OptimizationRule):
                 continue
             to_inline.append(parent_cte)
 
-        optimized = False
+        # Register every candidate before inlining any, so the cutoff count
+        # reflects all consumers of a raw source.
+        registered = False
         for replaceable in to_inline:
             if replaceable.name not in self.candidates[cte.name]:
                 self.candidates[cte.name].add(replaceable.name)
                 self.count[replaceable.source.identifier] += 1
-                return True, None
+                registered = True
+        if registered:
+            return True, None
+        optimized = False
+        for replaceable in to_inline:
             if (
                 self.count[replaceable.source.identifier]
                 > CONFIG.optimizations.constant_inline_cutoff
@@ -198,6 +232,13 @@ class InlineDatasource(OptimizationRule):
             if len(inverse_map.get(replaceable.name, [])) <= 1:
                 for x in replaceable_base.output_concepts:
                     root_outputs |= x.pseudonyms
+            join_demand = _join_key_demand(cte, replaceable.name) - root_outputs
+            if join_demand:
+                self.log(
+                    f"Failed to inline {replaceable.name}: join keys {join_demand} "
+                    "are not columns of the raw datasource"
+                )
+                continue
             inherited = {
                 x for x, v in cte.source_map.items() if v and replaceable.name in v
             }

@@ -86,14 +86,12 @@ class _StackNode:
         preexisting_conditions=None,
         hidden_concepts=None,
         partial_concepts=None,
-        virtual_output_concepts=None,
         label="node",
     ):
         self.output_concepts = list(output_concepts)
         self.preexisting_conditions = preexisting_conditions
         self.hidden_concepts = set(hidden_concepts or set())
         self.partial_concepts = list(partial_concepts or [])
-        self.virtual_output_concepts = list(virtual_output_concepts or [])
         self._label = label
 
     def resolve(self):
@@ -226,7 +224,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[scalar_node, multi_node],
             concepts=[cmax, customer_id],
@@ -254,7 +252,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[scalar_node, multi_node],
             concepts=[cmax, customer_id],
@@ -291,7 +289,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi_b",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node_a, node_b],
             concepts=[cmax, customer_id],
@@ -315,7 +313,7 @@ class TestValidateStackScalarConditions:
         # the merged outputs so the loop can apply the WHERE here.
         node_a = _StackNode([cmax], label="a")
         node_b = _StackNode([customer_id, sales_channel], label="b")
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node_a, node_b],
             concepts=[cmax, customer_id, sales_channel],
@@ -341,7 +339,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=_eq(sales_channel, "STORE"),
             label="partial",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node],
             concepts=[customer_id],
@@ -364,7 +362,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=_eq(sales_channel, "STORE"),
             label="partial",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node],
             concepts=[customer_id],

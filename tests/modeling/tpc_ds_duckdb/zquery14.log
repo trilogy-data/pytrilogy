@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 5156
+gen_length = 5158
 preql_size = 1753
 comp_size = 4229
 generated_sql = """
@@ -44,7 +44,7 @@ FROM
 WHERE
     \"sales_sale_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
 ),
-abundant as (
+questionable as (
 SELECT
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
     \"sales_item_items\".\"I_BRAND_ID\" as \"sales_item_brand_id\",
@@ -62,21 +62,21 @@ GROUP BY
     2,
     3,
     4),
-yummy as (
+uneven as (
 SELECT
-    \"abundant\".\"sales_item_brand_id\" as \"cross_tuples_ci_brand_id\",
-    \"abundant\".\"sales_item_category_id\" as \"cross_tuples_ci_category_id\",
-    \"abundant\".\"sales_item_class_id\" as \"cross_tuples_ci_class_id\"
+    \"questionable\".\"sales_item_brand_id\" as \"cross_tuples_ci_brand_id\",
+    \"questionable\".\"sales_item_category_id\" as \"cross_tuples_ci_category_id\",
+    \"questionable\".\"sales_item_class_id\" as \"cross_tuples_ci_class_id\"
 FROM
-    \"abundant\"
+    \"questionable\"
 GROUP BY
     1,
     2,
     3
 HAVING
-    count(distinct \"abundant\".\"sales_channel\") = 3
+    count(distinct \"questionable\".\"sales_channel\") = 3
 ),
-questionable as (
+concerned as (
 SELECT
     \"sales_item_items\".\"I_BRAND_ID\" as \"_l0_filtered_brand_l0\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"_l0_filtered_category_l0\",
@@ -89,7 +89,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cheerful\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 11 and exists (select 1 from yummy where yummy.\"cross_tuples_ci_brand_id\" is not distinct from \"sales_item_items\".\"I_BRAND_ID\" and yummy.\"cross_tuples_ci_class_id\" is not distinct from \"sales_item_items\".\"I_CLASS_ID\" and yummy.\"cross_tuples_ci_category_id\" is not distinct from \"sales_item_items\".\"I_CATEGORY_ID\")
+    \"sales_sale_date_date\".\"D_YEAR\" = 2001 and \"sales_sale_date_date\".\"D_MOY\" = 11 and exists (select 1 from uneven where uneven.\"cross_tuples_ci_brand_id\" is not distinct from \"sales_item_items\".\"I_BRAND_ID\" and uneven.\"cross_tuples_ci_class_id\" is not distinct from \"sales_item_items\".\"I_CLASS_ID\" and uneven.\"cross_tuples_ci_category_id\" is not distinct from \"sales_item_items\".\"I_CATEGORY_ID\")
 
 GROUP BY
     1,
@@ -98,17 +98,17 @@ GROUP BY
     4),
 scrawny as (
 SELECT
-    \"questionable\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"questionable\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"questionable\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"questionable\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"questionable\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"questionable\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
+    \"concerned\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
+    \"concerned\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
+    \"concerned\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
+    \"concerned\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
+    \"concerned\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
+    \"concerned\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
     \"sweltering\"
-    INNER JOIN \"questionable\" on 1=1
+    INNER JOIN \"concerned\" on 1=1
 WHERE
-    \"questionable\".\"_l0_filtered_bucket_sum_l0\" > \"sweltering\".\"avg_sales_average_sales\"
+    \"concerned\".\"_l0_filtered_bucket_sum_l0\" > \"sweltering\".\"avg_sales_average_sales\"
 )
 SELECT
     \"scrawny\".\"l0_filtered_channel_l0\" as \"channel\",

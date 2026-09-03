@@ -55,6 +55,9 @@ class PlacementReason(Enum):
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
     FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
+    # A row atom copied onto a select-phase aggregate that the elected host
+    # does not feed, so both siblings aggregate the same filtered population.
+    UNCOVERED_GROUPING_HOST = "uncovered_grouping_host"
     # An earlier `then where` stage's row atom delivered as an input filter on
     # a later stage's cross-row computation (its d1 feeder scan or host).
     STAGE_PRECONDITION = "stage_precondition"
@@ -519,27 +522,6 @@ def _preserved_final_branch(
     )
 
 
-def _validate_not_pushed_past_independent_barrier(
-    atom: BoolExpr,
-    chosen_groups: tuple[str, ...],
-    producer_groups: set[str],
-    d0_group_ids: set[str],
-    group_graph: nx.DiGraph,
-) -> None:
-    consumed_barriers: set[str] = set(producer_groups)
-    for producer in producer_groups:
-        consumed_barriers |= nx.ancestors(group_graph, producer)
-    for chosen in chosen_groups:
-        chosen_ancestors = nx.ancestors(group_graph, chosen)
-        offending = (d0_group_ids & chosen_ancestors) - consumed_barriers
-        if offending:
-            raise ValueError(
-                f"Atom {atom} would be injected at {chosen}, which is "
-                f"downstream of d0 barrier(s) {sorted(offending)}; "
-                f"conditions cannot be pushed past row-shape changes."
-            )
-
-
 def _grouping_barrier_host(
     candidates: list[str],
     dropped_hosts: list[str],
@@ -651,6 +633,66 @@ def _conjunction_recompute_placements(
     return extra
 
 
+def _uncovered_grouping_placements(
+    clause_placements: list[ConditionPlacement],
+    buckets: dict[str, GroupBucket],
+    group_members: dict[str, set[str]],
+    lineage_ancestors_graph: nx.DiGraph,
+    main_lineage: set[str],
+    scoped_join_member_addresses: frozenset[str],
+) -> list[ConditionPlacement]:
+    """Copy a row atom onto every select-phase aggregate its host does not feed.
+
+    An UPSTREAM_MOST host restricts only the rows that flow THROUGH it, but a
+    flat WHERE restricts the population of every select-scope aggregate. The two
+    can diverge: `count(grain(a, b) ? p)` routes through the grain projection
+    while its plain `count(grain(a, b))` sibling wires the grain args directly,
+    so a host elected on that projection leaves the plain count aggregating
+    unfiltered rows. Aggregates already downstream of a host inherit the filter;
+    ones reading the atom's inputs as their own output are HAVING and stay out.
+    """
+    extra: list[ConditionPlacement] = []
+    for placement in clause_placements:
+        if placement.reason is not PlacementReason.UPSTREAM_MOST:
+            continue
+        atom = placement.atom
+        if any(atom.existence_arguments):
+            continue
+        row_inputs = {c.address for c in atom.row_arguments}
+        if not row_inputs:
+            continue
+        if any(
+            is_presence_probe(addr) or addr in scoped_join_member_addresses
+            for addr in row_inputs
+        ):
+            continue
+        for gid in sorted(buckets):
+            bucket = buckets[gid]
+            if (
+                gid in placement.group_ids
+                or gid not in main_lineage
+                or bucket.derivation not in _EMITS_GROUP_BY
+                or bucket.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                or row_inputs & set(bucket.primary_members)
+            ):
+                continue
+            ancestors = nx.ancestors(lineage_ancestors_graph, gid)
+            if any(host in ancestors for host in placement.group_ids):
+                continue
+            if not row_inputs <= _reachable_input(
+                gid, lineage_ancestors_graph, buckets, group_members
+            ):
+                continue
+            extra.append(
+                ConditionPlacement(
+                    atom=atom,
+                    group_ids=(gid,),
+                    reason=PlacementReason.UNCOVERED_GROUPING_HOST,
+                )
+            )
+    return extra
+
+
 def _staged_precondition_placements(
     staged_conditions: list[BuildWhereClause],
     group_graph: nx.DiGraph,
@@ -752,11 +794,11 @@ def plan_condition_placements(
     group_edges: EdgeMap,
     buckets: dict[str, GroupBucket],
     conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept] | None = None,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
-    environment: BuildEnvironment | None = None,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
@@ -770,9 +812,7 @@ def plan_condition_placements(
     # sits BELOW the aggregate, and a FINAL-deferred side WHERE would filter
     # aggregated rows instead of input rows (recursive-enrichment
     # `where parent.label = 'A' select count(id)` over-counted).
-    if environment is not None and not any(
-        b.derivation in GROUPING_DERIVATIONS for b in buckets.values()
-    ):
+    if not any(b.derivation in GROUPING_DERIVATIONS for b in buckets.values()):
         statement_relation_addresses = (
             statement_relation_addresses | computed_origin_relation_members(environment)
         )
@@ -882,12 +922,9 @@ def plan_condition_placements(
                 ca = attrs_by_address.get(addr)
                 if ca is not None and ca.rowset_name is not None:
                     return ca.rowset_name == own_rowset
-                if environment is not None:
-                    concept = environment.concepts.get(addr)
-                    if concept is not None and isinstance(
-                        concept.lineage, BuildRowsetItem
-                    ):
-                        return concept.lineage.rowset.name == own_rowset
+                concept = environment.concepts.get(addr)
+                if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
+                    return concept.lineage.rowset.name == own_rowset
                 namespace = addr.rpartition(".")[0]
                 return namespace == own_rowset or namespace.endswith(f".{own_rowset}")
 
@@ -948,13 +985,24 @@ def plan_condition_placements(
                 mate_attrs = attrs_by_address.get(mate)
                 if mate_attrs is not None:
                     mates |= set(mate_attrs.keys)
-                elif environment is not None:
+                else:
                     mate_concept = environment.concepts.get(mate)
                     if mate_concept is not None and mate_concept.keys:
                         mates |= set(mate_concept.keys)
             mates -= keys
+        # An AGGREGATE whose mate is hosted only by its own lineage ancestors
+        # already contains the completion merge, so its atoms are pre-merge row
+        # predicates: deferring one past the aggregate would filter aggregated
+        # rows instead of the input rows they gate. Row-shaped groups keep the
+        # wider criterion: their deferral is what makes a presence probe read
+        # the coalesced axis rather than one side of it.
+        below = (
+            nx.ancestors(lineage_ancestors_graph, gid)
+            if b.derivation in _EMITS_GROUP_BY
+            else set()
+        )
         return any(
-            other_gid != gid and (mates & other_relatable)
+            other_gid != gid and other_gid not in below and (mates & other_relatable)
             for other_gid, other_relatable in group_relatable.items()
         )
 
@@ -1211,11 +1259,10 @@ def plan_condition_placements(
                 )
                 continue
             # Drop hosts sitting downstream of a d0 row-shape barrier the
-            # atom's own producers don't already consume (the same criterion
-            # `_validate_not_pushed_past_independent_barrier` enforces): a
-            # cross-boundary atom (an OR of two boundaries' presence probes)
-            # can end up with only such hosts — its correct home is FINAL,
-            # above every barrier, not a crash.
+            # atom's own producers don't already consume: conditions cannot be
+            # pushed past row-shape changes. A cross-boundary atom (an OR of
+            # two boundaries' presence probes) can end up with only such hosts;
+            # its correct home is then FINAL, above every barrier.
             if restricted:
                 producer_groups = _producer_groups(row_inputs, buckets)
                 consumed_barriers: set[str] = set(producer_groups)
@@ -1261,13 +1308,6 @@ def plan_condition_placements(
                     chosen_groups = _choose_groups(
                         outer_hosts, lineage_ancestors_graph, main_lineage
                     )
-            _validate_not_pushed_past_independent_barrier(
-                atom,
-                chosen_groups,
-                _producer_groups(row_inputs, buckets),
-                d0_group_ids,
-                group_graph,
-            )
             placements.append(
                 ConditionPlacement(
                     atom=atom,
@@ -1312,6 +1352,16 @@ def plan_condition_placements(
                         reason=PlacementReason.FINAL_PRESERVED_BRANCH,
                     )
                 )
+        placements.extend(
+            _uncovered_grouping_placements(
+                placements[clause_start:],
+                buckets,
+                group_members,
+                lineage_ancestors_graph,
+                main_lineage,
+                scoped_join_member_addresses,
+            )
+        )
         placements.extend(
             _conjunction_recompute_placements(
                 placements[clause_start:],

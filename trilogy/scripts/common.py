@@ -1032,7 +1032,11 @@ def handle_execution_exception(
         # were an internal crash.
         print_error(f"Import error{location}: {e}")
     else:
-        print_error(f"Unexpected error{location}: {e}")
+        # A message-less exception (a bare `assert`, a bare raise) would print
+        # nothing after the colon, handing the reader zero signal to act on.
+        # The class name is the minimum floor.
+        detail = str(e) or f"{type(e).__name__} (no message); this is a bug."
+        print_error(f"Unexpected error{location}: {detail}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e

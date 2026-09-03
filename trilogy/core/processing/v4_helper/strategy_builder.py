@@ -85,6 +85,7 @@ from .edges import EdgeMap, dependency_subgraph, edge_kind
 from .functional_dependency import build_fd_determines
 from .history import V4History
 from .models import (
+    ExtentOwnership,
     FinalAssemblyContract,
     FinalContributorContract,
     GroupAttrs,
@@ -92,7 +93,9 @@ from .models import (
 )
 from .projection import (
     concept_satisfiable,
+    literal_producible,
     parent_output_addresses,
+    renderable_addresses,
     row_lineage_arguments,
     satisfiable_outputs,
     widen_projection,
@@ -407,43 +410,15 @@ def _condition_existence_arg_groups(
     return _dedupe_arg_groups(list(condition.existence_arguments))
 
 
-def _filter_lineage_existence_arg_groups(
-    concepts: list[BuildConcept],
-) -> list[tuple[BuildConcept, ...]]:
-    out: list[tuple[BuildConcept, ...]] = []
-    visited: set[str] = set()
-    stack = list(concepts)
-    while stack:
-        concept = stack.pop()
-        if concept.address in visited:
-            continue
-        visited.add(concept.address)
-        if isinstance(concept.lineage, BuildFilterItem):
-            out.extend(concept.lineage.where.existence_arguments or ())
-        if concept.lineage is not None:
-            stack.extend(concept.lineage.concept_arguments)
-    return _dedupe_arg_groups(out)
-
-
-def _locally_derived_outputs(node: StrategyNode) -> list[BuildConcept]:
-    """Outputs this node computes itself rather than passing a parent's through."""
-    inherited = {
-        output.address for parent in node.parents for output in parent.output_concepts
-    }
-    return [c for c in node.output_concepts if c.address not in inherited]
-
-
 def _node_existence_arg_groups(node: StrategyNode) -> list[tuple[BuildConcept, ...]]:
     # A membership the node computes itself (`x in <set> as flag` projected
     # alongside an aggregate) needs the subselect feeder wired HERE: the group
     # sweep attaches it to `built[gid]`, but a consumer took its copy of that
     # node before the attach ran, so only the assembled tree can see which node
-    # actually renders the comparison. Pass-through outputs are excluded -- the
-    # feeder belongs to the deriving node, not everyone who forwards the column.
+    # actually renders the comparison.
     return _dedupe_arg_groups(
         _condition_existence_arg_groups(node.conditions)
-        + _filter_lineage_existence_arg_groups(list(node.output_concepts))
-        + _lineage_existence_arg_groups(_locally_derived_outputs(node))
+        + _lineage_existence_arg_groups(list(node.output_concepts))
     )
 
 
@@ -461,15 +436,34 @@ def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
     return nodes
 
 
-def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
+def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
     """The concrete datasources scanned in this subtree -- its physical join
     footprint. Used to decide whether a per-consumer ROOT re-slice genuinely
     prunes a join or merely re-derives the same conditioned scan."""
     return {
-        n.datasource.identifier
+        n.datasource.identifier: n.datasource
         for n in _strategy_nodes(node)
         if isinstance(n, SelectNode) and n.datasource is not None
     }
+
+
+def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
+    return set(_leaf_datasources(node))
+
+
+def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
+    """Whether some proper subset of the subtree's scans could bind every
+    address by column: a re-slice can only prune a join when one exists."""
+    binders: dict[str, set[str]] = {address: set() for address in addresses}
+    leaves = _leaf_datasources(node)
+    for identifier, datasource in leaves.items():
+        for column in datasource.columns:
+            for address in column.concept.equivalent_addresses & addresses:
+                binders[address].add(identifier)
+    if any(not bound for bound in binders.values()):
+        return False
+    essential = {next(iter(bound)) for bound in binders.values() if len(bound) == 1}
+    return essential < set(leaves)
 
 
 def _attach_existence_to_node(
@@ -779,6 +773,34 @@ def _parent_nodes_for(
             slice_addresses |= _relation_mates(address, environment) & parent_outputs
         if not slice_addresses or slice_addresses == parent_outputs:
             return node.copy()
+        # Adopt a narrower rebuild only when it strictly prunes the source set
+        # (drops a join the slice no longer spans). Otherwise re-deriving the
+        # same conditioned join just to carry fewer columns is pure CTE
+        # duplication -- share the already-built ROOT and let column projection
+        # narrow it (q94: a count(order_number) consumer of a filtered
+        # web_sales-dim join must not re-source the whole join).
+        # ...unless the shared ROOT carries the WRONG SIDE of a relation this
+        # consumer reads from its mate. `count(rs.return_quantity)` under
+        # `union join quantity = rs.return_quantity` needs the rowset's column;
+        # the anchor's `quantity` is the same axis, so the merge above pairs on
+        # it too and the returns join goes from a 2-key match to a 3-key one
+        # that matches nothing. Projection can't shed it -- the two members are
+        # pseudonyms, so the shared CTE exposes the handle's alias off `quantity`
+        # whatever the node's outputs say. Only a scan without the column will
+        # do, and the rebuild is that scan.
+        relation_members = _statement_scoped_relation_members(environment)
+        carries_wrong_side = any(
+            address in relation_members
+            and bool(_relation_mates(address, environment) & needed)
+            for address in parent_outputs - slice_addresses
+        )
+        slice_demand = slice_addresses | {
+            arg.address
+            for atom in attrs[pgid].condition_atoms
+            for arg in atom.row_arguments
+        }
+        if not (carries_wrong_side or _strict_leaf_subset_binds(node, slice_demand)):
+            return node.copy()
         outputs = [
             c
             for address in sorted(slice_addresses)
@@ -805,27 +827,6 @@ def _parent_nodes_for(
             )
         if sliced is None:
             return node.copy()
-        # Adopt the narrower rebuild only when it strictly prunes the source set
-        # (drops a join the slice no longer spans). Otherwise re-deriving the
-        # same conditioned join just to carry fewer columns is pure CTE
-        # duplication -- share the already-built ROOT and let column projection
-        # narrow it (q94: a count(order_number) consumer of a filtered
-        # web_sales-dim join must not re-source the whole join).
-        # ...unless the shared ROOT carries the WRONG SIDE of a relation this
-        # consumer reads from its mate. `count(rs.return_quantity)` under
-        # `union join quantity = rs.return_quantity` needs the rowset's column;
-        # the anchor's `quantity` is the same axis, so the merge above pairs on
-        # it too and the returns join goes from a 2-key match to a 3-key one
-        # that matches nothing. Projection can't shed it -- the two members are
-        # pseudonyms, so the shared CTE exposes the handle's alias off `quantity`
-        # whatever the node's outputs say. Only a scan without the column will
-        # do, and the rebuild is that scan.
-        relation_members = _statement_scoped_relation_members(environment)
-        carries_wrong_side = any(
-            address in relation_members
-            and bool(_relation_mates(address, environment) & needed)
-            for address in parent_outputs - slice_addresses
-        )
         if not (
             carries_wrong_side
             or _leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)
@@ -873,23 +874,6 @@ def _parent_nodes_for(
     return parents
 
 
-def _drop_constant_only_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
-    """Drop a parent that supplies only constants (e.g. the `by
-    __preql_internal.all_rows` grand-total marker, a `SELECT 1`). A constant is a
-    literal, never a join key — merging it as a row parent only cross-joins it ON
-    1=1, and the grand-total marker isn't even a needed output. Keep it only when
-    it is the sole parent (a bare constant select)."""
-    non_constant = [
-        p
-        for p in parents
-        if not (
-            p.output_concepts
-            and all(c.derivation == Derivation.CONSTANT for c in p.output_concepts)
-        )
-    ]
-    return non_constant if non_constant else parents
-
-
 def _fold_constant_parents(
     parents: list[StrategyNode], needed: set[str]
 ) -> list[StrategyNode]:
@@ -925,10 +909,7 @@ def _is_constant_only(node: StrategyNode) -> bool:
 def _same_relation(left: StrategyNode, right: StrategyNode) -> bool:
     """Both nodes resolve to the same QueryDatasource — i.e. they render as one
     CTE. Resolution is cached on the node and happens anyway downstream."""
-    try:
-        return left.resolve().identifier == right.resolve().identifier
-    except Exception:  # unresolvable this early: treat as distinct
-        return False
+    return left.resolve().identifier == right.resolve().identifier
 
 
 def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
@@ -1073,6 +1054,11 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
 
 
 def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
+    """Collapse one level of pure projection into its parent. Called both as a
+    group's node is published (consumers copy from `built`, so the shape they
+    see is the shape they plan against) and bottom-up over the assembled tree
+    by `_elide_passthrough_tree` for the passthroughs post-publication mutation
+    creates. Neither call site subsumes the other."""
     if not isinstance(node, SelectNode):
         return node
     if (
@@ -1316,12 +1302,17 @@ def _project_basic_aggregate_inputs(
     # a projected BASIC (`_ret` under `is_returned`) still stays hidden. Grain
     # components come from the widened inputs alone -- an aggregate's `by` args
     # are also direct arguments, and their key grain is not part of the row
-    # stream this group aggregates over.
+    # stream this group aggregates over. A FILTER argument renders inline as
+    # a CASE over its content and WHERE row inputs, so those count as direct.
     keep = {concept.address for concept in outputs}
     for concept in outputs:
         if concept.address not in primary_addrs or concept.lineage is None:
             continue
-        keep.update(arg.address for arg in concept.lineage.concept_arguments)
+        for arg in concept.lineage.concept_arguments:
+            keep.add(arg.address)
+            if isinstance(arg.lineage, BuildFilterItem):
+                keep.update(a.address for a in arg.lineage.where.row_arguments)
+                keep.update(a.address for a in arg.lineage.content_concept_arguments)
     for concept in scalar_inputs:
         if concept.grain is not None:
             keep.update(concept.grain.components)
@@ -1493,16 +1484,6 @@ def _parents_already_at_input_grain(
     return True
 
 
-def _widening_inputs(node: StrategyNode) -> set[str]:
-    """Addresses `node` can project: its parents' visible outputs plus, for a leaf
-    scan, every column its datasource binds (a leaf has no parent nodes, so
-    `parent_output_addresses` alone reports nothing)."""
-    available = parent_output_addresses(node)
-    if isinstance(node, SelectNode) and isinstance(node.datasource, BuildDatasource):
-        available |= {c.address for c in node.datasource.output_concepts}
-    return available
-
-
 # A declared join key is normally one hop from the scan that binds it; the cap
 # stops a pathological chain from walking the whole plan per key.
 _JOIN_KEY_CHAIN_LIMIT = 4
@@ -1524,7 +1505,7 @@ def _widen_scan_chain(
         return True
     if not isinstance(node, (SelectNode, MergeNode)):
         return False
-    available = _widening_inputs(node)
+    available = renderable_addresses(node)
     if not concept_satisfiable(concept, available):
         if depth >= _JOIN_KEY_CHAIN_LIMIT:
             return False
@@ -1541,7 +1522,7 @@ def _widen_scan_chain(
             for below in node.parents
         ):
             return False
-        available = _widening_inputs(node)
+        available = renderable_addresses(node)
     widen_projection(
         node,
         [concept],
@@ -1701,17 +1682,13 @@ def _widen_merge_join_keys(
             continue
         if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
             continue
-        available = parent_output_addresses(parent)
-        # A leaf datasource SelectNode has no parent nodes, so
-        # `parent_output_addresses` is empty -- but it can still emit any column
-        # its datasource binds. Include those so a partial merge key (a fact's
-        # `?d1` column that canonicalizes to the declared join key) is carried as
-        # the join key instead of the merge cross-joining the sibling that owns
-        # the key's complete domain (a date-spine LEFT_OUTER merge: facts.d1->s1
-        # vs the spine's complete s1 -> `FULL JOIN ... on 1=1` cartesian).
-        ds = getattr(parent, "datasource", None)
-        if isinstance(ds, BuildDatasource):
-            available |= {c.address for c in ds.output_concepts}
+        # A leaf datasource scan can still emit any column its datasource binds,
+        # so a partial merge key (a fact's `?d1` column that canonicalizes to the
+        # declared join key) is carried as the join key instead of the merge
+        # cross-joining the sibling that owns the key's complete domain (a
+        # date-spine LEFT_OUTER merge: facts.d1->s1 vs the spine's complete s1 ->
+        # `FULL JOIN ... on 1=1` cartesian).
+        available = renderable_addresses(parent)
         if not available:
             continue
         parent_outputs = {concept.address for concept in parent.output_concepts}
@@ -1805,6 +1782,174 @@ def _widen_merge_join_keys(
                     dirty = True
             if dirty:
                 parent.rebuild_cache()
+
+
+def _descends_from_any(node: StrategyNode, targets: set[int]) -> bool:
+    stack = [node]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if id(current) in targets:
+            return True
+        stack.extend(current.parents)
+    return False
+
+
+def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
+    """Row-reducing filters applied anywhere under `node`: the conditions, and
+    whether it also restricts in a way nothing can be compared against (a
+    semijoin subselect or a row limit)."""
+    conditions: list[BoolExpr] = []
+    opaque = False
+    stack = [node]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if current.conditions is not None:
+            conditions.append(current.conditions)
+        if current.existence_concepts or current.limit is not None:
+            opaque = True
+        stack.extend(current.parents)
+    return conditions, opaque
+
+
+def _restrictions_survive(node: StrategyNode, siblings: list[StrategyNode]) -> bool:
+    """Every row restriction `node` applies, a sibling applies too, so
+    dropping it from the merge removes no rows."""
+    conditions, opaque = _subtree_restrictions(node)
+    if opaque:
+        return False
+    if not conditions:
+        return True
+    sibling_conditions: list[BoolExpr] = []
+    for sibling in siblings:
+        sibling_conditions.extend(_subtree_restrictions(sibling)[0])
+    return all(
+        any(condition_implies(other, condition) for other in sibling_conditions)
+        for condition in conditions
+    )
+
+
+def _resolved_grain(node: StrategyNode) -> frozenset[str]:
+    return frozenset(node.resolve().grain.components)
+
+
+def _merge_component_count(visible: list[set[str]], live: list[int]) -> int:
+    """How many join-connected groups the live contributors form; a shared
+    output address is the axis the merge would join them on."""
+    component = {idx: idx for idx in live}
+    for position, left in enumerate(live):
+        for right in live[position + 1 :]:
+            if not visible[left] & visible[right]:
+                continue
+            merged = {component[left], component[right]}
+            target = min(merged)
+            component = {
+                idx: target if group in merged else group
+                for idx, group in component.items()
+            }
+    return len(set(component.values()))
+
+
+def _fold_covered_contributors(
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    needed: set[str],
+    cover_nodes: set[int],
+    extent_owners: set[int],
+) -> list[StrategyNode]:
+    """Drop a merge contributor a sibling can now render in full.
+
+    Election reads `output_concepts`, a projection boundary; join-key
+    materialization then widens a sibling PAST that boundary, down to the scan
+    that binds the key. A contributor elected as the only exposer of a key can
+    therefore end up rendering no column at all: the merge joins it to read
+    nothing. This is the first moment that is knowable, and it is still the
+    planner, so the join is never built rather than built and deleted.
+
+    Rendering nothing is only the first condition; the rest are what make the
+    drop row-identical rather than merely tidy:
+
+    - The contributor was elected to cover a mandatory concept. An axis-only
+      contributor (`_add_relation_axis_contributors`,
+      `_add_partial_completion_contributors`) is deliberately column-invisible
+      (the axis IS its contribution), and so is an elected extent owner, whose
+      contribution is the span's extension rows. Neither is ever folded.
+    - Dropping it leaves the survivors no less connected: it may be the only
+      parent bridging two siblings that share no axis with each other.
+    - A surviving sibling renders every needed address it carries, no less
+      completely: a sibling holding the address PARTIAL cannot stand in for a
+      complete binding.
+    - What it shares with the survivors is exactly its own grain, so the join
+      neither fanned them out nor constrained them.
+    - It restricts no rows the survivors don't already restrict.
+    """
+    if len(parents) <= 1:
+        return parents
+    relation_members = {
+        addr
+        for canonical, members in environment.scoped_join_key_groups.items()
+        for addr in (canonical, *members)
+    }
+    visible = [
+        {o.address for o in p.output_concepts if o.address not in p.hidden_concepts}
+        for p in parents
+    ]
+    partials = [{c.address for c in p.partial_concepts} for p in parents]
+    dropped: set[int] = set()
+    for idx, parent in enumerate(parents):
+        if visible[idx] & relation_members:
+            continue
+        if not _descends_from_any(parent, cover_nodes):
+            continue
+        if _descends_from_any(parent, extent_owners):
+            continue
+        live = [j for j in range(len(parents)) if j not in dropped]
+        others = [j for j in live if j != idx]
+        contribution = visible[idx] & needed
+        # Nothing at all in `needed` means this is an axis contributor whose
+        # value is the join itself, not a column; only a cover contributor
+        # whose columns moved elsewhere is foldable here.
+        if not others or not contribution:
+            continue
+        # Its columns living elsewhere doesn't make it inert: it may be the
+        # only contributor sharing an axis with two siblings that share none
+        # with each other, and dropping the bridge cross-joins them ON 1=1.
+        if _merge_component_count(visible, others) > _merge_component_count(
+            visible, live
+        ):
+            continue
+        if not all(
+            any(
+                address in visible[j]
+                and (address in partials[idx] or address not in partials[j])
+                for j in others
+            )
+            for address in contribution
+        ):
+            continue
+        # Exactly its own key is shared with the survivors: fewer and the join
+        # fans out, more and the join CONSTRAINS: the contributor is pairing
+        # columns (item->order) that the survivors would otherwise pair freely,
+        # so dropping it is not a no-op even though every column still renders.
+        shared = visible[idx] & set().union(*(visible[j] for j in others))
+        if _resolved_grain(parent) != shared:
+            continue
+        if not _restrictions_survive(parent, [parents[j] for j in others]):
+            continue
+        logger.info(
+            f"[v4] folding invisible FINAL contributor {type(parent).__name__} "
+            f"outputs={sorted(visible[idx])}; siblings render all of "
+            f"{sorted(contribution)}"
+        )
+        dropped.add(idx)
+    return [p for idx, p in enumerate(parents) if idx not in dropped]
 
 
 def _raise_if_rowset_islanded(
@@ -1936,6 +2081,7 @@ def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
     join_key_addresses: frozenset[str] = frozenset(),
+    needed: set[str] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -1946,7 +2092,7 @@ def _pre_merge_parents(
     simple and the join logic in one place."""
     if len(parents) <= 1:
         return parents
-    parents = _drop_constant_only_parents(parents)
+    parents = _fold_constant_parents(parents, needed or set())
     if len(parents) <= 1:
         return parents
     parents = _fold_passthrough_parents(parents)
@@ -2185,27 +2331,6 @@ def _satisfy_parent_projection_contract(
     return projected
 
 
-def _satisfiable_outputs(
-    outputs: list[BuildConcept],
-    parents: list[StrategyNode],
-) -> list[BuildConcept]:
-    """Drop outputs that no parent can actually supply. The group graph's
-    secondary-members pass attaches every root to every basic on the
-    optimistic theory "I can reach them"; but when a basic's direct parents
-    are aggregates/windows, the roots were collapsed away and aren't in any
-    parent's output. Without this filter those concepts end up in
-    `output_concepts` with no source map entry, producing
-    `INVALID_REFERENCE_BUG_<...>` markers in the rendered SQL.
-
-    An output is keepable when its lineage bottoms out at parent-available
-    concepts or already-kept siblings — following the chain through
-    intermediate derived concepts the SelectNode will inline (q28
-    `filtered_lp <- bucket_id <- quantity`, q49 `channel <- channel_label <-
-    sales_channel`). Run to a fixpoint so a kept sibling unlocks others
-    regardless of iteration order."""
-    return satisfiable_outputs(outputs, parents)
-
-
 def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[str]:
     """Topological order across all dependency edge kinds (lineage /
     constraint / existence). Each kind expresses a different dataflow
@@ -2282,37 +2407,58 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     node.rebuild_cache()
 
 
+def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset[str]:
+    """The other members of the COALESCING key group `address` belongs to.
+
+    Only a coalescing relation (`union`/`full`) fuses its members onto one axis
+    that the merge emits under every member's own alias, which is what lets a
+    mate answer for the address. A subset or global-merge member keeps its own
+    column name, so reading it under the other member's address dangles."""
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    if address not in coalescing:
+        return frozenset()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if address in group:
+            return frozenset(group - {address}) & coalescing
+    return frozenset()
+
+
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
-    extension_licensed: frozenset[str] = frozenset(),
+    environment: BuildEnvironment,
+    ownership: ExtentOwnership,
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, pick the most-downstream built group that
     actually exposes it (more built ancestors = further downstream). Returns
     `{gid: [concepts that group provides]}` preserving discovery order so
     the MergeNode renders with a stable join layout.
 
-    An `extension_licensed` output (a key some datasource binds `~`) owes its
-    extension rows, and those ride whichever contributor carries the WHOLE
-    preserved span. When the downstream winner exposes this key but not every
-    licensed output (it joined through one `~` family while another rides a
-    sibling), taking the key from it splits the span across contributors —
-    each family pads the stitch key in a different branch and the FINAL merge
-    either drops a family or null-pairs them. Route the key to its owning
-    bucket (primary membership, the dim span) instead. A winner that covers
-    the full span keeps it: no split exists to prevent."""
-    licensed_mandatory = {
-        c.address for c in mandatory_list if c.address in extension_licensed
-    }
+    A group carrying the concept's authored scoped-join MATE counts as exposing
+    it: the merge coalesces the two members onto one axis, and the mate is
+    surfaced under the concept's own address once the merge resolves. Without
+    that, an aggregate over the completed join loses the axis to the raw
+    boundary below it, which then re-enters the merge with the rows the
+    aggregate's population already excluded.
+
+    A ``~``-licensed key comes from its elected owner and nowhere else: that
+    group is the one built with permission to manufacture the key's extension
+    rows, so any other candidate exposes only the members the fact bound. The
+    election is read here rather than re-derived, because the two answers
+    diverging is what leaves a contributor dangling at render time."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     for concept in mandatory_list:
         addr = concept.address
+        mates = _scoped_join_mates(environment, addr)
         candidates = [
             gid
             for gid, node in built.items()
-            if any(o.address == addr for o in node.output_concepts)
+            if any(
+                o.address == addr or o.address in mates for o in node.output_concepts
+            )
         ]
         # Only fall back to pseudonym coverage (struct fields produced under
         # their derivable origin address) when nothing provides the concept
@@ -2334,19 +2480,15 @@ def _cover_groups_for_mandatory(
             reverse=True,
         )
         winner = candidates[0]
-        if addr in extension_licensed and licensed_mandatory - {
-            o.address for o in built[winner].output_concepts
-        }:
-            primary = [
-                gid for gid in candidates if addr in set(attrs[gid].primary_members)
-            ]
-            if primary:
-                winner = primary[0]
+        owner = ownership.owner_of(addr)
+        if owner is not None and owner in candidates:
+            winner = owner
         per_group[winner].append(concept)
     return per_group
 
 
 def _add_relation_axis_contributors(
+    group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
     final_contract: FinalAssemblyContract,
@@ -2377,11 +2519,20 @@ def _add_relation_axis_contributors(
         if not hosted:
             continue
         for addr in sorted(relation - hosted):
+            # A provider upstream of a chosen contributor already had its
+            # side merged there, so it pairs nothing new: re-entering the
+            # FINAL merge it would only re-admit the rows that contributor's
+            # own join and population already dropped.
+            merged_below = set().union(
+                *(nx.ancestors(group_graph, gid) for gid in chosen)
+            )
             provider = next(
                 (
                     gid
                     for gid in sorted(built)
-                    if gid not in chosen and addr in outputs_of[gid]
+                    if gid not in chosen
+                    and gid not in merged_below
+                    and addr in outputs_of[gid]
                 ),
                 None,
             )
@@ -2730,6 +2881,30 @@ def _add_aggregate_needed_concepts(needed: set[str], concept: BuildConcept) -> N
                 _add_needed_concept(needed, row_input)
 
 
+def _parent_supplied_args(
+    concept: BuildConcept, primary_addrs: set[str]
+) -> list[BuildConcept]:
+    """Lineage args of `concept` that a PARENT has to supply.
+
+    An arg that is itself a primary member is computed at this group (a `case`
+    over `grouping(...)` reads the grouping virtual the same node emits), so the
+    parent owns its inputs, not the arg itself. Walk through those; stop at
+    everything else."""
+    stack = list(concept.lineage.concept_arguments) if concept.lineage else []
+    seen: set[str] = set()
+    supplied: list[BuildConcept] = []
+    while stack:
+        arg = stack.pop()
+        if arg.address in seen:
+            continue
+        seen.add(arg.address)
+        if arg.address in primary_addrs and arg.lineage is not None:
+            stack.extend(arg.lineage.concept_arguments)
+            continue
+        supplied.append(arg)
+    return supplied
+
+
 def _aggregate_reused_from_twin(
     address: str,
     gid: str,
@@ -2935,9 +3110,16 @@ def _filter_arg_parents(
             reverse=True,
         )
         gid = candidates[0]
-        concepts.append(
-            next(o for o in built[gid].output_concepts if o.address == addr)
-        )
+        supplier = built[gid]
+        concept = next(o for o in supplier.output_concepts if o.address == addr)
+        # The group is being pulled in PRECISELY to supply this column, so a
+        # projection that hides it defeats the purpose: the FINAL merge reads
+        # parents' `usable_outputs`, so a hidden-only supplier trips the node
+        # input invariant instead of rendering (a correlated inline subquery
+        # whose rowset hides its own correlation key).
+        if addr in supplier.hidden_concepts:
+            supplier.unhide_output_concepts([concept])
+        concepts.append(concept)
         if gid not in seen:
             seen.add(gid)
             nodes.append(built[gid])
@@ -3353,13 +3535,14 @@ def _assemble_final_node(
             combine_existing=False,
         )
 
-    extension_licensed = frozenset(
-        address
-        for datasource in environment.datasources.values()
-        for address in datasource.column_level_partial_addresses
-    )
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     per_group = _cover_groups_for_mandatory(
-        group_graph, attrs, built, mandatory_list, extension_licensed
+        group_graph,
+        attrs,
+        built,
+        mandatory_list,
+        environment,
+        ownership,
     )
     if not per_group:
         return _apply_final_conditions(
@@ -3370,7 +3553,9 @@ def _assemble_final_node(
                 environment,
             )
         )
-    _add_relation_axis_contributors(built, per_group, final_contract, environment)
+    _add_relation_axis_contributors(
+        group_graph, built, per_group, final_contract, environment
+    )
     _add_partial_completion_contributors(built, per_group, environment)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
@@ -3695,6 +3880,13 @@ def _assemble_final_node(
     )
     parents = _fold_passthrough_parents(parents)
     _widen_merge_join_keys(parents, environment, final_merge_grain)
+    parents = _fold_covered_contributors(
+        parents,
+        environment,
+        final_needed | filter_only_addrs,
+        {id(built[gid]) for gid, concepts in per_group.items() if concepts},
+        {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
+    )
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()
@@ -3875,26 +4067,25 @@ def build_strategy_node(
     None if nothing built."""
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
             continue
+        # Scope the group's extent routing over its whole build, including the
+        # consumer-side re-sources `_parent_nodes_for` plans below.
+        environment.extent_free_spans = ownership.suppressed_for(gid)
         a = attrs[gid]
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
         derivation = a.derivation
-        # Prefer the per-group output/hidden sets computed by the backward
-        # pass in `_compute_concept_sets`. The SELECT needs to project the
-        # union (output ∪ hidden) so GROUP-BY keys stay in the row stream;
-        # `hidden_concepts` then masks them from any downstream consumer
-        # that doesn't ask for them. When the backward pass didn't run
-        # (no mandatory_list supplied), `output_concepts` defaults to ()
-        # — fall back to "every member" in that case.
-        output_addrs: tuple[str, ...] = a.output_concepts
-        hidden_addrs: tuple[str, ...] = a.hidden_concepts
-        if not output_addrs and not hidden_addrs:
-            output_addrs = (*a.primary_members, *a.secondary_members)
-        select_addrs = (*output_addrs, *hidden_addrs)
+        # The per-group output set computed by the backward pass in
+        # `_compute_concept_sets`; a group the demand pass left without outputs
+        # still projects every member.
+        select_addrs: tuple[str, ...] = a.output_concepts or (
+            *a.primary_members,
+            *a.secondary_members,
+        )
         if derivation == Derivation.ROWSET:
             # A boundary group's outputs can carry ANOTHER rowset's handles
             # (a deferred WHERE's args exposed through a scoped relation).
@@ -4018,6 +4209,7 @@ def build_strategy_node(
             parents,
             environment,
             join_key_addresses=join_key_addresses,
+            needed=needed,
         )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
@@ -4105,7 +4297,7 @@ def build_strategy_node(
                 normalize_addrs.add(c.address)
                 if c.address not in primary_addrs or c.lineage is None:
                     continue
-                for arg in c.lineage.concept_arguments:
+                for arg in _parent_supplied_args(c, primary_addrs):
                     normalize_addrs.add(arg.address)
                     aggregate_arg_addrs.add(arg.address)
             normalize_parent_output_by_addr: dict[str, BuildConcept] = {}
@@ -4141,7 +4333,7 @@ def build_strategy_node(
                     candidate = _concept_at(environment, addr)
                     if candidate is not None:
                         for parent in parents:
-                            available = parent_output_addresses(parent)
+                            available = renderable_addresses(parent)
                             if not concept_satisfiable(candidate, available):
                                 continue
                             widen_projection(
@@ -4194,6 +4386,11 @@ def build_strategy_node(
             continue
         if derivation == Derivation.ROOT:
             _drop_unadvertised_rowset_handles(node, set(select_addrs))
+        # Elide here, not only in the tree pass: consumers take their own copy
+        # of this node, so a passthrough left standing becomes the SHARED
+        # parent two single-column consumers each regroup over, and the merge
+        # above them has no key to pair on (union-TVF arm outputs split into a
+        # cross join).
         node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
@@ -4211,6 +4408,9 @@ def build_strategy_node(
         )
         built[gid] = node
 
+    # The FINAL assembly is where the owner and the extent-free branches meet;
+    # it must see every span again to host the owner's rows.
+    environment.extent_free_spans = frozenset()
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)
@@ -4248,8 +4448,12 @@ def _has_unsourced_leaf(final: StrategyNode) -> bool:
     for node in _strategy_nodes(final):
         if node.parents or getattr(node, "datasource", None) is not None:
             continue
-        if any(
-            concept.derivation == Derivation.ROOT for concept in node.output_concepts
-        ):
+        # A leaf with neither parents nor a datasource can only render what
+        # literals alone produce. A ROOT output is the obvious violation, but so
+        # is an aggregate over one (`sum(amt)` beside a WHERE that pruned the
+        # scan away): its measure has no source either, and reading only the
+        # derivation missed it because the aggregate is not itself ROOT.
+        # Unnest-of-literal / constant leaves stay legal.
+        if any(not literal_producible(concept) for concept in node.output_concepts):
             return True
     return False

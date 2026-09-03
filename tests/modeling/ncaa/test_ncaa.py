@@ -10,8 +10,8 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
-from trilogy.core.processing.node_generators.select_merge_node import (
-    create_union_datasource,
+from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
+    create_union_datasource_candidate,
 )
 
 working_path = Path(__file__).parent
@@ -33,10 +33,9 @@ def test_union_node():
     datasource = union[0]
     build_env = factory.build(env)
 
-    bcandidate, _group = create_union_datasource(
+    bcandidate, _group, _count = create_union_datasource_candidate(
         datasource=BuildUnionDatasource(children=datasource),
         all_concepts=[team_name],
-        accept_partial=False,
         environment=build_env,
         depth=0,
         conditions=None,

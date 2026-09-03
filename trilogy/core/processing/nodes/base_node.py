@@ -3,8 +3,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
-    BooleanOperator,
-    Derivation,
     JoinType,
     Modifier,
     SetOperator,
@@ -14,7 +12,6 @@ from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
@@ -181,13 +178,16 @@ class StrategyNode:
     # that set this take their parents' grain when none was passed, rather than
     # deriving one from their own outputs; see `_default_grain`.
     inherits_parent_grain: bool = False
+    # Only UnionNode carries a non-default combinator; it must be set at
+    # construction so QueryDatasource.__post_init__ preserves arm order for
+    # EXCEPT.
+    set_operator: SetOperator = SetOperator.UNION_ALL
 
     def __init__(
         self,
         input_concepts: list[BuildConcept],
         output_concepts: list[BuildConcept],
         environment: BuildEnvironment,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         partial_concepts: list[BuildConcept] | None = None,
         rollup_concepts: list[BuildConcept] | None = None,
@@ -199,7 +199,6 @@ class StrategyNode:
         grain: BuildGrain | None = None,
         hidden_concepts: set[str] | None = None,
         existence_concepts: list[BuildConcept] | None = None,
-        virtual_output_concepts: list[BuildConcept] | None = None,
         ordering: BuildOrderBy | None = None,
     ):
         self.input_concepts: list[BuildConcept] = (
@@ -210,7 +209,6 @@ class StrategyNode:
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         self.environment = environment
-        self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: QueryDatasource | None = None
 
@@ -231,10 +229,8 @@ class StrategyNode:
         # pushed WHERE could apply post-join); the merge must regroup to its
         # output grain or the deferred normalization is silently lost.
         self.group_deferred = False
-        self.tainted = False
         self.hidden_concepts = hidden_concepts or set()
         self.existence_concepts = existence_concepts or []
-        self.virtual_output_concepts = virtual_output_concepts or []
         self.preexisting_conditions = preexisting_conditions
         if self.conditions and not self.preexisting_conditions:
             self.preexisting_conditions = self.conditions
@@ -252,7 +248,6 @@ class StrategyNode:
         )
         self.rollup_concepts = rollup_concepts or []
         self.validate_inputs()
-        self.log = True
 
     def validate_inputs(self):
         if not self.parents:
@@ -291,30 +286,6 @@ class StrategyNode:
     def add_parents(self, parents: list["StrategyNode"]):
         self.parents += parents
         self.partial_concepts = self.derive_partials(None)
-        return self
-
-    def set_preexisting_conditions(
-        self,
-        conditions: BoolExpr,
-    ):
-        self.preexisting_conditions = conditions
-        return self
-
-    def add_condition(
-        self,
-        condition: BoolExpr,
-    ):
-        if self.conditions and condition == self.conditions:
-            return self
-        if self.conditions:
-            self.conditions = BuildConditional(
-                left=self.conditions, right=condition, operator=BooleanOperator.AND
-            )
-        else:
-            self.conditions = condition
-        self.set_preexisting_conditions(condition)
-        self._refine_nullable_for_conditions()
-        self.rebuild_cache()
         return self
 
     def _refine_nullable_for_conditions(self) -> None:
@@ -416,12 +387,6 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def set_visible_concepts(self, concepts: list[BuildConcept]):
-        for x in self.output_concepts:
-            if x.address not in [c.address for c in concepts]:
-                self.hidden_concepts.add(x.address)
-        return self
-
     def set_output_concepts(
         self,
         concepts: list[BuildConcept],
@@ -442,9 +407,6 @@ class StrategyNode:
         if rebuild:
             self.rebuild_cache()
         return self
-
-    def add_output_concept(self, concept: BuildConcept, rebuild: bool = True):
-        return self.add_output_concepts([concept], rebuild)
 
     def hide_output_concepts(
         self, concepts: list[BuildConcept] | list[str] | set[str], rebuild: bool = True
@@ -480,10 +442,6 @@ class StrategyNode:
     def all_concepts(self) -> list[BuildConcept]:
         return [*self.output_concepts]
 
-    @property
-    def all_used_concepts(self) -> list[BuildConcept]:
-        return [*self.input_concepts, *self.existence_concepts]
-
     def __repr__(self):
         concepts = self.all_concepts
         addresses = [c.address for c in concepts]
@@ -492,56 +450,6 @@ class StrategyNode:
             extra = len(addresses) - 3
             contents += f"...{extra} more"
         return f"{self.__class__.__name__}<{contents}>"
-
-    def _repoint_feeder_only_rows(
-        self,
-        parent_sources: list[QueryDatasource | BuildDatasource],
-        source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
-    ) -> None:
-        """A row source_map entry must never point at a parent reachable only
-        through an existence subselect — it is never joined, so a SELECT column
-        off it dangles at render (``Referenced table ... not found``). Mirrors
-        the MergeNode existence-only ordering guard: when every resolved source
-        of an OUTPUT address is such a feeder and a genuinely-joined parent
-        carries the address as a pseudonym twin (a scoped-join axis handle
-        riding its mate, q29), repoint the row entry at the joined parent — the
-        renderer's pseudonym recovery emits the mate's column under the
-        handle's alias."""
-        if not self.existence_concepts:
-            return
-        existence_addrs = {c.address for c in self.existence_concepts}
-        demand = {c.address for c in self.input_concepts} | {
-            c.address for c in self.output_concepts
-        }
-        feeders = {
-            id(ps)
-            for ps in parent_sources
-            if any(o.address in existence_addrs for o in ps.output_concepts)
-            and all(
-                o.address in existence_addrs
-                for o in ps.output_concepts
-                if o.address in demand
-            )
-        }
-        if not feeders:
-            return
-        for concept in self.output_concepts:
-            sources = source_map.get(concept.address)
-            if not sources or not all(id(s) in feeders for s in sources):
-                continue
-            for ps in parent_sources:
-                if id(ps) in feeders:
-                    continue
-                if any(
-                    (o.address == concept.address or concept.address in o.pseudonyms)
-                    and not (
-                        isinstance(ps, QueryDatasource)
-                        and o.address in ps.hidden_concepts
-                    )
-                    for o in ps.output_concepts
-                ):
-                    source_map[concept.address] = {ps}
-                    break
 
     def _default_grain(
         self, parent_sources: list[QueryDatasource | BuildDatasource]
@@ -579,7 +487,6 @@ class StrategyNode:
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
-        self._repoint_feeder_only_rows(parent_sources, source_map)
 
         # Nullability is recomputed from the RESOLVED parents, not trusted from
         # the construction-time snapshot: `get_all_parent_nullable` at
@@ -605,9 +512,7 @@ class StrategyNode:
             output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=self.source_type,
-            # Only UnionNode carries a non-default combinator; it must be set at
-            # construction so __post_init__ preserves arm order for EXCEPT.
-            set_operator=getattr(self, "set_operator", SetOperator.UNION_ALL),
+            set_operator=self.set_operator,
             source_map=source_map,
             existence_source_map=resolve_existence_map(
                 parent_sources, self.existence_concepts
@@ -626,7 +531,6 @@ class StrategyNode:
         )
 
     def rebuild_cache(self) -> QueryDatasource:
-        self.tainted = True
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
         if not self.resolution_cache:
             return self.resolve()
@@ -655,7 +559,6 @@ class StrategyNode:
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            whole_grain=self.whole_grain,
             parents=list(self.parents),
             partial_concepts=list(self.partial_concepts),
             rollup_concepts=list(self.rollup_concepts),
@@ -667,7 +570,6 @@ class StrategyNode:
             grain=self.grain,
             hidden_concepts=set(self.hidden_concepts),
             existence_concepts=list(self.existence_concepts),
-            virtual_output_concepts=list(self.virtual_output_concepts),
             ordering=self.ordering,
         )
         node.limit = self.limit
@@ -680,7 +582,6 @@ class NodeJoin:
     right_node: StrategyNode
     concepts: list[BuildConcept]
     join_type: JoinType
-    filter_to_mutual: bool = False
     concept_pairs: list[ConceptPair] | None = None
     modifiers: list[Modifier] = field(default_factory=list)
 
@@ -689,44 +590,13 @@ class NodeJoin:
             raise SyntaxError("Invalid join, left and right nodes are the same")
         if self.concept_pairs:
             return
-        final_concepts = []
         for concept in self.concepts:
-            include = True
             for ds in [self.left_node, self.right_node]:
                 if concept.address not in [c.address for c in ds.all_concepts]:
-                    if self.filter_to_mutual:
-                        include = False
-                    else:
-                        raise SyntaxError(
-                            f"Invalid join, missing {concept} on {ds!s}, have"
-                            f" {[c.address for c in ds.all_concepts]}"
-                        )
-            if include:
-                final_concepts.append(concept)
-        if not final_concepts and self.concepts:
-            # if one datasource only has constants
-            # we can join on 1=1
-            for ds in [self.left_node, self.right_node]:
-                if all(c.derivation == Derivation.CONSTANT for c in ds.all_concepts):
-                    self.concepts = []
-                    return
-
-            left_keys = [c.address for c in self.left_node.all_concepts]
-            right_keys = [c.address for c in self.right_node.all_concepts]
-            match_concepts = [c.address for c in self.concepts]
-            raise SyntaxError(
-                "No mutual join keys found between"
-                f" {self.left_node} and"
-                f" {self.right_node}, left_keys {left_keys},"
-                f" right_keys {right_keys},"
-                f" provided join concepts {match_concepts}"
-            )
-        self.concepts = final_concepts
-
-    @property
-    def unique_id(self) -> str:
-        nodes = sorted([self.left_node, self.right_node], key=lambda x: str(x))
-        return str(nodes) + self.join_type.value
+                    raise SyntaxError(
+                        f"Invalid join, missing {concept} on {ds!s}, have"
+                        f" {[c.address for c in ds.all_concepts]}"
+                    )
 
     def __str__(self):
         return (
@@ -734,31 +604,3 @@ class NodeJoin:
             f" {self.right_node} on"
             f" {','.join([str(k) for k in self.concepts])}"
         )
-
-
-class WhereSafetyNode(StrategyNode):
-    """Specialized node to be used to pad certain
-    select outputs that can't be immediately used in a where
-    clause; eg window functions. Will remove itself if not required."""
-
-    def resolve(self) -> QueryDatasource:
-        if not self.conditions and len(self.parents) == 1:
-            parent = self.parents[0]
-            parent = parent.copy()
-            # avoid performance hit by not rebuilding until end
-            parent.set_output_concepts(self.output_concepts, rebuild=False)
-
-            # these conditions
-            if self.preexisting_conditions:
-                parent.set_preexisting_conditions(self.preexisting_conditions)
-            # TODO: add a helper for this
-            parent.ordering = self.ordering
-
-            # actually build the node
-            parent.rebuild_cache()
-            resolved = parent.resolve()
-            # mirror the base resolve() nullability sync — downstream nodes
-            # read THIS node's attribute
-            self.nullable_concepts = list(resolved.nullable_concepts)
-            return resolved
-        return super().resolve()

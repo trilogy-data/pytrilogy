@@ -834,8 +834,7 @@ def _assert_having_membership_subselect_valid(query: str) -> None:
 
 
 def test_membership_in_having_over_window_renders_valid_subselect():
-    # CTE-handle form: the HAVING-carrying node is a WhereSafetyNode padding the
-    # window output.
+    # CTE-handle form: the HAVING-carrying node pads the window output.
     _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
@@ -862,8 +861,8 @@ order by weekly_dow.ws asc nulls first
 def test_membership_in_having_auto_concept_renders_valid_subselect():
     # Auto-concept form: the HAVING-carrying node is a GroupNode that does NOT
     # itself source the set (it lands on the inner flag node), so the existence
-    # must be sourced at the HAVING site. The narrow WhereSafetyNode fold missed
-    # this; the general append_existence_check covers it.
+    # must be sourced at the HAVING site; the general append_existence_check
+    # covers it.
     _assert_having_membership_subselect_valid("""
 import all_sales as all_sales;
 
@@ -1167,3 +1166,15 @@ order by sales.billing_customer.id asc nulls first;"""
     assert all(
         row[0] is not None for row in rows
     ), "NULL customer survived `billing_customer.sk is not null`"
+
+
+def test_fourteen_renders_without_merge_aggregate(engine):
+    text = (working_path / "query14.preql").read_text()
+    original = CONFIG.optimizations.merge_aggregate
+    try:
+        CONFIG.optimizations.merge_aggregate = False
+        engine.environment = Environment(working_path=working_path)
+        sql = engine.generate_sql(text)[-1]
+    finally:
+        CONFIG.optimizations.merge_aggregate = original
+    engine.execute_raw_sql(f"EXPLAIN {sql}")

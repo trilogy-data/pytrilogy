@@ -12,7 +12,7 @@ One registry per shape concern, lookup by derivation, fallback to a default.
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
@@ -384,6 +384,48 @@ def _partition_standard_aggregates(
     return buckets
 
 
+def _root(uf: list[int], x: int) -> int:
+    while uf[x] != x:
+        uf[x] = uf[uf[x]]
+        x = uf[x]
+    return x
+
+
+def _components(n: int, related: Iterable[tuple[int, int]]) -> list[list[int]]:
+    """Connected components of indices 0..n-1 given the related pairs, each in
+    index order and ordered by smallest member (group ids derive from bucket
+    order)."""
+    uf = list(range(n))
+    for i, j in related:
+        uf[_root(uf, j)] = _root(uf, i)
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        groups[_root(uf, i)].append(i)
+    return list(groups.values())
+
+
+def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
+    """(property root, key root) pairs among `main_items`: a property and its
+    declared key sit on one entity row, so they co-source even when no lineage
+    joins them. A key collapsed onto another identity (scoped join, `merge
+    into`) is present under the canonical address only; the mate's pseudonyms
+    declare the identity."""
+    node_by_addr = {data.address: node for node, data in main_items}
+    node_by_pseudonym: dict[str, str] = {}
+    for node, data in main_items:
+        for pseudonym in data.pseudonyms:
+            node_by_pseudonym.setdefault(pseudonym, node)
+    pairs: list[tuple[str, str]] = []
+    for node, data in main_items:
+        if data.purpose != Purpose.PROPERTY:
+            continue
+        for key_addr in data.keys:
+            key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
+            if key_node is not None and key_node != node:
+                pairs.append((node, key_node))
+    return pairs
+
+
 def _partition_grouped_aggregates(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -417,23 +459,13 @@ def _partition_grouped_aggregates(
             for node, _ in members
         ]
         n = len(members)
-        uf = list(range(n))
-
-        def find(x: int, _uf=uf) -> int:
-            while _uf[x] != x:
-                _uf[x] = _uf[_uf[x]]
-                x = _uf[x]
-            return x
-
-        for i in range(n):
-            for j in range(i + 1, n):
-                if sigs[i] <= sigs[j] or sigs[j] <= sigs[i]:
-                    uf[find(j)] = find(i)
-
-        components: dict[int, list[int]] = defaultdict(list)
-        for i in range(n):
-            components[find(i)].append(i)
-        for member_indices in components.values():
+        nested = [
+            (i, j)
+            for i in range(n)
+            for j in range(i + 1, n)
+            if sigs[i] <= sigs[j] or sigs[j] <= sigs[i]
+        ]
+        for member_indices in _components(n, nested):
             bucket = _bucket_for(depth_label, Derivation.AGGREGATE, grain, label=label)
             shared_sig: frozenset[str] = frozenset().union(
                 *(sigs[i] for i in member_indices)
@@ -483,21 +515,14 @@ def _relation_side_partitions(
             continue
         adjacency[u].add(v)
         adjacency[v].add(u)
-    node_by_addr = {data.address: node for node, data in main_items}
-    node_by_pseudonym: dict[str, str] = {}
-    for node, data in main_items:
-        for pseudonym in data.pseudonyms:
-            node_by_pseudonym.setdefault(pseudonym, node)
+    for node, key_node in _property_key_pairs(main_items):
+        adjacency[node].add(key_node)
+        adjacency[key_node].add(node)
     by_key: dict[str, list[str]] = defaultdict(list)
     for node, data in main_items:
-        if data.purpose != Purpose.PROPERTY:
-            continue
-        for key_addr in data.keys:
-            by_key[key_addr].append(node)
-            key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
-            if key_node is not None and key_node != node:
-                adjacency[node].add(key_node)
-                adjacency[key_node].add(node)
+        if data.purpose == Purpose.PROPERTY:
+            for key_addr in data.keys:
+                by_key[key_addr].append(node)
     for key_mates in by_key.values():
         for other in key_mates[1:]:
             adjacency[key_mates[0]].add(other)
@@ -537,16 +562,24 @@ def _cosource_component_groups(
     reaches: list[set[str]] = []
     for node, _ in main_items:
         seen: set[str] = set()
+        visited = {node}
         stack = [node]
         while stack:
             cur = stack.pop()
             for nxt in concept_graph.successors(cur):
-                if nxt in seen:
+                if nxt in visited:
                     continue
                 if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
                     continue
-                seen.add(nxt)
+                visited.add(nxt)
                 stack.append(nxt)
+                # A pure output alias is a 1:1 relabel of its own source, not
+                # a shared consumer that forces a join. Counting it as reach
+                # is what makes `select x as t` take the split path where
+                # `select x` bails to the safe single bucket; walk through it
+                # to whatever really consumes it instead.
+                if not concept_attrs[nxt].is_rename:
+                    seen.add(nxt)
         reaches.append(seen)
 
     # Bail out to one bucket if any root has zero reach — see partition_roots.
@@ -555,26 +588,10 @@ def _cosource_component_groups(
         return [list(main_items)] if main_items else []
 
     n = len(main_items)
-    parent = list(range(n))
-
-    def find(x: int, _parent=parent) -> int:
-        while _parent[x] != x:
-            _parent[x] = _parent[_parent[x]]
-            x = _parent[x]
-        return x
-
-    def union(a: int, b: int, _parent=parent) -> None:
-        ra, rb = find(a, _parent), find(b, _parent)
-        if ra != rb:
-            _parent[rb] = ra
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            if reaches[i] & reaches[j]:
-                union(i, j)
-
-    # Co-source roots that converge at the query output projection.
-    # `reaches` holds node ids; map to addresses to test membership.
+    # Co-source roots that converge at the query output projection: each
+    # output root maps to its concept-graph component id, and roots sharing
+    # one merge. `reaches` holds node ids; map to addresses to test membership.
+    output_component: dict[int, int] = {}
     if output_addresses:
         output_roots = [
             i
@@ -597,21 +614,8 @@ def _cosource_component_groups(
         # Properties only: two KEYS related through a fact FK (user_id
         # on posts) must NOT co-source — `count(user_id)` reads the
         # users table, not the post FK column's deduped domain.
-        node_by_addr = {data.address: node for node, data in main_items}
-        # A key collapsed onto another identity (scoped join `left join
-        # a.aid = b.bid`, `merge into`) is present under the canonical
-        # address only; the mate's pseudonyms declare the identity.
-        node_by_pseudonym: dict[str, str] = {}
-        for node, data in main_items:
-            for pseudonym in data.pseudonyms:
-                node_by_pseudonym.setdefault(pseudonym, node)
-        for node, data in main_items:
-            if data.purpose != Purpose.PROPERTY:
-                continue
-            for key_addr in data.keys:
-                key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
-                if key_node is not None and key_node != node:
-                    undirected.add_edge(node, key_node)
+        for node, key_node in _property_key_pairs(main_items):
+            undirected.add_edge(node, key_node)
         # A PROPERTY root and another root BOUND BY THE SAME DATASOURCE sit on
         # one physical row stream (`select group_id as g, nullable_amount as v`
         # — the fact binds its FK column beside its property; each root feeds
@@ -644,17 +648,20 @@ def _cosource_component_groups(
         for ci, comp in enumerate(nx.connected_components(undirected)):
             for node in comp:
                 comp_of[node] = ci
-        by_component: dict[int, list[int]] = defaultdict(list)
         for i in output_roots:
-            by_component[comp_of.get(main_items[i][0], -1 - i)].append(i)
-        for component_roots in by_component.values():
-            for k in range(1, len(component_roots)):
-                union(component_roots[0], component_roots[k])
+            output_component[i] = comp_of.get(main_items[i][0], -1 - i)
 
-    components: dict[int, list[NodeItem]] = defaultdict(list)
-    for i, item in enumerate(main_items):
-        components[find(i)].append(item)
-    return list(components.values())
+    related = [
+        (i, j)
+        for i in range(n)
+        for j in range(i + 1, n)
+        if reaches[i] & reaches[j]
+        or (i in output_component and output_component[i] == output_component.get(j))
+    ]
+    return [
+        [main_items[i] for i in member_indices]
+        for member_indices in _components(n, related)
+    ]
 
 
 def partition_roots(
@@ -913,19 +920,7 @@ def _partition_by_signature_and_grain(
                 sig |= set(extra_signature(node))
             sigs.append(frozenset(sig))
         grains = [sub_items[i][1].grain_components for i in range(n)]
-        uf = list(range(n))
-
-        def find(x: int, _uf=uf) -> int:
-            while _uf[x] != x:
-                _uf[x] = _uf[_uf[x]]
-                x = _uf[x]
-            return x
-
-        def union(a: int, b: int, _uf=uf) -> None:
-            ra, rb = find(a, _uf), find(b, _uf)
-            if ra != rb:
-                _uf[rb] = ra
-
+        merged: list[tuple[int, int]] = []
         for i in range(n):
             for j in range(i + 1, n):
                 signatures_match = sigs[i] == sigs[j] or (
@@ -951,13 +946,9 @@ def _partition_by_signature_and_grain(
                     ):
                         continue
                 if grains[i] <= grains[j] or grains[j] <= grains[i]:
-                    union(i, j)
+                    merged.append((i, j))
 
-        components: dict[int, list[int]] = defaultdict(list)
-        for i in range(n):
-            components[find(i)].append(i)
-
-        for member_indices in components.values():
+        for member_indices in _components(n, merged):
             merged_grain: frozenset[str] = frozenset().union(
                 *(grains[i] for i in member_indices)
             )

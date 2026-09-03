@@ -176,7 +176,6 @@ def validate_concept(
     found_addresses: set[str],
     non_partial_addresses: set[str],
     partial_addresses: set[str],
-    virtual_addresses: set[str],
     found_map: dict[str, set[BuildConcept]],
     accept_partial: bool,
     seen: set[str],
@@ -194,7 +193,6 @@ def validate_concept(
         non_partial_addresses.add(concept.address)
         # remove it from our partial tracking
         partial_addresses.discard(concept.address)
-        virtual_addresses.discard(concept.address)
     if concept in node.partial_concepts:
         if concept.address in non_partial_addresses:
             return
@@ -243,7 +241,6 @@ def validate_concept(
             found_addresses,
             non_partial_addresses,
             partial_addresses,
-            virtual_addresses,
             found_map,
             accept_partial,
             seen=seen,
@@ -261,12 +258,11 @@ def validate_stack(
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
     require_condition_applier: bool = False,
-) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
+) -> tuple[ValidationResult, set[str], set[str], set[str]]:
     found_map: dict[str, set[BuildConcept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
-    virtual_addresses: set[str] = set()
     seen: set[str] = set()
     group_mates = environment.pseudonym_unsatisfiable_group_mates()
 
@@ -284,7 +280,6 @@ def validate_stack(
                 found_addresses,
                 non_partial_addresses,
                 partial_addresses,
-                virtual_addresses,
                 found_map,
                 accept_partial,
                 seen,
@@ -292,11 +287,6 @@ def validate_stack(
                 group_mates,
                 node_deep_addresses,
             )
-        for concept in node.virtual_output_concepts:
-            if concept.address in non_partial_addresses:
-                continue
-            found_addresses.add(concept.address)
-            virtual_addresses.add(concept.address)
     conditions_met = _conditions_met(
         stack,
         found_addresses,
@@ -312,14 +302,12 @@ def validate_stack(
                 found_addresses,
                 {c.address for c in concepts if c.address not in found_addresses},
                 partial_addresses,
-                virtual_addresses,
             )
         return (
             ValidationResult.INCOMPLETE_CONDITION,
             found_addresses,
             {c.address for c in concepts if c.address not in mandatory_with_filter},
             partial_addresses,
-            virtual_addresses,
         )
 
     graph_count, _ = get_disconnected_components(found_map)
@@ -329,7 +317,6 @@ def validate_stack(
             found_addresses,
             set(),
             partial_addresses,
-            virtual_addresses,
         )
     # if we have too many subgraphs, we need to keep searching
     return (
@@ -337,5 +324,4 @@ def validate_stack(
         found_addresses,
         set(),
         partial_addresses,
-        virtual_addresses,
     )

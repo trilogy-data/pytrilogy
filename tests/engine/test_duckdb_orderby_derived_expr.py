@@ -7,6 +7,8 @@ Trigger: a window output forces a group_to_grain wrapper over the window CTE;
 an ORDER BY kept as an anonymous expression then re-derives ungrouped columns.
 """
 
+import re
+
 from trilogy import Dialects
 
 MODEL = r"""
@@ -80,10 +82,13 @@ def test_order_by_inline_window_duplicating_output():
 
 
 def test_order_by_raw_source_column_of_derived_output():
-    # `channel` is only an alias source (not projected); the grouped final node
-    # cannot reference it raw, so the renderer must aggregate-wrap it.
+    # `channel` is only an alias source (not projected): the planner carries it
+    # into the grouped final node as an input and orders by min(channel), so
+    # the GROUP BY grain is untouched and the raw column is never referenced
+    # ungrouped.
     rows, sql = _run(WINDOW_SELECT + "order by channel desc, item_id asc limit 100;")
-    assert "MIN(" in sql
+    assert re.search(r'ORDER BY\s+min\("\w+"\."channel"\) desc', sql)
+    assert "MIN(" not in sql
     assert [r[0] for r in rows] == ["web", "web", "store", "store", "catalog"]
 
 

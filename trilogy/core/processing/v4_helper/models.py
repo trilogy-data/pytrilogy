@@ -12,7 +12,7 @@ from trilogy.core.models.build import BoolExpr
 from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import DepthLabel
-from .edges import EdgeMap, copy_edges
+from .edges import EdgeMap
 
 
 def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
@@ -53,6 +53,32 @@ class GroupInputContract:
     preserve_keys: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
     may_project_dimension: bool = False
+
+
+@dataclass(frozen=True)
+class ExtentOwnership:
+    """Which group manufactures the extension rows of each ``~``-licensed span.
+
+    Elected on the group graph before any node is built (see
+    ``extent_ownership.elect_extent_owners``) and carried on the FINAL sink's
+    attrs, because extent routing is a statement-level decision: exactly one
+    group per span carries that dimension's unmatched members, its ancestors
+    may pad on the way there, and every other group joins on solid keys.
+    """
+
+    spans: frozenset[str] = frozenset()
+    owner_by_span: dict[str, str] = field(default_factory=dict)
+    # gid -> spans that group may extend (it owns them, or an owner is downstream)
+    permitted: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def permitted_for(self, gid: str) -> frozenset[str]:
+        return self.permitted.get(gid, frozenset())
+
+    def suppressed_for(self, gid: str) -> frozenset[str]:
+        return self.spans - self.permitted_for(gid)
+
+    def owner_of(self, address: str) -> str | None:
+        return self.owner_by_span.get(address)
 
 
 @dataclass
@@ -118,11 +144,11 @@ class GroupAttrs:
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     # Populated by `_compute_concept_sets`. Empty tuples until then.
     output_concepts: tuple[str, ...] = ()
-    hidden_concepts: tuple[str, ...] = ()
     input_concepts: tuple[str, ...] = ()
     # Populated only for FINAL: the logical output/grain contract Stage 3
-    # physically satisfies or prunes.
+    # physically satisfies or prunes, and the statement's extent routing.
     final_contract: FinalAssemblyContract | None = None
+    extent_ownership: ExtentOwnership | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
 
@@ -214,62 +240,19 @@ class BuildInfo:
     strategy_node: StrategyNode | None = None
 
     def copy(self) -> "BuildInfo":
+        """Only the strategy node is mutated downstream; the graphs and
+        attribute maps are read-only after build and shared."""
         return BuildInfo(
-            concept_graph=self.concept_graph.copy(),
-            merged_group_graph=self.merged_group_graph.copy(),
-            group_graph=self.group_graph.copy(),
-            group_attrs={k: _copy_attrs(v) for k, v in self.group_attrs.items()},
-            concept_attrs={
-                k: _copy_concept_attrs(v) for k, v in self.concept_attrs.items()
-            },
-            concept_edges=copy_edges(self.concept_edges),
-            merged_group_edges=copy_edges(self.merged_group_edges),
-            group_edges=copy_edges(self.group_edges),
+            concept_graph=self.concept_graph,
+            merged_group_graph=self.merged_group_graph,
+            group_graph=self.group_graph,
+            group_attrs=self.group_attrs,
+            concept_attrs=self.concept_attrs,
+            concept_edges=self.concept_edges,
+            merged_group_edges=self.merged_group_edges,
+            group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
         )
-
-
-def _copy_attrs(a: GroupAttrs) -> GroupAttrs:
-    return GroupAttrs(
-        depth_label=a.depth_label,
-        derivation=a.derivation,
-        grain_components=a.grain_components,
-        label=a.label,
-        members=a.members,
-        primary_members=a.primary_members,
-        secondary_members=a.secondary_members,
-        member_depths=dict(a.member_depths),
-        condition_atoms=list(a.condition_atoms),
-        conjunction_atoms=list(a.conjunction_atoms),
-        conditions=list(a.conditions),
-        output_concepts=a.output_concepts,
-        hidden_concepts=a.hidden_concepts,
-        input_concepts=a.input_concepts,
-        aggregate_input_grain=a.aggregate_input_grain,
-        aggregate_distinct_addrs=a.aggregate_distinct_addrs,
-        final_contract=a.final_contract,
-        input_contracts=a.input_contracts,
-    )
-
-
-def _copy_concept_attrs(a: ConceptAttrs) -> ConceptAttrs:
-    return ConceptAttrs(
-        address=a.address,
-        label=a.label,
-        derivation=a.derivation,
-        purpose=a.purpose,
-        granularity=a.granularity,
-        depth_label=a.depth_label,
-        grain_components=a.grain_components,
-        grouping_mode=a.grouping_mode,
-        rowset_name=a.rowset_name,
-        aggregate_input_grain=a.aggregate_input_grain,
-        aggregate_distinct_rewritable=a.aggregate_distinct_rewritable,
-        keys=a.keys,
-        pseudonyms=a.pseudonyms,
-        is_rename=a.is_rename,
-        existence_only=a.existence_only,
-    )
 
 
 @dataclass

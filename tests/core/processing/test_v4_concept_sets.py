@@ -10,8 +10,11 @@ by node id, mirroring production; the concept graph carries only topology +
 lineage edges.
 """
 
+import pytest
+
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.v4_helper.constants import (
     FINAL_NODE_ID,
     DepthLabel,
@@ -26,7 +29,12 @@ from trilogy.core.processing.v4_helper.models import (
 )
 
 
-# A minimal stand-in for BuildConcept — _compute_concept_sets only reads `.address`.
+@pytest.fixture
+def empty_environment() -> BuildEnvironment:
+    return BuildEnvironment()
+
+
+# A minimal stand-in for BuildConcept: _compute_concept_sets only reads `.address`.
 class _FakeConcept:
     def __init__(self, address: str, pseudonyms: set[str] | None = None):
         self.address = address
@@ -100,7 +108,9 @@ def _add_lineage(cg: nx.DiGraph, cedges: EdgeMap, parent: str, child: str):
 # ----------------------------------------------------------------------
 
 
-def test_q02_shape_basic_exposes_inherited_grain_key():
+def test_q02_shape_basic_exposes_inherited_grain_key(
+    empty_environment: BuildEnvironment,
+):
     cg = nx.DiGraph()
     cattrs: dict[str, ConceptAttrs] = {}
     cedges: EdgeMap = {}
@@ -177,7 +187,9 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     }
     mandatory = [_FakeConcept("round_result"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
+    _compute_concept_sets(
+        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment
+    )
 
     basic_out = set(attrs["basic"].output_concepts)
     assert "round_result" in basic_out
@@ -186,7 +198,9 @@ def test_q02_shape_basic_exposes_inherited_grain_key():
     ), "BASIC must expose its inherited-grain key for FINAL to read"
 
 
-def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
+def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate(
+    empty_environment: BuildEnvironment,
+):
     """ROOT's `ext_price` (row grain) must NOT show up in AGGREGATE's
     capability — the grain check at the aggregate boundary blocks it."""
     cg = nx.DiGraph()
@@ -223,7 +237,9 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
+    _compute_concept_sets(
+        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment
+    )
 
     agg_out = set(attrs["agg"].output_concepts)
     assert (
@@ -238,7 +254,9 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate():
 # ----------------------------------------------------------------------
 
 
-def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
+def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain(
+    empty_environment: BuildEnvironment,
+):
     cg = nx.DiGraph()
     cattrs: dict[str, ConceptAttrs] = {}
     cedges: EdgeMap = {}
@@ -295,7 +313,9 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
     }
     mandatory = [_FakeConcept("local_id"), _FakeConcept("local_name")]
 
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
+    _compute_concept_sets(
+        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment
+    )
 
     basic_out = set(attrs["basic"].output_concepts)
     assert "local_id" in basic_out and "local_name" in basic_out
@@ -310,7 +330,9 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain():
 # ----------------------------------------------------------------------
 
 
-def test_aggregate_inputs_include_primary_lineage_args():
+def test_aggregate_inputs_include_primary_lineage_args(
+    empty_environment: BuildEnvironment,
+):
     cg = nx.DiGraph()
     cattrs: dict[str, ConceptAttrs] = {}
     cedges: EdgeMap = {}
@@ -344,14 +366,18 @@ def test_aggregate_inputs_include_primary_lineage_args():
     }
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
+    _compute_concept_sets(
+        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment
+    )
 
     agg_in = set(attrs["agg"].input_concepts)
     # Inputs for the SUM: ext_price (lineage arg) and week_seq (passthrough output).
     assert {"ext_price", "week_seq"} <= agg_in
 
 
-def test_basic_inputs_drop_primaries_that_are_computed_locally():
+def test_basic_inputs_drop_primaries_that_are_computed_locally(
+    empty_environment: BuildEnvironment,
+):
     cg = nx.DiGraph()
     cattrs: dict[str, ConceptAttrs] = {}
     cedges: EdgeMap = {}
@@ -393,43 +419,12 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally():
     }
     mandatory = [_FakeConcept("round_result")]
 
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
+    _compute_concept_sets(
+        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment
+    )
 
     basic_in = set(attrs["basic"].input_concepts)
     # The lineage arg agg_sum must come from upstream.
     assert "agg_sum" in basic_in
     # The primary (round_result) is computed locally; it isn't sourced.
     assert "round_result" not in basic_in
-
-
-# ----------------------------------------------------------------------
-# hidden_concepts stays empty at intermediate groups
-# ----------------------------------------------------------------------
-
-
-def test_intermediate_groups_have_empty_hidden_concepts():
-    cg = nx.DiGraph()
-    cattrs: dict[str, ConceptAttrs] = {}
-    cedges: EdgeMap = {}
-    _add_concept(cg, cattrs, "x", grain={"x"})
-    _add_concept(cg, cattrs, "y", grain={"x"}, derivation=Derivation.BASIC)
-    _add_lineage(cg, cedges, "x", "y")
-
-    gg = nx.DiGraph()
-    attrs: dict[str, GroupAttrs] = {}
-    gedges: EdgeMap = {}
-    _gg_node(gg, attrs, "root", Derivation.ROOT, primary=["x"])
-    _gg_node(gg, attrs, "basic", Derivation.BASIC, primary=["y"], grain={"x"})
-    _final_node(gg, attrs)
-    add_edge(gg, gedges, "root", "basic", EdgeKind.LINEAGE)
-    add_edge(gg, gedges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
-    buckets = {
-        "root": _make_bucket(Derivation.ROOT, ["x"]),
-        "basic": _make_bucket(Derivation.BASIC, ["y"], grain={"x"}),
-    }
-    mandatory = [_FakeConcept("y")]
-
-    _compute_concept_sets(gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory)
-
-    assert attrs["root"].hidden_concepts == ()
-    assert attrs["basic"].hidden_concepts == ()

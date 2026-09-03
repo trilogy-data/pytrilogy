@@ -147,6 +147,15 @@ ERROR_CODES: dict[int, str] = {
         "form applies to selective imports (`from {path} import a, b;`) and to "
         "`trilogy run --import {path}:<alias>`."
     ),
+    230: (
+        "Join groups are separated by `and`, not commas. A query-scoped "
+        "`subset|union join` takes one or more key-equality groups chained with "
+        "`and` - write `subset join a.k1 = b.k1 and a.k2 = b.k2` (or stack a "
+        "second `subset join a.k2 = b.k2` clause on its own line). A comma is "
+        "only a select-list separator; here it ends the join clause, so the "
+        "statement stops at this character. To pull a THIRD column into the "
+        "SAME key instead, extend the equality: `a.k = b.k = c.k`."
+    ),
 }
 
 
@@ -375,10 +384,11 @@ _POST_JOIN_FILTER_OP_RE = re.compile(
 
 def detect_clause_after_join(text: str, pos: int) -> int | None:
     """Locate a filter/WHERE continuation placed AFTER a query-scoped `join`
-    clause (e.g. `... inner join a = b and c > 0 select ...`). A join may only
-    be followed by another join or `select`; conditions belong in a single WHERE
-    clause before the join. Returns the offending join clause's position, or
-    None. Shared by both grammar backends."""
+    clause (e.g. `... inner join a = b and c > 0 select ...`). Conditions belong
+    in a WHERE clause, never in the join clause itself, whichever of the two
+    legal join positions (before `select`, or after the select list) the query
+    uses. Returns the offending join clause's position, or None. Shared by both
+    grammar backends."""
     stmt_start = text.rfind(";", 0, pos) + 1
     joins = list(_JOIN_CLAUSE_RE.finditer(text, stmt_start, pos))
     if not joins:
@@ -419,6 +429,29 @@ def detect_join_missing_key(text: str, pos: int) -> int | None:
     if _SELECT_KW_RE.search(text, join.end(), pos):
         return None
     return join.start()
+
+
+def detect_join_comma_group(text: str, pos: int) -> int | None:
+    """Locate two query-scoped join groups separated by a comma instead of `and`
+    (`subset join a.k1 = b.k1, a.k2 = b.k2`). A comma cannot continue a join
+    clause, so both backends fail ON the comma itself. Returns the comma's
+    position, or None. Shared by both grammar backends."""
+    if pos >= len(text) or text[pos] != ",":
+        return None
+    stmt_start = text.rfind(";", 0, pos) + 1
+    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos))
+    if not joins:
+        return None
+    join = joins[-1]
+    # A `select` between the join and the comma means the comma belongs to the
+    # select list, not to the join clause.
+    if _SELECT_KW_RE.search(text, join.end(), pos):
+        return None
+    # A comma still inside a call's argument list separates arguments.
+    span = text[join.end() : pos]
+    if span.count("(") > span.count(")"):
+        return None
+    return pos
 
 
 _CLAUSE_BOUNDARY_RE = re.compile(

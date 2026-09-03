@@ -342,7 +342,7 @@ class TestNetworkLabels:
             _terminals(benv, "local.customer_id"), benv, graph, conditions
         )
 
-        assert network.candidates["ds~orders"].condition is ConditionFit.APPLIES
+        assert network.candidates["ds~orders"].condition is ConditionFit.NEUTRAL
         # the summary's aggregate is invalidated by a filter it cannot apply
         assert "ds~customer_summary" not in network.candidates
 

@@ -13,15 +13,14 @@ from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     is_scalar_condition,
 )
+from trilogy.core.processing.discovery_utility import check_if_group_required
+from trilogy.core.processing.grain_utility import is_identity_group
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
     resolve_existence_map,
 )
-from trilogy.core.processing.utility import (
-    GroupRequiredResponse,
-    find_nullable_concepts,
-)
+from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -35,7 +34,6 @@ class GroupNode(StrategyNode):
         output_concepts: list[BuildConcept],
         input_concepts: list[BuildConcept],
         environment: BuildEnvironment,
-        whole_grain: bool = False,
         parents: list["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: list[BuildConcept] | None = None,
@@ -47,13 +45,11 @@ class GroupNode(StrategyNode):
         existence_concepts: list[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
-        required_outputs: list[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
             output_concepts=output_concepts,
             environment=environment,
-            whole_grain=whole_grain,
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
@@ -66,35 +62,30 @@ class GroupNode(StrategyNode):
             hidden_concepts=hidden_concepts,
             ordering=ordering,
         )
-        # the set of concepts required to preserve grain
-        # set by group by node generation with aggregates
-        self.required_outputs = required_outputs
-
-    @classmethod
-    def check_if_required(
-        cls,
-        downstream_concepts: list[BuildConcept],
-        parents: list[QueryDatasource | BuildDatasource],
-        environment: BuildEnvironment,
-        depth: int = 0,
-    ) -> GroupRequiredResponse:
-        from trilogy.core.processing.discovery_utility import check_if_group_required
-
-        return check_if_group_required(downstream_concepts, parents, environment, depth)
 
     def _resolve(self) -> QueryDatasource:
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
 
-        grains = self.check_if_required(
+        grains = check_if_group_required(
             self.output_concepts, parent_sources, self.environment, self.depth
         )
         target_grain = grains.target
         comp_grain = grains.upstream
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if not grains.required and self.force_group is not True:
+        if not grains.required and (
+            self.force_group is not True
+            or is_identity_group(
+                parent_sources,
+                [],
+                target_grain,
+                self.conditions,
+                self.output_concepts,
+                self.rollup_concepts,
+            )
+        ):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
@@ -227,66 +218,6 @@ class GroupNode(StrategyNode):
             condition=self.conditions,
             ordering=self.ordering,
         )
-        # if there is a condition on a group node and it's not scalar
-        # inject an additional CTE
-        if self.conditions and not is_scalar_condition(self.conditions):
-            base.condition = None
-            # Existence feeders (membership ``in <derived>`` subselects) only
-            # feed the lifted condition, not the group itself. They sit as
-            # datasources on ``base``; relocate them onto this wrapper SELECT —
-            # the node that actually renders the condition — so the subselect
-            # can resolve them (tracked in ``existence_source_map``, separate
-            # from row source resolution).
-            existence_addrs = {c.address for c in self.existence_concepts}
-            existence_sources = [
-                ds
-                for ds in base.datasources
-                if isinstance(ds, QueryDatasource)
-                and ds.output_concepts
-                and all(c.address in existence_addrs for c in ds.output_concepts)
-            ]
-            if existence_sources:
-                base.datasources = [
-                    ds for ds in base.datasources if ds not in existence_sources
-                ]
-                for addr in existence_addrs:
-                    base.source_map.pop(addr, None)
-            base.output_concepts = unique(
-                list(base.output_concepts) + list(self.conditions.row_arguments),
-                "address",
-            )
-            # re-visible any hidden concepts
-            base.hidden_concepts = {
-                x for x in base.hidden_concepts if x not in base.output_concepts
-            }
-            source_map = resolve_concept_map(
-                [base],
-                targets=self.output_concepts,
-                inherited_inputs=base.output_concepts,
-            )
-            return QueryDatasource(
-                input_concepts=base.output_concepts,
-                output_concepts=self.output_concepts,
-                datasources=[base, *existence_sources],
-                source_type=SourceType.SELECT,
-                source_map=source_map,
-                # Resolve existence concepts against the wrapper's actual
-                # datasources (the relocated feeders), not the feeder-stripped
-                # ``base`` — otherwise the membership subselect can't find its
-                # source CTE and renders an INVALID_REFERENCE_BUG (bug B2).
-                existence_source_map=resolve_existence_map(
-                    [base, *existence_sources], self.existence_concepts
-                ),
-                joins=[],
-                grain=target_grain,
-                nullable_concepts=base.nullable_concepts,
-                partial_concepts=self.partial_concepts,
-                rollup_concepts=self.rollup_concepts,
-                condition=self.conditions,
-                hidden_concepts=self.hidden_concepts,
-                ordering=self.ordering,
-                base_datasource=base,
-            )
         return base
 
     def copy(self) -> "GroupNode":
@@ -294,7 +225,6 @@ class GroupNode(StrategyNode):
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
@@ -306,7 +236,4 @@ class GroupNode(StrategyNode):
             existence_concepts=list(self.existence_concepts),
             hidden_concepts=set(self.hidden_concepts),
             ordering=self.ordering,
-            required_outputs=(
-                list(self.required_outputs) if self.required_outputs else None
-            ),
         )

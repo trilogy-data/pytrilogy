@@ -14,9 +14,27 @@ byte-identical, whatever grain the consumer's own predicates live at. That is
 the only thing this rule pushes.
 
 The restriction is placed at the DEEPEST aggregate that still groups on the
-key, not merely the joined one — TPC-H q21 stacks two group-bys and stopping at
+key, not merely the joined one. TPC-H q21 stacks two group-bys and stopping at
 the first measures 1.7x against 6.0x for the full descent, because the bottom
 aggregate is the one scanning the fact table.
+
+The consumer often joins a projection or an enrichment rather than the
+aggregate itself, so the search for that aggregate starts *above* it and walks
+down through nodes that neither filter nor truncate. Row-preserving joins are
+crossed on the way: dropping a target row can leave a dimension row unmatched,
+so the join synthesizes a NULL-padded row that did not exist before. That is
+still exact, because such a row carries the dropped row's own key, which is by
+construction absent from the feeder, and the consumer's join rejects it. Any
+aggregate met on the way down has to group on the key, otherwise removing rows
+would move a surviving group's measure.
+
+Only the FEEDER's key may not be nullable. The probe reads
+``k in (select k from feeder)``, which drops a NULL k, and the join being
+mirrored rejects that same row whether it rendered as ``=`` or as IS NOT
+DISTINCT FROM, because a non-nullable feeder key has no NULL to pair with. A
+nullable key on the target side is therefore no reason to skip, and skipping
+one cost TPC-DS q64 a 5.7x scan restriction: every key of an enrichment built
+over full joins is nullable there.
 """
 
 from __future__ import annotations
@@ -31,7 +49,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_sole_consumer
+from trilogy.core.optimizations.utils import is_grouped_cte, is_sole_consumer
 
 # A restriction may only ride below these; anything that reorders, pads or
 # truncates rows changes which groups exist independently of the key.
@@ -41,10 +59,6 @@ UNSAFE_SOURCE_TYPES = {
     SourceType.RECURSIVE,
     SourceType.UNION,
 }
-
-
-def is_aggregate(cte: CTE) -> bool:
-    return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
 
 def groups_on(cte: CTE, keys: list[BuildConcept]) -> bool:
@@ -82,12 +96,9 @@ def restricts_rows(cte: CTE | UnionCTE) -> bool:
 
 
 def nullable_in(cte: CTE | UnionCTE, key: BuildConcept) -> bool:
-    """True when `key` can be NULL in `cte`. ``IN (SELECT ...)`` never matches a
-    NULL probe, but the join being mirrored may still render null-safe (join
-    keys default to IS NOT DISTINCT FROM until SimplifyNullSafeJoins proves
-    otherwise), and that pairing DOES match NULL to NULL. Rather than track
-    which form the join settled on, skip any key that could be NULL on either
-    side — the restriction would delete the NULL-keyed group."""
+    """True when `key` can be NULL in `cte`. Applied to the feeder: a NULL there
+    would make the mirrored join (null-safe until SimplifyNullSafeJoins proves
+    otherwise) pair NULL to NULL where ``IN (SELECT ...)`` would not."""
     if key.is_nullable:
         return True
     if not isinstance(cte, CTE):
@@ -136,12 +147,47 @@ def placement_target(
         if (
             parent.limit is not None
             or parent.source.source_type in UNSAFE_SOURCE_TYPES
-            or not is_aggregate(parent)
+            or not is_grouped_cte(parent)
             or not groups_on(parent, keys)
             or not is_sole_consumer(target, parent, inverse_map)
         ):
             return target
         target = parent
+
+
+def descend_to_aggregate(
+    node: CTE | UnionCTE,
+    keys: list[BuildConcept],
+    inverse_map: dict[str, list[CTE | UnionCTE]],
+) -> CTE | None:
+    """Walk from the joined CTE down to the aggregate that scans the fact table.
+
+    Each step is a sole-consumer link through a node that neither filters nor
+    truncates; an aggregate reached on the way has to group on the keys, or
+    deleting rows would move a surviving group's measure.
+    """
+    seen: set[str] = set()
+    while isinstance(node, CTE) and not isinstance(node, RecursiveCTE):
+        if is_grouped_cte(node):
+            return node if groups_on(node, keys) else None
+        if node.name in seen:
+            return None
+        seen.add(node.name)
+        if node.condition is not None or node.limit is not None:
+            return None
+        if node.source.source_type in UNSAFE_SOURCE_TYPES:
+            return None
+        below = [
+            parent
+            for parent in node.dependency_nodes()
+            if isinstance(parent, CTE)
+            and all(exposed_key(parent, key) is not None for key in keys)
+            and is_sole_consumer(node, parent, inverse_map)
+        ]
+        if len(below) != 1:
+            return None
+        node = below[0]
+    return None
 
 
 class PushSemiJoinIntoAggregate(OptimizationRule):
@@ -186,7 +232,7 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
     ) -> bool:
         if not isinstance(aggregate, CTE) or isinstance(aggregate, RecursiveCTE):
             return False
-        if not is_aggregate(aggregate) or aggregate.limit is not None:
+        if aggregate.limit is not None:
             return False
         if aggregate.source.source_type in UNSAFE_SOURCE_TYPES:
             return False
@@ -219,14 +265,19 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
             # subquery could not name it.
             if member.address in restrictor.hidden_concepts:
                 return False
-            if nullable_in(aggregate, local) or nullable_in(restrictor, member):
-                return False
+            # A nullable feeder key is dropped rather than abandoning the whole
+            # mirror: probing on fewer keys is weaker but still exact.
+            if nullable_in(restrictor, member):
+                continue
             keys.append(local)
             members.append(member)
-        if not keys or not groups_on(aggregate, keys):
+        if not keys:
             return False
 
-        target = placement_target(aggregate, keys, inverse_map)
+        host = descend_to_aggregate(aggregate, keys, inverse_map)
+        if host is None:
+            return False
+        target = placement_target(host, keys, inverse_map)
         # Fire only into an aggregate that is grouping its base table WHOLE.
         # There is no cardinality model here, so the mirror is only taken where
         # the asymmetry is structural: an unfiltered target provably scans and

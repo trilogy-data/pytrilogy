@@ -25,6 +25,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildConditional,
+    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
@@ -44,6 +45,10 @@ from trilogy.core.models.core import (
     TupleWrapper,
     ValidatedType,
 )
+from trilogy.core.models.datasource import RawColumnExpr
+from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+
+ProofSource = CTE | UnionCTE | BuildDatasource | QueryDatasource
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -1056,3 +1061,111 @@ def condition_proves_non_null(
         for atom in decompose_condition(condition)
         for addr in _atom_proves_non_null(atom)
     }
+
+
+def _join_atom_proves_non_null(atom: BoolExpr) -> set[str]:
+    """``_atom_proves_non_null`` plus ``BETWEEN``: all three operands must be
+    non-null for the row to survive."""
+    if isinstance(atom, BuildParenthetical):
+        return _join_atom_proves_non_null(atom.content)  # type: ignore[arg-type]
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        sets = [gather_non_null_proofs(d) for d in _non_null_or_disjuncts(atom)]
+        return set.intersection(*sets) if sets else set()
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
+        return _join_atom_proves_non_null(atom.left) | _join_atom_proves_non_null(  # type: ignore[arg-type]
+            atom.right  # type: ignore[arg-type]
+        )
+    if isinstance(atom, BuildBetween):
+        return (
+            concepts_implied_non_null(atom.left)
+            | concepts_implied_non_null(atom.low)
+            | concepts_implied_non_null(atom.high)
+        )
+    if not isinstance(atom, BuildComparison):
+        return set()
+    return comparison_proves_non_null(atom)
+
+
+def gather_non_null_proofs(cond: BoolExpr) -> set[str]:
+    """Concept addresses a condition forces non-null in surviving rows, in
+    the form join narrowing consumes: ``IS NOT NULL``, ``BETWEEN`` and
+    OR-of-ANDs all count. Sound for a join whose sides are materialized
+    relations (a CTE, or one datasource of a merge), never for a merged key
+    that will render as a cross-source COALESCE."""
+    return {
+        addr
+        for atom in decompose_condition(cond)
+        for addr in _join_atom_proves_non_null(atom)
+    }
+
+
+def gather_or_groups(cond: BoolExpr) -> list[list[set[str]]]:
+    """Per-OR-atom disjunct proof sets, for side-level (not concept-level)
+    proofs. ``(a.x = 1 OR a.y = 2)`` proves no single concept non-null, but
+    every disjunct forces the ``a`` side present, enough to drop ``a``'s
+    unmatched rows. Only kept when every disjunct proves something."""
+    groups: list[list[set[str]]] = []
+    for atom in decompose_condition(cond):
+        disjuncts = _non_null_or_disjuncts(atom)
+        if len(disjuncts) < 2:
+            continue
+        sets = [gather_non_null_proofs(d) for d in disjuncts]
+        if all(sets):
+            groups.append(sets)
+    return groups
+
+
+def partial_addresses(source: ProofSource) -> set[str]:
+    """Addresses a source covers only PARTIALLY: it does not hold the full
+    set of that concept's values.
+
+    A filter on a partial concept cannot promote an OUTER join to a stricter
+    one: the other side's unmatched rows are meaningful (their value simply
+    is not in this partial source), and the predicate renders from the
+    complete side anyway, so requiring the value non-null does not reject the
+    NULL-padded rows. ``customer LEFT JOIN orders`` (orders partial for
+    ``customer.id``: promoting would drop no-order customers) versus
+    ``customer LEFT JOIN customer_address`` (the address PK is complete, so a
+    non-null filter legitimately forces INNER)."""
+    if isinstance(source, BuildDatasource):
+        return set()
+    return {c.address for c in source.partial_concepts}
+
+
+def _scan_opaque_bindings(
+    ds: ProofSource | None, out: set[str], seen: set[int]
+) -> None:
+    if ds is None or id(ds) in seen:
+        return
+    seen.add(id(ds))
+    if isinstance(ds, BuildDatasource):
+        for col in ds.columns:
+            alias = col.alias
+            if isinstance(alias, RawColumnExpr) or (
+                isinstance(alias, BuildFunction)
+                and not concepts_implied_non_null(alias)
+            ):
+                out.add(col.concept.address)
+    elif isinstance(ds, QueryDatasource):
+        for child in ds.datasources:
+            _scan_opaque_bindings(child, out, seen)
+        _scan_opaque_bindings(ds.base_datasource, out, seen)
+    else:
+        _scan_opaque_bindings(ds.source, out, seen)
+
+
+def opaque_binding_addresses(source: ProofSource | None) -> set[str]:
+    """Addresses whose datasource column binding can be non-null even on a
+    join's NULL-padded (unmatched) rows.
+
+    A plain column is NULL-padded when its row is unmatched, so a non-null
+    proof on it genuinely forces that side present. A ``RawColumnExpr``
+    (opaque SQL, e.g. ``CASE WHEN <rightcol> IS NOT NULL THEN True ELSE
+    False END``) or a null-opaque function can yield a non-null value for an
+    unmatched row, so proving such a concept non-null proves nothing about
+    the join and must never force a stricter type (the ``is_returned =
+    false`` trap: the predicate is satisfied by exactly the unmatched rows,
+    yet the CASE-derived flag is non-null)."""
+    out: set[str] = set()
+    _scan_opaque_bindings(source, out, set())
+    return out
